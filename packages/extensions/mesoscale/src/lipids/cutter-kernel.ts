@@ -20,8 +20,8 @@ import {
   type GpuInstanceWriter,
 } from '@molstar/graphics/gl/renderable/merged-culler';
 import { InstanceDataVec4s } from '@molstar/graphics/gl/renderable/merged';
-import { CellKinds, cellSide, cutterBases, type CutterRegions, type CutterTable } from './cutter.js';
-import type { LipidSelection } from './procedural.js';
+import { CellKinds, cellSide, type CutterRegions, type CutterTable } from './cutter.js';
+import { type LipidSelection, WholeTriangle } from './procedural.js';
 
 // The cutter on the GPU (`cutter.ts`, its TypeScript reference): one thread a triangle (its region's plane, spin and
 // offset read from the CPU's region table; its cells' from the cells' table by the same hash), two passes. The count pass
@@ -193,17 +193,30 @@ fn imageRange(c: Cell, h: vec2<f32>) -> vec4<i32> {
 fn inside(k: Cut, c: Cell, h: vec2<f32>, i: i32, j: i32) -> vec3<f32> {
     // patch → the cell's point p = c + Rz(−φ)(s − e), kept if in the cell; → region q = Rz(−θ)(p − off)
     let d = vec2<f32>(h.x + f32(i) * uParams.uBoxX - c.e.x, h.y + f32(j) * uParams.uBoxY - c.e.y);
-    let pc = c.c + vec2<f32>(c.rot.x * d.x + c.rot.y * d.y, -c.rot.y * d.x + c.rot.x * d.y);
     let side = uParams.uCell;
-    if (i32(floor(pc.x / side)) != c.id.x || i32(floor(pc.y / side)) != c.id.y) {
+    let lc = vec2<f32>(side / 2.0) + vec2<f32>(c.rot.x * d.x + c.rot.y * d.y, -c.rot.y * d.x + c.rot.x * d.y);
+    if (!(lc.x >= 0.0 && lc.x < side && lc.y >= 0.0 && lc.y < side)) {
         return vec3<f32>(0.0);
     }
-    let p = pc - k.off;
+    // inside the cell: its point (the cell's frame, as \`kindCounts\` tests it) and whether the triangle owns it (z: 1, else 2)
+    let p = vec2<f32>(c.id) * side + lc - k.off;
     let q = vec2<f32>(k.rot.x * p.x + k.rot.y * p.y, -k.rot.y * p.x + k.rot.x * p.y);
     let hit = edgeSide(k, k.c0, k.ids.x, k.c1, k.ids.y, q)
         && edgeSide(k, k.c1, k.ids.y, k.c2, k.ids.z, q)
         && edgeSide(k, k.c2, k.ids.z, k.c0, k.ids.x, q);
-    return vec3<f32>(q, select(0.0, 1.0, hit));
+    return vec3<f32>(q, select(2.0, 1.0, hit));
+}
+
+/** a whole cell (cx, cy) of cut k: its kind's spin and offset, the cell's whole square (round 5: a cell a unit) */
+fn wholeCellAt(k: Cut, cx: i32, cy: i32) -> Cell {
+    var c = cellAt(k, cx, cy);
+    c.s = c.e;
+    c.radius = uParams.uCell * 0.70710678;
+    return c;
+}
+
+fn cellKind(k: Cut, cx: i32, cy: i32) -> u32 {
+    return hashU32(k.region ^ hashU32(bitcast<u32>(cx) ^ hashU32(bitcast<u32>(cy)))) & (CellKinds - 1u);
 }
 
 fn triangleIndex(id: vec3<u32>, groups: vec3<u32>) -> u32 {
@@ -216,12 +229,13 @@ ${common}
 
 @compute @workgroup_size(WorkgroupSizeX)
 fn main(@builtin(global_invocation_id) id: vec3<u32>, @builtin(num_workgroups) groups: vec3<u32>) {
-    let t = triangleIndex(id, groups);
+    // the triangles cut whole (\`wholeTriangles\`), the w-th of W
+    let w = triangleIndex(id, groups);
     let T = u32(uParams.uTriangles);
-    if (t >= T) {
+    if (w >= T) {
         return;
     }
-    let k = triangleCut(t);
+    let k = triangleCut(whole[w]);
     for (var m = 0u; m < u32(uParams.uMembers); m++) {
         var n = 0u;
         if (k.ok) {
@@ -234,14 +248,14 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>, @builtin(num_workgroups) g
                         let r = imageRange(c, h);
                         for (var i = r.x; i <= r.y; i++) {
                             for (var j = r.z; j <= r.w; j++) {
-                                n += u32(inside(k, c, h, i, j).z);
+                                n += u32(inside(k, c, h, i, j).z == 1.0);
                             }
                         }
                     }
                 }
             }
         }
-        counts[m * T + t] = n;
+        counts[m * T + w] = n;
     }
 }
 `;
@@ -249,22 +263,80 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>, @builtin(num_workgroups) g
 const writeWgsl = /* wgsl */ `
 ${common}
 
+const WholeTriangle = ${WholeTriangle};
+const DeadRow = vec4<f32>(0.0, 0.0, 0.0, ${DeadInstanceTranslation.toExponential().replace('+', '')});
+
+fn writeRows(slot: u32, r0: vec4<f32>, r1: vec4<f32>, r2: vec4<f32>) {
+    let o = (u32(uParams.uInstanceBase) + slot) * ${InstanceDataVec4s}u;
+    instanceData[o] = r0;
+    instanceData[o + 1u] = r1;
+    instanceData[o + 2u] = r2;
+    let w = (u32(uParams.uIdentityBase) + u32(uParams.uInstanceBase) + slot) * 3u;
+    transforms[w] = r0;
+    transforms[w + 1u] = r1;
+    transforms[w + 2u] = r2;
+}
+
+/** a hit's rows: Rz(Δ − θ − φ) in the triangle's plane, the head lifted onto it along the region's normal (\`hitAffine\`) */
+fn writeHit(slot: u32, k: Cut, cell: Cell, l: u32, q: vec2<f32>) {
+    let dc = lipids[l].z;
+    let ds = lipids[l].w;
+    let c = dc * cell.turn.x + ds * cell.turn.y;
+    let s = ds * cell.turn.x - dc * cell.turn.y;
+    let x = c * k.t1 + s * k.t2;
+    let y = -s * k.t1 + c * k.t2;
+    let w0 = k.o + q.x * k.e1 + q.y * k.e2;
+    let p = w0 + (dot(k.a - w0, k.n) / k.dn) * k.rn;
+    writeRows(slot, vec4<f32>(x.x, y.x, k.n.x, p.x), vec4<f32>(x.y, y.y, k.n.y, p.y), vec4<f32>(x.z, y.z, k.n.z, p.z));
+}
+
 @compute @workgroup_size(WorkgroupSizeX)
 fn main(@builtin(global_invocation_id) id: vec3<u32>, @builtin(num_workgroups) groups: vec3<u32>) {
-    // the selected triangles of a view (\`procedural.ts\`): the i-th, its first slot the member's base of it
+    // the selected units of a view (\`procedural.ts\`): the i-th, its first slot the member's base of it
     let i = triangleIndex(id, groups);
     if (i >= u32(uParams.uSelected)) {
         return;
     }
-    let t = selected[i];
-    let T = u32(uParams.uTriangles);
+    let t = u32(units[i * 3u]);
+    let ucx = units[i * 3u + 1u];
+    let ucy = units[i * 3u + 2u];
     let k = triangleCut(t);
+    let m = u32(uParams.uMember);
+    var slot = bases[m * u32(uParams.uMaxUnits) + i];
+    let end = u32(uParams.uCount);
+    if (ucx != WholeTriangle) {
+        // a cell: its kind's slots, the lipids the triangle does not own (or f32 misses) dead
+        let cell = wholeCellAt(k, ucx, ucy);
+        let n = memberStart[u32(uParams.uMembers) + 1u + cellKind(k, ucx, ucy) * u32(uParams.uMembers) + m];
+        var j = 0u;
+        if (k.ok) {
+            for (var l = memberStart[m]; l < memberStart[m + 1u]; l++) {
+                let h = lipids[l].xy;
+                let r = imageRange(cell, h);
+                for (var ii = r.x; ii <= r.y; ii++) {
+                    for (var jj = r.z; jj <= r.w; jj++) {
+                        let q = inside(k, cell, h, ii, jj);
+                        if (q.z == 0.0 || j >= n || slot + j >= end) {
+                            continue;
+                        }
+                        if (q.z == 1.0) {
+                            writeHit(slot + j, k, cell, l, q.xy);
+                        } else {
+                            writeRows(slot + j, DeadRow, DeadRow, DeadRow);
+                        }
+                        j += 1u;
+                    }
+                }
+            }
+        }
+        for (; j < n && slot + j < end; j++) {
+            writeRows(slot + j, DeadRow, DeadRow, DeadRow);
+        }
+        return;
+    }
     if (!k.ok) {
         return;
     }
-    let m = u32(uParams.uMember);
-    var slot = bases[m * T + i];
-    let end = u32(uParams.uCount);
     let cr = cellRange(k);
     for (var cx = cr.x; cx <= cr.y; cx++) {
         for (var cy = cr.z; cy <= cr.w; cy++) {
@@ -272,32 +344,13 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>, @builtin(num_workgroups) g
             for (var l = memberStart[m]; l < memberStart[m + 1u]; l++) {
                 let h = lipids[l].xy;
                 let r = imageRange(cell, h);
-                for (var i = r.x; i <= r.y; i++) {
-                    for (var j = r.z; j <= r.w; j++) {
-                        let q = inside(k, cell, h, i, j);
-                        if (q.z == 0.0 || slot >= end) {
+                for (var ii = r.x; ii <= r.y; ii++) {
+                    for (var jj = r.z; jj <= r.w; jj++) {
+                        let q = inside(k, cell, h, ii, jj);
+                        if (q.z != 1.0 || slot >= end) {
                             continue;
                         }
-                        // Rz(Δ − θ − φ) in the triangle's plane, the head lifted onto it along the region's normal (\`hitAffine\`)
-                        let dc = lipids[l].z;
-                        let ds = lipids[l].w;
-                        let c = dc * cell.turn.x + ds * cell.turn.y;
-                        let s = ds * cell.turn.x - dc * cell.turn.y;
-                        let x = c * k.t1 + s * k.t2;
-                        let y = -s * k.t1 + c * k.t2;
-                        let w0 = k.o + q.x * k.e1 + q.y * k.e2;
-                        let p = w0 + (dot(k.a - w0, k.n) / k.dn) * k.rn;
-                        let r0 = vec4<f32>(x.x, y.x, k.n.x, p.x);
-                        let r1 = vec4<f32>(x.y, y.y, k.n.y, p.y);
-                        let r2 = vec4<f32>(x.z, y.z, k.n.z, p.z);
-                        let o = (u32(uParams.uInstanceBase) + slot) * ${InstanceDataVec4s}u;
-                        instanceData[o] = r0;
-                        instanceData[o + 1u] = r1;
-                        instanceData[o + 2u] = r2;
-                        let w = (u32(uParams.uIdentityBase) + u32(uParams.uInstanceBase) + slot) * 3u;
-                        transforms[w] = r0;
-                        transforms[w + 1u] = r1;
-                        transforms[w + 2u] = r2;
+                        writeHit(slot, k, cell, l, q.xy);
                         slot += 1u;
                     }
                 }
@@ -350,17 +403,23 @@ const Inputs = {
   memberStart: StorageBufferSpec('u32', 'read'),
   lipids: StorageBufferSpec('vec4<f32>', 'read'),
 };
-export const LipidCutCountSchema = { ...Uniforms, ...Inputs, counts: StorageBufferSpec('u32', 'read-write') };
+export const LipidCutCountSchema = {
+  ...Uniforms,
+  ...Inputs,
+  whole: StorageBufferSpec('u32', 'read'),
+  counts: StorageBufferSpec('u32', 'read-write'),
+};
 export const LipidCutWriteSchema = {
   ...Uniforms,
   uMember: UniformSpec('i'),
   uCount: UniformSpec('i'),
   uSelected: UniformSpec('i'),
+  uMaxUnits: UniformSpec('i'),
   uInstanceBase: UniformSpec('i'),
   uIdentityBase: UniformSpec('i'),
   ...Inputs,
   bases: StorageBufferSpec('u32', 'read'),
-  selected: StorageBufferSpec('u32', 'read'),
+  units: StorageBufferSpec('i32', 'read'),
   instanceData: StorageBufferSpec('vec4<f32>', 'read-write'),
   transforms: StorageBufferSpec('vec4<f32>', 'read-write'),
 };
@@ -372,23 +431,16 @@ function regionsAndCells(regions: CutterRegions) {
   return all;
 }
 
-/** A leaflet cut on the GPU: its counts per (member, triangle) (`m * T + t`, read back once), a writer a member */
+/**
+ * A leaflet cut on the GPU: its whole triangles' counts per member (`m * W + w`, the count pass read back once at the
+ * wrap; none for a mesh of large triangles), a writer a member over a selection's units
+ */
 export interface LipidCutter {
   readonly counts: Uint32Array;
-  readonly totals: Uint32Array;
-  /**
-   * member `m`'s writer: the hits of the triangles `selection` holds (a view's, `procedural.ts`; all without one), its
-   * live count returned, the slots past it zeros in the identity region (views culled on the CPU draw nothing of them)
-   */
-  writer: (m: number, selection?: LipidSelection) => GpuInstanceWriter;
+  writer: (m: number, selection: LipidSelection) => GpuInstanceWriter;
   destroy: () => void;
 }
 
-/**
- * The mesh and the table uploaded, the count pass run and read back: then a writer per member. Byte cost: 12 B a vertex
- * and a triangle, 4 B a triangle (its region; its selection), 64 B a region, 64 KB the cells' kinds, 16 B a patch lipid, 4 B a (member,
- * triangle) on the GPU (a selected one's first instance) and on the CPU (its count)
- */
 export async function createLipidCutter(
   compute: ComputeContext,
   flush: () => void,
@@ -396,12 +448,14 @@ export async function createLipidCutter(
   positions: Float32Array,
   indices: Uint32Array,
   regions: CutterRegions,
+  whole: Uint32Array,
+  kinds: Uint32Array,
 ): Promise<LipidCutter> {
   const T = indices.length / 3;
+  const W = whole.length;
   const M = table.members.length;
-  // a count and a first instance a member and triangle, each one buffer (review S4: past the device's size, a WebGPU
-  // error and an empty membrane)
-  if (M * T * 4 > compute.maxStorageBufferSize) {
+  // a count a member and whole triangle, one buffer (review S4: past the device's size, a WebGPU error)
+  if (M * W * 4 > compute.maxStorageBufferSize) {
     throw new Error(
       `The cutter has too many triangles (${T.toLocaleString()}) for this GPU's buffers: remesh the mesh coarser, or wrap it with tiles.`,
     );
@@ -418,70 +472,86 @@ export async function createLipidCutter(
     uBoxY: ValueCell.create(table.box[1]),
     uCell: ValueCell.create(cellSide(table.box)),
     uCells: ValueCell.create(regions.count * 4),
-    uTriangles: ValueCell.create(T),
+    uTriangles: ValueCell.create(W),
     uMembers: ValueCell.create(M),
   };
+  // the members' starts, then the kinds' counts (`kindCounts`), one buffer (the write pass is at the stage's 10)
+  const membersAndKinds = new Uint32Array(M + 1 + kinds.length);
+  membersAndKinds.set(table.memberStart);
+  membersAndKinds.set(kinds, M + 1);
   const inputs = {
     positions: ValueCell.create(buffer(positions, 'lipid cut: positions')),
     indices: ValueCell.create(buffer(indices, 'lipid cut: indices')),
     regionOf: ValueCell.create(buffer(regions.regionOf, 'lipid cut: region of each triangle')),
-    // the cells' kinds after the regions, one buffer (the write pass is at the stage's 10 storage buffers)
+    // the cells' kinds after the regions, one buffer
     regions: ValueCell.create(buffer(regionsAndCells(regions), 'lipid cut: regions and cells')),
-    memberStart: ValueCell.create(buffer(table.memberStart, 'lipid cut: members')),
+    memberStart: ValueCell.create(buffer(membersAndKinds, 'lipid cut: members and kinds')),
     lipids: ValueCell.create(buffer(table.lipids, 'lipid cut: lipids')),
   };
-  const countBuffer = compute.createBuffer(Math.max(16, M * T * 4), 'lipid cut: counts');
-  const countKernel = compute.createKernel(LipidCutCountKernel, LipidCutCountSchema, {
-    ...uniforms,
-    ...inputs,
-    counts: ValueCell.create(countBuffer),
-  });
-  compute.beginComputePass({ label: 'lipid cut: count' });
-  countKernel.dispatch(...workgroupRows(T, 64, compute.maxWorkgroupsPerDimension));
-  compute.endComputePass();
-  flush();
-  let counts: Uint32Array;
-  try {
-    counts = new Uint32Array(await countBuffer.readAsync(0, M * T * 4));
-  } catch (e) {
-    // nothing left on the GPU by a failed readback (review N2)
-    for (const b of buffers) b.destroy();
-    throw e;
-  } finally {
-    countKernel.destroy();
-    countBuffer.destroy();
+  let counts = new Uint32Array(0);
+  if (W > 0) {
+    const countBuffer = compute.createBuffer(Math.max(16, M * W * 4), 'lipid cut: counts');
+    const wholeBuffer = compute.createBuffer(Math.max(16, W * 4), 'lipid cut: whole triangles');
+    wholeBuffer.write(whole);
+    const countKernel = compute.createKernel(LipidCutCountKernel, LipidCutCountSchema, {
+      ...uniforms,
+      ...inputs,
+      whole: ValueCell.create(wholeBuffer),
+      counts: ValueCell.create(countBuffer),
+    });
+    compute.beginComputePass({ label: 'lipid cut: count' });
+    countKernel.dispatch(...workgroupRows(W, 64, compute.maxWorkgroupsPerDimension));
+    compute.endComputePass();
+    flush();
+    try {
+      counts = new Uint32Array(await countBuffer.readAsync(0, M * W * 4));
+    } catch (e) {
+      // nothing left on the GPU by a failed readback (review N2)
+      for (const b of buffers) b.destroy();
+      throw e;
+    } finally {
+      countKernel.destroy();
+      countBuffer.destroy();
+      wholeBuffer.destroy();
+    }
   }
-  const { bases: allBases, totals } = cutterBases(counts, M);
-  const all = new Uint32Array(T);
-  for (let t = 0; t < T; ++t) all[t] = t;
+  /** the selection's units and bases on the GPU, grown to its largest */
+  let unitBuffer: StorageBuffer | undefined;
+  let baseBuffer: StorageBuffer | undefined;
   const values = {
     ...uniforms,
+    uTriangles: ValueCell.create(T),
     uMember: ValueCell.create(0),
     uCount: ValueCell.create(0),
     uSelected: ValueCell.create(0),
+    uMaxUnits: ValueCell.create(0),
     uInstanceBase: ValueCell.create(0),
     uIdentityBase: ValueCell.create(0),
     ...inputs,
-    bases: ValueCell.create(buffer(allBases, 'lipid cut: bases')),
-    selected: ValueCell.create(buffer(all, 'lipid cut: selected triangles')),
+    bases: ValueCell.create(inputs.positions.ref.value),
+    units: ValueCell.create(inputs.positions.ref.value),
     instanceData: ValueCell.create(inputs.positions.ref.value),
     transforms: ValueCell.create(inputs.positions.ref.value),
   };
-  /** what `bases` and `selected` hold: all triangles (-1) or a selection's version */
+  /** what `bases` and `units` hold: a selection's version */
   let uploaded: { selection: LipidSelection | undefined; version: number } = { selection: undefined, version: -1 };
-  const upload = (selection: LipidSelection | undefined) => {
-    const version = selection?.version ?? -1;
+  const upload = (selection: LipidSelection) => {
+    const { version, count: n, maxUnits } = selection;
     if (uploaded.selection === selection && uploaded.version === version) return;
     uploaded = { selection, version };
-    if (!selection) {
-      values.bases.ref.value.write(allBases);
-      values.selected.ref.value.write(all);
-      return;
-    }
-    const n = selection.count;
     if (n === 0) return;
-    values.selected.ref.value.write(selection.selected.subarray(0, n));
-    for (let m = 0; m < M; ++m) values.bases.ref.value.write(selection.bases.subarray(m * T, m * T + n), m * T * 4);
+    if (!unitBuffer || unitBuffer.byteLength < maxUnits * 12) {
+      unitBuffer?.destroy();
+      baseBuffer?.destroy();
+      unitBuffer = compute.createBuffer(maxUnits * 12, 'lipid cut: units');
+      baseBuffer = compute.createBuffer(M * maxUnits * 4, 'lipid cut: bases');
+      ValueCell.update(values.units, unitBuffer);
+      ValueCell.update(values.bases, baseBuffer);
+    }
+    ValueCell.update(values.uMaxUnits, maxUnits);
+    unitBuffer.write(selection.units.subarray(0, n * 3));
+    for (let m = 0; m < M; ++m)
+      baseBuffer!.write(selection.bases.subarray(m * maxUnits, m * maxUnits + n), m * maxUnits * 4);
   };
   let kernel: ComputeKernel | undefined;
   const dead = {
@@ -494,9 +564,9 @@ export async function createLipidCutter(
   let deadKernel: ComputeKernel | undefined;
   /** per member what its identity region holds: its buffer, base and live slots (the rest dead rows) */
   const cleared = Array.from({ length: M }, () => ({ buffer: -1, base: -1, live: 0 }));
-  const write = (m: number, target: GpuInstanceTarget, selection: LipidSelection | undefined) => {
+  const write = (m: number, target: GpuInstanceTarget, selection: LipidSelection) => {
     upload(selection);
-    const count = Math.min(target.count, selection ? selection.live[m] : totals[m]);
+    const count = Math.min(target.count, selection.live[m]);
     // the slots past the live ones: zeros where views culled on the CPU read them; only those live before (review S3:
     // the whole rest a frame), all of them in a new buffer or place
     const last = cleared[m];
@@ -517,7 +587,7 @@ export async function createLipidCutter(
     last.base = target.identityBase + target.instanceBase;
     last.live = count;
     if (count === 0) return 0;
-    const n = selection ? selection.count : T;
+    const n = selection.count;
     ValueCell.update(values.uMember, m);
     ValueCell.update(values.uCount, count);
     ValueCell.update(values.uSelected, n);
@@ -533,11 +603,12 @@ export async function createLipidCutter(
   };
   return {
     counts,
-    totals,
     writer: (m, selection) => (_compute, target) => write(m, target, selection),
     destroy: () => {
       kernel?.destroy();
       deadKernel?.destroy();
+      unitBuffer?.destroy();
+      baseBuffer?.destroy();
       for (const b of buffers) b.destroy();
     },
   };

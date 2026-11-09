@@ -122,6 +122,8 @@ describe('the lipid cutter', () => {
         mesh.positions,
         mesh.indices,
         cutterRegions(mesh.positions, mesh.indices, 1),
+        Uint32Array.from({ length: mesh.indices.length / 3 }, (_, t) => t),
+        new Uint32Array(4096 * table.members.length),
       ),
     ).rejects.toThrow(/too many triangles/);
   });

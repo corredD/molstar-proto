@@ -4,15 +4,15 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import { it } from 'vitest';
+import { expect, it } from 'vitest';
 import { checkLinear, quadraticControl, scaling } from '../../../../sequences/core/_test/model/scaling.js';
 import { assignReference, assignSlots } from '../lipids/assign.js';
-import { cutterBases, cutterCounts, cutterRegions, cutterTable } from '../lipids/cutter.js';
+import { CellKinds, cutterBases, cutterCounts, cutterRegions, cutterTable } from '../lipids/cutter.js';
 import { parsePatchPdb } from '../lipids/patch.js';
 import { buildMembrane, registerLipidPatch, shownLipids } from '../lipids/membrane.js';
 import { farSurface } from '../lipids/far-surface.js';
 import { farTriangles, icosphere, isotropicRemesh, type TriMesh } from '../lipids/remesh.js';
-import { createLipidSelection } from '../lipids/procedural.js';
+import { createLipidSelection, wholeTriangles } from '../lipids/procedural.js';
 import { Frustum3D } from '@molstar/core/math/geometry/primitives/frustum3d';
 import { Plane3D } from '@molstar/core/math/geometry/primitives/plane3d';
 import { Vec3 } from '@molstar/core/math/linear-algebra/3d/vec3';
@@ -129,15 +129,24 @@ it('a view selected over a mesh of N triangles, at a fixed pool (lipid-procedura
         const mesh = icosphere(radiusFor(n), 100);
         const T = mesh.indices.length / 3;
         const regions = cutterRegions(mesh.positions, mesh.indices, 1);
-        const counts = new Uint32Array(2 * T).fill(3);
+        // small triangles: each a unit whole, 3 lipids a member (round 5's units)
+        const box = [154, 154] as const;
+        const { wholeOf, count } = wholeTriangles(mesh.positions, mesh.indices, regions, box);
         const selection = createLipidSelection(
-          mesh.positions,
-          mesh.indices,
-          regions.regionOf,
-          regions.count,
-          counts,
+          {
+            positions: mesh.positions,
+            indices: mesh.indices,
+            regions,
+            box,
+            members: 2,
+            kinds: new Uint32Array(2 * CellKinds).fill(3),
+            wholeOf,
+            wholeCounts: new Uint32Array(2 * count).fill(3),
+            side: 1,
+          },
           Uint32Array.of(10000, 10000),
         );
+        expect(count).toBe(T);
         const r = radiusFor(n);
         const frustum = Frustum3D();
         // a box of planes around the sphere: all in view

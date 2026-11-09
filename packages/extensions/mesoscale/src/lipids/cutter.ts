@@ -502,12 +502,15 @@ export function eachHit(
         const j1 = Math.floor((sy + r - hy) / by);
         for (let i = i0; i <= i1; ++i) {
           for (let j = j0; j <= j1; ++j) {
-            // patch → the cell's point: p = c + Rz(−φ)(s − e), kept if in the cell
+            // patch → the cell's point: p = c + Rz(−φ)(s − e), kept if in the cell (in the cell's frame, as a kind's
+            // count tests it: `kindCounts`)
             const dx = hx + i * bx - ex;
             const dy = hy + j * by - ey;
-            const px = ccx + ec * dx + es * dy;
-            const py = ccy - es * dx + ec * dy;
-            if (Math.floor(px / C) !== cx || Math.floor(py / C) !== cy) continue;
+            const lx = C / 2 + ec * dx + es * dy;
+            const ly = C / 2 - es * dx + ec * dy;
+            if (!(lx >= 0 && lx < C && ly >= 0 && ly < C)) continue;
+            const px = cx * C + lx;
+            const py = cy * C + ly;
             // → region: q = Rz(−θ)(p − o)
             const ux = px - cut.ox;
             const uy = py - cut.oy;
@@ -516,6 +519,101 @@ export function eachHit(
             if (owns(cut, qx, qy)) hit(l, qx, qy);
           }
         }
+      }
+    }
+  }
+}
+
+/**
+ * Each lipid of member `m` in the whole cell (`cx`, `cy`) of a cut's region (lipid-procedural round 5: the cell, not the
+ * triangle, is the unit of a view), in its slot order: the cell's kind's lipids by member, each at most once (a cell
+ * spans under the box); `hit` gets the lipid, its point in the region's frame and whether the triangle owns it (a cell on
+ * its edge: the lipids it does not own are dead slots). The owned ones are `eachHit`'s in that cell, in its order
+ */
+export function eachCellHit(
+  table: CutterTable,
+  cut: TriangleCut,
+  cx: number,
+  cy: number,
+  m: number,
+  hit: (lipid: number, x: number, y: number, owned: boolean) => void,
+) {
+  const [bx, by] = table.box;
+  const C = cellSide(table.box);
+  const e = cellEntry(cut.region, cx, cy) * 4;
+  const cells = cut.cells;
+  const ex = cells[e] * bx;
+  const ey = cells[e + 1] * by;
+  const ec = cells[e + 2];
+  const es = cells[e + 3];
+  // the whole cell: its center at the kind's offset, its half diagonal
+  const r = (C * Math.SQRT2) / 2;
+  cut.turnCos = cut.cos * ec - cut.sin * es;
+  cut.turnSin = cut.sin * ec + cut.cos * es;
+  for (let l = table.memberStart[m]; l < table.memberStart[m + 1]; ++l) {
+    const hx = table.lipids[l * 4];
+    const hy = table.lipids[l * 4 + 1];
+    for (let i = Math.ceil((ex - r - hx) / bx), i1 = Math.floor((ex + r - hx) / bx); i <= i1; ++i) {
+      for (let j = Math.ceil((ey - r - hy) / by), j1 = Math.floor((ey + r - hy) / by); j <= j1; ++j) {
+        const dx = hx + i * bx - ex;
+        const dy = hy + j * by - ey;
+        const lx = C / 2 + ec * dx + es * dy;
+        const ly = C / 2 - es * dx + ec * dy;
+        if (!(lx >= 0 && lx < C && ly >= 0 && ly < C)) continue;
+        const px = cx * C + lx;
+        const py = cy * C + ly;
+        const ux = px - cut.ox;
+        const uy = py - cut.oy;
+        const qx = cut.cos * ux + cut.sin * uy;
+        const qy = -cut.sin * ux + cut.cos * uy;
+        hit(l, qx, qy, owns(cut, qx, qy));
+      }
+    }
+  }
+}
+
+/**
+ * Per cell kind and member the patch lipids a whole cell of that kind holds (`k * M + m`): a cell's slots, whatever its
+ * region and place (its lipids are its kind's, moved), from the patch alone: O(kinds × the patch's lipids), once a patch
+ */
+export function kindCounts(table: CutterTable, cells: Float32Array) {
+  const M = table.members.length;
+  const out = new Uint32Array(CellKinds * M);
+  const cut = emptyCut();
+  cut.cells = cells;
+  // a region whose cell (0, 0) is of kind k: the counts do not depend on the region or the cell, only on the kind
+  for (let k = 0; k < CellKinds; ++k) {
+    for (let m = 0; m < M; ++m) {
+      let n = 0;
+      eachKindHit(table, cells, k, m, () => {
+        n += 1;
+      });
+      out[k * M + m] = n;
+    }
+  }
+  return out;
+}
+
+/** The lipids of member `m` a whole cell of kind `k` holds, in slot order (`eachCellHit`'s, without a triangle) */
+function eachKindHit(table: CutterTable, cells: Float32Array, k: number, m: number, hit: () => void) {
+  const [bx, by] = table.box;
+  const C = cellSide(table.box);
+  const ex = cells[k * 4] * bx;
+  const ey = cells[k * 4 + 1] * by;
+  const ec = cells[k * 4 + 2];
+  const es = cells[k * 4 + 3];
+  const r = (C * Math.SQRT2) / 2;
+  for (let l = table.memberStart[m]; l < table.memberStart[m + 1]; ++l) {
+    const hx = table.lipids[l * 4];
+    const hy = table.lipids[l * 4 + 1];
+    for (let i = Math.ceil((ex - r - hx) / bx), i1 = Math.floor((ex + r - hx) / bx); i <= i1; ++i) {
+      for (let j = Math.ceil((ey - r - hy) / by), j1 = Math.floor((ey + r - hy) / by); j <= j1; ++j) {
+        const dx = hx + i * bx - ex;
+        const dy = hy + j * by - ey;
+        // the cell (0, 0): its point in [0, C)²
+        const px = C / 2 + ec * dx + es * dy;
+        const py = C / 2 - es * dx + ec * dy;
+        if (px >= 0 && px < C && py >= 0 && py < C) hit();
       }
     }
   }

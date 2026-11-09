@@ -38,10 +38,20 @@ import { PluginStateObject as SO, PluginStateTransform } from '@molstar/plugin/s
 import { assignSlots, type TileKinds, type TriangleSlots, variantCount } from './assign.js';
 import { createLipidTileAssigner, type LipidTileAssigner } from './assign-kernel.js';
 import { type LipidPatch, parsePatchPdb } from './patch.js';
-import { type CutterRegions, cutterRegions, type CutterTable, cutterTable } from './cutter.js';
+import { type CutterRegions, cutterRegions, type CutterTable, cutterTable, kindCounts } from './cutter.js';
 import { createLipidCutter, type LipidCutter } from './cutter-kernel.js';
 import { type FarSurface, farSurface, headOffset, type SwitchSpheres } from './far-surface.js';
-import { createLipidSelection, enterPx, type LipidSelection, type MembraneFar, poolCapacities } from './procedural.js';
+import {
+  createLipidSelection,
+  enterPx,
+  estimateLipids,
+  type LipidSelection,
+  type MembraneFar,
+  poolCapacities,
+  type SelectionInput,
+  slotTotals,
+  wholeTriangles,
+} from './procedural.js';
 import type { GpuInstanceView, GpuInstanceWriter } from '@molstar/graphics/gl/renderable/merged-culler';
 import { farTriangles, icosphere, isotropicRemeshSteps, offsetSurface, type TriMesh } from './remesh.js';
 import { bakeTileSetSteps, type Tile, type TileSet } from './tiles.js';
@@ -123,6 +133,18 @@ const cutterTables = new Map<string, CutterTable>();
 
 /** Conformers a species in the cutter's members (`cutter.ts`: why not a member a patch lipid) */
 const CutterConformers = 4;
+
+/** a patch leaflet's kinds' counts by its regions' cells (`kindCounts`: per patch and seed, ~20 ms) */
+const kindCountCache = new WeakMap<CutterTable, Map<string, Uint32Array>>();
+function getKindCounts(table: CutterTable, cells: Float32Array) {
+  let byCells = kindCountCache.get(table);
+  if (!byCells) kindCountCache.set(table, (byCells = new Map()));
+  // the cells' table by its first entries (a seed's): a few floats, not the table
+  const key = Array.from(cells.subarray(0, 16)).join();
+  let counts = byCells.get(key);
+  if (!counts) byCells.set(key, (counts = kindCounts(table, cells)));
+  return counts;
+}
 
 function getCutterTable(patch: string, leaflet: 'outer' | 'inner') {
   const key = `${patch}|${leaflet}`;
@@ -598,6 +620,8 @@ export function switchSpheres(table: CutterTable, props: LipidMembraneReprProps,
 
 /** The selection's hysteresis: a triangle taken keeps its lipids down to this share of the switch's px */
 const Keep = 0.8;
+/** The leaflet facing the camera within a lipid's length and a curve's: the units past it are hidden (round 5) */
+const FacingMargin = 60;
 
 /** A distance past any view, Å: a surface's fade (`lod`) open at its far end */
 const NoFade = 1e9;
@@ -764,6 +788,8 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
   let merged = new Map<string, MergedEntry<number>>();
   let assigners: LipidTileAssigner[] = [];
   let cutters: LipidCutter[] = [];
+  /** each cutter's selection input (its triangles, kinds and whole counts) */
+  const cutInputs = new WeakMap<LipidCutter, SelectionInput>();
   let cutLipids = 0;
   /** per cut leaflet its selection of a view (`procedural.ts`) */
   let selections: LipidSelection[] = [];
@@ -894,9 +920,11 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
     selectionStats.selects += 1;
     selectionParams.lipidSize = size;
     selectionParams.enterPx = builtFor?.method === 'cutter' ? enterPx(props.far, props.atomsPx, props.spheresPx) : 0;
+    // a clip shows the leaflet behind and the far side: every unit then
+    selectionParams.facing = props.clip.objects.length > 0 ? 0 : FacingMargin;
     selection.select(view.cameraPlane, view.frustum, view.lod.depthScale, view.lod.pixelSize, selectionParams);
   }
-  const selectionParams = { lipidSize: 8, enterPx: 2, keep: Keep };
+  const selectionParams = { lipidSize: 8, enterPx: 2, keep: Keep, facing: FacingMargin };
 
   /** the data the GPU's cutters and assigners were made for: a new look of the same data reuses them (review S5) */
   let builtFor: MembraneData | undefined;
@@ -985,6 +1013,10 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
         // the count pass and its readback: one wait on the GPU, not a stretch of the main thread
         await step({ message: `Cutting triangles (${leaflet.name})` });
         const { table, mesh } = leaflet;
+        // round 5: a small triangle cut whole (its counts from the count pass), a large one by cells (its kinds')
+        const { wholeOf, count: W } = wholeTriangles(mesh.positions, mesh.indices, leaflet.regions, table.box);
+        const whole = new Uint32Array(W);
+        for (let t = 0; t < wholeOf.length; ++t) if (wholeOf[t] >= 0) whole[wholeOf[t]] = t;
         const cutter = await createLipidCutter(
           graphics.compute,
           () => graphics.flush(),
@@ -992,7 +1024,20 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
           mesh.positions,
           mesh.indices,
           leaflet.regions,
+          whole,
+          getKindCounts(table, leaflet.regions.cells),
         );
+        cutInputs.set(cutter, {
+          positions: mesh.positions,
+          indices: mesh.indices,
+          regions: leaflet.regions,
+          box: table.box,
+          members: table.members.length,
+          kinds: getKindCounts(table, leaflet.regions.cells),
+          wholeOf,
+          wholeCounts: cutter.counts,
+          side: leaflet.name === 'inner' ? -1 : 1,
+        });
         made.push(cutter);
         current();
         cuts.push(cutter);
@@ -1001,20 +1046,13 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
     // a pool a member, its capacity a share of the budget (`poolCapacities`), a selection a leaflet
     // tiles: their lost parts cut whole, no far look (the cutter's alone; review S6)
     const cutter = data.method === 'cutter';
+    const budget = cutter ? props.budget : Infinity;
+    const inputs = cuts.map((c) => cutInputs.get(c)!);
     const capacities = poolCapacities(
-      cuts.map((c) => c.totals),
-      cutter ? props.budget : Infinity,
+      inputs.map((input) => slotTotals(input, budget)),
+      budget,
     );
-    const pools = data.cut.map((leaflet, c) =>
-      createLipidSelection(
-        leaflet.mesh.positions,
-        leaflet.mesh.indices,
-        leaflet.regions.regionOf,
-        leaflet.regions.count,
-        cuts[c].counts,
-        capacities[c],
-      ),
-    );
+    const pools = inputs.map((input, c) => createLipidSelection(input, capacities[c]));
     for (let c = 0; c < pools.length; ++c) {
       const { table } = data.cut[c];
       for (let m = 0; m < table.members.length; ++m) {
@@ -1030,6 +1068,8 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
       const leaflet = data.cut[c];
       const { table } = leaflet;
       const cutter = cuts[c];
+      // the lipids the leaflet holds, about: nothing O(lipids) at the wrap (round 5); exact by export
+      cutLipids += estimateLipids(inputs[c]);
       const b = cutBounds(leaflet);
       for (let m = 0; m < table.members.length; ++m) {
         const member = table.members[m];
@@ -1040,7 +1080,6 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
           current: m,
           max: table.members.length,
         });
-        cutLipids += cutter.totals[m];
         const species = [member.species];
         entries.push({
           visual: visual++,
@@ -1231,17 +1270,27 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
       let live = 0;
       let triangles = 0;
       let inView = 0;
+      let selectMs = 0;
       for (const s of selections) {
         for (const n of s.live) live += n;
         triangles += s.count;
         inView += s.inView;
+        selectMs += s.ms;
       }
-      return { live, triangles, inView, ...selectionStats };
+      // `triangles`: the units taken (a whole triangle or a cell, round 5); `selectMs` the last selection's CPU time
+      return { live, triangles, inView, selectMs, ...selectionStats };
     },
   });
   return repr as typeof repr & {
     readonly cutLipids: number;
-    readonly pool: { live: number; triangles: number; inView: number; selects: number; regenerations: number };
+    readonly pool: {
+      live: number;
+      triangles: number;
+      inView: number;
+      selectMs: number;
+      selects: number;
+      regenerations: number;
+    };
   };
 }
 
