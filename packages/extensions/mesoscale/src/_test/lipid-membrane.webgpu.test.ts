@@ -179,7 +179,8 @@ describe.skipIf(!webgpu)('lipid membrane on WebGPU (Dawn)', () => {
         return out.map((n) => n / ((Size * Size) / 2));
       };
       for (const [method, far, extra] of [
-        ['cutter', 'spheres', {}],
+        // spheres down to 0.5 px (the default 2 px: round 5): the whole sphere drawn as spheres
+        ['cutter', 'spheres', { spheresPx: 0.5 }],
         // the surfaces alone: no lipid is 16 px on screen whole
         ['cutter', 'texture', { atomsPx: 16 }],
         ['tiles', 'spheres', {}],

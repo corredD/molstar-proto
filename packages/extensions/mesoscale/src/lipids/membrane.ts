@@ -524,8 +524,10 @@ export const LipidMembraneReprParams = {
     ['texture', 'Texture'],
   ]),
   atomsPx: PD.Numeric(2, { min: 0.25, max: 16, step: 0.25 }, { description: 'Texture: lipids from this size, px' }),
+  // round 5: 2 px, where the patch texture takes over as the spheres look (the switch's colour, `lipid-switch`); under
+  // it a frame draws lipids by the hundred thousand for a few px each (x600, M1, Dawn: 140-240 ms at 0.5, 11 at 2)
   spheresPx: PD.Numeric(
-    0.5,
+    2,
     { min: 0.05, max: 8, step: 0.05 },
     { description: 'Spheres: lipids down to this size, px' },
   ),
