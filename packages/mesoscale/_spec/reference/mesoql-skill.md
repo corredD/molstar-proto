@@ -64,7 +64,7 @@ Ids in the examples are illustrative; use the ids you were given.
 (site e.hu dna-entry)  a named site of an entity (its `sites`): a point and an axis in the entity's frame, one per copy
 (residues e.hu :chain A :range 53-63)  residues of an entity's structure, by chain and label range (a schematized address: needs the structure loaded)
 (part (copies p.granules 12) p.Vamp2)  copies of an inner population of a superstructure, in the instances the first selection picks
-(and (entity e.Vamp2) (in c.cell))  the Vamp2 copies in the cell
+(and (entity e.Vamp2) (in c.isg))  the Vamp2 copies in the granule compartment
 (not (entity e.ribosome) :in (in c.cell))  everything in the cell but ribosomes
 (within (population p.ribosomes) :of (copies p.granules 12) :distance 250)  ribosomes near granule 12
 (or (population p.Vamp2) (population p.Rab3a))  two proteins together

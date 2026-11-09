@@ -37,7 +37,7 @@ export function mesoQLSignature(s: QSymbol): string {
 
 /** Compositions the symbols' own examples do not show; each parses (a test checks it against the β-cell's ids). */
 export const MesoQLComposed: readonly { readonly text: string; readonly says: string }[] = [
-  { text: '(and (entity e.Vamp2) (in c.cell))', says: 'the Vamp2 copies in the cell' },
+  { text: '(and (entity e.Vamp2) (in c.isg))', says: 'the Vamp2 copies in the granule compartment' },
   { text: '(not (entity e.ribosome) :in (in c.cell))', says: 'everything in the cell but ribosomes' },
   {
     text: '(within (population p.ribosomes) :of (copies p.granules 12) :distance 250)',
