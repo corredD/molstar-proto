@@ -479,3 +479,41 @@ gpu-culling: 120 tests), the scaling guards (6), `npx tsc --noEmit -p apps/prism
 comparison above, headless Dawn on the M1. Not tried in Chrome by this session.
 
 **Review.** The table above.
+
+## Round 3 brief (Ludo, 2026-11-08)
+
+Written before round 3's first code commit. Ludo's third try (Chrome, WebGPU, port 1353): `model_vertexcolor.obj` (1,573
+vertices, 2,880 faces, vertex colours, about 100 units across), Look › Scale 100, right-click › Wrap with lipids
+(tiles): 27,739,012 lipids, 126,952 tiles. Close up, the mesh's red and orange shows through holes between lipid
+clusters ("still lot of hole in the tile approach"); farther, sparse small dots with the mesh behind, then bare mesh
+("as we reduce the number of sphere, their radius should increase, or switch to a bump texture"); the mesh still drawn
+after the wrap (the Look's eye crossed, the tree's eye open, the surface visible); the cutter not reachable from the UI
+(the command given in prose was not JS).
+
+**Parts, their tests, size (production lines), model (Opus: LOD and the culler are the hot path; measuring and images to
+Sonnet subagents, one at a time).**
+
+1. **The mesh hidden for real** in Ludo's path (a vertex-coloured OBJ, Look scale, wrap): the tree's eye, the Look's eye
+   and what is drawn agree; undo shows it again. An app test that fails first. ~30 lines.
+2. **Holes at full detail.** On this mesh ×100 headless: the area covered at ≤ 6 Å and ≤ 10 Å (round 2's method) and the
+   holes' size distribution; the causes (the tiles' pinholes, the cut parts' holes, leaflet gaps, the seam slack,
+   curvature); the cheapest robust fix (a hole fill per variant at bake time against its neighbours, or more lipids at
+   the tile edges). Target ≥ 99 % at ≤ 6 Å, no mesh seen through at full detail. A coverage test on a test body that
+   fails first. ~120 lines.
+3. **LOD that keeps the sheet opaque.** As the stride grows, each drawn sphere grows to keep the drawn area (about
+   √stride, plus a margin); use what the spheres' `lodLevels` offer, or add a per-level size as a library commit of its
+   own. The farthest level: big spheres or a surface (the mesh in the membrane's mean colour, or a bump texture): the
+   cheaper that reads as a membrane, with why. Target: no mesh seen through at any distance, frame time not worse than
+   round 2. ~100 lines + library ~30.
+4. **The method in the UI** (ui.md's four places): two right-click entries or one plus a method in the membrane's
+   properties, recorded in ui.md; a console snippet for Ludo, checked to run. ~30 lines.
+5. **Scale numbers on this mesh** (27.7 M lipids): wrap time, GPU bytes, frame time whole / middle / close, with levels,
+   both methods if the cutter fits (stopped past ~60 s or ~8 GB).
+
+**Proof.** Images of this mesh ×100, looked at, before and after:
+`~/prism-me-lanes/lipid-tiles-shots/r3-<before|after>-<close|middle|whole>.png`, and the coverage numbers.
+
+**What Ludo checks in the app.** Open `model_vertexcolor.obj`, Look › Scale 100, right-click › Wrap with lipids: the
+mesh gone (both eyes agree), no mesh seen through close, middle or far; the cutter from the right-click.
+
+**Size.** About 300 production lines. The review gate (lane-reviewer, lane-skeptic) on the diff since `93dbe21db`.
