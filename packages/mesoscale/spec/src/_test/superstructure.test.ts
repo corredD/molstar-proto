@@ -197,6 +197,67 @@ describe('superstructures', () => {
     for (const k of expansions(docked, packed)) expect(shown(docked, k)).toBe(true);
   });
 
+  // review gate (M1, M2, X1): the instance type's visibility carried onto its parts by the view's order of looks, not
+  // appended (a later look on a template type wins over an earlier one on the instance), and a template set visited
+  // twice not read with the hidden look its first visit added
+  it('later looks win across the instancing: Show only granules shows their parts; a later Vamp2 look shows Vamp2', async () => {
+    const r = await compile(betaCellDoc(), { resolvers: countingResolvers().resolvers, load });
+    const shownOf = (looks: { select: string; visible: boolean }[], pop?: string) => {
+      const ir = flattenInstances(updateView({ ...betaCellDoc(), views: [{ id: 'v', looks }] }, r.ir!)).ir;
+      let shown = 0;
+      let total = 0;
+      for (const s of placementSets(ir)) {
+        if (!s.key.includes('*')) continue;
+        for (const t of s.typeTable) {
+          if (pop && t.population !== pop) continue;
+          const last = ir.view.looks.filter((l) => l.set === s.key && !l.runs && l.types.includes(t.index)).pop();
+          let n = 0;
+          for (let i = 0; i < s.count; i++) if (s.types[i] === t.index) n++;
+          total += n;
+          if (last?.visible !== false) shown += n;
+        }
+      }
+      return { shown, total };
+    };
+    const packed = shownOf([{ select: '(population p.granules)', visible: true }]).total;
+    const only = shownOf([
+      { select: '(all)', visible: false },
+      { select: '(population p.granules)', visible: true },
+    ]);
+    // the 120 packed granules' parts shown, the two named ones' hidden
+    expect(only.shown).toBe(120 * PerGranule);
+    expect(only.total).toBe(packed);
+    const vamp = shownOf(
+      [
+        { select: '(population p.granules)', visible: false },
+        { select: '(population p.Vamp2)', visible: true },
+      ],
+      'p.Vamp2',
+    );
+    expect(vamp.shown).toBe(vamp.total);
+    expect(vamp.total).toBeGreaterThan(0);
+  });
+
+  it('nests: a superstructure reached by two populations, no look: every copy shown', async () => {
+    const doc: MesoViewSpecDoc = {
+      ...nested,
+      populations: [
+        ...nested.populations,
+        { ...nested.populations.find((p) => p.entity === 'e.outer')!, id: 'p.outer2', abundance: { count: 2 } },
+      ],
+    };
+    const r = await compile(doc, { resolvers: countingResolvers().resolvers });
+    const f = flattenInstances(r.ir!);
+    const hidden = placementSets(f.ir).filter((s) => {
+      const t = s.typeTable.find((x) => x.population === 'p.x');
+      if (!t) return false;
+      return (
+        f.ir.view.looks.filter((l) => l.set === s.key && !l.runs && l.types.includes(t.index)).pop()?.visible === false
+      );
+    });
+    expect(hidden.map((s) => s.key)).toEqual([]);
+  });
+
   it('nests: a superstructure of superstructures, flattened through both levels', async () => {
     const doc = nested;
     expect(validate(doc).filter((i) => i.severity === 'error')).toEqual([]);
