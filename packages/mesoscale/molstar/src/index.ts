@@ -14,4 +14,12 @@ export {
   sceneRadius,
   type SetBounds,
 } from './prism-adapter.js';
+export {
+  type DocumentSource,
+  type DocumentStep,
+  MesoDocumentModel,
+  type MesoDocumentOptions,
+  MesoViewSpecStateKey,
+  type SavedMesoViewSpec,
+} from './document-model.js';
 export { type EditRecord, MesoSession, type SessionOptions } from './session.js';
