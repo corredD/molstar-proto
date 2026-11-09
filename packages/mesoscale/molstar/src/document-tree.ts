@@ -180,6 +180,9 @@ function makeOutline({ doc, ir, counts, groupBy }: Inputs): DocumentOutline {
   const at = placed(ir);
   const achieved = (id: Id) => counts[id]?.achieved ?? 0;
 
+  const seen = new Set<Id>();
+  const shared = new Set<Id>();
+  for (const p of doc.populations) (seen.has(p.entity) ? shared : seen).add(p.entity);
   /** A population's or instance's row (no parent yet). */
   const leaf = (
     kind: 'population' | 'instance',
@@ -194,7 +197,8 @@ function makeOutline({ doc, ir, counts, groupBy }: Inputs): DocumentOutline {
     return {
       id,
       kind,
-      label: label ?? e?.label ?? entity,
+      // two populations of one entity (packed and picked catalase) told apart by their ids
+      label: label ?? (shared.has(entity) ? `${e?.label ?? entity} · ${id}` : (e?.label ?? entity)),
       select: `(${kind} ${id})`,
       achieved: c?.achieved ?? (kind === 'instance' ? 1 : 0),
       ...(c?.requested !== undefined ? { requested: c.requested } : {}),
@@ -265,7 +269,7 @@ function makeOutline({ doc, ir, counts, groupBy }: Inputs): DocumentOutline {
       for (const child of byParent.get(c.id) ?? []) n += walk(child, row, seen);
       for (const l of leavesIn.get(c.id) ?? []) {
         add(l, row);
-        n += l.achieved;
+        n += l.achieved + partCopies(l);
       }
       row.achieved = n;
       return n;
@@ -312,7 +316,7 @@ function makeOutline({ doc, ir, counts, groupBy }: Inputs): DocumentOutline {
       const m = l.model ?? realizedBy.get(l.id);
       const g = m !== undefined ? groupOf(m) : unplaced;
       g.children.push(l.id);
-      g.achieved += l.achieved;
+      g.achieved += l.achieved + partCopies(l);
     }
     for (const g of [...models.values(), unplaced]) {
       if (!g.children.length) continue;
@@ -338,7 +342,7 @@ function makeOutline({ doc, ir, counts, groupBy }: Inputs): DocumentOutline {
         kinds.set(kind, g);
       }
       g.children.push(l.id);
-      g.achieved += l.achieved;
+      g.achieved += l.achieved + partCopies(l);
     }
     for (const g of kinds.values()) {
       const kids = g.children.splice(0);

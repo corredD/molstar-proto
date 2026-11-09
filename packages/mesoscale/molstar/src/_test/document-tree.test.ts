@@ -36,7 +36,10 @@ describe('documentOutline', () => {
     expect(lumen).toContain('p.catalase.observed');
     const catalase = o.row('p.catalase')!;
     expect(catalase).toMatchObject({ kind: 'population', select: '(population p.catalase)', entity: 'e.catalase' });
-    expect(catalase.label).toBe('catalase (catalse)');
+    // two populations of one entity: told apart by their ids
+    expect(catalase.label).toBe('catalase (catalse) · p.catalase');
+    expect(o.row('p.catalase.observed')!.label).toBe('catalase (catalse) · p.catalase.observed');
+    expect(o.row('p.lipids')!.label).toBe('phospholipid');
     expect(catalase.achieved).toBe(r.counts['p.catalase'].achieved);
     expect(catalase.requested).toBe(r.counts['p.catalase'].requested);
     // a compartment counts the copies in it and nested
@@ -94,6 +97,10 @@ describe('documentOutline', () => {
     expect(o.ancestors('i.granule-deep/p.Chga')).toEqual(['i.granule-deep', 'c.cell']);
     expect(o.row('i.granule-deep/p.Chga')!.select).toBe('(part (instance i.granule-deep) p.Chga)');
     expect(o.row('nothing/p.Chga')).toBeUndefined();
+    // a compartment counts its parts too: the cell holds every copy of the document
+    expect(o.row('c.cell')!.achieved).toBe(o.copies);
+    const byModel = documentOutline(doc, r.ir, r.counts, 'model');
+    expect(byModel.roots.reduce((n, id) => n + byModel.row(id)!.achieved, 0)).toBe(o.copies);
   });
 
   it('keeps every row across a view edit; a grouping switched back is the same outline', async () => {
