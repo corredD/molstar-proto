@@ -9,6 +9,7 @@
 
 import { ValueCell } from '@molstar/core/util';
 import { Vec3, Mat4, Mat3, Vec4 } from '@molstar/core/math/linear-algebra';
+import { createNullTexture } from '../../../gl/texture.js';
 import { Sphere3D } from '@molstar/core/math/geometry';
 import {
   transformPositionArray,
@@ -852,6 +853,12 @@ export namespace Mesh {
       dBump: ValueCell.create(BaseGeometry.hasBump(props)),
       uBumpFrequency: ValueCell.create(props.bumpFrequency),
       uBumpAmplitude: ValueCell.create(props.bumpAmplitude),
+      // off unless given (`MeshSchema.dPatchTexture`: its textures and uniforms by its owner)
+      dPatchTexture: ValueCell.create(false),
+      tPatch: ValueCell.create(createNullTexture()),
+      tPatchTable: ValueCell.create(createNullTexture()),
+      uPatch: ValueCell.create(Vec4()),
+      uPatchLevels: ValueCell.create(Vec4()),
 
       meta: ValueCell.create(mesh.meta),
 

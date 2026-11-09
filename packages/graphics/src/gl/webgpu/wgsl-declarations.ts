@@ -2,6 +2,7 @@
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { type AttributeLayoutEntry, getAttributeLayout } from '../attribute-layout.js';
@@ -9,8 +10,8 @@ import { type DefineLookup, isUsed, type RenderableSchema, type UniformBlock } f
 import { type BindingLayout, type TextureBinding, UniformBlockInfo, UniformBlocks } from '../uniform-layout.js';
 import { getWgslStorageBindings, getWgslUniformDeclarations } from './uniform-declarations.js';
 
-/** Shared immutable samplers of group 0, all clamp-to-edge */
-export const WgslSamplers = ['sNearest', 'sLinear', 'sLinearMipmap'] as const;
+/** Shared immutable samplers of group 0, clamp-to-edge but the last (repeat: a periodic texture, its mips) */
+export const WgslSamplers = ['sNearest', 'sLinear', 'sLinearMipmap', 'sLinearMipmapRepeat'] as const;
 export type WgslSampler = (typeof WgslSamplers)[number];
 
 /** Binding of the first shared sampler in group 0, after the global block and textures */

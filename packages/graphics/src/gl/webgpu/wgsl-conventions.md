@@ -63,8 +63,9 @@ storage buffers follow the textures of their group; they are not part of that la
 - Per-draw values (WebGL classic uniforms with the `draw` scope: `uDrawId`, `uSolidInteriorPass`, `uSolidInteriorClip`)
   live in the `Draw` struct of group 3. Every other uniform must belong to a block (`global`, `material`, `object`);
   WebGPU has no classic uniforms, the generator reports the rest as unsupported.
-- Samplers: shared immutable samplers in group 0, `sNearest`, `sLinear` and `sLinearMipmap`, all clamp-to-edge; textures
-  read with `textureLoad` need none.
+- Samplers: shared immutable samplers in group 0, `sNearest`, `sLinear` and `sLinearMipmap`, clamp-to-edge, and
+  `sLinearMipmapRepeat` (a periodic texture: a mesh's patch texture, `dPatchTexture`); textures read with `textureLoad`
+  need none.
 - Four groups is the WebGPU default `maxBindGroups`; nothing goes beyond group 3.
 
 ## Vertex inputs and builtins

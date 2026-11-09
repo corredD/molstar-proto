@@ -543,6 +543,13 @@ export function createWebGPUContext(device: GPUDevice, options: WebGPUContextOpt
     samplers.sNearest = sampler('nearest');
     samplers.sLinear = sampler('linear');
     samplers.sLinearMipmap = sampler('linear', 'linear');
+    samplers.sLinearMipmapRepeat = device.createSampler({
+      magFilter: 'linear',
+      minFilter: 'linear',
+      mipmapFilter: 'linear',
+      addressModeU: 'repeat',
+      addressModeV: 'repeat',
+    });
   }
   createSamplers();
 

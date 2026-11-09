@@ -35,6 +35,66 @@ import { packing_wgsl } from './chunks/packing.wgsl.js';
 import { read_from_texture_wgsl } from './chunks/read-from-texture.wgsl.js';
 import { assign_varyings_wgsl, grid_functions_wgsl, vertex_output_wgsl } from './chunks/varyings.wgsl.js';
 
+/**
+ * A periodic patch mapped by planes and cells (`MeshSchema.dPatchTexture`; the lipid cutter's map, `cutter.ts` in the
+ * mesoscale extension): the fragment's point in its plane (its group), then in the plane's patch coordinates, its cell's
+ * kind by a hash of (plane, cell), the kind's spin and offset, and the patch read there with the footprint's gradients
+ * (mipmapped: its mean far away, whatever the scale). From the far color to it by a texel's size on screen
+ */
+const patch_texture_wgsl = /* wgsl */ `
+#if defined(dPatchTexture)
+fn patchTexel(i: u32) -> vec4<f32> {
+    return textureLoad(tPatchTable, vec2<i32>(i32(i % 1024u), i32(i / 1024u)), 0);
+}
+
+fn patchHash(x0: u32) -> u32 {
+    var x = x0 ^ (x0 >> 16u);
+    x = x * 0x7feb352du;
+    x = x ^ (x >> 15u);
+    x = x * 0x846ca68bu;
+    return x ^ (x >> 16u);
+}
+
+fn patchTurn(c: f32, s: f32, v: vec2<f32>) -> vec2<f32> {
+    return vec2<f32>(c * v.x - s * v.y, s * v.x + c * v.y);
+}
+
+fn patchColor(modelPosition: vec3<f32>, fdx: vec3<f32>, fdy: vec3<f32>, region: u32, far: vec3<f32>) -> vec3<f32> {
+    let box = uObject.uPatch.yz;
+    let side = uObject.uPatch.x;
+    let g0 = patchTexel(region * 4u);
+    let g1 = patchTexel(region * 4u + 1u);
+    let g2 = patchTexel(region * 4u + 2u);
+    let g3 = patchTexel(region * 4u + 3u);
+    // the plane's point q and the patch's p = offset + Rz(θ) q, with their derivatives on screen
+    let w = modelPosition / uGlobal.uModelScale;
+    let q = vec2<f32>(dot(w - g0.xyz, g1.xyz), dot(w - g0.xyz, g2.xyz));
+    let p = vec2<f32>(g0.w * box.x, g1.w * box.y) + patchTurn(g2.w, g3.w, q);
+    let invView = mat3x3<f32>(uGlobal.uInvView[0].xyz, uGlobal.uInvView[1].xyz, uGlobal.uInvView[2].xyz);
+    let mdx = (invView * fdx) / uGlobal.uModelScale;
+    let mdy = (invView * fdy) / uGlobal.uModelScale;
+    let pdx = patchTurn(g2.w, g3.w, vec2<f32>(dot(mdx, g1.xyz), dot(mdx, g2.xyz)));
+    let pdy = patchTurn(g2.w, g3.w, vec2<f32>(dot(mdy, g1.xyz), dot(mdy, g2.xyz)));
+    // the cell, its kind's offset e and spin φ: s = e + Rz(φ)(p − its center)
+    let cell = floor(p / side);
+    let cx = bitcast<u32>(i32(cell.x));
+    let cy = bitcast<u32>(i32(cell.y));
+    let kind = patchHash(region ^ patchHash(cx ^ patchHash(cy))) & 4095u;
+    let c = patchTexel(u32(uObject.uPatch.w) + kind);
+    let s = vec2<f32>(c.x * box.x, c.y * box.y) + patchTurn(c.z, c.w, p - (cell + 0.5) * side);
+    let sdx = patchTurn(c.z, c.w, pdx) / box;
+    let sdy = patchTurn(c.z, c.w, pdy) / box;
+    let color = textureSampleGrad(tPatch, sLinearMipmapRepeat, s / box, sdx, sdy).rgb;
+    if (uObject.uPatchLevels.x == 0.0) {
+        return color;
+    }
+    // a lipid's px: the levels' far color below .y, the patch from .z
+    let px = uObject.uPatchLevels.w / max(max(length(pdx), length(pdy)), 1e-6);
+    return mix(far, color, smoothstep(uObject.uPatchLevels.y, uObject.uPatchLevels.z, px));
+}
+#endif
+`;
+
 export const mesh_wgsl = /* wgsl */ `
 ${common_wgsl}
 ${read_from_texture_wgsl}
@@ -47,7 +107,11 @@ ${packing_wgsl}
 ${color_levels_wgsl}
 ${grid_functions_wgsl}
 
-${vertex_output_wgsl('    @location(9) vNormal: vec3<f32>,')}
+${vertex_output_wgsl(`    @location(9) vNormal: vec3<f32>,
+#if defined(dPatchTexture)
+    @location(10) @interpolate(flat) vPatchRegion: f32,
+#endif`)}
+${patch_texture_wgsl}
 ${fragment_output_wgsl(`#if defined(dSolidInterior)
     @builtin(frag_depth) fragDepth: f32,
 #endif`)}
@@ -108,6 +172,9 @@ fn vertexMain(in: VertexInput) -> VertexOutput {
         }
     #endif
     out.vNormal = normal;
+    #if defined(dPatchTexture)
+        out.vPatchRegion = group;
+    #endif
 
     #if defined(dSolidInterior)
         if (uDraw.uSolidInteriorPass != 0) {
@@ -224,6 +291,9 @@ fn fragmentMain(in: VertexOutput, @builtin(front_facing) frontFacing: bool) -> F
     #endif
 
     ${assign_material_wgsl}
+    #if defined(dPatchTexture)
+        material = vec4<f32>(patchColor(modelPosition, fdx, fdy, u32(in.vPatchRegion + 0.5), material.rgb), material.a);
+    #endif
     ${check_transparency_wgsl}
 
     #if defined(dRenderVariant_pick)

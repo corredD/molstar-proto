@@ -27,6 +27,7 @@ import {
   InteriorSchema,
   AnimationSchema,
   ColorLevelsSchema,
+  TextureSpec,
 } from './schema.js';
 import { MeshShaderCode } from '../shader-code.js';
 import { ValueCell } from '@molstar/core/util';
@@ -52,6 +53,19 @@ export const MeshSchema = {
   dBump: DefineSpec('boolean'),
   uBumpFrequency: UniformSpec('f', 'material'),
   uBumpAmplitude: UniformSpec('f', 'material'),
+  /**
+   * A periodic patch mapped by planes and cells (lipid membranes' far look, WebGPU only): a fragment's group its plane
+   * (a region), its point in the plane's patch coordinates, its cell's spin and offset by a hash of (plane, cell), then
+   * `tPatch` (mipmapped, repeat) at that point; see `mesh.wgsl.ts`, `patchColor`
+   */
+  dPatchTexture: DefineSpec('boolean'),
+  tPatch: TextureSpec('texture', 'rgba', 'ubyte', 'linear', undefined, { usedIf: ['dPatchTexture'] }),
+  /** per plane 4 texels (origin and offset x, e1 and offset y, e2 and cos, normal and sin), then the cells' (offset, cos, sin) */
+  tPatchTable: TextureSpec('texture', 'rgba', 'float', 'nearest', undefined, { usedIf: ['dPatchTexture'] }),
+  /** the cell's side, the patch's box x and y, the cells' first texel */
+  uPatch: UniformSpec('v4'),
+  /** the far color's blend: on (1) or off (0), the patch's px where the patch starts and is whole, a texel's Å */
+  uPatchLevels: UniformSpec('v4'),
   meta: ValueSpec('unknown'),
 
   ...InteriorSchema,
