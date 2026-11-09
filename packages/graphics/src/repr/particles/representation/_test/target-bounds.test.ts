@@ -18,6 +18,10 @@ import type { GraphicsRenderObject, MergedGraphicsRenderObject } from '@molstar/
 import { ColorTheme } from '@molstar/graphics/theme/color';
 import { SizeTheme } from '@molstar/graphics/theme/size';
 import { ParticleTargetRepresentationProvider } from '../target/representation.js';
+import { SegmentedArray } from '../../../../gl/segmented-array.js';
+
+/** a transforms array as one piece (a merged object's are its members' as parts, `SegmentedArray`) */
+const flat = (a: Float32Array | SegmentedArray<Float32Array>) => (SegmentedArray.is(a) ? SegmentedArray.flatten(a) : a);
 
 // The decorations' render objects bounded where their particles are once the list moves (Ludo, 2026-10-31: a list
 // scaled after it was decorated, its decorations dropped when zooming in, the camera's planes and the culling from
@@ -135,8 +139,8 @@ describe('the decorations of a list that moves', () => {
     const expected = fresh.renderObjects[0].values;
     const actual = merged.values;
     const floats = expected.instanceCount.ref.value * 16;
-    expect(Array.from(actual.aTransform.ref.value.subarray(0, floats))).toEqual(
-      Array.from(expected.aTransform.ref.value.subarray(0, floats)),
+    expect(Array.from(flat(actual.aTransform.ref.value).subarray(0, floats))).toEqual(
+      Array.from(flat(expected.aTransform.ref.value).subarray(0, floats)),
     );
     expect(
       Vec3.distance(actual.boundingSphere.ref.value.center, expected.boundingSphere.ref.value.center),
@@ -157,8 +161,8 @@ describe('the decorations of a list that moves', () => {
       const expected = fresh.renderObjects[0].values;
       (fresh.renderObjects[0] as MergedGraphicsRenderObject).merged.sync();
       const floats = expected.instanceCount.ref.value * 16;
-      expect(Array.from(merged.values.aTransform.ref.value.subarray(0, floats))).toEqual(
-        Array.from(expected.aTransform.ref.value.subarray(0, floats)),
+      expect(Array.from(flat(merged.values.aTransform.ref.value).subarray(0, floats))).toEqual(
+        Array.from(flat(expected.aTransform.ref.value).subarray(0, floats)),
       );
       const [a, e] = [merged.values.boundingSphere.ref.value, expected.boundingSphere.ref.value];
       expect(Vec3.distance(a.center, e.center)).toBeLessThan(1e-3);

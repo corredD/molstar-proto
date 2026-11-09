@@ -17,6 +17,10 @@ import type { GraphicsRenderObject, MergedGraphicsRenderObject } from '@molstar/
 import { ColorTheme } from '@molstar/graphics/theme/color';
 import { SizeTheme } from '@molstar/graphics/theme/size';
 import { canSetParticleFrames, ParticleTargetRepresentationProvider } from '../target/representation.js';
+import { SegmentedArray } from '../../../../gl/segmented-array.js';
+
+/** a transforms array as one piece (a merged object's are its members' as parts, `SegmentedArray`) */
+const flat = (a: Float32Array | SegmentedArray<Float32Array>) => (SegmentedArray.is(a) ? SegmentedArray.flatten(a) : a);
 
 // A drag's preview of some particles (a cellPACK protein moved by its handle, or every protein of its kind): only the
 // moved particles' instances written (`setParticleFrames`), drawn as the representation made again on the moved list
@@ -102,7 +106,7 @@ function drawn(objects: ReadonlyArray<GraphicsRenderObject>) {
     const count = v.instanceCount.ref.value;
     const segments = (v as { aSegment?: { ref: { value: Float32Array } } }).aSegment?.ref.value;
     return {
-      transforms: Array.from(v.aTransform.ref.value.subarray(0, count * 16)),
+      transforms: Array.from(flat(v.aTransform.ref.value).subarray(0, count * 16)),
       // a merged object's instance ids and segment per instance, written per member by its sync
       instances: Array.from(v.aInstance.ref.value.subarray(0, count)),
       segments: segments ? Array.from(segments.subarray(0, count * 4)) : [],

@@ -2,7 +2,7 @@
 
 - A Clips category after Structures, Particles, Volumes and Meshes holds every clip of the scene, each with how many
   objects or parts it cuts, its eye (drawn in the scene) and its trash; no clip row under a node any more.
-- A clip's properties: its editor (handles, numbers, On top, remove, shape, invert), then What it cuts: every object or
+- A clip's properties: its editor (handles, numbers, remove, shape, invert), then What it cuts: every object or
   part it is given (a model's largest groups, its entities, a list's targets, a structure's entities or chains), each
   with × to take it off, and Cut also… to add one; one step each (`explorer.clipUse`). The last one has no ×: remove the
   clip instead.

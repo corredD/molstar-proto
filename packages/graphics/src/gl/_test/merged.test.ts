@@ -22,6 +22,9 @@ import { NullLocation } from '@molstar/model/model/location';
 import { BaseGeometry } from '@molstar/graphics/geo/geometry/base';
 import { Cylinders, CylinderStride } from '@molstar/graphics/geo/geometry/cylinders/cylinders';
 import { LocationIterator } from '@molstar/graphics/geo/util/location-iterator';
+import { getDrawnBoundingSphere } from '../renderable/util.js';
+import { Mat4 } from '@molstar/core/math/linear-algebra';
+import { Sphere3D } from '@molstar/core/math/geometry';
 
 function createSpheresRenderObject(centers: Float32Array, groups: Float32Array, count: number) {
   const spheres = Spheres.create(centers, groups, count);
@@ -133,6 +136,31 @@ describe('merged', () => {
     expect(averages(1, 1)).toBe(1);
     // no member hidden: the weighted mean, as before (both members weigh the same)
     expect(averages(0.5, 0)).toBeCloseTo(0.25);
+  });
+
+  it("a merged object moves as one: its own transient transform drawn, its members' not read", () => {
+    const [a, b] = createMembers();
+    const { values, merged } = createMergedRenderObject([a, b]);
+    const versions = () =>
+      ['aTransform', 'tSegment', 'boundingSphere'].map((k) => (values as any)[k].ref.version as number);
+    const before = versions();
+    const cullVersion = merged.cullVersion.ref.version;
+    const placed = Sphere3D.clone(values.boundingSphere.ref.value);
+
+    // a member's own: nothing of the merged object follows it
+    ValueCell.update(b.values.uObjectTransform, Mat4.fromTranslation(Mat4(), [100, 0, 0]));
+    expect(merged.sync()).toBe(false);
+    expect(versions()).toEqual(before);
+    expect(merged.cullVersion.ref.version).toBe(cullVersion);
+
+    // the object's: the drawn bounds move, the instances, segments and placed bounds stay
+    ValueCell.update(values.uObjectTransform, Mat4.fromTranslation(Mat4(), [0, 50, 0]));
+    merged.sync();
+    expect(versions()).toEqual(before);
+    const drawn = getDrawnBoundingSphere(values);
+    expect(drawn.center[1]).toBeCloseTo(placed.center[1] + 50, 4);
+    expect(drawn.radius).toBeCloseTo(placed.radius, 4);
+    expect(values.boundingSphere.ref.value.center[1]).toBeCloseTo(placed.center[1], 4);
   });
 
   it('sync advances the cull version where what culling reads of the members changed', () => {
