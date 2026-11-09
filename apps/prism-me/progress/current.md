@@ -30,8 +30,10 @@ is not built is [../TODO.md](../TODO.md).
     runtime, resolvers, examples, cli), one for `@molstar/meso-molstar`; the folder graph and its layers test.
   - The library side of "usable like Seq\*" is done; the PR of `me/mesoviewspec` awaits Ludo's word on its body.
   - App lanes, stacked on `me/mesoviewspec` (Ludo, 2026-11-08: "just start the work and make it usable"), in the order
-    of prism.md §12.2: `checkpoint-owned-cells` (lane 0, Sonnet, Prism's checkpoint port only, for a later cherry-pick
-    onto master) and `mvs-open` (lane 2, Opus, dev port 1354) running; then `mvs-tree`, `mvs-drive`, `mvs-views` with
+    of prism.md §12.2. Done and merged into `me/mesoviewspec`: `checkpoint-owned-cells` (lane 0), `mvs-open` (lane 2:
+    drop or `?mesoviewspec=<url>` opens a document), `mvs-example-uris` (relative uris resolve against the document),
+    `mvs-tree` (lane 3, cddf6dee5: the document in the Scene tree, per-population rows and counts, eye and Show only as
+    looks). Running: `mvs-drive` (lane 4, Opus, `~/prism-me-lanes/mvs-drive`, port 1356). Then `mvs-views` with
     `mvs-model-edits`, `mvs-agent`, `mvs-streaming-app`.
   - **#60** (GPU culling past 65,535 workgroups) and **#61** (cellPACK fibres as tubes) merged by Ludo 2026-11-08; lanes
     closed, worktrees removed (and `meso-showcase`'s). Master ports kept as local branches only
@@ -56,22 +58,22 @@ is not built is [../TODO.md](../TODO.md).
     lines vs ~950). Round 4b (Ludo's teddy notes) built and gated at 1859f56ea: far surfaces per leaflet at the heads,
     coloured by species; cutter cells ~108 Å with own spin/offset (the 154 Å patch repeated); tiles get species rows and
     far surfaces; Clip on a membrane. Open for Ludo: M2 seams at cell borders. Round 4c (smooth switch, colouring as a
-    particle list) built and gated at e3ee04308: surface coloured as the switch's spheres show the patch, at their
-    tops, dithered in over a px band; a membrane coloured through mesoscale.style/colors/colorLevels. Waits on Ludo's
-    try on 1354; open for Ludo: M2 seams, a sphere dither (graphics change). Library commits need their own lane.
-    Round 5 started 2026-11-09 (brief 8ad314736): model_vertexcolor ×600 (~1 G lipids) at interactive rate, scale-free
-    far texture, colour by zoom object → species → atoms, tiles texture. Built and gated at 3b71b9e84 (×600: wrap 1.4 s, whole
-    18 ms, middle 21 ms; close 130–240 ms open, M5, Ludo’s call). Waits on Ludo’s try on 1354. Round 6 started 2026-11-09 (brief dbd4ac8bb): the yeast
-    cell’s nine membranes (yeast_cell_viewer meshes, 1.08 M triangles, data outside the repo). Built and gated at
-    eeb50bc65: one membrane over all meshes, a sphere tree per part, enclosed parts skipped, the .bin reader; wrap
-    9.6 s, whole 35 ms, close 104–224 ms (M5). Waits on Ludo’s try on 1354. Round 7 started 2026-11-09
-    (brief da59ff832): bilayer far look (mesh per leaflet), colour, hide and lipid mix per membrane, the slab’s frame, the
-    perf baseline back. Ludo: no lighter close level.
+    particle list) built and gated at e3ee04308: surface coloured as the switch's spheres show the patch, at their tops,
+    dithered in over a px band; a membrane coloured through mesoscale.style/colors/colorLevels. Waits on Ludo's try on
+    1354; open for Ludo: M2 seams, a sphere dither (graphics change). Library commits need their own lane. Round 5
+    started 2026-11-09 (brief 8ad314736): model_vertexcolor ×600 (~1 G lipids) at interactive rate, scale-free far
+    texture, colour by zoom object → species → atoms, tiles texture. Built and gated at 3b71b9e84 (×600: wrap 1.4 s,
+    whole 18 ms, middle 21 ms; close 130–240 ms open, M5, Ludo’s call). Waits on Ludo’s try on 1354. Round 6 started
+    2026-11-09 (brief dbd4ac8bb): the yeast cell’s nine membranes (yeast_cell_viewer meshes, 1.08 M triangles, data
+    outside the repo). Built and gated at eeb50bc65: one membrane over all meshes, a sphere tree per part, enclosed
+    parts skipped, the .bin reader; wrap 9.6 s, whole 35 ms, close 104–224 ms (M5). Waits on Ludo’s try on 1354. Round 7
+    started 2026-11-09 (brief da59ff832): bilayer far look (mesh per leaflet), colour, hide and lipid mix per membrane,
+    the slab’s frame, the perf baseline back. Ludo: no lighter close level.
   - `merge-master` (`me/merge-master` from `origin/prism-me`, port 1355, [brief](2026-11-09-merge-master.md) on its
     branch): started 2026-11-09 (Ludo: merge master, conflicts favoring master). origin/master dabbf29f9, 59 commits,
-    474 files, mostly graphics. Merged at 46aa8cae3 (63 files conflicted, master favoured, prism-me
-    features kept and listed), 25 adaptation and gate commits (HEAD ebc560d5d); checks pass but master’s flaky
-    webgpu-points and a Dawn SIGSEGV in webgpu-device-listener (prism-me’s, TODO). **PR #62** (2026-11-09), waits on Ludo’s merge.
+    474 files, mostly graphics. Merged at 46aa8cae3 (63 files conflicted, master favoured, prism-me features kept and
+    listed), 25 adaptation and gate commits (HEAD ebc560d5d); checks pass but master’s flaky webgpu-points and a Dawn
+    SIGSEGV in webgpu-device-listener (prism-me’s, TODO). **PR #62** (2026-11-09), waits on Ludo’s merge.
   - `paint` (`me/paint`, port 1352, [brief](2026-11-08-paint.md) on its branch): Paint v1, approved 2026-11-08 (the
     mesoscale extension, random orientation, no collisions in v1). On hold until the lipids (Ludo, 2026-11-08).
 
