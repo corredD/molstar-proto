@@ -7,6 +7,7 @@
 import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { Mat4 } from '@molstar/core/math/linear-algebra/3d/mat4';
 import { Vec3 } from '@molstar/core/math/linear-algebra/3d/vec3';
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
 import { HeadlessPluginContext } from '@molstar/plugin-headless/context';
@@ -196,6 +197,76 @@ describe.skipIf(!webgpu)('a lipid membrane made per view (Dawn)', () => {
       expect(colored.image).not.toEqual(all.image);
       const larger = await look({ speciesColors: {}, sizeFactor: 3 });
       expect(larger.image).not.toEqual(all.image);
+      expect(plugin.canvas3d!.graphics.takeErrors?.() ?? []).toEqual([]);
+    } finally {
+      plugin.dispose();
+    }
+  });
+
+  it('selects anew where a clip comes or goes, the camera still (review M4: the leaflet behind shows)', async () => {
+    const plugin = await HeadlessPluginContext.create(
+      { webgpu },
+      DefaultPluginSpec(),
+      { width: Size, height: Size },
+      { backend: 'webgpu' },
+    );
+    try {
+      await plugin.init();
+      registerLipidPatch('dawn-procedural-clip', syntheticPatchPdb().text);
+      const node = await plugin
+        .build()
+        .toRoot()
+        .apply(LipidMembrane, {
+          ...PD.getDefaultValues(LipidMembraneParams),
+          method: 'cutter',
+          radius: 600,
+          edge: 100,
+          patch: 'dawn-procedural-clip',
+          center: Vec3.zero(),
+        })
+        .commit();
+      const repr = plugin.state.data.cells.get(node.ref)!.obj!.data.repr as unknown as {
+        pool: { live: number; selects: number };
+        createOrUpdate: (p: unknown) => { run: () => Promise<void> };
+      };
+      const camera = plugin.canvas3d!.camera;
+      plugin.canvas3d!.requestCameraReset({ durationMs: 0 });
+      await plugin.getImageRaw({ width: Size, height: Size });
+      camera.setState(
+        {
+          ...camera.getSnapshot(),
+          target: Vec3.create(0, 0, 600),
+          position: Vec3.create(0, 0, 850),
+          up: Vec3.create(0, 1, 0),
+        },
+        0,
+      );
+      await plugin.getImageRaw({ width: Size, height: Size });
+      await plugin.getImageRaw({ width: Size, height: Size });
+      const facing = { ...repr.pool };
+      expect(facing.live).toBeGreaterThan(0);
+      // a plane far behind the sphere: it cuts nothing in view, but turns the facing test off
+      const plane = {
+        type: 'plane',
+        invert: false,
+        position: Vec3.create(0, 0, -5000),
+        rotation: { axis: Vec3.create(1, 0, 0), angle: 0 },
+        scale: Vec3.create(1, 1, 1),
+        transform: Mat4.identity(),
+      };
+      await repr.createOrUpdate({ clip: { variant: 'pixel', objects: [plane] } }).run();
+      await plugin.getImageRaw({ width: Size, height: Size });
+      await plugin.getImageRaw({ width: Size, height: Size });
+      const clipped = { ...repr.pool };
+      expect(clipped.selects).toBeGreaterThan(facing.selects);
+      // both leaflets' units in view: more lipids than the facing one's
+      expect(clipped.live).toBeGreaterThan(facing.live);
+      // and back: the facing leaflet's again
+      await repr.createOrUpdate({ clip: { variant: 'pixel', objects: [] } }).run();
+      await plugin.getImageRaw({ width: Size, height: Size });
+      await plugin.getImageRaw({ width: Size, height: Size });
+      expect(repr.pool.selects).toBeGreaterThan(clipped.selects);
+      expect(repr.pool.live).toBe(facing.live);
       expect(plugin.canvas3d!.graphics.takeErrors?.() ?? []).toEqual([]);
     } finally {
       plugin.dispose();

@@ -1329,7 +1329,7 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
           for (const v of members) setClip(v, props.clip);
           for (const o of renderObjects) setClip(o.values as never, props.clip);
           // a clip shows the leaflet behind (`facing` off): where clips come or go the next view selects anew (review M4;
-          // a still camera waits for the culler's next view hook: TODO)
+          // a still camera too: the culler's clip change calls the view hooks again, `syncClip`)
           if (before.clip.objects.length > 0 !== props.clip.objects.length > 0) {
             selectedViews = new WeakMap();
             for (const sel of selections) sel.reset();
