@@ -254,6 +254,11 @@ fn main(
         let drawnFirst = (cs.x & DrawnBit) != 0u;
         mask = cellLevels[cs.x & ~DrawnBit];
         segment = cs.y;
+        // past the segment's live instances (a pool made per view, \`GpuInstanceWriter\`): none
+        let row = segmentData[segment * 3u + 1u];
+        if (instance - bitcast<u32>(row.x) >= bitcast<u32>(row.z)) {
+            mask = 0u;
+        }
         // the second phase: those the first left out
         if (uParams.uPhase != 0 && drawnFirst) {
             mask = 0u;

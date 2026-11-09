@@ -27,6 +27,13 @@ import { DefaultPluginSpec } from '@molstar/plugin/default-spec';
 import { WebGPU } from './webgpu-module.js';
 
 const Size = 64;
+
+/** a pool's live instances as its view hook makes them (`GpuInstanceWriter.view`), and the views it was called for */
+interface Pool {
+  live: number;
+  drawn: number;
+  views: number;
+}
 const Copies = 6;
 
 /** a grid of `Copies` × `Copies` translations in the xy plane (sheared a little: affine, not rigid) from `offset` */
@@ -47,13 +54,13 @@ function gridTransforms(offset: Vec3) {
  * Five spheres at the instances of `gridTransforms`, gridless (one cell); `gpu`: the CPU transforms zeros, the rows
  * written by a writer (here buffer writes, as a kernel would)
  */
-function createMember(offset: Vec3, color: number, gpu: boolean) {
+function createMember(offset: Vec3, color: number, gpu: boolean, count = Copies * Copies, pool?: Pool) {
   const centers = new Float32Array([0, 0, 0, 1.2, 0, 0, 0, 1.2, 0, -1.2, 0, 0, 0, -1.2, 0]);
   const groups = new Float32Array([0, 1, 2, 3, 4]);
   const spheres = Spheres.create(centers, groups, 5);
-  const real = gridTransforms(offset);
+  const real = gridTransforms(offset).subarray(0, count * 16);
   const props = PD.getDefaultValues(Spheres.Params);
-  const transform = createTransform(gpu ? new Float32Array(real.length) : real, Copies * Copies, undefined, 0, 0);
+  const transform = createTransform(gpu ? new Float32Array(real.length) : real, count, undefined, 0, 0);
   const simple = BaseGeometry.createSimple(color as never, 1, transform);
   const values = Spheres.Utils.createValues(spheres, simple.transform, simple.locationIterator, simple.theme, props);
   // the bounds the real transforms give (the writer member's CPU transforms are zeros)
@@ -70,6 +77,23 @@ function createMember(offset: Vec3, color: number, gpu: boolean) {
       }
       target.transforms.write(rows, (target.identityBase + target.instanceBase) * 3 * 16);
     };
+    if (pool) {
+      // a pool made per view: the live ones its rows, the rest zeros in the identity region (views culled on the CPU)
+      const write = (target: Parameters<GpuInstanceWriter>[1], live: number) => {
+        const zeros = new Float32Array((target.count - live) * 12);
+        target.transforms.write(rows.subarray(0, live * 12), (target.identityBase + target.instanceBase) * 3 * 16);
+        target.transforms.write(zeros, (target.identityBase + target.instanceBase + live) * 3 * 16);
+      };
+      Object.assign(writer, {
+        view: (_compute: unknown, target: Parameters<GpuInstanceWriter>[1]) => {
+          pool.views += 1;
+          if (pool.live === pool.drawn) return undefined;
+          pool.drawn = pool.live;
+          write(target, pool.live);
+          return pool.live;
+        },
+      });
+    }
     Object.assign(values, { gpuInstances: ValueCell.create(writer) });
   }
   const object = createRenderObject('spheres', values, Spheres.Utils.createRenderableState(props), -1);
@@ -149,6 +173,77 @@ describe.skipIf(!WebGPU.module)('GPU-written instances of merged render objects'
       expect(written[1].calls()).toBeGreaterThan(calls);
       expect(await frame(scenes[1], true)).toEqual(gpuReference);
       expect(await frame(scenes[1], false)).toEqual(cpuReference);
+      expect(graphics.takeErrors?.() ?? []).toEqual([]);
+    } finally {
+      plugin.dispose();
+    }
+  });
+  it("draws a pool's live instances alone, as its view hook sets them, culled on the GPU and on the CPU", async () => {
+    const plugin = await HeadlessPluginContext.create(
+      { webgpu: WebGPU.module! },
+      DefaultPluginSpec(),
+      { width: Size, height: Size },
+      { backend: 'webgpu' },
+    );
+    try {
+      await plugin.init();
+      const graphics = plugin.canvas3d!.graphics;
+      const offsets = [Vec3.create(0, 0, 0), Vec3.create(2.5, 2.5, 1)];
+      const colors = [ColorNames.orange, ColorNames.green];
+      const Live = 14;
+      const pool: Pool = { live: Live, drawn: Copies * Copies, views: 0 };
+      // the reference: the pool's member with its live instances alone
+      const reference = [createMember(offsets[0], colors[0], false), createMember(offsets[1], colors[1], false, Live)];
+      const written = [
+        createMember(offsets[0], colors[0], false),
+        createMember(offsets[1], colors[1], true, Copies * Copies, pool),
+      ];
+      const scenes = [reference, written].map((members) => {
+        const scene = Scene.create(graphics);
+        scene.add(
+          createMergedRenderObject(
+            members.map((m) => m.object),
+            { gpuCulling: true },
+          ),
+        );
+        scene.commit();
+        return scene;
+      });
+      const camera = new Camera();
+      Viewport.set(camera.viewport, 0, 0, Size, Size);
+      const { center, radius } = scenes[1].boundingSphere;
+      camera.setState(camera.getFocus(center, radius * 1.2), 0);
+      camera.update();
+      const renderer = Renderer.create(graphics, { sphereRaster: 'off' });
+      const target = graphics.createRenderTarget(Size, Size, 'depth-stencil');
+      for (const scene of scenes) {
+        await graphics.resources.preparePipelines(
+          renderer.collect({ name: 'opaque' }, scene, graphics.describeTarget(target)),
+        );
+      }
+      const frame = async (scene: Scene, cullOnGpu: boolean) => {
+        renderer.update(camera, scene, createFrame());
+        if (cullOnGpu) renderer.prepareCull(scene);
+        graphics.beginRenderPass(target);
+        renderer.clear(true);
+        renderer.setViewport(0, 0, Size, Size);
+        renderer.renderOpaque(scene, camera);
+        graphics.flush();
+        const pixels = Array.from(await graphics.readRenderTarget(target, 0, 0, Size, Size));
+        await graphics.resources.pending.whenReady();
+        return pixels;
+      };
+      for (let i = 0; i < 20; ++i) for (const scene of scenes) await frame(scene, true);
+      expect(pool.views).toBeGreaterThan(0);
+      const gpuReference = await frame(scenes[0], true);
+      expect(new Set(gpuReference).size).toBeGreaterThan(2);
+      expect(await frame(scenes[1], true)).toEqual(gpuReference);
+      // the camera at rest: no view hook again
+      const views = pool.views;
+      for (let i = 0; i < 3; ++i) await frame(scenes[1], true);
+      expect(pool.views).toBe(views);
+      // the dead slots zeros in the identity region: nothing drawn of them on the CPU's lists
+      expect(await frame(scenes[1], false)).toEqual(await frame(scenes[0], false));
       expect(graphics.takeErrors?.() ?? []).toEqual([]);
     } finally {
       plugin.dispose();

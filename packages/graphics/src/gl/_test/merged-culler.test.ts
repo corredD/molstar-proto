@@ -269,4 +269,57 @@ describe('the GPU culler of a merged object', () => {
     }
     expect((levels[3] as unknown as number[])[4]).toBeGreaterThan(1);
   });
+  it("keeps a GPU-written member's live count in its segment row, renewed by its view hook only where the view changed", () => {
+    // a procedural pool (lipid-procedural): a member's instance count is its capacity, its writer says how many live
+    const builder = SpheresBuilder.create(2, 1);
+    builder.add(0, 0, 0, 0);
+    builder.add(1, 0, 0, 1);
+    const geometry = builder.getSpheres();
+    const props = PD.getDefaultValues(Spheres.Params);
+    const views: number[] = [];
+    let live = 3;
+    const writer = Object.assign((_c: unknown, target: { count: number }) => Math.min(live, target.count), {
+      view: (_c: unknown, _t: unknown, view: { lod: LodView }) => {
+        views.push(view.lod.depthScale);
+        return view.lod.depthScale > 1 ? 5 : undefined;
+      },
+    });
+    const members = [false, true].map((gpu) => {
+      const transform = createTransform(new Float32Array(8 * 16), 8, undefined, 0, 0);
+      const values = Spheres.Utils.createValuesSimple(geometry, props, ColorNames.orange, 1, transform);
+      if (gpu) Object.assign(values, { gpuInstances: { ref: { value: writer, version: 0 } } });
+      return createRenderObject('spheres', values, Spheres.Utils.createRenderableState(props), -1);
+    });
+    const ro = createMergedRenderObject(members, { gpuCulling: true });
+    ro.merged.sync();
+    const fake = fakeCompute(65535);
+    const culler = createMergedCuller(
+      fake.compute,
+      fake.resources,
+      ro.merged,
+      members.map((o) => o.values as MergeableValues),
+      false,
+    );
+    // the segment rows: 12 words each, the live count word 6 (u32)
+    const liveOf = (s: number) => fake.uints('culled segment data')[s * 12 + 6];
+    expect(liveOf(0)).toBe(8);
+    expect(liveOf(1)).toBe(3);
+    const plane = Plane3D.create(Vec3.create(0, 0, -1), 0);
+    const frustum = Frustum3D();
+    const lod = LodView();
+    lod.depthScale = 2;
+    expect(culler.dispatch(plane, frustum, lod)).toBe(true);
+    expect(views).toEqual([2]);
+    expect(liveOf(1)).toBe(5);
+    // the same view again (a still camera): no hook, no culling
+    const before = fake.dispatches.length;
+    culler.dispatch(plane, frustum, lod);
+    expect(views).toEqual([2]);
+    expect(fake.dispatches.length).toBe(before);
+    // a new view whose hook keeps its instances: the row as it was
+    lod.depthScale = 0.5;
+    culler.dispatch(plane, frustum, lod);
+    expect(views).toEqual([2, 0.5]);
+    expect(liveOf(1)).toBe(5);
+  });
 });

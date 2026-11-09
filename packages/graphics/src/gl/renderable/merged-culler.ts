@@ -113,13 +113,27 @@ export interface GpuInstanceTarget {
   readonly count: number;
 }
 
+/** The view a frame is culled for, as `MergedCuller.dispatch` has it */
+export interface GpuInstanceView {
+  readonly cameraPlane: Plane3D;
+  readonly frustum: Frustum3D;
+  readonly lod: LodView;
+}
+
 /**
  * A member's transforms made on the GPU (a member value `gpuInstances`): its own kernel writes them into `target`. The
  * culler calls it after every CPU write over the member's instances (a layout, its range), the dispatch after the write
  * (a buffer write lands before the commands of its submission); the member's CPU `aTransform` is a placeholder of its
  * instance count, and its grid is empty (one cell: its bounding sphere), so nothing on the CPU reads its transforms.
+ *
+ * A pool of instances made per view (lipid-procedural): the member's instance count is its capacity and the writer
+ * returns how many are live (the first ones; `instance-copy` skips the rest), all without a return. `view`, where given,
+ * is called in `dispatch` where the view changed, once per frame for its first view, before the culling: it writes the
+ * member's instances for that view and returns their live count, or nothing where they stay as they are
  */
-export type GpuInstanceWriter = (compute: ComputeContext, target: GpuInstanceTarget) => void;
+export type GpuInstanceWriter = ((compute: ComputeContext, target: GpuInstanceTarget) => number | void) & {
+  view?: (compute: ComputeContext, target: GpuInstanceTarget, view: GpuInstanceView) => number | undefined;
+};
 
 /**
  * The compacted instances of a dispatch for kernels drawing them (the sphere raster): a region per level and segment,
@@ -397,6 +411,8 @@ export function createMergedCuller(
   let segmentDataCopy: Float32Array | undefined;
   /** the largest scale of each segment's instances (`rasterized` scales the largest sphere by the instance's) */
   let segmentScales = new Float32Array(0);
+  /** per segment its live instances (`GpuInstanceWriter`): its count but where its writer says fewer */
+  let liveCounts = new Uint32Array(0);
   let rasterDispatched = false;
   let secondPending = false;
   let secondDispatched = false;
@@ -564,6 +580,8 @@ export function createMergedCuller(
       memberChunks = new Float64Array(segmentCount);
     }
     if (cellOf.length !== instanceCount * 2) cellOf = new Uint32Array(instanceCount * 2);
+    if (liveCounts.length !== segmentCount) liveCounts = new Uint32Array(segmentCount);
+    for (let s = 0; s < segmentCount; ++s) liveCounts[s] = segments.instanceCounts[s];
     let slots = 0;
     for (let s = 0; s < segmentCount; ++s) {
       const cells = computeMemberCells(s);
@@ -692,7 +710,10 @@ export function createMergedCuller(
     out[o + 1] = center[1];
     out[o + 2] = center[2];
     out[o + 3] = radius;
-    new Uint32Array(out.buffer, out.byteOffset + (o + 4) * 4, 1)[0] = segments.instanceBases[s];
+    const words = new Uint32Array(out.buffer, out.byteOffset + (o + 4) * 4, 3);
+    words[0] = segments.instanceBases[s];
+    // its live instances (`GpuInstanceWriter`), those past it skipped by `instance-copy`
+    words[2] = liveCounts[s];
     out[o + 5] = (member as { padding?: ValueCell<number> }).padding?.ref.value ?? 0;
     const memberLevels = drawnLodLevels(member);
     for (let j = 0; j < 4; ++j) out[o + 8 + j] = memberLevels?.[j]?.[4] ?? 1;
@@ -726,18 +747,64 @@ export function createMergedCuller(
     return true;
   }
 
-  /** member `s`'s instances by its GPU writer, where it has one (`GpuInstanceWriter`) */
+  const gpuWriter = (s: number) =>
+    (members[s] as { gpuInstances?: ValueCell<GpuInstanceWriter | undefined> }).gpuInstances?.ref.value;
+  /** member `s`'s target (one object reused: a view's writes allocate nothing) */
+  const target = {
+    instanceData: instanceData.ref.value,
+    transforms: attributes.aTransform.ref.value,
+    instanceBase: 0,
+    identityBase: 0,
+    count: 0,
+  };
+  const gpuTarget = (s: number): GpuInstanceTarget => {
+    target.instanceData = instanceData.ref.value;
+    target.transforms = attributes.aTransform.ref.value;
+    target.instanceBase = segments.instanceBases[s];
+    target.identityBase = identityBase;
+    target.count = segments.instanceCounts[s];
+    return target;
+  };
+  /** segment `s`'s live count `live` (at most its count) into its row, written where it changed; whether it changed */
+  function setLiveCount(s: number, live: number) {
+    const n = Math.min(Math.max(0, Math.floor(live)), segments.instanceCounts[s]);
+    if (liveCounts[s] === n) return false;
+    liveCounts[s] = n;
+    if (!segmentDataCopy) return true;
+    writeSegmentRow(segmentDataCopy, s);
+    segmentData.ref.value.write(segmentDataCopy.subarray(s * 12 + 4, s * 12 + 8), s * 48 + 16);
+    return true;
+  }
+
+  /** member `s`'s instances by its GPU writer, where it has one (`GpuInstanceWriter`), and its live count */
   function writeGpuInstances(s: number) {
-    const writer = (members[s] as { gpuInstances?: ValueCell<GpuInstanceWriter | undefined> }).gpuInstances?.ref.value;
+    const writer = gpuWriter(s);
     const count = segments.instanceCounts[s];
     if (!writer || count === 0) return;
-    writer(compute, {
-      instanceData: instanceData.ref.value,
-      transforms: attributes.aTransform.ref.value,
-      instanceBase: segments.instanceBases[s],
-      identityBase,
-      count,
-    });
+    const live = writer(compute, gpuTarget(s));
+    setLiveCount(s, typeof live === 'number' ? live : count);
+  }
+
+  /** the members' instances made for `view` (`GpuInstanceWriter.view`); whether any changed */
+  const instanceView: { cameraPlane: Plane3D; frustum: Frustum3D; lod: LodView } = {
+    cameraPlane: undefined as unknown as Plane3D,
+    frustum: undefined as unknown as Frustum3D,
+    lod: undefined as unknown as LodView,
+  };
+  function viewGpuInstances(cameraPlane: Plane3D, frustum: Frustum3D, lod: LodView) {
+    let changed = false;
+    for (let s = 0; s < segmentCount; ++s) {
+      const writer = gpuWriter(s);
+      if (!writer?.view || segments.instanceCounts[s] === 0) continue;
+      instanceView.cameraPlane = cameraPlane;
+      instanceView.frustum = frustum;
+      instanceView.lod = lod;
+      const live = writer.view(compute, gpuTarget(s), instanceView);
+      if (live === undefined) continue;
+      setLiveCount(s, live);
+      changed = true;
+    }
+    return changed;
   }
 
   /** the instances' data for the kernel, and their own order after the regions (the identity region) */
@@ -878,7 +945,7 @@ export function createMergedCuller(
    * against another view's, which can lack occluders and occlude less; a round counts a new build only, a pyramid
    * served again while the Hi-Z pass skips its builds is still of the frame it was built in)
    */
-  const dispatched = new Float64Array(7 * 4 + 2).fill(NaN);
+  const dispatched = new Float64Array(7 * 4 + 4).fill(NaN);
   const dispatchedLevels = Mat4.zero().fill(NaN);
   let dispatchedVersion = -1;
   const dispatchedPyramid = new Float64Array(32).fill(NaN);
@@ -898,8 +965,10 @@ export function createMergedCuller(
   }
   const getPlane = (i: number, cameraPlane: Plane3D, frustum: Frustum3D) => (i < 6 ? frustum[i as 0] : cameraPlane);
   let dispatchedSlack = NaN;
-  function isDispatched(cameraPlane: Plane3D, frustum: Frustum3D, min: number, max: number) {
+  function isDispatched(cameraPlane: Plane3D, frustum: Frustum3D, min: number, max: number, lod: LodView) {
     if (dispatchedVersion !== dataVersion || dispatched[28] !== min || dispatched[29] !== max) return false;
+    // the view's scales: what a pool made per view sizes its instances by (`GpuInstanceWriter.view`)
+    if (dispatched[30] !== lod.depthScale || dispatched[31] !== lod.pixelSize) return false;
     if (dispatchedSlack !== cellValues.uAnimationSlack.ref.value) return false;
     for (let i = 0; i < 16; ++i) if (dispatchedLevels[i] !== levelRanges[i]) return false;
     for (let i = 0; i < 7; ++i) {
@@ -916,13 +985,15 @@ export function createMergedCuller(
     }
     return true;
   }
-  function setDispatched(cameraPlane: Plane3D, frustum: Frustum3D, min: number, max: number) {
+  function setDispatched(cameraPlane: Plane3D, frustum: Frustum3D, min: number, max: number, lod: LodView) {
     for (let i = 0; i < 7; ++i) {
       const { normal, constant } = getPlane(i, cameraPlane, frustum);
       dispatched.set([normal[0], normal[1], normal[2], constant], i * 4);
     }
     dispatched[28] = min;
     dispatched[29] = max;
+    dispatched[30] = lod.depthScale;
+    dispatched[31] = lod.pixelSize;
     dispatchedSlack = cellValues.uAnimationSlack.ref.value;
     Mat4.copy(dispatchedLevels, levelRanges);
     dispatchedVersion = dataVersion;
@@ -1108,12 +1179,14 @@ export function createMergedCuller(
         copyValues.uRasterRadius.ref.value !== (raster?.radius ?? 0) ||
         copyValues.uRasterScale.ref.value !== (raster?.scale ?? 0) ||
         copyValues.uRasterNear.ref.value !== (raster?.near ?? 0);
-      const viewChanged = !isDispatched(cameraPlane, frustum, min, max);
+      const viewChanged = !isDispatched(cameraPlane, frustum, min, max, lod);
       if (!rasterChanged && !viewChanged && isPyramidDispatched(pyramid)) {
         compactRecords();
         return true;
       }
       if (!getKernels()) return false;
+      // a pool made per view (`GpuInstanceWriter.view`): its instances for this view before they are culled
+      if (viewChanged && viewGpuInstances(cameraPlane, frustum, lod)) dataVersion += 1;
       restoreRecords();
       if (predictRecords(cameraPlane, frustum, raster)) setListRecords();
       dispatchVersion += 1;
@@ -1152,7 +1225,7 @@ export function createMergedCuller(
       kernels![1].dispatch(...groups(instanceCount));
       kernels![2].dispatch(...groups(records));
       compute.endComputePass();
-      setDispatched(cameraPlane, frustum, min, max);
+      setDispatched(cameraPlane, frustum, min, max, lod);
       // without a pyramid the first phase left out nothing occluded
       secondPending = !!pyramid;
       return true;
