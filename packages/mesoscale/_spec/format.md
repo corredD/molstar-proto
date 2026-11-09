@@ -63,10 +63,10 @@ A `Resource` is `{kind, format, uri | accession, frame, checksum, license, selec
   dataset, …
 - **`format`:** the community's own name: `mrc`, `star`, `obj`, `pdb-id`, `cellpack-gpu-serialized`, `paxdb-tsv`, …
 - **`select`:** picks a part of a resource: a segmentation label, a STAR table, an mmCIF assembly.
-- **`uri`:** a relative `uri` resolves against the document's own location (its file's folder, or its URL), by every
-  host: the CLIs, prism-me's open, a script. `fixture://x` is `fixtures/x` beside the document. A document in a
-  repository names its files from where it lies (the committed examples: `../spec/src/examples/fixtures/…` for the
-  recipes, `fixtures/…` for the meshes and tables). A CLI's `--base dir` adds a folder to try after the document's.
+- **`uri`:** a relative `uri` resolves against the document's own location (its file's folder, or its URL), by the CLIs
+  and prism-me's open. `fixture://x` is `fixtures/x` beside the document. A document in a repository names its files
+  from where it lies (the committed examples: `../spec/src/examples/fixtures/…` for the recipes, `fixtures/…` for the
+  meshes and tables). A CLI's `--base dir` (repeatable) overrides: it is tried before the document's folder.
 - **Readers** turn raw content into what resolvers use (`runtime/readers.ts`: STAR, OBJ, cellPACKgpu JSON, placement
   JSON). They are pluggable, like resolvers.
 
