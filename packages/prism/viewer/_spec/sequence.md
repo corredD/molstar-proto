@@ -205,6 +205,18 @@ The code is the truth for how.
   Snapshots list, open panels.
 - **Headless**: `camera: false` keeps the checkpoint from reading the canvas.
 - **A lazy extension's load** stays across a restore to before it (its registrations stay; its cells go).
+- **Behavior-owned cells are left out** (`registerBehaviorOwned`, `sources/checkpoint.ts`): an extension whose behavior
+  makes and removes cells on its own (streamed tiles) registers their transformers once per plugin:
+  `registerBehaviorOwned(plugin, [transformer | id, …])` returns the function that takes the registration back (two
+  registrations of one id count twice). A transformer is matched by its whole id. For a registered cell:
+  - **no change outside the API** (§7.3), made, updated or removed by anyone, and so is every cell under it;
+  - **a checkpoint leaves it out with everything under it** (the data tree only; the behaviors' tree is whole), so the
+    history holds neither its size nor its params;
+  - **a restore keeps it**: the cell and what hangs from it stay as the same cells (no update, no new object) wherever
+    its parent is in the restored tree, and go with a parent the restore removes. Cells made after the checkpoint stay
+    too: the behavior follows the camera, not the history, and asks its source again by itself. The fixed list (the
+    focus representation's tags, volume streaming and custom properties) is no change outside the API and is _not_ left
+    out: custom properties are the structures' parents, so the scene is under them.
 
 ### 7.3 One history manager
 
@@ -229,7 +241,8 @@ The code is the truth for how.
   it.
 - **Changes outside the API** (`watchOutsideChanges`) make every earlier checkpoint unsafe, and History says so. Not
   outside: runs, the history's own restores, cells behaviors own (the focus representation, volume streaming, custom
-  properties), snapshots shown or playing and frames or animations viewed.
+  properties, and the transformers registered by `registerBehaviorOwned`, §7.2), snapshots shown or playing and frames
+  or animations viewed.
 - **Showing a snapshot is no step** (David, 2026-10-20): `snapshot.apply`, `.next` and `.previous` (an MVS story's
   steps) are `undoable: false`, so stepping through a story fills no history and takes no checkpoint, the steps before
   it stay undoable, and it runs in order with the steps (Undo is refused while one is applied; a step never sees a

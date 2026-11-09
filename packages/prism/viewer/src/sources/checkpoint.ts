@@ -6,7 +6,7 @@
  * @author David Sehnal <david.sehnal@gmail.com>
  */
 
-import { type StateObjectCell, StateTransform, StateTree } from '@molstar/core/state';
+import { type StateObjectCell, type StateTransformer, StateTransform, StateTree } from '@molstar/core/state';
 import { StructureFocusRepresentationTags } from '@molstar/plugin/behavior/dynamic/selection/structure-focus-representation';
 import type { PluginContext } from '@molstar/plugin/context';
 import type { PluginState } from '@molstar/plugin/state';
@@ -47,10 +47,12 @@ export function createCheckpointPort(plugin: PluginContext): HistoryPort<ViewerC
       // The trees from the cache (unchanged transforms shared with earlier checkpoints), the rest from the plugin.
       const snapshot = plugin.state.getSnapshot(TreelessParams);
       const current = plugin.managers.snapshot.state.current;
+      // The cells behaviors registered (and what hangs from them) are not the scene's steps: left out (sequence.md §7.2).
+      const owned = (t: StateTransform) => isRegisteredOwned(t, plugin);
       return {
         plugin: withoutViewState({
           ...snapshot,
-          data: { tree: trees.serialize(plugin.state.data.tree) },
+          data: { tree: trees.serialize(plugin.state.data.tree, owned) },
           behaviour: { tree: trees.serialize(plugin.state.behaviors.tree) },
         }),
         ...(current ? { snapshot: current } : {}),
@@ -59,7 +61,10 @@ export function createCheckpointPort(plugin: PluginContext): HistoryPort<ViewerC
     restore: async (c) => {
       // The focus is view state: a restore leaves it (and the camera, which the checkpoint does not hold); so is the
       // frame a trajectory shows (sequence.md §7.3).
-      await plugin.state.setSnapshot({ ...keepFrames(plugin, c.plugin), structureFocus: undefined });
+      await plugin.state.setSnapshot({
+        ...keepOwnedCells(plugin, keepFrames(plugin, c.plugin)),
+        structureFocus: undefined,
+      });
       // The story's snapshot this scene was shown with, when the list still has it (the list is not undone).
       // A scene shown with none (before a story was shown, or a snapshot added) marks none.
       const snapshots = plugin.managers.snapshot;
@@ -100,9 +105,11 @@ class SerializedTrees {
   readonly #json = new WeakMap<StateTransform, { flags: number; json: StateTransform.Serialized }>();
   readonly #sizes = new WeakMap<StateTransform.Serialized, number>();
 
-  serialize(tree: StateTree): StateTree.Serialized {
+  /** `skip` leaves out a transform and everything under it. */
+  serialize(tree: StateTree, skip?: (t: StateTransform) => boolean): StateTree.Serialized {
     const transforms: StateTransform.Serialized[] = [];
     StateTree.doPreOrder(tree, tree.root, transforms, (t, _, out) => {
+      if (skip?.(t)) return false;
       const flags = flagsOf(t);
       let cached = this.#json.get(t);
       if (cached?.flags !== flags) {
@@ -185,10 +192,78 @@ const BehaviorTags = new Set<string>(Object.values(StructureFocusRepresentationT
 /** Transformers whose cells behaviors make and update on their own: volume streaming, custom properties. */
 const BehaviorTransformers = ['volume-streaming', 'custom-model-properties', 'custom-structure-properties'];
 
-export function isBehaviorOwned(transform: StateTransform): boolean {
+/** The transformers an extension registered as behavior-owned, per plugin (id -> registrations). */
+const Registered = new WeakMap<PluginContext, Map<string, number>>();
+
+/**
+ * Registers transformers whose cells a behavior of the caller owns (sequence.md §7.3): a cell of one (a streamed
+ * tile) is no change outside the API, whoever makes or updates it, and a checkpoint leaves it out with everything
+ * under it; a restore keeps it where its parent is still in the tree (the behavior follows the camera, not the
+ * history). A transformer is its object or its id, matched whole (the fixed list below matches by part). Per plugin;
+ * returns the function that takes the registration back.
+ */
+export function registerBehaviorOwned(
+  plugin: PluginContext,
+  transformers: ReadonlyArray<StateTransformer | string>,
+): () => void {
+  let ids = Registered.get(plugin);
+  if (!ids) Registered.set(plugin, (ids = new Map()));
+  const added = transformers.map((t) => (typeof t === 'string' ? t : t.id));
+  for (const id of added) ids.set(id, (ids.get(id) ?? 0) + 1);
+  let done = false;
+  return () => {
+    if (done) return;
+    done = true;
+    for (const id of added) {
+      const n = (ids.get(id) ?? 0) - 1;
+      if (n > 0) ids.set(id, n);
+      else ids.delete(id);
+    }
+  };
+}
+
+/** Whether a transformer was registered for the plugin by `registerBehaviorOwned`. */
+function isRegisteredOwned(transform: StateTransform, plugin: PluginContext): boolean {
+  return !!Registered.get(plugin)?.has(transform.transformer.id);
+}
+
+/**
+ * Whether the cell is no change outside the API: a transformer registered for the plugin (`registerBehaviorOwned`), or
+ * the fixed list (the focus representation, volume streaming, custom properties). Only the registered are left out of
+ * checkpoints: the fixed list's cells (custom properties sit above the structures) are the scene's.
+ */
+export function isBehaviorOwned(transform: StateTransform, plugin?: PluginContext): boolean {
   if (transform.tags?.some((t) => BehaviorTags.has(t))) return true;
+  if (plugin && isRegisteredOwned(transform, plugin)) return true;
   const id = transform.transformer.id;
   return BehaviorTransformers.some((t) => id.includes(t));
+}
+
+/**
+ * A checkpoint's data with the owned cells of the tree now put back: each owned cell and what hangs from it, where its
+ * parent is in the checkpoint's tree (an owned cell whose parent the restore removes goes with it).
+ */
+function keepOwnedCells(plugin: PluginContext, snapshot: PluginState.Snapshot): PluginState.Snapshot {
+  const data = snapshot.data;
+  if (!data) return snapshot;
+  const tree = plugin.state.data.tree;
+  const owned: StateTransform[] = [];
+  StateTree.doPreOrder(tree, tree.root, owned, (t, _, out) => {
+    if (!isRegisteredOwned(t, plugin)) return;
+    StateTree.doPreOrder(tree, t, out, (n, _, o) => void o.push(n));
+    return false;
+  });
+  if (!owned.length) return snapshot;
+  const refs = new Set(data.tree.transforms.map((t) => t.ref));
+  const kept: StateTransform.Serialized[] = [];
+  for (const t of owned) {
+    // Pre-order: a parent is decided before its children.
+    if (!refs.has(t.parent)) continue;
+    refs.add(t.ref);
+    kept.push(StateTransform.toJSON(t));
+  }
+  if (!kept.length) return snapshot;
+  return { ...snapshot, data: { ...data, tree: { ...data.tree, transforms: [...data.tree.transforms, ...kept] } } };
 }
 
 /**
@@ -197,8 +272,24 @@ export function isBehaviorOwned(transform: StateTransform): boolean {
  */
 export function watchOutsideChanges(plugin: PluginContext, history: HistoryManager<ViewerCheckpoint>): () => void {
   const state = plugin.state.data;
+  // The cells registered as a behavior's and what hangs from them (a checkpoint leaves both out), and the cells of the
+  // fixed list. Asked of the tree as it is; the refs seen owned are kept for a removed cell, which is gone from the
+  // tree by the time its event comes.
+  const owned = new Set<string>();
+  const isOwned = (transform: StateTransform) => {
+    if (isBehaviorOwned(transform, plugin)) return true;
+    let t: StateTransform | undefined = transform;
+    while (t) {
+      if (owned.has(t.ref) || isRegisteredOwned(t, plugin)) return true;
+      t = t.parent === t.ref ? undefined : state.tree.transforms.get(t.parent);
+    }
+    return false;
+  };
+  const remember = (transform: StateTransform) => {
+    if (isOwned(transform)) owned.add(transform.ref);
+  };
   const check = (transform: StateTransform | undefined) => {
-    if (history.applying || !transform || isBehaviorOwned(transform)) return;
+    if (history.applying || !transform || isOwned(transform)) return;
     // Snapshots playing are a presentation, not edits: the steps before stay undoable (sequence.md §7.3).
     if (plugin.managers.snapshot.state.isPlaying) return;
     // So are the frames stepped through and the animations played (the trajectory and animation areas).
@@ -208,15 +299,21 @@ export function watchOutsideChanges(plugin: PluginContext, history: HistoryManag
   const transformOf = (ref: string): StateTransform | undefined =>
     (state.cells.get(ref) as StateObjectCell | undefined)?.transform ?? state.tree.transforms.get(ref);
   const removedTransforms = new Map<string, StateTransform>();
+  // First, so the ownership is known when the same event is checked.
+  const created = state.events.cell.created.subscribe((e) => {
+    // A removal's events (a parent before its children) are over by the next creation: let go of the gone.
+    if (owned.size > 256) for (const ref of owned) if (!state.tree.transforms.has(ref)) owned.delete(ref);
+    removedTransforms.set(e.ref, e.cell.transform);
+    remember(e.cell.transform);
+  });
   const sub = merge(state.events.cell.created.pipe(), state.events.object.updated.pipe()).subscribe((e) =>
     check(transformOf(e.ref)),
   );
-  // A removed cell is gone from the tree by the time the event comes: remember transforms as they are created.
-  const created = state.events.cell.created.subscribe((e) => removedTransforms.set(e.ref, e.cell.transform));
   const removed = state.events.cell.removed.subscribe((e) => {
     check(removedTransforms.get(e.ref));
     removedTransforms.delete(e.ref);
   });
+  StateTree.doPreOrder(state.tree, state.tree.root, undefined, (t) => void remember(t));
   for (const [ref, cell] of state.cells) removedTransforms.set(ref, cell.transform);
   return () => {
     sub.unsubscribe();

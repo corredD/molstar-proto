@@ -6,10 +6,12 @@
  * @author David Sehnal <david.sehnal@gmail.com>
  */
 
-import { StateTree } from '@molstar/core/state';
+import { StateTransform, StateTree } from '@molstar/core/state';
+import { StructureFocusRepresentationTags } from '@molstar/plugin/behavior/dynamic/selection/structure-focus-representation';
+import { CreateGroup } from '@molstar/plugin/state/transforms/misc/group';
 import { describe, expect, it } from 'vitest';
 import { cbs, crambin, expectOk, headlessViewer } from '../../_test/harness.js';
-import { checkpointSize, createCheckpointPort } from '../checkpoint.js';
+import { checkpointSize, createCheckpointPort, isBehaviorOwned, registerBehaviorOwned } from '../checkpoint.js';
 
 // The history's checkpoints (sequence.md §7.2, §7.4): what they hold, what they measure, and what Undo and Redo give
 // back from them.
@@ -101,5 +103,114 @@ describe('checkpoints', () => {
     // Undo after redo still restores the step before.
     expectOk(await v.api.history.undo({}));
     expect(treeOf(v)).toEqual(states[2]);
+  });
+});
+
+// Cells a behavior owns (sequence.md §7.2, §7.3): a group stands for a transformer of a lazy extension's behavior.
+describe('behavior-owned cells', () => {
+  type Viewer = Awaited<ReturnType<typeof headlessViewer>>;
+  const unsafe = (v: Viewer) => v.managers.history.steps.value[0].unsafe;
+  const addGroup = async (v: Viewer, parent?: string, tags?: string[]) => {
+    const b = v.plugin.state.data.build();
+    const group = (parent ? b.to(parent) : b.toRoot()).apply(CreateGroup, { label: 'tiles' }, { tags });
+    await b.commit();
+    return group.ref;
+  };
+  const refsOf = (c: ReturnType<ReturnType<typeof createCheckpointPort>['checkpoint']>) =>
+    c.plugin.data!.tree.transforms.map((t) => t.ref);
+
+  it('are no change outside the API when their transformer is registered, and are one when it is not', async () => {
+    const v = await headlessViewer({ files: [crambin()] });
+    expect(unsafe(v)).toBeUndefined();
+    const unregister = registerBehaviorOwned(v.plugin, [CreateGroup]);
+    const tiles = await addGroup(v);
+    // Made, updated and removed by the behavior: the steps before stay undoable.
+    await v.plugin.state.data.build().to(tiles).update({ label: 'more tiles' }).commit();
+    await v.plugin.state.data.build().delete(tiles).commit();
+    expect(unsafe(v)).toBeUndefined();
+    // Taken back: the same cell is a change like any other.
+    unregister();
+    await addGroup(v);
+    expect(unsafe(v)).toMatch(/outside/);
+  });
+
+  it('count a registration once whoever registers, and per plugin', async () => {
+    const a = await headlessViewer({ files: [crambin()] });
+    const b = await headlessViewer({ files: [crambin()] });
+    const group = StateTransform.create('ms-plugin.root', CreateGroup, { label: 'x' }, { ref: 'g' });
+    const one = registerBehaviorOwned(a.plugin, [CreateGroup.id]);
+    const two = registerBehaviorOwned(a.plugin, [CreateGroup]);
+    expect(isBehaviorOwned(group, a.plugin)).toBe(true);
+    expect(isBehaviorOwned(group, b.plugin)).toBe(false);
+    expect(isBehaviorOwned(group)).toBe(false);
+    one();
+    one();
+    expect(isBehaviorOwned(group, a.plugin)).toBe(true);
+    two();
+    expect(isBehaviorOwned(group, a.plugin)).toBe(false);
+  });
+
+  it('are left out of a checkpoint with what hangs from them, and a restore keeps them', async () => {
+    const v = await headlessViewer({ files: [cbs(), crambin()] });
+    registerBehaviorOwned(v.plugin, [CreateGroup]);
+    const port = createCheckpointPort(v.plugin);
+    const before = port.checkpoint();
+    const tiles = await addGroup(v);
+    const nested = await addGroup(v, tiles);
+    // A cell of the person's, made under a tile: a tile's descendants are the tile's.
+    const ownedCells = [tiles, nested];
+    const after = port.checkpoint();
+    for (const ref of ownedCells) expect(refsOf(after)).not.toContain(ref);
+    expect(refsOf(after)).toEqual(refsOf(before));
+    expect(port.size!(after)).toBe(port.size!(before));
+
+    // A step after the checkpoint is undone; the tiles stay, as the same cells (not made again).
+    const cell = v.plugin.state.data.cells.get(tiles)!;
+    expectOk(await v.api.representation.color({ target: 'polymer', theme: 'hydrophobicity' }));
+    await port.restore(before);
+    expect(treeOf(v)).toContain(tiles);
+    expect(v.plugin.state.data.cells.get(tiles)).toBe(cell);
+    expect(v.plugin.state.data.tree.children.get(tiles).toArray()).toEqual([nested]);
+    expect(v.plugin.state.data.tree.transforms.get(tiles)!.parent).toBe(StateTransform.RootRef);
+    // The scene is what the checkpoint held.
+    expect(refsOf(port.checkpoint())).toEqual(refsOf(before));
+    const colors = (c: typeof before) => JSON.stringify(c.plugin.data!.tree);
+    expect(colors(port.checkpoint())).toBe(colors(before));
+  });
+
+  it('go with a parent a restore removes', async () => {
+    const v = await headlessViewer({});
+    registerBehaviorOwned(v.plugin, [CreateGroup]);
+    const port = createCheckpointPort(v.plugin);
+    const empty = port.checkpoint();
+    expectOk(await v.api.load.files({ files: [crambin()] }));
+    const structure = [...v.plugin.state.data.cells.values()].find((c) =>
+      c.transform.transformer.id.endsWith('structure-from-model'),
+    )!.transform.ref;
+    const tiles = await addGroup(v, structure);
+    expect(v.plugin.state.data.cells.has(tiles)).toBe(true);
+    await port.restore(empty);
+    expect(v.plugin.state.data.cells.has(structure)).toBe(false);
+    expect(v.plugin.state.data.cells.has(tiles)).toBe(false);
+  });
+
+  it('keep the fixed list: the focus, streaming and custom properties cells', async () => {
+    const v = await headlessViewer({ files: [crambin()] });
+    const port = createCheckpointPort(v.plugin);
+    const before = port.checkpoint();
+    // Not registered by anyone.
+    const focus = await addGroup(v, undefined, [StructureFocusRepresentationTags.TargetRepr]);
+    expect(unsafe(v)).toBeUndefined();
+    // The fixed list is no change outside the API; it is not left out of checkpoints (custom properties are the
+    // structures' parents).
+    expect(refsOf(port.checkpoint())).toEqual([...refsOf(before), focus]);
+    for (const id of ['ms-plugin.volume-streaming', 'ms-plugin.custom-model-properties']) {
+      const t = StateTransform.create('ms-plugin.root', { ...CreateGroup, id } as never, {}, { ref: id });
+      expect(isBehaviorOwned(t)).toBe(true);
+    }
+    expect(refsOf(before)).toContain(
+      [...v.plugin.state.data.cells.values()].find((c) => c.transform.transformer.id.endsWith('custom-model-properties'))!
+        .transform.ref,
+    );
   });
 });
