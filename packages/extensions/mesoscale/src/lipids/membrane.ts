@@ -335,7 +335,9 @@ export function* buildMembraneSteps(
   const table = getCutterTable(patch, names[0]);
   if (table) {
     const area = surface.mesh ? meshArea(surface.mesh) : 4 * Math.PI * (surface.radius ?? 500) ** 2;
-    const lipids = (area * names.length * (table.memberStart[table.members.length] / (table.box[0] * table.box[1]))) | 0;
+    const lipids = Math.round(
+      area * names.length * (table.memberStart[table.members.length] / (table.box[0] * table.box[1])),
+    );
     if (lipids > MaxTileLipids) {
       return `Tiles build every lipid at once, and this surface takes about ${(lipids / 1e6).toFixed(0)} M (over ${MaxTileLipids / 1e6} M): wrap it with lipids (the cutter), which makes them where they are seen.`;
     }
@@ -877,10 +879,18 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
     return [patch, table];
   }
 
-  function release() {
+  /**
+   * The patch textures all destroyed: on destroy, a new context, a failed build (review M2, M3: a rebuild keeps them, its
+   * end destroys the ones two builds old, the last build's objects drawn until the canvas swaps them)
+   */
+  function releaseTextures() {
     for (const t of retiredTextures) t.destroy();
-    retiredTextures = patchTexturesInUse;
+    for (const t of patchTexturesInUse) t.destroy();
+    retiredTextures = [];
     patchTexturesInUse = [];
+  }
+
+  function release() {
     for (const a of assigners) a.destroy();
     for (const c of cutters) c.destroy();
     assigners = [];
@@ -1030,6 +1040,7 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
       if (e === Superseded) return;
       if (gen === generation) {
         release();
+        releaseTextures();
         builtFor = undefined;
         renderObjects = [];
         members = [];
@@ -1317,6 +1328,12 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
         if (lastData && builtFor === lastData && onlyClip(before, props)) {
           for (const v of members) setClip(v, props.clip);
           for (const o of renderObjects) setClip(o.values as never, props.clip);
+          // a clip shows the leaflet behind (`facing` off): where clips come or go the next view selects anew (review M4;
+          // a still camera waits for the culler's next view hook: TODO)
+          if (before.clip.objects.length > 0 !== props.clip.objects.length > 0) {
+            selectedViews = new WeakMap();
+            for (const sel of selections) sel.reset();
+          }
         } else if (lastData) await build(lastData, runtime);
         version += 1;
         updated.next(version);
@@ -1332,6 +1349,7 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
     setGraphics: (g) => {
       generation += 1;
       release();
+      releaseTextures();
       builtFor = undefined;
       renderObjects = [];
       members = [];
@@ -1345,6 +1363,7 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
     mark: () => false,
     destroy: () => {
       release();
+      releaseTextures();
       builtFor = undefined;
       renderObjects = [];
       members = [];
