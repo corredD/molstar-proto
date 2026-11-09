@@ -722,10 +722,9 @@ export function createMergedCuller(
     for (let s = 0; s < segmentCount; ++s) if (memberChanged(s)) changedMembers.push(s);
     if (changedMembers.length === 0) return true;
     for (const s of changedMembers) {
-      if (computeMemberCells(s) > slotCounts[s]) return false;
-    }
-    for (const s of changedMembers) {
+      // split once (the drag's hot path); outgrown: the full layout rewrites what this wrote of the members before
       const cells = computeMemberCells(s);
+      if (cells > slotCounts[s]) return false;
       writeMemberCells(s, cells);
       const base = slotBases[s];
       cellSpheres.ref.value.write(layoutSpheres.subarray(base * 4, (base + slotCounts[s]) * 4), base * 16);
