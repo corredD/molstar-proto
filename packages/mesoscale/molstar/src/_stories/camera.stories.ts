@@ -61,15 +61,20 @@ export const BetaCellTour: StoryObj = {
         const tour = base.tours?.[0];
         if (!tour || playing) return;
         playing = true;
-        play.disabled = true;
-        for (const step of tour.steps) {
-          caption.textContent = step.caption ?? '';
-          await show(step.view);
-          await new Promise((r) => setTimeout(r, step.duration ?? 2000));
+        // the view buttons wait for the tour; the tour stops when the story is gone (unmounted)
+        for (const b of [...buttons, play]) b.disabled = true;
+        try {
+          for (const step of tour.steps) {
+            if (!root.isConnected) return;
+            caption.textContent = step.caption ?? '';
+            await show(step.view);
+            await new Promise((r) => setTimeout(r, step.duration ?? 2000));
+          }
+          caption.textContent = '';
+        } finally {
+          for (const b of [...buttons, play]) b.disabled = false;
+          playing = false;
         }
-        caption.textContent = '';
-        play.disabled = false;
-        playing = false;
       });
 
       const viewer = RealViewerStory({
@@ -85,7 +90,7 @@ export const BetaCellTour: StoryObj = {
           render();
         },
       });
-      return h(
+      const root = h(
         'div',
         { style: `${Styles.grid};grid-template-columns:1fr 1fr 1.6fr;grid-template-rows:auto 1.2fr 1fr` },
         h(
@@ -106,5 +111,6 @@ export const BetaCellTour: StoryObj = {
           panel('Edits: a view switch reruns nothing', history, 'grid-column:2 / 4'),
         ),
       );
+      return root;
     }),
 };
