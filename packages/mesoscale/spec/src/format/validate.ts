@@ -7,13 +7,16 @@
 import {
   type Abundance,
   type Arrangement,
+  type Box,
   type Id,
   IdPattern,
   type Length,
   type Location,
   type MesoViewSpecDoc,
+  type Model,
   type Population,
   type Superstructure,
+  type TileManifest,
 } from './doc.js';
 import { type Issue, type IssueCode, issue } from './issues.js';
 import { parseMesoQL, type QType } from './mesoql.js';
@@ -483,6 +486,30 @@ export function validate(doc: MesoViewSpecDoc, nested = false): Issue[] {
     return false;
   };
   for (const m of models) if (visit(m.id, [])) break;
+  // streams (design.md §6.8.1): what v0.4 streams, and what it refuses rather than guess
+  const streams = models.flatMap((m, i) => (m.stream ? [[m, i] as const] : []));
+  streams.forEach(([m, i], n) => {
+    const p = `/models/${i}`;
+    const unsupported = (why: string, path = p) => err('stream.unsupported', `${m.id}: ${why}`, path, [m.id]);
+    const r = (doc.resources ?? []).find((x) => x.id === m.stream?.resource);
+    ref(m.stream?.resource, 'resource', `${p}/stream/resource`);
+    if (r && r.kind !== 'placements')
+      err('ref.kind', `${r.id} is a ${r.kind}, not placements`, `${p}/stream/resource`, [r.id]);
+    else if (r && r.format !== 'meso-tiles')
+      err('value.range', `${r.id} is ${r.format}, a stream reads meso-tiles`, `${p}/stream/resource`, [r.id]);
+    oneOf(m.kind, ['precomputed'], 'a stream model kind', `${p}/kind`);
+    oneOf(m.method, ['meso.stream'], 'a stream model method', `${p}/method`);
+    if (r?.frame && r.frame !== worlds[0]?.id)
+      unsupported(`${r.id} is in frame ${r.frame}; v0.4 streams in the world frame only`, `${p}/stream/resource`);
+    if (m.avoid?.length || m.refines || models.some((x) => x.avoid?.includes(m.id) || x.refines === m.id))
+      unsupported('a stream neither avoids nor refines, and nothing avoids or refines it');
+    for (const pid of arrayOr(m.populations)) {
+      const e = doc.populations.find((x) => x.id === pid)?.entity;
+      if (e && doc.entities.find((x) => x.id === e)?.superstructure)
+        unsupported(`${pid}'s entity ${e} has a superstructure; streamed copies are drawn as bodies`);
+    }
+    if (n > 0) unsupported('one stream model a document');
+  });
   doc.populations.forEach((pop, i) => {
     if (!realizedBy.has(pop.id))
       out.push(
@@ -623,5 +650,62 @@ export function validate(doc: MesoViewSpecDoc, nested = false): Issue[] {
     return false;
   };
   for (const id of ssById.keys()) if (contains(id, [])) break;
+  return out;
+}
+
+const finite3 = (v: unknown): v is readonly number[] =>
+  Array.isArray(v) && v.length === 3 && v.every((x) => Number.isFinite(x));
+const isBox = (b: any): b is Box =>
+  finite3(b?.min) && finite3(b?.max) && b.min.every((x: number, k: number) => x < b.max[k]);
+const isRecord = (x: unknown): x is Record<string, never> => typeof x === 'object' && x !== null && !Array.isArray(x);
+const inside = (b: Box, outer: Box, tol = 1e-3) =>
+  b.min.every((x, k) => x >= outer.min[k] - tol && b.max[k] <= outer.max[k] + tol);
+
+/**
+ * A tile manifest checked against the stream model it feeds (design.md §6.8.2): pure, synchronous, phase `load`, code
+ * `stream.manifest`. Nothing throws; an invalid manifest is not streamed.
+ */
+export function validateManifest(m: TileManifest, model: Model, doc: MesoViewSpecDoc): Issue[] {
+  const path = `/models/${Math.max(
+    0,
+    (doc.models ?? []).findIndex((x) => x.id === model.id),
+  )}/stream`;
+  const out: Issue[] = [];
+  const bad = (message: string, severity: Issue['severity'] = 'error') =>
+    out.push(issue('stream.manifest', severity, 'load', `${model.id}: ${message}`, { path, ids: [model.id] }));
+  if (m?.format !== 'meso-tiles') {
+    bad(`manifest format is ${JSON.stringify(m?.format)}, not "meso-tiles"`);
+    return out;
+  }
+  const levels = arrayOr(m.levels);
+  if (levels.some((l) => ![0, 1, 2].includes(l))) bad('levels are 0, 1 or 2');
+  if (levels.some((l, i) => i > 0 && !(l > levels[i - 1]))) bad('levels are ascending, without repeats');
+  if (!levels.includes(0) || !levels.includes(1)) bad('levels hold 0 and 1');
+  if (levels.includes(2)) bad('level 2 is declared; v0.4 does not load it', 'info');
+  if (!isBox(m.bounds)) bad('bounds is a box: six finite numbers, min < max on each axis');
+  const pops = arrayOr(m.populations);
+  const want = [...arrayOr(model.populations)].sort().join();
+  if (new Set(pops).size !== pops.length || [...pops].sort().join() !== want)
+    bad(`populations are unique and are the model's (${want})`);
+  const tiles = arrayOr(m.tiles);
+  if (!tiles.length) bad('a manifest has at least one tile');
+  const ids = new Set<string>();
+  for (const t of tiles) {
+    const at = `tile ${JSON.stringify(t?.id)}`;
+    if (typeof t?.id !== 'string' || !IdPattern.test(t.id)) bad(`${at}: id does not match the id pattern`);
+    else if (ids.has(t.id)) bad(`${at}: id is not unique`);
+    else ids.add(t.id);
+    if (!isBox(t?.box)) bad(`${at}: box is six finite numbers, min < max on each axis`);
+    else if (isBox(m.bounds) && !inside(t.box, m.bounds)) bad(`${at}: box is not inside bounds`);
+    const counts = isRecord(t?.counts) ? t.counts : undefined;
+    if (!counts) bad(`${at}: counts is an object of population counts`);
+    for (const [k, n] of Object.entries(counts ?? {}))
+      if (!pops.includes(k) || !Number.isInteger(n) || n < 0)
+        bad(`${at}: count ${k}=${n} is a non-negative integer of a population of the stream`);
+    if (t?.envelopes !== undefined && !isRecord(t.envelopes)) bad(`${at}: envelopes is an object of boxes`);
+    for (const [k, e] of Object.entries(isRecord(t?.envelopes) ? t.envelopes : {}))
+      if (!counts || !(k in counts) || !isBox(e) || (isBox(t.box) && !inside(e, t.box)))
+        bad(`${at}: envelope of ${k} is a box inside the tile's, for a population with a count`);
+  }
   return out;
 }

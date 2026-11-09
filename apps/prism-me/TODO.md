@@ -88,6 +88,10 @@ maintainer first (2026-10-25). All are v6 (master); the MRC reader and the parti
 
 ## Backlog
 
+- **MesoViewSpec streaming, R5 frame time unmeasured** (lane `mesoviewspec-streaming`, 2026-11-08): measure the first
+  and steady frame and the draw calls per list, at 1, 10, 100 and 1,000 lists, on a machine with a GL context (`gl`
+  installed; `molstar/src/_test/r5-cases.ts` already records them when `gl` loads).
+
 - **Fibre points drawn twice** (lane `fibers-targeted`, 2026-11-08; to decide): a cellPACK fibre's points keep their
   one-atom target under the new tubes (the yeast slab: 2.3M extra instances). Leave fibre points untargeted in the
   reader (lighter, tubes only), or keep both (a cellPACK fibre whose points carry an ingredient)?

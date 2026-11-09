@@ -4,7 +4,9 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
+import type { Box, StreamLevel, TileEntry } from '../format/doc.js';
 import type { Issue } from '../format/issues.js';
+import type { PlacementType } from './placements.js';
 import type { PlacementSet } from './placements.js';
 
 // The IR (design.md §4): the scene made concrete enough to evaluate and render, as a tree in the manner of mol-state
@@ -52,6 +54,25 @@ export type IRNode =
       }
     >
   | IRNodeOf<'placements', { readonly set: PlacementSet }>
+  /**
+   * A streamed model (design.md §6.8): level 0 (the manifest's tiles, their counts and envelopes) and no placement set
+   * at compile time. The session splices the loaded tiles in as `placements` children, one set per tile.
+   */
+  | IRNodeOf<
+      'stream',
+      {
+        readonly model: string;
+        readonly resource: string;
+        /** `<model>@<hash>`: tile set keys are `<key>#<tileId>`. */
+        readonly key: string;
+        readonly levels: readonly StreamLevel[];
+        readonly bounds: Box;
+        /** One per manifest population, in its order; shared by every tile's set. */
+        readonly types: readonly PlacementType[];
+        /** Level 0: the manifest's tiles (the same objects), with their counts and envelopes. */
+        readonly tiles: readonly TileEntry[];
+      }
+    >
   /**
    * A superstructure resolved once, in its own frame (design.md §3.9): its compartments, resolve nodes and template
    * placement sets, refs prefixed with its id. Never drawn where it stands: `instances` nodes place it.
@@ -166,7 +187,16 @@ export function irToJson(ir: IR, issues?: readonly Issue[]): unknown {
               },
             };
           })()
-        : n.params;
+        : n.kind === 'stream'
+          ? (() => {
+              const { model, key, levels, bounds, tiles, types } = n.params;
+              const copies: Record<string, number> = {};
+              for (const t of tiles)
+                for (const p of types)
+                  copies[p.population] = (copies[p.population] ?? 0) + (t.counts[p.population] ?? 0);
+              return { model, key, levels, bounds, tiles: tiles.length, copies };
+            })()
+          : n.params;
     return {
       ref: n.ref,
       kind: n.kind,
