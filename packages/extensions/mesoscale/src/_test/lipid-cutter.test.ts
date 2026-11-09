@@ -36,6 +36,36 @@ describe('the lipid cutter', () => {
     expect(coveredFraction(inner, atoms, 6, 4000)).toBeGreaterThanOrEqual(0.99);
   });
 
+  it('cuts a round patch (a disc in its square, as the app’s CHARMM-GUI patch) as its filled square (Ludo, 2026-11-08)', () => {
+    // the app's patch is a disc of radius 115 Å read as periodic with a 232 Å box: its empty corners, a fifth of the
+    // box, tiled into every cut and tile as holes the mesh showed through
+    const { text } = syntheticPatchPdb(40, 46);
+    const lines = text.split('\n');
+    const heads = new Map<string, [number, number]>();
+    // a residue's first atom its head (`syntheticPatchPdb`)
+    for (const l of lines) {
+      const r = l.substring(22, 26);
+      if (!heads.has(r)) heads.set(r, [+l.substring(30, 38), +l.substring(38, 46)]);
+    }
+    const disc = lines.filter((l) => {
+      const [x, y] = heads.get(l.substring(22, 26))!;
+      return Math.hypot(x - 160, y - 160) < 150;
+    });
+    const patch = parsePatchPdb(disc.join('\n'));
+    // the lattice's own area a lipid (8 Å spacing: 55.4 Å²), not inflated by the corners (4 / π)
+    expect(patch.outer.areaPerLipid).toBeLessThan(55.4 * 1.1);
+    const table = cutterTable(patch.outer, 2);
+    const mesh = flatMesh(10, 30);
+    const { atoms } = placeCut(table, mesh, 1);
+    const inner = flatMesh(10, 30);
+    for (let i = 0; i < inner.positions.length; i += 3) {
+      inner.positions[i] = 225 + (inner.positions[i] - 225) * 0.8;
+      inner.positions[i + 1] = 130 + (inner.positions[i + 1] - 130) * 0.8;
+    }
+    // 86 % read whole; 98 % as its square (a lattice's rows meet out of step at the square's period, a real patch's do not)
+    expect(coveredFraction(inner, atoms, 6, 4000)).toBeGreaterThanOrEqual(0.97);
+  });
+
   it('says a mesh is too large for one count pass, not a WebGPU error (review S4)', async () => {
     const { text, box } = syntheticPatchPdb();
     const table = cutterTable(parsePatchPdb(text, { box }).outer, 2);

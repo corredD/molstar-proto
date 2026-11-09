@@ -123,10 +123,68 @@ export function splitLeaflets(lipids: RawLipid[], box?: [number, number]): Lipid
     }
     l.head = best;
   }
-  const upper = lipids.filter((l) => l.atoms[l.head * 3 + 2] >= center);
-  const lower = lipids.filter((l) => l.atoms[l.head * 3 + 2] < center);
-  if (!box) box = [estimatePeriod(upper, lower, 0), estimatePeriod(upper, lower, 1)];
+  let upper = lipids.filter((l) => l.atoms[l.head * 3 + 2] >= center);
+  let lower = lipids.filter((l) => l.atoms[l.head * 3 + 2] < center);
+  if (!box) {
+    // a round patch is read as its filled square (`filledSquare`), then its period estimated as any
+    const square = filledSquare(upper, lower);
+    if (square) {
+      const inside = (l: RawLipid) =>
+        Math.abs(l.atoms[l.head * 3] - square.x) < square.half &&
+        Math.abs(l.atoms[l.head * 3 + 1] - square.y) < square.half;
+      upper = upper.filter(inside);
+      lower = lower.filter(inside);
+    }
+    box = [estimatePeriod(upper, lower, 0), estimatePeriod(upper, lower, 1)];
+  }
   return { outer: makeLeaflet(upper, center, box, 1), inner: makeLeaflet(lower, center, box, -1) };
+}
+
+/**
+ * The largest square about the heads' center that they fill (every cell of about two lipid spacings has a head of each
+ * leaflet), where it is smaller than their extent: a patch that is not periodic, as the app's CHARMM-GUI patch (a disc of
+ * radius 115 Å in a 232 Å square, Ludo's third try, 2026-11-08), whose empty corners, a fifth of the box, were tiled into
+ * every cut and tile as holes. Undefined for a patch that fills its extent (a periodic one)
+ */
+function filledSquare(upper: RawLipid[], lower: RawLipid[]) {
+  if (upper.length < 16 || lower.length < 16) return undefined;
+  let x0 = Infinity;
+  let x1 = -Infinity;
+  let y0 = Infinity;
+  let y1 = -Infinity;
+  for (const l of [...upper, ...lower]) {
+    x0 = Math.min(x0, l.atoms[l.head * 3]);
+    x1 = Math.max(x1, l.atoms[l.head * 3]);
+    y0 = Math.min(y0, l.atoms[l.head * 3 + 1]);
+    y1 = Math.max(y1, l.atoms[l.head * 3 + 1]);
+  }
+  const x = (x0 + x1) / 2;
+  const y = (y0 + y1) / 2;
+  const full = Math.min(x1 - x0, y1 - y0) / 2;
+  const cell = 2 * Math.sqrt(((x1 - x0) * (y1 - y0)) / Math.min(upper.length, lower.length));
+  const n = Math.ceil((2 * full) / cell);
+  // the cells each leaflet's heads fall in, indexed once
+  const filled = [upper, lower].map((leaflet) => {
+    const set = new Set<number>();
+    for (const l of leaflet) {
+      const i = Math.floor((l.atoms[l.head * 3] - (x - full)) / cell);
+      const j = Math.floor((l.atoms[l.head * 3 + 1] - (y - full)) / cell);
+      set.add(i * (n + 1) + j);
+    }
+    return set;
+  });
+  // the cells of a square of k cells a side about the center: all filled in both leaflets
+  const fills = (k: number) => {
+    const lo = Math.floor((n - k) / 2);
+    for (let i = lo; i < lo + k; ++i)
+      for (let j = lo; j < lo + k; ++j) for (const set of filled) if (!set.has(i * (n + 1) + j)) return false;
+    return true;
+  };
+  // a full patch fills its border cells (bar a cell's slack)
+  if (fills(n - 1)) return undefined;
+  let k = n - 2;
+  while (k > 2 && !fills(k)) k -= 1;
+  return k > 2 ? { x, y, half: (k * cell) / 2 } : undefined;
 }
 
 /**
