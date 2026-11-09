@@ -657,6 +657,7 @@ const finite3 = (v: unknown): v is readonly number[] =>
   Array.isArray(v) && v.length === 3 && v.every((x) => Number.isFinite(x));
 const isBox = (b: any): b is Box =>
   finite3(b?.min) && finite3(b?.max) && b.min.every((x: number, k: number) => x < b.max[k]);
+const isRecord = (x: unknown): x is Record<string, never> => typeof x === 'object' && x !== null && !Array.isArray(x);
 const inside = (b: Box, outer: Box, tol = 1e-3) =>
   b.min.every((x, k) => x >= outer.min[k] - tol && b.max[k] <= outer.max[k] + tol);
 
@@ -696,11 +697,14 @@ export function validateManifest(m: TileManifest, model: Model, doc: MesoViewSpe
     else ids.add(t.id);
     if (!isBox(t?.box)) bad(`${at}: box is six finite numbers, min < max on each axis`);
     else if (isBox(m.bounds) && !inside(t.box, m.bounds)) bad(`${at}: box is not inside bounds`);
-    for (const [k, n] of Object.entries(t?.counts ?? {}))
+    const counts = isRecord(t?.counts) ? t.counts : undefined;
+    if (!counts) bad(`${at}: counts is an object of population counts`);
+    for (const [k, n] of Object.entries(counts ?? {}))
       if (!pops.includes(k) || !Number.isInteger(n) || n < 0)
         bad(`${at}: count ${k}=${n} is a non-negative integer of a population of the stream`);
-    for (const [k, e] of Object.entries(t?.envelopes ?? {}))
-      if (!(k in (t.counts ?? {})) || !isBox(e) || (isBox(t.box) && !inside(e, t.box)))
+    if (t?.envelopes !== undefined && !isRecord(t.envelopes)) bad(`${at}: envelopes is an object of boxes`);
+    for (const [k, e] of Object.entries(isRecord(t?.envelopes) ? t.envelopes : {}))
+      if (!counts || !(k in counts) || !isBox(e) || (isBox(t.box) && !inside(e, t.box)))
         bad(`${at}: envelope of ${k} is a box inside the tile's, for a population with a count`);
   }
   return out;

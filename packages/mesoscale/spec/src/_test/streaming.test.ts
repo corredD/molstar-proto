@@ -187,6 +187,11 @@ describe('validateManifest', () => {
     ['a duplicate tile id', (m: TileManifest) => ({ tiles: [m.tiles[0], { ...m.tiles[1], id: m.tiles[0].id }] })],
     ['a negative count', (m: TileManifest) => ({ tiles: tile0(m, { counts: { 'p.a': -1 } }) })],
     ['a fractional count', (m: TileManifest) => ({ tiles: tile0(m, { counts: { 'p.a': 1.5 } }) })],
+    ['a tile with no counts', (m: TileManifest) => ({ tiles: tile0(m, { counts: undefined as never }) })],
+    ['a tile with null counts', (m: TileManifest) => ({ tiles: tile0(m, { counts: null as never }) })],
+    ['a tile with array counts', (m: TileManifest) => ({ tiles: tile0(m, { counts: [1, 2] as never }) })],
+    ['null envelopes', (m: TileManifest) => ({ tiles: tile0(m, { envelopes: null as never }) })],
+    ['array envelopes', (m: TileManifest) => ({ tiles: tile0(m, { envelopes: [] as never }) })],
     ['a count of an unknown population', (m: TileManifest) => ({ tiles: tile0(m, { counts: { 'p.z': 1 } }) })],
     [
       'an envelope outside its tile',
@@ -217,6 +222,20 @@ describe('validateManifest', () => {
 });
 
 describe('compile: level 0', () => {
+  it('a tile without counts fails the stream model, not the scene (no throw)', async () => {
+    const m = await manifest();
+    const broken = { ...m, tiles: m.tiles.map((t, i) => (i === 0 ? ({ id: t.id, box: t.box } as never) : t)) };
+    const r = await compile(doc, {
+      resolvers: DefaultResolvers,
+      tiles: tiles({ ...provider, manifest: async () => broken }),
+    });
+    expect(r.ir).toBeDefined();
+    expect(streamNode(r.ir!)).toBeUndefined();
+    expect(r.issues.filter((i) => i.code === 'stream.manifest' && i.severity === 'error').length).toBe(1);
+    // the instances' model still resolved
+    expect(placementSets(r.ir!).length).toBe(1);
+  });
+
   it('a stream node with level 0, no placement set, the manifest totals, no unrealized model', async () => {
     const r = await open();
     const m = await manifest();
