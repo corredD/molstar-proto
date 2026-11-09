@@ -47,7 +47,7 @@ export interface OrganelleMesh {
 
 /** The meshes of an `organelle_meshes.bin`, positions times `scale`; or what is wrong with the bytes */
 export function parseOrganelleMeshes(bytes: Uint8Array, scale = OrganelleScale): OrganelleMesh[] | string {
-  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const view = dataView(bytes);
   if (bytes.byteLength < 4) return 'Not organelle meshes: too short.';
   const count = view.getUint32(0, true);
   let at = 4 + count * 12;
@@ -96,13 +96,13 @@ export type OrganelleMeshFromBinary = typeof OrganelleMeshFromBinary;
 export const OrganelleMeshFromBinary = PluginStateTransform.BuiltIn({
   name: 'mesoscale-organelle-mesh',
   display: { name: 'Organelle mesh', description: 'One mesh of the yeast cell viewer’s organelle_meshes.bin, in Å' },
-  from: SO.Data.Binary,
+  from: [SO.Data.Binary, SO.Data.Response],
   to: SO.Format.Obj,
   params: { index: PD.Numeric(0, { min: 0, max: 1023, step: 1 }) },
 })({
   apply({ a, params }) {
     return Task.create('Organelle mesh', async () => {
-      const meshes = parseOrganelleMeshes(a.data);
+      const meshes = parseOrganelleMeshes(SO.Data.readBytes(a));
       if (typeof meshes === 'string') throw new Error(meshes);
       const mesh = meshes[params.index];
       if (!mesh) throw new Error(`No mesh ${params.index} (${meshes.length} in the file).`);
@@ -118,10 +118,15 @@ export const OrganelleMeshesProvider = DataFormatProvider({
   category: ShapeFormatCategory,
   binaryExtensions: ['bin'],
   priority: 1,
-  isApplicable: (_info, data) => data instanceof Uint8Array && typeof parseOrganelleHeader(data) === 'number',
-  parse: async (plugin: PluginContext, data: StateObjectRef<SO.Data.Binary>) => {
-    const cell = StateObjectRef.resolve(plugin.state.data, data);
-    const bytes = cell?.obj?.data as Uint8Array | undefined;
+  // a response sniffed as itself (its bytes held whole), its header's sizes the file's
+  sniffsResponse: true,
+  isApplicable: (_info, data) => {
+    const bytes = ArrayBuffer.isView(data) ? (data as Uint8Array) : (data as { heldBytes?: Uint8Array }).heldBytes;
+    return !!bytes && typeof parseOrganelleHeader(bytes) === 'number';
+  },
+  parse: async (plugin: PluginContext, data: StateObjectRef<SO.Data.Binary | SO.Data.Response>) => {
+    const obj = StateObjectRef.resolve(plugin.state.data, data)?.obj;
+    const bytes = obj ? SO.Data.readBytes(obj as SO.Data.Binary | SO.Data.Response) : undefined;
     const meshes = bytes ? parseOrganelleMeshes(bytes) : 'No data.';
     if (typeof meshes === 'string') throw new Error(meshes);
     const b = plugin.state.data.build();
@@ -145,11 +150,17 @@ export const OrganelleMeshesProvider = DataFormatProvider({
 /** The header's mesh count where the bytes' size fits it exactly, else undefined (a sniff: no mesh read) */
 function parseOrganelleHeader(bytes: Uint8Array) {
   if (bytes.byteLength < 16) return undefined;
-  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const view = dataView(bytes);
   const count = view.getUint32(0, true);
   if (count === 0 || count > 1024 || 4 + count * 12 > bytes.byteLength) return undefined;
   let size = 4 + count * 12;
   for (let i = 0; i < count; ++i)
     size += view.getUint32(8 + i * 12, true) * 12 + view.getUint32(12 + i * 12, true) * 12;
   return size === bytes.byteLength ? count : undefined;
+}
+
+/** A view of bytes (copied where their buffer is another realm's, a page's file in a test's DOM) */
+function dataView(bytes: Uint8Array) {
+  const own = bytes.buffer instanceof ArrayBuffer ? bytes : new Uint8Array(bytes);
+  return new DataView(own.buffer, own.byteOffset, own.byteLength);
 }
