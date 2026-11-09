@@ -647,3 +647,58 @@ about 1 s (every surface rebuilt): the next step if Ludo finds colouring slow.
 pop where lipids give way to the surface (Look › Lipids down to raises the switch to see it nearer: 2 px). Right-click
 the membrane › Color… › a swatch: every species that colour, spheres and far surface; Look › Generate colors, Reset, By
 zoom (far the membrane's colour, its species close).
+
+## Round 5 brief (Ludo, 2026-11-09): a billion lipids at interactive rate
+
+**Asked.** "model_vertexcolor.obj scale at 600, we want interactive viewing at that scale. find a way that it looks
+good, accurate as possible. color by zoom from compartment (the object color, down to chain/residue colors then atom
+colors). the texture does not appear on membrane per tiles. At 600 scale, its a lot of triangles, but it only matter
+at a certain distance. figure this out. /goal render procedurally at interactive rate lipids membrane for that big
+object with billions of lipids."
+
+**The numbers.** `~/Downloads/3D-Models/model_vertexcolor.obj`: 2,880 triangles. ×100 was 27.7 M lipids full; ×600 is
+36× the area, about 1.0 G lipids, about 5–6 M cells of ~108 Å. Nothing O(lipids) or O(cells) may be built or held at
+wrap or per view: only O(triangles) at wrap and O(budget) per view.
+
+**Goal.** Wrap at ×600 in about the time of ×20 (memory flat in the lipid count); fly whole → middle → close at
+≥ 30 fps on the M1 (≤ 33 ms frames, headless Dawn as the proxy, then Ludo in Chrome), no holes, no visible switch,
+nothing at rest; accurate: what is drawn near is exactly what export would give there (same lipids, same cells).
+
+**Design to settle at a checkpoint (before code; stop and report if a library change is over ~600 lines).**
+1. **Hierarchical selection.** Today a triangle is taken whole. At ×600 one triangle holds ~350 k lipids, so select
+   below the triangle: cells (the 4b cells, ~108 Å) enumerated on the fly inside the frustum and the px band, near
+   first, into the fixed pool; a cell's contents generated on the GPU from (triangle, cell) alone (deterministic, as
+   today). Measure the CPU cost of the selection per camera change at ×600 (target ≤ 4 ms) and move it to the GPU if
+   needed.
+2. **A scale-free far look.** Vertex colours (capped 1 M vertices, ~2 lipid spacings) cannot hold at ×600. The head
+   pattern in the shader instead: per fragment, the point mapped by its cutter plane and cell (spin, offset) into the
+   patch's top-view raster of 4c (colour = the species on top, normal = the head bump), as a texture, mipmapped so it
+   blurs to the true mean far away. Exactly the near look at the switch, any scale. This is the "texture" Ludo asked
+   for at the start (round 4 decision: bump texture of heads). Likely a `packages/graphics` change (a mesh material
+   reading a texture by a per-vertex plane frame): size it at the checkpoint.
+3. **Colour by zoom, three levels.** Far: the compartment's colour (the object's / membrane's). Middle: per species
+   (chain/residue = lipid species). Close: per atom (element colours of the lipid's atoms, as a particle list's last
+   zoom level). Through `mesoscale.colorLevels` and the same Look controls as a particle list; spheres and far surface
+   alike.
+4. **Tiles.** The tiles membrane shows no texture (4b: refused). Give tiles the far texture surface (Far: Texture and
+   Both) where cheap; tiles are built whole, so they are not for ×600: refuse tiles above a lipid count with a
+   message that names the cutter. Say so in the menu label or the error.
+5. **Budget and LOD at scale.** The pool budget sized to the device (2 M default; measure 4 M), the sphere levels'
+   distances in px not Å so they hold at any scale (state the defaults chosen and why), the switch px of 4c.
+
+**Tests.** Wrap-time and memory scaling guard at ×20, ×100, ×600 (flat in lipids, linear in triangles); the camera
+path at ×600 headless (frame ms, lipids in pool, cells selected, selection ms, 0 at rest); determinism (a cell's
+lipids the same from two views and from export of that cell); the far texture's colour equals the spheres' at the
+switch (4c's metric) at ×20 and ×600; colour by zoom three levels each changes what is drawn; tiles refused at ×600.
+Images r5-*.png (×600: whole, middle, close, and a zoom sequence; colour by zoom).
+
+**Machine care, changed for this round (Ludo asked for ×600).** The per-view cutter wrap may run at ×100 and ×600 (it
+builds no lipids); never export, tiles or any full build above ×20 in a test. Watch the process: abort a run whose
+node RSS passes 8 GB, run one heavy job at a time, wait while load > 12.
+
+**Ludo checks.** Chrome on 1354: open model_vertexcolor, Look › Scale 600, right-click › Wrap with lipids: done in a
+second or two. Zoom from whole to a few lipids: smooth (fans calm), no holes, no visible switch; colour by zoom: the
+object's colour, then species, then atoms. Tiles at 600: refused with a message.
+
+**Size and model.** ~900 production lines (selection 250, far texture + library material 350, colour levels 150,
+tiles and budget 150); Opus. Gate on the round's diff.
