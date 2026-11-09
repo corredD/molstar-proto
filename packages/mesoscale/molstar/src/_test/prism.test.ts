@@ -15,6 +15,8 @@ import { createMesoscaleExplorerSpec } from '@molstar/prism-me-app/spec';
 import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
 import type { PrismViewer } from '@molstar/prism-viewer/viewer';
 import type { ParticleList } from '@molstar/model/model/particles/particle-list';
+import { StateSelection } from '@molstar/core/state';
+import { ParticleRepresentation3DLayers } from '@molstar/plugin/state/transforms/particles/layers';
 import { afterEach, describe, expect, it } from 'vitest';
 import { PrismMesoAdapter } from '../prism-adapter.js';
 import { MesoSession } from '../session.js';
@@ -83,6 +85,21 @@ describe('the Prism adapter (headless)', () => {
     expect(report.looksWritten).toBeGreaterThan(0);
     placementSets(result.ir!).forEach((s, i) => expect(adapter.listObject(s.key)).toBe(lists[i]));
     reprObjects(v).forEach((r, i) => expect(r).toBe(reprs[i]));
+  });
+
+  it('an emissive look reaches the Prism layer', { tags: ['medium'] }, async () => {
+    const { v, adapter, result } = await session();
+    const doc: MesoViewSpecDoc = {
+      ...exosomeDoc(),
+      views: exosomeDoc().views!.map((x) =>
+        x.id === 'v.overview' ? { ...x, looks: [...x.looks!, { select: '(population p.miRNA)', emissive: 0.6 }] } : x,
+      ),
+    };
+    await adapter.commit(updateView(doc, result.ir!));
+    const layers = v.plugin.state.data
+      .select(StateSelection.Generators.ofTransformer(ParticleRepresentation3DLayers))
+      .flatMap((c) => (c.transform.params as { layers: { emissive: number | null }[] }).layers);
+    expect(layers.filter((l) => l.emissive === 0.6).length).toBe(1);
   });
 
   it("a density edit: the rerun model's list replaced, the others kept", { tags: ['medium'] }, async () => {

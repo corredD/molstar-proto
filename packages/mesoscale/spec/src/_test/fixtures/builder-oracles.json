@@ -831,7 +831,7 @@
         "location": "interior",
         "abundance": {
           "concentration": {
-            "value": 0.000042,
+            "value": 4.2e-5,
             "unit": "M"
           }
         },
@@ -896,7 +896,7 @@
         "location": "interior",
         "abundance": {
           "concentration": {
-            "value": 0.0000134901,
+            "value": 1.34901e-5,
             "unit": "M"
           }
         },
@@ -909,7 +909,7 @@
         "location": "interior",
         "abundance": {
           "concentration": {
-            "value": 0.0000150308,
+            "value": 1.50308e-5,
             "unit": "M"
           }
         },
@@ -922,7 +922,7 @@
         "location": "interior",
         "abundance": {
           "concentration": {
-            "value": 0.0000335882,
+            "value": 3.35882e-5,
             "unit": "M"
           }
         },
@@ -935,7 +935,7 @@
         "location": "interior",
         "abundance": {
           "concentration": {
-            "value": 0.0000303013,
+            "value": 3.03013e-5,
             "unit": "M"
           }
         },
@@ -1311,15 +1311,18 @@
         },
         "looks": [
           {
+            "id": "l.lipids",
             "select": "(population p.lipids)",
             "color": "#e8d8b0",
             "transparency": 0.6
           },
           {
+            "id": "l.catalase",
             "select": "(entity e.catalase)",
             "color": "#d0453a"
           },
           {
+            "id": "l.picks",
             "select": "(population p.catalase.observed)",
             "color": "#ffb000"
           }

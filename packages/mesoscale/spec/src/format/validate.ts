@@ -44,7 +44,8 @@ type Kind =
   | 'annotation'
   | 'superstructure'
   | 'tour'
-  | 'instance';
+  | 'instance'
+  | 'look';
 
 const Sections: readonly [keyof MesoViewSpecDoc, Kind][] = [
   ['frames', 'frame'],
@@ -140,6 +141,14 @@ export function indexDoc(doc: MesoViewSpecDoc, inner = true): DocIndex {
       }
     }),
   );
+  arrayOr(doc.views).forEach((v, i) =>
+    arrayOr(v?.looks).forEach((l, j) => {
+      if (l?.id !== undefined && !kinds.has(l.id)) {
+        kinds.set(l.id, 'look');
+        paths.set(l.id, `/views/${i}/looks/${j}`);
+      }
+    }),
+  );
   return { kinds, paths };
 }
 
@@ -162,6 +171,8 @@ export function validate(doc: MesoViewSpecDoc, nested = false): Issue[] {
     err('format.version', `version ${JSON.stringify(doc.version)} is not a semver x.y.z`, '/version');
   else if (major > SupportedMajor)
     err('format.version', `version ${doc.version} is newer than this runtime reads (${SupportedMajor}.x)`, '/version');
+  if (doc.revision !== undefined && typeof doc.revision !== 'string')
+    err('value.range', 'revision is a string', '/revision');
   for (const s of ['entities', 'compartments', 'populations'] as const) {
     if (!Array.isArray(doc[s])) err('ref.missing', `${s} is required (an array)`, `/${s}`);
   }
@@ -215,6 +226,10 @@ export function validate(doc: MesoViewSpecDoc, nested = false): Issue[] {
   // annotations are nodes too (indexDoc names them)
   (doc.views ?? []).forEach((v, i) =>
     (v.annotations ?? []).forEach((a, j) => id(a, `/views/${i}/annotations/${j}/id`)),
+  );
+  // a look's id is optional
+  (doc.views ?? []).forEach((v, i) =>
+    (v.looks ?? []).forEach((l, j) => l.id !== undefined && id({ id: l.id }, `/views/${i}/looks/${j}/id`)),
   );
   if (!nested)
     (doc.superstructures ?? []).forEach((ss, i) => {
@@ -562,6 +577,8 @@ export function validate(doc: MesoViewSpecDoc, nested = false): Issue[] {
         );
       if (l.transparency !== undefined && !(l.transparency >= 0 && l.transparency <= 1))
         err('value.range', 'transparency is in [0, 1]', `/views/${i}/looks/${j}/transparency`);
+      if (l.emissive !== undefined && !(l.emissive >= 0 && l.emissive <= 1))
+        err('value.range', 'emissive is in [0, 1]', `/views/${i}/looks/${j}/emissive`);
     });
     address(v.selection, `/views/${i}/selection`, 'selection');
     (v.annotations ?? []).forEach((a, j) => {

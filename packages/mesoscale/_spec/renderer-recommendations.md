@@ -195,7 +195,9 @@ runs agree within about 15%.
   per-copy bytes.
 - **Per list:** about 36 ms of commit and about 0.1 MB of heap.
 - **Peak process RSS:** about 6 GB for the 1,000-set case alone (7.3 GB with the Vitest parent). Run after the other
-  cases in one worker, it was killed (SIGKILL); the cases now run in files of their own (`molstar/src/_test/r5-*.ts`).
+  cases in one worker, it was killed (SIGKILL); the cases now run in files of their own (`molstar/src/_test/r5-*.ts`);
+  the 1,000-set file is opt-in (`MESO_R5_1000=1`), as on a shared 16 GB machine it was still killed while other lanes
+  ran.
 - **Browser, the _Streaming_ story** (budget 3,000 copies, 32 tiles of 400): 7 tiles resident; each tour step commits
   only its arrivals and evictions; no console errors.
 

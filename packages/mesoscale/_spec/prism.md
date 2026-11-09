@@ -83,7 +83,17 @@ Seq\*'s, as `packages/sequences/_spec/format.md` § Patches states it, over the 
   Untouched sections are shared, so a look edit on a 200k-copy document copies one view.
 - **The S-expression spelling** prints a patch as it prints a document (design.md §3.7):
   `(patch :ops [(set v.cell …)])`. The agent and the History list read that.
-- **Where:** `packages/mesoscale/spec/src/format/patch.ts` (`applyPatch`, `diff`), no Mol\* import (the Biome rule).
+- **Where:** `packages/mesoscale/spec/src/format/patch.ts` (`applyPatch`, `diff`, `classifyPatch`, `printPatch`,
+  `readPatch`), no Mol\* import (the Biome rule). As built:
+  - `kind`, in `set`, is the node's field (an entity's `protein`, a relation's `binds`) as well as its section: `set`
+    refuses `id` and `kind`; a node whose kind changes is replaced (`remove` and `insert`; `diff` writes that).
+  - `insert` and `move` name a section (`parent: 'views'`) or a view's list (`parent: 'v.x', list: 'looks'`); a node
+    that brings a look or annotation id the document has is refused; `document` is no node id, `metadata` is not
+    removed.
+  - The inverse of an edit that cannot be anchored (the look before it has no id) sets the view's whole `looks`; a list
+    that empties and returns goes back where the field order (doc.ts) has it, so an inverse restores the bytes.
+  - Shapes are checked op by op as it applies (the first error is the one reported), not all before the first.
+  - `classifyPatch(doc, patch)` reads the cost of a patch from its ops; `classifyEdit` ignores `revision`.
 
 ### 2.2 What a patch can name: two format additions
 
@@ -525,21 +535,21 @@ Streaming is the `mesoviewspec-streaming` lane's (design.md §6.8, written there
 
 ## 11. Open: who decides
 
-| #   | Question                                                                                                      | Proposed                        | Who                                                    |
-| --- | ------------------------------------------------------------------------------------------------------------- | ------------------------------- | ------------------------------------------------------ |
-| 1   | The base: a PR of `me/mesoviewspec` to `prism-me`, or stacking (§12.1)                                        | the PR                          | Ludo, 2026-11-08: not yet (library lanes only for now) |
-| 2   | One document at a time (§1.1)                                                                                 | yes                             | Ludo, 2026-11-08: yes                                  |
-| 3   | A document's eye and Show only saved in the document, not viewer-only (§5.2)                                  | saved                           | Ludo, 2026-11-08: saved                                |
-| 4   | Group by: Compartment, Model, Kind; Kind in place of Function (§4.2)                                          | yes                             | Ludo                                                   |
-| 5   | Move and turn not offered on a document (§5.2)                                                                | not offered                     | Ludo                                                   |
-| 6   | Patches as Seq\*'s, ops by id (§2.1); decision 6                                                              | yes                             | David                                                  |
-| 7   | Looks get `id` and `emissive` (§2.2)                                                                          | yes, 0.4                        | David                                                  |
-| 8   | Showing a view is no step; `session.view` set only by Open with this view (§4.4)                              | yes (the `snapshot.apply` rule) | David                                                  |
-| 9   | Annotations as Prism labels; Add label writes an annotation (§5.2)                                            | yes                             | David                                                  |
-| 10  | The undo contract for lists (§7.3)                                                                            | as written                      | ours                                                   |
-| 11  | `show_meso_view` asks the agent every time (`undoable: false`, §8); or a policy that lets showing a view pass | ask, as `snapshot.apply`        | Ludo, 2026-11-08: ask                                  |
-| 12  | Part rows read-only in 3D until Prism layers select copy runs (§4.1); lane 3's β-cell check depends on it     | yes                             | Ludo                                                   |
-| 13  | Look ids carry the edit's kind (`l.style.<n>`, `l.eye.<n>`, `l.only.<n>`, §5.3): a document convention        | yes                             | David                                                  |
+| #   | Question                                                                                                      | Proposed                        | Who                      |
+| --- | ------------------------------------------------------------------------------------------------------------- | ------------------------------- | ------------------------ |
+| 1   | The base: a PR of `me/mesoviewspec` to `prism-me`, or stacking (§12.1)                                        | the PR                          | Ludo, 2026-11-08: the PR |
+| 2   | One document at a time (§1.1)                                                                                 | yes                             | Ludo, 2026-11-08: yes    |
+| 3   | A document's eye and Show only saved in the document, not viewer-only (§5.2)                                  | saved                           | Ludo, 2026-11-08: saved  |
+| 4   | Group by: Compartment, Model, Kind; Kind in place of Function (§4.2)                                          | yes                             | Ludo                     |
+| 5   | Move and turn not offered on a document (§5.2)                                                                | not offered                     | Ludo                     |
+| 6   | Patches as Seq\*'s, ops by id (§2.1); decision 6                                                              | yes                             | David                    |
+| 7   | Looks get `id` and `emissive` (§2.2)                                                                          | yes, 0.4                        | David                    |
+| 8   | Showing a view is no step; `session.view` set only by Open with this view (§4.4)                              | yes (the `snapshot.apply` rule) | David                    |
+| 9   | Annotations as Prism labels; Add label writes an annotation (§5.2)                                            | yes                             | David                    |
+| 10  | The undo contract for lists (§7.3)                                                                            | as written                      | ours                     |
+| 11  | `show_meso_view` asks the agent every time (`undoable: false`, §8); or a policy that lets showing a view pass | ask, as `snapshot.apply`        | Ludo, 2026-11-08: ask    |
+| 12  | Part rows read-only in 3D until Prism layers select copy runs (§4.1); lane 3's β-cell check depends on it     | yes                             | Ludo                     |
+| 13  | Look ids carry the edit's kind (`l.style.<n>`, `l.eye.<n>`, `l.only.<n>`, §5.3): a document convention        | yes                             | David                    |
 
 ## 12. The app lanes
 

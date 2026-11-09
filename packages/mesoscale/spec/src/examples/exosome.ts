@@ -281,9 +281,9 @@ export function exosomeDoc(options: { relax?: boolean } = {}): MesoViewSpecDoc {
     label: 'Overview',
     camera: { position: [0, 0, 260], target: [0, 0, 0], up: [0, 1, 0] },
     looks: [
-      { select: q.population(lipids), color: '#e8d8b0', transparency: 0.6 },
-      { select: q.entity(catalase), color: '#d0453a' },
-      { select: q.population(observed), color: '#ffb000' },
+      { id: 'l.lipids', select: q.population(lipids), color: '#e8d8b0', transparency: 0.6 },
+      { id: 'l.catalase', select: q.entity(catalase), color: '#d0453a' },
+      { id: 'l.picks', select: q.population(observed), color: '#ffb000' },
     ],
     annotations: [
       {
