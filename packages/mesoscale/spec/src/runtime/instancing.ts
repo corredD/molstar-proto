@@ -5,8 +5,7 @@
  */
 
 import type { IR, IRLook, IRNode } from '../ir/ir.js';
-import type { PlacementSet } from '../ir/placements.js';
-import { mulQuat } from '../resolvers/precomputed.js';
+import { mulQuat, type PlacementSet } from '../ir/placements.js';
 
 // Instancing (_spec/format.md, _spec/runtime.md): the IR keeps a superstructure once (its template sets, in its own frame) and the
 // poses of its copies; nothing is multiplied there. A renderer with nested instancing would take that as it is. One

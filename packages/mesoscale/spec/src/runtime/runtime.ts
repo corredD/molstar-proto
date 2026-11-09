@@ -21,12 +21,10 @@ import { abundanceToCount, LengthToAngstrom, toAngstrom } from '../format/units.
 import { superstructureDoc, validate, validateManifest } from '../format/validate.js';
 import { contentHash } from '../ir/hash.js';
 import { type IR, type IRLook, type IRNode, type IRShape, type IRView, placementSets } from '../ir/ir.js';
-import type { PlacementType } from '../ir/placements.js';
+import { type PlacementType, rotationOf } from '../ir/placements.js';
 import { evaluateMesoQL, intersectRuns, lociSphere, type MesoLoci, runsSize, typeRuns } from '../ir/loci.js';
 import { parseMesoQL } from '../format/mesoql.js';
-import { meshArea } from '../resolvers/geometry.js';
-import { rotationOf } from '../resolvers/precomputed.js';
-import { DefaultReaders, readerFor } from './readers.js';
+import { DefaultReaders, meshArea, readerFor } from './readers.js';
 import { level0IR, type TileProvider } from './streaming.js';
 import type {
   LoadedResource,
