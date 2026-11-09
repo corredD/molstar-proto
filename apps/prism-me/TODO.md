@@ -12,7 +12,6 @@ the app, in his words; the lane turns it into spec and tests.
 
 - **MesoViewSpec usable like Seq\*** (Ludo, 2026-11-08: "both, app first"; "library lanes only for now"). Running:
   `mvs-prism-design`, `mvs-skill-cli` (and `mesoviewspec-streaming`). Queued, in order:
-  - `mvs-entries`: per-folder package entries and a layer test. After streaming merges.
   - The app lanes, from `mvs-prism-design`'s briefs, once Ludo decides their base (a PR of `me/mesoviewspec` to prism-me
     first, or stacking on it).
 

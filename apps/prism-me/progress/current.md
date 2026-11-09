@@ -18,13 +18,15 @@ is not built is [../TODO.md](../TODO.md).
     its branch): a Seq\*-style `_spec/` (README, topic files, generated reference, a spec check). Sonnet.
   - `mvs-prism-design`: done, merged into `me/mesoviewspec` (c49e6a236): `packages/mesoscale/_spec/prism.md`, the app
     lanes 0-8 (~3,500 lines) and the questions for Ludo and David (its §11).
-  - `mvs-patch` (`me/mvs-patch` from `me/mesoviewspec`, port 6009, [brief](2026-11-08-mvs-patch.md) on its branch):
-    prism.md lane 1, patches over a document. Sonnet. Rebases on streaming before its gate.
+  - `mvs-patch`: done, merged into `me/mesoviewspec`: patches (applyPatch with inverses, diff, S-expression spelling),
+    look `id` and `emissive`; story MesoViewSpec › Patches. Gate: 18 confirmed, fixed but `diff` on mass reorders (S5).
   - `mvs-skill-cli`: done, merged into `me/mesoviewspec`: `meso-validate`, `-compile`, `-print`, `-trace`, `-query`;
     `_spec/reference/mesoql-skill.md` generated (10/10 on a blind eval before the review rework). Gate: all must- and
     should-fix fixed.
   - `mvs-builder` (`me/mvs-builder` from `me/mesoviewspec`, [brief](2026-11-08-mvs-builder.md) on its branch): a typed
     builder (refs, MesoQL helpers), the examples rebuilt `deepEqual`. Sonnet, the API on Opus.
+  - `mvs-entries` (`me/mvs-entries` from `me/mesoviewspec`, [brief](2026-11-08-mvs-entries.md) on its branch): one entry
+    per folder, the folder graph and its layers test. Sonnet, the graph on Opus.
   - **#60** (GPU culling past 65,535 workgroups) and **#61** (cellPACK fibres as tubes) merged by Ludo 2026-11-08; lanes
     closed, worktrees removed (and `meso-showcase`'s). Master ports kept as local branches only
     (`fix/cull-dispatch-rows` a3d8c396d, `fix/fibers-targeted` bb2dbced6); Ludo: the fixes go to prism-me, not upstream.
