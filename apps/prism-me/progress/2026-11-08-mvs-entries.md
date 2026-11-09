@@ -32,19 +32,67 @@
 
 ## Built
 
+- `@molstar/meso-spec`: an `index.ts` per folder (`format`, `ir`, `runtime`, `resolvers`, `examples`, `cli`), explicit
+  exports; `package.json` `exports` are those six, `./_test/*: null`, `sideEffects: false`; `./*` and `.` and the root
+  `src/index.ts` gone. Cross-folder imports in `src/` name the entries (one commit); Biome's `noRestrictedImports` lets
+  the package import its own entries.
+- `@molstar/meso-molstar`: `src/index.ts` (`.`), `./*` gone, `./_test/*` and `./_stories/*` hidden; its imports of
+  meso-spec name the entries (one commit).
+- Behaviour-neutral moves that break the runtime/resolvers cycle: `mulQuat`, `rotationOf` to `ir/placements`; `meshArea`
+  to `runtime/readers`. Exported `Anchor`, `At`, `ListKey`, `Kind`, `StreamNode`, `SetBounds`.
+- `spec/src/_test/layers.test.ts` (quick): the graph, entries only across folders, no `export *`, the six entries; with
+  a check that the check fails on a wrong edge. `spec/src/_test/exports.test.ts` (heavy): the contract (found
+  `SetBounds`; fixed in its own commit).
+- design.md 12.2 Entries, README lines. Checks run: `tsc -b`, `tsc --noEmit -p apps/prism-me`, `lint`,
+  `check:workspace`, `test:unit`/`medium`/`heavy` of `packages/mesoscale`, Storybook dev: the stories' modules and their
+  meso-spec entries resolve (HTTP 200; index.json 422 entries, 20 mesoscale).
+- Note for `mvs-builder`: not merged at the time of step 3 (`git log me/mesoviewspec` ended at the R5 opt-in). When it
+  merges: add `builder` to `ALLOWED` in `layers.test.ts`, a `./builder` export block and `builder/index.ts`, a row in
+  design.md 12.2, and the `@molstar/meso-spec/builder` negation in `biome.json`.
+
 ## Decided
 
-Opus (design step; the Sonnet inventory first), 2026-11-08. `mvs-builder` had not merged into `me/mesoviewspec` when the lane started: no `/builder` entry; add it when that lane merges (folder `builder` may import `format`, `ir`, `runtime`, `resolvers` as it needs; one line in the layers test's ALLOWED, one export block, one table row).
+Opus (design step; the Sonnet inventory first), 2026-11-08. `mvs-builder` had not merged into `me/mesoviewspec` when the
+lane started: no `/builder` entry; add it when that lane merges (folder `builder` may import `format`, `ir`, `runtime`,
+`resolvers` as it needs; one line in the layers test's ALLOWED, one export block, one table row).
 
-- **Graph** (`@molstar/meso-spec`): `format` <- nothing; `ir` <- `format`; `runtime` <- `format`, `ir`; `resolvers` <- `format`, `ir`, `runtime`; `examples` (with `examples/fixtures`) <- `format`, `runtime`, `resolvers`; `cli` <- `format`, `ir`, `runtime`, `resolvers`, and the only folder with `node:*`.
-- **Where the code disagreed with the brief:** the brief expected `runtime <- resolvers`; the code has `resolvers -> runtime` (every resolver implements runtime's `Resolver` contract and uses `runtime/random`, `runtime/readers`) and runtime leaned back on three pure helpers (a cycle). Fix, behaviour-neutral: `mulQuat` and `rotationOf` move from `resolvers/precomputed` to `ir/placements`; `meshArea` from `resolvers/geometry` to `runtime/readers`. Also: `examples` imports no `ir`; `examples/fixtures` is part of `/examples`.
-- **Entries:** `/format`, `/ir`, `/runtime`, `/resolvers`, `/examples`, `/cli` for meso-spec, each an `index.ts` of explicit `export { ... } from` (no `export *`); internals (unit tables, `canonicalJson`, `readerFor`, the individual resolvers, `geometry`, `packing`) stay unexported and tests reach them by path. `./*` and `.` removed, the root `src/index.ts` deleted (nothing imports it), `./_test/*: null`, `sideEffects: false`. `@molstar/meso-molstar`: one `.` entry (session, adapter, camera, MolViewSpec export, particle list); `./*` removed; stories and tests import their package relatively and meso-spec through entries.
-- **Enforcement:** Biome keeps banning Mol* in `spec/src` with negations for the package's own entries; `_test/layers.test.ts` (folder graph, no `export *`); a heavy `_test/exports.test.ts` (every type a public signature names is exported by some entry; port of Seq*'s `contractGaps`).
-- **Spec:** design.md 12.2 Entries (table: entry, holds, imports); `packages/mesoscale/README.md` lines. `_spec/README.md` does not exist yet (`mvs-spec-reference` has not merged).
+- **Graph** (`@molstar/meso-spec`): `format` <- nothing; `ir` <- `format`; `runtime` <- `format`, `ir`; `resolvers` <-
+  `format`, `ir`, `runtime`; `examples` (with `examples/fixtures`) <- `format`, `runtime`, `resolvers`; `cli` <-
+  `format`, `ir`, `runtime`, `resolvers`, and the only folder with `node:*`.
+- **Where the code disagreed with the brief:** the brief expected `runtime <- resolvers`; the code has
+  `resolvers -> runtime` (every resolver implements runtime's `Resolver` contract and uses `runtime/random`,
+  `runtime/readers`) and runtime leaned back on three pure helpers (a cycle). Fix, behaviour-neutral: `mulQuat` and
+  `rotationOf` move from `resolvers/precomputed` to `ir/placements`; `meshArea` from `resolvers/geometry` to
+  `runtime/readers`. Also: `examples` imports no `ir`; `examples/fixtures` is part of `/examples`.
+- **Entries:** `/format`, `/ir`, `/runtime`, `/resolvers`, `/examples`, `/cli` for meso-spec, each an `index.ts` of
+  explicit `export { ... } from` (no `export *`); internals (unit tables, `canonicalJson`, `readerFor`, the individual
+  resolvers, `geometry`, `packing`) stay unexported and tests reach them by path. `./*` and `.` removed, the root
+  `src/index.ts` deleted (nothing imports it), `./_test/*: null`, `sideEffects: false`. `@molstar/meso-molstar`: one `.`
+  entry (session, adapter, camera, MolViewSpec export, particle list); `./*` removed; stories and tests import their
+  package relatively and meso-spec through entries.
+- **Enforcement:** Biome keeps banning Mol* in `spec/src` with negations for the package's own entries;
+  `_test/layers.test.ts` (folder graph, no `export *`); a heavy `_test/exports.test.ts` (every type a public signature
+  names is exported by some entry; port of Seq*'s `contractGaps`).
+- **Spec:** design.md 12.2 Entries (table: entry, holds, imports); `packages/mesoscale/README.md` lines.
+  `_spec/README.md` does not exist yet (`mvs-spec-reference` has not merged).
 
 ## Learned
 
+- The brief's expected graph had the runtime/resolvers edge backwards; the real code was a cycle of three pure helpers.
+  `examples` never imports `ir`.
+- Biome's `!@molstar/...` negations are needed for the package's own entries once it imports itself; `tsc` resolves
+  self-references through the `molstar-src` custom condition.
+- `check:workspace` does not look at private packages' `exports`; no inventory change was needed. `tsc -b` (tsgo)
+  panicked once on the first run and passed on the second.
+- `pnpm -C storybook build --test` was not run; `storybook dev` plus fetching the stories' transformed modules shows the
+  entries resolve.
+
 ## Size
+
+Brief: ~250 production lines. Built: ~640 added, ~315 removed in `packages/mesoscale` outside tests and specs, of which
+~310 are the seven index files (the format's ~50 document types are named one by one, as `export *` is not allowed) and
+~330 changed lines are the mechanical import rewrites (merged imports). Over the brief by that: named exports and
+rewrites.
 
 ## Review
 
