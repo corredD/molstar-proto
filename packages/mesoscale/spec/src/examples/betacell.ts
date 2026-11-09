@@ -35,7 +35,7 @@ export function betaCellDoc(granules = 120, detail: 'parts' | 'entity' = 'parts'
     kind: 'recipe',
     format: 'cellpack-gpu-serialized',
     label: 'cellPACKgpu insulin granule recipe (trimmed)',
-    uri: 'examples/fixtures/isg.cellpack-gpu.json',
+    uri: '../spec/src/examples/fixtures/isg.cellpack-gpu.json',
   });
 
   b.add('evidence', isg.evidence);

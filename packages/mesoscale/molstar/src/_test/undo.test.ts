@@ -55,7 +55,7 @@ function explorerSpec(withStub: boolean) {
 /** The served resources by address, for the one test that opens by URL. */
 function fakeResources() {
   const served = new Map([
-    [`${Base}examples/fixtures/${RecipeName}`, Recipe],
+    [`https://example.org/spec/src/examples/fixtures/${RecipeName}`, Recipe],
     [`${Base}fixtures/catalase_picks.star`, Picks],
     [`${Base}fixtures/membrane.obj`, Membrane],
     [`${Base}exosome.mesoviewspec.json`, JSON.stringify(Original)],

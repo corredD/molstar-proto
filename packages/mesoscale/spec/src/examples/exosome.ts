@@ -65,7 +65,7 @@ export function exosomeDoc(options: { relax?: boolean } = {}): MesoViewSpecDoc {
     kind: 'recipe',
     format: 'cellpack-gpu-serialized',
     label: 'cellPACKgpu exosome recipe (exo_serialized.json, trimmed)',
-    uri: 'examples/fixtures/exosome.cellpack-gpu.json',
+    uri: '../spec/src/examples/fixtures/exosome.cellpack-gpu.json',
   });
   const rTilts = b.resource({
     id: 'r.tilts',

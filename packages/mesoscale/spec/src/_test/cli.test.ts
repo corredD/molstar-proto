@@ -4,7 +4,7 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { run as compileCmd } from '../cli/meso-compile.js';
@@ -12,7 +12,7 @@ import { run as printCmd } from '../cli/meso-print.js';
 import { run as queryCmd } from '../cli/meso-query.js';
 import { run as traceCmd } from '../cli/meso-trace.js';
 import { run as validateCmd } from '../cli/meso-validate.js';
-import type { CliIO } from '../cli/io.js';
+import { type CliIO, resourceLoader } from '../cli/io.js';
 import { readData, DocumentCodec, IRCodec, printData } from '../format/sexpr.js';
 import { evaluateMesoQL, lociToIds } from '../ir/loci.js';
 import { compile } from '../runtime/runtime.js';
@@ -24,7 +24,6 @@ import { parseMesoQL } from '../format/mesoql.js';
 
 const root = fileURLToPath(new URL('../../../', import.meta.url)); // packages/mesoscale
 const BETA = 'examples/betacell.mesoviewspec.json';
-const BASE = ['--base', 'spec/src'];
 
 function memory(files: Record<string, string> = {}, stdin = '') {
   const o = { out: '', err: '' };
@@ -115,7 +114,7 @@ describe('meso-trace', () => {
 describe('meso-compile', () => {
   it('makes examples/betacell.ir.json', async () => {
     const { io, o } = memory();
-    expect(await compileCmd([BETA, ...BASE, '--json'], io)).toBe(0);
+    expect(await compileCmd([BETA, '--json'], io)).toBe(0);
     expect(JSON.parse(o.out)).toEqual(JSON.parse(readFileSync(`${root}examples/betacell.ir.json`, 'utf8')));
     expect(o.err).toMatch(/copies, \d+ resolver run/);
   });
@@ -124,9 +123,7 @@ describe('meso-compile', () => {
 describe('meso-query', () => {
   it('counts the copies an address picks, per population, with the first ids', async () => {
     const { io, o } = memory();
-    expect(await queryCmd([BETA, '(part (copies p.granules 12) p.Vamp2)', ...BASE, '--json', '--limit', '3'], io)).toBe(
-      0,
-    );
+    expect(await queryCmd([BETA, '(part (copies p.granules 12) p.Vamp2)', '--json', '--limit', '3'], io)).toBe(0);
     const r = JSON.parse(o.out);
     expect(r.address).toBe('(part (copies p.granules 12) p.Vamp2)');
     expect(r.copies).toBeGreaterThan(0);
@@ -137,20 +134,53 @@ describe('meso-query', () => {
 
   it('reads the address from stdin, as an S-expression result', async () => {
     const { io, o } = memory({}, '(population p.ribosomes)\n');
-    expect(await queryCmd([BETA, '-', ...BASE, '--limit', '0'], io)).toBe(0);
+    expect(await queryCmd([BETA, '-', '--limit', '0'], io)).toBe(0);
     const v = readData(o.out, IRCodec).value as { copies: number };
     expect(v.copies).toBeGreaterThan(0);
   });
 
   it('compile errors are reported with the counts: a resource that cannot load exits 1', async () => {
-    const { io, o } = memory();
-    expect(await queryCmd([BETA, '(all)', '--json'], io)).toBe(1); // no --base: the recipe is not found
+    const doc = JSON.parse(readFileSync(`${root}${BETA}`, 'utf8'));
+    doc.resources[0].uri = 'examples/fixtures/isg.cellpack-gpu.json'; // not relative to the document's folder
+    const { io, o } = memory({ 'bad.json': JSON.stringify(doc) });
+    expect(await queryCmd(['bad.json', '(all)', '--json'], io)).toBe(1);
     expect(o.err).toContain('resource.unavailable');
+    const base = memory({ 'bad.json': JSON.stringify(doc) });
+    expect(await queryCmd(['bad.json', '(all)', '--json', '--base', 'spec/src'], base.io)).toBe(0); // a --base is tried
+  });
+
+  it('every committed example compiles with no --base and no resource.unavailable', async () => {
+    const names = readdirSync(`${root}examples`).filter((f) => f.endsWith('.mesoviewspec.json'));
+    expect(names.length).toBeGreaterThanOrEqual(5);
+    for (const f of names) {
+      const { io, o } = memory();
+      await compileCmd([`examples/${f}`, '--json'], io); // some exit 1 for their own reasons (constraints, resolvers)
+      expect(o.err, f).not.toContain('resource.unavailable');
+      if (f.startsWith('exosome')) expect(o.err).toMatch(/90736 copies/);
+    }
+  });
+
+  it('resources: the document folder, a --base before it as an override, never the cwd', () => {
+    const doc = { resources: [{ id: 'r', uri: 'x/r.json' }] } as never;
+    const files: Record<string, string> = { '/w/d/x/r.json': '{"w":"doc"}', '/w/b/x/r.json': '{"w":"base"}' };
+    const io = {
+      cwd: '/w/c',
+      read: (p: string) =>
+        files[p] ??
+        (() => {
+          throw new Error('no');
+        })(),
+    } as never;
+    expect(resourceLoader(io, '../d/doc.json', doc, [])('r')).toEqual({ w: 'doc' });
+    expect(resourceLoader(io, '../d/doc.json', doc, ['../b'])('r')).toEqual({ w: 'base' });
+    files['/w/c/x/r.json'] = '{"w":"cwd"}';
+    delete files['/w/d/x/r.json'];
+    expect(resourceLoader(io, '../d/doc.json', doc, [])('r')).toBeUndefined();
   });
 
   it('an address that picks nothing warns with mesoql.empty, whichever symbol emptied it', async () => {
     const { io, o } = memory();
-    expect(await queryCmd([BETA, '(and (population p.ribosomes) (population p.granules))', ...BASE], io)).toBe(0);
+    expect(await queryCmd([BETA, '(and (population p.ribosomes) (population p.granules))'], io)).toBe(0);
     expect(o.err).toMatch(/query#: warning mesoql\.empty/);
   });
 
@@ -176,7 +206,7 @@ describe('the commands against the library', () => {
   it('meso-query (part ...) is evaluateMesoQL and lociToIds', async () => {
     const q = '(part (copies p.granules 12) p.Vamp2)';
     const { io, o } = memory();
-    await queryCmd([BETA, q, ...BASE, '--json', '--limit', '5'], io);
+    await queryCmd([BETA, q, '--json', '--limit', '5'], io);
     const doc = JSON.parse(readFileSync(`${root}${BETA}`, 'utf8'));
     const r = await compile(doc, { resolvers: DefaultResolvers, load: (id) => BetaCellResources[id]?.() });
     const expr = parseMesoQL(q).expr!;
@@ -196,7 +226,7 @@ describe('the commands against the library', () => {
 
   it('a malformed JSON resource is resource.unavailable, exit 1, not a bare parse error', async () => {
     const { io, o } = memory({ [`${root}spec/src/examples/fixtures/isg.cellpack-gpu.json`]: '{' });
-    expect(await compileCmd([BETA, ...BASE], io)).toBe(1);
+    expect(await compileCmd([BETA], io)).toBe(1);
     expect(o.err).toContain('resource.unavailable');
   });
 
