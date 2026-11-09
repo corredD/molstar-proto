@@ -29,11 +29,47 @@
 
 ## Built
 
+- `spec/src/builder/` (refs, ids, query, builder, index): `createMesoDocument`, typed refs, id registry, `q`, `build()`.
+- Tests: `_test/builder.test.ts` (ids, document, `q` against the symbol table), `_test/builder.types.test.ts` (the
+  `@ts-expect-error` file, run by `npx tsc -p packages/mesoscale/spec/tsconfig.test.json`),
+  `_test/builder-examples.test.ts` (the five examples and three argument variants equal their frozen oracles by value
+  and as S-expression text).
+- The five paired examples rewritten with the builder; `packages/mesoscale/examples/` unchanged (`git diff` empty).
+- design.md §3.15 Builder (§3.14 was taken, so appended as 3.15).
+
 ## Decided
+
+- **API** (Opus subagent, 2026-11-08): refs are branded id strings (kind + scope `doc`/`inner`, so an inner population
+  is not a doc one, as `validate`'s two indexes); a ref is a string at run time so `q` strings, shared `looks` arrays
+  and spread nodes work with no resolve pass (Seq\*'s lazy handles would need one). A string becomes a ref only through
+  `get(kind, id)` and `add(section, nodes)`; MesoQL slots stay `MesoQL` strings. Entity refs carry their site names.
+  Inputs derive from doc.ts types (`In<T, R>` replaces the id-holding fields), so the `Look` lane's change flows
+  through.
+- **Ids:** label slug under the kind's prefix, else from what the node refers to, else a per-builder counter; `-2`, `-3`
+  when taken; explicit ids kept (duplicates are `validate`'s `id.duplicate`, never thrown). No module state.
+- **`q`** hand-written (typed by ref kind); a test over `MesoQLSymbols` keeps it in sync and round-trips through
+  `parseMesoQL`/`printMesoQL`.
+- **Oracle** (differs from the brief: "the old literal in the test"): the committed `examples/*.mesoviewspec.json` plus
+  `_test/fixtures/builder-oracles.json` for the arguments' variants; frozen before the rewrite, compared with
+  `toStrictEqual` through JSON (importer nodes carry undefined keys) and by `printData` text (key order).
+- **Type tests** run by `tsconfig.test.json` in the spec package (tsconfig.json excludes `_test`); not in `tsc -b`. The
+  package `typecheck` script is not changed (the entries lane edits that package.json).
 
 ## Learned
 
+- Explicit ids dominate the rewrites: a label's slug rarely equals the short ids the literals use (`e.granule` for
+  "insulin secretory granule"), so the builder pays through refs, `q`, shared looks and checked slots, not line count.
+- Sections are emitted in document order, so evidence and resources are made first and later nodes cite their refs; only
+  true cycles (activity <-> alignment/model, an entity's own site address) need `get`.
+- An importer's nodes (cellPACKgpu) have plain-string populations: `add` takes them verbatim; typing them would need
+  casts.
+
 ## Size
+
+Production lines: builder/ 605 (refs 182, builder 271, query 67, ids 69, index 16) against ~450: over by ~155, the room
+went to the doc.ts-derived input types (refs.ts) and to the doc-order emission. Examples: betacell 212 -> 176, nucleoid
+115 -> 119, gallery 187 -> 179, exosome 328 -> 332, yeast 419 -> 448 (1261 -> 1254): not shorter overall, the brief's
+"reads shorter" holds only for betacell (shared looks, `q`).
 
 ## Review
 
