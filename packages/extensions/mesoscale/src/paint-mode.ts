@@ -115,6 +115,8 @@ export function placeOf(settings: PaintSettings, upright: boolean): PaintPlace {
 
 /** The pixels between the picks a normal is read from (the canvas's pick is half resolution: two pick pixels) */
 const NormalStep = 4;
+/** The frames the copy under the pointer waits for a pending pick before it lets it go (review N5) */
+const MaxPendingFrames = 30;
 /** The pixels between the points of a stroke's way read in one frame */
 const WayStep = 4;
 
@@ -178,6 +180,7 @@ const _t = Vec3();
 const _s = Vec3();
 const _sa = Vec3();
 const _sb = Vec3();
+const _from = Vec3();
 
 /** The layer of a paint mode over `canvas`, in the current scope: its gesture, its preview, its keys */
 function paintLayer(mode: PaintMode, host: PaintHost, canvas: HTMLElement, brush: PaintBrushTarget) {
@@ -254,14 +257,25 @@ function paintLayer(mode: PaintMode, host: PaintHost, canvas: HTMLElement, brush
       if (upright) host.refine(_point);
     }
     const k = s.positions.length;
-    if (k) {
-      Vec3.set(_a, s.positions[k - 3], s.positions[k - 2], s.positions[k - 1]);
-      if (Vec3.distance(_a, _point.position) < spacing) return true;
-    }
     const p = _point.position;
     const n = _point.normal;
-    // a fibre's way: a line from its last point
-    if (fiber && k) drawLink(_a, p);
+    if (k) {
+      Vec3.set(_a, s.positions[k - 3], s.positions[k - 2], s.positions[k - 1]);
+      const d = Vec3.distance(_a, p);
+      if (d < spacing) return true;
+      if (fiber) {
+        // a fibre's points exactly a step apart along the way read (review S1): as many as fit from its last point
+        Vec3.copy(_from, _a);
+        for (let t = spacing; t <= d; t += spacing) {
+          Vec3.lerp(_b, _from, p, t / d);
+          drawLink(_a, _b);
+          s.positions.push(_b[0], _b[1], _b[2]);
+          s.normals.push(n[0], n[1], n[2]);
+          Vec3.copy(_a, _b);
+        }
+        return true;
+      }
+    }
     s.positions.push(p[0], p[1], p[2]);
     s.normals.push(n[0], n[1], n[2]);
     drawDisc(p, n);
@@ -351,13 +365,21 @@ function paintLayer(mode: PaintMode, host: PaintHost, canvas: HTMLElement, brush
   let hoverX = 0;
   let hoverY = 0;
   let hovering = false;
+  /** Frames a pending pick was read again for this place: a pick that stays pending (a paused canvas) is let go */
+  let retries = 0;
   const follow = frames(() => {
     if (!hovering || passing) return cursor.hide();
     if (where === 'depth') {
       if (!atDepth(hoverX, hoverY)) return cursor.hide();
     } else {
+      // still during a stroke on a surface: a move redraws, and the stroke's next pick would draw the pick pass again
+      // (review S2); the 2D trail shows the stroke
+      if (stroke) return;
       const r = surfaceAt(host.identify, hoverX, hoverY, NormalStep, host.eye(_eye), _point);
-      if (r === 'pending') return follow.request();
+      if (r === 'pending') {
+        if (++retries < MaxPendingFrames) follow.request();
+        return;
+      }
       if (!r) return cursor.hide();
       if (upright) host.refine(_point);
     }
@@ -370,6 +392,7 @@ function paintLayer(mode: PaintMode, host: PaintHost, canvas: HTMLElement, brush
       hoverX = e.offsetX;
       hoverY = e.offsetY;
       hovering = true;
+      retries = 0;
       follow.request();
     },
     { passive: true },
@@ -445,6 +468,8 @@ function paintLayer(mode: PaintMode, host: PaintHost, canvas: HTMLElement, brush
     if (alt === passing || (alt && stroke)) return;
     passing = alt;
     layer.style.pointerEvents = alt ? 'none' : '';
+    // the pointer moves unseen while the camera has it: the copy shows again at its next move over the layer (review N4)
+    if (alt) hovering = false;
     follow.request();
   };
   on<KeyboardEvent>(

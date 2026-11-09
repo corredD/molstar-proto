@@ -332,10 +332,10 @@ describe('paint mode', () => {
 
   it("a brush with fibres paints a fibre by default, its points its fibres' step apart; Fibre overrides it", () => {
     for (const [fiberStep, setting, painted, points] of [
-      [3, 'auto', true, 9],
+      [3, 'auto', true, 11],
       [undefined, 'auto', false, 3],
       [3, 'off', false, 3],
-      [undefined, 'on', true, 3],
+      [undefined, 'on', true, 4],
     ] as const) {
       const { mode, layer, fibers, strokes } = setup(0, { upright: true, fiberStep });
       mode.set({ fiber: setting });
@@ -346,12 +346,36 @@ describe('paint mode', () => {
       el.dispatchEvent(pointer('pointermove', { x: 40, y: 10 }));
       el.dispatchEvent(pointer('pointerup', { x: 40, y: 10 }));
       expect(fibers[0]).toBe(painted);
-      // 30 Å read every 3.75 px (1 Å a pixel): each read kept at its fibres' step (3 Å), every 10 Å (a copy's diameter)
-      // else
-      expect(strokes[0].positions.length / 3, `${fiberStep} ${setting}`).toBe(points);
+      // 30 Å: a fibre's points exactly its fibres' step apart (3 Å), whatever the reads' (review S1); copies every
+      // 10 Å (a copy's diameter) else
+      const ps = strokes[0].positions;
+      expect(ps.length / 3, `${fiberStep} ${setting}`).toBe(points);
+      if (fiberStep && painted) for (let i = 3; i < ps.length; i += 3) expect(ps[i] - ps[i - 3]).toBeCloseTo(3, 5);
       mode.stop();
       document.body.innerHTML = '';
     }
+  });
+
+  it('the copy under the pointer stays still during a stroke on a surface: no redraw of the pick a frame (review S2)', async () => {
+    const { mode, layer, copy } = setup(0, { upright: true });
+    mode.start(brush);
+    const el = layer();
+    vi.spyOn(MouseEvent.prototype, 'offsetX', 'get').mockImplementation(function (this: MouseEvent) {
+      return this.clientX;
+    });
+    vi.spyOn(MouseEvent.prototype, 'offsetY', 'get').mockImplementation(function (this: MouseEvent) {
+      return this.clientY;
+    });
+    const frame = () => new Promise((resolve) => setTimeout(resolve, 40));
+    el.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, clientX: 10, clientY: 10 }));
+    await frame();
+    expect(copy.at).toEqual([10, -10, 0]);
+    el.dispatchEvent(pointer('pointerdown', { x: 10, y: 10 }));
+    el.dispatchEvent(pointer('pointermove', { x: 40, y: 10 }));
+    await frame();
+    expect(copy.at).toEqual([10, -10, 0]);
+    el.dispatchEvent(pointer('pointerup', { x: 40, y: 10 }));
+    mode.stop();
   });
 
   it('Esc leaves the mode: its layer, its listeners and its brush gone', () => {
