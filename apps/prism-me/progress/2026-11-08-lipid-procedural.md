@@ -427,22 +427,33 @@ center removes one half of the image in all four looks (cutter spheres, cutter t
 other half kept. Headless without WebGPU a membrane draws nothing, so `clipping.add` refuses it there ("draws nothing
 yet"); the app's test checks the menu item and that the cell is clippable.
 
+**Item 6 end to end (`3cbb1d081`).** Ludo at 1354, after the 4c note: "we still cant cut away". Reproduced through the
+viewer's own `clipping.add` on the membrane's node on Dawn (`lipid-clip.webgpu.test.ts`): before `ae86ffed4` it fails
+("No representation draws it"), after it the near half is cut away (Prism's new plane faces the camera: the inside is
+seen, with its cap), both methods. A membrane wrapped by a page built before `ae86ffed4` has no `clip` in its params:
+reload 1354 and wrap again.
+
+**Gate finding of this session (images, before the reviewer's): Both close up hid half the lipids.** The far surface at
+the mean of the conformers' tops lay above 23 of the CHARMM-GUI patch's 40 outer conformers' tops; drawn beneath in Both
+it hid them (`r4b-cow-x100-cutter-both-close.png` before, sparse heads poking through; the same view with Spheres
+dense). Test `e95ec84a3` (failing), fix `deb51ee83`: the surface at the lowest top (5.6 Å under the mean, still at the
+heads).
+
 ## Round 4c brief (Ludo, 2026-11-08, after trying 4b items 1–3; queued after 4b's gate)
 
 **Asked.** "the transition texture / spheres is not smooth yet, finally we still cant cut away, and color quickly (all
 residues / the object) it should follow same coloring as particles (by zoom, etc..)".
 
-7. **A smooth switch between spheres and surface.** Today the triangle set changes at `spheresPx` and the surface
-   colour (vertex colours) differs from the coarse sphere levels' look. Wanted: no visible line or pop. Options for
-   the checkpoint: a screen-door/dither fade over a px band (both drawn, each at its share), the surface's colours
-   matched to the spheres at the switch (the same species weights the coarse levels draw), the coarse levels' sizes
-   matched to the surface's head height. A test or an image metric: the mean colour and luminance across the switch
-   band within a bound.
+7. **A smooth switch between spheres and surface.** Today the triangle set changes at `spheresPx` and the surface colour
+   (vertex colours) differs from the coarse sphere levels' look. Wanted: no visible line or pop. Options for the
+   checkpoint: a screen-door/dither fade over a px band (both drawn, each at its share), the surface's colours matched
+   to the spheres at the switch (the same species weights the coarse levels draw), the coarse levels' sizes matched to
+   the surface's head height. A test or an image metric: the mean colour and luminance across the switch band within a
+   bound.
 8. **Colouring as a particle list.** The quick colour actions on a membrane (the object's colour, all at once) and the
    particle colour schemes (by entity = species, uniform, palettes, colours by zoom `ZoomColors`) apply to a membrane
-   through the same operations and controls as a particle list (prism-me AGENTS.md: particles for everything
-   mesoscale; ui.md the four places), spheres and far surfaces alike. A test per operation: applied to a membrane it
-   changes what is drawn in both looks.
-(Cut away = 4b item 6, Clip on a membrane: must land in 4b.)
+   through the same operations and controls as a particle list (prism-me AGENTS.md: particles for everything mesoscale;
+   ui.md the four places), spheres and far surfaces alike. A test per operation: applied to a membrane it changes what
+   is drawn in both looks. (Cut away = 4b item 6, Clip on a membrane: must land in 4b.)
 
 **Size and model.** ~300 production lines; Opus. Gate on the round's diff.
