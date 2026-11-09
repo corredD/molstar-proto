@@ -36,7 +36,7 @@ const RecipeName = 'exosome.cellpack-gpu.json';
 /** What the fake serves, by address; `asked` is every address it was asked for. */
 function fakeResources() {
   const served = new Map([
-    [`${Base}examples/fixtures/${RecipeName}`, Recipe],
+    [`https://example.org/spec/src/examples/fixtures/${RecipeName}`, Recipe],
     [`${Base}fixtures/catalase_picks.star`, Picks],
     [`${Base}fixtures/membrane.obj`, Membrane],
     [`${Base}exosome.mesoviewspec.json`, JSON.stringify(exosomeDoc())],
@@ -101,7 +101,7 @@ describe('mesoviewspec.open', () => {
     const { v, fake, run } = await open();
     const r = await run('mesoviewspec.open', { url: `${Base}exosome.mesoviewspec.json` });
     expect(r.ok).toBe(true);
-    expect(fake.asked).toContain(`${Base}examples/fixtures/${RecipeName}`);
+    expect(fake.asked).toContain(`https://example.org/spec/src/examples/fixtures/${RecipeName}`);
     expect(fake.asked).toContain(`${Base}fixtures/catalase_picks.star`);
     expect(lists(v)).toBeGreaterThan(0);
   });
@@ -135,7 +135,7 @@ describe('mesoviewspec.open', () => {
       const { v, fake, run } = await open();
       const r = await run('mesoviewspec.open', { url: '/d/exosome.mesoviewspec.json' });
       expect(r.ok).toBe(true);
-      expect(fake.asked).toContain(`${Base}examples/fixtures/${RecipeName}`);
+      expect(fake.asked).toContain(`https://example.org/spec/src/examples/fixtures/${RecipeName}`);
       expect(lists(v)).toBeGreaterThan(0);
     } finally {
       vi.unstubAllGlobals();
