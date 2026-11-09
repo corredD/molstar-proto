@@ -8,11 +8,10 @@ import type { Meta, StoryObj } from '@storybook/web-components-vite';
 import { story } from '@molstar/prism-ui/testing/index';
 import { RealViewerStory } from '@molstar/prism-viewer/testing/real-viewer';
 import type { PrismViewer } from '@molstar/prism-viewer/viewer';
-import { scaleDoc, type ScaleKind } from '@molstar/meso-spec/examples/scale';
-import { placementSets } from '@molstar/meso-spec/ir/ir';
-import { placementBytes } from '@molstar/meso-spec/ir/placements';
-import { DefaultResolvers } from '@molstar/meso-spec/resolvers/index';
-import { compile, updateView } from '@molstar/meso-spec/runtime/runtime';
+import { scaleDoc, type ScaleKind } from '@molstar/meso-spec/examples';
+import { placementBytes, placementSets } from '@molstar/meso-spec/ir';
+import { DefaultResolvers } from '@molstar/meso-spec/resolvers';
+import { compile, updateView } from '@molstar/meso-spec/runtime';
 import { PrismMesoAdapter } from '../prism-adapter.js';
 import { h, panel, Styles } from './ui.js';
 

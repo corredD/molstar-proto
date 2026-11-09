@@ -4,12 +4,11 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import { exosomeDoc, ExosomeResources } from '@molstar/meso-spec/examples/exosome';
-import { tiledFixture } from '@molstar/meso-spec/examples/streaming';
-import type { MesoViewSpecDoc } from '@molstar/meso-spec/format/doc';
-import { type IR, placementSets } from '@molstar/meso-spec/ir/ir';
-import type { CommitReport, RendererAdapter } from '@molstar/meso-spec/runtime/adapter';
-import { DefaultResolvers } from '@molstar/meso-spec/resolvers/index';
+import { exosomeDoc, ExosomeResources, tiledFixture } from '@molstar/meso-spec/examples';
+import type { MesoViewSpecDoc } from '@molstar/meso-spec/format';
+import { type IR, placementSets } from '@molstar/meso-spec/ir';
+import type { CommitReport, RendererAdapter } from '@molstar/meso-spec/runtime';
+import { DefaultResolvers } from '@molstar/meso-spec/resolvers';
 import { describe, expect, it } from 'vitest';
 import { MesoSession } from '../session.js';
 

@@ -4,24 +4,23 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import type { MesoViewSpecDoc } from '@molstar/meso-spec/format/doc';
-import { type Issue, issue } from '@molstar/meso-spec/format/issues';
-import type { IR } from '@molstar/meso-spec/ir/ir';
-import { type CommitReport, planCommit, type RendererAdapter } from '@molstar/meso-spec/runtime/adapter';
-import type { ResolveOutput } from '@molstar/meso-spec/runtime/resolver';
+import { type Issue, issue, type MesoViewSpecDoc } from '@molstar/meso-spec/format';
+import type { IR } from '@molstar/meso-spec/ir';
 import {
   classifyEdit,
+  type CommitReport,
   compile,
   type CompileResult,
+  planCommit,
+  type RendererAdapter,
+  type ResolveOutput,
   type RuntimeOptions,
-  updateView,
-} from '@molstar/meso-spec/runtime/runtime';
-import {
   type StreamOptions,
   type StreamPlan,
   type StreamStats,
   TileStreamer,
-} from '@molstar/meso-spec/runtime/streaming';
+  updateView,
+} from '@molstar/meso-spec/runtime';
 
 // A session (design.md §5, §6.1): one document, edited, with the runtime's cache and an adapter. An edit is classified
 // first: a view edit (looks, camera, selection) derives a new view over the same IR and commits it; a model edit

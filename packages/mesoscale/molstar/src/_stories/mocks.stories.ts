@@ -7,10 +7,9 @@
 import type { Meta, StoryObj } from '@storybook/web-components-vite';
 import { story } from '@molstar/prism-ui/testing/index';
 import { RealViewerStory } from '@molstar/prism-viewer/testing/real-viewer';
-import type { MesoViewSpecDoc, Population } from '@molstar/meso-spec/format/doc';
-import { gallerySubset } from '@molstar/meso-spec/examples/gallery';
-import { nucleoidDoc } from '@molstar/meso-spec/examples/nucleoid';
-import { DefaultResolvers } from '@molstar/meso-spec/resolvers/index';
+import type { MesoViewSpecDoc, Population } from '@molstar/meso-spec/format';
+import { gallerySubset, nucleoidDoc } from '@molstar/meso-spec/examples';
+import { DefaultResolvers } from '@molstar/meso-spec/resolvers';
 import { PrismMesoAdapter } from '../prism-adapter.js';
 import { MesoSession } from '../session.js';
 import { h, onSpellingChange, panel, pre, showHistory, showIr, showIssues, Styles } from './ui.js';

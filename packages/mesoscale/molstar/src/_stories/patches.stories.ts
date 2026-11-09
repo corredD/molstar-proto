@@ -7,10 +7,9 @@
 import type { Meta, StoryObj } from '@storybook/web-components-vite';
 import { story } from '@molstar/prism-ui/testing/index';
 import { RealViewerStory } from '@molstar/prism-viewer/testing/real-viewer';
-import { exosomeDoc, ExosomeResources } from '@molstar/meso-spec/examples/exosome';
-import type { MesoViewSpecDoc } from '@molstar/meso-spec/format/doc';
-import { applyPatch, classifyPatch, type Patch, PatchFormat } from '@molstar/meso-spec/format/patch';
-import { DefaultResolvers } from '@molstar/meso-spec/resolvers/index';
+import { exosomeDoc, ExosomeResources } from '@molstar/meso-spec/examples';
+import { applyPatch, classifyPatch, type MesoViewSpecDoc, type Patch, PatchFormat } from '@molstar/meso-spec/format';
+import { DefaultResolvers } from '@molstar/meso-spec/resolvers';
 import { PrismMesoAdapter } from '../prism-adapter.js';
 import { MesoSession } from '../session.js';
 import { h, onSpellingChange, panel, pre, showHistory, showIssues, showPatch, Styles } from './ui.js';

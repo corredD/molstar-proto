@@ -7,17 +7,17 @@
 import { Vec3 } from '@molstar/core/math/linear-algebra';
 import { StateSelection } from '@molstar/core/state';
 import { Color } from '@molstar/core/util/color';
-import { type IR, placementSets } from '@molstar/meso-spec/ir/ir';
-import type { PlacementSet } from '@molstar/meso-spec/ir/placements';
+import { type IR, type PlacementSet, placementSets } from '@molstar/meso-spec/ir';
 import { PluginStateObject as SO } from '@molstar/plugin/state/objects';
-import { type Issue, issue } from '@molstar/meso-spec/format/issues';
+import { type Issue, issue } from '@molstar/meso-spec/format';
 import {
   type CommitPlan,
   type CommitReport,
+  type ExpansionCache,
+  flattenInstances,
   planCommit,
   type RendererAdapter,
-} from '@molstar/meso-spec/runtime/adapter';
-import { type ExpansionCache, flattenInstances } from '@molstar/meso-spec/runtime/instancing';
+} from '@molstar/meso-spec/runtime';
 import type { PrismViewer } from '@molstar/prism-viewer/viewer';
 // the `particles` API area's types (the feature is lazy: `extensions.load('particles')` before its first use)
 import type {} from '@molstar/prism-viewer/features/particles';

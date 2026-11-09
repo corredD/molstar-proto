@@ -5,16 +5,16 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { compile, updateView } from '@molstar/meso-spec/runtime/runtime';
-import { betaCellDoc, BetaCellResources } from '@molstar/meso-spec/examples/betacell';
-import { flattenInstances } from '@molstar/meso-spec/runtime/instancing';
-import type { IR } from '@molstar/meso-spec/ir/ir';
-import { DefaultResolvers } from '@molstar/meso-spec/resolvers/index';
-import { exosomeDoc, ExosomeResources } from '@molstar/meso-spec/examples/exosome';
-import { placementSets } from '@molstar/meso-spec/ir/ir';
-import { syntheticPicksStar } from '@molstar/meso-spec/examples/fixtures/synthetic';
-import { readStar } from '@molstar/meso-spec/runtime/readers';
-import { relionQuat } from '@molstar/meso-spec/resolvers/precomputed';
+import { compile, flattenInstances, readStar, updateView } from '@molstar/meso-spec/runtime';
+import {
+  betaCellDoc,
+  BetaCellResources,
+  exosomeDoc,
+  ExosomeResources,
+  syntheticPicksStar,
+} from '@molstar/meso-spec/examples';
+import { type IR, placementSets } from '@molstar/meso-spec/ir';
+import { DefaultResolvers, relionQuat } from '@molstar/meso-spec/resolvers';
 import { MVSData } from '@molstar/mvs-builder';
 import { irToMolViewSpec } from '../mvs-export.js';
 import { toParticleList } from '../particle-list.js';

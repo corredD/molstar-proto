@@ -4,12 +4,20 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import type { MesoViewSpecDoc } from '@molstar/meso-spec/format/doc';
-import type { Issue } from '@molstar/meso-spec/format/issues';
-import { irToJson, type IR } from '@molstar/meso-spec/ir/ir';
-import { type Patch, printPatch } from '@molstar/meso-spec/format/patch';
-import { type DataCodec, DocumentCodec, IRCodec, printData } from '@molstar/meso-spec/format/sexpr';
-import { trace, traceToSexprData, traceToText } from '@molstar/meso-spec/format/trace';
+import {
+  type DataCodec,
+  DocumentCodec,
+  IRCodec,
+  type Issue,
+  type MesoViewSpecDoc,
+  type Patch,
+  printData,
+  printPatch,
+  trace,
+  traceToSexprData,
+  traceToText,
+} from '@molstar/meso-spec/format';
+import { type IR, irToJson } from '@molstar/meso-spec/ir';
 import type { EditRecord } from '../session.js';
 
 // Plain DOM for the stories: panels of documents, IR, issues, an edit log. No framework: the stories test the format,

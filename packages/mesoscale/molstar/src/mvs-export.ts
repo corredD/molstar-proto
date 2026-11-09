@@ -6,8 +6,8 @@
 
 import { createMVSBuilder } from '@molstar/mvs-builder/tree/mvs/mvs-builder';
 import type { MVSData } from '@molstar/mvs-builder';
-import { type IR, type IRLook, placementSets } from '@molstar/meso-spec/ir/ir';
-import { flattenInstances } from '@molstar/meso-spec/runtime/instancing';
+import { type IR, type IRLook, placementSets } from '@molstar/meso-spec/ir';
+import { flattenInstances } from '@molstar/meso-spec/runtime';
 
 // Compiling the IR to MolViewSpec (design.md §6.6), to measure that path: per placement type, one `primitives` group
 // with one ellipsoid at the origin and the copies as its `instances` (4×4 matrices). MVS has no particle or placement
