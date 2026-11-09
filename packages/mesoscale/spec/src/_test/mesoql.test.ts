@@ -147,6 +147,8 @@ describe('MesoQL', () => {
   it('a keyword is given once (F11)', () => {
     const codes = (t: string) => parseMesoQL(t, { kinds }).issues.map((i) => i.code);
     expect(codes('(in c.exosome :nested true :nested false)')).toEqual(['mesoql.keyword']);
+    // a keyword the symbol takes, not a property every object has
+    expect(codes('(in c.exosome :constructor 1)')).toEqual(['mesoql.keyword']);
   });
 
   it('ordinals, counts and distances are not negative (F11)', () => {

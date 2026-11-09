@@ -250,7 +250,8 @@ export function parseMesoQL(
     for (let i = 0; i < positional.length; i++) {
       const it = positional[i];
       if (it.kind === 'keyword') {
-        const kt = s.keywords?.[it.name];
+        const kt =
+          s.keywords && Object.prototype.hasOwnProperty.call(s.keywords, it.name) ? s.keywords[it.name] : undefined;
         const v = positional[++i];
         if (!kt) {
           err('keyword', `(${s.name}) takes no :${it.name}`);
