@@ -5,7 +5,7 @@
  */
 
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
-import type { PlacementSet } from '@molstar/meso-spec/ir';
+import type { PlacementSet, PlacementType } from '@molstar/meso-spec/ir';
 import { CustomProperties } from '@molstar/model/model/custom-property';
 import type { ParticleList } from '@molstar/model/model/particles/particle-list';
 import type { PluginContext } from '@molstar/plugin/context';
@@ -29,7 +29,17 @@ export function placementStore(plugin: PluginContext | object): Map<string, Part
   return store;
 }
 
-export function toParticleList(set: PlacementSet, label: string): ParticleList {
+/**
+ * How a list names its copies and types for the hover label (prism.md §4.6): a copy's id (an expanded instance's copy
+ * through its instance, `p.granules#12/p.Vamp2#305`), a type's description (its entity, its compartment). Without it, a
+ * copy is `<population>#<ordinal>` and a type has no description.
+ */
+export interface ListLabels {
+  readonly copy?: (index: number) => string;
+  readonly describe?: (type: PlacementType) => string | undefined;
+}
+
+export function toParticleList(set: PlacementSet, label: string, labels?: ListLabels): ParticleList {
   const n = set.count;
   const radii = new Float32Array(n);
   const keys = new Int32Array(n);
@@ -39,7 +49,12 @@ export function toParticleList(set: PlacementSet, label: string): ParticleList {
     keys[i] = i;
   }
   const targetInfo = new Map(set.typeTable.map((t) => [t.index, { name: t.label, entity: t.index }]));
-  const entityInfo = new Map(set.typeTable.map((t) => [t.index, { name: t.label }]));
+  const entityInfo = new Map(
+    set.typeTable.map((t) => {
+      const description = labels?.describe?.(t);
+      return [t.index, description ? { name: t.label, description } : { name: t.label }];
+    }),
+  );
   return {
     label,
     count: n,
@@ -52,7 +67,7 @@ export function toParticleList(set: PlacementSet, label: string): ParticleList {
     rotations: set.rotations,
     radii,
     fibers: set.fibers,
-    getParticleLabel: (i) => `${set.typeTable[set.types[i]].population}#${set.ordinals[i]}`,
+    getParticleLabel: labels?.copy ?? ((i) => `${set.typeTable[set.types[i]].population}#${set.ordinals[i]}`),
     sourceData: { kind: 'meso-view-spec', name: set.key, data: {} },
     customProperties: new CustomProperties(),
     _propertyData: Object.create(null),
