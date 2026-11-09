@@ -425,14 +425,14 @@ export function createLipidSelection(input: SelectionInput, capacity: Uint32Arra
     if (enclosedBy && facing > 0) {
       eyeInside.fill(2);
       for (let q = 0; q < P; ++q) {
-        const e = enclosedBy[q];
+        const e: Int32Array = enclosedBy[q];
         for (let i = 0; i < e.length && partShown[q]; ++i) {
-          const p = e[i];
-          if (eyeInside[p] === 2) {
-            eyeInside[p] =
-              perspective && insidePart(tree, positions, indices, p, eye[0], eye[1], eye[2], stack) ? 1 : 0;
+          const outer = e[i];
+          if (eyeInside[outer] === 2) {
+            eyeInside[outer] =
+              perspective && insidePart(tree, positions, indices, outer, eye[0], eye[1], eye[2], stack) ? 1 : 0;
           }
-          if (eyeInside[p] === 0) partShown[q] = 0;
+          if (eyeInside[outer] === 0) partShown[q] = 0;
         }
       }
     }
