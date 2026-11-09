@@ -528,6 +528,15 @@ Sonnet subagents, one at a time).**
    only at region borders. WGSL and TypeScript reference equal (Dawn). Coverage at ≤ 6 Å on the cow before and after (≥
    99 % at full detail), images of the cutter on the cow before and after (close, whole).
 
+**Narrowed (Ludo, 2026-11-08, mid-round, through the coordinator).** Ludo moves the membrane to view-dependent
+procedural generation (lipids only for visible triangles above a size on screen, the far view as a surface, the full
+build only at export): round 4, designed apart. Round 3 keeps items 1 (the mesh hidden), 4 (the cutter in the
+right-click, a tested console snippet), 6 (the device-limit guard) and 7 (region-continuous cutter offsets, now the core
+of the procedural generator: the per-triangle function pure and deterministic, the same triangle, region and patch
+always the same lipids, no seams inside a region; TypeScript reference = WGSL). Items 2 (the tiles' hole fill), 3 (LOD
+radius growth, far surface) and 5 (the 27.7 M numbers) are parked in TODO.md, superseded by round 4; no code for them
+past what was already committed and tested (the library's level scales, `4ac0c0de8`).
+
 **Proof.** Images of this mesh ×100, looked at, before and after:
 `~/prism-me-lanes/lipid-tiles-shots/r3-<before|after>-<close|middle|whole>.png`, and the coverage numbers.
 
