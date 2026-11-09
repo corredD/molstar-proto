@@ -10,7 +10,7 @@ import type { MesoViewSpecDoc } from '../format/doc.js';
 import { parseMesoQL } from '../format/mesoql.js';
 import { indexDoc, validate } from '../format/validate.js';
 import { placementSets, walk } from '../ir/ir.js';
-import { evaluateMesoQL, lociSize, lociToIds } from '../ir/loci.js';
+import { evaluateMesoQL, lociSize, lociSphere, lociToIds } from '../ir/loci.js';
 import { planCommit } from '../runtime/adapter.js';
 import { flattenInstances } from '../runtime/instancing.js';
 import { compile, updateView } from '../runtime/runtime.js';
@@ -263,5 +263,47 @@ describe('superstructures', () => {
     expect(
       updateView(v, r.ir!).view.cutaway!.reduce((n, c) => n + c.runs.reduce((x, e, j) => x + (j % 2 ? e : -e), 0), 0),
     ).toBe(riboNear);
+  });
+  // review gate R10: an address of a template set (copies of a population inside a superstructure) stands for its copies
+  // in every instance; a spatial operation reads them there, never at the template's own coordinates
+  it('within and the camera read a template population through every instance of it', async () => {
+    const doc = betaCellDoc();
+    const r = await compile(doc, { resolvers: DefaultResolvers, load });
+    const kinds = indexDoc(doc).kinds as ReadonlyMap<string, string>;
+    const ev = (q: string) => evaluateMesoQL(parseMesoQL(q, { kinds }).expr!, { doc, ir: r.ir! });
+    // the same copies, spelled per instance (the path checked against brute force above)
+    const every =
+      '(or (part (population p.granules) p.Vamp2) (part (instance i.granule-docked) p.Vamp2) (part (instance i.granule-deep) p.Vamp2))';
+    const of = ev('(within (population p.ribosomes) :of (population p.Vamp2) :distance 50)');
+    expect(lociSize(of.loci)).toBeGreaterThan(0);
+    expect(of.loci).toEqual(ev(`(within (population p.ribosomes) :of ${every} :distance 50)`).loci);
+    const a = ev('(within (population p.Vamp2) :of (population p.ribosomes) :distance 50)');
+    expect(lociSize(a.loci)).toBeGreaterThan(0);
+    expect(a.loci).toEqual(ev(`(within ${every} :of (population p.ribosomes) :distance 50)`).loci);
+    // the camera frames the Vamp2 of all 122 granules, across the cell, not one template at the origin
+    const cam = (focus: string) =>
+      updateView({ ...doc, views: [...doc.views!, { id: 'v.t', camera: { focus } }], session: { view: 'v.t' } }, r.ir!)
+        .view.camera!;
+    const c = cam('(population p.Vamp2)');
+    const e = cam(every);
+    // the same points, summed in another order
+    expect(Math.hypot(...c.target.map((v, k) => v - e.target[k]))).toBeLessThan(1e-6);
+    expect(c.focus!.radius).toBeCloseTo(e.focus!.radius, 6);
+    expect(c.focus!.radius).toBeGreaterThan(3000);
+  });
+  it('two superstructures deep: the camera frames every copy; within says what it leaves out', async () => {
+    const r = await compile(nested, { resolvers: countingResolvers().resolvers });
+    const kinds = indexDoc(nested).kinds as ReadonlyMap<string, string>;
+    const ev = (q: string) => evaluateMesoQL(parseMesoQL(q, { kinds }).expr!, { doc: nested, ir: r.ir! });
+    // 60 x in the world, spread over the 3 outer bodies: the flattening's positions are the reference
+    const flat = placementSets(flattenInstances(r.ir!).ir).filter((s) =>
+      s.typeTable.some((t) => t.population === 'p.x'),
+    );
+    const c = [0, 0, 0];
+    for (const s of flat)
+      for (let i = 0; i < s.count; i++) for (let k = 0; k < 3; k++) c[k] += s.positions[3 * i + k] / 60;
+    const sphere = lociSphere(ev('(population p.x)').loci, r.ir!)!;
+    expect(Math.hypot(...sphere.center.map((v, k) => v - c[k]))).toBeLessThan(1e-3);
+    expect(ev('(within (population p.x) :of (all) :distance 10)').issues.map((i) => i.code)).toContain('mesoql.empty');
   });
 });

@@ -212,7 +212,8 @@ export function evaluateMesoQL(e: QExpr, ctx: LociContext): { loci: MesoLoci; is
       case 'within': {
         const of = x.keywords.of ? ev(x.keywords.of as QExpr) : EmptyLoci;
         const d = Number(x.keywords.distance ?? 0) * unit;
-        return within(ctx.ir, ev(x.args[0] as QExpr), of, d);
+        const w = worldOfIR(ctx.ir);
+        return within(w, perInstance(w, ev(x.args[0] as QExpr), issues), of, d);
       }
       case 'part': {
         // copies of an inner population in the instances picked: one virtual set per instance,
@@ -291,23 +292,114 @@ function apply(a: Pose, x: number, y: number, z: number, out: number[]) {
   out[2] = z + qw * tz + (qx * ty - qy * tx) + a.t[2];
 }
 
+function compose(a: Pose, b: Pose): Pose {
+  const [ax, ay, az, aw] = a.q;
+  const [bx, by, bz, bw] = b.q;
+  const t = [0, 0, 0];
+  apply(a, b.t[0], b.t[1], b.t[2], t);
+  return {
+    q: [
+      aw * bx + ax * bw + ay * bz - az * by,
+      aw * by - ax * bz + ay * bw + az * bx,
+      aw * bz + ax * by - ay * bx + az * bw,
+      aw * bw - ax * bx - ay * by - az * bz,
+    ],
+    t: [t[0], t[1], t[2]],
+  };
+}
+
+/** The sets of an IR by key, and for each template set (inside a superstructure) the instance sets and types standing for it. */
+interface World {
+  readonly byKey: ReadonlyMap<string, PlacementSet>;
+  readonly templates: ReadonlyMap<string, readonly { readonly set: string; readonly type: number }[]>;
+  readonly under: ReadonlySet<string>;
+}
+
+const worlds = new WeakMap<IR['root'], World>();
+
+function worldOfIR(ir: IR): World {
+  let w = worlds.get(ir.root);
+  if (w) return w;
+  const templates = new Map<string, { set: string; type: number }[]>();
+  const under = new Set<string>();
+  const visit = (n: IR['root'], inside: boolean) => {
+    if (n.kind === 'placements') {
+      if (inside) under.add(n.params.set.key);
+      for (const c of n.children ?? [])
+        if (c.kind === 'instances')
+          for (const t of c.params.templates)
+            templates.set(t, [...(templates.get(t) ?? []), { set: n.params.set.key, type: c.params.type }]);
+    }
+    for (const c of n.children ?? []) visit(c, inside || n.kind === 'superstructure');
+  };
+  visit(ir.root, false);
+  w = { byKey: new Map(placementSets(ir).map((s) => [s.key, s])), templates, under };
+  worlds.set(ir.root, w);
+  return w;
+}
+
+/** The poses that take a set's own frame to the world: one for a world set, one per instance (recursively) for a template. */
+function posesOf(w: World, key: string, depth = 0): Pose[] {
+  if (!w.under.has(key)) return [IdentityPose];
+  const out: Pose[] = [];
+  if (depth > 16) return out;
+  for (const u of w.templates.get(key) ?? []) {
+    const s = w.byKey.get(u.set);
+    if (!s) continue;
+    const up = posesOf(w, u.set, depth + 1);
+    for (let i = 0; i < s.count; i++) if (s.types[i] === u.type) for (const p of up) out.push(compose(p, poseOf(s, i)));
+  }
+  return out;
+}
+
 /**
  * Where the copies of a loci entry are in the world: the set holding them and the poses that move them there. A world
- * set is as it is; a virtual set `<instance set>@<i>><template>` (a `part`) is its template moved by that instance's pose.
+ * set is as it is; a template set is moved by every instance of its superstructure; a virtual set
+ * `<instance set>@<i>><template>` (a `part`) by that one instance's pose.
  */
-function worldOf(
-  byKey: ReadonlyMap<string, PlacementSet>,
-  key: string,
-): { set: PlacementSet; poses: Pose[] } | undefined {
+function worldOf(w: World, key: string): { set: PlacementSet; poses: Pose[] } | undefined {
   const m = VirtualKey.exec(key);
   if (!m) {
-    const set = byKey.get(key);
-    return set && { set, poses: [IdentityPose] };
+    const set = w.byKey.get(key);
+    return set && { set, poses: posesOf(w, key) };
   }
-  const set = byKey.get(m[3]);
-  const outer = byKey.get(m[1]);
+  const set = w.byKey.get(m[3]);
+  const outer = w.byKey.get(m[1]);
   if (!set || !outer) return undefined;
-  return { set, poses: [poseOf(outer, Number(m[2]))] };
+  const pose = poseOf(outer, Number(m[2]));
+  return { set, poses: posesOf(w, m[1]).map((p) => compose(p, pose)) };
+}
+
+/**
+ * Template sets of a selection spelled per instance: `<instance set>@<i>><template>` (what `part` makes), so what a
+ * spatial operation picks inside one instance is not given to all of them. Only for instances in the world: deeper
+ * nesting is left out, with an issue.
+ */
+function perInstance(w: World, l: MesoLoci, issues: Issue[]): MesoLoci {
+  const out = new Map<string, number[]>();
+  for (const [k, r] of l) {
+    if (!w.under.has(k)) {
+      out.set(k, [...r]);
+      continue;
+    }
+    for (const u of w.templates.get(k) ?? []) {
+      const s = w.byKey.get(u.set);
+      if (!s) continue;
+      if (w.under.has(u.set)) {
+        issues.push(
+          issue(
+            'mesoql.empty',
+            'warning',
+            'resolve',
+            '(within …): copies of a superstructure nested in another are left out (not materialized in this prototype)',
+          ),
+        );
+        continue;
+      }
+      for (let i = 0; i < s.count; i++) if (s.types[i] === u.type) out.set(`${u.set}@${i}>${k}`, [...r]);
+    }
+  }
+  return out;
 }
 
 /** Each copy of a loci entry in the world: `(index, x, y, z)`, once per pose. */
@@ -327,12 +419,11 @@ function forEachInWorld(
 }
 
 /** Copies of `a` whose centre is within `d` Å of a copy of `b`, both in the world: a hash grid over `b`, O(|a| + |b|). */
-function within(ir: IR, a: MesoLoci, b: MesoLoci, d: number): MesoLoci {
-  const byKey = new Map(placementSets(ir).map((s) => [s.key, s]));
+function within(world: World, a: MesoLoci, b: MesoLoci, d: number): MesoLoci {
   const cell = Math.max(d, 1);
   const grid = new Map<string, number[]>();
   for (const [k, r] of b) {
-    const w = worldOf(byKey, k);
+    const w = worldOf(world, k);
     if (!w) continue;
     forEachInWorld(w, r, (_, x, y, z) => {
       const g = `${Math.floor(x / cell)},${Math.floor(y / cell)},${Math.floor(z / cell)}`;
@@ -357,7 +448,7 @@ function within(ir: IR, a: MesoLoci, b: MesoLoci, d: number): MesoLoci {
   };
   const out = new Map<string, number[]>();
   for (const [k, r] of a) {
-    const w = worldOf(byKey, k);
+    const w = worldOf(world, k);
     if (!w) continue;
     const hit = new Set<number>();
     forEachInWorld(w, r, (i, x, y, z) => {
@@ -412,39 +503,20 @@ export function lociCentroid(l: MesoLoci, ir: IR): [number, number, number] | un
 
 /**
  * The bounding sphere of the selected copies (Å, world frame): centre and radius including the copies' own radii.
- * Copies inside superstructure instances (virtual sets `<instance set>@<i>><template>`) are moved by their instance's
- * pose. What a semantic camera frames (design.md §5.1).
+ * Copies inside superstructures are where they are in the world: a template set's in every instance, a virtual set's
+ * (`<instance set>@<i>><template>`) in its one instance. What a semantic camera frames (design.md §5.1).
  */
 export function lociSphere(l: MesoLoci, ir: IR): { center: [number, number, number]; radius: number } | undefined {
-  const byKey = new Map(placementSets(ir).map((s) => [s.key, s]));
+  const world = worldOfIR(ir);
   const pts: number[] = [];
   const rs: number[] = [];
-  const v = [0, 0, 0];
   for (const [k, r] of l) {
-    const m = /^(.*)@(\d+)>(.*)$/.exec(k);
-    const s = byKey.get(m ? m[3] : k);
-    const outer = m ? byKey.get(m[1]) : undefined;
-    if (!s || (m && !outer)) continue;
-    const i0 = m ? Number(m[2]) : -1;
-    for (let j = 0; j < r.length; j += 2)
-      for (let i = r[j]; i < r[j + 1]; i++) {
-        let x = s.positions[3 * i],
-          y = s.positions[3 * i + 1],
-          z = s.positions[3 * i + 2];
-        if (outer) {
-          const q = outer.rotations.subarray(4 * i0, 4 * i0 + 4);
-          const [qx, qy, qz, qw] = [q[0], q[1], q[2], q[3]];
-          const tx = 2 * (qy * z - qz * y),
-            ty = 2 * (qz * x - qx * z),
-            tz = 2 * (qx * y - qy * x);
-          v[0] = x + qw * tx + (qy * tz - qz * ty) + outer.positions[3 * i0];
-          v[1] = y + qw * ty + (qz * tx - qx * tz) + outer.positions[3 * i0 + 1];
-          v[2] = z + qw * tz + (qx * ty - qy * tx) + outer.positions[3 * i0 + 2];
-          [x, y, z] = v;
-        }
-        pts.push(x, y, z);
-        rs.push(s.typeTable[s.types[i]].radius);
-      }
+    const w = worldOf(world, k);
+    if (!w) continue;
+    forEachInWorld(w, r, (i, x, y, z) => {
+      pts.push(x, y, z);
+      rs.push(w.set.typeTable[w.set.types[i]].radius);
+    });
   }
   const n = rs.length;
   if (!n) return undefined;
