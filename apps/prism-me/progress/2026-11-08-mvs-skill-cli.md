@@ -31,6 +31,19 @@
 
 ## Built
 
+- `spec/src/cli/`: `io.ts` (arg parser, JSON-or-S-expression reading, emit, issue lines, file resource loader,
+  entry-point guard) and `meso-{validate,compile,print,trace,query}.ts`, each `run(argv, io)`; `bin` and `meso-*`
+  scripts in `spec/package.json`.
+- `format/mesoql-skill.ts` (`mesoQLSkill`, `mesoQLSignature`, `MesoQLComposed`, `MesoQLIssueCodes`) and the committed
+  `_spec/reference/mesoql-skill.md` (91 lines), kept equal by `toMatchFileSnapshot`.
+- Tests: `cli.test.ts` (19, in-process), `mesoql-skill.test.ts` (6), `mesoql-eval.test.ts` + `.questions.ts` (10
+  questions, grader `answerMatches` by loci, near misses). Blind run: a Sonnet agent given only the skill file and the
+  scene's ids answered all 10 questions; 10/10 graded correct (before the eval was reworked after review; its questions
+  3, 6 and 8 changed, the rest are as run).
+- Spec: design §3.8 (skill), new §12.1 (CLIs); `.v6/changelogs/mvs-skill-cli.md`.
+- Review fixes: `meso-print` IR codec on read; `meso-query` reports compile issues and warns `mesoql.empty`; a library
+  fix in `ir/loci.ts` (`:location` sees superstructure populations).
+
 ## Decided
 
 ### Step 1 (Opus): CLI surface and skill structure
@@ -40,8 +53,8 @@
 - Input: a path or `-` (stdin), read with `JSON.parse` first and `readData` as the fallback (a leading `[` decides
   nothing: S-expression vectors start with it). One document per invocation, so stdout is one form that reads back.
 - stdout carries only the product: an S-expression (`printData`) by default, `JSON.stringify(v, null, 2)` with `--json`,
-  a file with `-o <file>` (pnpm prints its banner on stdout: use `pnpm -s` or `-o`). stderr carries one line per issue,
-  in svs-validate's format `<where>#<path>: <severity> <code>: <message>`, then
+  a file with `-o <file>` (pnpm's `$ command` banner goes to stderr, but use `pnpm -s` or `-o` for clean files). stderr
+  carries one line per issue, in svs-validate's format `<where>#<path>: <severity> <code>: <message>`, then
   `<file>: N error(s), N warning(s), N note(s)`.
 - Exit codes: 0 no error issues; 1 error issues (the product is still written); 2 a usage error, an unreadable file, or
   text that is neither JSON nor an S-expression (it has no paths to report issues at).
@@ -131,9 +144,40 @@
 
 ## Learned
 
+- The brief's resource path (`examples/fixtures/...` under `packages/mesoscale`) was wrong; see the step 1 note.
+- The eval found a skill example that picked nothing (`(in c.cell)` does not contain `c.isg`: the granule compartment
+  has no parent), and the review found `:location` ignored superstructure populations and `:nested` does nothing in the
+  β-cell. An example or question must differ from its plain form, or it tests nothing (now a test: near misses).
+- Counts for superstructure parts are the template's, once (548 Vamp2, not 548 x granules); said in the skill, not
+  changed: `lociToIds` and loci are template-keyed (renderer/streaming lanes own that representation).
+- tsc sets no exec bit on `lib/cli/*.js`: the pnpm shims run them through node, as Seq*'s `svs-*`.
+- A site or residues address is only checked by `meso-query` (`evaluateMesoQL` selects copies only).
+
 ## Size
+
+Production lines 518 (io 171, compile 41, print 23, query 84+, trace 26, validate 21, skill 134) against ~400; the brief
+budgeted io at 110 and the skill at 110. What took the room: `io.ts` (the arg parser with usage errors, the resource
+loader with its base/fixture/file rules, entry-point detection) and the skill's `MesoQLIssueCodes` and `MesoQLComposed`
+tables. The generated skill is 91 lines (Seq*'s is 102); 26 of its lines pass 96 columns (Seq*: 6), mostly table rows
+carrying the symbol descriptions.
 
 ## Review
 
-| Finding | Severity | Verdict | Commit / open |
-| ------- | -------- | ------- | ------------- |
+| Finding                                                                                        | Severity         | Verdict   | Commit / open                                                                                                                         |
+| ---------------------------------------------------------------------------------------------- | ---------------- | --------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| M1 `meso-print` cannot read IR/trace S-expressions back (`io.ts` read with the document codec) | must             | confirmed | fixed: "meso-print: read IR, trace and compile S-expressions…"                                                                        |
+| M2 `meso-query` drops compile issues; failed resource gives partial counts, exit 0             | must             | confirmed | fixed: "meso-query: report the compile's issues…"                                                                                     |
+| M3 no lane changelog                                                                           | should (skeptic) | confirmed | fixed: "mvs-skill-cli: the lane's changelog"                                                                                          |
+| S1 `:location` picks nothing for superstructure populations (`ir/loci.ts`)                     | should           | confirmed | fixed: "MesoQL: (in c :location L) sees a superstructure's populations"                                                               |
+| S2 `:nested` and `(in c.cell)` examples/question 3 do not discriminate                         | should           | confirmed | fixed: "mesoql eval: questions where the keyword matters…"                                                                            |
+| S3 `mesoql.empty` promised for every empty result                                              | should           | confirmed | fixed: "meso-query: warn mesoql.empty…"                                                                                               |
+| S4 template copies counted once, undocumented                                                  | should           | confirmed | fixed in wording: "mesoql skill: say a superstructure's copies are counted once…"; representation left open (loci are template-keyed) |
+| S5 test gaps (site exit 0, part vs library, `[]` round trip)                                   | should           | confirmed | fixed in "meso CLIs: a malformed JSON resource…"                                                                                      |
+| S6 size over budget unrecorded                                                                 | nit (skeptic)    | confirmed | recorded above                                                                                                                        |
+| S7 design row said "other spelling"                                                            | nit              | confirmed | fixed: "design §12.1: meso-print…"                                                                                                    |
+| N1 malformed JSON resource gave a bare exit 2                                                  | should           | confirmed | fixed with S5's commit                                                                                                                |
+| Nit `meso-query - -`, `--limit ''`                                                             | nit              | confirmed | fixed with S5's commit                                                                                                                |
+| Nit `mesoql.syntax` omits "one form"                                                           | nit              | confirmed | fixed in the skill commit                                                                                                             |
+| Nit pnpm banner claim wrong                                                                    | nit              | confirmed | progress file corrected                                                                                                               |
+| Nit 96 columns                                                                                 | nit              | partly    | left open (table rows)                                                                                                                |
+| Nit duplicated virtual-key regex; skill test title; per-run counting                           | nit              | confirmed | left open (`VirtualKey` export belongs with loci.ts's owner)                                                                          |
