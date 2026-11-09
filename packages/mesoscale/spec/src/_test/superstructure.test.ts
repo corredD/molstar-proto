@@ -22,6 +22,39 @@ import { countingResolvers } from './helpers.js';
 const load = (id: string) => BetaCellResources[id]?.();
 const PerGranule = 548 + 940 + 454 + 287;
 
+/** Three outer bodies of four inner bodies of five x: superstructures two deep. */
+const nested: MesoViewSpecDoc = {
+  format: 'meso_view_spec',
+  version: '0.2.0',
+  metadata: { title: 'nested' },
+  units: { length: 'nm' },
+  entities: [
+    { id: 'e.x', label: 'x', kind: 'protein', radius: 2 },
+    { id: 'e.inner', label: 'inner body', kind: 'assembly', superstructure: 's.inner' },
+    { id: 'e.outer', label: 'outer body', kind: 'assembly', superstructure: 's.outer' },
+  ],
+  superstructures: [
+    {
+      id: 's.inner',
+      label: 'inner',
+      compartments: [{ id: 'c.in', label: 'in', kind: 'vesicle', geometry: { kind: 'sphere', radius: 12 } }],
+      populations: [{ id: 'p.x', entity: 'e.x', compartment: 'c.in', location: 'interior', abundance: { count: 5 } }],
+    },
+    {
+      id: 's.outer',
+      label: 'outer',
+      compartments: [{ id: 'c.out', label: 'out', kind: 'vesicle', geometry: { kind: 'sphere', radius: 80 } }],
+      populations: [
+        { id: 'p.inner', entity: 'e.inner', compartment: 'c.out', location: 'interior', abundance: { count: 4 } },
+      ],
+    },
+  ],
+  compartments: [{ id: 'c.top', label: 'top', kind: 'cell', geometry: { kind: 'sphere', radius: 400 } }],
+  populations: [
+    { id: 'p.outer', entity: 'e.outer', compartment: 'c.top', location: 'interior', abundance: { count: 3 } },
+  ],
+};
+
 describe('superstructures', () => {
   it('the granule is resolved once, its 120 copies are poses', async () => {
     const counting = countingResolvers();
@@ -108,39 +141,7 @@ describe('superstructures', () => {
   });
 
   it('nests: a superstructure of superstructures, flattened through both levels', async () => {
-    const doc: MesoViewSpecDoc = {
-      format: 'meso_view_spec',
-      version: '0.2.0',
-      metadata: { title: 'nested' },
-      units: { length: 'nm' },
-      entities: [
-        { id: 'e.x', label: 'x', kind: 'protein', radius: 2 },
-        { id: 'e.inner', label: 'inner body', kind: 'assembly', superstructure: 's.inner' },
-        { id: 'e.outer', label: 'outer body', kind: 'assembly', superstructure: 's.outer' },
-      ],
-      superstructures: [
-        {
-          id: 's.inner',
-          label: 'inner',
-          compartments: [{ id: 'c.in', label: 'in', kind: 'vesicle', geometry: { kind: 'sphere', radius: 12 } }],
-          populations: [
-            { id: 'p.x', entity: 'e.x', compartment: 'c.in', location: 'interior', abundance: { count: 5 } },
-          ],
-        },
-        {
-          id: 's.outer',
-          label: 'outer',
-          compartments: [{ id: 'c.out', label: 'out', kind: 'vesicle', geometry: { kind: 'sphere', radius: 80 } }],
-          populations: [
-            { id: 'p.inner', entity: 'e.inner', compartment: 'c.out', location: 'interior', abundance: { count: 4 } },
-          ],
-        },
-      ],
-      compartments: [{ id: 'c.top', label: 'top', kind: 'cell', geometry: { kind: 'sphere', radius: 400 } }],
-      populations: [
-        { id: 'p.outer', entity: 'e.outer', compartment: 'c.top', location: 'interior', abundance: { count: 3 } },
-      ],
-    };
+    const doc = nested;
     expect(validate(doc).filter((i) => i.severity === 'error')).toEqual([]);
     const r = await compile(doc, { resolvers: countingResolvers().resolvers });
     const f = flattenInstances(r.ir!);
@@ -169,5 +170,30 @@ describe('superstructures', () => {
       ],
     };
     expect(validate(looped).map((i) => i.code)).toContain('superstructure.cycle');
+  });
+  it('nests: looks reach both levels of the flattening (inner bodies hidden over their parts, p.x colored)', async () => {
+    const doc = { ...nested, views: [{ id: 'v', looks: [{ select: '(population p.x)', color: '#ff0000' }] }] };
+    const r = await compile(doc, { resolvers: countingResolvers().resolvers });
+    const f = flattenInstances(r.ir!);
+    const sets = placementSets(f.ir);
+    const keys = new Set(sets.map((s) => s.key));
+    // every look lands on a set that is drawn
+    expect(f.ir.view.looks.filter((l) => !keys.has(l.set))).toEqual([]);
+    const typeOf = (s: (typeof sets)[number], pop: string) => s.typeTable.find((t) => t.population === pop)?.index;
+    const looksOn = (pop: string) =>
+      sets.flatMap((s) => {
+        const t = typeOf(s, pop);
+        return t === undefined
+          ? []
+          : [{ s, looks: f.ir.view.looks.filter((l) => l.set === s.key && l.types.includes(t)) }];
+      });
+    // the 12 inner bodies (4 in each of 3 outer) are drawn as their parts: their own type hidden
+    const inner = looksOn('p.inner');
+    expect(inner.reduce((n, x) => n + x.s.count, 0)).toBe(12);
+    for (const x of inner) expect(x.looks.some((l) => l.visible === false)).toBe(true);
+    // the 60 x, all red
+    const xs = looksOn('p.x');
+    expect(xs.reduce((n, x) => n + x.s.count, 0)).toBe(60);
+    for (const x of xs) expect(x.looks.some((l) => l.color === 0xff0000)).toBe(true);
   });
 });
