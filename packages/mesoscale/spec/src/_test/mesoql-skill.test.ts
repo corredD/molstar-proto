@@ -30,6 +30,10 @@ describe('the skill', () => {
     expect(mesoQLSkill()).not.toContain('Ids:');
   });
 
+  it("says a superstructure's copies are counted once, as the CLI counts them", () => {
+    expect(mesoQLSkill()).toMatch(/counted once, as the template's, not once per instance/);
+  });
+
   it('derives signatures from the table', () => {
     const sig = (n: string) => mesoQLSignature(MesoQLSymbols.find((s) => s.name === n)!);
     expect(sig('in')).toBe('(in c c... :nested b :location L)');

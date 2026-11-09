@@ -72,9 +72,11 @@ Ids in the examples are illustrative; use the ids you were given.
 (in c.isg :location membrane)  the membrane proteins of the granule compartment
 
 RESULTS AND ERRORS
-A query reports its canonical address, the number of copies, the count per population and the first copy ids: check
-them against the question. An error names the part that is wrong; fix it and resend the corrected address.
-mesoql.syntax  not readable: unbalanced parentheses, an unclosed quote
+Copies in a superstructure are counted once, as the template's, not once per instance:
+548 Vamp2 is one granule's, however many granules there are. A query reports its canonical
+address, the number of copies, the count per population and the first copy ids: check them
+against the question. An error names the part that is wrong; fix it and resend the address.
+mesoql.syntax  not readable (unbalanced parentheses, an unclosed quote), or more than one form
 mesoql.form  not a form like (entity e.x)
 mesoql.symbol.unknown  no such symbol; the message suggests near ones
 mesoql.type  a selection, a site or residues where another is expected

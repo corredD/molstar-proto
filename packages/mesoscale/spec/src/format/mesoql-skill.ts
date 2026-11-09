@@ -53,7 +53,7 @@ export const MesoQLComposed: readonly { readonly text: string; readonly says: st
 
 /** What each `mesoql.*` code means, in the order the skill lists them. */
 export const MesoQLIssueCodes: readonly { readonly code: string; readonly says: string }[] = [
-  { code: 'mesoql.syntax', says: 'not readable: unbalanced parentheses, an unclosed quote' },
+  { code: 'mesoql.syntax', says: 'not readable (unbalanced parentheses, an unclosed quote), or more than one form' },
   { code: 'mesoql.form', says: 'not a form like (entity e.x)' },
   { code: 'mesoql.symbol.unknown', says: 'no such symbol; the message suggests near ones' },
   { code: 'mesoql.type', says: 'a selection, a site or residues where another is expected' },
@@ -125,8 +125,10 @@ export function mesoQLSkill(opts: MesoQLSkillOptions = {}): string {
     ...MesoQLComposed.map((c) => `${c.text}  ${c.says}`),
     '',
     'RESULTS AND ERRORS',
-    'A query reports its canonical address, the number of copies, the count per population and the first copy ids: check',
-    'them against the question. An error names the part that is wrong; fix it and resend the corrected address.',
+    "Copies in a superstructure are counted once, as the template's, not once per instance:",
+    "548 Vamp2 is one granule's, however many granules there are. A query reports its canonical",
+    'address, the number of copies, the count per population and the first copy ids: check them',
+    'against the question. An error names the part that is wrong; fix it and resend the address.',
     ...MesoQLIssueCodes.map((c) => `${c.code}  ${c.says}`),
     '',
   ].join('\n');
