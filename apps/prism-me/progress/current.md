@@ -71,7 +71,7 @@ is not built is [../TODO.md](../TODO.md).
     branch): started 2026-11-09 (Ludo: merge master, conflicts favoring master). origin/master dabbf29f9, 59 commits,
     474 files, mostly graphics. Merged at 46aa8cae3 (63 files conflicted, master favoured, prism-me
     features kept and listed), 25 adaptation and gate commits (HEAD ebc560d5d); checks pass but master’s flaky
-    webgpu-points and a Dawn SIGSEGV in webgpu-device-listener (prism-me’s, TODO). Waits on Ludo’s try on 1355.
+    webgpu-points and a Dawn SIGSEGV in webgpu-device-listener (prism-me’s, TODO). **PR #62** (2026-11-09), waits on Ludo’s merge.
   - `paint` (`me/paint`, port 1352, [brief](2026-11-08-paint.md) on its branch): Paint v1, approved 2026-11-08 (the
     mesoscale extension, random orientation, no collisions in v1). On hold until the lipids (Ludo, 2026-11-08).
 
