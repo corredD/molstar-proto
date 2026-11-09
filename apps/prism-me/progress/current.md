@@ -59,6 +59,8 @@ is not built is [../TODO.md](../TODO.md).
     particle list) built and gated at e3ee04308: surface coloured as the switch's spheres show the patch, at their
     tops, dithered in over a px band; a membrane coloured through mesoscale.style/colors/colorLevels. Waits on Ludo's
     try on 1354; open for Ludo: M2 seams, a sphere dither (graphics change). Library commits need their own lane.
+    Round 5 started 2026-11-09 (brief 8ad314736): model_vertexcolor ×600 (~1 G lipids) at interactive rate, scale-free
+    far texture, colour by zoom object → species → atoms, tiles texture.
   - `paint` (`me/paint`, port 1352, [brief](2026-11-08-paint.md) on its branch): Paint v1, approved 2026-11-08 (the
     mesoscale extension, random orientation, no collisions in v1). On hold until the lipids (Ludo, 2026-11-08).
 
