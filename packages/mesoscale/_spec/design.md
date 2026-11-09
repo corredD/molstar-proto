@@ -842,10 +842,11 @@ same high-level constraints"; "Ivan's rigid body could feed into a simulation pr
   with the exact inside test (`sdfGrid` in `resolvers/geometry.ts`, which also answers the O(triangles) mesh gap).
   Membrane copies and avoided models stay fixed.
 - **Measured [fixture]:** on the exosome, the recipe's packing stops at 354 of 506 catalase; adding `m.relax` inserts
-  152, converges in 41 iterations, then checks every copy against the exact mesh with its margin; it meets 506 of 506
-  with a largest overlap of 0.77 Å measured after the last step (tolerance 1 Å) and no copy outside the membrane. Lipids
-  are not part of the check: the bilayer is drawn without the proteins' footprints (a gap, §11). The packing is a cache
-  hit when the stage is added. mesobuild's `relax.py` reached 506 of 506 on the same recipe.
+  152, converges in 41 iterations, then checks every copy against the exact mesh with its margin (and against the
+  compartments it must stay out of, with theirs); it meets 506 of 506 with a largest overlap of 0.78 Å measured after
+  the last step (tolerance 1 Å) and no copy outside the membrane. Lipids are not part of the check: the bilayer is drawn
+  without the proteins' footprints (a gap, §11). The packing is a cache hit when the stage is added. mesobuild's
+  `relax.py` reached 506 of 506 on the same recipe.
 
 ## 7. Units, ids, reproducibility, failures
 

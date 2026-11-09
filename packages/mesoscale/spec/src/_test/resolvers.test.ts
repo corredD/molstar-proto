@@ -58,7 +58,61 @@ export function setOf(
 const run = <T>(r: { project(j: ResolveJob): T; resolve(i: T, j: ResolveJob): unknown }, j: ResolveJob) =>
   r.resolve(r.project(j), j) as ResolveOutput;
 
+/** Distance from a point outside an axis-aligned box of half-side `h` (0 inside). */
+const boxDistance = (x: number, y: number, z: number, h: number) =>
+  Math.hypot(Math.max(Math.abs(x) - h, 0), Math.max(Math.abs(y) - h, 0), Math.max(Math.abs(z) - h, 0));
+
 describe('meso.relax', () => {
+  /** 2000 copies (r 10) anywhere within 380 Å, some inside the child; relaxed in a sphere of 420 around the child. */
+  const aroundChild = (child: unknown) => {
+    const r = createRandom(7);
+    const up = setOf(
+      2000,
+      () => {
+        for (;;) {
+          const p: [number, number, number] = [r.range(-380, 380), r.range(-380, 380), r.range(-380, 380)];
+          if (Math.hypot(...p) <= 380) return p;
+        }
+      },
+      { population: 'p', compartment: 'outer', radius: 10 },
+    );
+    const j = job(
+      [
+        {
+          id: 'p',
+          compartment: 'outer',
+          location: 'interior',
+          requested: 2000,
+          radius: 10,
+          arrangement: { kind: 'random' },
+        },
+      ],
+      {
+        outer: { shape: { kind: 'sphere', center: [0, 0, 0], radius: 420 }, children: ['child'] },
+        child: { shape: child, parent: 'outer', membrane: { thickness: 40 } },
+      },
+      { model: 'm.relax', params: { iterations: 400, tolerance: 1 }, upstream: { sets: [up], achieved: { p: 2000 } } },
+    );
+    return run(MesoRelaxResolver, j);
+  };
+
+  it('keeps copies out of a child compartment and its membrane, exactly', () => {
+    const sphere = aroundChild({ kind: 'sphere', center: [0, 0, 0], radius: 150 });
+    const box = aroundChild({ kind: 'box', center: [0, 0, 0], size: [300, 300, 300] });
+    for (const [out, gap] of [
+      // a copy (r 10) at least 150 + 20 + 10 from the sphere's centre; 20 + 10 from the box
+      [sphere, (x: number, y: number, z: number) => Math.hypot(x, y, z) - 150 - 30],
+      [box, (x: number, y: number, z: number) => boxDistance(x, y, z, 150) - 30],
+    ] as const) {
+      const s = out.sets[0];
+      let bad = 0;
+      for (let i = 0; i < s.count; i++)
+        if (gap(s.positions[3 * i], s.positions[3 * i + 1], s.positions[3 * i + 2]) < -1e-3) bad++;
+      expect(bad).toBe(0);
+      expect((out.report as { outsideExact: number }).outsideExact).toBe(0);
+    }
+  });
+
   it('relaxes 150 000 copies (no argument spread over the bodies)', () => {
     const n = 150_000;
     const r = createRandom(7);
@@ -189,10 +243,6 @@ export function cubeMesh(h: number) {
   ];
   return { positions: new Float32Array(v.flat()), indices: new Uint32Array(f.flat()) };
 }
-
-/** Distance from a point outside an axis-aligned box of half-side `h` (0 inside). */
-const boxDistance = (x: number, y: number, z: number, h: number) =>
-  Math.hypot(Math.max(Math.abs(x) - h, 0), Math.max(Math.abs(y) - h, 0), Math.max(Math.abs(z) - h, 0));
 
 describe('mesh compartments', () => {
   it('a copy around a mesh child keeps its radius and half the membrane from it (a negative margin)', () => {

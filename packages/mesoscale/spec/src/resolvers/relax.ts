@@ -36,7 +36,7 @@ interface RelaxInput {
 
 export const MesoRelaxResolver: Resolver<RelaxInput> = {
   id: 'meso.relax',
-  version: '0.1.0',
+  version: '0.1.1',
   description:
     "Refines another model's placement: inserts missing copies, relaxes overlaps, keeps copies in their compartments",
   arrangements: ['random'],
@@ -292,7 +292,19 @@ export const MesoRelaxResolver: Resolver<RelaxInput> = {
         exactShapes.set(id, shapeSampler(input.compartments[id].shape, job.compartments.get(id)?.mesh));
       return exactShapes.get(id);
     };
-    const isOut = (b: Body) => !!b.owner && exact(b.owner)?.contains(b.x, b.y, b.z, b.margin) === false;
+    const outOfOwner = (b: Body) => !!b.owner && exact(b.owner)?.contains(b.x, b.y, b.z, b.margin) === false;
+    /** The child compartment a copy is in, or nearer than its radius and half the child's membrane (exact). */
+    const inChild = (b: Body) => {
+      for (const k of b.outside) {
+        const need = b.r + (input.compartments[k]?.thickness ?? 0) / 2;
+        // the grid first: the exact test (O(triangles) for a mesh) only near the child
+        const g = grid(k);
+        if (g && g.distance(b.x, b.y, b.z) > need + 2 * g.cell) continue;
+        if (exact(k)?.contains(b.x, b.y, b.z, -need)) return k;
+      }
+      return undefined;
+    };
+    const isOut = (b: Body) => outOfOwner(b) || inChild(b) !== undefined;
     const pairPass = (push: boolean) => {
       const cells = new Map<number, number[]>();
       bodies.forEach((b, i) => {
@@ -344,12 +356,18 @@ export const MesoRelaxResolver: Resolver<RelaxInput> = {
       for (const b of bodies) {
         if (b.fixed || !b.owner || !isOut(b)) continue;
         outsideCount++;
-        const g = grid(b.owner);
-        for (let k = 0; k < 30 && isOut(b); k++) {
-          if (g) g.gradient(gr, b.x, b.y, b.z);
-          b.x -= gr[0] * 2;
-          b.y -= gr[1] * 2;
-          b.z -= gr[2] * 2;
+        // out of its compartment: a step in, down the compartment's gradient; in a child: a step out, up the child's
+        for (let k = 0; k < 30; k++) {
+          const out = outOfOwner(b);
+          const child = out ? undefined : inChild(b);
+          if (!out && child === undefined) break;
+          const g = grid(out ? b.owner : child!);
+          if (!g) break;
+          g.gradient(gr, b.x, b.y, b.z);
+          const sign = out ? -2 : 2;
+          b.x += gr[0] * sign;
+          b.y += gr[1] * sign;
+          b.z += gr[2] * sign;
         }
       }
       largest = pairPass(true);
