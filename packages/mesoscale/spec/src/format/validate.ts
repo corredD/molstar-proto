@@ -4,7 +4,17 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import { type Id, IdPattern, type MesoViewSpecDoc, type Superstructure, type Length, type Abundance } from './doc.js';
+import {
+  type Abundance,
+  type Arrangement,
+  type Id,
+  IdPattern,
+  type Length,
+  type Location,
+  type MesoViewSpecDoc,
+  type Population,
+  type Superstructure,
+} from './doc.js';
 import { type Issue, type IssueCode, issue } from './issues.js';
 import { parseMesoQL, type QType } from './mesoql.js';
 import { ConcentrationToMolar, DensityToPerA2, isLengthUnit } from './units.js';
@@ -50,6 +60,11 @@ const Sections: readonly [keyof MesoViewSpecDoc, Kind][] = [
   ['superstructures', 'superstructure'],
   ['tours', 'tour'],
 ];
+
+// the words a field takes (doc.ts): a typo is refused here, not met late as a resolver's unsupported case
+const Locations: readonly Location[] = ['interior', 'membrane', 'outer-surface', 'inner-surface', 'exterior'];
+const Details: readonly NonNullable<Population['detail']>[] = ['parts', 'entity'];
+const ArrangementKinds: readonly Arrangement['kind'][] = ['random', 'lattice', 'fiber', 'bilayer'];
 
 const InnerSections: readonly [keyof Superstructure, Kind][] = [
   ['entities', 'entity'],
@@ -174,6 +189,10 @@ export function validate(doc: MesoViewSpecDoc, nested = false): Issue[] {
   if (out.length) return out;
   const need = (v: unknown, what: string, path: string) => {
     if (v == null) err('value.missing', `${what} is required`, path);
+  };
+  const oneOf = (v: unknown, words: readonly string[], what: string, path: string) => {
+    if (v !== undefined && !words.includes(v as string))
+      err('value.range', `${what} ${JSON.stringify(v)} is ${words.join(', ')}`, path);
   };
 
   const docUnit = doc.units?.length ?? 'nm';
@@ -330,6 +349,10 @@ export function validate(doc: MesoViewSpecDoc, nested = false): Issue[] {
     const p = `/populations/${i}`;
     need(pop.entity, 'entity', `${p}/entity`);
     need(pop.compartment, 'compartment', `${p}/compartment`);
+    need(pop.location, 'location', `${p}/location`);
+    oneOf(pop.location, Locations, 'location', `${p}/location`);
+    oneOf(pop.detail, Details, 'detail', `${p}/detail`);
+    oneOf(pop.arrangement?.kind, ArrangementKinds, 'arrangement', `${p}/arrangement/kind`);
     ref(pop.entity, 'entity', `${p}/entity`);
     ref(pop.compartment, 'compartment', `${p}/compartment`);
     evidence(pop.evidence, `${p}/evidence`);
@@ -526,6 +549,13 @@ export function validate(doc: MesoViewSpecDoc, nested = false): Issue[] {
     const p = `/instances/${i}`;
     need(x.entity, 'entity', `${p}/entity`);
     need(x.compartment, 'compartment', `${p}/compartment`);
+    oneOf(x.location, Locations, 'location', `${p}/location`);
+    oneOf(x.detail, Details, 'detail', `${p}/detail`);
+    const c = comps.get(x.compartment);
+    if (c && x.location === 'membrane' && !c.membrane)
+      err('location.membrane', `${x.id} is in ${c.id}'s membrane, which ${c.id} does not declare`, `${p}/location`, [
+        x.id,
+      ]);
     ref(x.entity, 'entity', `${p}/entity`);
     ref(x.compartment, 'compartment', `${p}/compartment`);
     ref(x.frame, 'frame', `${p}/frame`);

@@ -188,4 +188,31 @@ describe('validate', () => {
       await expect(compile(doc, opts)).resolves.toBeDefined();
     }
   });
+
+  it('a location, a detail and an arrangement kind are one of their words (F6, FN3, FN6)', () => {
+    const b = betaCellDoc();
+    const [g, r] = b.populations;
+    const at = (doc: MesoViewSpecDoc) => errors(doc).map((i) => [i.code, i.path]);
+    expect(at({ ...b, populations: [g, { ...r, location: 'surface' as 'interior' }] })).toEqual([
+      ['value.range', '/populations/1/location'],
+    ]);
+    expect(at({ ...b, populations: [{ ...g, detail: 'part' as 'parts' }, r] })).toEqual([
+      ['value.range', '/populations/0/detail'],
+    ]);
+    expect(at({ ...b, populations: [g, { ...r, arrangement: { kind: 'lattic' } as never }] })).toEqual([
+      ['value.range', '/populations/1/arrangement/kind'],
+    ]);
+    const [i0, i1] = b.instances!;
+    expect(at({ ...b, instances: [{ ...i0, location: 'membrne' as 'membrane' }, i1] })).toEqual([
+      ['value.range', '/instances/0/location'],
+    ]);
+    expect(at({ ...b, instances: [i0, { ...i1, detail: 'body' as 'entity' }] })).toEqual([
+      ['value.range', '/instances/1/detail'],
+    ]);
+    // an instance in a membrane its compartment does not declare, as a population there
+    const bare = { ...b, compartments: b.compartments.map((c) => ({ ...c, membrane: undefined })) };
+    expect(at({ ...bare, instances: [{ ...i0, location: 'membrane' as const }, i1] })).toEqual([
+      ['location.membrane', '/instances/0/location'],
+    ]);
+  });
 });
