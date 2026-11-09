@@ -1125,3 +1125,45 @@ surfaces and the cutters over 1.08 M triangles).
 
 **Next (precise).** Per-part far colour (a part's surfaces take their mesh's colour); patch surfaces built a part at a
 time (no whole-then-slice copy); a `test:perf` case with parts and enclosures; S3, S5, S7, N1 (TODO).
+
+## Round 7 brief (Ludo, 2026-11-09, after round 6)
+
+**Decided (Ludo, 2026-11-09).** No lighter close level (round 5's M5: close frames stay as they are). Yes to a colour
+and a hide per membrane; yes to a lipid mix per membrane. The 11-07 slab is `~/Downloads/yeast_slab_z600nm.bcif`
+(409 MB; the whole cell `~/Downloads/yeast_cell_atoms.bcif`, 1.17 GB). The raised `test:perf` baseline (79.6 → 95.6 B
+a view, round 6) goes back: find the allocation and remove it (the repo's rule: never raise a budget to quiet a run).
+
+**Asked.** "we need a smoother transition between texture and sphere. the mesh should be duplicated to reproduce the
+bilayer, so that its texture inside and outside, and the transition will be smooth and almost not visible."
+
+1. **A bilayer far look.** The far surface is the mesh duplicated per leaflet: one copy at the outer leaflet's head
+   height (normal out), one at the inner leaflet's (normal in), each textured with its own leaflet's patch top view (the
+   inner one seen from below), so from outside one sees the outer heads, from inside (a clip, or flying inside a
+   compartment) the inner heads; at the switch each copy sits where its spheres' heads are, so the spheres appear on
+   their own surface. Check what round 5/6 draw today (round 4b had two surfaces; round 5 moved the texture onto the
+   mesh's own triangles) and say what changes. Smoothness: measure across the switch from outside and from inside
+   (4c's Oklab metric and an image diff of a zoom sequence; no line, no pop, no step), both on the cow ×100 and the
+   yeast PM; a test that fails on today's code.
+2. **A colour and a hide per membrane** of a wrapped cell (round 6's one membrane over parts): each part as a row
+   under the membrane in the tree (eye, colour), its lipids and its surfaces following, through the operations a
+   particle list uses (`mesoscale.style`, `mesoscale.colors`; one history step each). By zoom keeps working per part.
+3. **A lipid mix per membrane.** Per part a composition: at least PM (ergosterol-rich, PS/PE inner), mito IM
+   (cardiolipin), mito OM, ER/NE, vacuole, LD (a monolayer: one leaflet only). Built from the CHARMM-GUI patch's
+   species where it has them (state what is missing; no new download without Ludo's OK), recorded with a source per
+   number (Delphine may be asked for the yeast compositions with citations). The patch per part feeds the cutter and
+   the top-view texture.
+4. **The slab in the same frame.** Open `yeast_slab_z600nm.bcif` with the nine meshes (+ Open both): check whether the
+   slab's particles sit on the meshes (Å = nm × 10, same origin?), measure an offset or scale if not, and fix the
+   reader's transform or record what the user must do. Memory: the slab is 409 MB, 4.6 M instances: open it at most
+   once per run, never the 1.17 GB whole cell in a test.
+5. **The baseline back to 79.6 B.**
+
+**Ludo checks.** 1354: + Open the yeast meshes and the slab; wrap all; the slab sits on the membranes; zoom onto the
+PM from outside and from inside: the switch nearly invisible; each membrane its row, its colour, its eye; the mito IM
+shows cardiolipin, the LD one leaflet.
+
+**Machine care.** The slab at most once per run (≤ 8 GB RSS, abort past it); never the whole-cell bcif; per-view
+wraps as before; one heavy job at a time, wait while load > 12.
+
+**Size and model.** ~650 production lines (bilayer surfaces 200, parts as rows 200, mixes 150, slab frame 50, perf
+50); Opus. Gate on the round's diff.
