@@ -48,6 +48,13 @@ export function registerLipidPatch(name: string, pdb: string) {
   for (const k of cutterTables.keys()) if (k.startsWith(`${name}|`)) cutterTables.delete(k);
 }
 
+/** Forgets a patch registered by `name` and what was made from it (a test restores the registry with it) */
+export function forgetLipidPatch(name: string) {
+  patches.delete(name);
+  for (const k of tileSets.keys()) if (k.startsWith(`${name}|`)) tileSets.delete(k);
+  for (const k of cutterTables.keys()) if (k.startsWith(`${name}|`)) cutterTables.delete(k);
+}
+
 /** Whether a patch is known by `name` (registered, or `synthetic`) */
 export function hasLipidPatch(name: string) {
   return name === 'synthetic' || patches.has(name);

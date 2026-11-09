@@ -17,6 +17,7 @@ import { DefaultPrismViewerSpec } from '@molstar/prism-viewer/default-spec';
 import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
 import type { PrismViewer } from '@molstar/prism-viewer/viewer';
 import { MesoscaleExplorerExtensions } from '../../extensions.js';
+import { forgetLipidPatch } from '@molstar/mesoscale-extension/lipids/membrane';
 import { withTomogramSlices } from '../../tomograms.js';
 import { keepRows } from '@molstar/prism-ui';
 import { ancestorKeys, type Row, rowsOf, sameRow, setEyes } from '../rows.js';
@@ -433,6 +434,33 @@ describe('explorer', () => {
       expect(look.value.find((m) => m.ref === mesh.ref)!.visible).toBe(false);
     } finally {
       for (const s of subs) s.unsubscribe();
+    }
+  });
+
+  it('runs the console snippet given to Ludo for the cutter (his third try, 2026-11-08: prose was not JavaScript)', async () => {
+    const v = await viewer();
+    // the snippet as given, verbatim
+    const snippet = `const { api } = window.molstar;
+const mesh = (await api.run('cryoet.meshes', {})).value.find((m) => m.label.endsWith('.obj')).ref;
+await api.run('mesoscale.wrapMembrane', { mesh, method: 'cutter', patch: 'charmm-gui', patchUrl: new URL('lipid-patch-charmm-gui.dat', document.baseURI).href });`;
+    const patch = readFileSync(new URL('../../lipid-patch-charmm-gui.dat', import.meta.url), 'utf8');
+    vi.stubGlobal('window', { molstar: { viewer: v, api: v.api } });
+    vi.stubGlobal('document', { baseURI: 'http://localhost:1353/' });
+    const fetched: string[] = [];
+    vi.stubGlobal('fetch', async (url: string) => {
+      fetched.push(url);
+      return { ok: true, status: 200, text: async () => patch };
+    });
+    try {
+      const run = new Function(`return (async () => { ${snippet.replace(/\nawait /, '\nreturn await ')} })();`);
+      const r = (await run()) as ApiResult<unknown>;
+      expectOk(r);
+      expect(fetched).toEqual(['http://localhost:1353/lipid-patch-charmm-gui.dat']);
+      const made = v.plugin.state.data.cells.get(r.changed!.nodes![0])!;
+      expect(made.transform.params).toMatchObject({ method: 'cutter', patch: 'charmm-gui' });
+    } finally {
+      vi.unstubAllGlobals();
+      forgetLipidPatch('charmm-gui');
     }
   });
 
