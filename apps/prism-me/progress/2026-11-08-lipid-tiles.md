@@ -518,6 +518,16 @@ Sonnet subagents, one at a time).**
    WebGL2 no membrane texture past its limit (find which overflowed). A test that fails first: a fake device with small
    limits. The size where the cutter starts to fail headless, recorded.
 
+7. **The cutter's holes (must-fix, Ludo, 2026-11-08, added mid-round).** The cutter on the cow ×100 (Chrome, WebGPU):
+   grey mesh through blotches 30–80 Å wide, star and polygon shapes between lipid clusters, lipids sparse as dots at the
+   middle distance ("also has some hole in the cutter mode"). Two causes, separated and measured: the middle level's
+   spheres not grown (item 3), and the cutter's own holes at full detail (each triangle its own random offset: small
+   triangles catch 0–1 heads, every edge a seam). The fix to weigh: one offset and in-plane frame per region of the
+   surface (a hash of a coarse cell of 100–200 Å around the triangle's centroid), each triangle cutting the region's
+   patch coordinates projected on the region's mean plane, each lipid kept by the one triangle under its head: seams
+   only at region borders. WGSL and TypeScript reference equal (Dawn). Coverage at ≤ 6 Å on the cow before and after (≥
+   99 % at full detail), images of the cutter on the cow before and after (close, whole).
+
 **Proof.** Images of this mesh ×100, looked at, before and after:
 `~/prism-me-lanes/lipid-tiles-shots/r3-<before|after>-<close|middle|whole>.png`, and the coverage numbers.
 
