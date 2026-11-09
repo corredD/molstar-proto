@@ -544,6 +544,13 @@ past what was already committed and tested (the library's level scales, `4ac0c0d
    again (a test that fails first, as round 2's S5); the values readable there for Ludo to send back; ui.md and
    features.md say the parameters and their defaults. About 60 lines.
 
+9. **Progress while wrapping (keep, Ludo, 2026-11-08: "we also need some progress bar (prism) so we know computation is
+   happening and is not blocking").** The wrap a Mol\* task with progress (Prism's status pill, its percentage and
+   Cancel): readable stages (fetch, bake, remesh, cut, upload), `shouldUpdate` in the long CPU loops so the page yields;
+   Cancel stops it with nothing half-built and no history step. Measured headless: the longest main-thread stretch on
+   the cow ×100 and on `model_vertexcolor.obj` ×100 (target under about 50 ms); a test that progress arrives and that a
+   cancel leaves the state as it was. What cannot yield (a single GPU readback) said. About 60 lines.
+
 **Proof.** Images of this mesh ×100, looked at, before and after:
 `~/prism-me-lanes/lipid-tiles-shots/r3-<before|after>-<close|middle|whole>.png`, and the coverage numbers.
 
