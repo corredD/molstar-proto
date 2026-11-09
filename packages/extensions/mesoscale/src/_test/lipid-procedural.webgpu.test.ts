@@ -111,8 +111,9 @@ describe.skipIf(!webgpu)('a lipid membrane made per view (Dawn)', () => {
       };
       expect(covered(a.image)).toBeGreaterThan(0.95);
       // two surfaces, one a leaflet at its heads, in the species' colours, not one mean brown (round 4b, Ludo)
-      const surfaces = (plugin.state.data.cells.get(node.ref)!.obj!.data.repr as { renderObjects: { type: string }[] })
-        .renderObjects.filter((o) => o.type === 'mesh');
+      const surfaces = (
+        plugin.state.data.cells.get(node.ref)!.obj!.data.repr as { renderObjects: { type: string }[] }
+      ).renderObjects.filter((o) => o.type === 'mesh');
       expect(surfaces.length).toBe(2);
       const colors = new Set<string>();
       for (let o = 0; o < a.image.length; o += 4 * 97) colors.add(`${a.image[o]},${a.image[o + 1]},${a.image[o + 2]}`);
