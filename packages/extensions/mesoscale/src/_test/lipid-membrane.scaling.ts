@@ -352,6 +352,7 @@ it('a close view over a mesh of N triangles costs what is in reach, not N (round
         const { positions, indices } = sheet(k, 200);
         const regions = cutterRegions(positions, indices, 7);
         const { wholeOf, count } = wholeTriangles(positions, indices, regions, sheetBox);
+        const T = indices.length / 3;
         const selection = createLipidSelection(
           {
             positions,
@@ -363,6 +364,12 @@ it('a close view over a mesh of N triangles costs what is in reach, not N (round
             wholeOf,
             wholeCounts: new Uint32Array(2 * count).fill(3),
             side: 1,
+            // two parts, the second called enclosed by the first: the viewer's parity test runs every view (review S6)
+            parts: [
+              { start: 0, end: T / 2, name: 'a' },
+              { start: T / 2, end: T, name: 'b' },
+            ],
+            enclosedBy: [new Int32Array(0), Int32Array.of(0)],
           },
           Uint32Array.of(1_000_000, 1_000_000),
         );
@@ -377,8 +384,22 @@ it('a close view over a mesh of N triangles costs what is in reach, not N (round
     },
     20000,
   );
-  // a scan of every triangle a view reads about 4 here; what is in reach alone, about 1
+  // a scan of every triangle a view reads about 4 here; what is in reach alone, about 1; nothing allocated by size
   expect(s.timeRatio, describeScaling(s)).toBeLessThan(2);
+  expect(s.allocRatio, describeScaling(s)).toBeLessThan(2);
+  // the positive control: a scan of every triangle a view (round 5's selection) reads about 4 at these sizes
+  const scan = scaling(
+    {
+      setup: (n) => sheet(Math.round(Math.sqrt(n / 2)), 200),
+      run: ({ positions, indices }) => {
+        let near = 0;
+        for (let t = 0; t < indices.length / 3; ++t) if (positions[indices[t * 3] * 3 + 2] < 1) near += 1;
+        if (near < 0) throw new Error();
+      },
+    },
+    20000,
+  );
+  expect(scan.timeRatio, describeScaling(scan)).toBeGreaterThan(2);
 });
 
 it('the organelle meshes opened, a transform a mesh: each reads its own mesh, not the file (round 6, review M2)', () => {
