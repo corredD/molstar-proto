@@ -219,3 +219,58 @@ cover.
 
 About 1,070 production lines (−61) against ~950: the selection 277 (vs 250), library 94 (vs 150), membrane 205,
 operations 169 (species, export, graphics), controls 109, kernel 59, export 88, app 36.
+
+## Review (2026-11-08)
+
+An Opus reviewer read `1727ae414...7e2fc2306` (5 must-fix, 6 should-fix, 7 nits); an Opus skeptic re-read and re-ran
+each (9 confirmed, 3 by a run; 2 plausible; 0 refuted; S3 down to a nit; N1 plausible, N2 confirmed, new).
+
+| Finding                                                                                                                                                      | Outcome                                                                |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------- |
+| M1 dead slots (zero rows) drew their spheres at the origin on the CPU's lists                                                                                | test `1ed7faf2c` (failing), library `2f9cbf270`, extension `f9174a81f` |
+| N2 the pool's Dawn test could not see M1 (camera unchanged, a member over the origin)                                                                        | test made to fail, then pass (graphics commits above)                  |
+| M2 old selections kept across a reused build                                                                                                                 | fixed `2639c363c` (weak keys)                                          |
+| M3 the species' colour committed a step per pointer move                                                                                                     | fixed `6ea4f8f32` (previewed, Apply once; UI test)                     |
+| M4 a tiles membrane exported its lost limbs alone                                                                                                            | fixed `66a21205a`                                                      |
+| M5 RELION angles wrong at tilt 180                                                                                                                           | test `bb2148c8e` (failing), fix `d0b235ae8`                            |
+| S1 the selection passed over every triangle per view                                                                                                         | fixed `230359421` (O(regions) + O(taken); regions left in TODO)        |
+| S2 the sphere raster drops a GPU-written member's level records (pre-existing)                                                                               | open, TODO (library lane; no raster on the M1)                         |
+| S3 the whole dead range cleared per regeneration                                                                                                             | fixed `869752af5` (only what was live)                                 |
+| S4 Object graphics shows no active Quality for a membrane                                                                                                    | open, TODO                                                             |
+| S5 the species swatch blank, the picker at white                                                                                                             | fixed `6ea4f8f32`                                                      |
+| S6 a tiles membrane's lost limbs got the pool, the surface, species hide                                                                                     | fixed `41eb1c37d`                                                      |
+| N1 solid-interior caps draw the pool's full capacity                                                                                                         | covered by M1's fix (dead slots past any far plane)                    |
+| Nits: capacities 1.1 × budget, grey surface with all hidden, `find` per species row, reset's version, `lipidAt` unused, export's row count, camera test gaps | reset fixed `230359421`; the rest open (TODO or here)                  |
+
+## PR body (draft)
+
+**What.** Round 4 of the lipid membranes (Ludo, 2026-11-08: "completely procedural ... camera distance dependant, and
+size on screen ... only do the full build at export time"). Wrap with lipids (the cutter, now the default) generates its
+lipids per view: only on the triangles in view whose lipids are large enough on screen, nearest first within a pool (2 M
+by default), regenerated in the renderer's frame when the view changes and never at rest. Far away the membrane is its
+mesh with a bump in the species' colours. The far look is switchable live (both, spheres, texture) with its switches; a
+membrane's species are a particle system's entities (shown, coloured); the full build is only at export (STAR).
+
+**Changes.**
+
+- Library (`packages/graphics`, to move to their own lane from `origin/master`): `f99c9e0b1` (+ `a6d265ce8`) a pool of
+  GPU-written instances (live counts per segment, a writer's view hook in the culler's dispatch); `2f9cbf270` dead slots
+  past any far plane (`DeadInstanceTranslation`; its failing test `1ed7faf2c`). Plan: `ae2ca9321`.
+- `packages/extensions/mesoscale`: `lipids/procedural.ts` (selection), `cutter-kernel.ts` (write pass over a view's
+  triangles, dead-slot kernel), `membrane.ts` (pool, far surface, species), `export.ts`, operations (`membraneDetail`
+  far params, `membraneSpecies`, `exportMembrane`, `graphics` on a membrane), controls (Far, species).
+- `apps/prism-me`: Wrap with lipids = the cutter, the tiles second; Export lipids; the membrane's Look and Object
+  graphics; ui.md, features.md, TODO, the changelog.
+
+**Notes for review.** Defaults for Ludo to tune: far both, lipids from 2 px (texture), down to 0.5 px (spheres), budget
+2 M. Spheres is budget-clamped (thinning needs per-instance sphere sizes: a shader change). The surface's mean colour is
+muddier than the lipids. Species live in the Look (no tree rows yet); no lipid picking yet. The STAR export is held as
+Blob chunks by the browser.
+
+**Testing.** Quick (selection, export, UI, sections compared), Dawn (pool live counts and dead slots, camera path whole
+→ close → whole with determinism and nothing at rest, properties drawn, the far surface's coverage), scaling (selection
+over n and 4n triangles). Images and numbers: Numbers above. Not tried in Chrome by this session.
+
+**Review.** The table above.
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
