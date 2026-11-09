@@ -63,7 +63,7 @@ function mock(doc: MesoViewSpecDoc, knob: Knob) {
     input.addEventListener('change', async () => {
       if (!session) return;
       const v = Number((input as HTMLInputElement).value);
-      await session.edit(knob.apply(session.doc, v), `${knob.label} ${v}`);
+      await session.edit((d) => knob.apply(d, v), `${knob.label} ${v}`);
       render();
     });
     const viewer = RealViewerStory({

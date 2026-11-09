@@ -20,7 +20,9 @@ import {
 // A session (design.md §5, §6.1): one document, edited, with the runtime's cache and an adapter. An edit is classified
 // first: a view edit (looks, camera, selection) derives a new view over the same IR and commits it; a model edit
 // compiles with the session's cache (only the models whose projection changed resolve) and commits by key. Each edit
-// leaves a record of what it cost, which the stories show and the tests check.
+// leaves a record of what it cost, which the stories show and the tests check. Edits run one at a time, in the order
+// they were asked for: two in flight would diff against the same previous IR (a list orphaned), and an edit given as a
+// function of the document is built when its turn comes, so two clicks compose instead of the last one winning.
 
 export interface EditRecord {
   readonly label: string;
@@ -39,6 +41,8 @@ export class MesoSession {
   counts: CompileResult['counts'] = {};
   readonly history: EditRecord[] = [];
   private readonly cache = new Map<string, ResolveOutput>();
+  /** The edit in flight, or the last one: the next one starts after it (a failure does not stop the queue). */
+  private pending: Promise<unknown> = Promise.resolve();
 
   constructor(
     doc: MesoViewSpecDoc,
@@ -48,12 +52,22 @@ export class MesoSession {
     this.doc = doc;
   }
 
-  async start(): Promise<EditRecord> {
-    return this.run('initial', this.doc, 'open');
+  start(): Promise<EditRecord> {
+    return this.queue(() => this.run('initial', this.doc, 'open'));
   }
 
-  async edit(next: MesoViewSpecDoc, label: string): Promise<EditRecord> {
-    return this.run(classifyEdit(this.doc, next), next, label);
+  /** An edit: the next document, or a function of the current one (built when the edit's turn comes). */
+  edit(next: MesoViewSpecDoc | ((doc: MesoViewSpecDoc) => MesoViewSpecDoc), label: string): Promise<EditRecord> {
+    return this.queue(() => {
+      const doc = typeof next === 'function' ? next(this.doc) : next;
+      return this.run(classifyEdit(this.doc, doc), doc, label);
+    });
+  }
+
+  private queue<T>(step: () => Promise<T>): Promise<T> {
+    const done = this.pending.then(step);
+    this.pending = done.catch(() => {});
+    return done;
   }
 
   private async run(kind: EditRecord['kind'], next: MesoViewSpecDoc, label: string): Promise<EditRecord> {
