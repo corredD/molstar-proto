@@ -29,6 +29,10 @@ is not built is [../TODO.md](../TODO.md).
   - `mvs-entries`: done, merged into `me/mesoviewspec`: seven entries for `@molstar/meso-spec` (format, builder, ir,
     runtime, resolvers, examples, cli), one for `@molstar/meso-molstar`; the folder graph and its layers test.
   - The library side of "usable like Seq\*" is done; the PR of `me/mesoviewspec` awaits Ludo's word on its body.
+  - App lanes, stacked on `me/mesoviewspec` (Ludo, 2026-11-08: "just start the work and make it usable"), in the order
+    of prism.md §12.2: `checkpoint-owned-cells` (lane 0, Sonnet, Prism's checkpoint port only, for a later cherry-pick
+    onto master) and `mvs-open` (lane 2, Opus, dev port 1354) running; then `mvs-tree`, `mvs-drive`, `mvs-views` with
+    `mvs-model-edits`, `mvs-agent`, `mvs-streaming-app`.
   - **#60** (GPU culling past 65,535 workgroups) and **#61** (cellPACK fibres as tubes) merged by Ludo 2026-11-08; lanes
     closed, worktrees removed (and `meso-showcase`'s). Master ports kept as local branches only
     (`fix/cull-dispatch-rows` a3d8c396d, `fix/fibers-targeted` bb2dbced6); Ludo: the fixes go to prism-me, not upstream.
@@ -50,9 +54,9 @@ is not built is [../TODO.md](../TODO.md).
     look spheres and bump texture both, switchable; the membrane as a particle system. Built and gated at bbe875df3
     (option A: fixed pool, 2 M budget; library culler ~95 lines; 5 must + 6 should fixed, S2/S4 open in TODO; ~1,100
     lines vs ~950). Round 4b (Ludo's teddy notes) built and gated at 1859f56ea: far surfaces per leaflet at the heads,
-    coloured by species; cutter cells ~108 Å with own spin/offset (the 154 Å patch repeated); tiles get species rows
-    and far surfaces; Clip on a membrane. Open for Ludo: M2 seams at cell borders. Round 4c (smooth switch, colouring
-    as a particle list) started after it. Library commits need their own lane from master.
+    coloured by species; cutter cells ~108 Å with own spin/offset (the 154 Å patch repeated); tiles get species rows and
+    far surfaces; Clip on a membrane. Open for Ludo: M2 seams at cell borders. Round 4c (smooth switch, colouring as a
+    particle list) started after it. Library commits need their own lane from master.
   - `paint` (`me/paint`, port 1352, [brief](2026-11-08-paint.md) on its branch): Paint v1, approved 2026-11-08 (the
     mesoscale extension, random orientation, no collisions in v1). On hold until the lipids (Ludo, 2026-11-08).
 
