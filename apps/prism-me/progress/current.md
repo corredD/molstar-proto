@@ -25,8 +25,10 @@ is not built is [../TODO.md](../TODO.md).
     commits). Ludo's first try (the cow ×100): patchy, repetitive; fixed (suited tile edge, CHARMM-GUI patch, mesh
     hidden), gate skipped. Mesh Scale to 1000 (Ludo). Second try: uncovered triangles, no LOD, "cellpackgpu is still
     more efficient and looks better". Round 2 in progress (Ludo, 2026-11-08: "both, compared side by side"): close the
-    tiles' holes, LOD for both, cellPACKgpu's cutter in WGSL as a second method, the comparison on the cow; then the
-    gate. Server on 1353 stays up for Ludo.
+    tiles' holes, LOD for both, cellPACKgpu's cutter in WGSL as a second method, the comparison on the cow. Round 2 done
+    and gated (93dbe21db; 1 must-fix, 4 should-fix fixed; S3 the library commit to its own lane from master): tiles 100
+    % covered (the lost legs cut), LOD 247 → 33 ms whole cow; recommendation tiles default, cutter by command. Waits on
+    Ludo's try. Server on 1353 stays up for Ludo.
   - `paint` (`me/paint`, port 1352, [brief](2026-11-08-paint.md) on its branch): Paint v1, approved 2026-11-08 (the
     mesoscale extension, random orientation, no collisions in v1). On hold until the lipids (Ludo, 2026-11-08).
 
