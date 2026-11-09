@@ -437,3 +437,45 @@ fetched), or with `patchUrl`. The levels: the membrane's `detail`.
 
 **Open (TODO.md).** The cutter's holes on small triangles and its clashes; the cut lost parts clash with the tiles near
 the remesh; the right-click offers no method choice; LOD pinholes at the middle level.
+
+### Review, round 2 (2026-11-08)
+
+An Opus reviewer read `7829199ab..HEAD` against the brief and the specs (1 must-fix, 6 should-fix, 5 nits); an Opus
+skeptic re-ran or re-read each (9 confirmed, 2 plausible, 3 refuted, 1 new). Each confirmed must-fix and should-fix that
+is code got a test that failed first, then its fix.
+
+| Finding                                                                                               | Outcome                                                                |
+| ----------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| M1 the cut parts' bounds were the remesh's sphere: a leg's lipids culled (348 Å out of a 338 Å bound) | fixed `d72c1165b` (failing first)                                      |
+| S2 ui.md §5 not updated                                                                               | fixed `9e8d327bd`                                                      |
+| S3 a library change (`bde208175`, `packages/graphics`) inside the lane                                | open: its own lane from `origin/master` (a cherry-pick), Ludo's call   |
+| S4 the cutter's count buffer unguarded (M·T·4 B; ~600 k triangles at 56 members)                      | fixed `99cd1d815` (failing first: a clear error)                       |
+| S5 a detail or color change ran the cut again (count pass, readback)                                  | fixed `907eeec72` (Dawn, failing first); "drawn after destroy" refuted |
+| S6 the app test wraps with the cutter, not the right-click's tiles                                    | refuted as a bug (the hide is method-independent; tiles pass too)      |
+| S7 no quick test of the membrane's levels                                                             | coverage `d06740452`                                                   |
+| N1 a write could spill into the next triangle's slots if the passes round differently                 | plausible; open (TODO.md)                                              |
+| N2 buffers kept on a failed readback                                                                  | fixed `99cd1d815`                                                      |
+| N3 "8 B a member and triangle" is the peak (4 B stays)                                                | fixed (`cutter-kernel.ts` doc; the table's 14.5 MB is the peak)        |
+| N4, N6 on WebGL2 the description undercounts cut lipids                                               | open (TODO.md)                                                         |
+| N5 `8418f8fa1` carried docs by a `commit -a`                                                          | noted (fixed forward, not amended)                                     |
+
+### PR body (draft, round 2)
+
+**What.** Ludo's second try on the cow ×100: the triangles that showed through were the legs the remesh drops (87 % of
+the misses); they are now cut on their own triangles. Levels of detail for membranes (247 → 33 ms a frame whole). And
+cellPACKgpu's cutter, ported to WGSL and improved, as `mesoscale.wrapMembrane { method: 'cutter' }`, compared side by
+side with the tiles.
+
+**Changes.** Library: `bde208175` (GPU-written gridless members draw at their levels). Extension: `cutter.ts`,
+`cutter-kernel.ts`, the method, the lost parts, the levels, the review's fixes. App: the scale-then-wrap test, ui.md §5,
+features.md, TODO.md, the changelog.
+
+**Notes for review.** Tiles stay the default (the right-click); the cutter by command. Conformers (up to 4 a species),
+not a member per patch lipid. The cutter keeps cellPACKgpu's lack of clash removal. Pairs < 2 Å across triangles stay
+high in both (about 410 k on the cow).
+
+**Testing.** Quick lane (mesoscale, the culler, the app's explorer: 133 tests), Dawn (mesoscale `_test`, gpu-instances,
+gpu-culling: 120 tests), the scaling guards (6), `npx tsc --noEmit -p apps/prism-me`, Biome lint, Prettier. The
+comparison above, headless Dawn on the M1. Not tried in Chrome by this session.
+
+**Review.** The table above.
