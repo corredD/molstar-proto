@@ -5,7 +5,8 @@
  */
 
 import type { MesoViewSpecDoc } from '../format/doc.js';
-import type { Resolver } from '../runtime/resolver.js';
+import { PlacementBuilder, type PlacementSet } from '../ir/placements.js';
+import type { Resolver, ResolveJob } from '../runtime/resolver.js';
 import { compile, type RuntimeOptions } from '../runtime/runtime.js';
 import { DefaultResolvers } from '../resolvers/index.js';
 import { ExosomeResources } from '../examples/exosome.js';
@@ -48,4 +49,43 @@ export function recolor(doc: MesoViewSpecDoc, population: string, color: string)
       : v,
   );
   return { ...doc, views };
+}
+
+const entity = (id: string) => ({ id, label: id });
+
+/** A resolve job from populations and compartments (the compartments' `children` default to none). */
+export function job(pops: any[], comps: Record<string, any>, extra: any = {}): ResolveJob {
+  return {
+    model: {
+      id: extra.model ?? 'm',
+      kind: 'procedural',
+      method: 'x',
+      populations: pops.map((p) => p.id),
+      params: extra.params,
+    },
+    populations: pops.map((p) => ({ entity: entity(`e.${p.id}`), minFraction: 1, minDistances: [], ...p })),
+    compartments: new Map(Object.entries(comps).map(([k, v]) => [k, { id: k, label: k, children: [], ...v }])),
+    inputs: new Map(),
+    obstacles: extra.obstacles ?? [],
+    seed: extra.seed ?? 1,
+    relations: extra.relations ?? [],
+    upstream: extra.upstream,
+  } as unknown as ResolveJob;
+}
+
+/** One placement set of `n` copies of one type, from a position function. */
+export function setOf(
+  n: number,
+  at: (i: number) => [number, number, number],
+  type: { population: string; compartment: string; radius: number },
+  model = 'm.up',
+): PlacementSet {
+  const b = new PlacementBuilder(n);
+  for (let i = 0; i < n; i++) b.push(0, ...at(i), [0, 0, 0, 1]);
+  return b.finish({
+    key: `${model}#0`,
+    model,
+    frame: 'world',
+    typeTable: [{ index: 0, entity: `e.${type.population}`, label: type.population, ...type }],
+  });
 }

@@ -67,8 +67,8 @@
             "params": {
               "model": "m.picks",
               "resolver": "meso.precomputed",
-              "version": "0.2.0",
-              "key": "m.picks@2bc9cb1ca55135fb",
+              "version": "0.3.0",
+              "key": "m.picks@28d6d5bf57ca885e",
               "input": {
                 "resources": [
                   {
@@ -99,7 +99,7 @@
                 "origin": ["p.catalase.observed"],
                 "params": {
                   "set": {
-                    "key": "m.picks@2bc9cb1ca55135fb#0",
+                    "key": "m.picks@28d6d5bf57ca885e#0",
                     "model": "m.picks",
                     "frame": "world",
                     "count": 24,
@@ -142,8 +142,8 @@
             "params": {
               "model": "m.recipe",
               "resolver": "cellpack-gpu",
-              "version": "0.1.0",
-              "key": "m.recipe@d0fbeb444690db1d",
+              "version": "0.1.1",
+              "key": "m.recipe@8a050467de2c042a",
               "input": {
                 "recipe": "c6584b4b914d0f56",
                 "items": [
@@ -347,7 +347,7 @@
                 ],
                 "params": {
                   "set": {
-                    "key": "m.recipe@d0fbeb444690db1d#0",
+                    "key": "m.recipe@8a050467de2c042a#0",
                     "model": "m.recipe",
                     "frame": "world",
                     "count": 2046,
@@ -471,8 +471,8 @@
             "params": {
               "model": "default:meso.bilayer",
               "resolver": "meso.bilayer",
-              "version": "0.1.0",
-              "key": "default:meso.bilayer@53ae1b406706a313",
+              "version": "0.1.1",
+              "key": "default:meso.bilayer@e61ec16ff4ed3426",
               "input": {
                 "items": [
                   {
@@ -525,7 +525,7 @@
                 "origin": ["p.lipids"],
                 "params": {
                   "set": {
-                    "key": "default:meso.bilayer@53ae1b406706a313#0",
+                    "key": "default:meso.bilayer@e61ec16ff4ed3426#0",
                     "model": "default:meso.bilayer",
                     "frame": "world",
                     "count": 88666,
@@ -569,92 +569,92 @@
     },
     "looks": [
       {
-        "set": "default:meso.bilayer@53ae1b406706a313#0",
+        "set": "default:meso.bilayer@e61ec16ff4ed3426#0",
         "types": [0],
         "color": 15259824,
         "visible": true,
         "transparency": 0.6
       },
       {
-        "set": "m.picks@2bc9cb1ca55135fb#0",
+        "set": "m.picks@28d6d5bf57ca885e#0",
         "types": [0],
         "color": 16756736,
         "visible": true
       },
       {
-        "set": "m.recipe@d0fbeb444690db1d#0",
+        "set": "m.recipe@8a050467de2c042a#0",
         "types": [0],
         "color": 9202131,
         "visible": true
       },
       {
-        "set": "m.recipe@d0fbeb444690db1d#0",
+        "set": "m.recipe@8a050467de2c042a#0",
         "types": [1],
         "color": 7956947,
         "visible": true
       },
       {
-        "set": "m.recipe@d0fbeb444690db1d#0",
+        "set": "m.recipe@8a050467de2c042a#0",
         "types": [2],
         "color": 10512851,
         "visible": true
       },
       {
-        "set": "m.recipe@d0fbeb444690db1d#0",
+        "set": "m.recipe@8a050467de2c042a#0",
         "types": [3],
         "color": 13855168,
         "visible": true
       },
       {
-        "set": "m.recipe@d0fbeb444690db1d#0",
+        "set": "m.recipe@8a050467de2c042a#0",
         "types": [4],
         "color": 13881961,
         "visible": true
       },
       {
-        "set": "m.recipe@d0fbeb444690db1d#0",
+        "set": "m.recipe@8a050467de2c042a#0",
         "types": [5],
         "color": 13199827,
         "visible": true
       },
       {
-        "set": "m.recipe@d0fbeb444690db1d#0",
+        "set": "m.recipe@8a050467de2c042a#0",
         "types": [6],
         "color": 13856361,
         "visible": true
       },
       {
-        "set": "m.recipe@d0fbeb444690db1d#0",
+        "set": "m.recipe@8a050467de2c042a#0",
         "types": [7],
         "color": 10670953,
         "visible": true
       },
       {
-        "set": "m.recipe@d0fbeb444690db1d#0",
+        "set": "m.recipe@8a050467de2c042a#0",
         "types": [8],
         "color": 6917075,
         "visible": true
       },
       {
-        "set": "m.recipe@d0fbeb444690db1d#0",
+        "set": "m.recipe@8a050467de2c042a#0",
         "types": [9],
         "color": 6934739,
         "visible": true
       },
       {
-        "set": "m.recipe@d0fbeb444690db1d#0",
+        "set": "m.recipe@8a050467de2c042a#0",
         "types": [10],
         "color": 12964713,
         "visible": true
       },
       {
-        "set": "m.recipe@d0fbeb444690db1d#0",
+        "set": "m.recipe@8a050467de2c042a#0",
         "types": [11],
         "color": 13866345,
         "visible": true
       },
       {
-        "set": "m.recipe@d0fbeb444690db1d#0",
+        "set": "m.recipe@8a050467de2c042a#0",
         "types": [12],
         "color": 13649210,
         "visible": true

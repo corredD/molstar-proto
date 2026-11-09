@@ -360,7 +360,7 @@ export function importCellpackGpuRecipe(recipe: CellpackGpuRecipe, o: CellpackIm
 
 export const CellpackGpuResolver: Resolver<PackInput & { readonly recipe: string }> = {
   id: 'cellpack-gpu',
-  version: '0.1.0',
+  version: '0.1.1',
   description:
     "cellPACKgpu serialized recipes: the recipe's principal vectors and membrane offsets on the shared packer",
   arrangements: ['random'],

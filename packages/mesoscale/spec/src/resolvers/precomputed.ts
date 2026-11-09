@@ -6,14 +6,17 @@
 
 import type { Id } from '../format/doc.js';
 import { issue, type Issue } from '../format/issues.js';
-import { PlacementBuilder, type PlacementType } from '../ir/placements.js';
+import { PlacementBuilder, type PlacementType, rotateVec } from '../ir/placements.js';
 import type { StarTable } from '../runtime/readers.js';
 import type { Resolver, ResolveJob, ResolveOutput } from '../runtime/resolver.js';
 
 // `meso.precomputed` (design.md §4.5): placements someone else computed, read from their native format and carried into
 // the world frame by the resource frame's alignment. A precomputed model and a procedural one are the same to everything
 // after the resolver: both end as placement sets. Formats: RELION STAR (coordinates in voxels, ZYZ angles, as Mol*'s
-// reader reads them: packages/model/src/formats/particles/star.ts `relionEulerToRotation`) and a small JSON one.
+// reader reads them: packages/model/src/formats/particles/star.ts `relionEulerToRotation`) and a small JSON one. As
+// that reader, a STAR row's origin shift (`rlnOrigin*` in pixels, `rlnOrigin*Angst` in Å, turned by the subtomogram's
+// rotation when it has one) is taken off its coordinate, and its subtomogram angles (`rlnTomoSubtomogram*`) turn its
+// rotation: subtomogram · particle. An Å shift becomes voxels by the resource frame's scale (the voxel size).
 //
 // `params.placements`: an inline table in the same JSON shape, already in world Å (the runtime writes the document's
 // instances, design.md §3.13, this way, so given poses have one code path whether a file or the document holds them).
@@ -50,7 +53,7 @@ interface PlacementsJson {
 
 export const MesoPrecomputedResolver: Resolver<PrecomputedInput> = {
   id: 'meso.precomputed',
-  version: '0.2.0',
+  version: '0.3.0',
   description:
     "Placements from a file (RELION STAR particle lists, MesoViewSpec placement JSON) or the document's instances",
   arrangements: ['random', 'lattice', 'fiber'],
@@ -108,17 +111,51 @@ export const MesoPrecomputedResolver: Resolver<PrecomputedInput> = {
           continue;
         }
         const col = (n: string) => table.columns.indexOf(n);
+        const all = (names: string[]) => {
+          const c = names.map(col);
+          return c.every((i) => i >= 0) ? c : undefined;
+        };
         const [cx, cy, cz] = ['rlnCoordinateX', 'rlnCoordinateY', 'rlnCoordinateZ'].map(col);
-        const [ar, at, ap] = ['rlnAngleRot', 'rlnAngleTilt', 'rlnAnglePsi'].map(col);
+        const angles = all(['rlnAngleRot', 'rlnAngleTilt', 'rlnAnglePsi']);
+        const sub = all(['rlnTomoSubtomogramRot', 'rlnTomoSubtomogramTilt', 'rlnTomoSubtomogramPsi']);
+        // the origin shift: Å first (RELION 3.1+), as Mol*'s reader; Å to voxels by the frame's scale
+        const originA = all(['rlnOriginXAngst', 'rlnOriginYAngst', 'rlnOriginZAngst']);
+        const origin = originA ?? all(['rlnOriginX', 'rlnOriginY', 'rlnOriginZ']);
+        const perVoxel = originA ? 1 / (Math.hypot(M[0], M[1], M[2]) || 1) : 1;
         const pick = typeof input.populations === 'string' ? undefined : col(input.populations.column);
+        if (pick !== undefined && pick < 0) {
+          issues.push(
+            issue(
+              'resolver.unsupported',
+              'error',
+              'resolve',
+              `${r.id} has no column ${(input.populations as { column: string }).column} to read populations from (it has ${table.columns.join(', ')})`,
+              { ids: [r.id, job.model.id] },
+            ),
+          );
+          continue;
+        }
         const rq = [0, 0, 0, 1];
+        const sq = [0, 0, 0, 1];
+        const shift = [0, 0, 0];
         for (const row of table.rows) {
           const pop = typeof input.populations === 'string' ? input.populations : input.populations.values[row[pick!]];
           const type = pop === undefined ? undefined : typeOf.get(pop);
           if (type === undefined) continue;
-          if (ar >= 0 && at >= 0 && ap >= 0) relionQuat(rq, +row[ar], +row[at], +row[ap]);
+          if (angles) relionQuat(rq, +row[angles[0]], +row[angles[1]], +row[angles[2]]);
           else [rq[0], rq[1], rq[2], rq[3]] = [0, 0, 0, 1];
-          put(type, +row[cx], +row[cy], +row[cz], rq);
+          if (sub) relionQuat(sq, +row[sub[0]], +row[sub[1]], +row[sub[2]]);
+          let [x, y, z] = [+row[cx], +row[cy], +row[cz]];
+          if (origin) {
+            shift[0] = +row[origin[0]] * perVoxel;
+            shift[1] = +row[origin[1]] * perVoxel;
+            shift[2] = +row[origin[2]] * perVoxel;
+            if (sub) rotateVec(shift, sq, shift[0], shift[1], shift[2]);
+            x -= shift[0];
+            y -= shift[1];
+            z -= shift[2];
+          }
+          put(type, x, y, z, sub ? mulQuat(rq, sq, [...rq]) : rq);
         }
       } else if (r.format === 'meso-placements+json') {
         const data = content as PlacementsJson;

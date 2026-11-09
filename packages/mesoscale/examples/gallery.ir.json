@@ -127,8 +127,8 @@
             "params": {
               "model": "default:meso.pack",
               "resolver": "meso.pack",
-              "version": "0.1.0",
-              "key": "default:meso.pack@51c36aa55cb97dc8",
+              "version": "0.1.1",
+              "key": "default:meso.pack@be00753e041b4935",
               "input": {
                 "items": [
                   {
@@ -228,7 +228,7 @@
                 "origin": ["p.ribosomes", "p.proteasomes", "p.arp23"],
                 "params": {
                   "set": {
-                    "key": "default:meso.pack@51c36aa55cb97dc8#0",
+                    "key": "default:meso.pack@be00753e041b4935#0",
                     "model": "default:meso.pack",
                     "frame": "world",
                     "count": 310,
@@ -272,8 +272,8 @@
             "params": {
               "model": "default:meso.lattice",
               "resolver": "meso.lattice",
-              "version": "0.1.0",
-              "key": "default:meso.lattice@09a48524e88ea669",
+              "version": "0.2.2",
+              "key": "default:meso.lattice@ddda4259bc5ea5bc",
               "input": {
                 "items": [
                   {
@@ -354,7 +354,8 @@
                     "area": 951275.9742583687
                   }
                 },
-                "seed": 1
+                "seed": 1,
+                "model": "default:meso.lattice"
               },
               "cached": false
             },
@@ -365,7 +366,7 @@
                 "origin": ["p.pores", "p.atpsynthase"],
                 "params": {
                   "set": {
-                    "key": "default:meso.lattice@09a48524e88ea669#0",
+                    "key": "default:meso.lattice@ddda4259bc5ea5bc#0",
                     "model": "default:meso.lattice",
                     "frame": "world",
                     "count": 129,
@@ -388,7 +389,7 @@
                         "radius": 60
                       }
                     ],
-                    "first": [352.84, 0, -547.97, 537.29, 95.12, -524.03]
+                    "first": [727.48, -104.91, -429.25, 856.9, -144.28, -270.05]
                   }
                 }
               }
@@ -401,8 +402,8 @@
             "params": {
               "model": "default:meso.fiber",
               "resolver": "meso.fiber",
-              "version": "0.2.0",
-              "key": "default:meso.fiber@252ff73e5b2905c1",
+              "version": "0.3.2",
+              "key": "default:meso.fiber@106a395b7146b4ce",
               "input": {
                 "strands": [
                   {
@@ -504,7 +505,7 @@
                 "origin": ["p.actin", "p.microtubule"],
                 "params": {
                   "set": {
-                    "key": "default:meso.fiber@252ff73e5b2905c1#0",
+                    "key": "default:meso.fiber@106a395b7146b4ce#0",
                     "model": "default:meso.fiber",
                     "frame": "world",
                     "count": 510,
@@ -530,7 +531,7 @@
                     "fibers": {
                       "count": 7
                     },
-                    "first": [40.46, -1042.34, -642.02, 54.21, -1061.84, -628.35]
+                    "first": [40.46, -1042.34, -642.02, 54.01, -1061.74, -628.01]
                   }
                 }
               }
@@ -543,8 +544,8 @@
             "params": {
               "model": "default:meso.bilayer",
               "resolver": "meso.bilayer",
-              "version": "0.1.0",
-              "key": "default:meso.bilayer@52bb1c25fbbf6dc8",
+              "version": "0.1.1",
+              "key": "default:meso.bilayer@bef826bea3213935",
               "input": {
                 "items": [
                   {
@@ -621,7 +622,7 @@
                 "origin": ["p.vesicle-lipids"],
                 "params": {
                   "set": {
-                    "key": "default:meso.bilayer@52bb1c25fbbf6dc8#0",
+                    "key": "default:meso.bilayer@bef826bea3213935#0",
                     "model": "default:meso.bilayer",
                     "frame": "world",
                     "count": 23599,
@@ -655,49 +656,49 @@
     },
     "looks": [
       {
-        "set": "default:meso.bilayer@52bb1c25fbbf6dc8#0",
+        "set": "default:meso.bilayer@bef826bea3213935#0",
         "types": [0],
         "color": 15259824,
         "visible": true
       },
       {
-        "set": "default:meso.fiber@252ff73e5b2905c1#0",
+        "set": "default:meso.fiber@106a395b7146b4ce#0",
         "types": [0],
         "color": 5940570,
         "visible": true
       },
       {
-        "set": "default:meso.fiber@252ff73e5b2905c1#0",
+        "set": "default:meso.fiber@106a395b7146b4ce#0",
         "types": [1],
         "color": 10181046,
         "visible": true
       },
       {
-        "set": "default:meso.lattice@09a48524e88ea669#0",
+        "set": "default:meso.lattice@ddda4259bc5ea5bc#0",
         "types": [0],
         "color": 14725196,
         "visible": true
       },
       {
-        "set": "default:meso.lattice@09a48524e88ea669#0",
+        "set": "default:meso.lattice@ddda4259bc5ea5bc#0",
         "types": [1],
         "color": 12603469,
         "visible": true
       },
       {
-        "set": "default:meso.pack@51c36aa55cb97dc8#0",
+        "set": "default:meso.pack@be00753e041b4935#0",
         "types": [0],
         "color": 8035526,
         "visible": true
       },
       {
-        "set": "default:meso.pack@51c36aa55cb97dc8#0",
+        "set": "default:meso.pack@be00753e041b4935#0",
         "types": [1],
         "color": 6935452,
         "visible": true
       },
       {
-        "set": "default:meso.pack@51c36aa55cb97dc8#0",
+        "set": "default:meso.pack@be00753e041b4935#0",
         "types": [2],
         "color": 6921427,
         "visible": true
@@ -781,6 +782,13 @@
         "achieved": 69,
         "reason": "the membrane of mitochondrion holds 69 hexagonal sites 120 Å apart; 400 asked"
       }
+    },
+    {
+      "code": "constraint.unmet",
+      "severity": "info",
+      "phase": "resolve",
+      "message": "p.vesicle-lipids: 23599 lipids for 23562 asked: each leaflet is filled at the density over its own area (12742 and 10857)",
+      "ids": ["p.vesicle-lipids"]
     },
     {
       "code": "relation.ignored",

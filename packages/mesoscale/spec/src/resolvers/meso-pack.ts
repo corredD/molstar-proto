@@ -13,7 +13,7 @@ import { DefaultPackParams, pack, type PackInput, packCompartments } from './pac
 
 export const MesoPackResolver: Resolver<PackInput> = {
   id: 'meso.pack',
-  version: '0.1.0',
+  version: '0.1.1',
   description: 'Seeded random sequential addition of spheres: interiors, membranes, surfaces, the space around',
   arrangements: ['random'],
   locations: ['interior', 'membrane', 'outer-surface', 'inner-surface', 'exterior'],
