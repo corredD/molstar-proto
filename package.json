@@ -112,6 +112,7 @@
   ],
   "license": "MIT",
   "devDependencies": {
+    "@molstar/test-harness": "workspace:*",
     "@types/argparse": "catalog:",
     "@types/benchmark": "catalog:",
     "@types/compression": "catalog:",
@@ -140,7 +141,6 @@
     "benchmark": "catalog:",
     "concurrently": "catalog:",
     "cross-spawn": "catalog:",
-    "cpx2": "catalog:",
     "css-loader": "catalog:",
     "esbuild": "catalog:",
     "esbuild-sass-plugin": "catalog:",

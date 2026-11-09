@@ -53,6 +53,12 @@ export interface ShapeBuilder<G extends Geometry, P extends Geometry.Params<G>> 
   /** Hook to modify representation state */
   modifyState?: (state: Partial<Representation.State>) => Partial<Representation.State>;
   /**
+   * The shape its loci are of, picked and marked (overpaint, transparency, highlight), its groups this shape's: a part
+   * standing in for another (a hit area, `State.pickOnly`; thin handles drawn as lines) reports and takes the loci of
+   * what it stands in for, so that hover, highlight and clicks are one; this shape by default
+   */
+  lociShape?: () => Shape;
+  /**
    * The graphics context the shape is drawn with: geometry relying on what it lacks is changed (see
    * `GeometryUtils.isCompatible`); `setGraphics` replaces it
    */
@@ -264,13 +270,18 @@ export function ShapeRepresentation<D, G extends Geometry, P extends Geometry.Pa
     return changed;
   }
 
+  /** The shape this representation's loci are of: its own, or the one it stands in for (`ShapeBuilder.lociShape`) */
+  function lociShape() {
+    return builder.lociShape?.() ?? _shape;
+  }
+
   function lociApply(loci: Loci, apply: (interval: Interval) => boolean) {
     const instanceGranularity = resolveInstanceGranularity(
       currentProps.instanceGranularity,
       _shape.groupCount,
       _shape.transforms.length,
     );
-    if (isEveryLoci(loci) || (Shape.isLoci(loci) && loci.shape === _shape)) {
+    if (isEveryLoci(loci) || (Shape.isLoci(loci) && loci.shape === lociShape())) {
       if (instanceGranularity) {
         return apply(Interval.ofBounds(0, _shape.transforms.length));
       } else {
@@ -278,9 +289,9 @@ export function ShapeRepresentation<D, G extends Geometry, P extends Geometry.Pa
       }
     } else {
       if (instanceGranularity) {
-        return eachInstance(loci, _shape, apply);
+        return eachInstance(loci, lociShape(), apply);
       } else {
-        return eachShapeGroup(loci, _shape, apply);
+        return eachShapeGroup(loci, lociShape(), apply);
       }
     }
   }
@@ -319,16 +330,17 @@ export function ShapeRepresentation<D, G extends Geometry, P extends Geometry.Pa
           _shape.groupCount,
           _shape.transforms.length,
         );
+        const shape = lociShape();
         if (groupId === PickingId.Null || instanceGranularity) {
-          return Shape.Loci(_shape);
+          return Shape.Loci(shape);
         } else {
-          return ShapeGroup.Loci(_shape, [{ ids: OrderedSet.ofSingleton(groupId), instance: instanceId }]);
+          return ShapeGroup.Loci(shape, [{ ids: OrderedSet.ofSingleton(groupId), instance: instanceId }]);
         }
       }
       return EmptyLoci;
     },
     getAllLoci() {
-      return [Shape.Loci(_shape)];
+      return [Shape.Loci(lociShape())];
     },
     eachLocation: (cb: LocationCallback) => {
       locationIt.reset();
@@ -341,9 +353,10 @@ export function ShapeRepresentation<D, G extends Geometry, P extends Geometry.Pa
       if (!MarkerActions.is(_state.markerActions, action)) return false;
       if (ShapeGroup.isLoci(loci) || Shape.isLoci(loci)) {
         // a move builds a new shape of the same mesh: a loci from before it still names its triangles
-        if (loci.shape !== _shape) {
-          if (!_shape || loci.shape.geometry !== _shape.geometry) return false;
-          loci = retargetLoci(loci, _shape);
+        const shape = lociShape();
+        if (loci.shape !== shape) {
+          if (!shape || loci.shape.geometry !== shape.geometry) return false;
+          loci = retargetLoci(loci, shape);
         }
       } else if (!isEveryLoci(loci)) {
         return false;
@@ -361,12 +374,14 @@ export function ShapeRepresentation<D, G extends Geometry, P extends Geometry.Pa
         if (state.visible !== undefined) Visual.setVisibility(_renderObject, state.visible);
         if (state.pickable !== undefined) Visual.setPickable(_renderObject, state.pickable);
         if (state.colorOnly !== undefined) Visual.setColorOnly(_renderObject, state.colorOnly);
+        if (state.pickOnly !== undefined) Visual.setPickOnly(_renderObject, state.pickOnly);
         // the marked triangles are shown and moved with the mesh, never picked
         const marks = _triangleMarks?.renderObject;
         if (marks) {
           if (state.visible !== undefined) Visual.setVisibility(marks, state.visible);
           if (state.colorOnly !== undefined) Visual.setColorOnly(marks, state.colorOnly);
           if (state.transform !== undefined) Visual.setTransform(marks, state.transform);
+          if (state.previewTransform !== undefined) Visual.setPreviewTransform(marks, state.previewTransform);
         }
         if (state.overpaint !== undefined) {
           Visual.setOverpaint(_renderObject, state.overpaint, lociApply, true);
@@ -378,6 +393,7 @@ export function ShapeRepresentation<D, G extends Geometry, P extends Geometry.Pa
           Visual.setSubstance(_renderObject, state.substance, lociApply, true);
         }
         if (state.transform !== undefined) Visual.setTransform(_renderObject, state.transform);
+        if (state.previewTransform !== undefined) Visual.setPreviewTransform(_renderObject, state.previewTransform);
       }
 
       Representation.updateState(_state, state);
