@@ -405,11 +405,11 @@ still completes its distance.
   Prism cuts whole representations), with their guides. The stage tools' whole-object cuts (`stage.cut`, `adjust`,
   `uncut`, `cuts`, their tree row) are gone.
 - Moving is Prism's too (2026-10-21): Move and turn shows Prism's handles (its gizmo library) on the object, a drag
-  previewed, each release one step: a structure's are Prism's own (`api.move`, its structure-move feature), released
-  through `stage.move` (the move from where it was, so its clips and labels go with it; 2026-11-05), a particle list's,
-  a volume's or a mesh's the stage's on the same library (`ObjectMoveGizmos`, committing `stage.move`; a mesh's scale
-  kept under the turn); one object's handles at a time; the properties' Position shows or hides them. A label keeps its
-  drag (Move: nothing to turn).
+  previewed, each release one step: a structure's are Prism's own (`api.move`, its move feature), released through
+  `stage.move` (the move from where it was, so its clips and labels go with it; 2026-11-05), a particle list's, a
+  volume's or a mesh's the stage's on the same library (`ObjectMoveGizmos`, committing `stage.move`; a mesh's scale kept
+  under the turn); one object's handles at a time; the properties' Position shows or hides them. A label keeps its drag
+  (Move: nothing to turn).
 - Particle lists (2026-10-22, Ludovic's test): one with orientations opens as its spheres and its axes, both shown
   (`PluginConfig.Particles.ShowOrientations`, on in the app's spec; a library option, off by default); each has its eye
   in Representation. What stands for the particles follows their decoration: the objects while any target is decorated,
