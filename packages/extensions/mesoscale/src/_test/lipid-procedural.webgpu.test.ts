@@ -12,7 +12,18 @@ import { Vec3 } from '@molstar/core/math/linear-algebra/3d/vec3';
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
 import { HeadlessPluginContext } from '@molstar/plugin-headless/context';
 import { DefaultPluginSpec } from '@molstar/plugin/default-spec';
-import { LipidMembrane, LipidMembraneParams, membraneSpecies, registerLipidPatch } from '../lipids/membrane.js';
+import { SyncRuntimeContext } from '@molstar/core/task/execution/synchronous';
+import {
+  buildMembraneSteps,
+  concatMeshes,
+  LipidMembrane,
+  LipidMembraneParams,
+  LipidMembraneRepresentation,
+  membraneSpecies,
+  registerLipidPatch,
+  runSteps,
+} from '../lipids/membrane.js';
+import { icosphere, type TriMesh } from '../lipids/remesh.js';
 import { syntheticPatchPdb, writePng } from './lipid-fixtures.js';
 
 // A membrane made per view on Dawn (lipid-procedural): a camera path whole → close → whole over a sphere cut by the
@@ -453,6 +464,87 @@ describe.skipIf(!webgpu)('a lipid membrane made per view (Dawn)', () => {
       for (let i = 0; i < 3; ++i) await plugin.getImageRaw({ width: Size, height: Size });
       expect(repr.pool.selects).toBe(rest.selects);
       expect(repr.pool.regenerations).toBe(rest.regenerations);
+      expect(canvas.graphics.takeErrors?.() ?? []).toEqual([]);
+    } finally {
+      plugin.dispose();
+    }
+  });
+
+  it('flies through a cell of nested membranes (round 6): the enclosed ones neither selected nor drawn outside, shown inside', {
+    timeout: 300_000,
+    tags: ['medium'],
+  }, async () => {
+    const plugin = await HeadlessPluginContext.create(
+      { webgpu },
+      DefaultPluginSpec(),
+      { width: Size, height: Size },
+      { backend: 'webgpu' },
+    );
+    try {
+      await plugin.init();
+      registerLipidPatch('dawn-cell', syntheticPatchPdb().text);
+      const at = (m: TriMesh, x: number): TriMesh => ({
+        positions: Float32Array.from(m.positions, (v, i) => (i % 3 === 0 ? v + x : v)),
+        indices: m.indices,
+      });
+      // a cell of 12,000 Å, two organelles and a small one inside it
+      const { mesh, parts } = concatMeshes(
+        [icosphere(12000, 1200), at(icosphere(4000, 600), -5000), at(icosphere(3000, 500), 5000), icosphere(800, 200)],
+        ['PM', 'NE', 'VAC', 'PEROX'],
+      );
+      const data = await runSteps(
+        buildMembraneSteps(
+          { mesh, parts },
+          'dawn-cell',
+          0,
+          'both',
+          { edgeTypes: 1, vertexColors: 1, variants: 1, seed: 1 },
+          'cutter',
+        ),
+        SyncRuntimeContext,
+      );
+      if (typeof data === 'string') expect.fail(data);
+      expect(data.enclosedBy!.map((e) => Array.from(e))).toEqual([[], [0], [0], [0]]);
+      const repr = LipidMembraneRepresentation(plugin.canvas3d!.graphics);
+      await repr
+        .createOrUpdate({ ...PD.getDefaultValues(LipidMembraneParams), method: 'cutter', patch: 'dawn-cell' }, data)
+        .run();
+      plugin.canvas3d!.add(repr as never);
+      const r = repr as unknown as { pool: { live: number; selectMs: number; selects: number; regenerations: number } };
+      const surfacesShown = () => repr.renderObjects.filter((o) => o.type === 'mesh' && o.state.visible).length;
+      const canvas = plugin.canvas3d!;
+      const camera = canvas.camera;
+      canvas.requestCameraReset({ durationMs: 0 });
+      await plugin.getImageRaw({ width: Size, height: Size });
+      const whole = camera.getSnapshot();
+      const numbers: Record<string, unknown>[] = [];
+      const go = async (name: string, position: Vec3, target: Vec3) => {
+        camera.setState({ ...whole, position, target, up: Vec3.create(0, 1, 0) }, 0);
+        await plugin.getImageRaw({ width: Size, height: Size });
+        const t = performance.now();
+        await plugin.getImageRaw({ width: Size, height: Size });
+        numbers.push({ name, ms: Math.round(performance.now() - t), ...r.pool, surfaces: surfacesShown() });
+        return { ...r.pool, surfaces: surfacesShown() };
+      };
+      // outside, close over the PM: its lipids alone, its 4 surfaces alone (2 leaflets, near and far)
+      const close = await go('close', Vec3.create(0, 0, 12300), Vec3.create(0, 0, 12000));
+      expect(close.live).toBeGreaterThan(1000);
+      expect(close.surfaces).toBe(4);
+      expect(close.selectMs).toBeLessThan(50);
+      // inside, over the VAC: its lipids too, every surface
+      const inside = await go('inside', Vec3.create(5000, 0, 3300), Vec3.create(5000, 0, 3000));
+      expect(inside.live).toBeGreaterThan(1000);
+      expect(inside.surfaces).toBe(16);
+      // whole: nothing near, the PM's surfaces alone
+      const far = await go('whole', whole.position, whole.target);
+      expect(far.live).toBe(0);
+      expect(far.surfaces).toBe(4);
+      // at rest: nothing selected or written again
+      const rest = { ...r.pool };
+      for (let i = 0; i < 3; ++i) await plugin.getImageRaw({ width: Size, height: Size });
+      expect(r.pool.selects).toBe(rest.selects);
+      expect(r.pool.regenerations).toBe(rest.regenerations);
+      if (process.env.LIPID_NUMBERS) console.log(JSON.stringify(numbers));
       expect(canvas.graphics.takeErrors?.() ?? []).toEqual([]);
     } finally {
       plugin.dispose();
