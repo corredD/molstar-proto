@@ -33,8 +33,13 @@ function setup(pending = 0, options: { upright?: boolean; changeOnPaint?: boolea
   let lists = true;
   let reads = pending;
   const refined: number[] = [];
+  const camera = { held: 0, released: 0 };
   const host: PaintHost = {
     canvas: () => canvas,
+    holdCamera: () => {
+      camera.held++;
+      return () => camera.released++;
+    },
     identify: (x, y) => {
       if (reads > 0) {
         reads--;
@@ -68,7 +73,7 @@ function setup(pending = 0, options: { upright?: boolean; changeOnPaint?: boolea
   const change = () => {
     for (const fn of listeners) fn();
   };
-  return { mode, layer, strokes, change, listeners, refined, removeList: () => (lists = false) };
+  return { mode, layer, strokes, change, listeners, refined, camera, removeList: () => (lists = false) };
 }
 
 const brush = { particles: 'list', entity: 1, name: 'CD9' };
@@ -154,6 +159,51 @@ describe('paint mode', () => {
     expect(css).not.toContain('--msp-color-surface');
     expect(css).not.toMatch(/#[0-9a-f]{3}|\d+px/i);
     mode.stop();
+  });
+
+  it('Alt held lets the pointer through to the camera, never in a stroke; an Alt press paints nothing', () => {
+    const { mode, layer, strokes } = setup();
+    mode.start(brush);
+    const el = layer();
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Alt', altKey: true }));
+    expect(el.style.pointerEvents).toBe('none');
+    window.dispatchEvent(new KeyboardEvent('keyup', { key: 'Alt' }));
+    expect(el.style.pointerEvents).toBe('');
+    // Alt pressed outside the page: read from the pointer
+    window.dispatchEvent(new PointerEvent('pointermove', { altKey: true }));
+    expect(el.style.pointerEvents).toBe('none');
+    window.dispatchEvent(new Event('blur'));
+    expect(el.style.pointerEvents).toBe('');
+    // in a stroke the layer keeps the pointer
+    el.dispatchEvent(pointer('pointerdown', { x: 10, y: 10 }));
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Alt', altKey: true }));
+    expect(el.style.pointerEvents).toBe('');
+    el.dispatchEvent(pointer('pointerup', { x: 10, y: 10 }));
+    expect(strokes.length).toBe(1);
+    // a press with Alt is the camera's
+    const init = { bubbles: true, cancelable: true, clientX: 20, clientY: 10, button: 0, buttons: 1, pointerId: 1 };
+    el.dispatchEvent(new PointerEvent('pointerdown', { ...init, altKey: true }));
+    el.dispatchEvent(pointer('pointerup', { x: 20, y: 10 }));
+    expect(strokes.length).toBe(1);
+    mode.stop();
+  });
+
+  it("the camera's Alt gestures are held while the mode is on and released on every way out", () => {
+    for (const end of ['stop', 'escape', 'other brush', 'list removed'] as const) {
+      const { mode, camera, change, removeList } = setup();
+      mode.start(brush);
+      expect(camera).toEqual({ held: 1, released: 0 });
+      if (end === 'stop') mode.stop();
+      else if (end === 'escape') window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+      else if (end === 'other brush') mode.start({ ...brush, entity: 2, name: 'CD63' });
+      else {
+        removeList();
+        change();
+      }
+      expect(camera.released, end).toBe(1);
+      mode.stop();
+      document.body.innerHTML = '';
+    }
   });
 
   it('Esc leaves the mode: its layer, its listeners and its brush gone', () => {

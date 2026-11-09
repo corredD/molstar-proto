@@ -6,6 +6,8 @@
 
 import { Vec2, Vec3, Vec4 } from '@molstar/core/math/linear-algebra';
 import { OrderedSet } from '@molstar/core/data/int';
+import type { Binding } from '@molstar/core/util/binding';
+import type { Canvas3D } from '@molstar/graphics/canvas3d/canvas3d';
 import type { PickingId } from '@molstar/graphics/geo/geometry/picking';
 import {
   getParticleEntityGroups,
@@ -23,6 +25,39 @@ import { membraneFrame } from './pick-surface.js';
 const _v = Vec2();
 const _p4 = Vec4();
 
+type TrackballBindings = Canvas3D['attribs']['trackball']['bindings'];
+
+/** The camera's gestures that get an Alt version while painting (progress/2026-11-08-paint.md, Round 2, Decided 1) */
+const AltCameraGestures = [
+  'dragRotate',
+  'dragRotateZ',
+  'dragPan',
+  'dragFocus',
+  'dragFocusZoom',
+  'scrollZoom',
+  'scrollFocus',
+  'scrollFocusZoom',
+] as const;
+
+/**
+ * `bindings` with each camera gesture's triggers also taken with Alt held (Alt+left turns, Alt+right pans, Alt+wheel
+ * zooms): the paint layer takes the plain ones, and a trigger's modifiers match exactly (`Binding.Trigger.match`). A
+ * trigger without modifiers already matches any, and one with Alt is kept as it is.
+ */
+export function withAltCamera(bindings: TrackballBindings): TrackballBindings {
+  const out: Record<string, Binding> = { ...bindings };
+  for (const k of AltCameraGestures) {
+    const b = bindings[k];
+    if (!b) continue;
+    const alt: Binding.Trigger[] = [];
+    for (const t of b.triggers) {
+      if (t.modifiers && !t.modifiers.alt) alt.push({ ...t, modifiers: { ...t.modifiers, alt: true } });
+    }
+    if (alt.length) out[k] = { ...b, triggers: [...b.triggers, ...alt] };
+  }
+  return out as TrackballBindings;
+}
+
 /** The host of a paint mode on `plugin`; `paint` runs the operation */
 export function pluginPaintHost(
   plugin: PluginContext,
@@ -32,6 +67,14 @@ export function pluginPaintHost(
     plugin.managers.particles.hierarchy.current.lists.find((l) => l.cell.transform.ref === ref);
   return {
     canvas: () => plugin.canvas3dContext?.canvas ?? undefined,
+    holdCamera() {
+      const canvas = plugin.canvas3d;
+      if (!canvas) return () => {};
+      // the canvas's bindings as they are now (an app's, not the defaults), put back whole
+      const saved = canvas.attribs.trackball.bindings;
+      canvas.setAttribs({ trackball: { bindings: withAltCamera(saved) } });
+      return () => canvas.setAttribs({ trackball: { bindings: saved } });
+    },
     identify: (x, y) => plugin.canvas3d?.identify(Vec2.set(_v, x, y)),
     eye: (out) => Vec3.copy(out, plugin.canvas3d?.camera.state.position ?? Vec3.create(0, 0, 1)),
     refine(point) {

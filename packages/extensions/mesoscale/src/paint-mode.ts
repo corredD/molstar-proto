@@ -42,6 +42,8 @@ export const DefaultPaintSettings: PaintSettings = { spacing: 0, orient: 'auto',
 export interface PaintHost {
   /** The canvas the layer goes over */
   canvas(): HTMLElement | undefined;
+  /** The camera's gestures also with Alt held while painting (`withAltCamera`); returns their restoring */
+  holdCamera(): () => void;
   /** The pick at a point of the canvas (CSS pixels from its top left) */
   readonly identify: Identify;
   /** The camera's position */
@@ -138,7 +140,7 @@ function paintLayer(mode: PaintMode, host: PaintHost, canvas: HTMLElement, brush
   const preview = document.createElement('canvas');
   preview.style.cssText = 'position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none';
   const hint = document.createElement('div');
-  hint.textContent = `Painting with ${brush.name} · drag on a surface · Esc to stop`;
+  hint.textContent = `Painting with ${brush.name} · drag on a surface · Alt to move the camera · Esc to stop`;
   hint.style.cssText =
     'position: absolute; left: 50%; top: var(--msp-space-3); transform: translateX(-50%); padding: var(--msp-space-1) var(--msp-space-3); border-radius: var(--msp-radius-md); background: var(--msp-color-raised); color: var(--msp-color-text); font-size: var(--msp-font-size-sm); pointer-events: none';
   layer.append(preview, hint);
@@ -247,7 +249,7 @@ function paintLayer(mode: PaintMode, host: PaintHost, canvas: HTMLElement, brush
 
   const gesture = drag<Stroke>(layer, {
     start(e) {
-      if (e.button !== 0) return undefined;
+      if (e.button !== 0 || e.altKey) return undefined;
       const rect = canvas.getBoundingClientRect();
       const settings = mode.settings.value;
       radius = Math.max(host.radius(brush), 1e-3);
@@ -296,10 +298,26 @@ function paintLayer(mode: PaintMode, host: PaintHost, canvas: HTMLElement, brush
     if (stroke && !committing) gesture.cancel();
     if (!host.has(brush)) mode.stop();
   });
+  // Alt held: the camera (progress/2026-11-08-paint.md, Round 2, Decided 1): the layer lets the pointer through to the
+  // canvas, whose gestures also take Alt while the mode is on; never in the middle of a stroke. Read from the keys and
+  // from every pointer move (Alt pressed outside the page), reset when the page loses the focus
+  const releaseCamera = host.holdCamera();
+  let passing = false;
+  const pass = (alt: boolean) => {
+    if (alt === passing || (alt && stroke)) return;
+    passing = alt;
+    layer.style.pointerEvents = alt ? 'none' : '';
+  };
   on<KeyboardEvent>(
     window,
     'keydown',
     (e) => {
+      if (e.key === 'Alt') {
+        // not the browser's menu (Windows moves the focus there on a lone Alt)
+        e.preventDefault();
+        pass(true);
+        return;
+      }
       if (e.key !== 'Escape') return;
       e.preventDefault();
       e.stopPropagation();
@@ -307,8 +325,21 @@ function paintLayer(mode: PaintMode, host: PaintHost, canvas: HTMLElement, brush
     },
     { capture: true },
   );
+  on<KeyboardEvent>(
+    window,
+    'keyup',
+    (e) => {
+      if (e.key !== 'Alt') return;
+      e.preventDefault();
+      pass(false);
+    },
+    { capture: true },
+  );
+  on<PointerEvent>(window, 'pointermove', (e) => pass(e.altKey), { capture: true, passive: true });
+  on(window, 'blur', () => pass(false));
   onCleanup(() => {
     unchanged();
+    releaseCamera();
     layer.remove();
   });
 }
