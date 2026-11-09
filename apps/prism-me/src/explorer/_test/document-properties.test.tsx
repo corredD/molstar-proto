@@ -181,4 +181,20 @@ describe('a MesoViewSpec document opened with the panel shown', () => {
     await until(() => !!host.querySelector(`[data-tree-key="${documentKey('')}"]`), 5000);
     expect(host.querySelector(`[data-tree-key="${documentKey('')}"]`)?.textContent).toContain('Exosome in plasma');
   });
+
+  it('shows the document opened by data with none of its files, the panel mounted before', async () => {
+    const v = await createPrismViewerHeadless({ spec: createMesoscaleExplorerSpec('') });
+    viewers.push(v);
+    const api = v.api.as({ kind: 'person' });
+    const ui = explorerUI({ api, sources: v.sources, managers: v.managers });
+    const host = document.createElement('div');
+    document.body.append(host);
+    ui.tabs![0].render.mount(host, { shell: new ShellModel() } as never, undefined as never);
+    // no files: the models' resources are missing, so no list is drawn and the lists' count never changes
+    const r = await v.api.run('mesoviewspec.open', { data: JSON.stringify(exosomeDoc()) });
+    expect(r.ok).toBe(true);
+    expect(v.plugin.managers.particles.hierarchy.current.lists.length).toBe(0);
+    await until(() => !!host.querySelector(`[data-tree-key="${documentKey('')}"]`), 5000);
+    expect(host.querySelector(`[data-tree-key="${documentKey('')}"]`)?.textContent).toContain('Exosome in plasma');
+  });
 });
