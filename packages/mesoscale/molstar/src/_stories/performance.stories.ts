@@ -41,6 +41,17 @@ function probe() {
     let adapter: PrismMesoAdapter | undefined;
     const run = async (kind: ScaleKind, n: number) => {
       if (!viewer) return;
+      // one run at a time: two in flight would commit through the same adapter and mix their timings
+      for (const b of buttons) b.disabled = true;
+      try {
+        await measure(viewer, kind, n);
+      } catch (e) {
+        status.textContent = `${kind} ${n.toLocaleString('en-US')}: failed, ${e instanceof Error ? e.message : String(e)}`;
+      } finally {
+        for (const b of buttons) b.disabled = false;
+      }
+    };
+    const measure = async (viewer: PrismViewer, kind: ScaleKind, n: number) => {
       status.textContent = `${kind} ${n.toLocaleString('en-US')}: resolving…`;
       await adapter?.clear();
       adapter = new PrismMesoAdapter(viewer);
@@ -89,7 +100,9 @@ function probe() {
         ['bilayer', 100_000],
         ['bilayer', 1_000_000],
       ] as const
-    ).map(([k, n]) => h('button', { onclick: () => run(k, n) }, `${k} ${n.toLocaleString('en-US')}`));
+    ).map(
+      ([k, n]) => h('button', { onclick: () => run(k, n) }, `${k} ${n.toLocaleString('en-US')}`) as HTMLButtonElement,
+    );
     const head = [
       'scene',
       'copies',
