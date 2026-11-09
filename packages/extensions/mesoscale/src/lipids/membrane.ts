@@ -320,6 +320,9 @@ export function* buildMembraneSteps(
     // the mesh's own triangles (a sphere: an icosphere at the suited edge)
     const mesh =
       surface.mesh ?? centered(icosphere(surface.radius ?? 500, edge > 0 ? edge : suitedEdge(surface)), surface.center);
+    if (mesh.indices.length / 3 > MaxCutterTriangles) {
+      return `The mesh has ${(mesh.indices.length / 3).toLocaleString()} triangles, over the cutter's ${MaxCutterTriangles.toLocaleString()}: decimate it first (its triangles are cut into cells, they need not be small).`;
+    }
     const cut: CutLeaflet[] = [];
     yield { message: 'Finding the surface’s regions' };
     const regions = cutterRegions(mesh.positions, mesh.indices, kinds.seed);
@@ -389,6 +392,9 @@ export function* buildMembraneSteps(
 
 /** The lipids tiles may build (all at once: memory and a wait), about the cutter's budget × 25 */
 export const MaxTileLipids = 50_000_000;
+
+/** The cutter's triangles at most: a selection's unit key is triangle × 2^32 + cell, exact below 2^53 (review S7) */
+export const MaxCutterTriangles = 2 ** 21;
 
 /** A mesh's area, Å² */
 function meshArea(mesh: TriMesh) {

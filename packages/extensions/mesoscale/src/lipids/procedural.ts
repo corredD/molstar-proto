@@ -133,7 +133,10 @@ export interface LipidSelection {
   reset: () => void;
 }
 
-/** a unit's key, ordered by triangle, then cell (`|cx|, |cy| < 2^15` Å / cell: past it a cell is skipped) */
+/**
+ * a unit's key, ordered by triangle, then cell (`|cx|, |cy| < 2^15` Å / cell: past it a cell is skipped); exact for
+ * `MaxCutterTriangles` triangles (the wrap refuses more)
+ */
 const unitKey = (t: number, cx: number, cy: number) =>
   cx === WholeTriangle ? t * 4294967296 + 4294967295 : t * 4294967296 + (cx + 32768) * 65536 + (cy + 32768);
 
