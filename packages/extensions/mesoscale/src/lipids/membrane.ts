@@ -420,8 +420,9 @@ export function membraneLevels(detail: MembraneDetail, custom: readonly Membrane
     return { lodLevels, lodPixelSize: 0 };
   }
   const lodPixelSize = Spheres.LodPixelPresets[detail === 'off' ? 'balanced' : detail].lodPixelSize;
-  // the distances are the pixel boundaries' (`getLodLevelsValue` with a pixel size), these unused; no 512 stride: at
-  // it a wrapped sphere 96 px across drew half its pixels (Dawn), a sphere of radius 45 Å a tile
+  // the distances are the pixel boundaries' (`getLodLevelsValue` with a pixel size), these unused. Round 2 dropped a 512
+  // stride (half a small sphere's pixels drawn); that was before the levels' scales reached the membrane (`4ac0c0de8`):
+  // a 1-in-512 custom level now draws a sheet (Dawn). The presets' coarser levels are round 4's
   const lodLevels = [1, 8, 64].map((stride, j) => ({
     minDistance: j,
     maxDistance: j + 1,
