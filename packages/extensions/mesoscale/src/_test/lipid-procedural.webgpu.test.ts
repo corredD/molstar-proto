@@ -273,6 +273,80 @@ describe.skipIf(!webgpu)('a lipid membrane made per view (Dawn)', () => {
     }
   });
 
+  it('keeps its patch textures while drawn, destroys them two builds on and when removed (review M2, M3)', async () => {
+    const plugin = await HeadlessPluginContext.create(
+      { webgpu },
+      DefaultPluginSpec(),
+      { width: Size, height: Size },
+      { backend: 'webgpu' },
+    );
+    try {
+      await plugin.init();
+      registerLipidPatch('dawn-procedural-textures', syntheticPatchPdb().text);
+      // the patch textures a build makes: the patch and the surfaces' tables
+      const resources = plugin.canvas3d!.graphics.resources;
+      const texture = resources.texture.bind(resources);
+      let made: { destroyed: boolean }[] = [];
+      resources.texture = ((...args: Parameters<typeof texture>) => {
+        const t = texture(...args);
+        // made by the membrane (the culler's own textures aside)
+        const patch = new Error().stack?.includes('lipids/membrane.ts');
+        if (patch) {
+          const record = { destroyed: false };
+          made.push(record);
+          const destroy = t.destroy.bind(t);
+          t.destroy = () => {
+            record.destroyed = true;
+            destroy();
+          };
+        }
+        return t;
+      }) as typeof texture;
+      made = [];
+      const node = (
+        await plugin
+          .build()
+          .toRoot()
+          .apply(LipidMembrane, {
+            ...PD.getDefaultValues(LipidMembraneParams),
+            method: 'cutter',
+            radius: 600,
+            edge: 100,
+            patch: 'dawn-procedural-textures',
+            center: Vec3.zero(),
+          })
+          .commit()
+      ).ref;
+      const a = made;
+      const cell = plugin.state.data.cells.get(node)!.obj!.data;
+      const repr = cell.repr as unknown as { createOrUpdate: (p: unknown, d: unknown) => { run: () => Promise<void> } };
+      // a rebuild that does not reuse the GPU's cutters (new data, as after a new context): the last build's objects
+      // may draw once more (a frame before the canvas swaps them), its textures kept
+      const build = async () => {
+        made = [];
+        await repr.createOrUpdate({}, { ...(cell.sourceData as object) }).run();
+        return made;
+      };
+      await plugin.getImageRaw({ width: Size, height: Size });
+      // a patch and two surfaces' tables a leaflet
+      expect(a.length).toBeGreaterThanOrEqual(3);
+      const b = await build();
+      expect(b.length).toBe(a.length);
+      expect(a.every((t) => !t.destroyed)).toBe(true);
+      // the next: A's go, B's stay
+      const c = await build();
+      expect(a.every((t) => t.destroyed)).toBe(true);
+      expect(b.every((t) => !t.destroyed)).toBe(true);
+      expect(c.every((t) => !t.destroyed)).toBe(true);
+      // removed: every one of them (M2)
+      await plugin.build().delete(node).commit();
+      expect([...b, ...c].every((t) => t.destroyed)).toBe(true);
+      expect(plugin.canvas3d!.graphics.takeErrors?.() ?? []).toEqual([]);
+    } finally {
+      plugin.dispose();
+    }
+  });
+
   it('flies over a billion lipids (round 5: the model at x600, a sphere of its triangles): cells near, nothing far', {
     timeout: 300_000,
   }, async () => {
