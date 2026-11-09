@@ -7,13 +7,16 @@
 import { it } from 'vitest';
 import { checkLinear, quadraticControl, scaling } from '../../../../sequences/core/_test/model/scaling.js';
 import { assignReference, assignSlots } from '../lipids/assign.js';
+import { cutterBases, cutterCounts, cutterTable } from '../lipids/cutter.js';
+import { parsePatchPdb } from '../lipids/patch.js';
 import { buildMembrane, registerLipidPatch } from '../lipids/membrane.js';
-import { icosphere, isotropicRemesh, type TriMesh } from '../lipids/remesh.js';
+import { farTriangles, icosphere, isotropicRemesh, type TriMesh } from '../lipids/remesh.js';
 import { syntheticPatchPdb } from './lipid-fixtures.js';
 
 // The lipid membrane's bulk paths over n and 4n tiles (`test:scaling`; apps/prism-me/AGENTS.md, no accidental
 // quadratic): the CPU's half of the assignment (variants, counts, slots) and its reference, and a whole sphere built
-// (icosphere, offsets, slots; the tile sets baked once in the warm-up, cached per patch).
+// (icosphere, offsets, slots; the tile sets baked once in the warm-up, cached per patch); the cutter's counts and bases
+// over N triangles (its CPU reference: the GPU's passes are per triangle too), and the lost triangles' search.
 
 const kinds = { edgeTypes: 2, vertexColors: 2, variants: 2, seed: 1 };
 registerLipidPatch('scaling-patch', syntheticPatchPdb().text);
@@ -79,4 +82,35 @@ it('a membrane of N tiles built (a sphere, both leaflets)', () => {
     8000,
   );
   checkLinear('lipid membrane built, N tiles', s);
+}, 600_000);
+
+it('the cutter over N triangles: counts and bases (the reference of its count pass)', () => {
+  const { text, box } = syntheticPatchPdb();
+  const table = cutterTable(parsePatchPdb(text, { box }).outer, 2);
+  const s = scaling(
+    {
+      setup: (n) => icosphere(radiusFor(n), 100),
+      run: (mesh) => {
+        cutterBases(cutterCounts(table, mesh.positions, mesh.indices, 1), table.members.length);
+      },
+    },
+    4000,
+  );
+  checkLinear('lipid cutter, N triangles', s);
+}, 600_000);
+
+it('the triangles a remesh lost, over N triangles (a surface grid, not a scan per triangle)', () => {
+  const s = scaling(
+    {
+      setup: (n) => {
+        const fine = icosphere(radiusFor(n), 100);
+        return { fine, coarse: icosphere(radiusFor(n), 200) };
+      },
+      run: ({ fine, coarse }) => {
+        farTriangles(fine, coarse, 10);
+      },
+    },
+    8000,
+  );
+  checkLinear('lost triangles, N triangles', s);
 }, 600_000);
