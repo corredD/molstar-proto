@@ -5,14 +5,36 @@
  */
 
 import { expect, it } from 'vitest';
-import { checkLinear, quadraticControl, scaling } from '../../../../sequences/core/_test/model/scaling.js';
+import {
+  checkLinear,
+  describeScaling,
+  quadraticControl,
+  scaling,
+} from '../../../../sequences/core/_test/model/scaling.js';
 import { assignReference, assignSlots } from '../lipids/assign.js';
-import { CellKinds, cutterBases, cutterCounts, cutterRegions, cutterTable, kindCounts } from '../lipids/cutter.js';
+import {
+  CellKinds,
+  type CutterTable,
+  cutterBases,
+  cutterCounts,
+  cutterRegions,
+  cutterTable,
+  eachHit,
+  emptyCut,
+  kindCounts,
+  triangleCut,
+} from '../lipids/cutter.js';
 import { parsePatchPdb } from '../lipids/patch.js';
 import { buildMembrane, registerLipidPatch, shownLipids } from '../lipids/membrane.js';
-import { farSurface } from '../lipids/far-surface.js';
+import { farSurface, patchRaster, patchSurface } from '../lipids/far-surface.js';
 import { farTriangles, icosphere, isotropicRemesh, type TriMesh } from '../lipids/remesh.js';
-import { createLipidSelection, estimateLipids, slotTotals, wholeTriangles } from '../lipids/procedural.js';
+import {
+  createLipidSelection,
+  estimateLipids,
+  poolCapacities,
+  slotTotals,
+  wholeTriangles,
+} from '../lipids/procedural.js';
 import { Frustum3D } from '@molstar/core/math/geometry/primitives/frustum3d';
 import { Plane3D } from '@molstar/core/math/geometry/primitives/plane3d';
 import { Vec3 } from '@molstar/core/math/linear-algebra/3d/vec3';
@@ -236,39 +258,82 @@ it('a tile without a species, N lipids (review S3)', () => {
   checkLinear('a tile without a species, N lipids', s);
 });
 
-it('a cutter wrap is flat in its lipids: the model’s 2,880 triangles at x20 and x600 (round 5: O(triangles) at the wrap)', () => {
-  const { text, box } = syntheticPatchPdb();
-  const table = cutterTable(parsePatchPdb(text, { box }).outer, 2);
-  const kinds = kindCounts(table, cutterRegions(new Float32Array(9), new Uint32Array(3), 1).cells);
-  const M = table.members.length;
-  // a sphere of the model's triangles (20 k², k = 12) and about its area at each scale: 1.4 G lipids at x600
-  const s = scaling(
+it('a cutter wrap is flat in its lipids: the model’s 2,880 triangles at x20 and x80, the old count pass caught (round 5; review S4)', () => {
+  // the wrap's CPU half, as the representation's build runs it (`buildMembraneSteps`, then per leaflet its whole
+  // triangles and their counts, the pool, the selection, the estimate, the far surfaces and their texture; the GPU's
+  // count pass as its CPU reference over the whole triangles only): a sphere of the model's triangles (20 k², k = 12)
+  // and about its area at each scale
+  const kindsOf = new Map<CutterTable, Uint32Array>();
+  const radius = (scale: number) => 85 * scale;
+  const cut = (scale: number) => {
+    const data = buildMembrane(
+      { radius: radius(scale) },
+      'scaling-patch',
+      (radius(scale) * 1.2) / 12,
+      'both',
+      kinds,
+      'cutter',
+    );
+    if (typeof data === 'string') throw new Error(data);
+    return data;
+  };
+  const wrap = (data: ReturnType<typeof cut>) => {
+    let lipids = 0;
+    for (const leaflet of data.cut) {
+      const { table, mesh, regions } = leaflet;
+      // a patch's kinds' counts, once a patch (the representation's cache)
+      let k = kindsOf.get(table);
+      if (!k) kindsOf.set(table, (k = kindCounts(table, regions.cells)));
+      const M = table.members.length;
+      const { wholeOf, count } = wholeTriangles(mesh.positions, mesh.indices, regions, table.box);
+      const wholeCounts = new Uint32Array(M * count);
+      const c = emptyCut();
+      for (let t = 0; t < wholeOf.length; ++t) {
+        if (wholeOf[t] < 0 || !triangleCut(mesh.positions, mesh.indices, t, regions, table.box, c)) continue;
+        for (let m = 0; m < M; ++m) eachHit(table, c, m, () => (wholeCounts[m * count + wholeOf[t]] += 1));
+      }
+      const input = {
+        positions: mesh.positions,
+        indices: mesh.indices,
+        regions,
+        box: table.box,
+        members: M,
+        kinds: k,
+        wholeOf,
+        wholeCounts,
+        side: leaflet.name === 'inner' ? -1 : 1,
+      };
+      const capacities = poolCapacities([slotTotals(input, 2_000_000)], 2_000_000);
+      createLipidSelection(input, capacities[0]);
+      lipids += estimateLipids(input);
+      const top = { atoms: table.members.map((m) => m.positions), radii: table.members.map(() => 1.5) };
+      patchRaster(
+        table,
+        () => true,
+        leaflet.name,
+        () => 0x808080,
+        top,
+      );
+      for (const lift of [2, 20]) patchSurface(mesh, regions, leaflet.name, leaflet.name === 'outer' ? lift : -lift);
+    }
+    return lipids;
+  };
+  // from x20, where the model's triangles are cut by cells (smaller ones whole: counted, O(lipids) up to 8 cells each)
+  const s = scaling({ setup: cut, run: wrap }, 20);
+  // the old count pass (every triangle's lipids, O(lipids)): 16 times the lipids, about 16 times the time
+  const control = scaling(
     {
-      setup: (scale) => icosphere(85 * scale, (85 * scale * 1.2) / 12),
-      run: (mesh) => {
-        const regions = cutterRegions(mesh.positions, mesh.indices, 1);
-        const { wholeOf, count } = wholeTriangles(mesh.positions, mesh.indices, regions, table.box);
-        const input = {
-          positions: mesh.positions,
-          indices: mesh.indices,
-          regions,
-          box: table.box,
-          members: M,
-          kinds,
-          wholeOf,
-          wholeCounts: new Uint32Array(M * count),
-          side: 1,
-        };
-        const capacity = slotTotals(input, 2_000_000);
-        createLipidSelection(input, capacity);
-        estimateLipids(input);
+      setup: cut,
+      run: (data) => {
+        for (const { table, mesh, regions } of data.cut) cutterCounts(table, mesh.positions, mesh.indices, regions);
       },
     },
     20,
-    { factor: 30 },
+    { reps: 1 },
   );
-  // 900 times the area and lipids, the same triangles: time and allocation bounded by the budget's arrays (a path linear
-  // in the lipids would read about 900; the band is the harness's for a linear 4x)
-  expect(s.timeRatio).toBeLessThan(8);
-  expect(s.allocRatio).toBeLessThan(8);
+  // 16 times the area and lipids, the same triangles: about the same time and allocation; the control, at the same
+  // scales, fails that bound
+  expect(s.timeRatio, describeScaling(s)).toBeLessThan(3);
+  expect(s.allocRatio, describeScaling(s)).toBeLessThan(3);
+  expect(control.timeRatio, describeScaling(control)).toBeGreaterThan(3);
 }, 600_000);
