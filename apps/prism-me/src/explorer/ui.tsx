@@ -346,10 +346,15 @@ function ScenePanel(props: { ctx: ViewerUIContext; area: ExplorerApi; model: Sce
     if (state) documentSub = state.subscribe((t) => document.set(t));
   };
   followDocument();
-  const documentFollow = area.documentListsState().subscribe(() => followDocument());
+  // a document drawing no list never changes the count: an operation run or a history change also retries (a no-op once followed)
+  const documentFollow = [
+    area.documentListsState().subscribe(() => followDocument()),
+    ctx.managers.history.steps.subscribe(() => followDocument()),
+    ctx.managers.history.running.subscribe(() => followDocument()),
+  ];
   onCleanup(() => {
     objectsSub.unsubscribe();
-    documentFollow.unsubscribe();
+    for (const sub of documentFollow) sub.unsubscribe();
     documentSub?.unsubscribe();
     for (const { sub } of partStates.values()) sub.unsubscribe();
   });
