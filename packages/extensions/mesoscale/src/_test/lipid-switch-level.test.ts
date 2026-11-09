@@ -24,12 +24,20 @@ describe('the spheres at a membrane’s switch', () => {
     // 8: 3 atoms, √8 grown), 16 px 0.46 Å (the atoms)
     const coarse = switchSpheres(table, props, 0.5);
     expect(coarse.atoms[0].length / 3).toBe(1);
-    expect(coarse.radius).toBeCloseTo(2 * Math.sqrt(23), 3);
+    expect(coarse.radii[0]).toBeCloseTo(2 * Math.sqrt(23), 3);
     const middle = switchSpheres(table, props, 8);
     expect(middle.atoms[0].length / 3).toBe(3);
-    expect(middle.radius).toBeCloseTo(2 * Math.sqrt(8), 3);
+    expect(middle.radii[0]).toBeCloseTo(2 * Math.sqrt(8), 3);
     const atoms = switchSpheres(table, props, 16);
     expect(atoms.atoms[0].length / 3).toBe(23);
-    expect(atoms.radius).toBeCloseTo(2, 3);
+    expect(atoms.radii[0]).toBeCloseTo(2, 3);
+  });
+
+  it('grows each member's sphere as its own atoms do (review S1: one radius, the last member's)', () => {
+    // a member of 10 atoms beside those of 23: at stride 64 each one sphere, grown √10 and √23
+    const short = { ...table, members: table.members.map((m, i) => (i === 0 ? { ...m, positions: m.positions.slice(0, 30) } : m)) };
+    const s = switchSpheres(short, props, 0.5);
+    expect(s.radii[0]).toBeCloseTo(2 * Math.sqrt(10), 3);
+    expect(s.radii[1]).toBeCloseTo(2 * Math.sqrt(23), 3);
   });
 });
