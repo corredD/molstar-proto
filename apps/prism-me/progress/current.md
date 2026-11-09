@@ -20,13 +20,11 @@ is not built is [../TODO.md](../TODO.md).
     lanes 0-8 (~3,500 lines) and the questions for Ludo and David (its §11).
   - `mvs-patch` (`me/mvs-patch` from `me/mesoviewspec`, port 6009, [brief](2026-11-08-mvs-patch.md) on its branch):
     prism.md lane 1, patches over a document. Sonnet. Rebases on streaming before its gate.
-  - `mvs-skill-cli` (`me/mvs-skill-cli` from `me/mesoviewspec`, [brief](2026-11-08-mvs-skill-cli.md) on its branch): the
-    MesoQL skill (generated) and the `meso-*` CLIs. Sonnet, the CLI surface on Opus.
-
-- **Mesoscale building** (Ludo, 2026-11-07 night → 2026-11-08; engine `~/prism-me-lanes/mesobuild`, local git, its
-  report `NIGHT-2026-11-08.md`). Ludo looked at the exosome-in-plasma model: ok. Decided 2026-11-08: a recipe entry's
-  count is a count of objects (its biological assembly, or what its file holds: a nuclear pore is one), never rescaled
-  by mass.
+  - `mvs-skill-cli`: done, merged into `me/mesoviewspec`: `meso-validate`, `-compile`, `-print`, `-trace`, `-query`;
+    `_spec/reference/mesoql-skill.md` generated (10/10 on a blind eval before the review rework). Gate: all must- and
+    should-fix fixed.
+  - `mvs-builder` (`me/mvs-builder` from `me/mesoviewspec`, [brief](2026-11-08-mvs-builder.md) on its branch): a typed
+    builder (refs, MesoQL helpers), the examples rebuilt `deepEqual`. Sonnet, the API on Opus.
   - **#60** (GPU culling past 65,535 workgroups) and **#61** (cellPACK fibres as tubes) merged by Ludo 2026-11-08; lanes
     closed, worktrees removed (and `meso-showcase`'s). Master ports kept as local branches only
     (`fix/cull-dispatch-rows` a3d8c396d, `fix/fibers-targeted` bb2dbced6); Ludo: the fixes go to prism-me, not upstream.
