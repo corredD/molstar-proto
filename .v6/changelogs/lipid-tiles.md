@@ -23,3 +23,19 @@
   - Levels of detail for both (Mol*'s spheres levels by size on screen, `detail`, balanced by default): each tile or
     lipid at its own level.
   - Graphics: a gridless member of a merged object whose instances the GPU writes draws at its levels of detail.
+- Ludo's third try (`model_vertexcolor.obj` ×100, 27.7 M lipids; and the cutter on the cow):
+  - The app's CHARMM-GUI patch is a disc in its square: read as periodic, its empty corners were tiled into every cut
+    and tile as holes. A patch that does not fill its extent is now read as its filled square.
+  - The cutter cuts by regions of the surface (a cell and a normal direction): one plane, spin and offset a region, each
+    triangle keeping the lipids whose head projects in it, so the patch's packing goes on across triangle edges (a
+    triangle smaller than a lipid no longer makes an island).
+  - Right-click › Wrap with lipids (cutter) beside Wrap with lipids (tiles).
+  - A membrane's levels in its Look: presets, or custom levels by distance (start, stride, scale bias), one step each,
+    never a new cut or bake (`mesoscale.membraneDetail`).
+  - A wrap is a task: its stages on the status line with Cancel (a cancel leaves no membrane and no step), and it yields
+    to the page between stages.
+  - A membrane past the device's buffers fails before it draws, with what it needs (the cutter at 27.7 M lipids lost
+    the WebGPU device); after a fall back to WebGL2 a membrane drops its WebGPU objects.
+  - A mesh's Look eye follows its visibility as the tree's does.
+  - Graphics: a GPU-written gridless member of a merged object has its spheres scaled at its levels (they stayed at
+    full size: a coarse level drew scattered dots).

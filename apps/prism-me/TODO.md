@@ -89,13 +89,24 @@ maintainer first (2026-10-25). All are v6 (master); the MRC reader and the parti
 ## Backlog
 
 - **Lipid membranes, left from lane `lipid-tiles`** (2026-11-08; progress/2026-11-08-lipid-tiles.md, Numbers):
-  - Round 2 (Holes, LOD and the cutter): pick the default method after Ludo compares (tiles until then; the right-click
-    offers no choice); the cutter's holes where small triangles take no headgroup and its clashes across triangles (no
-    removal, as cellPACKgpu); the cut lost parts meet the tiles near the remesh (about 400 k atom pairs under 2 Å on the
-    cow); pinholes at the middle level of detail; the cutter's 4 B a member and triangle. From the review: the cutter's
-    write guards only its member's end (a float difference between its two passes could spill a hit into the next
-    triangle's slots); on WebGL2 the description counts no cut lipids; the library commit `bde208175` to its own lane
-    from `origin/master`.
+  - Round 3, parked by Ludo (2026-11-08: the membrane goes view-dependent and procedural in round 4: lipids only for
+    visible triangles above a size on screen, the far view a surface, the full build only at export), superseded by
+    round 4, no code: the tiles' own hole fill (their holes were mostly the round patch's empty corners, fixed in round
+    3; what is left, the bake's pinholes, unmeasured since); the levels' radius growth tuned and a far surface (the
+    library now scales a GPU-written member's spheres at its levels, `4ac0c0de8`; Ludo tunes custom levels in Look); the
+    full numbers at 27.7 M lipids (wrap time, GPU bytes, frame times by distance). The cutter's regions
+    (`cutterRegions`) are round 4's unit.
+  - Round 3, open: the mesh Ludo saw drawn after a wrap of `model_vertexcolor.obj` ×100 is not reproduced headless
+    (jsdom, Dawn); the Look's eye lagging the tree's is fixed. A wrap's main-thread stretches: under 100 ms on the cow
+    ×100, up to 550 ms at 35 M lipids (the patch's first read, the render objects' merge and upload do not yield: a
+    worker for the bake and the parse, round 4). The cutter's buffers: past about 22 M instances on the M1 (4 GB) it
+    fails with a message, not a lost device; a split of the work is not built.
+  - Round 2 (Holes, LOD and the cutter): pick the default method after Ludo compares (both in the right-click since
+    round 3); the cutter's clashes at region borders (no removal, as cellPACKgpu); the cut lost parts meet the tiles
+    near the remesh (about 400 k atom pairs under 2 Å on the cow); pinholes at the middle level of detail; the cutter's
+    4 B a member and triangle. From the review: the cutter's write guards only its member's end (a float difference
+    between its two passes could spill a hit into the next triangle's slots); on WebGL2 the description counts no cut
+    lipids; the library commit `bde208175` to its own lane from `origin/master`.
   - Not smooth zoomed out: a 1 µm sphere (7.9 M lipids, both leaflets) draws in about 380 ms a frame (Dawn, headless,
     M1, 512²); every atom of every tile is drawn. The spheres' levels of detail do not reach the membrane (the balanced
     preset changed nothing); a far level is needed (a tile as a few coarse spheres, or a textured triangle).
