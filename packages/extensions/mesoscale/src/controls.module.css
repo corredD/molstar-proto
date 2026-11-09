@@ -46,3 +46,11 @@
   user-select: text;
   overflow-wrap: anywhere;
 }
+
+/* a membrane species' colour (MembraneSpeciesControls): a square the size of a small icon */
+.swatch {
+  display: block;
+  width: var(--msp-space-4);
+  height: var(--msp-space-4);
+  border-radius: var(--msp-radius-sm);
+}

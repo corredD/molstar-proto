@@ -6,7 +6,9 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import { Button, Choices, For, Icon, Show, Slider } from '@molstar/prism-ui';
+import { Button, Choices, ColorPicker, For, Icon, Show, Slider } from '@molstar/prism-ui';
+import { Color } from '@molstar/core/util/color';
+import { observableState } from '@molstar/prism-ui/reactive/observable-state';
 import { mapState } from '@molstar/prism-ui/reactive/map-state';
 import type { ReadonlyState } from '@molstar/prism-ui/reactive/readonly-state';
 import { classes } from './_generated/controls.module.css.js';
@@ -305,6 +307,65 @@ export function MembraneDetailControls(props: { area: MesoscaleApi; membrane: st
           </div>
         )}
       </Show>
+    </div>
+  );
+}
+
+/**
+ * A lipid membrane's species as a particle system's entities (Ludo, 2026-11-08): each shown or hidden (an eye) and its
+ * colour (a swatch opening the shared picker); `mesoscale.membraneSpecies`, one step each
+ */
+export function MembraneSpeciesControls(props: { area: MesoscaleApi; membrane: string }) {
+  const species = props.area.membraneSpeciesState(props.membrane);
+  const names = mapState(species, (s) => (s ?? []).map((x) => x.name));
+  const picking = observableState<string | undefined>(undefined);
+  const run = (patch: { species: string; shown?: boolean; color?: number }) =>
+    void props.area.membraneSpecies({ membrane: props.membrane, ...patch } as never);
+  return (
+    <div class={classes.tight}>
+      <For each={names}>
+        {(name) => {
+          const one = mapState(species, (s) => s?.find((x) => x.name === name));
+          return (
+            <div class={classes.tight}>
+              <div class={classes.line}>
+                <Button
+                  size="xs"
+                  variant="ghost"
+                  pressed={mapState(one, (x) => !!x?.shown)}
+                  title={`${name}: shown or hidden`}
+                  onClick={() => run({ species: name, shown: !one.value?.shown })}
+                >
+                  <Icon name="eye" />
+                </Button>
+                <Button
+                  size="xs"
+                  variant="ghost"
+                  title={`${name}: its colour`}
+                  onClick={() => picking.set(picking.value === name ? undefined : name)}
+                >
+                  <span
+                    class={classes.swatch}
+                    style={mapState(
+                      one,
+                      (x) => `background: ${x?.color === undefined ? 'transparent' : Color.toHexStyle(x.color)}`,
+                    )}
+                  />
+                </Button>
+                <div class={classes.label}>{name}</div>
+              </div>
+              <Show when={mapState(picking.asReadonly, (p) => p === name)}>
+                {() => (
+                  <ColorPicker
+                    value={mapState(one, (x) => x?.color ?? 0xffffff)}
+                    onChange={(c) => run({ species: name, color: c })}
+                  />
+                )}
+              </Show>
+            </div>
+          );
+        }}
+      </For>
     </div>
   );
 }

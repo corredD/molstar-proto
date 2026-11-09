@@ -15,6 +15,7 @@ export const classes = {
   'label': 'msp-mesoscale-controls-label',
   'line': 'msp-mesoscale-controls-line',
   'stack': 'msp-mesoscale-controls-stack',
+  'swatch': 'msp-mesoscale-controls-swatch',
   'tight': 'msp-mesoscale-controls-tight',
 } as const;
 
@@ -54,6 +55,13 @@ defineStyles('mesoscale/controls.module.css', `@layer msp.components {
   color: var(--msp-color-text-muted);
   user-select: text;
   overflow-wrap: anywhere;
+}
+
+.msp-mesoscale-controls-swatch {
+  width: var(--msp-space-4);
+  height: var(--msp-space-4);
+  border-radius: var(--msp-radius-sm);
+  display: block;
 }
 }
 `);

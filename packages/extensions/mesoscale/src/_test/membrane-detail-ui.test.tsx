@@ -13,7 +13,7 @@ import { ShellModel } from '@molstar/prism-ui/shell/shell';
 import { DefaultPrismViewerSpec } from '@molstar/prism-viewer/default-spec';
 import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
 import type { PrismViewer } from '@molstar/prism-viewer/viewer';
-import { MembraneDetailControls } from '../controls.js';
+import { MembraneDetailControls, MembraneSpeciesControls } from '../controls.js';
 import { forgetLipidPatch, registerLipidPatch } from '../lipids/membrane.js';
 import { MesoscaleExtension } from '../prism-viewer.js';
 import { syntheticPatchPdb } from './lipid-fixtures.js';
@@ -145,6 +145,23 @@ describe('a membrane’s levels in its properties', () => {
     ]);
     expect((await v.api.history.undo({})).ok).toBe(true);
     expect(params()).toMatchObject({ speciesColors: {} });
+    // its rows in the Look: an eye a species, one step
+    const host = document.createElement('div');
+    document.body.append(host);
+    domView(() => <MembraneSpeciesControls area={area} membrane={membrane} />).mount(
+      host,
+      { shell: new ShellModel() } as never,
+      undefined as never,
+    );
+    const eye = () =>
+      [...host.querySelectorAll('button')].find((b) =>
+        [b.getAttribute('title'), b.getAttribute('aria-label'), b.getAttribute('data-tip')].includes(
+          `${names[0]}: shown or hidden`,
+        ),
+      ) as HTMLButtonElement;
+    await until(() => !!eye());
+    eye().click();
+    await until(() => !(params().hiddenSpecies as string[]).includes(names[0]));
     // Object graphics' quality: the levels' preset
     expect((await area.graphics({ mode: 'performance', object: membrane } as never)).ok).toBe(true);
     expect(params()).toMatchObject({ detail: 'performance' });
