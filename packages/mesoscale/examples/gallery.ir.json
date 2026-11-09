@@ -272,8 +272,8 @@
             "params": {
               "model": "default:meso.lattice",
               "resolver": "meso.lattice",
-              "version": "0.1.0",
-              "key": "default:meso.lattice@09a48524e88ea669",
+              "version": "0.2.0",
+              "key": "default:meso.lattice@b2fe425b735b1bc6",
               "input": {
                 "items": [
                   {
@@ -354,7 +354,8 @@
                     "area": 951275.9742583687
                   }
                 },
-                "seed": 1
+                "seed": 1,
+                "model": "default:meso.lattice"
               },
               "cached": false
             },
@@ -365,7 +366,7 @@
                 "origin": ["p.pores", "p.atpsynthase"],
                 "params": {
                   "set": {
-                    "key": "default:meso.lattice@09a48524e88ea669#0",
+                    "key": "default:meso.lattice@b2fe425b735b1bc6#0",
                     "model": "default:meso.lattice",
                     "frame": "world",
                     "count": 129,
@@ -388,7 +389,7 @@
                         "radius": 60
                       }
                     ],
-                    "first": [352.84, 0, -547.97, 537.29, 95.12, -524.03]
+                    "first": [727.48, -104.91, -429.25, 856.9, -144.28, -270.05]
                   }
                 }
               }
@@ -673,13 +674,13 @@
         "visible": true
       },
       {
-        "set": "default:meso.lattice@09a48524e88ea669#0",
+        "set": "default:meso.lattice@b2fe425b735b1bc6#0",
         "types": [0],
         "color": 14725196,
         "visible": true
       },
       {
-        "set": "default:meso.lattice@09a48524e88ea669#0",
+        "set": "default:meso.lattice@b2fe425b735b1bc6#0",
         "types": [1],
         "color": 12603469,
         "visible": true

@@ -8,12 +8,14 @@ import type { Id } from '../format/doc.js';
 import { PlacementBuilder, type PlacementType, quatFromTo } from '../ir/placements.js';
 import { createRandom, subSeed } from '../runtime/random.js';
 import type { NormalizedArrangement, Resolver, ResolveJob, ResolveOutput } from '../runtime/resolver.js';
-import { type PackCompartment, packCompartments } from './packing.js';
+import { type PackCompartment, packCompartments, SpatialHash } from './packing.js';
 
 // `meso.lattice` (design.md §4.4): a 2D lattice on a closed membrane. Sites follow a Fibonacci spiral, locally close to
 // hexagonal, at the density the spacing gives; a population asking fewer copies than there are sites fills a contiguous
 // patch around a seeded direction (S-layer patches, ATP synthase rows), one asking more is short and says how many
 // sites the membrane holds. Spheres and ellipsoids only: a mesh lattice needs a surface parametrization (design.md §9).
+// Each population's patch is around its own pole (seeded by the model and the population), and skips the sites the
+// populations before it took.
 
 interface LatticeInput {
   readonly items: readonly {
@@ -30,11 +32,13 @@ interface LatticeInput {
   }[];
   readonly compartments: Readonly<Record<Id, PackCompartment>>;
   readonly seed: number;
+  /** The model's id: two lattice models with the same seed put their patches apart. */
+  readonly model: Id;
 }
 
 export const MesoLatticeResolver: Resolver<LatticeInput> = {
   id: 'meso.lattice',
-  version: '0.1.0',
+  version: '0.2.0',
   description:
     'Lattices on spherical and ellipsoidal membranes: Fibonacci sites at the lattice density, patches by count',
   arrangements: ['lattice'],
@@ -61,6 +65,7 @@ export const MesoLatticeResolver: Resolver<LatticeInput> = {
         job.populations.map((p) => p.compartment),
       ),
       seed: job.seed,
+      model: job.model.id,
     };
   },
   resolve(input, job): ResolveOutput {
@@ -76,6 +81,11 @@ export const MesoLatticeResolver: Resolver<LatticeInput> = {
     const achieved: Record<Id, number> = {};
     const shortfall: Record<Id, string> = {};
     const q = [0, 0, 0, 1];
+    // the sites taken: the populations' placed before this one (its own copies go in after it: Fibonacci neighbours
+    // sit a little under the spacing apart, by design)
+    let maxR = 1;
+    for (const it of input.items) maxR = Math.max(maxR, it.radius);
+    const taken = new SpatialHash(2 * maxR);
     input.items.forEach((it, t) => {
       const c = input.compartments[it.compartment];
       const shape = c?.shape;
@@ -96,17 +106,17 @@ export const MesoLatticeResolver: Resolver<LatticeInput> = {
       // with vacancies, a patch of `requested` copies spreads over more sites (seeded, the same holes every time)
       const holes = createRandom(subSeed(input.seed, `${it.population}:vacancy`));
       let n = 0;
-      // the patch: the n sites nearest a seeded pole, so the spiral index runs from that pole
+      let skipped = 0;
+      // the patch: the n sites nearest a seeded pole, so the spiral index runs from that pole; the pole is the
+      // population's own (in this model), so two patches do not start at the same place
       const golden = Math.PI * (3 - Math.sqrt(5));
-      const pole = (job.seed % 997) / 997;
-      const pz = 2 * pole - 1;
+      const poleDir = createRandom(subSeed(input.seed, `${input.model}:${it.population}:pole`)).onSphere([0, 0, 0]);
       // rotation taking +z to the pole direction
-      const poleDir = [Math.sqrt(1 - pz * pz), 0, pz];
       const rot = quatFromTo([0, 0, 0, 1], 0, 0, 1, poleDir[0], poleDir[1], poleDir[2]);
+      const mine: number[] = [];
       const v = [0, 0, 0];
       for (let i = 0; i < sites && n < it.requested; i++) {
         if (it.vacancy > 0 && holes.next() < it.vacancy) continue;
-        n++;
         const z = 1 - (2 * (i + 0.5)) / sites;
         const r = Math.sqrt(1 - z * z);
         const phi = i * golden;
@@ -114,6 +124,12 @@ export const MesoLatticeResolver: Resolver<LatticeInput> = {
         const x = center[0] + R[0] * v[0],
           y = center[1] + R[1] * v[1],
           zz = center[2] + R[2] * v[2];
+        if (taken.overlaps(x, y, zz, it.radius)) {
+          skipped++;
+          continue;
+        }
+        n++;
+        mine.push(x, y, zz);
         // the ellipsoid normal
         const nx = v[0] / R[0],
           ny = v[1] / R[1],
@@ -123,10 +139,11 @@ export const MesoLatticeResolver: Resolver<LatticeInput> = {
         quatFromTo(q, 0, 0, 1, nx / nl, ny / nl, nz / nl, phi);
         b.push(t, x, y, zz, q);
       }
+      for (let i = 0; i < mine.length; i += 3) taken.insert(mine[i], mine[i + 1], mine[i + 2], it.radius);
       achieved[it.population] = n;
       if (n < it.requested)
         shortfall[it.population] =
-          `the ${it.location} of ${c.label} holds ${sites} ${it.lattice} sites ${it.spacing.toFixed(0)} Å apart${it.vacancy ? `, ${Math.round(it.vacancy * 100)}% vacant` : ''}; ${it.requested} asked`;
+          `the ${it.location} of ${c.label} holds ${sites} ${it.lattice} sites ${it.spacing.toFixed(0)} Å apart${it.vacancy ? `, ${Math.round(it.vacancy * 100)}% vacant` : ''}${skipped ? `, ${skipped} taken` : ''}; ${it.requested} asked`;
     });
     return { sets: [b.finish({ key: '', model: job.model.id, frame: 'world', typeTable })], achieved, shortfall };
   },

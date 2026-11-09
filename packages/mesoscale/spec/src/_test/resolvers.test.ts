@@ -8,6 +8,7 @@ import { describe, expect, it } from 'vitest';
 import { PlacementBuilder, type PlacementSet } from '../ir/placements.js';
 import { MesoFiberResolver } from '../resolvers/fiber.js';
 import { sdfGrid, shapeSampler } from '../resolvers/geometry.js';
+import { MesoLatticeResolver } from '../resolvers/lattice.js';
 import { MesoPackResolver } from '../resolvers/meso-pack.js';
 import { MesoRelaxResolver } from '../resolvers/relax.js';
 import { createRandom } from '../runtime/random.js';
@@ -307,5 +308,57 @@ describe('mesh compartments', () => {
           if (Math.max(Math.abs(x), Math.abs(y), Math.abs(z)) < 90 && g.distance(x, y, z) > 0) wrong++;
         }
     expect(wrong).toBe(0);
+  });
+});
+
+const latticePop = (id: string, requested: number, radius = 20) => ({
+  id,
+  compartment: 'c',
+  location: 'membrane',
+  requested,
+  radius,
+  arrangement: { kind: 'lattice', lattice: 'hexagonal', spacing: 50, vacancy: 0 },
+});
+const membrane = { c: { shape: { kind: 'sphere', center: [0, 0, 0], radius: 500 }, membrane: { thickness: 40 } } };
+
+/** The smallest gap between copies of set `a` (type ta) and set `b` (type tb), minus their radii. */
+function minGap(a: PlacementSet, b: PlacementSet, ta?: number, tb?: number) {
+  let min = Infinity;
+  for (let i = 0; i < a.count; i++) {
+    if (ta !== undefined && a.types[i] !== ta) continue;
+    for (let k = 0; k < b.count; k++) {
+      if (tb !== undefined && b.types[k] !== tb) continue;
+      const d = Math.hypot(
+        a.positions[3 * i] - b.positions[3 * k],
+        a.positions[3 * i + 1] - b.positions[3 * k + 1],
+        a.positions[3 * i + 2] - b.positions[3 * k + 2],
+      );
+      min = Math.min(min, d - a.typeTable[a.types[i]].radius - b.typeTable[b.types[k]].radius);
+    }
+  }
+  return min;
+}
+
+describe('meso.lattice', () => {
+  it('a negative or any seed gives a patch (no NaN pole)', () => {
+    for (const seed of [-5, 0, 997, 1]) {
+      const out = run(MesoLatticeResolver, job([latticePop('p', 10)], membrane, { seed }));
+      expect(out.achieved.p).toBe(10);
+      expect(Array.from(out.sets[0].positions).every(Number.isFinite)).toBe(true);
+    }
+  });
+
+  it('two lattice populations on one membrane do not share sites', () => {
+    const out = run(MesoLatticeResolver, job([latticePop('a', 30), latticePop('b', 30)], membrane));
+    expect(out.achieved).toEqual({ a: 30, b: 30 });
+    expect(minGap(out.sets[0], out.sets[0], 0, 1)).toBeGreaterThanOrEqual(0);
+  });
+
+  it('two lattice models with the same seed put their patches in different places', () => {
+    const first = (model: string) =>
+      Array.from(
+        run(MesoLatticeResolver, job([latticePop('p', 10)], membrane, { model })).sets[0].positions.slice(0, 3),
+      );
+    expect(first('m.one')).not.toEqual(first('m.two'));
   });
 });
