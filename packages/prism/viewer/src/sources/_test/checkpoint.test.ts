@@ -214,3 +214,41 @@ describe('behavior-owned cells', () => {
     );
   });
 });
+
+// A custom state is measured once per value (sequence.md §7.4).
+describe('custom state in the size', () => {
+  it('is measured once for a value that is the same object, and again for a new one', async () => {
+    const v = await headlessViewer({ files: [crambin()] });
+    const doc = { version: 1, items: Array.from({ length: 200 }, (_, i) => ({ id: i, text: `item ${i}` })) };
+    let current: unknown = doc;
+    let gets = 0;
+    v.plugin.state.registerCustomState('test.document', { get: () => ((gets++, current)), set: () => {} });
+    const port = createCheckpointPort(v.plugin);
+    let measured = 0;
+    const real = JSON.stringify;
+    const spy = (value: unknown, ...rest: unknown[]) => {
+      if (value === doc) measured++;
+      return (real as (...a: unknown[]) => string)(value, ...rest);
+    };
+    const original = JSON.stringify;
+    JSON.stringify = spy as typeof JSON.stringify;
+    try {
+      const a = port.checkpoint();
+      const b = port.checkpoint();
+      const sizeA = port.size!(a);
+      expect(port.size!(b)).toBe(sizeA);
+      expect(measured).toBe(1);
+      // The size is the checkpoint's JSON (the document counted whole).
+      expect(Math.abs(sizeA - fullSize(a.plugin)) / fullSize(a.plugin)).toBeLessThan(0.02);
+      expect(sizeA).toBeGreaterThan(real(doc).length);
+      // A new object is measured.
+      current = { ...doc, version: 2 };
+      const c = port.checkpoint();
+      expect(port.size!(c)).toBeGreaterThan(0);
+      expect(real(c.plugin.custom!['test.document'])).toContain('"version":2');
+    } finally {
+      JSON.stringify = original;
+    }
+    expect(gets).toBeGreaterThan(0);
+  });
+});

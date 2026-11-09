@@ -104,6 +104,7 @@ function flagsOf(t: StateTransform): number {
 class SerializedTrees {
   readonly #json = new WeakMap<StateTransform, { flags: number; json: StateTransform.Serialized }>();
   readonly #sizes = new WeakMap<StateTransform.Serialized, number>();
+  readonly #valueSizes = new WeakMap<object, number>();
 
   /** `skip` leaves out a transform and everything under it. */
   serialize(tree: StateTree, skip?: (t: StateTransform) => boolean): StateTree.Serialized {
@@ -123,10 +124,10 @@ class SerializedTrees {
     return { transforms };
   }
 
-  /** The checkpoint's JSON size without payloads: each transform measured once, the small rest each time. */
+  /** The checkpoint's JSON size without payloads: each transform and each custom value measured once, the small rest each time. */
   size(c: ViewerCheckpoint): number {
     try {
-      const { data, behaviour, ...rest } = c.plugin;
+      const { data, behaviour, custom, ...rest } = c.plugin;
       let size = JSON.stringify(rest, withoutPayloads).length;
       for (const tree of [data?.tree, behaviour?.tree]) {
         if (!tree) continue;
@@ -134,10 +135,33 @@ class SerializedTrees {
         size += 34 + Math.max(0, tree.transforms.length - 1);
         for (const t of tree.transforms) size += this.#sizeOf(t);
       }
+      if (custom) {
+        // `,"custom":{}`, and per key `"key":` and a comma. A key whose value is `undefined` is not in the JSON.
+        size += 12;
+        let keys = 0;
+        for (const [key, value] of Object.entries(custom)) {
+          if (value === undefined) continue;
+          size += key.length + 3 + (keys++ ? 1 : 0) + this.#sizeOfValue(value);
+        }
+      }
       return size;
     } catch {
       return 0;
     }
+  }
+
+  /**
+   * A custom state's value measured once while it is the same object (an owner returns the same document until it
+   * changes: a new version is a new object, sequence.md §7.4); a value that is not an object is measured each time.
+   */
+  #sizeOfValue(value: unknown): number {
+    if (typeof value !== 'object' || value === null) return JSON.stringify(value, withoutPayloads)?.length ?? 0;
+    let size = this.#valueSizes.get(value);
+    if (size === undefined) {
+      size = JSON.stringify(value, withoutPayloads).length;
+      this.#valueSizes.set(value, size);
+    }
+    return size;
   }
 
   #sizeOf(t: StateTransform.Serialized): number {
