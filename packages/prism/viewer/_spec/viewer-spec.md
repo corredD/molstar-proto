@@ -186,6 +186,10 @@ framework: every extension lives in this repository, no stability promise beyond
 - **Owned files and sessions**: `load.files` loads the extension owning a file's extension, or claiming its content by
   `sniff` (read only for the extensions a stub sniffs), first; `session.open` of a `.molj` those owning its
   transformers.
+- **Documents an extension opens** (`owns.opens`, an operation id): a file the stub claims (by extension, or its `sniff`
+  over the first 64 KiB) goes to that operation with `{ file, files }`, not to the format readers; a drop that holds one
+  hands it the drop's other files (its resources) and opens none of them as data (a MesoViewSpec document,
+  `mesoviewspec.open`).
 - **An extension names its own areas**: a name another extension or the viewer has fails activation, naming who has it;
   only built-in features contribute to core areas.
 - **Mounted at runtime**: `viewer.extensions.mount(ext)` adds one to a running viewer and returns its removal.
