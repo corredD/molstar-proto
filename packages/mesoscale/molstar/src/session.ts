@@ -33,7 +33,7 @@ import {
 
 export interface EditRecord {
   readonly label: string;
-  readonly kind: 'initial' | 'none' | 'view' | 'model' | 'stream';
+  readonly kind: 'initial' | 'none' | 'view' | 'model' | 'stream' | 'restore';
   readonly resolverRuns: number;
   readonly cacheHits: number;
   readonly compileMs?: CompileResult['stats']['ms'];
@@ -51,6 +51,11 @@ const kept = (i: Issue) => i.phase !== 'render' && i.code !== 'stream.tile' && i
 export type SessionOptions = Omit<RuntimeOptions, 'cache'> & {
   /** With `tiles`: the budget and the loads in flight of the stream (design.md §6.8.5). */
   readonly stream?: StreamOptions;
+  /**
+   * The resolved models by key, when the caller keeps them beyond the session (a document's owner: an Undo of Close
+   * opens it again from them) and lets them go itself (prism.md §7.3, point 3). Absent: the session's own.
+   */
+  readonly cache?: Map<string, ResolveOutput>;
 };
 
 export class MesoSession {
@@ -59,7 +64,9 @@ export class MesoSession {
   issues: readonly Issue[] = [];
   counts: CompileResult['counts'] = {};
   readonly history: EditRecord[] = [];
-  private readonly cache = new Map<string, ResolveOutput>();
+  private readonly cache: Map<string, ResolveOutput>;
+  /** The cache keys the last compile read (superstructures' included): what a caller bounding the cache keeps. */
+  cacheKeys: readonly string[] = [];
   /** The edit in flight, or the last one: the next one starts after it (a failure does not stop the queue). */
   private pending: Promise<unknown> = Promise.resolve();
   readonly streamer: TileStreamer | undefined;
@@ -72,8 +79,9 @@ export class MesoSession {
     private readonly adapter?: RendererAdapter,
   ) {
     this.doc = doc;
-    const { stream, ...rest } = options;
+    const { stream, cache, ...rest } = options;
     this.options = rest;
+    this.cache = cache ?? new Map();
     if (stream && options.tiles) this.streamer = new TileStreamer(options.tiles, stream, () => this.onSettled());
   }
 
@@ -96,6 +104,33 @@ export class MesoSession {
     return this.queue(() => {
       const doc = typeof next === 'function' ? next(this.doc) : next;
       return this.run(classifyEdit(this.doc, doc), doc, label);
+    });
+  }
+
+  /**
+   * A restore (Undo, Redo, a session opened): the document compiled with the cache and taken as the one drawn, with no
+   * commit; the caller's adapter adopts the IR from the restored state (prism.md §7.3, point 5). From a state Undo can
+   * reach every model is a cache hit; from a session on a fresh page, a cold resolution.
+   */
+  restore(doc: MesoViewSpecDoc): Promise<EditRecord> {
+    return this.queue(async () => {
+      const t0 = performance.now();
+      const r = await compile(doc, { ...this.options, cache: this.cache });
+      this.doc = doc;
+      this.ir = r.ir;
+      this.counts = r.counts;
+      this.issues = r.issues;
+      this.cacheKeys = r.stats.models.map((m) => m.key);
+      const record: EditRecord = {
+        label: 'restore',
+        kind: 'restore',
+        resolverRuns: r.stats.resolverRuns,
+        cacheHits: r.stats.cacheHits,
+        compileMs: r.stats.ms,
+        totalMs: performance.now() - t0,
+      };
+      this.history.push(record);
+      return record;
     });
   }
 
@@ -200,6 +235,7 @@ export class MesoSession {
       const ir = streamed?.ir;
       const commit = ir ? await this.draw(ir) : undefined;
       this.counts = r.counts;
+      this.cacheKeys = r.stats.models.map((m) => m.key);
       // a document that does not compile has no IR (its errors are the issues); the viewer keeps the last one drawn
       this.ir = ir;
       this.issues = [...r.issues, ...(streamed?.issues ?? []), ...(commit?.issues ?? [])];

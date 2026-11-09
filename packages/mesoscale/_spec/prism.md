@@ -5,7 +5,8 @@ Scene tree becomes a patch, how Undo spans both, and the app lanes that build it
 `packages/prism/viewer/_spec/sequence.md` (Seq\* in the Prism viewer). The format, IR and runtime are
 [design.md](design.md)'s; the renderer findings are [renderer-recommendations.md](renderer-recommendations.md)'s.
 
-- **Status:** a design, not built (lane `mvs-prism-design`, 2026-11-08). Nothing here is code yet; §12 is the build.
+- **Status:** a design (lane `mvs-prism-design`, 2026-11-08); §12 is the build. Built: §1.1's owner, §3, §5.3's open,
+  close, get, edit and save, §7.1 and §7.3 (lane `mvs-open`, 2026-11-09; what differs is said where it does).
 - **Who decides:** each decision is tagged **(Ludo)** when it is the app's or the base's, **(David)** when it changes
   the format, **(proposed)** when it follows from the code and the specs. §11 lists what waits for a word.
 - **Reading of the brief:** "features.md rows 13-39" is read as the whole _Mesoscale_ section of
@@ -139,6 +140,13 @@ checkpoint, not undone by inverse).
   `?mesoviewspec=<url>` (`apps/prism-me/src/url.ts`). A file dropped or picked in + Open › Files… goes to it by its
   extension or, for `.json`, by `"format": "meso_view_spec"` (the lazy stub's `sniff`, as the particles feature sniffs
   mmCIF).
+  - As built (`mvs-open`): the drop reaches it through the stub's `owns.opens` (viewer-spec.md §3), a Prism addition:
+    `load.files` hands the document its drop's other files and opens none of them as data (those the document does not
+    name are said in the result). `open` is always `network` (§5.3): the agent's is refused while a document is open;
+    the person's replaces it (undoable) without asking yet (open). `addresses` lists the URL and every absolute address
+    in a document given as data; a URL's own resource hosts are not known before it is read. A relative URL is made
+    absolute against the page; `fixture://x` reads as `fixtures/x` beside the document (the CLI's rule). An accession
+    with no `uri` is not resolved yet (the model is unavailable).
 - **A runtime chunk.** `@molstar/meso-spec` (format, runtime, resolvers) and `@molstar/meso-molstar` (adapter, owner)
   are a lazy viewer extension, `mesoviewspec`, whose stub declares its operations, commands, sniff and skill
   (viewer-spec.md, lazy extensions). Nothing of it loads at start; the first open loads it (sequence.md §2's runtime
@@ -418,7 +426,8 @@ Prism's one history (sequence.md §7.3) holds every step; the document is part o
   precomputed.
 - **A dropped document's files** are registered as Mol\* assets by the owner, so a `.molx` holds them as it holds files
   `load.files` read; a `.molj` cannot, and its open names the resources it lacks (models unavailable,
-  [runtime.md](runtime.md)).
+  [runtime.md](runtime.md)). As built (`mvs-open`): not registered yet (open); the owner keeps each document state's
+  files in memory, so Undo, Redo and a rollback read them, but a `.molx` does not hold them.
 - **What a checkpoint costs.** The custom state is kept by reference (`getSnapshot`), so untouched parts of the document
   are shared in memory (§2.1). The checkpoint's size pass measures a custom-state value once per object
   (`sources/checkpoint.ts`, `size`; lane 0, `checkpoint-owned-cells`): an unchanged document costs nothing at a step,
@@ -438,12 +447,13 @@ Prism's one history (sequence.md §7.3) holds every step; the document is part o
 ### 7.3 Lists and checkpoints: the contract
 
 The adapter makes a list with a state transform whose only param is the set's key (`MesoPlacements`), over a side store
-(`MesoPlacementStore`); `apply` throws when the key is not in the store, and the adapter deletes the key when the set
-goes. A restore (Undo, Redo, the rollback of a failed or cancelled step, a session opened) restores the data tree first
-and the custom state after it, and Undo and the rollback hold the history's lock while they do
-(`ui/src/managers/history.ts`: `undo` and `run` take it around `#restore`). So an Undo past a re-pack applies a
-transform whose key is gone, and anything the owner does then through `viewer.api` waits on that lock (a deadlock) or,
-deferred, records a new step (and empties Redo). The contract **(proposed)**:
+(`placementStore(plugin)`, one per viewer); before this contract `apply` threw when the key was not in the store, and
+the adapter deleted the key when the set went. A restore (Undo, Redo, the rollback of a failed or cancelled step, a
+session opened) restores the data tree first and the custom state after it, and Undo and the rollback hold the history's
+lock while they do (`ui/src/managers/history.ts`: `undo` and `run` take it around `#restore`). So an Undo past a re-pack
+applies a transform whose key is gone, and anything the owner does then through `viewer.api` waits on that lock (a
+deadlock) or, deferred, records a new step (and empties Redo). The contract (built, lane `mvs-open`; `undoSteps` is 10
+in the owner, not yet read from the viewer's option):
 
 1. **Document lists stay in the data tree and in checkpoints**, with their representations and layers. So clips, motion
    and graphics on them undo as on any list.
@@ -459,8 +469,9 @@ deferred, records a new step (and empties Redo). The contract **(proposed)**:
    document. It compiles it with the session's cache (from a checkpoint Undo can reach, every model a hit; from a
    session, cold), sets the adapter's `prev` to that IR and rebuilds its maps (`placed`, `expansions`, `bounds`) from
    the restored tree, finding each list by its `MesoPlacements` key. A list whose key the store lacked is filled and its
-   cell updated through `plugin.state.data` directly, while `history.applying` is set (the outside-change watcher
-   ignores the restore's own writes). No `particles.*` call, no step.
+   cell updated through `plugin.state.data` directly (a hidden `fill` param raised: equal params never apply again),
+   while `history.applying` is set (the outside-change watcher ignores the restore's own writes). No `particles.*` call,
+   no step.
 6. **Redo** is the same restore. The adapter's own repair of lists stripped by an undo (AN1 in the parent lane's gate)
    stays what it is: a check at the next edit, inside that edit's step.
 

@@ -68,6 +68,14 @@ export function empiarOpenOf(search: string): { id: number; run?: string } | und
   return run ? { id, run } : { id };
 }
 
+/** A MesoViewSpec document by address (_spec/prism.md §3): `?mesoviewspec=<url>` */
+export const MesoViewSpecUrlParameters: readonly string[] = ['mesoviewspec'];
+
+/** The address of the document the URL asks to open, if it names one */
+export function mesoViewSpecOf(search: string): string | undefined {
+  return parseSearch(search).get('mesoviewspec')?.trim() || undefined;
+}
+
 /** The query string with the Mesoscale Explorer's load parameters renamed to the loaders' (unknown ones are kept). */
 export function toLoaderSearch(search: string): string {
   const q = parseSearch(search);

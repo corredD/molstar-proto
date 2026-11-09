@@ -18,10 +18,12 @@ import {
   planCommit,
   type RendererAdapter,
 } from '@molstar/meso-spec/runtime';
+import type { ViewerApi } from '@molstar/prism-viewer/api';
 import type { PrismViewer } from '@molstar/prism-viewer/viewer';
 // the `particles` API area's types (the feature is lazy: `extensions.load('particles')` before its first use)
 import type {} from '@molstar/prism-viewer/features/particles';
-import { MesoPlacements, MesoPlacementStore, toParticleList } from './particle-list.js';
+import type { ParticleList } from '@molstar/model/model/particles/particle-list';
+import { isMissingList, MesoPlacements, placementStore, toParticleList } from './particle-list.js';
 
 // The Prism adapter (design.md §6.5): the IR into a Prism viewer through its operations, as prism-me's rules ask (one
 // representation per list, looks as layers through `particles.look`, never a representation per type). Per commit, by
@@ -29,12 +31,29 @@ import { MesoPlacements, MesoPlacementStore, toParticleList } from './particle-l
 // touched; looks are written when they changed, one `particles.look` per list. Prism's undo journals the
 // representation and look calls but not the list create and delete, so an undo can strip a kept list's representation
 // (or the list): each commit checks the kept lists and draws again what is missing, and rewrites the looks then.
+// Under a document's owner (prism.md §2.3, §7.3) a commit runs inside the operation's step: its API calls go through the
+// step's `api` (`bind`), its tree writes are part of the run, it deletes no placements (the owner lets them go), and a
+// restore is adopted from the restored tree (`adopt`) with nothing through the API. A re-pack's new list is drawn with
+// the representation type and params of the list of the same model it replaces.
 
 const now = () => performance.now();
+
+/** What the adapter needs of a viewer: its plugin, a lazy feature's load, and its API outside an owner's step. */
+export interface AdapterViewer {
+  readonly plugin: PrismViewer['plugin'];
+  readonly extensions: { load(id: string): Promise<boolean> };
+  readonly api?: ViewerApi;
+}
 
 interface Placed {
   readonly ref: string;
   readonly label: string;
+}
+
+/** A representation's type as a list of a model had it: what its re-packed list is drawn with. */
+interface Drawn {
+  readonly name: string;
+  readonly params: Record<string, unknown>;
 }
 
 export class PrismMesoAdapter implements RendererAdapter {
@@ -45,6 +64,12 @@ export class PrismMesoAdapter implements RendererAdapter {
   private placed = new Map<string, Placed>();
   /** Bounds of the drawn sets by key: what the camera's radius is taken from. */
   private readonly bounds = new Map<string, SetBounds>();
+  /** The API calls go through: the step's while bound (an owner's operation), else the viewer's. */
+  private api: ViewerApi | undefined;
+  /** The placement sets of this viewer, by key. */
+  private get store() {
+    return placementStore(this.viewer.plugin);
+  }
   /** For tests and stories: the state objects of the lists, by set key. */
   listObject(key: string) {
     const p = this.placed.get(key);
@@ -53,9 +78,24 @@ export class PrismMesoAdapter implements RendererAdapter {
   listRef(key: string) {
     return this.placed.get(key)?.ref;
   }
+  /** The keys of the sets drawn (the flattened IR's, expanded instances included): what the owner keeps placed. */
+  keys(): readonly string[] {
+    return this.prev ? [...placementSetKeys(this.prev)] : [];
+  }
+
+  /** Runs `work` with the API calls going through `api` (an operation's `ctx.api`: part of its step). */
+  async bound<T>(api: ViewerApi, work: () => Promise<T>): Promise<T> {
+    const before = this.api;
+    this.api = api;
+    try {
+      return await work();
+    } finally {
+      this.api = before;
+    }
+  }
 
   constructor(
-    readonly viewer: PrismViewer,
+    readonly viewer: AdapterViewer,
     readonly options: { readonly representation?: string; readonly sizeFactor?: number } = {},
   ) {}
 
@@ -70,16 +110,24 @@ export class PrismMesoAdapter implements RendererAdapter {
     const plan = planCommit(this.prev, ir);
     const v = this.viewer;
     if (plan.add.length) await v.extensions.load('particles');
-    const particles = v.api.particles;
-    if (!particles) throw new Error('The viewer has no particles feature');
+    const particles = this.particles();
+    const store = this.store;
 
+    // the representation of each model's removed list, for the list that replaces it (a re-pack keeps the person's
+    // representation settings: prism.md §5.1)
+    const drawn = new Map<string, Drawn>();
     if (plan.remove.length) {
       const b = v.plugin.state.data.build();
+      const prevSets = new Map(this.prev ? placementSets(this.prev).map((x) => [x.key, x]) : []);
       for (const key of plan.remove) {
         const p = this.placed.get(key);
-        if (p) b.delete(p.ref);
+        if (p) {
+          const model = prevSets.get(key)?.model;
+          const type = model !== undefined ? this.representationType(p.ref) : undefined;
+          if (model !== undefined && type && !drawn.has(model)) drawn.set(model, type);
+          b.delete(p.ref);
+        }
         this.placed.delete(key);
-        MesoPlacementStore.delete(key);
       }
       await v.plugin.runTask(v.plugin.state.data.updateTree(b));
     }
@@ -92,16 +140,17 @@ export class PrismMesoAdapter implements RendererAdapter {
       const set = byKey.get(key)!;
       if (!p || !v.plugin.state.data.cells.get(p.ref)?.obj) {
         this.placed.delete(key);
-        relist.push(set);
+        if (set.count) relist.push(set);
       } else if (!this.hasRepresentation(p.ref)) redraw.push(set);
     }
-    for (const set of [...plan.add, ...relist]) {
-      const label = `${set.model} · ${set.count.toLocaleString('en-US')} copies`;
-      MesoPlacementStore.set(set.key, toParticleList(set, label));
+    // an empty set (a model whose input is missing) has nothing Prism can draw: no list (spacefill refuses it)
+    for (const set of [...plan.add.filter((x) => x.count > 0), ...relist]) {
+      const label = listLabel(set);
+      if (!store.has(set.key)) store.set(set.key, toParticleList(set, label));
       const b = v.plugin.state.data.build().toRoot().apply(MesoPlacements, { key: set.key, label });
       await v.plugin.runTask(v.plugin.state.data.updateTree(b));
       this.placed.set(set.key, { ref: b.ref, label });
-      await this.represent(set, b.ref, label);
+      await this.represent(set, b.ref, label, drawn.get(set.model));
     }
     for (const set of redraw) {
       const p = this.placed.get(set.key)!;
@@ -204,17 +253,63 @@ export class PrismMesoAdapter implements RendererAdapter {
     };
   }
 
-  private async represent(set: PlacementSet, ref: string, label: string) {
-    const particles = this.viewer.api.particles!;
-    const type = this.options.representation ?? 'spacefill';
+  private async represent(set: PlacementSet, ref: string, label: string, was?: Drawn) {
+    const particles = this.particles();
+    const type = was?.name ?? this.options.representation ?? 'spacefill';
     const r = await particles.representation({
       type,
       particles: ref,
       // spacefill hides fiber particles by default (a Fibers representation draws them); here a filament's subunits are
       // the copies to draw (renderer-recommendations.md A8)
-      params: set.fibers && type === 'spacefill' ? { excludeFibers: false } : {},
+      params: was?.params ?? (set.fibers && type === 'spacefill' ? { excludeFibers: false } : {}),
     } as Parameters<typeof particles.representation>[0]);
     if (!r.ok) throw new Error(`Could not show ${label}: ${r.message}`);
+  }
+
+  /** The type and params of a list's first representation (the one the adapter made, as the person left it). */
+  private representationType(ref: string): Drawn | undefined {
+    const q = StateSelection.Generators.byRef(ref).subtree().ofType(SO.Particle.Representation3D);
+    const params = this.viewer.plugin.state.data.select(q)[0]?.transform.params as
+      | { type?: { name: string; params: Record<string, unknown> } }
+      | undefined;
+    return params?.type ? { name: params.type.name, params: params.type.params } : undefined;
+  }
+
+  /**
+   * A restore (prism.md §7.3, point 5): the IR the owner compiled for the restored document taken as drawn, with nothing
+   * through the API. The lists are found in the restored tree by their key; a key the store lacked (a session on a
+   * fresh page) is filled and its list applied again through the state directly, which the history's restore covers.
+   * A set with no list in the tree is left for the next commit's repair (inside that edit's step). Returns the keys
+   * that were missing.
+   */
+  async adopt(source: IR): Promise<{ readonly filled: readonly string[] }> {
+    const flat = flattenInstances(source, this.expansions);
+    const ir = flat.ir;
+    const keys = placementSetKeys(ir);
+    for (const k of [...this.expansions.keys()]) if (!keys.has(k)) this.expansions.delete(k);
+    for (const k of [...this.bounds.keys()]) if (!keys.has(k)) this.bounds.delete(k);
+    const state = this.viewer.plugin.state.data;
+    const store = this.store;
+    const cells = new Map<string, { ref: string; label: string; list: ParticleList | undefined }>();
+    for (const c of state.select(StateSelection.Generators.ofTransformer(MesoPlacements))) {
+      const p = c.transform.params as { key: string; label: string };
+      cells.set(p.key, { ref: c.transform.ref, label: p.label, list: c.obj?.data as ParticleList | undefined });
+    }
+    this.placed = new Map();
+    const filled: string[] = [];
+    const b = state.build();
+    for (const set of placementSets(ir)) {
+      const cell = cells.get(set.key);
+      if (!cell) continue;
+      this.placed.set(set.key, { ref: cell.ref, label: cell.label });
+      if (store.has(set.key) && !(cell.list && isMissingList(cell.list))) continue;
+      if (!store.has(set.key)) store.set(set.key, toParticleList(set, cell.label || listLabel(set)));
+      filled.push(set.key);
+      b.to(cell.ref).update((old: { fill?: number }) => ({ ...old, fill: (old.fill ?? 0) + 1 }));
+    }
+    if (filled.length) await this.viewer.plugin.runTask(state.updateTree(b));
+    this.prev = ir;
+    return { filled };
   }
 
   private hasRepresentation(ref: string) {
@@ -222,13 +317,26 @@ export class PrismMesoAdapter implements RendererAdapter {
     return this.viewer.plugin.state.data.select(q).length > 0;
   }
 
-  /** Removes every list this adapter made. */
+  private particles() {
+    const api = this.api ?? this.viewer.api;
+    if (!api) throw new Error('The adapter draws inside a step: no API is bound');
+    const particles = api.particles;
+    if (!particles) throw new Error('The viewer has no particles feature');
+    return particles;
+  }
+
+  /** Forgets what it drew, writing nothing: the restored state has no lists of its (an Undo of an open). */
+  forget() {
+    this.placed.clear();
+    this.prev = undefined;
+    this.expansions.clear();
+    this.bounds.clear();
+  }
+
+  /** Removes every list this adapter made (their placements stay: the owner lets them go, so Undo finds them). */
   async clear() {
     const b = this.viewer.plugin.state.data.build();
-    for (const [key, p] of this.placed) {
-      b.delete(p.ref);
-      MesoPlacementStore.delete(key);
-    }
+    for (const [, p] of this.placed) b.delete(p.ref);
     this.placed.clear();
     this.prev = undefined;
     await this.viewer.plugin.runTask(this.viewer.plugin.state.data.updateTree(b));
@@ -311,6 +419,8 @@ export function sceneRadius(sets: readonly PlacementSet[], cache = new Map<strin
   if (!(b[3] >= b[0])) return 0;
   return Math.hypot(b[3] - b[0], b[4] - b[1], b[5] - b[2]) / 2 + b[6];
 }
+
+const listLabel = (set: PlacementSet) => `${set.model} · ${set.count.toLocaleString('en-US')} copies`;
 
 function placementSetKeys(ir: IR): Set<string> {
   const out = new Set<string>();

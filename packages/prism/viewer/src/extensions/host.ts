@@ -4,6 +4,7 @@
  * Developed in collaboration with Anyfold <https://anyfold.ai/>
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { type ObservableState, observableState, type ReadonlyState } from '@molstar/prism-ui/core';
@@ -242,6 +243,20 @@ export class ExtensionHost {
       if (!hit && owns.sniff && need.files?.length) hit = await sniffs(owns.sniff, need.files, contentOf);
       if (hit) await this.load(entry.id);
     }
+  }
+
+  /** The operation a stub's `owns.opens` claims the file for (loaded or not), by its extension, else its sniff. */
+  async opener(file: NonNullable<ExtensionNeed['files']>[number]): Promise<string | undefined> {
+    const ext = extensionOf(file.name);
+    let content: Promise<string | Uint8Array> | undefined;
+    const contentOf = () => (content ??= file.content());
+    for (const entry of this.#entries.values()) {
+      const owns = entry.lazy?.stub.owns;
+      if (!owns?.opens) continue;
+      if (owns.fileExtensions?.some((x) => x.toLowerCase().replace(/^\./, '') === ext)) return owns.opens;
+      if (owns.sniff && (await sniffs(owns.sniff, [file], contentOf))) return owns.opens;
+    }
+    return undefined;
   }
 
   /** The page's shell: every extension's views now, and loaded ones' later. */

@@ -14,6 +14,11 @@
       "types": "./lib/index.d.ts",
       "import": "./lib/index.js"
     },
+    "./prism-viewer": {
+      "molstar-src": "./src/prism-viewer.ts",
+      "types": "./lib/prism-viewer.d.ts",
+      "import": "./lib/prism-viewer.js"
+    },
     "./_test/*": null,
     "./_stories/*": null
   },

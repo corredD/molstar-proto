@@ -783,6 +783,9 @@ importers:
       '@molstar/graphics':
         specifier: workspace:*
         version: link:../../packages/graphics
+      '@molstar/meso-molstar':
+        specifier: workspace:*
+        version: link:../../packages/mesoscale/molstar
       '@molstar/mesoscale-extension':
         specifier: workspace:*
         version: link:../../packages/extensions/mesoscale

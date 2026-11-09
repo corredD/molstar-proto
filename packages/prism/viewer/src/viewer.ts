@@ -4,6 +4,7 @@
  * Developed in collaboration with Anyfold <https://anyfold.ai/>
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { derive } from '@molstar/prism-ui/reactive/state';
@@ -300,7 +301,7 @@ export async function createViewerCore(o: ViewerCoreOptions): Promise<ViewerCore
     const targets = createTargetResolver(plugin, languages);
     const modules = new Set(o.modules);
     // Operations that load what an extension owns ask the extensions first; set once they are added.
-    const extensionPort: ExtensionPort = { ensureFor: async () => {} };
+    const extensionPort: ExtensionPort = { ensureFor: async () => {}, opener: async () => undefined };
     // The record's part of session files (journal.md §5): bound once the record exists, below.
     const journalPort: JournalPort = { ...NoJournal };
     const host = createViewerApi({
@@ -432,6 +433,7 @@ export async function createViewerCore(o: ViewerCoreOptions): Promise<ViewerCore
     const listed = (spec.extensions ?? []).filter((e) => gated[e.id] !== false);
     await extensions.add(listed);
     extensionPort.ensureFor = (need) => extensions.ensureFor(need);
+    extensionPort.opener = (file) => extensions.opener(file);
     // Each structure's sequence in the structure tree (sequence.md §8.1), through the API as the person.
     const sceneSequence =
       sequence && sequenceSpec?.tree !== false

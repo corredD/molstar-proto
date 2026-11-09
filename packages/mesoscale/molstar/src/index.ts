@@ -5,6 +5,21 @@
  */
 
 export { irToMolViewSpec } from './mvs-export.js';
-export { MesoPlacements, MesoPlacementStore, toParticleList } from './particle-list.js';
-export { type CameraCanvas, commitCamera, PrismMesoAdapter, sceneRadius, type SetBounds } from './prism-adapter.js';
+export { isMissingList, MesoPlacements, placementStore, toParticleList } from './particle-list.js';
+export {
+  type AdapterViewer,
+  type CameraCanvas,
+  commitCamera,
+  PrismMesoAdapter,
+  sceneRadius,
+  type SetBounds,
+} from './prism-adapter.js';
+export {
+  type DocumentSource,
+  type DocumentStep,
+  MesoDocumentModel,
+  type MesoDocumentOptions,
+  MesoViewSpecStateKey,
+  type SavedMesoViewSpec,
+} from './document-model.js';
 export { type EditRecord, MesoSession, type SessionOptions } from './session.js';
