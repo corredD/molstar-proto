@@ -176,10 +176,19 @@ export class MesoViewSpecApi extends ApiArea {
       const lists = this.model.adapter.keys().length;
       const title = read.doc.metadata?.title || values.file?.name || url?.split('/').pop() || 'the document';
       const problems = step.issues.filter((i) => i.severity === 'error' || i.severity === 'warning');
+      // files dropped with it that no resource names are not opened as data either (load.files hands them all here)
+      const named = new Set(
+        (read.doc.resources ?? []).map((r) => r.uri?.slice((r.uri?.lastIndexOf('/') ?? -1) + 1)).filter(Boolean),
+      );
+      const stray = [...files.keys()].filter((name) => !named.has(name));
+      const warnings = [
+        ...issueLines(problems),
+        ...(stray.length ? [`Not opened (the document names no such resource): ${stray.join(', ')}.`] : []),
+      ];
       return ApiResult.ok(
         `Opened ${title}: ${copies} ${copies === 1 ? 'copy' : 'copies'} in ${lists} ${lists === 1 ? 'list' : 'lists'}.`,
         {},
-        problems.length ? { warnings: issueLines(problems) } : {},
+        warnings.length ? { warnings } : {},
       );
     },
   });
