@@ -89,6 +89,10 @@ maintainer first (2026-10-25). All are v6 (master); the MRC reader and the parti
 ## Backlog
 
 - **Lipid membranes, left from lane `lipid-tiles`** (2026-11-08; progress/2026-11-08-lipid-tiles.md, Numbers):
+  - Round 2 (Holes, LOD and the cutter): pick the default method after Ludo compares (tiles until then; the right-click
+    offers no choice); the cutter's holes where small triangles take no headgroup and its clashes across triangles (no
+    removal, as cellPACKgpu); the cut lost parts meet the tiles near the remesh (about 400 k atom pairs under 2 Å on the
+    cow); pinholes at the middle level of detail; the cutter's 8 B a member and triangle.
   - Not smooth zoomed out: a 1 µm sphere (7.9 M lipids, both leaflets) draws in about 380 ms a frame (Dawn, headless,
     M1, 512²); every atom of every tile is drawn. The spheres' levels of detail do not reach the membrane (the balanced
     preset changed nothing); a far level is needed (a tile as a few coarse spheres, or a textured triangle).

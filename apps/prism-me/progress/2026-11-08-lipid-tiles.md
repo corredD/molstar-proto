@@ -338,15 +338,16 @@ before picking a default.
    body (a capsule with thin limbs, in memory) that fails first, then passes with the fix; the mesh hidden after a wrap
    in Ludo's path (scale by `cryoet.mesh`, then wrap: an app test).
 2. **LOD shared by both methods** (~200 lines, Opus for the hot path). Mol*'s own levels (the spheres' `lodLevels`, the
-   merged culler's LOD ranges, as cellPACK particles get theirs in prism-me), not a new system: atoms near, fewer beads a
-   lipid farther, sparse far. Tests: the levels made per tile (a quick test of counts per level); frame time whole and
+   merged culler's LOD ranges, as cellPACK particles get theirs in prism-me), not a new system: atoms near, fewer beads
+   a lipid farther, sparse far. Tests: the levels made per tile (a quick test of counts per level); frame time whole and
    close up, before and after (Dawn, measured, in the progress file).
-3. **The cutter, cellPACKgpu's way** (~500 lines, Opus for the WGSL): `mesoscale.wrapMembrane { method: 'tiles' |
-   'cutter' }`, one right-click entry, tiles the default until the comparison. On the original triangles (no remesh),
-   each triangle tests the patch's lipids by headgroup against the triangle flattened in the patch plane, with a real
-   random offset and spin per triangle, per leaflet along the normal; count, prefix sum, write, so the CPU knows the
-   counts per species for the merged layout. Tests: a Dawn test of the WGSL against a TypeScript reference, triangle for
-   triangle; a scaling guard (`*.scaling.ts`) at n and 4n triangles with its quadratic control.
+3. **The cutter, cellPACKgpu's way** (~500 lines, Opus for the WGSL):
+   `mesoscale.wrapMembrane { method: 'tiles' | 'cutter' }`, one right-click entry, tiles the default until the
+   comparison. On the original triangles (no remesh), each triangle tests the patch's lipids by headgroup against the
+   triangle flattened in the patch plane, with a real random offset and spin per triangle, per leaflet along the normal;
+   count, prefix sum, write, so the CPU knows the counts per species for the merged layout. Tests: a Dawn test of the
+   WGSL against a TypeScript reference, triangle for triangle; a scaling guard (`*.scaling.ts`) at n and 4n triangles
+   with its quadratic control.
 4. **Side by side** (measuring and screenshots: Sonnet subagents, one at a time). On the cow ×100, both methods: lipids,
    coverage, atom pairs < 2 Å across triangles, wrap time (first and second), GPU bytes a lipid, frame time whole and
    close up, with and without LOD; images whole, flank, seam in `~/prism-me-lanes/lipid-tiles-shots/compare-*`.
@@ -357,3 +358,81 @@ triangle showing through on the body, smooth when zoomed out; then the cutter by
 
 **Size.** About 800 production lines (100 + 200 + 500). The review gate (lane-reviewer, lane-skeptic) runs on the diff
 since `7829199ab` before the report.
+
+## Holes, LOD and the cutter, 2026-11-08
+
+Round 2 (brief above; it was written before the first code commit of the round, after the diagnosis probes).
+
+**Holes: causes (cow ×100, headless, area-sampled points on the original mesh, a lipid atom within 10 Å).** 92.2 % of
+the cow's area was covered. Of the misses, 87 % lay more than 40 Å from any remeshed triangle: the remesh at 42 Å drops
+the legs (20–35 Å across at y −260, thinner than the edge and than the bilayer) and the horn tips, so the mesh showed
+there (Ludo's "Triangle 2811" is at (222, −99, 86), under the belly where a leg joins). The rest are pinholes in the
+tiles (own-surface coverage 96–97 %). Not the cause: skinny triangles, culling, empty variants, the leaflet offset, the
+seam slack (slack 0 against 3: 92.0 against 92.2 %). Tried and dropped: refusing a collapse whose vertex leaves the
+input by over L/8 (93.5 %, but two non-manifold edges; the legs still went).
+
+**Fix.** The tiles method cuts, with the cutter, the input triangles whose center lies over 10 Å from the remesh
+(`farTriangles`, a surface grid; 1,665 of the cow's 5,804). A thin-limbed body in memory (`thinLimbedBody`) failed first
+(95.1 % < 97 %) and passes. The mesh hidden in Ludo's path: headless, scale by `cryoet.mesh` then wrap hides the cell
+and its representation (an app test now checks both); the dev server rebuilt at 14:33 with the hide, so Ludo's tab may
+have held the earlier build: not reproduced.
+
+**LOD (both methods).** Mol*'s spheres levels by size on screen (`detail`: quality, balanced (default), performance,
+off). Library `bde208175`: the GPU culler drew a gridless member at full detail at every level (as the CPU culling); a
+member whose instances the GPU writes now draws at its levels, each instance at its own (instance-copy already picks it
+by the instance's sphere). The presets scale coarse spheres as a volume (bias ~3): the cow read as dots; membrane levels
+use strides 1, 8, 64 at bias 2 (a sheet's area). A 512 stride drew half a small sphere's pixels: dropped.
+
+**The cutter** (`lipids/cutter.ts` reference, `cutter-kernel.ts` WGSL). On the original triangles: each flattened in its
+frame, a random spin and offset in the periodic patch (images where the triangle overhangs the box), lipids taken by
+headgroup, per leaflet along the face normal. A lipid is an instance of a conformer of its species (4 a species: 26
+members a leaflet for CHARMM-GUI's 14 species; a member per patch lipid would be ~700 render objects a leaflet). Count
+pass (per member, per triangle) on the GPU, read back once, summed on the CPU (the merged layout needs each member's
+count), write pass per member into the culler's buffers. Dawn test: counts and every hit's affine equal the reference.
+
+**Comparison (cow ×100, CHARMM-GUI patch, both leaflets, Dawn on the M1, 900×600; images
+`~/prism-me-lanes/lipid-tiles-shots/compare-<method>[-nolod]-<whole|flank|seam>.png`, looked at).**
+
+|                                                | Tiles (+ lost parts cut)                  | Cutter                              |
+| ---------------------------------------------- | ----------------------------------------- | ----------------------------------- |
+| Lipids                                         | 28,122 (24,640 in 2,464 tiles, 3,482 cut) | 27,803                              |
+| Original area covered, atom ≤ 10 Å / ≤ 6 Å     | 100.0 % / 98.6 %                          | 99.1 % / 95.4 %                     |
+| Atom pairs < 2 Å across triangles (within one) | 411,584 (29,698)                          | 422,606 (77,957)                    |
+| Wrap, first / second                           | 825 ms / 157 ms (bake)                    | 135 ms / 39 ms                      |
+| GPU storage                                    | 3.5 MB                                    | 14.5 MB (8 B a member and triangle) |
+| Frame whole / flank / seam, levels             | 33 / 32 / 116 ms                          | 38 / 36 / 134 ms                    |
+| Same, no levels                                | 247 / 201 / 105 ms                        | 243 / 225 / 121 ms                  |
+
+Bytes a lipid on the GPU, past the shared textures: tiles about 70 B in all (the merged instances are a tile's), the
+cutter about 520 B (its per-(member, triangle) counts and bases dominate on a mesh this size; the instances 80 B a lipid
+as the culler's). The pairs across triangles are mostly the cut lipids meeting the tiles on the tiles side (the lost
+triangles within 10–20 Å of the remesh) and, in the cutter, every seam (no clash removal, as cellPACKgpu). cellPACKgpu's
+numbers from its code: 48 B a lipid, no levels, the same disc cut on every triangle (its spin and offset unused).
+
+**Which looks better, which is faster.** Close up the tiles look better: fewer within-triangle clashes, no white holes
+(the cutter leaves visible holes on the flank where small triangles take no headgroup), and the patch's own lipids in
+their poses (the cutter draws conformers). The cutter wraps 6× faster (no bake, no remesh) and keeps the mesh's shape
+exactly. Drawing is about even (the levels decide it). **Recommendation: tiles stay the default**; the cutter for meshes
+the remesh cannot keep and for live re-wraps. Ludo decides.
+
+**Built (round 2).** `78a04797e` the cutter and its Dawn test; `bde208175` (library, `packages/graphics`) levels for
+GPU-written gridless members, its quick test failing first; `00ef9439e` the method, the lost parts cut, levels on (the
+thin-limbed body test failing first); `a3a7d9a15` the operation's `method`; `f76f67513` the cut count in the
+description; `7cc3bb98a` and `8418f8fa1` the sheet levels (the second also carried features.md and the changelog by a
+`commit -a`); `c068051c0` the app test; the scaling guards (cutter counts, lost triangles: n and 4n, linear).
+
+**Decided.** Conformers, not a member per patch lipid (this session: render objects and records); counts read back from
+the GPU's count pass (the brief); tiles the default until Ludo compares (Ludo: "build both and compare").
+
+**Learned.** Mol*'s level presets thin a sheet into dots (volume bias); the remesh cannot keep parts thinner than its
+edge, so a mixed membrane (tiles where the remesh holds, cut elsewhere) covers everything.
+
+**Size.** About 900 production lines against 800: the cutter 625 against 500 (the reference and the kernel each carry
+the per-triangle function, as the tiles' do); holes 25 + membrane wiring, LOD 25 + the library 15.
+
+**How Ludo tries each.** Open the cow, Look › Scale 100, right-click › Wrap with lipids (tiles). The cutter by command:
+`mesoscale.wrapMembrane { mesh: <the mesh's ref>, method: 'cutter', patch: 'charmm-gui' }` after a first wrap (the patch
+fetched), or with `patchUrl`. The levels: the membrane's `detail`.
+
+**Open (TODO.md).** The cutter's holes on small triangles and its clashes; the cut lost parts clash with the tiles near
+the remesh; the right-click offers no method choice; LOD pinholes at the middle level.
