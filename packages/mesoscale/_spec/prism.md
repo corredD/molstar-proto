@@ -420,11 +420,11 @@ Prism's one history (sequence.md §7.3) holds every step; the document is part o
   `load.files` read; a `.molj` cannot, and its open names the resources it lacks (models unavailable,
   [runtime.md](runtime.md)).
 - **What a checkpoint costs.** The custom state is kept by reference (`getSnapshot`), so untouched parts of the document
-  are shared in memory (§2.1). The checkpoint's size pass stringifies the custom state whole at each step
-  (`sources/checkpoint.ts`, `size`), unlike the trees (`SerializedTrees`): a large document counts against the time and
-  size budgets at every step. The size pass keeps the document's measured size by `revision` (proposed, lane
-  `mvs-open`). A model edit costs the patched population, not the copies: placements are derived ([views.md](views.md))
-  and never in the state.
+  are shared in memory (§2.1). The checkpoint's size pass measures a custom-state value once per object
+  (`sources/checkpoint.ts`, `size`; lane 0, `checkpoint-owned-cells`): an unchanged document costs nothing at a step,
+  and a patched one is measured once. The owner must therefore never change a document in place after handing it over
+  (patches already return a new document, §2.1). A model edit costs the patched population, not the copies: placements
+  are derived ([views.md](views.md)) and never in the state.
 
 ### 7.2 What a step is
 
@@ -519,10 +519,13 @@ where it plugs:
   canvas camera (view state; `camera.*` changes are not steps).
 - **Streamed sets are not steps.** Tiles loaded and evicted are cells the owner's behavior makes, not the person's: as
   volume streaming's cells (sequence.md §7.3, "cells behaviors own" are not changes outside the API). Undo restores the
-  document; the tiles follow the camera, not the history. Today neither holds for a new kind of cell: the behaviors'
-  cells are a fixed list (`isBehaviorOwned`, `sources/checkpoint.ts`) and a checkpoint serializes the whole tree. So the
-  tile cells' transformer joins that list, and the checkpoint port leaves those cells out (a filter by transformer in
-  `createCheckpointPort`); a restore asks the provider again. Both are Prism viewer changes (lane `mvs-streaming-app`).
+  document; the tiles follow the camera, not the history. Lane 0 (`checkpoint-owned-cells`) built what this needs: a
+  transformer registered with `registerBehaviorOwned(plugin, [transformer])`
+  (`@molstar/prism-viewer/sources/checkpoint`) makes its cells and everything under them no outside change, leaves them
+  out of a checkpoint's data tree, and a restore keeps them where their parent and `dependsOn` stay (sequence.md
+  §7.2-§7.4). The fixed list (`isBehaviorOwned`) is unchanged and its cells are still checkpointed (custom-properties
+  cells parent structures). So `mvs-streaming-app` registers the tile cells' transformer; a restore keeps the resident
+  tiles and the provider continues from the camera.
 - **The alternative, tiles as steps:** every camera move would fill the history, and Undo would unload what the person
   is looking at.
 - **The budget** is a viewer setting (Settings), never the document's.
