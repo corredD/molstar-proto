@@ -188,7 +188,8 @@ describe.skipIf(!WebGPU.module)('GPU-written instances of merged render objects'
     try {
       await plugin.init();
       const graphics = plugin.canvas3d!.graphics;
-      const offsets = [Vec3.create(0, 0, 0), Vec3.create(2.5, 2.5, 1)];
+      // nothing at the origin, where zero rows would put a dead slot's spheres (review M1, N2)
+      const offsets = [Vec3.create(-200, 0, 0), Vec3.create(2.5, 2.5, 1)];
       const colors = [ColorNames.orange, ColorNames.green];
       const Live = 14;
       const pool: Pool = { live: Live, drawn: Copies * Copies, views: 0 };
@@ -242,8 +243,12 @@ describe.skipIf(!WebGPU.module)('GPU-written instances of merged render objects'
       const views = pool.views;
       for (let i = 0; i < 3; ++i) await frame(scenes[1], true);
       expect(pool.views).toBe(views);
-      // the dead slots zeros in the identity region: nothing drawn of them on the CPU's lists
-      expect(await frame(scenes[1], false)).toEqual(await frame(scenes[0], false));
+      // culled on the CPU (a new view, no GPU dispatch): the dead slots draw nothing (review M1, N2: zero rows drew
+      // them at the origin), the origin in view
+      camera.setState(camera.getFocus(Vec3.create(0, 0, 0), 12), 0);
+      camera.update();
+      const cpuReference = await frame(scenes[0], false);
+      expect(await frame(scenes[1], false)).toEqual(cpuReference);
       expect(graphics.takeErrors?.() ?? []).toEqual([]);
     } finally {
       plugin.dispose();
