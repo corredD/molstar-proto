@@ -11,6 +11,7 @@ import { distinctColors } from '@molstar/core/util/color/distinct';
 import { ValueCell } from '@molstar/core/util/value-cell';
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
 import { Vec3 } from '@molstar/core/math/linear-algebra/3d/vec3';
+import { Vec4 } from '@molstar/core/math/linear-algebra/3d/vec4';
 import { Sphere3D } from '@molstar/core/math/geometry/primitives/sphere3d';
 import { StateTransformer } from '@molstar/core/state';
 import { Spheres } from '@molstar/graphics/geo/geometry/spheres/spheres';
@@ -587,11 +588,40 @@ export function switchSpheres(table: CutterTable, props: LipidMembraneReprProps,
   return { atoms, radius };
 }
 
+/** A distance past any view, Å: a surface's fade (`lod`) open at its far end */
+const NoFade = 1e9;
+
+/**
+ * The fade of a cut leaflet's far surface (round 4c item 7): over the spheres it takes over from, dithered in by distance
+ * (`lod`, Mol*'s object fade) from where a lipid is twice `enter` px on screen to where it is `enter` (the selection's
+ * switch: a lipid of `size` Å at `depthScale` Å a pixel a unit of depth), opaque past it, not drawn nearer; with an
+ * orthographic camera (one size on screen) drawn or not. Its props' `lod` too (`setClip` updates the values with them)
+ */
+function fadeSurface(values: BaseValues, size: number, enter: number, depthScale: number, pixelSize: number) {
+  const made = clipped.get(values);
+  if (!made) return;
+  const lod = made.lod;
+  if (depthScale > 0) {
+    const d = size / (depthScale * enter);
+    Vec3.set(lod, d / 2, NoFade, d / 2);
+  } else if (pixelSize > 0 && size / pixelSize >= enter) Vec3.set(lod, NoFade, 2 * NoFade, 1);
+  else Vec3.set(lod, 0, NoFade, 1);
+  const u = values.uLod.ref.value;
+  if (u[0] === lod[0] && u[1] === lod[1] && u[2] === lod[2]) return;
+  ValueCell.update(values.uLod, Vec4.set(u, lod[0], lod[1], lod[2], 0));
+}
+
 /**
  * A leaflet's far surface (lipid-procedural round 4b, `far-surface.ts`): at its heads, single-sided, each vertex a group
  * coloured as its species (the patch's head where the cutter maps it), Mol*'s material bump at a lipid's spacing
  */
-function surfaceObject(f: FarSurface, colorOf: (species: number) => Color, size: number, clip: Clip.Props) {
+function surfaceObject(
+  f: FarSurface,
+  colorOf: (species: number) => Color,
+  size: number,
+  clip: Clip.Props,
+  fade: boolean,
+) {
   const n = f.positions.length / 3;
   const groups = new Float32Array(n);
   for (let v = 0; v < n; ++v) groups[v] = v;
@@ -604,6 +634,9 @@ function surfaceObject(f: FarSurface, colorOf: (species: number) => Color, size:
     bumpAmplitude: 1,
     material: { ...defaults.material, bumpiness: 1 },
     clip,
+    // a cut leaflet's surface fades in over the spheres by distance (`fadeSurfaces`, set per view): its define on from
+    // the start, drawn whole until the first view
+    lod: fade ? Vec3.create(0, NoFade, 1) : defaults.lod,
   };
   const transform = createIdentityTransform();
   const locationIterator = LocationIterator(
@@ -688,6 +721,10 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
   /** the merged objects' members' values (a cut alone updates them: `setClip`), and the build's */
   let members: BaseValues[] = [];
   let building: BaseValues[] = [];
+  /** the cut leaflets' far surfaces, faded in by distance (`fadeSurface`), and their lipids' size */
+  let fading: { values: BaseValues; size: number }[] = [];
+  /** the last view's size on screen: a new look's surfaces faded from their first frame (the hook comes after it) */
+  const lastLod = { depthScale: 0, pixelSize: 0 };
 
   function release() {
     for (const a of assigners) a.destroy();
@@ -696,6 +733,7 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
     cutters = [];
     selections = [];
     selectedViews = new WeakMap();
+    fading = [];
   }
 
   /** a member's spheres values: its atoms (groups: lipids), `n` instances written by `writer`, colored by species */
@@ -777,6 +815,13 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
       selectedViews.set(selection, key);
     }
     let same = key[28] === view.lod.depthScale && key[29] === view.lod.pixelSize;
+    // the surfaces' fade follows the size on screen only (a resize, a camera's projection), not every move
+    if (!same) {
+      lastLod.depthScale = view.lod.depthScale;
+      lastLod.pixelSize = view.lod.pixelSize;
+      const enter = enterPx(props.far, props.atomsPx, props.spheresPx);
+      for (const f of fading) fadeSurface(f.values, f.size, enter, lastLod.depthScale, lastLod.pixelSize);
+    }
     for (let i = 0; i < 7; ++i) {
       const { normal, constant } = i < 6 ? view.frustum[i as 0] : view.cameraPlane;
       const o = i * 4;
@@ -1006,6 +1051,7 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
     // the far look's surfaces (`far`: texture, both; tiles: both): one a leaflet at its heads, in its species' colours
     // (round 4b); a tiles leaflet's on its surface (at its mid-plane: the heads past it), coloured as the cutter cuts the
     // patch there (the species' proportions and grain, not each tile's lipids)
+    const nextFading: typeof fading = [];
     if (props.far !== 'spheres') {
       const surfaces = [
         ...data.cut.map((l) => ({ ...l, offset: 0 })),
@@ -1030,9 +1076,16 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
         );
         const speciesColor = (sp: number) =>
           props.colorBy === 'uniform' || sp < 0 ? props.color : colorOf(table.species[sp]);
-        out.push(surfaceObject(f, speciesColor, size, props.clip));
+        const object = surfaceObject(f, speciesColor, size, props.clip, cut);
+        if (cut) {
+          nextFading.push({ values: object.values as BaseValues, size });
+          const enter = enterPx(props.far, props.atomsPx, props.spheresPx);
+          fadeSurface(object.values as BaseValues, size, enter, lastLod.depthScale, lastLod.pixelSize);
+        }
+        out.push(object);
       }
     }
+    fading = nextFading;
     renderObjects = out;
     members = building;
     // a clip given while this build ran (a handle's preview: outside the state) reached the old members only: all of

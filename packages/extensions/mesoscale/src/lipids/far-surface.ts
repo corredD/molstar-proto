@@ -122,7 +122,8 @@ export interface SwitchSpheres {
  * The patch seen from its leaflet's side as `top` draws it (round 4c item 7: the spheres near the switch show the
  * species whose heads stand highest, a CHARMM-GUI patch's DSM 73 % at the coarsest level for its 13 % of the heads):
  * each cell of `g` the species of the highest sphere over it, periodic; a cell no sphere covers keeps its nearest head.
- * O(lipids × level atoms × a sphere's cells)
+ * Returns the mean height of the spheres' tops over the cells they cover (from the bilayer's center, out of the
+ * leaflet). O(lipids × level atoms × a sphere's cells)
  */
 function topGrid(
   table: CutterTable,
@@ -165,6 +166,14 @@ function topGrid(
       }
     }
   }
+  let sum = 0;
+  let n = 0;
+  for (const h of height) {
+    if (h === -Infinity) continue;
+    sum += h;
+    n += 1;
+  }
+  return n > 0 ? sum / n : undefined;
 }
 
 export interface FarSurface {
@@ -180,7 +189,9 @@ export interface FarSurface {
  * one's winding flipped): each triangle split in n × n, one n for the whole mesh and each edge's points shared by its two
  * triangles (welded: no crack at a crease, review S6), n from the mean edge over `spacing` and lowered until at most
  * `maxVertices` vertices (review S1; the mesh's own vertices at n = 1). A vertex on a shared edge or corner takes the
- * colour its first triangle maps it to; with `top`, the species the spheres show there from above (`topGrid`)
+ * colour its first triangle maps it to. With `top` (a cut leaflet's switch, round 4c item 7) the surface takes over
+ * from those spheres: each vertex the species they show there from above (`topGrid`), and the surface at their tops'
+ * mean height in place of `offset` (no step where the spheres stop: the app's outline and shadows drew one as a line)
  */
 export function farSurface(
   mesh: TriMesh,
@@ -245,7 +256,8 @@ export function farSurface(
   const made = new Uint8Array(count);
   const indices = new Uint32Array(T * n * n * 3);
   const g = headGrid(table, shown, Math.max(1, spacing / 4));
-  if (top) topGrid(table, shown, side, g, top);
+  const height = top ? topGrid(table, shown, side, g, top) : undefined;
+  const lift = height !== undefined ? (side === 'outer' ? 1 : -1) * height : offset;
   const [bx, by] = table.box;
   const rg = regions.table;
   const cells = regions.cells;
@@ -289,9 +301,9 @@ export function farSurface(
         const x = w * p[ia] + u * p[ib] + v * p[ic];
         const y = w * p[ia + 1] + u * p[ib + 1] + v * p[ic + 1];
         const z = w * p[ia + 2] + u * p[ib + 2] + v * p[ic + 2];
-        positions[id * 3] = x + nx * offset;
-        positions[id * 3 + 1] = y + ny * offset;
-        positions[id * 3 + 2] = z + nz * offset;
+        positions[id * 3] = x + nx * lift;
+        positions[id * 3 + 1] = y + ny * lift;
+        positions[id * 3 + 2] = z + nz * lift;
         normals[id * 3] = nx * f;
         normals[id * 3 + 1] = ny * f;
         normals[id * 3 + 2] = nz * f;
