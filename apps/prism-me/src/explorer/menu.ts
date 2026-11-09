@@ -240,7 +240,10 @@ export function colorItems(
   groupBy?: (model: string) => MesoGroupBy | undefined,
 ): ContextMenuItem[] {
   const { node, kind } = picked;
+  // a lipid membrane coloured as a particle list, all its species (round 4c item 8)
+  const membrane = isMembrane(area, picked);
   const paint = (color: string) => {
+    if (membrane) return api.run('mesoscale.style', { particles: node.ref, color });
     if (kind === 'mesh') return api.run('cryoet.mesh', { mesh: node.ref, color });
     const part = partOf(node);
     if (part || kind === 'mesoscale model') {
@@ -254,7 +257,14 @@ export function colorItems(
     icon: 'palette',
     run: () => void paint(color),
   }));
-  if (kind === 'mesoscale model' || kind === 'group') {
+  if (membrane) {
+    items.unshift({
+      id: 'generate',
+      label: 'Generate colors',
+      icon: 'sparkles',
+      run: () => void api.run('mesoscale.colors', { scheme: 'generate', particles: node.ref }),
+    });
+  } else if (kind === 'mesoscale model' || kind === 'group') {
     const part = partOf(node);
     const by = groupBy?.(node.ref);
     items.unshift({
@@ -472,9 +482,9 @@ export function nodeMenuItems(
     items.push({ id: 'focus', label: `Focus on ${info?.text ?? label}`, icon: 'scan', run: () => area.focus(node) });
   } else {
     items.push({ id: 'focus', label: `Focus on ${picked.label}`, icon: 'scan', run: () => area.focus(node) });
-    // a lipid membrane has no shape of its own to move or color (`mesoscale.wrapMembrane`): focus, label, clip (round 4b
-    // item 6: its spheres and far surfaces cut alike), remove; its full build exported (lipid-procedural: a cut one,
-    // built only then)
+    // a lipid membrane has no shape of its own to move (`mesoscale.wrapMembrane`): focus, label, clip (round 4b item 6:
+    // its spheres and far surfaces cut alike), Color… as a particle list (round 4c item 8), remove; its full build
+    // exported (lipid-procedural: a cut one, built only then)
     if (!isMembrane(area, picked)) items.push(...moveItems(api, area, picked));
     else if (
       api.describe('mesoscale.exportMembrane') &&
@@ -498,8 +508,7 @@ export function nodeMenuItems(
     return items;
   }
   const open = actions.open;
-  const membrane = isMembrane(area, picked);
-  if (open && !membrane && colorable(kind, node)) {
+  if (open && colorable(kind, node)) {
     items.push({
       id: 'color',
       label: 'Color…',

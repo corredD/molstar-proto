@@ -246,6 +246,7 @@ export const Sections: readonly Section[] = [
           // and its species, as a particle system's entities (Ludo, 2026-11-08; ui.md §4)
           return (
             <div class={classes.stack}>
+              <MembraneLook api={api} membrane={ref} />
               <MembraneDetailControls area={api.mesoscale} membrane={ref} />
               <MembraneSpeciesControls area={api.mesoscale} membrane={ref} />
             </div>
@@ -770,6 +771,42 @@ function common<T>(values: readonly T[]): T | undefined {
   if (!values.length) return undefined;
   const [first] = values;
   return values.every((v) => v === first) ? first : undefined;
+}
+
+/**
+ * A lipid membrane's colours as a particle list's Look (round 4c item 8; ui.md §4): one colour for all its species,
+ * generated colours, back to its species' own, colours by zoom; the same operations as a list's, its species its
+ * entities
+ */
+function MembraneLook(props: { api: ViewerApi; membrane: string }) {
+  const { api, membrane } = props;
+  const species = api.mesoscale!.membraneSpeciesState(membrane);
+  return (
+    <div class={classes.tight}>
+      <ColorField
+        value={mapState(species, (ss) => common((ss ?? []).map((s) => s.color as number | undefined)))}
+        none="Its species’"
+        onPick={(color) => void api.run('mesoscale.style', { particles: membrane, color })}
+      />
+      <ZoomColors area={api.mesoscale!} particles={membrane} />
+      <div class={classes.tools}>
+        <Button
+          size="sm"
+          icon={<Icon name="palette" />}
+          onClick={() => void api.run('mesoscale.colors', { scheme: 'generate', particles: membrane })}
+        >
+          Generate colors
+        </Button>
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={() => void api.run('mesoscale.style', { particles: membrane, reset: true })}
+        >
+          Reset
+        </Button>
+      </div>
+    </div>
+  );
 }
 
 function ParticleLook(props: { api: ViewerApi; area: ExplorerApi; node: NodeRef; parts: ReadonlyState<Parts> }) {

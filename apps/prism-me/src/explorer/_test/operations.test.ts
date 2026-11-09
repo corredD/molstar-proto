@@ -539,7 +539,24 @@ await api.run('mesoscale.wrapMembrane', { mesh, method: 'cutter', patch: 'charmm
     const membraneIds = nodeMenuItems(v.api, area, membraneRow as never, { open: () => {} }).map((i) => i.id);
     // a tiles membrane: no export (the cutter's only, review M4); clipped as any object (round 4b item 6: Prism's cuts
     // reach it, its params carry a clip; what a cut removes, in both looks: lipid-membrane.webgpu.test.ts)
-    expect(membraneIds).toEqual(['focus', 'label', 'clip', 'remove']);
+    expect(membraneIds).toEqual(['focus', 'color', 'label', 'clip', 'remove']);
+    // Color… as a particle list's (round 4c item 8): every species one colour in one step, through mesoscale.style
+    let sub: { id: string; run: () => void }[] = [];
+    nodeMenuItems(v.api, area, membraneRow as never, { open: (items) => (sub = items as never) })
+      .find((i) => i.id === 'color')!
+      .run();
+    expect(sub.map((i) => i.id).slice(0, 2)).toEqual(['generate', 'color-tomato']);
+    const steps = v.api.history.steps.value.length;
+    sub.find((i) => i.id === 'color-tomato')!.run();
+    await vi.waitFor(() => {
+      const colors = Object.values(
+        (v.plugin.state.data.cells.get(membrane!.ref)!.transform.params as { speciesColors: object }).speciesColors,
+      );
+      expect(colors.length).toBeGreaterThan(0);
+      expect(new Set(colors).size).toBe(1);
+    });
+    await vi.waitFor(() => expect(v.api.history.steps.value.length).toBe(steps + 1));
+    expectOk(await v.api.run('history.undo', {}));
     expect(RepresentationClip.isClippable(v.plugin.state.data.cells.get(membrane!.ref)!)).toBe(true);
     // its eye hides it; its Remove removes it in one step
     await setEyes(v.api, area, [membraneRow as never], false);
