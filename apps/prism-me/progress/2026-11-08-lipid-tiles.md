@@ -568,8 +568,13 @@ mesh gone (both eyes agree), no mesh seen through close, middle or far; the cutt
   into every tile and cut. Measured on the patch itself in its box: 58 % of its area more than 10 Å (in plane) from any
   atom before, 0 % as its filled square. The cutter's per-triangle random offsets had hidden it by scattering lipids
   (and clashing them); coherent cuts showed it.
-- **The cutter's own holes: islands.** Each triangle its own offset made every lipid an island on triangles smaller than
-  a lipid (a flat plane of 43 Å² triangles: 912 atom pairs under 2 Å, the packing lost).
+- **The cutter's islands: not the holes.** Each triangle its own offset made every lipid an island on triangles smaller
+  than a lipid (a flat plane of 43 Å² triangles: 912 atom pairs under 2 Å, the packing lost). Measured after the patch
+  fix (CPU, the cow ×100, outer leaflet): the old per-triangle cutter covers as well as the regions (≤ 6 Å 99.6 % both),
+  so **the patch closed the holes, not the regions**; the regions bring fewer clashes (13.4 → 11.4 atom pairs under 2 Å
+  a lipid, −15 %), the patch's packing inside a region (rays along the normal hitting an atom 91.4 → 93.1 %), and
+  determinism for round 4. The cow has 953 regions for its 5,804 triangles (about 6 each): the normal bins fragment
+  curved surfaces, which matters as regions are round 4's unit.
 - **The sparse dots at middle and far distances: the library.** `bde208175` (round 2) drew a GPU-written gridless member
   at its levels' strides, but its per-level sphere scales (`tSegment`, the shader's `segmentLod`) stayed 1: a coarse
   level drew 1 in 16 spheres at full size.
@@ -609,9 +614,10 @@ mesh gone (both eyes agree), no mesh seen through close, middle or far; the cutt
 | Wrap, first / second                                                                  | 135 / 39 ms      | 161 / 44 ms       |
 | Frame whole / flank / seam, levels (another lane's tests ran during the no-level run) | 38 / 36 / 134 ms | 85 / 154 / 171 ms |
 
-The pairs grew with the lipids (a third more: the patch's corners no longer empty) and come from region borders and the
-two leaflets' cut lost parts; not removed (cellPACKgpu removes none). The frame times are not comparable: more lipids,
-and the machine shared with another lane's runs. Tiles on the cow ×100 after: 35,179 lipids, frames 60 / 107 / 135 ms.
+The pairs per lipid went up from 15.2 to 17.7 (both leaflets): the before column is the per-triangle cutter on the
+broken patch, the after the regions on the fixed one; on the same fixed patch the regions have 15 % fewer pairs than the
+per-triangle cut (above). None removed (cellPACKgpu removes none). The frame times are not comparable: more lipids, and
+the machine shared with another lane's runs. Tiles on the cow ×100 after: 35,179 lipids, frames 60 / 107 / 135 ms.
 Images (looked at): `compare-cutter-nolod-*` (before), `r3-after-cutter-nolod-<whole|flank|seam>` (after, full detail:
 no hole, no mesh), `r3-after-cutter-*` and `r3-after-tiles-*` (levels); `r3-before-<whole|middle|close>` (model ×100,
 tiles: the sparse dots of the level bug). No `r3-after` image of the model ×100: the coordinator stopped runs at 27.7 M
@@ -628,8 +634,8 @@ tiles: the sparse dots of the level bug). No `r3-after` image of the model ×100
 
 **Decided.** Two right-click entries rather than a method in the membrane's properties (a method is chosen before the
 membrane exists; ui.md §5; this session). Regions by cell and normal direction on the CPU, read by both GPU and
-reference (the advisor's point: no region decided twice in two precisions). Custom levels by distance from the camera,
-defaults 0 / 2,000 / 8,000 Å at strides 1 / 8 / 64 (for Ludo to tune). The farthest level: not built (parked, round 4).
+reference (this session: no region decided twice in two precisions). Custom levels by distance from the camera, defaults
+0 / 2,000 / 8,000 Å at strides 1 / 8 / 64 (for Ludo to tune). The farthest level: not built (parked, round 4).
 
 **Learned.** Check the patch before the method: a round patch read as periodic made holes that looked like each method's
 own. Random per-triangle offsets hide a patch's defects by scattering them. A level's stride without its scale reads as
