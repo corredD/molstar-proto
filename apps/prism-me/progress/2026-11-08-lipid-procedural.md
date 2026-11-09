@@ -1227,6 +1227,13 @@ in at ~3.2 px, and on thin shapes the far copies folding. Options, Ludo's call:
 Proposed test (fails today): the PM zoom sequence's largest step dE under 0.03 outside and inside; and for (D) the cow's
 far surfaces with no triangle whose inner copy faces out (a pure test on `patchSurface` over the thin-limbed fixture).
 
+**Decided (Ludo, 2026-11-09, on this checkpoint).** Item 1: option B only, the coarse level showing the finer one's
+top view (4c's fix between levels); not A, C or D: the cow's thin-part strokes stay open (TODO). The test as proposed:
+the PM zoom sequence's largest step dE under 0.03, outside and inside, failing on today's code. Items 2–5 as briefed.
+Mixes with today's CHARMM-GUI patch and labelled stand-ins (ergosterol → CHL1, CL → 2 × DOPA renormalized, IPC →
+SSM), LD a monolayer; no download, no Zinser scans; the real ERG/TOCL patch later (TODO). A conflict takes the most
+recent source, the others recorded beside it.
+
 ## Round 7, item 3: groundwork (2026-11-09; Delphine, not built)
 
 The compositions for a mix per membrane, from Delphine. The tables were read in the full text unless a source is marked
