@@ -157,3 +157,28 @@ describe("a MesoViewSpec document's properties", () => {
     expect(scene.documentTree()!.outline.groupBy).toBe('kind');
   });
 });
+
+// in the app: the panel shown first, the document dropped after; its lists are no objects of the tree, so the tree
+// followed nothing and showed its empty line
+describe('a MesoViewSpec document opened with the panel shown', () => {
+  it('shows the document under Particles, alone in the scene', async () => {
+    const v = await createPrismViewerHeadless({ spec: createMesoscaleExplorerSpec('') });
+    viewers.push(v);
+    const api = v.api.as({ kind: 'person' });
+    const ui = explorerUI({ api, sources: v.sources, managers: v.managers });
+    const host = document.createElement('div');
+    document.body.append(host);
+    ui.tabs![0].render.mount(host, { shell: new ShellModel() } as never, undefined as never);
+    const r = await v.api.run('mesoviewspec.open', {
+      data: JSON.stringify(exosomeDoc()),
+      files: [
+        new File([JSON.stringify(ExosomeRecipe)], 'exosome.cellpack-gpu.json'),
+        new File([syntheticPicksStar()], 'catalase_picks.star'),
+        new File([syntheticVesicleObj()], 'membrane.obj'),
+      ],
+    });
+    expect(r.ok).toBe(true);
+    await until(() => !!host.querySelector(`[data-tree-key="${documentKey('')}"]`), 5000);
+    expect(host.querySelector(`[data-tree-key="${documentKey('')}"]`)?.textContent).toContain('Exosome in plasma');
+  });
+});
