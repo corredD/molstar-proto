@@ -217,6 +217,10 @@ describe('which issues a population or instance owns (Built by)', () => {
     expect(issueMentions(doc, issue('population "p.catalase" is short'), 'p.catalase')).toBe(true);
     expect(issueMentions(doc, issue('p.catalase, short'), 'p.catalase')).toBe(true);
     expect(issueMentions(doc, issue('xp.catalase short'), 'p.catalase')).toBe(false);
+    // the runtime's own wording: an id then a colon, or a full stop at the end
+    expect(issueMentions(doc, issue('p.catalase: 354 of 506 placed'), 'p.catalase')).toBe(true);
+    expect(issueMentions(doc, issue('short of its count: p.catalase.'), 'p.catalase')).toBe(true);
+    expect(issueMentions(doc, issue('p.catalase.observed: 20 of 24 placed'), 'p.catalase')).toBe(false);
   });
 
   it('still finds an issue by its path index', () => {
