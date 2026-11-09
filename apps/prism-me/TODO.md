@@ -279,3 +279,13 @@ maintainer first (2026-10-25). All are v6 (master); the MRC reader and the parti
   `model`), so the points' hover needs a loci label provider in the cryoet extension or a label on the ndjson transform
   (Ludo's call); the classic Mesoscale Explorer shows MG's and HIV's compartment path as the description (its
   `model.ts`), not fixed there.
+- From the master merge (lane `merge-master`, 2026-11-09):
+  - `VisualSet.update` settling when its representation is removed meanwhile (6ffbdee19) is a library fix: its own lane
+    from `origin/master`, upstream on Ludo's word (master's `GizmoController#front` does not await its update).
+  - `webgpu-device-listener.test.ts` (master's) crashes Dawn (SIGSEGV) on prism-me, passes on master; master's test
+    copied onto pre-merge prism-me crashes too: some prism-me GPU work still pending when an owned device is destroyed.
+  - A size-only change of a non-element target (volume dots' `sizeFactor`) does not refresh its bounds (the merge took
+    master's `updateTransform`; e91553839 did it under `updateSize` too): small, as master's `Spheres`.
+  - `ghostSphere` (cell-cull.wgsl) is tested without the wiggle allowance; `moveLayout` leaves `splitGridVersions` stale
+    (one re-split of the moved members at the next member's drag).
+  - The Ghosts switch is canvas-wide but shown in every clip's section: once, in the Clips category, if Ludo prefers.
