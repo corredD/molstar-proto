@@ -227,8 +227,10 @@ export async function compile(doc: MesoViewSpecDoc, o: RuntimeOptions, depth = 0
       continue;
     }
     const result = await compile(superstructureDoc(doc, ss), o, depth + 1);
+    // its static warnings the outer validation reported; a static error (a refused template) is never dropped
     for (const i of result.issues)
-      if (i.phase !== 'static') issues.push({ ...i, message: `[${id}] ${i.message}`, ids: [id, ...(i.ids ?? [])] });
+      if (i.phase !== 'static' || i.severity === 'error')
+        issues.push({ ...i, message: `[${id}] ${i.message}`, ids: [id, ...(i.ids ?? [])] });
     templates.set(id, { result, radius: envelope.get(id) ?? 0 });
   }
 

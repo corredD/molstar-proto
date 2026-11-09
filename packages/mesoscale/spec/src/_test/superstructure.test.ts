@@ -278,4 +278,22 @@ describe('a superstructure keeps its contents to itself', () => {
       ]),
     );
   });
+
+  it('a problem inside a superstructure is reported at its path, once, and refuses the compile (F4, FN4)', async () => {
+    const d = twoSuperstructures();
+    const [a, b] = d.superstructures!;
+    const withInner = (e: Partial<NonNullable<typeof a.entities>[number]>) => ({
+      ...d,
+      superstructures: [{ ...a, entities: [{ ...a.entities![0], ...e }] }, b],
+    });
+    expect(errs(withInner({ radius: -5 }))).toEqual([['value.range', '/superstructures/0/entities/0/radius']]);
+    expect(errs(withInner({ id: 'bad id' }))).toContainEqual(['id.invalid', '/superstructures/0/entities/0/id']);
+    const r = await compile(withInner({ radius: -5 }), { resolvers: countingResolvers().resolvers });
+    expect(r.issues.filter((i) => i.severity === 'error').map((i) => i.path)).toEqual([
+      '/superstructures/0/entities/0/radius',
+    ]);
+    // a document entity a superstructure uses is the document's: reported once, at its own path
+    const top = { ...d, entities: [...d.entities, { id: 'e.top', label: 't', kind: 'protein' as const, radius: -1 }] };
+    expect(errs(top)).toEqual([['value.range', '/entities/2/radius']]);
+  });
 });

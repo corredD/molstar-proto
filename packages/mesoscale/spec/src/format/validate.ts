@@ -497,10 +497,17 @@ export function validate(doc: MesoViewSpecDoc, nested = false): Issue[] {
       err('ref.missing', `superstructure ${ss.id} has no envelope compartment`, `/superstructures/${i}/compartments`, [
         ss.id,
       ]);
-    const inner = validate(superstructureDoc(doc, ss), true);
-    for (const x of inner)
-      if (x.path && /^\/(compartments|populations|models|relations)\//.test(x.path))
+    // re-pathed under the superstructure; what is the document's (its entities, resources, evidence, ids across the
+    // namespace) the outer check reports itself
+    const n = doc.entities.length;
+    for (const x of validate(superstructureDoc(doc, ss), true)) {
+      if (x.code === 'id.duplicate' || !x.path) continue;
+      const e = /^\/entities\/(\d+)(.*)$/.exec(x.path);
+      if (e) {
+        if (+e[1] >= n) out.push({ ...x, path: `/superstructures/${i}/entities/${+e[1] - n}${e[2]}` });
+      } else if (/^\/(compartments|populations|models|relations)(\/|$)/.test(x.path))
         out.push({ ...x, path: `/superstructures/${i}${x.path}` });
+    }
   });
   const contains = (id: Id, trail: Id[]): boolean => {
     if (trail.includes(id)) {
