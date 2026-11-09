@@ -5,7 +5,7 @@
  */
 
 import type { MesoViewSpecDoc } from '@molstar/meso-spec/format/doc';
-import type { Issue } from '@molstar/meso-spec/format/issues';
+import { type Issue, issue } from '@molstar/meso-spec/format/issues';
 import type { IR } from '@molstar/meso-spec/ir/ir';
 import { type CommitReport, planCommit, type RendererAdapter } from '@molstar/meso-spec/runtime/adapter';
 import type { ResolveOutput } from '@molstar/meso-spec/runtime/resolver';
@@ -139,6 +139,16 @@ export class MesoSession {
     );
   }
 
+  /** The adapter's commit; when it throws, the streamer goes back to the tiles the viewer still shows (`this.ir`). */
+  private async draw(ir: IR): Promise<CommitReport | undefined> {
+    try {
+      return await this.adapter?.commit(ir);
+    } catch (e) {
+      this.streamer?.restore(this.ir);
+      throw e;
+    }
+  }
+
   /** A stream step on the current IR: the arrivals in, the evictions out, one commit (none when nothing changed). */
   private async runStream(): Promise<EditRecord | undefined> {
     if (!this.ir || !this.streamer) return undefined;
@@ -146,7 +156,18 @@ export class MesoSession {
     const { ir, issues, fresh, stream } = this.stream(this.doc, this.ir);
     const plan = planCommit(this.ir, ir);
     if (!plan.add.length && !plan.remove.length && !fresh.length) return undefined;
-    const commit = await this.adapter?.commit(ir);
+    let commit: CommitReport | undefined;
+    try {
+      commit = await this.draw(ir);
+    } catch (e) {
+      // nothing is drawn of this step: the session keeps its IR, says so, and the next step takes the arrivals in again
+      this.issues = [
+        ...this.issues.filter(kept),
+        ...issues,
+        issue('adapter.failed', 'error', 'render', `the stream step was not drawn: ${(e as Error)?.message ?? e}`),
+      ];
+      return undefined;
+    }
     this.ir = ir;
     this.issues = [...this.issues.filter(kept), ...issues, ...(commit?.issues ?? [])];
     const record: EditRecord = {
@@ -170,7 +191,7 @@ export class MesoSession {
     if (kind === 'none') record = { label, kind, resolverRuns: 0, cacheHits: 0, totalMs: 0 };
     else if (kind === 'view' && this.ir) {
       const { ir, issues, stream } = this.stream(next, updateView(next, this.ir));
-      const commit = await this.adapter?.commit(ir);
+      const commit = await this.draw(ir);
       this.ir = ir;
       this.issues = [...this.issues.filter(kept), ...issues, ...(commit?.issues ?? [])];
       record = { label, kind, resolverRuns: 0, cacheHits: 0, commit, totalMs: performance.now() - t0, stream };
@@ -178,7 +199,7 @@ export class MesoSession {
       const r = await compile(next, { ...this.options, cache: this.cache });
       const streamed = r.ir ? this.stream(next, r.ir) : undefined;
       const ir = streamed?.ir;
-      const commit = ir ? await this.adapter?.commit(ir) : undefined;
+      const commit = ir ? await this.draw(ir) : undefined;
       this.counts = r.counts;
       // a document that does not compile has no IR (its errors are the issues); the viewer keeps the last one drawn
       this.ir = ir;

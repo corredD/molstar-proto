@@ -1250,6 +1250,10 @@ export class TileStreamer {
    * stream node) aborts everything and drops every resident tile first.
    */
   step(ir: IR): { readonly ir: IR; readonly plan?: StreamPlan; readonly issues: readonly Issue[] };
+  /** Every issue standing for the stream key: failed tiles, the over-budget tile while it is over. `step` returns the new ones. */
+  issues(): readonly Issue[];
+  /** The viewer did not take the last step's IR: resident becomes the tiles `drawn` holds, the rest wait as arrivals. */
+  restore(drawn: IR | undefined): void;
   stats(): StreamStats;
   dispose(): void;
 }
@@ -1263,6 +1267,12 @@ export class TileStreamer {
   `streamer.step(ir)`, then `updateView(doc, stepped.ir)` (looks for the spliced sets), then `adapter.commit`. After a
   model edit with an unchanged stream key, `step` splices the same set objects back, so `planCommit` keeps them: no full
   rebuild.
+- **Issues.** Each step replaces the session's `stream.tile` and `stream.budget` issues with `streamer.issues()`, so a
+  model edit keeps a failed-tile warning. A stream step is recorded only when it adds, removes or reports something new.
+- **A commit that throws.** The streamer goes back to what the viewer still shows (`restore(this.ir)`): a tile it took
+  in that was not drawn is not resident, and the next step takes it in again. An edit's commit failure rejects the edit
+  and changes nothing else (as before). A stream step's commit failure is a `render`-phase error issue
+  (`adapter.failed`) on the session; nothing rejects, since no caller waits for a settled load.
 - **A settled load queues a `stream` step** through the session's existing `queue`, so it never diffs against the same
   previous IR as an edit. Arrivals while a step is queued and not started join that step: one commit per burst. A stream
   step is `step(this.ir)` with the last IR's tile children ignored (the streamer splices its own), then `updateView`,

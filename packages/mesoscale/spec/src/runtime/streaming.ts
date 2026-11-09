@@ -439,6 +439,25 @@ export class TileStreamer {
     return this.overBudget ? [...this.failures, this.overBudget] : [...this.failures];
   }
 
+  /**
+   * The viewer did not take the last step's IR: `drawn` is the IR it still shows (none: nothing). The resident tiles
+   * become the ones `drawn` holds; a tile the step took in that is not drawn waits as an arrival, taken in again by
+   * the next step (so `stats().resident` never counts a tile the viewer does not show). The counters keep what the
+   * steps did.
+   */
+  restore(drawn: IR | undefined) {
+    const node = drawn && streamNode(drawn);
+    if (node?.params.key !== this.key) this.reset(node?.params.key);
+    if (!node) return;
+    const prefix = `${node.params.model}/stream/`;
+    const shown = new Map<string, PlacementSet>();
+    for (const c of node.children ?? [])
+      if (c.kind === 'placements' && c.ref.startsWith(prefix)) shown.set(c.ref.slice(prefix.length), c.params.set);
+    for (const [id, set] of this.resident) if (!shown.has(id)) this.arrived.set(id, set);
+    this.resident.clear();
+    for (const [id, set] of shown) this.resident.set(id, set);
+  }
+
   stats(): StreamStats {
     let copies = 0;
     for (const s of this.resident.values()) copies += s.count;
