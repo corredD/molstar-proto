@@ -333,7 +333,11 @@ export class TileStreamer {
   private readonly pending = new Map<string, AbortController>();
   private readonly failed = new Set<string>();
   private readonly told = new Set<string>();
-  private issues: Issue[] = [];
+  /** Raised since the last step, to report once. */
+  private fresh: Issue[] = [];
+  /** Standing for this stream key: the failed tiles' warnings, and the over-budget tile's while there is one. */
+  private failures: Issue[] = [];
+  private overBudget: Issue | undefined;
   private count = { requested: 0, loaded: 0, evicted: 0, cancelled: 0, failed: 0 };
   private budget: StreamBudget;
   private disposed = false;
@@ -362,7 +366,7 @@ export class TileStreamer {
   step(ir: IR): { readonly ir: IR; readonly plan?: StreamPlan; readonly issues: readonly Issue[] } {
     const node = streamNode(ir);
     if (node?.params.key !== this.key) this.reset(node?.params.key);
-    const issues = this.issues.splice(0);
+    const issues = this.fresh.splice(0);
     if (!node || this.disposed) return { ir, issues };
     const { bounds, tiles } = node.params;
     this.tileCount = tiles.length;
@@ -403,17 +407,19 @@ export class TileStreamer {
       this.count.loaded++;
     }
     this.arrived.clear();
-    if (plan.overBudget && !this.told.has(plan.overBudget)) {
-      this.told.add(plan.overBudget);
-      issues.push(
-        issue(
+    const over = plan.overBudget
+      ? issue(
           'stream.budget',
           'warning',
           'load',
           `${node.params.model}: tile ${plan.overBudget} alone has more copies than the budget (${this.budget.copies}); it stays at level 0`,
           { ids: [node.params.model] },
-        ),
-      );
+        )
+      : undefined;
+    this.overBudget = over;
+    if (over && !this.told.has(plan.overBudget!)) {
+      this.told.add(plan.overBudget!);
+      issues.push(over);
     }
     const provider = this.tiles(node.params.resource);
     const byTile = new Map(tiles.map((t) => [t.id, t]));
@@ -422,6 +428,15 @@ export class TileStreamer {
       this.load(node, byTile.get(id)!, provider);
     }
     return { ir: withTiles(ir, this.resident), plan, issues };
+  }
+
+  /**
+   * Every issue standing for the current stream key: a failed tile's `stream.tile` (until the key changes) and the
+   * `stream.budget` of a tile that is over the budget now. `step` returns only the new ones; a session that replaces
+   * its issues on each step reads these.
+   */
+  issues(): readonly Issue[] {
+    return this.overBudget ? [...this.failures, this.overBudget] : [...this.failures];
   }
 
   stats(): StreamStats {
@@ -451,7 +466,9 @@ export class TileStreamer {
     this.arrived.clear();
     this.failed.clear();
     this.told.clear();
-    this.issues.length = 0;
+    this.fresh.length = 0;
+    this.failures.length = 0;
+    this.overBudget = undefined;
     this.count = { requested: 0, loaded: 0, evicted: 0, cancelled: 0, failed: 0 };
     this.key = key;
     this.gen++;
@@ -466,11 +483,11 @@ export class TileStreamer {
     const fail = (why: string) => {
       this.failed.add(tile.id);
       this.count.failed++;
-      this.issues.push(
-        issue('stream.tile', 'warning', 'load', `${node.params.model}: tile ${tile.id}: ${why}`, {
-          ids: [node.params.model],
-        }),
-      );
+      const i = issue('stream.tile', 'warning', 'load', `${node.params.model}: tile ${tile.id}: ${why}`, {
+        ids: [node.params.model],
+      });
+      this.fresh.push(i);
+      this.failures.push(i);
     };
     // a provider that throws before it returns a promise fails the tile like one that rejects
     let loading: Promise<TilePayload>;

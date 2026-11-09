@@ -722,6 +722,8 @@ describe('TileStreamer', () => {
     expect(issues[0]).toMatchObject({ severity: 'warning', phase: 'load' });
     expect(issues[0].message).toContain('t.0.0.0');
     expect(s.stats().failed).toBe(1);
+    // the standing issues keep the warning after the steps that reported it, and list it once
+    expect(s.issues()).toEqual([issues[0]]);
     expect(resident()).not.toContain('t.0.0.0');
     // the budget goes to the next tiles instead
     expect(resident().length).toBe(2);
@@ -822,6 +824,15 @@ describe('TileStreamer', () => {
     expect(issues.map((i) => i.code)).toEqual(['stream.budget']);
     expect(s.stats()).toMatchObject({ requested: 0, resident: 0 });
     expect(resident()).toEqual([]);
+    // it stands while the tile is over the budget, and leaves with the budget's rise
+    expect(s.issues()).toEqual(issues);
+    s.setBudget(30);
+    step('v.corner');
+    expect(s.issues()).toEqual([]);
+    s.setBudget(20);
+    step('v.corner');
+    expect(s.issues().map((i) => i.code)).toEqual(['stream.budget']);
+    expect(issues.length).toBe(1);
   });
 
   it('at most maxInFlight loads at once, in the plan order', async () => {

@@ -46,6 +46,9 @@ export interface EditRecord {
   };
 }
 
+/** An issue a step carries over: not the adapter's (it reports again) and not the streamer's (it lists all it holds). */
+const kept = (i: Issue) => i.phase !== 'render' && i.code !== 'stream.tile' && i.code !== 'stream.budget';
+
 export type SessionOptions = Omit<RuntimeOptions, 'cache'> & {
   /** With `tiles`: the budget and the loads in flight of the stream (design.md §6.8.5). */
   readonly stream?: StreamOptions;
@@ -115,7 +118,13 @@ export class MesoSession {
   /** The streamer's step over `ir` (compiled or view-updated), the views derived again for the sets it spliced in. */
   private stream(doc: MesoViewSpecDoc, ir: IR) {
     const s = this.streamer?.step(ir);
-    return { ir: s ? updateView(doc, s.ir) : ir, issues: s?.issues ?? [], stream: this.streamRecord(s?.plan) };
+    // `issues` are all the stream's standing ones (a model edit rebuilds the session's issues), `fresh` the new ones
+    return {
+      ir: s ? updateView(doc, s.ir) : ir,
+      issues: this.streamer?.issues() ?? [],
+      fresh: s?.issues ?? [],
+      stream: this.streamRecord(s?.plan),
+    };
   }
 
   private streamRecord(plan?: StreamPlan): EditRecord['stream'] {
@@ -134,12 +143,12 @@ export class MesoSession {
   private async runStream(): Promise<EditRecord | undefined> {
     if (!this.ir || !this.streamer) return undefined;
     const t0 = performance.now();
-    const { ir, issues, stream } = this.stream(this.doc, this.ir);
+    const { ir, issues, fresh, stream } = this.stream(this.doc, this.ir);
     const plan = planCommit(this.ir, ir);
-    if (!plan.add.length && !plan.remove.length && !issues.length) return undefined;
+    if (!plan.add.length && !plan.remove.length && !fresh.length) return undefined;
     const commit = await this.adapter?.commit(ir);
     this.ir = ir;
-    this.issues = [...this.issues.filter((i) => i.phase !== 'render'), ...issues, ...(commit?.issues ?? [])];
+    this.issues = [...this.issues.filter(kept), ...issues, ...(commit?.issues ?? [])];
     const record: EditRecord = {
       label: 'stream',
       kind: 'stream',
@@ -163,7 +172,7 @@ export class MesoSession {
       const { ir, issues, stream } = this.stream(next, updateView(next, this.ir));
       const commit = await this.adapter?.commit(ir);
       this.ir = ir;
-      this.issues = [...this.issues.filter((i) => i.phase !== 'render'), ...issues, ...(commit?.issues ?? [])];
+      this.issues = [...this.issues.filter(kept), ...issues, ...(commit?.issues ?? [])];
       record = { label, kind, resolverRuns: 0, cacheHits: 0, commit, totalMs: performance.now() - t0, stream };
     } else {
       const r = await compile(next, { ...this.options, cache: this.cache });

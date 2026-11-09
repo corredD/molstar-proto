@@ -5,8 +5,9 @@
  */
 
 import { exosomeDoc, ExosomeResources } from '@molstar/meso-spec/examples/exosome';
+import { tiledFixture } from '@molstar/meso-spec/examples/streaming';
 import type { MesoViewSpecDoc } from '@molstar/meso-spec/format/doc';
-import type { IR } from '@molstar/meso-spec/ir/ir';
+import { type IR, placementSets } from '@molstar/meso-spec/ir/ir';
 import type { CommitReport, RendererAdapter } from '@molstar/meso-spec/runtime/adapter';
 import { DefaultResolvers } from '@molstar/meso-spec/resolvers/index';
 import { describe, expect, it } from 'vitest';
@@ -73,5 +74,57 @@ describe('MesoSession', () => {
     await s.edit((d) => withConcentration(d, 0.0008), 'good');
     expect(s.ir).toBeDefined();
     expect(adapter.commits.length).toBe(2);
+  });
+});
+
+// A streamed session without a viewer: the streamer's standing issues stay the session's, and what a failed stream
+// commit leaves behind.
+describe('MesoSession, streamed', () => {
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  const open = (adapter: RendererAdapter, fail: string[] = []) => {
+    const { doc, provider } = tiledFixture({ grid: [3, 3, 1], perTile: { 'p.a': 20, 'p.b': 10 }, fail });
+    const corner = { ...doc, session: { ...doc.session, view: 'v.corner' } };
+    const s = new MesoSession(
+      corner,
+      { resolvers: DefaultResolvers, tiles: () => provider, stream: { budget: { copies: 60 } } },
+      adapter,
+    );
+    /** Waits until nothing is in flight: an edit that changes nothing returns once the queued steps have run. */
+    const settle = async () => {
+      do {
+        await sleep(5);
+        await s.edit((d) => d, 'flush');
+      } while (s.streamer!.stats().inFlight > 0);
+    };
+    return { s, settle };
+  };
+  const tilesOf = (ir: IR | undefined) => (ir ? placementSets(ir).filter((x) => x.model === 'm.tiles').length : 0);
+
+  it('a model edit keeps the failed-tile warning, once', async () => {
+    const { s, settle } = open(new FakeAdapter(), ['t.0.0.0']);
+    await s.start();
+    await settle();
+    const warnings = () => s.issues.filter((i) => i.code === 'stream.tile');
+    expect(warnings().length).toBe(1);
+    const record = await s.edit(
+      (d) => ({
+        ...d,
+        instances: [
+          ...d.instances!,
+          {
+            id: 'i.extra',
+            entity: 'e.a',
+            compartment: 'c.box',
+            pose: { translation: [10, 10, 10] as [number, number, number] },
+          },
+        ],
+      }),
+      'an added instance',
+    );
+    expect(record.kind).toBe('model');
+    expect(warnings().length).toBe(1);
+    expect(warnings()[0].message).toContain('t.0.0.0');
+    await settle();
+    expect(warnings().length).toBe(1);
   });
 });
