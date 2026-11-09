@@ -7,6 +7,7 @@
 import { describe, expect, it } from 'vitest';
 import { cutterRegions, cutterTable, eachHit, emptyCut, hitAffine, triangleCut } from '../lipids/cutter.js';
 import { farSurface, headOffset } from '../lipids/far-surface.js';
+import { random01 } from '../lipids/assign.js';
 import { parsePatchPdb } from '../lipids/patch.js';
 import { flatMesh, syntheticPatchPdb } from './lipid-fixtures.js';
 
@@ -36,6 +37,36 @@ describe('a membrane’s far surfaces', () => {
       for (let v = 2; v < s.positions.length; v += 3) expect(s.positions[v]).toBeCloseTo(offset * sign, 4);
       // single-sided, facing out of its leaflet
       expect(Math.sign(s.normals[2])).toBe(side === 'outer' ? 1 : -1);
+    }
+  });
+
+  it('leaves every lipid’s head above it, near the heads (gate: Both close up, the surface hid half the lipids)', () => {
+    // at the mean of the conformers' tops, 23 of the CHARMM-GUI patch's 40 outer conformers had their top under the
+    // surface: drawn beneath them in Both, it hid them close up. Every top at or above it, and still at the heads
+    // lipids at heights up to ±4 Å apart, as a real patch's (the synthetic one's heads are all at ±20 Å)
+    const rough = parsePatchPdb(
+      text
+        .split('\n')
+        .map((l) => {
+          const dz = (random01(3, +l.substring(22, 26)) - 0.5) * 8;
+          const z = +l.substring(46, 54);
+          return `${l.substring(0, 46)}${(z + Math.sign(z) * dz).toFixed(3).padStart(8)}${l.substring(54)}`;
+        })
+        .join('\n'),
+      { box },
+    );
+    for (const side of ['outer', 'inner'] as const) {
+      const table = cutterTable(rough[side], 4);
+      const h = headOffset(table, side);
+      const f = side === 'outer' ? 1 : -1;
+      let mean = 0;
+      for (const m of table.members) {
+        let top = -Infinity;
+        for (let i = 2; i < m.positions.length; i += 3) top = Math.max(top, f * m.positions[i]);
+        expect(top).toBeGreaterThanOrEqual(f * h);
+        mean += top / table.members.length;
+      }
+      expect(mean - f * h).toBeLessThan(8);
     }
   });
 
