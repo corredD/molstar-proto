@@ -16,6 +16,7 @@ import {
   cutBounds,
   forgetLipidPatch,
   LipidMembrane,
+  type LipidMembraneProps,
   membraneCounts,
   membraneLevels,
   registerLipidPatch,
@@ -129,6 +130,37 @@ describe('lipid membrane', () => {
     expect(v.api.mesoscale!.membraneDetailState(ref).value).toMatchObject({ detail: 'custom', levels });
     expectOk(await v.api.history.undo({}));
     expect(v.plugin.state.data.cells.get(ref)!.transform.params).toMatchObject({ detail: 'balanced' });
+  });
+
+  it('is coloured as a particle list: its colour far by zoom the one set on all of it (round 4c item 8, review S2)', async () => {
+    const base = DefaultPrismViewerSpec();
+    const v = await createPrismViewerHeadless({
+      spec: { ...base, extensions: [...(base.extensions ?? []), MesoscaleExtension] },
+    });
+    viewers.push(v);
+    const r = await v.api.mesoscale!.wrapMembrane({ radius: 400, edge: 80, patch: 'test-patch' });
+    expectOk(r);
+    const ref = r.changed!.nodes![0];
+    const params = () => v.plugin.state.data.cells.get(ref)!.transform.params as LipidMembraneProps;
+    const drawn = params().color;
+    // one colour on all of it: every species, and the far colour By zoom starts from
+    expectOk(await v.api.run('mesoscale.style', { particles: ref, color: 'tomato' }));
+    expect(params().color).toBe(0xff6347);
+    expect(new Set(Object.values(params().speciesColors))).toEqual(new Set([0xff6347]));
+    // one species: its colour alone
+    expectOk(await v.api.run('mesoscale.style', { particles: ref, entities: 'POPC', color: 'gold', visible: false }));
+    expect(params().color).toBe(0xff6347);
+    expect(params().speciesColors.POPC).toBe(0xffd700);
+    expect(params().hiddenSpecies).toEqual(['POPC']);
+    // a list's group has no meaning here: refused, nothing hidden (review N3)
+    expect((await v.api.run('mesoscale.style', { particles: ref, group: 'x', visible: false })).ok).toBe(false);
+    // reset: shown, the theme's colours, its own colour back
+    expectOk(await v.api.run('mesoscale.style', { particles: ref, reset: true }));
+    expect(params()).toMatchObject({ hiddenSpecies: [], speciesColors: {}, color: drawn });
+    expectOk(await v.api.run('mesoscale.colors', { particles: ref, scheme: 'uniform', color: 'dodgerblue' }));
+    expect(params().color).toBe(0x1e90ff);
+    expectOk(await v.api.run('mesoscale.colors', { particles: ref, scheme: 'theme' }));
+    expect(params()).toMatchObject({ speciesColors: {}, color: drawn });
   });
 
   it('fails its levels change cleanly when the redraw fails: the membrane kept, no step (review M1)', async () => {
