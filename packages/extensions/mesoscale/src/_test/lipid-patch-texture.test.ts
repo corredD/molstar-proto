@@ -5,7 +5,10 @@
  */
 
 import { describe, expect, it } from 'vitest';
+import { mesh_wgsl } from '@molstar/graphics/gl/webgpu/shader/mesh.wgsl';
 import {
+  CellKinds,
+  type CutterTable,
   cellSide,
   cutterRegions,
   cutterTable,
@@ -112,6 +115,92 @@ describe('the patch texture surface', () => {
     // a lipid's spacing is ~8 Å: the slide was ~5 Å at the median (lift 20 Å along the vertex normal)
     expect(errors[errors.length >> 1], 'median Å').toBeLessThan(0.05);
     expect(errors[errors.length - 1], 'max Å').toBeLessThan(0.2);
+  });
+
+  it('maps as the cutter does, in the shader’s f32: each lipid’s point reads its own head (review S1: a drift guard)', () => {
+    // the shader's map (`mesh.wgsl.ts`, `patchColor`) ported: its hash chain and mask, which the source must hold
+    expect(mesh_wgsl).toContain('x = x * 0x7feb352du;');
+    expect(mesh_wgsl).toContain('x = x * 0x846ca68bu;');
+    expect(mesh_wgsl).toContain('patchHash(region ^ patchHash(cx ^ patchHash(cy))) & 4095u');
+    expect(CellKinds).toBe(4096);
+    const f = Math.fround;
+    const hash = (x: number) => {
+      x = (x ^ (x >>> 16)) >>> 0;
+      x = Math.imul(x, 0x7feb352d) >>> 0;
+      x = (x ^ (x >>> 15)) >>> 0;
+      x = Math.imul(x, 0x846ca68b) >>> 0;
+      return (x ^ (x >>> 16)) >>> 0;
+    };
+    // a patch of 300 heads, placed by a fixed sequence
+    const pbox: [number, number] = [154.3, 151.7];
+    const N = 300;
+    const heads = new Float32Array(N * 4);
+    let seed = 12345;
+    const next = () => (seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0) / 4294967296;
+    for (let l = 0; l < N; ++l) heads.set([next() * pbox[0], next() * pbox[1], 1, 0], l * 4);
+    const patch: CutterTable = {
+      species: ['A'],
+      members: [{ species: 0, positions: new Float32Array(3), elements: new Uint8Array(1) }],
+      memberStart: Uint32Array.from([0, N]),
+      lipids: heads,
+      box: pbox,
+    };
+    const C = cellSide(pbox);
+    // two large tilted triangles, x20 and x600 of the model's size, and x600 far from the origin
+    for (const [scale, off] of [
+      [20, 0],
+      [600, 0],
+      [600, 60000],
+    ]) {
+      const L = (5000 * scale) / 100;
+      const positions = new Float32Array([0, 0, 0, L, 0, 0.1 * L, 0, L, 0.05 * L, L, L, 0.15 * L].map((v) => v + off));
+      const indices = Uint32Array.from([0, 1, 2, 1, 3, 2]);
+      const regions = cutterRegions(positions, indices, 12345);
+      const g = regions.table;
+      const cut = emptyCut();
+      let n = 0;
+      let worst = 0;
+      for (let t = 0; t < 2; ++t) {
+        if (!triangleCut(positions, indices, t, regions, pbox, cut)) continue;
+        const r = cut.region * 16;
+        for (let cx = Math.floor(cut.pmin[0] / C); cx <= Math.floor(cut.pmax[0] / C) && n < 20000; ++cx) {
+          for (let cy = Math.floor(cut.pmin[1] / C); cy <= Math.floor(cut.pmax[1] / C) && n < 20000; ++cy) {
+            eachCellHit(patch, cut, cx, cy, 0, (l, qx, qy, owned) => {
+              if (!owned) return;
+              n += 1;
+              // the point on the region's plane as drawn (f32), then the shader's chain
+              const w = [0, 1, 2].map((k) => f(g[r + k] + qx * g[r + 4 + k] + qy * g[r + 8 + k]));
+              const d = [0, 1, 2].map((k) => f(w[k] - g[r + k]));
+              const q = [
+                f(d[0] * g[r + 4] + d[1] * g[r + 5] + d[2] * g[r + 6]),
+                f(d[0] * g[r + 8] + d[1] * g[r + 9] + d[2] * g[r + 10]),
+              ];
+              const p = [
+                f(g[r + 3] * pbox[0] + g[r + 11] * q[0] - g[r + 15] * q[1]),
+                f(g[r + 7] * pbox[1] + g[r + 15] * q[0] + g[r + 11] * q[1]),
+              ];
+              const cell = [Math.floor(p[0] / C), Math.floor(p[1] / C)];
+              // a head on a cell's edge may read the next cell: then its own point is a cell away, not a drift
+              if (cell[0] !== cx || cell[1] !== cy) return;
+              const kind = (hash((cut.region ^ hash((cell[0] >>> 0) ^ hash(cell[1] >>> 0))) >>> 0) & 4095) * 4;
+              const c = regions.cells;
+              const ux = p[0] - (cell[0] + 0.5) * C;
+              const uy = p[1] - (cell[1] + 0.5) * C;
+              const sx = c[kind] * pbox[0] + c[kind + 2] * ux - c[kind + 3] * uy;
+              const sy = c[kind + 1] * pbox[1] + c[kind + 3] * ux + c[kind + 2] * uy;
+              let dx = Math.abs(sx - heads[l * 4]) % pbox[0];
+              dx = Math.min(dx, pbox[0] - dx);
+              let dy = Math.abs(sy - heads[l * 4 + 1]) % pbox[1];
+              dy = Math.min(dy, pbox[1] - dy);
+              worst = Math.max(worst, Math.hypot(dx, dy));
+            });
+          }
+        }
+      }
+      expect(n, `x${scale} +${off}`).toBeGreaterThan(5000);
+      // a texel is 0.6 Å (154 Å over 256): the map within a few hundredths of it
+      expect(worst, `x${scale} +${off}: Å`).toBeLessThan(0.05);
+    }
   });
 
   it('is the patch from above, each species in about its share of the heads, a hidden one left out', () => {
