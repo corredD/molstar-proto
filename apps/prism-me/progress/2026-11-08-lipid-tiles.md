@@ -644,3 +644,30 @@ scattered dots. A Mol\* operation's history group reverts a cancelled transform 
 **Size.** About 890 production lines against the narrowed brief's ~300 + 60 + 60: the cutter's regions took 390 (the
 region builder, a new per-triangle cut with ownership, the WGSL), the membrane 220 (stages, the check, levels,
 `setGraphics`), the patch's crop 60, the levels' control and operation 140.
+
+### PR body (draft, round 3)
+
+**What.** Ludo's third try (`model_vertexcolor.obj` ×100, 27.7 M lipids; and the cutter on the cow), narrowed by Ludo
+mid-round (procedural, view-dependent membranes are round 4). The holes in both methods were the patch's: CHARMM-GUI's
+is a disc read as a periodic square; it is now read as its filled square. The cutter cuts by regions of the surface (one
+plane, spin and offset a region: the patch's packing across triangle edges, 15 % fewer clashes, deterministic: round 4's
+unit). The cutter is in the right-click; a membrane's levels are tunable in its Look; a wrap is a task with its stages
+and Cancel; a membrane past the device's buffers fails with a message instead of losing the device; the Look's eye
+follows visibility as the tree's does.
+
+**Changes.**
+
+- Library (`packages/graphics`, its own lane from `origin/master` before upstream, as `bde208175`): `4ac0c0de8` a
+  GPU-written gridless member's spheres scaled at its levels.
+- `packages/extensions/mesoscale`: `cutter.ts`/`cutter-kernel.ts` (regions), `patch.ts` (round patch), `membrane.ts`
+  (stages, instance check, `setGraphics`, custom levels), `operations.ts` (`mesoscale.membraneDetail`), `controls.tsx`
+  (`MembraneDetailControls`).
+- `packages/extensions/cryoet`: `meshesState` follows visibility flags.
+- `apps/prism-me`: the cutter's entry, the membrane's Look, ui.md §4–5, features.md, TODO.md, the changelog.
+
+**Notes for review.** Custom levels' defaults (0 / 2,000 / 8,000 Å; strides 1 / 8 / 64) are for Ludo to tune and send
+back. The mesh Ludo saw drawn after a wrap is not reproduced headless; a tested console dump is in the report for his
+next try. A wrap's longest main-thread stretch is over the 50 ms aim on large meshes (the patch's first read, the merge
+and upload do not yield). Items 2, 3, 5 parked for round 4 (TODO.md).
+
+**Testing.** See Checks below; the review table below.
