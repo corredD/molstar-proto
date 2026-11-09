@@ -16,6 +16,7 @@ import type { CryoetApi, DecorationsInfo, TargetDecoration } from '@molstar/cryo
 import {
   ImportColors,
   MembraneDetailControls,
+  MembraneSpeciesControls,
   ObjectGraphics,
   ZoomColors,
 } from '@molstar/mesoscale-extension/controls';
@@ -242,7 +243,13 @@ export const Sections: readonly Section[] = [
         // a lipid membrane: its levels of detail (Ludo tunes them, 2026-11-08; ui.md §4)
         const ref = picked.node!.ref;
         if (api.mesoscale?.membraneDetailState(ref).value) {
-          return <MembraneDetailControls area={api.mesoscale} membrane={ref} />;
+          // and its species, as a particle system's entities (Ludo, 2026-11-08; ui.md §4)
+          return (
+            <div class={classes.stack}>
+              <MembraneDetailControls area={api.mesoscale} membrane={ref} />
+              <MembraneSpeciesControls area={api.mesoscale} membrane={ref} />
+            </div>
+          );
         }
         return <MeshLook api={api} node={picked.node!} />;
       }
@@ -396,9 +403,18 @@ export const Sections: readonly Section[] = [
   {
     id: 'graphics',
     title: 'Graphics & Motion',
-    when: ({ api, picked }) => !!api.mesoscale && !!picked.node && GraphicsKinds.has(picked.kind),
+    // a lipid membrane too, as a particle system (its quality the levels' preset; no motion)
+    when: ({ api, picked }) =>
+      !!api.mesoscale &&
+      !!picked.node &&
+      (GraphicsKinds.has(picked.kind) ||
+        (picked.kind === 'mesh' && !!api.mesoscale.membraneDetailState(picked.node.ref).value)),
     render: ({ api, picked }) => (
-      <ObjectGraphics area={api.mesoscale!} object={picked.node!.ref} motion={GraphicsKinds.get(picked.kind)!} />
+      <ObjectGraphics
+        area={api.mesoscale!}
+        object={picked.node!.ref}
+        motion={GraphicsKinds.get(picked.kind) ?? false}
+      />
     ),
   },
   {
