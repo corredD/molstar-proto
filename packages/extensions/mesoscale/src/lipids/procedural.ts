@@ -716,9 +716,12 @@ export function createLipidSelection(input: SelectionInput, capacity: Uint32Arra
     },
     select,
     reset: () => {
-      // the version goes on (a writer's uploads are keyed by it: review nit)
+      // nothing live and a new version (a writer's uploads are keyed by it): a write before the next view writes
+      // nothing, not the old live slots without their units (review X1)
       takenCount = 0;
       count = 0;
+      live.fill(0);
+      version += 1;
       forced = true;
     },
   };
