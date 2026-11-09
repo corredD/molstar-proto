@@ -652,20 +652,26 @@ export interface TargetVisual {
   destroy(): void;
 }
 
-/** The fields of a list a move changes (`offsetParticles`): its frames, and what was computed from it */
-const MovedFields = new Set(['coordinates', 'rotations', '_propertyData']);
+/**
+ * The fields of a list a move changes (`offsetParticles`): its frames, what was computed from it, and its line of
+ * moves (`movedFrom`: a decorated list has one, prism-me's ops drop it)
+ */
+const MovedFields = new Set(['coordinates', 'rotations', '_propertyData', 'movedFrom']);
 
 /** Whether `next` is `prev` with its particles' frames alone changed: every other field the same (shared) */
-function particlesMovedOnly(prev: ParticleList, next: ParticleList) {
+export function particlesMovedOnly(prev: ParticleList, next: ParticleList) {
   const p = prev as unknown as Record<string, unknown>;
   const n = next as unknown as Record<string, unknown>;
   let count = 0;
   for (const key in n) {
+    if (MovedFields.has(key)) continue;
     count++;
-    if (!MovedFields.has(key) && n[key] !== p[key]) return false;
+    if (n[key] !== p[key]) return false;
   }
-  // and no field of `prev` gone
-  return count === Object.keys(p).length;
+  // and no other field of `prev` gone
+  let prevCount = 0;
+  for (const key in p) if (!MovedFields.has(key)) prevCount++;
+  return count === prevCount;
 }
 
 /** Whether the particles `indices` have the same frames in both lists (no rotations: the identity) */
