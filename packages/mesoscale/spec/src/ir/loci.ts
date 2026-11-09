@@ -482,25 +482,6 @@ export function lociToIds(l: MesoLoci, ir: IR, limit = 50): string[] {
   return out;
 }
 
-/** The centroid of the selected copies (Å), for an annotation anchored on a selection. */
-export function lociCentroid(l: MesoLoci, ir: IR): [number, number, number] | undefined {
-  const byKey = new Map(placementSets(ir).map((s) => [s.key, s]));
-  let n = 0;
-  const c = [0, 0, 0];
-  for (const [k, r] of l) {
-    const s = byKey.get(k);
-    if (!s) continue;
-    for (let j = 0; j < r.length; j += 2)
-      for (let i = r[j]; i < r[j + 1]; i++) {
-        c[0] += s.positions[3 * i];
-        c[1] += s.positions[3 * i + 1];
-        c[2] += s.positions[3 * i + 2];
-        n++;
-      }
-  }
-  return n ? [c[0] / n, c[1] / n, c[2] / n] : undefined;
-}
-
 /**
  * The bounding sphere of the selected copies (Å, world frame): centre and radius including the copies' own radii.
  * Copies inside superstructures are where they are in the world: a template set's in every instance, a virtual set's

@@ -24,6 +24,10 @@ export interface Flattened {
   readonly instancedBytes: number;
 }
 
+/**
+ * Expansions by key (`<instance set>|<type>*<template set>`), kept by the caller across commits. Nothing here evicts:
+ * the caller drops the keys it no longer draws (the Prism adapter does after each commit).
+ */
 export type ExpansionCache = Map<string, PlacementSet>;
 
 export function flattenInstances(ir: IR, cache: ExpansionCache = new Map()): Flattened {
