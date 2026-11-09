@@ -1,0 +1,89 @@
+# MesoQL skill
+
+Generated from the symbol table; do not edit.
+
+```text
+MESOSCALE ADDRESSES (MesoQL)
+
+An address picks copies in a mesoscale scene: the copies of a population, the ones in a compartment, the ones near
+others. Write one S-expression with the ids of the scene document: (name argument... :keyword value ...). Words
+need no quotes; ; starts a comment.
+
+Wrap each address in [MesoQL]...[/MesoQL] and send each in its own block: several blocks are several addresses,
+and text around them is fine. An address passed as a tool's argument takes no tags.
+
+THE SLOT SETS THE TYPE
+A selection goes in a look's select, a view's selection and cutaway, a camera's focus, an annotation's target.
+A site goes in a relation's entry and exit. Residues go in a site's at and a contact's a and b.
+
+COPY IDS
+A copy is <population>#<ordinal> (p.granules#12); inside a part, <instance copy>/<population>#<ordinal>
+(p.granules#12/p.Vamp2#3). (copies p start count) counts ordinals and holds for one resolution; (instance i) names
+the same copy every time.
+
+PATTERNS
+Narrow by intersecting: (and (entity e) (in c)); remove with (not Q :in U), U defaults to every copy.
+(in c) takes the compartments inside c too: :nested false stops at c. :location membrane or interior narrows it.
+(within Q :of Q2 :distance d) measures centre to centre, d in the document's length unit.
+(part Q p.inner) picks an inner population in the superstructure instances Q picks (a virus's capsid proteins).
+A site and residues belong in their slots only; they pick no copies.
+
+SELECT
+(all)  every copy in the scene
+(population p p...)  the copies of populations
+(instance i i...)  copies stated individually, by id: the same copy across re-resolutions (unlike `copies`)
+(entity e e...)  the copies of every population of these entities
+(in c c... :nested b :location L)  the copies of the populations of compartments (and of the compartments inside them, unless :nested false)
+(model m m...)  the copies a model placed
+(copies p start count?)  copies of one population by ordinal: from `start`, `count` of them (default 1); valid for one resolution
+
+COMBINE
+(and Q Q...)  copies in every operand
+(or Q Q...)  copies in any operand
+(not Q :in Q)  copies not in the operand (within :in, default every copy)
+(within Q :of Q :distance d)  copies of the first selection whose centre is within :distance of a copy of :of (centres, the document length unit)
+(part Q p)  copies of an inner population of a superstructure, in the instances the first selection picks
+
+SITES AND RESIDUES
+(site e site)  a named site of an entity (its `sites`): a point and an axis in the entity's frame, one per copy
+(residues e :chain C :range R)  residues of an entity's structure, by chain and label range (a schematized address: needs the structure loaded)
+
+EXAMPLES
+Ids in the examples are illustrative; use the ids you were given.
+(all)  every copy in the scene
+(population p.catalase)  the copies of populations
+(instance i.granule-a)  copies stated individually, by id: the same copy across re-resolutions (unlike `copies`)
+(entity e.catalase)  the copies of every population of these entities
+(in c.exosome :location membrane)  the copies of the populations of compartments (and of the compartments inside them, unless :nested false)
+(model m.picks)  the copies a model placed
+(copies p.catalase 12)  copies of one population by ordinal: from `start`, `count` of them (default 1); valid for one resolution
+(and (entity e.catalase) (in c.exosome))  copies in every operand
+(or (population p.CD9) (population p.CD63))  copies in any operand
+(not (entity e.lipid))  copies not in the operand (within :in, default every copy)
+(within (entity e.ALB) :of (population p.catalase.observed) :distance 20)  copies of the first selection whose centre is within :distance of a copy of :of (centres, the document length unit)
+(site e.hu dna-entry)  a named site of an entity (its `sites`): a point and an axis in the entity's frame, one per copy
+(residues e.hu :chain A :range 53-63)  residues of an entity's structure, by chain and label range (a schematized address: needs the structure loaded)
+(part (copies p.granules 12) p.Vamp2)  copies of an inner population of a superstructure, in the instances the first selection picks
+(and (entity e.Vamp2) (in c.cell))  the Vamp2 copies in the cell
+(not (entity e.ribosome) :in (in c.cell))  everything in the cell but ribosomes
+(within (population p.ribosomes) :of (copies p.granules 12) :distance 250)  ribosomes near granule 12
+(or (population p.Vamp2) (population p.Rab3a))  two proteins together
+(part (copies p.granules 0 5) p.Chga)  Chga in the first five granules
+(in c.cell :nested false)  the cell itself, not what is inside its compartments
+
+RESULTS AND ERRORS
+A query reports its canonical address, the number of copies, the count per population and the first copy ids: check
+them against the question. An error names the part that is wrong; fix it and resend the corrected address.
+mesoql.syntax  not readable: unbalanced parentheses, an unclosed quote
+mesoql.form  not a form like (entity e.x)
+mesoql.symbol.unknown  no such symbol; the message suggests near ones
+mesoql.type  a selection, a site or residues where another is expected
+mesoql.keyword  a keyword the symbol does not take, given twice, with no value or a value of the wrong type
+mesoql.range  a label range is like 53-63
+mesoql.arity  too many or too few arguments
+mesoql.argument  an argument of the wrong type (a number for an id)
+mesoql.ref.missing  an id names nothing in the document
+mesoql.ref.kind  an id names a node of another kind (an entity where a population goes)
+mesoql.site  the entity has no site of that name; the message lists its sites
+mesoql.empty  a warning: the address is fine but picks nothing in this resolution
+```
