@@ -1125,6 +1125,7 @@ export function deriveView(doc: MesoViewSpecDoc, root: IRNode): IRView {
       ...(l.color ? { color: parseInt(l.color.slice(1), 16) } : {}),
       ...(l.visible !== undefined ? { visible: l.visible } : {}),
       ...(l.transparency !== undefined ? { transparency: l.transparency } : {}),
+      ...(l.emissive !== undefined ? { emissive: l.emissive } : {}),
       ...(l.representation !== undefined ? { representation: l.representation } : {}),
     };
     for (const s of sets) {

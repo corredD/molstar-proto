@@ -300,3 +300,21 @@ describe('views', () => {
     expect(contentHash(new Set([1, 2]))).toBe(contentHash(new Set([2, 1])));
   });
 });
+
+describe('looks: emissive', () => {
+  it('a look with an emissive reaches the IR look of its types', async () => {
+    const r = await compile(exosomeDoc(), exosomeOptions());
+    const doc = exosomeDoc();
+    const edited = {
+      ...doc,
+      views: doc.views!.map((v) =>
+        v.id === 'v.overview' ? { ...v, looks: [...v.looks!, { select: '(population p.miRNA)', emissive: 0.7 }] } : v,
+      ),
+    };
+    const ir = updateView(edited, r.ir!);
+    const pop = (l: { set: string; types: readonly number[] }) =>
+      placementSets(ir).find((s) => s.key === l.set)?.typeTable[l.types[0]].population;
+    expect(ir.view.looks.find((l) => pop(l) === 'p.miRNA')?.emissive).toBe(0.7);
+    expect(ir.view.looks.filter((l) => l.emissive !== undefined).length).toBe(1);
+  });
+});
