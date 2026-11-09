@@ -294,4 +294,9 @@ describe('views', () => {
     expect((ir.root.params as { title: string }).title).toBe('renamed');
     expect(placementSets(ir)).toEqual(placementSets(r.ir!));
   });
+  it('content hashes see into maps and sets', () => {
+    expect(contentHash(new Map([['a', 1]]))).not.toBe(contentHash(new Map([['a', 2]])));
+    expect(contentHash(new Set([1]))).not.toBe(contentHash(new Set([2])));
+    expect(contentHash(new Set([1, 2]))).toBe(contentHash(new Set([2, 1])));
+  });
 });
