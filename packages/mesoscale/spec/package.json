@@ -36,7 +36,7 @@
   },
   "scripts": {
     "build": "tsc -b",
-    "typecheck": "tsc -b",
+    "typecheck": "tsc -b && tsc -p tsconfig.test.json",
     "test:scaling": "vitest run --config vitest.scaling.config.ts",
     "meso-validate": "tsc -b && cd .. && node spec/lib/cli/meso-validate.js",
     "meso-compile": "tsc -b && cd .. && node spec/lib/cli/meso-compile.js --base spec/src",
