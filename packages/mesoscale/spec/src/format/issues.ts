@@ -57,6 +57,21 @@ export const IssueCodes = {
   'stream.manifest': 'A stream manifest is unavailable or invalid',
   'stream.tile': 'A tile failed to load or disagreed with its manifest',
   'stream.budget': 'One tile alone exceeds the stream budget',
+  'relation.path':
+    'A relation on a population that follows a traced path: binders are placed on it, bends are not applied',
+  'superstructure.depth': 'Superstructures nest deeper than the runtime resolves',
+  'cellpack.geometry': 'A cellPACK compartment that is not a sphere imports as one, or not at all',
+  'cellpack.fiber': 'A cellPACK fiber with no length or path in the serialized recipe: not imported',
+  'cellpack.count-conflict': 'A cellPACK ingredient with both a count and a molarity: one wins',
+  'mesoql.syntax': 'A MesoQL address is not one well-formed S-expression',
+  'mesoql.form': 'A MesoQL expression is not a form like (entity e.x)',
+  'mesoql.type': 'A MesoQL expression is not the type its slot asks for',
+  'mesoql.keyword': 'A MesoQL keyword is unknown, repeated, valueless or given the wrong kind of value',
+  'mesoql.range': 'A MesoQL range is not a label range like 53-63',
+  'mesoql.arity': 'A MesoQL symbol has too few or too many arguments',
+  'mesoql.argument': 'A MesoQL argument is not the kind its symbol takes',
+  'mesoql.site': 'A MesoQL `site` names a site its entity does not have',
+  'mesoql.empty': 'A MesoQL selection finds nothing in this resolution',
   assumption: 'The resolver made a choice the document did not make',
 } as const;
 
