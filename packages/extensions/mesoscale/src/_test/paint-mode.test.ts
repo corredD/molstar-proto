@@ -48,6 +48,13 @@ function setup(pending = 0, options: { upright?: boolean; changeOnPaint?: boolea
       return { id: { objectId: 0, instanceId: 0, groupId: 0 }, position: Vec3.create(x, -y, 0) } as PickResult;
     },
     eye: (out) => Vec3.set(out, 0, 0, 100),
+    // an orthographic view down -z from z = 100, 1 Å a pixel: the ray at (x, y) from (x, -y, 100)
+    ray: (x, y, origin, direction) => {
+      Vec3.set(origin, x, -y, 100);
+      Vec3.set(direction, 0, 0, -1);
+      return true;
+    },
+    focus: () => 100,
     refine: (p) => {
       refined.push(p.position[0]);
     },
@@ -203,6 +210,50 @@ describe('paint mode', () => {
       expect(camera.released, end).toBe(1);
       mode.stop();
       document.body.innerHTML = '';
+    }
+  });
+
+  it('a soluble brush paints at the depth along the ray, from the focus; the wheel moves it, not with Alt', () => {
+    const { mode, layer, strokes } = setup(0, { upright: false });
+    mode.start(brush);
+    const el = layer();
+    expect(el.textContent).toContain('depth 100 Å');
+    // a click: one copy, at the focus (100 Å from z = 100), facing the viewer, no pick read
+    el.dispatchEvent(pointer('pointerdown', { x: 10, y: 10 }));
+    el.dispatchEvent(pointer('pointerup', { x: 10, y: 10 }));
+    expect(strokes[0].positions).toEqual([10, -10, 0]);
+    expect(strokes[0].normals).toEqual([-0, -0, 1]);
+    // a notch farther: a copy's diameter (10 Å)
+    el.dispatchEvent(new WheelEvent('wheel', { deltaY: 100, bubbles: true, cancelable: true }));
+    // with Alt: the camera's zoom, the depth unchanged
+    el.dispatchEvent(new WheelEvent('wheel', { deltaY: 100, altKey: true, bubbles: true, cancelable: true }));
+    el.dispatchEvent(pointer('pointerdown', { x: 20, y: 10 }));
+    el.dispatchEvent(pointer('pointerup', { x: 20, y: 10 }));
+    expect(strokes[1].positions).toEqual([20, -10, -10]);
+    // never nearer than a copy's radius
+    el.dispatchEvent(new WheelEvent('wheel', { deltaY: -10000, bubbles: true, cancelable: true }));
+    el.dispatchEvent(pointer('pointerdown', { x: 20, y: 10 }));
+    el.dispatchEvent(pointer('pointerup', { x: 20, y: 10 }));
+    expect(strokes[2].positions[2]).toBe(95);
+    mode.stop();
+  });
+
+  it('Place: a membrane protein on the surface by default, at the depth when asked; anything else the other way', () => {
+    for (const [upright, place, z] of [
+      [true, 'auto', 0],
+      [true, 'depth', 0],
+      [false, 'surface', 0],
+    ] as const) {
+      const { mode, layer, strokes, refined } = setup(0, { upright });
+      mode.set({ place });
+      mode.start(brush);
+      const el = layer();
+      el.dispatchEvent(pointer('pointerdown', { x: 10, y: 10 }));
+      el.dispatchEvent(pointer('pointerup', { x: 10, y: 10 }));
+      expect(strokes[0].positions[2]).toBe(z);
+      // a surface read refines a membrane protein; a depth reads no pick
+      expect(refined.length, `${upright} ${place}`).toBe(upright && place === 'auto' ? 1 : 0);
+      mode.stop();
     }
   });
 

@@ -5,7 +5,7 @@
  */
 
 import { Vec3 } from '@molstar/core/math/linear-algebra';
-import { createRoot, onCleanup } from '@molstar/prism-ui/dom/scope';
+import { createRoot, effect, onCleanup } from '@molstar/prism-ui/dom/scope';
 import { drag, frames, observeResize, on } from '@molstar/prism-ui/dom/scoped';
 import { type ObservableState, observableState } from '@molstar/prism-ui/reactive/observable-state';
 import type { PaintOrient } from './paint.js';
@@ -34,9 +34,16 @@ export interface PaintSettings {
   readonly side: 'out' | 'in';
   /** A copy's turn about its axis, °; undefined: at random */
   readonly spin?: number;
+  /**
+   * Where a copy goes (progress/2026-11-08-paint.md, Round 2, Decided 3): on the surface under the pointer, or at a depth
+   * along the pointer's ray (the wheel moves it); `auto`: a membrane protein on the surface, anything else at the depth
+   */
+  readonly place: 'auto' | PaintPlace;
 }
 
-export const DefaultPaintSettings: PaintSettings = { spacing: 0, orient: 'auto', side: 'out' };
+export type PaintPlace = 'surface' | 'depth';
+
+export const DefaultPaintSettings: PaintSettings = { spacing: 0, orient: 'auto', side: 'out', place: 'auto' };
 
 /** What painting needs of the viewer: the plugin's canvas and the operation (a fake in tests) */
 export interface PaintHost {
@@ -48,6 +55,10 @@ export interface PaintHost {
   readonly identify: Identify;
   /** The camera's position */
   eye(out: Vec3): Vec3;
+  /** The pointer's ray at a point of the canvas (CSS pixels): its origin and unit direction, in the scene */
+  ray(x: number, y: number, origin: Vec3, direction: Vec3): boolean;
+  /** The distance from the camera to its focus (its target), Å: where a copy at a depth starts */
+  focus(): number;
   /** The membrane at a point when its pick is a membrane particle's (`membraneFrame`); the point as it is else */
   refine(point: SurfacePoint): void;
   /** Whether the brush stands upright in a membrane (a membrane protein): only its copies go on the mid-plane */
@@ -62,6 +73,11 @@ export interface PaintHost {
   has(brush: PaintBrushTarget): boolean;
   /** Calls `fn` on every change of the state (an undo mid-stroke cancels it); returns its removal */
   changed(fn: () => void): () => void;
+}
+
+/** Where a brush's copies go: the settings' place, else a membrane protein (`upright`) on the surface, else at a depth */
+export function placeOf(settings: PaintSettings, upright: boolean): PaintPlace {
+  return settings.place !== 'auto' ? settings.place : upright ? 'surface' : 'depth';
 }
 
 /** The pixels between the picks a normal is read from (the canvas's pick is half resolution: two pick pixels) */
@@ -140,7 +156,6 @@ function paintLayer(mode: PaintMode, host: PaintHost, canvas: HTMLElement, brush
   const preview = document.createElement('canvas');
   preview.style.cssText = 'position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none';
   const hint = document.createElement('div');
-  hint.textContent = `Painting with ${brush.name} · drag on a surface · Alt to move the camera · Esc to stop`;
   hint.style.cssText =
     'position: absolute; left: 50%; top: var(--msp-space-3); transform: translateX(-50%); padding: var(--msp-space-1) var(--msp-space-3); border-radius: var(--msp-radius-md); background: var(--msp-color-raised); color: var(--msp-color-text); font-size: var(--msp-font-size-sm); pointer-events: none';
   layer.append(preview, hint);
@@ -164,19 +179,41 @@ function paintLayer(mode: PaintMode, host: PaintHost, canvas: HTMLElement, brush
 
   let stroke: Stroke | undefined;
   let spacing = 0;
-  let radius = 1;
-  let upright = false;
+  let radius = Math.max(host.radius(brush), 1e-3);
+  let upright = host.upright(brush);
+  /** Where the stroke's copies go (the settings' place, or the brush's own: `placeOf`) */
+  let where: PaintPlace = placeOf(mode.settings.value, upright);
+  /** How far along the pointer's ray a copy at a depth goes, Å (Round 2, Decided 2): the camera's focus at the start */
+  let depth = Math.max(host.focus(), radius);
   /** Strokes painted and not committed yet: their own change of the state is not an undo */
   let committing = 0;
   const clear = () => ctx?.clearRect(0, 0, preview.width, preview.height);
 
-  /** Reads the surface at (x, y): a point kept a spacing from the last; false while the pick is read */
+  const writeHint = () => {
+    const how = where === 'depth' ? `click or drag · wheel: depth ${Math.round(depth)} Å` : 'drag on a surface';
+    hint.textContent = `Painting with ${brush.name} · ${how} · Alt to move the camera · Esc to stop`;
+  };
+  writeHint();
+
+  /** The point at the stroke's depth along the pointer's ray at (x, y), facing the viewer */
+  const atDepth = (x: number, y: number): boolean => {
+    if (!host.ray(x, y, _eye, _t)) return false;
+    Vec3.scaleAndAdd(_point.position, _eye, _t, depth);
+    Vec3.negate(_point.normal, _t);
+    return true;
+  };
+
+  /** Reads the place at (x, y): a point kept a spacing from the last; false while the pick is read */
   const sampleAt = (s: Stroke, x: number, y: number): boolean => {
-    const r = surfaceAt(host.identify, x, y, NormalStep, host.eye(_eye), _point);
-    if (r === 'pending') return false;
-    if (!r) return true;
-    // a membrane protein in the membrane's mid-plane; anything else on the surface picked (review should-fix 3)
-    if (upright) host.refine(_point);
+    if (where === 'depth') {
+      if (!atDepth(x, y)) return true;
+    } else {
+      const r = surfaceAt(host.identify, x, y, NormalStep, host.eye(_eye), _point);
+      if (r === 'pending') return false;
+      if (!r) return true;
+      // a membrane protein in the membrane's mid-plane; anything else on the surface picked (review should-fix 3)
+      if (upright) host.refine(_point);
+    }
     const k = s.positions.length;
     if (k) {
       Vec3.set(_a, s.positions[k - 3], s.positions[k - 2], s.positions[k - 1]);
@@ -246,6 +283,8 @@ function paintLayer(mode: PaintMode, host: PaintHost, canvas: HTMLElement, brush
   const reader = frames(() => {
     if (stroke?.pending && !sample(stroke)) reader.request();
   });
+  // the hint written once a frame, however many wheel events
+  const hintNext = frames(writeHint);
 
   const gesture = drag<Stroke>(layer, {
     start(e) {
@@ -254,6 +293,7 @@ function paintLayer(mode: PaintMode, host: PaintHost, canvas: HTMLElement, brush
       const settings = mode.settings.value;
       radius = Math.max(host.radius(brush), 1e-3);
       upright = host.upright(brush);
+      where = placeOf(settings, upright);
       spacing = settings.spacing > 0 ? settings.spacing : 2 * radius;
       clear();
       const s: Stroke = {
@@ -336,6 +376,26 @@ function paintLayer(mode: PaintMode, host: PaintHost, canvas: HTMLElement, brush
     { capture: true },
   );
   on<PointerEvent>(window, 'pointermove', (e) => pass(e.altKey), { capture: true, passive: true });
+  // the wheel: the depth along the pointer's ray (Round 2, Decided 2), a copy's diameter a notch (100 px of delta);
+  // with Alt it reaches the canvas (the layer steps aside) and zooms
+  on<WheelEvent>(
+    layer,
+    'wheel',
+    (e) => {
+      if (e.altKey) return;
+      e.preventDefault();
+      const delta = e.deltaMode === 1 ? e.deltaY * 33 : e.deltaMode === 2 ? e.deltaY * 100 : e.deltaY;
+      depth = Math.max(radius, depth + (delta / 100) * 2 * radius);
+      hintNext.request();
+    },
+    { passive: false },
+  );
+  // the settings changed (Place in the properties): the hint says where copies go
+  effect(mode.settings.asReadonly, (s) => {
+    if (stroke) return;
+    where = placeOf(s, upright);
+    hintNext.request();
+  });
   on(window, 'blur', () => pass(false));
   onCleanup(() => {
     unchanged();

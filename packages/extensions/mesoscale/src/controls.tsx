@@ -233,7 +233,7 @@ export function PaintBrush(props: { area: MesoscaleApi; particles: string; entit
             variant="ghost"
             icon={<Icon name="paintbrush" />}
             pressed={on}
-            title="Drag on a surface to paint copies; Esc stops"
+            title="Click or drag to paint copies (on a surface or at a depth); Alt moves the camera; Esc stops"
             onClick={() =>
               on.value
                 ? mode.stop()
@@ -258,6 +258,16 @@ export function PaintBrush(props: { area: MesoscaleApi; particles: string; entit
         choices={OrientChoices.map((c) => ({ ...c, title: OrientTitles[c.id] }))}
         active={mapState(settings, (s) => s.orient)}
         onPick={(id) => mode.set({ orient: id as PaintSettings['orient'] })}
+      />
+      <Choices
+        label="Place"
+        choices={[
+          { id: 'auto', label: 'Auto', title: 'A membrane protein on the surface, anything else at the depth' },
+          { id: 'surface', label: 'Surface', title: 'On the surface under the pointer' },
+          { id: 'depth', label: 'Depth', title: "At a depth along the pointer's ray; the wheel moves it" },
+        ]}
+        active={mapState(settings, (s) => s.place)}
+        onPick={(id) => mode.set({ place: id as PaintSettings['place'] })}
       />
       <Choices
         label="Side"

@@ -6,6 +6,7 @@
 
 import { Vec2, Vec3, Vec4 } from '@molstar/core/math/linear-algebra';
 import { OrderedSet } from '@molstar/core/data/int';
+import { Ray3D } from '@molstar/core/math/geometry/primitives/ray3d';
 import type { Binding } from '@molstar/core/util/binding';
 import type { Canvas3D } from '@molstar/graphics/canvas3d/canvas3d';
 import type { PickingId } from '@molstar/graphics/geo/geometry/picking';
@@ -24,6 +25,7 @@ import { membraneFrame } from './pick-surface.js';
 
 const _v = Vec2();
 const _p4 = Vec4();
+const _ray = Ray3D();
 
 type TrackballBindings = Canvas3D['attribs']['trackball']['bindings'];
 
@@ -77,6 +79,21 @@ export function pluginPaintHost(
     },
     identify: (x, y) => plugin.canvas3d?.identify(Vec2.set(_v, x, y)),
     eye: (out) => Vec3.copy(out, plugin.canvas3d?.camera.state.position ?? Vec3.create(0, 0, 1)),
+    ray(x, y, origin, direction) {
+      const canvas = plugin.canvas3d;
+      if (!canvas) return false;
+      const ratio = canvas.graphics.pixelRatio || 1;
+      // the camera's views are in its scaled units (`Camera.scale`): the origin back in the scene's
+      const { camera } = canvas;
+      camera.getRay(_ray, x * ratio, y * ratio);
+      Vec3.scale(origin, _ray.origin, 1 / camera.scale);
+      Vec3.copy(direction, _ray.direction);
+      return true;
+    },
+    focus() {
+      const state = plugin.canvas3d?.camera.state;
+      return state ? Vec3.distance(state.position, state.target) : 100;
+    },
     refine(point) {
       const loci = plugin.canvas3d?.getLoci(point.id as PickingId).loci;
       if (!loci || !Particle.isLoci(loci) || OrderedSet.size(loci.indices) !== 1) return;
