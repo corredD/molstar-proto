@@ -78,6 +78,15 @@ describe('lipid membrane', () => {
     expect(typeof buildMembrane({ radius: 300 }, 'test-patch', 100, 'both', kinds, 'tiles')).toBe('object');
   });
 
+  it('refuses the cutter past 2^21 triangles (review S7: a unit’s key, triangle × 2^32, past 2^53 collides)', () => {
+    const kinds = { edgeTypes: 1, vertexColors: 1, variants: 1, seed: 1 };
+    // one vertex, 2^21 + 1 triangles on it: the count alone decides, nothing built (the first step answers)
+    const mesh = { positions: new Float32Array(3), indices: new Uint32Array(3 * (2 ** 21 + 1)) };
+    const first = buildMembraneSteps({ mesh }, 'test-patch', 100, 'both', kinds, 'cutter').next();
+    expect(first.done).toBe(true);
+    expect(first.value as string).toMatch(/triangles/);
+  });
+
   it('covers thin parts the remesh loses (Ludo’s second try, 2026-11-08: a cow’s legs showed the mesh)', () => {
     const body = thinLimbedBody();
     const data = buildMembrane({ mesh: body }, 'test-patch', 42, 'both', kinds);
