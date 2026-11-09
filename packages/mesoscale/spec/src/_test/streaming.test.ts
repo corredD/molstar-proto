@@ -374,6 +374,20 @@ describe('planStream', () => {
     }
   });
 
+  it('a focus with a non-finite centre is the bounds centre with radius 0', async () => {
+    const m = await manifest();
+    const centre = at(3000, 3000, 1000);
+    const want = planStream(m, centre, none, { copies: 30 });
+    expect(want.want).toEqual(['t.1.1.0']);
+    for (const bad of [
+      { center: [Number.NaN, 0, 0] as [number, number, number], radius: Number.NaN },
+      { center: [0, Number.POSITIVE_INFINITY, 0] as [number, number, number], radius: 500 },
+      { center: [0, 0, Number.NEGATIVE_INFINITY] as [number, number, number], radius: 0 },
+    ]) {
+      expect(planStream(m, bad, none, { copies: 30 })).toEqual(want);
+    }
+  });
+
   it('a focus on a tile boundary wants both tiles', async () => {
     const m = await manifest();
     // x = 2000 is the boundary of t.0.0.0 and t.1.0.0, in the middle of both in y and z

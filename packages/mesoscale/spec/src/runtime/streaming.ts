@@ -105,13 +105,22 @@ export function planStream(
   budget: StreamBudget,
 ): StreamPlan {
   const hysteresis = budget.hysteresis ?? 0;
+  // a centre that is not finite (a camera that never settled) reads as the bounds' centre, radius 0; a radius that is not
+  // finite is 0
+  const centred = focus.center.every(Number.isFinite);
+  const at: StreamFocus = {
+    center: centred
+      ? focus.center
+      : (manifest.bounds.min.map((x, k) => (x + manifest.bounds.max[k]) / 2) as [number, number, number]),
+    radius: centred && Number.isFinite(focus.radius) ? focus.radius : 0,
+  };
   const tiles = new Map<string, { t: TileEntry; d: number; dr: number }>();
   for (const t of manifest.tiles) {
-    const d = boxDistance(focus.center, t.box);
+    const d = boxDistance(at.center, t.box);
     tiles.set(t.id, { t, d, dr: state.loaded.has(t.id) ? Math.max(0, d - hysteresis) : d });
   }
   // the tiles the focus touches come first, so hysteresis never lets a resident tile push one out
-  const touched = (x: { d: number }) => (x.d <= focus.radius ? 0 : 1);
+  const touched = (x: { d: number }) => (x.d <= at.radius ? 0 : 1);
   const order = [...tiles.values()]
     .filter((x) => !state.failed.has(x.t.id))
     .sort((a, b) => touched(a) - touched(b) || a.dr - b.dr || byId(a.t.id, b.t.id));
@@ -137,7 +146,7 @@ export function planStream(
     evict: [...state.loaded.keys()].filter((id) => !wanted.has(id) && tiles.has(id)).sort(far),
     cancel: [...state.pending].filter((id) => !wanted.has(id) && tiles.has(id)).sort(far),
     focus: [...tiles.values()]
-      .filter((x) => x.d <= focus.radius)
+      .filter((x) => x.d <= at.radius)
       .sort((a, b) => a.d - b.d || byId(a.t.id, b.t.id))
       .map((x) => x.t.id),
     level0: [...tiles.keys()].filter((id) => !wanted.has(id)).sort(byId),

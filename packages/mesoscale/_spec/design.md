@@ -1116,7 +1116,8 @@ The algorithm:
 
 1. **Copies and distance.** `copies(t)` is the sum of the tile's `counts`. `d(t)` is the Euclidean distance from
    `focus.center` to the tile's box (0 inside or on it). For a resident tile, `d'(t) = max(0, d(t) − hysteresis)`;
-   otherwise `d' = d`. Failed tiles are left out.
+   otherwise `d' = d`. Failed tiles are left out. A `focus.center` with a non-finite component is read as the bounds'
+   centre with radius 0 (a non-finite radius is 0).
 2. **Order.** Sort by (not a focus tile, `d'`, id) ascending, a focus tile being one with `d ≤ focus.radius` (step 4), so
    hysteresis never lets a resident tile push one out; ids compare by UTF-16 code units (`a < b`), never `localeCompare`.
 3. **Walk, nearest first.** Add each tile's copies while the total stays at or under `budget.copies`, and stop at the
