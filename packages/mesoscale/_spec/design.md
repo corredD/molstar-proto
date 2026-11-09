@@ -390,6 +390,9 @@ form and a materialized one, as Mol\* has `SchemaItem` and `Location`/`Loci`.
 - **Where it is used:** a view's `looks[].select`, `selection` and annotation `target` (anchored at the selected copies'
   centroid); relation `entry` and `exit`; site `at`. A look that covers part of a population becomes a partial look with
   its runs; Prism cannot draw it (renderer finding R8) and the adapter says so.
+- **Skill:** `mesoQLSkill()` (`format/mesoql-skill.ts`) writes the agent's text from the table; committed at
+  `_spec/reference/mesoql-skill.md`, which a test keeps equal (`-u` updates it). The CLIs of §12.1 print what it says a
+  query reports.
 - **Stored as** its canonical S-expression string in JSON. SeqQL stores a JSON tree with full names; which to keep is
   open decision 10.
 
@@ -1756,6 +1759,23 @@ Fibers mock exposed the adapter's `excludeFibers` bug (§11).
 - Keep the format in Mol\* while it changes, in `packages/mesoscale/spec` with the import rule.
 - Move it out only if a second implementation appears.
 - Rename the existing extension rather than the new packages.
+
+### 12.1 CLIs (`spec/src/cli/`, `bin` of `@molstar/meso-spec`)
+
+Five commands, as Seq\*'s `svs-*`, each `run(argv, io)` (tests call it in-process). A document is JSON or S-expression
+text (a path, or `-`); the product goes to stdout (S-expression, `--json` for JSON, `-o file`), issues to stderr one per
+line (`file#path: severity code: message`). Exit 0: no errors; 1: errors; 2: usage or unreadable input.
+
+| Command                                   | Product                                                                                 |
+| ----------------------------------------- | --------------------------------------------------------------------------------------- |
+| `meso-validate <doc>`                     | the static issues                                                                       |
+| `meso-compile <doc> [--base dir]...`      | the IR summary (`examples/*.ir.json`); resources read from files                        |
+| `meso-print <file>`                       | the same tree as an S-expression, or JSON with `--json` (document codec, else IR codec) |
+| `meso-trace <doc> <id>`                   | the provenance tree (§3.5)                                                              |
+| `meso-query <doc> <address\|-> [--limit]` | the address checked, then its copies: count, per population, first copy ids             |
+
+`pnpm -C packages/mesoscale/spec meso-<cmd>` builds first and runs from `packages/mesoscale`, so example paths are
+relative to it and `--base spec/src` (where the examples' recipe uris resolve) is passed for compile and query.
 
 ## 13. References
 
