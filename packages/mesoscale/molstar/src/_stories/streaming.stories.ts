@@ -131,7 +131,11 @@ export const TiledScene: StoryObj = {
       // the session's loads end with the story
       let mounted = false;
       new MutationObserver((_, o) => {
-        if (!root.isConnected) session?.dispose(), o.disconnect();
+        if (root.isConnected) mounted = true;
+        else if (mounted) {
+          session?.dispose();
+          o.disconnect();
+        }
       }).observe(document.body, { childList: true, subtree: true });
       return root;
     }),
