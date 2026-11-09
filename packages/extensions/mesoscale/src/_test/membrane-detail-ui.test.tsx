@@ -14,7 +14,7 @@ import { DefaultPrismViewerSpec } from '@molstar/prism-viewer/default-spec';
 import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
 import type { PrismViewer } from '@molstar/prism-viewer/viewer';
 import { MembraneDetailControls } from '../controls.js';
-import { registerLipidPatch } from '../lipids/membrane.js';
+import { forgetLipidPatch, registerLipidPatch } from '../lipids/membrane.js';
 import { MesoscaleExtension } from '../prism-viewer.js';
 import { syntheticPatchPdb } from './lipid-fixtures.js';
 
@@ -73,5 +73,6 @@ describe('a membrane’s levels in its properties', () => {
     const undo = await v.api.history.undo({});
     expect(undo.ok).toBe(true);
     expect(v.plugin.state.data.cells.get(membrane)!.transform.params).toMatchObject({ detail: 'balanced' });
+    forgetLipidPatch('ui-patch');
   });
 });

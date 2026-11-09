@@ -4,7 +4,7 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
 import { Task } from '@molstar/core/task';
 import type { ApiResult } from '@molstar/prism-viewer/api/area';
 import { DefaultPrismViewerSpec } from '@molstar/prism-viewer/default-spec';
@@ -14,6 +14,7 @@ import { PluginStateObject as SO } from '@molstar/plugin/state/objects';
 import {
   buildMembrane,
   cutBounds,
+  forgetLipidPatch,
   LipidMembrane,
   membraneCounts,
   membraneLevels,
@@ -37,6 +38,8 @@ function expectOk<R>(r: ApiResult<R>): asserts r is Extract<ApiResult<R>, { ok: 
 
 const kinds = { edgeTypes: 1, vertexColors: 1, variants: 2, seed: 1 };
 registerLipidPatch('test-patch', syntheticPatchPdb().text);
+// the patch registry restored for the files sharing this worker (review S6)
+afterAll(() => forgetLipidPatch('test-patch'));
 
 /** Every atom of a membrane on the CPU: its tiles and its cut lipids */
 function membraneAtoms(data: Exclude<ReturnType<typeof buildMembrane>, string>) {
@@ -154,6 +157,9 @@ describe('lipid membrane', () => {
     const tasks = v.plugin.managers.task;
     const messages: string[] = [];
     const sub = tasks.events.progress.subscribe((e) => messages.push(e.progress.root.progress.message));
+    // a clock that moves 100 ms a read: every stage past the yield interval, whatever the machine (review S3)
+    let clock = 0;
+    vi.spyOn(performance, 'now').mockImplementation(() => (clock += 100));
     // a patch not baked yet: its tiles baked in this wrap
     registerLipidPatch('progress-patch', syntheticPatchPdb().text);
     expectOk(await v.api.mesoscale!.wrapMembrane({ radius: 1500, edge: 60, patch: 'progress-patch' }));
@@ -173,6 +179,8 @@ describe('lipid membrane', () => {
     // the history's last step is the first wrap's: undone, no membrane is left
     expectOk(await v.api.history.undo({}));
     expect([...v.plugin.state.data.cells.values()].some((c) => c.transform.transformer === LipidMembrane)).toBe(false);
+    forgetLipidPatch('progress-patch');
+    forgetLipidPatch('cancel-patch');
   });
 
   it('cuts the mesh’s own triangles with the cutter: no remesh, every part covered', () => {
