@@ -951,8 +951,8 @@ export interface StreamSource {
 
 #### 6.8.2 Manifest (`format/doc.ts`, the `meso-tiles` format)
 
-The manifest is the format of the tile resource, so its types sit beside the document's. Coordinates are world Å.
-Tiles are axis-aligned boxes; v0.4 refuses a stream in a rotated frame rather than transform boxes (above).
+The manifest is the format of the tile resource, so its types sit beside the document's. Coordinates are world Å. Tiles
+are axis-aligned boxes; v0.4 refuses a stream in a rotated frame rather than transform boxes (above).
 
 ```ts
 // format/doc.ts
@@ -1041,15 +1041,15 @@ export interface RuntimeOptions {
 }
 ```
 
-- **The streamer makes the set:** `{key, model, frame: 'world', count, positions, rotations, types, ordinals,
-  typeTable}`. It shares the payload's buffers (no copy). It allocates `ordinals` and fills them with global
-  ordinals. Every tile shares one `typeTable` object, the stream node's `types`, so MesoQL, looks and the adapter work
-  unchanged.
+- **The streamer makes the set:**
+  `{key, model, frame: 'world', count, positions, rotations, types, ordinals, typeTable}`. It shares the payload's
+  buffers (no copy). It allocates `ordinals` and fills them with global ordinals. Every tile shares one `typeTable`
+  object, the stream node's `types`, so MesoQL, looks and the adapter work unchanged.
 - **A payload is checked before it is kept.** Buffer lengths must match `count`, every type must be in range, and the
   copies per type must equal the tile's manifest `counts`. Otherwise the tile is rejected (`stream.tile`, warning) and
   marked failed. A rejected tile never counts toward the budget.
-- **Ownership.** The provider may cache raw data (HTTP, IndexedDB); nothing relies on it. The streamer owns residency:
-  a tile is loaded exactly when its set is in the IR. Eviction removes it from the IR, and the adapter deletes its list
+- **Ownership.** The provider may cache raw data (HTTP, IndexedDB); nothing relies on it. The streamer owns residency: a
+  tile is loaded exactly when its set is in the IR. Eviction removes it from the IR, and the adapter deletes its list
   (and store entry) as for any removed set. v0.4 keeps no CPU cache of evicted tiles: a tile seen again is loaded again.
 - **Concurrency.** At most `maxInFlight` loads (default 4), started in the plan's order. One `AbortController` per load.
   The streamer aborts a load when the plan cancels it or the stream key changes. Each load carries the stream key and a
@@ -1121,8 +1121,8 @@ The algorithm:
    first tile that does not fit. The walk never skips ahead to a smaller tile farther out, so the loaded region stays
    one shell around the focus.
    - A tile with 0 copies is wanted at no cost.
-   - If the first tile that does not fit has more copies than the whole budget, it is `overBudget`. The walk stops
-     there anyway: the cap is hard, so that tile stays at level 0 and the issue says so.
+   - If the first tile that does not fit has more copies than the whole budget, it is `overBudget`. The walk stops there
+     anyway: the cap is hard, so that tile stays at level 0 and the issue says so.
 4. **Focus tiles.** `focus` is every tile with `d ≤ focus.radius`. A focus on a tile boundary has `d = 0` for the tiles
    on both sides, so both sort first and both are wanted when the budget allows. Ties at `d = 0` go by id.
 5. **Diff.**
@@ -1164,8 +1164,8 @@ The algorithm:
 - At compile time the node has no children. `ir.streams` and per-model annotations were rejected: the node is the
   smallest thing that already sits in the tree, is walked by `placementSets`, and carries level 0 to any reader.
 - **Who reads level 0:** the camera (below), the story's panel (counts by population, tiles), and `irToJson`. `irToJson`
-  prints a stream node as `{model, key, levels, bounds, tiles: <n>, copies: <total by population>}`, not every tile.
-  The Prism adapter does not draw envelopes in v0.4.
+  prints a stream node as `{model, key, levels, bounds, tiles: <n>, copies: <total by population>}`, not every tile. The
+  Prism adapter does not draw envelopes in v0.4.
 - **`compile`** (`runtime/runtime.ts`). For the stream model it calls `o.tiles?.(resource)?.manifest()` (phase `load`),
   then `validateManifest`, and builds `types` from the normalized populations as `meso.precomputed` builds its type
   table. It emits the node with no resolver run. `counts[p]` is `{requested, achieved}` with `achieved` the manifest
@@ -1200,8 +1200,8 @@ export function level0IR(ir: IR): IR;
 `from outside`, over `level0IR(ir)` instead of `ir`. `lociSphere` then gives a sphere that holds the envelopes of the
 streamed copies the address picks, together with the non-streamed copies it picks. The sphere is the same whether 0 or
 all tiles are loaded. Addresses by ordinal (`(copies p.a 12)`) on a streamed population pick proxy rows, not copies:
-this is a v0.4 limit, and the fixture's tour does not use them. Looks, selection and cutaway still read the real IR.
-The camera gets its own materializer and loci cache over `level0IR(ir)`, and calls `lociSphere` with that same IR:
+this is a v0.4 limit, and the fixture's tour does not use them. Looks, selection and cutaway still read the real IR. The
+camera gets its own materializer and loci cache over `level0IR(ir)`, and calls `lociSphere` with that same IR:
 `deriveView`'s materializer is bound to the real IR and caches by address string, so a look and a focus with the same
 address (`v.all`'s `(population p.a)`) would otherwise hand the camera real-IR loci that miss in the level-0 IR. The
 proxy set is cached per stream node object (a `WeakMap`), since `updateView` runs at least twice an edit.
@@ -1259,12 +1259,12 @@ export class TileStreamer {
   `TileStreamer`.
 - **Every edit runs the streamer before it commits.** A view edit runs `updateView`; a model edit runs `compile`. Then
   `streamer.step(ir)`, then `updateView(doc, stepped.ir)` (looks for the spliced sets), then `adapter.commit`. After a
-  model edit with an unchanged stream key, `step` splices the same set objects back, so `planCommit` keeps them: no
-  full rebuild.
+  model edit with an unchanged stream key, `step` splices the same set objects back, so `planCommit` keeps them: no full
+  rebuild.
 - **A settled load queues a `stream` step** through the session's existing `queue`, so it never diffs against the same
-  previous IR as an edit. Arrivals while a step is queued and not started join that step: one commit per burst. A
-  stream step is `step(this.ir)` with the last IR's tile children ignored (the streamer splices its own), then
-  `updateView`, then `commit`.
+  previous IR as an edit. Arrivals while a step is queued and not started join that step: one commit per burst. A stream
+  step is `step(this.ir)` with the last IR's tile children ignored (the streamer splices its own), then `updateView`,
+  then `commit`.
 - **`EditRecord`** gains `kind: 'stream'` and
   `stream?: StreamStats & { readonly plan?: { readonly request: number; readonly evict: number; readonly cancel: number } }`.
 - **A tour** is a sequence of view edits (`session.view` set to each step's view). Each edit moves the semantic camera
@@ -1681,12 +1681,12 @@ Fibers mock exposed the adapter's `excludeFibers` bug (§11).
     streaming (decision 5): **level 0 is statistical** (a population: counts and arrangement, no poses), **level 1 is
     copies** (poses, from a resolver, a file or instances), **level 2 is atoms** (the structures at those poses). A
     viewer far away needs level 0, then streams level 1 where the camera looks, then level 2 close up. Restructure the
-    top level, or keep the sections and treat the levels as a runtime concept?
-    **(v0.4) The levels are decided as a runtime concept:** a stream's manifest declares them; level 0 (counts and
-    envelopes per tile and population) is always in the IR and is what the camera reads; level 1 is loaded within a
-    copy budget; level 2 is declared and refused (§6.8). The document's sections do not move. **Still open:** whether
-    to restructure the top level around the organization; level 2 (atoms close up); whether a population or an
-    instance could itself be a stream's level 0 (today only a stream model's manifest is).
+    top level, or keep the sections and treat the levels as a runtime concept? **(v0.4) The levels are decided as a
+    runtime concept:** a stream's manifest declares them; level 0 (counts and envelopes per tile and population) is
+    always in the IR and is what the camera reads; level 1 is loaded within a copy budget; level 2 is declared and
+    refused (§6.8). The document's sections do not move. **Still open:** whether to restructure the top level around the
+    organization; level 2 (atoms close up); whether a population or an instance could itself be a stream's level 0
+    (today only a stream model's manifest is).
 
 ## 12. Packaging
 
