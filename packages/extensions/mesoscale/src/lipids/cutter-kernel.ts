@@ -533,12 +533,14 @@ export async function createLipidCutter(
     instanceData: ValueCell.create(inputs.positions.ref.value),
     transforms: ValueCell.create(inputs.positions.ref.value),
   };
-  /** what `bases` and `units` hold: a selection's version */
-  let uploaded: { selection: LipidSelection | undefined; version: number } = { selection: undefined, version: -1 };
+  /** what `bases` and `units` hold: a selection's version (two variables, not an object a new selection: review S3) */
+  let uploadedSelection: LipidSelection | undefined;
+  let uploadedVersion = -1;
   const upload = (selection: LipidSelection) => {
     const { version, count: n, maxUnits } = selection;
-    if (uploaded.selection === selection && uploaded.version === version) return;
-    uploaded = { selection, version };
+    if (uploadedSelection === selection && uploadedVersion === version) return;
+    uploadedSelection = selection;
+    uploadedVersion = version;
     if (n === 0) return;
     if (!unitBuffer || unitBuffer.byteLength < maxUnits * 12) {
       unitBuffer?.destroy();
@@ -549,6 +551,7 @@ export async function createLipidCutter(
       ValueCell.update(values.bases, baseBuffer);
     }
     ValueCell.update(values.uMaxUnits, maxUnits);
+    // a view of each array a new selection (the buffer's write takes no length): M + 1 small objects a changed view
     unitBuffer.write(selection.units.subarray(0, n * 3));
     for (let m = 0; m < M; ++m)
       baseBuffer!.write(selection.bases.subarray(m * maxUnits, m * maxUnits + n), m * maxUnits * 4);

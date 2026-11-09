@@ -993,6 +993,8 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
   /** the view each selection selected for last: its planes and scales (32 numbers) */
   // weak: a new look's build makes new selections, the old ones let go with their writers (review M2)
   let selectedViews = new WeakMap<LipidSelection, Float64Array>();
+  /** each selection's last view's CPU time, ms (`pool`) */
+  const selectTimes = new WeakMap<LipidSelection, number>();
   /** `selection` for `view`, once a view (its members' hooks share it) */
   function selectFor(selection: LipidSelection, view: GpuInstanceView, size: number) {
     let key = selectedViews.get(selection);
@@ -1027,7 +1029,10 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
     selectionParams.enterPx = builtFor?.method === 'cutter' ? enterPx(props.far, props.atomsPx, props.spheresPx) : 0;
     // a clip shows the leaflet behind and the far side: every unit then
     selectionParams.facing = props.clip.objects.length > 0 ? 0 : FacingMargin;
+    const t0 = performance.now();
     selection.select(view.cameraPlane, view.frustum, view.lod.depthScale, view.lod.pixelSize, selectionParams);
+    // timed here, not in the selection: its view step allocates nothing (review S3)
+    selectTimes.set(selection, performance.now() - t0);
   }
   const selectionParams = { lipidSize: 8, enterPx: 2, keep: Keep, facing: FacingMargin };
 
@@ -1401,7 +1406,7 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
         for (const n of s.live) live += n;
         triangles += s.count;
         inView += s.inView;
-        selectMs += s.ms;
+        selectMs += selectTimes.get(s) ?? 0;
       }
       // `triangles`: the units taken (a whole triangle or a cell, round 5); `selectMs` the last selection's CPU time
       return { live, triangles, inView, selectMs, ...selectionStats };

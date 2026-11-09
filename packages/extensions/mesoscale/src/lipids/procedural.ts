@@ -6,6 +6,7 @@
 
 import type { Frustum3D } from '@molstar/core/math/geometry/primitives/frustum3d';
 import type { Plane3D } from '@molstar/core/math/geometry/primitives/plane3d';
+import { sortArrayRange } from '@molstar/core/data/util/sort';
 import { cellEntry, cellSide, type CutterRegions, emptyCut, triangleCut } from './cutter.js';
 
 // A membrane made per view (lipid-procedural, its progress file's design; round 5: below the triangle): the cutter's
@@ -13,7 +14,8 @@ import { cellEntry, cellSide, type CutterRegions, emptyCut, triangleCut } from '
 // a member. A unit is a small triangle whole (its counts per member from the count pass, read back at the wrap) or a
 // cell of a large one (its slots its kind's counts, `kindCounts`: a cell on the triangle's edge writes the lipids it does
 // not own dead), so each member's live count and each unit's first slot are exact on the CPU without anything O(lipids):
-// the GPU only writes the hits. Pure; nothing allocated per view.
+// the GPU only writes the hits. Pure; a view allocates only its sort's partition pair (core's `sortArrayRange`, a few
+// dozen bytes: `lipid-selection.quick.ts`), timed by its caller (a clock's reading is a heap number).
 
 /** How the far membrane looks: the lipids' sphere levels, the textured surface, or both (the levels, then the surface) */
 export type MembraneFar = 'spheres' | 'texture' | 'both';
@@ -119,8 +121,6 @@ export interface LipidSelection {
   readonly shown: Uint8Array;
   /** advances where the selection changed */
   readonly version: number;
-  /** the CPU's time of the last selection, ms */
-  readonly ms: number;
   /** selects for a view; whether the selection changed */
   select: (
     cameraPlane: Plane3D,
@@ -133,12 +133,9 @@ export interface LipidSelection {
   reset: () => void;
 }
 
-/**
- * a unit's key, ordered by triangle, then cell (`|cx|, |cy| < 2^15` Å / cell: past it a cell is skipped); exact for
- * `MaxCutterTriangles` triangles (the wrap refuses more)
- */
-const unitKey = (t: number, cx: number, cy: number) =>
-  cx === WholeTriangle ? t * 4294967296 + 4294967295 : t * 4294967296 + (cx + 32768) * 65536 + (cy + 32768);
+// A unit's key, ordered by triangle, then cell: t 2^32 + 2^32 − 1 (whole), t 2^32 + (cx + 2^15) 2^16 + (cy + 2^15) (a
+// cell; `|cx|, |cy| < 2^15` Å / cell: past it a cell is skipped); exact for `MaxCutterTriangles` triangles (the wrap
+// refuses more). Written out where a view makes them (`select`: no call a unit)
 
 /**
  * Per triangle: ok, the region's map (ox, oy, cos, sin), the plane map q → world (b, Ax, Ay), its edges, its sphere, its
@@ -380,21 +377,7 @@ export function createLipidSelection(input: SelectionInput, capacity: Uint32Arra
   let count = 0;
   let version = 0;
   let visible = 0;
-  let ms = 0;
   let forced = false;
-
-  const wasTaken = (key: number) => {
-    let lo = 0;
-    let hi = takenCount - 1;
-    while (lo <= hi) {
-      const mid = (lo + hi) >> 1;
-      const v = taken[mid];
-      if (v === key) return true;
-      if (v < key) lo = mid + 1;
-      else hi = mid - 1;
-    }
-    return false;
-  };
 
   const outside = (frustum: Frustum3D, x: number, y: number, z: number, r: number) => {
     for (let i = 0; i < 6; ++i) {
@@ -404,58 +387,24 @@ export function createLipidSelection(input: SelectionInput, capacity: Uint32Arra
     return false;
   };
 
-  /** clips the polygon (`n` corners in `polyA`) by a x + b y + c ≥ 0; its new corner count (in `polyA`) */
-  const clip = (n: number, a: number, b: number, c: number) => {
-    let k = 0;
-    for (let i = 0; i < n; ++i) {
-      const j = (i + 1) % n;
-      const xi = polyA[i * 2];
-      const yi = polyA[i * 2 + 1];
-      const xj = polyA[j * 2];
-      const yj = polyA[j * 2 + 1];
-      const di = a * xi + b * yi + c;
-      const dj = a * xj + b * yj + c;
-      if (di >= 0) {
-        polyB[k * 2] = xi;
-        polyB[k * 2 + 1] = yi;
-        k += 1;
-      }
-      if (di >= 0 !== dj >= 0) {
-        const f = di / (di - dj);
-        polyB[k * 2] = xi + f * (xj - xi);
-        polyB[k * 2 + 1] = yi + f * (yj - yi);
-        k += 1;
-      }
-    }
-    const swap = polyA;
-    polyA = polyB;
-    polyB = swap;
-    return k;
-  };
-
   function select(cameraPlane: Plane3D, frustum: Frustum3D, depthScale: number, pixelSize: number, p: SelectionParams) {
-    const t0 = performance.now();
+    // nothing allocated a view (review S3: no closures, which box the doubles they are passed and write; the per-unit
+    // tests inline, written out at both of their places)
     const cn = cameraPlane.normal;
     const cc = cameraPlane.constant;
-    // a lipid's size on screen at depth d: D / (depthScale d) (perspective), D / pixelSize (orthographic)
-    const px = (d: number) =>
-      depthScale > 0
-        ? p.lipidSize / (depthScale * Math.max(d, 1e-3))
-        : pixelSize > 0
-          ? p.lipidSize / pixelSize
-          : Infinity;
-    // the leaflet facing the camera: its side of a point w by eye − w (perspective) or −view direction (orthographic)
+    // a lipid's size on screen at depth d: D / (depthScale d) (perspective), D / pixelSize (orthographic); as the
+    // farthest depth a unit not taken (`enterDepth`) or taken (`keepDepth`) may start at
+    const flatPx = pixelSize > 0 ? p.lipidSize / pixelSize : Infinity;
+    const keepPx = p.enterPx * p.keep;
+    const keepDepth =
+      depthScale > 0 ? p.lipidSize / (depthScale * Math.max(keepPx, 1e-9)) : flatPx >= keepPx ? Infinity : 0;
+    const enterDepth =
+      depthScale > 0 ? p.lipidSize / (depthScale * Math.max(p.enterPx, 1e-9)) : flatPx >= p.enterPx ? Infinity : 0;
+    // the leaflet facing the camera: its side of a point w by eye − w (perspective) or −view direction (orthographic,
+    // `away`: the same for every point of a triangle)
     const facing = p.facing ?? 0;
     const perspective = facing > 0 && apex(frustum, eye);
-    const towards = (o: number, x: number, y: number, z: number) =>
-      side *
-      (perspective
-        ? tri[o + 27] * (eye[0] - x) + tri[o + 28] * (eye[1] - y) + tri[o + 29] * (eye[2] - z)
-        : -(tri[o + 27] * cn[0] + tri[o + 28] * cn[1] + tri[o + 29] * cn[2]) * 1e6);
-    // the farthest depth a unit not taken (taken) may start at
-    const depthFor = (enter: number) =>
-      depthScale > 0 ? p.lipidSize / (depthScale * Math.max(enter, 1e-9)) : Infinity;
-    const reach = depthFor(p.enterPx * p.keep);
+    const reach = depthScale > 0 ? keepDepth : Infinity;
     // the triangles in view, nearest first
     let nt = 0;
     let far = 1;
@@ -469,13 +418,19 @@ export function createLipidSelection(input: SelectionInput, capacity: Uint32Arra
       const r = tri[o + 26] + (wholeOf[t] >= 0 ? 0 : cellR);
       if (outside(frustum, x, y, z, r)) continue;
       const d = Math.max(cn[0] * x + cn[1] * y + cn[2] * z + cc - r, 1e-3);
-      if (px(d) < p.enterPx * p.keep) continue;
+      if (d > keepDepth) continue;
       if (facing > 0) {
         // all three corners turned away: the plane is linear in them
         let most = -Infinity;
+        const nx = tri[o + 27];
+        const ny = tri[o + 28];
+        const nz = tri[o + 29];
         for (let c = 0; c < 3; ++c) {
           const v = indices[t * 3 + c] * 3;
-          most = Math.max(most, towards(o, positions[v], positions[v + 1], positions[v + 2]));
+          const to = perspective
+            ? nx * (eye[0] - positions[v]) + ny * (eye[1] - positions[v + 1]) + nz * (eye[2] - positions[v + 2])
+            : -(nx * cn[0] + ny * cn[1] + nz * cn[2]) * 1e6;
+          most = Math.max(most, side * to);
         }
         if (most < -facing) continue;
       }
@@ -500,20 +455,18 @@ export function createLipidSelection(input: SelectionInput, capacity: Uint32Arra
     let n = 0;
     visible = 0;
     far = 1;
-    const consider = (key: number, d: number) => {
-      visible += 1;
-      if (px(d) < p.enterPx * (wasTaken(key) ? p.keep : 1)) return;
-      if (n >= maxCandidates) return;
-      candKey[n] = key;
-      candDepth[n] = d;
-      n += 1;
-      if (d > far) far = d;
-    };
     for (let i = 0; i < nt && n < maxCandidates; ++i) {
       const t = triOrder[i];
       const o = t * Stride;
       if (wholeOf[t] >= 0) {
-        consider(unitKey(t, WholeTriangle, 0), triDepth[t]);
+        // a candidate within reach of the taken ones' size (the others' tested once sorted, `enterDepth`)
+        visible += 1;
+        const d = triDepth[t];
+        if (d <= keepDepth) {
+          candKey[n] = t * 4294967296 + 4294967295;
+          candDepth[n] = d;
+          n += 1;
+        }
         continue;
       }
       // its plane: q → world b + qx Ax + qy Ay; a cell's sphere in world (the lift stretches q by up to 2)
@@ -548,16 +501,45 @@ export function createLipidSelection(input: SelectionInput, capacity: Uint32Arra
         polyA[c * 2 + 1] = (rb * aa - ra * ab) / det;
       }
       for (let f = 0; f < 7 && k > 0; ++f) {
+        // the polygon (`k` corners in `polyA`) clipped by a x + b y + c ≥ 0 into `polyB`, then swapped
+        let a: number;
+        let b: number;
+        let c: number;
         if (f < 6) {
           const { normal: fn, constant } = frustum[f as 0];
-          const a = fn[0] * ax + fn[1] * ay + fn[2] * az;
-          const b = fn[0] * vx + fn[1] * vy + fn[2] * vz;
-          k = clip(k, a, b, fn[0] * bx + fn[1] * by + fn[2] * bz + constant + rw);
+          a = fn[0] * ax + fn[1] * ay + fn[2] * az;
+          b = fn[0] * vx + fn[1] * vy + fn[2] * vz;
+          c = fn[0] * bx + fn[1] * by + fn[2] * bz + constant + rw;
         } else if (Number.isFinite(reach)) {
-          const a = -(cn[0] * ax + cn[1] * ay + cn[2] * az);
-          const b = -(cn[0] * vx + cn[1] * vy + cn[2] * vz);
-          k = clip(k, a, b, reach + rw - (cn[0] * bx + cn[1] * by + cn[2] * bz + cc));
+          a = -(cn[0] * ax + cn[1] * ay + cn[2] * az);
+          b = -(cn[0] * vx + cn[1] * vy + cn[2] * vz);
+          c = reach + rw - (cn[0] * bx + cn[1] * by + cn[2] * bz + cc);
+        } else break;
+        let m = 0;
+        for (let i = 0; i < k; ++i) {
+          const j = (i + 1) % k;
+          const xi = polyA[i * 2];
+          const yi = polyA[i * 2 + 1];
+          const xj = polyA[j * 2];
+          const yj = polyA[j * 2 + 1];
+          const di = a * xi + b * yi + c;
+          const dj = a * xj + b * yj + c;
+          if (di >= 0) {
+            polyB[m * 2] = xi;
+            polyB[m * 2 + 1] = yi;
+            m += 1;
+          }
+          if (di >= 0 !== dj >= 0) {
+            const g = di / (di - dj);
+            polyB[m * 2] = xi + g * (xj - xi);
+            polyB[m * 2 + 1] = yi + g * (yj - yi);
+            m += 1;
+          }
         }
+        const swap = polyA;
+        polyA = polyB;
+        polyB = swap;
+        k = m;
       }
       if (k === 0) continue;
       // its cells: the clipped polygon's bounds in the patch's plane (p = off + Rz(θ) q)
@@ -593,7 +575,7 @@ export function createLipidSelection(input: SelectionInput, capacity: Uint32Arra
       const cy1 = Math.floor((y1 + cellR) / C);
       for (let cx = cx0; cx <= cx1 && n < maxCandidates; ++cx) {
         if (cx <= -32768 || cx >= 32767) continue;
-        for (let cy = cy0; cy <= cy1; ++cy) {
+        for (let cy = cy0; cy <= cy1 && n < maxCandidates; ++cy) {
           if (cy <= -32768 || cy >= 32767) continue;
           const ux = (cx + 0.5) * C - ox;
           const uy = (cy + 0.5) * C - oy;
@@ -617,13 +599,47 @@ export function createLipidSelection(input: SelectionInput, capacity: Uint32Arra
             out = fn[0] * wx + fn[1] * wy + fn[2] * wz + constant + spread + height < 0;
           }
           if (out) continue;
-          if (facing > 0 && towards(o, wx, wy, wz) < -facing - rw) continue;
+          if (facing > 0) {
+            const to = perspective
+              ? tri[o + 27] * (eye[0] - wx) + tri[o + 28] * (eye[1] - wy) + tri[o + 29] * (eye[2] - wz)
+              : -(tri[o + 27] * cn[0] + tri[o + 28] * cn[1] + tri[o + 29] * cn[2]) * 1e6;
+            if (side * to < -facing - rw) continue;
+          }
           const spread =
             Math.abs(cn[0] * hxx + cn[1] * hxy + cn[2] * hxz) + Math.abs(cn[0] * hyx + cn[1] * hyy + cn[2] * hyz);
-          consider(unitKey(t, cx, cy), Math.max(cn[0] * wx + cn[1] * wy + cn[2] * wz + cc - spread - height, 1e-3));
+          // as a whole triangle's (a unit's key: above)
+          visible += 1;
+          const d = Math.max(cn[0] * wx + cn[1] * wy + cn[2] * wz + cc - spread - height, 1e-3);
+          if (d <= keepDepth) {
+            candKey[n] = t * 4294967296 + (cx + 32768) * 65536 + (cy + 32768);
+            candDepth[n] = d;
+            n += 1;
+          }
         }
       }
     }
+    // the ones past the entering size not taken before go (a size's hysteresis: `keep`), the farthest found
+    let kept = 0;
+    for (let i = 0; i < n; ++i) {
+      const d = candDepth[i];
+      if (d > enterDepth) {
+        // taken before (a binary search of the taken keys, sorted)
+        const key = candKey[i];
+        let lo = 0;
+        let hi = takenCount - 1;
+        while (lo <= hi) {
+          const mid = (lo + hi) >> 1;
+          if (taken[mid] < key) lo = mid + 1;
+          else hi = mid - 1;
+        }
+        if (!(lo < takenCount && taken[lo] === key)) continue;
+      }
+      candKey[kept] = candKey[i];
+      candDepth[kept] = d;
+      kept += 1;
+      if (d > far) far = d;
+    }
+    n = kept;
     // nearest first: a counting sort by log depth
     bucketStart.fill(0);
     scale = (Buckets - 1) / Math.log2(far + 1);
@@ -656,16 +672,15 @@ export function createLipidSelection(input: SelectionInput, capacity: Uint32Arra
       next[k++] = key;
     }
     // in key order: slots the same for the same set
-    const list = next.subarray(0, k).sort();
+    sortArrayRange(next, 0, k);
     let same = k === takenCount && version > 0 && !forced;
-    for (let i = 0; i < k && same; ++i) same = list[i] === taken[i];
-    ms = performance.now() - t0;
+    for (let i = 0; i < k && same; ++i) same = next[i] === taken[i];
     if (same) return false;
     forced = false;
     const swap = taken;
     taken = spare;
     spare = swap;
-    taken.set(list);
+    for (let i = 0; i < k; ++i) taken[i] = next[i];
     takenCount = k;
     count = k;
     for (let m = 0; m < M; ++m) live[m] = 0;
@@ -695,7 +710,6 @@ export function createLipidSelection(input: SelectionInput, capacity: Uint32Arra
       }
     }
     version += 1;
-    ms = performance.now() - t0;
     return true;
   }
 
@@ -713,9 +727,6 @@ export function createLipidSelection(input: SelectionInput, capacity: Uint32Arra
     shown,
     get version() {
       return version;
-    },
-    get ms() {
-      return ms;
     },
     select,
     reset: () => {
