@@ -158,6 +158,40 @@ describe('the check', () => {
     expect(check(o)).toEqual([expect.stringMatching(/e\.ts:8\t"thing\.broken" is in no registry/)]);
   });
 
+  it('fails a code a validate-style helper reports and the registry lacks', () => {
+    const o = sandbox();
+    mkdirSync(join(o.src, 'format'));
+    writeFileSync(
+      join(o.src, 'format', 'validate.ts'),
+      `${HEADER}\nerr('id.duplicate', 'x');\nwarn(\n  'thing.warned',\n  'x',\n);\nerr('value.nonesuch', 'x');\n`,
+    );
+    expect(check(o)).toEqual([
+      expect.stringMatching(/validate\.ts:8\t"thing\.warned" is in no registry/),
+      expect.stringMatching(/validate\.ts:12\t"value\.nonesuch" is in no registry/),
+    ]);
+  });
+
+  it('accepts a header with a year range or another year', () => {
+    const o = sandbox();
+    writeFileSync(join(o.src, 'f.ts'), HEADER.replace('2026', '2018-2026') + 'export const f = 1;\n');
+    writeFileSync(join(o.src, 'g.ts'), HEADER.replace('2026', '2027') + 'export const g = 1;\n');
+    expect(check(o)).toEqual([]);
+  });
+
+  it('fails links whose text wraps, that carry a title, or are reference-style', () => {
+    const o = sandbox();
+    const f = join(o.spec, 'views.md');
+    writeFileSync(
+      f,
+      `${readFileSync(f, 'utf8')}\n[wrapped\ntext](gone1.md) [titled](gone2.md "a title")\n\n[ref]: gone3.md\n`,
+    );
+    expect(check(o)).toEqual([
+      expect.stringMatching(/views\.md:\d+\tgone1\.md: no such file/),
+      expect.stringMatching(/views\.md:\d+\tgone2\.md: no such file/),
+      expect.stringMatching(/views\.md:\d+\tgone3\.md: no such file/),
+    ]);
+  });
+
   it('fails a MesoQL parser code the registry lacks', () => {
     const o = sandbox();
     mkdirSync(join(o.src, 'format'));

@@ -28,6 +28,8 @@ const GENERATED_BY = 'packages/mesoscale/spec/scripts/spec.ts';
 
 // ---- Markdown helpers ------------------------------------------------------------------------------------------
 
+const FENCE = /^\s*(```|~~~)/;
+
 /** GitHub's anchor of a heading: lowercased, markup and punctuation dropped, spaces to hyphens. */
 export function slugOf(heading: string): string {
   return heading
@@ -44,8 +46,8 @@ export function anchorsOf(text: string): Set<string> {
   const set = new Set<string>();
   let fence = false;
   for (const line of text.split('\n')) {
-    if (line.startsWith('```')) fence = !fence;
-    const m = !fence && /^#{1,6}\s+(.*)$/.exec(line);
+    if (FENCE.test(line)) fence = !fence;
+    const m = !fence && /^#{1,6}\s+(.*?)(?:\s+#+)?\s*$/.exec(line);
     if (!m) continue;
     const base = slugOf(m[1]);
     let slug = base;
@@ -287,7 +289,7 @@ export interface CheckOptions {
   readonly root: string;
 }
 
-/** The generated references against the files: stale, missing, and files the generator does not write. */
+/** The generated references against the files: stale or missing. */
 export function checkReference(o: CheckOptions, misses: string[]) {
   const dir = join(o.spec, 'reference');
   for (const [name, want] of Object.entries(o.reference)) {
@@ -297,7 +299,8 @@ export function checkReference(o: CheckOptions, misses: string[]) {
   }
 }
 
-const HEADER_LINE = ' * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.';
+const HEADER_LINE =
+  /^ \* Copyright \(c\) \d{4}(-\d{4})? mol\* contributors, licensed under MIT, See LICENSE file for more info\.$/;
 
 /** Every `.ts` and `.tsx` source starts with Mol*'s header: the copyright line and an `@author`. */
 export function checkHeaders(o: CheckOptions, misses: string[]): number {
@@ -305,16 +308,34 @@ export function checkHeaders(o: CheckOptions, misses: string[]): number {
   for (const f of files) {
     const lines = readFileSync(f, 'utf8').split('\n', 8);
     const close = lines.indexOf(' */');
-    if (lines[0] !== '/**' || lines[1] !== HEADER_LINE) misses.push(`${relative(o.root, f)}:1\tno Mol* header`);
+    if (lines[0] !== '/**' || !HEADER_LINE.test(lines[1] ?? ''))
+      misses.push(`${relative(o.root, f)}:1\tno Mol* header`);
     else if (close < 0 || !lines.slice(2, close).some((l) => /^ \* @author \S/.test(l)))
       misses.push(`${relative(o.root, f)}:1\tthe header has no @author`);
   }
   return files.length;
 }
 
-const LINK = /(?<!!)\[[^\]]*\]\(([^)\s]+)\)/g;
+const LINK = /(?<!!)\[[^\]]*\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
+const LINK_DEFINITION = /^ {0,3}\[[^\]]+\]:\s*(\S+)/gm;
+const HTML_LINK = /<a\s[^>]*href="([^"]+)"/g;
 
-/** Every link between `_spec` files resolves: the file, and the heading an anchor names. */
+/** The text with fenced code and inline code blanked, its line breaks kept (so an index still gives its line). */
+function withoutCode(text: string): string {
+  let fence = false;
+  return text
+    .split('\n')
+    .map((l) => {
+      const f = FENCE.test(l);
+      if (f) fence = !fence;
+      return f || fence ? '' : l;
+    })
+    .join('\n')
+    .replace(/`[^`]*`/g, (c) => c.replace(/[^\n]/g, ' '));
+}
+
+/** Every link between `_spec` files resolves: the file, and the heading an anchor names. Inline links (their text
+ * may wrap over lines, a title may follow), reference definitions and `<a href>` are read. */
 export function checkLinks(o: CheckOptions, misses: string[]): number {
   const cache = new Map<string, Set<string>>();
   const heads = (f: string) => {
@@ -324,17 +345,15 @@ export function checkLinks(o: CheckOptions, misses: string[]): number {
   };
   let count = 0;
   for (const file of walk(o.spec, (f) => f.endsWith('.md'))) {
-    let fence = false;
-    const lines = readFileSync(file, 'utf8').split('\n');
-    for (let i = 0; i < lines.length; i++) {
-      if (lines[i].startsWith('```')) fence = !fence;
-      if (fence) continue;
-      for (const [, target] of lines[i].replace(/`[^`]*`/g, '').matchAll(LINK)) {
+    const text = withoutCode(readFileSync(file, 'utf8'));
+    for (const re of [LINK, LINK_DEFINITION, HTML_LINK]) {
+      for (const m of text.matchAll(re)) {
+        const target = m[1];
         if (/^[a-z][a-z0-9+.-]*:/i.test(target)) continue;
         count++;
         const [path, anchor] = target.split('#');
         const to = path ? resolve(dirname(file), path) : file;
-        const where = `${relative(o.root, file)}:${i + 1}\t${target}`;
+        const where = `${relative(o.root, file)}:${text.slice(0, m.index).split('\n').length}\t${target}`;
         if (!existsSync(to)) misses.push(`${where}: no such file`);
         else if (anchor && to.endsWith('.md') && !heads(to).has(anchor)) misses.push(`${where}: no such heading`);
       }
@@ -344,17 +363,22 @@ export function checkLinks(o: CheckOptions, misses: string[]): number {
 }
 
 const ISSUE_CALL = /\bissue\(\s*['"`]([^'"`$]+)['"`]/g;
-// MesoQL's parser reports through `err('code', …)`, which prefixes the namespace.
-const ERR_CALL = /\berr\(\s*'([a-z-]+)'/g;
+// MesoQL's parser reports through `err('code', …)`, which prefixes the namespace; validate.ts's helpers `err` and
+// `warn` take the whole code.
+const MESOQL_ERR_CALL = /\berr\(\s*'([a-z.-]+)'/g;
+const HELPER_CALL = /\b(?:err|warn)\(\s*['"]([a-z]+(?:\.[a-z-]+)+)['"]/g;
 
-/** Every issue code a source passes to `issue(…)` is registered. */
+/** Every issue code a source passes to `issue(…)` or to validate.ts's `err` and `warn` is registered. */
 export function checkIssueCodes(o: CheckOptions, misses: string[]) {
   if (!o.issueCodes) return;
   for (const f of walk(o.codeSources ?? o.sources, (f) => /\.tsx?$/.test(f) && !f.includes('/_test/'))) {
     const text = readFileSync(f, 'utf8');
-    const named = [...text.matchAll(ISSUE_CALL)].map((m) => ({ code: m[1], at: m.index }));
-    if (f.endsWith('format/mesoql.ts'))
-      for (const m of text.matchAll(ERR_CALL)) named.push({ code: `mesoql.${m[1]}`, at: m.index });
+    const mesoql = f.endsWith('format/mesoql.ts');
+    const named = [...text.matchAll(ISSUE_CALL), ...(mesoql ? [] : [...text.matchAll(HELPER_CALL)])].map((m) => ({
+      code: m[1],
+      at: m.index,
+    }));
+    if (mesoql) for (const m of text.matchAll(MESOQL_ERR_CALL)) named.push({ code: `mesoql.${m[1]}`, at: m.index });
     for (const { code, at } of named) {
       if (code in o.issueCodes) continue;
       const line = text.slice(0, at).split('\n').length;
