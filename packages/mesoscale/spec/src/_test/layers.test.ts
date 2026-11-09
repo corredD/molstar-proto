@@ -23,9 +23,10 @@ const inSrc = (file: string) => relative(SRC, file).split(sep).join('/');
 const ALLOWED: Record<string, string[]> = {
   format: [],
   ir: ['format'],
+  builder: ['format'],
   runtime: ['format', 'ir'],
   resolvers: ['format', 'ir', 'runtime'],
-  examples: ['format', 'runtime', 'resolvers'],
+  examples: ['builder', 'format', 'runtime', 'resolvers'],
   cli: ['format', 'ir', 'runtime', 'resolvers'],
 };
 const NODE_ALLOWED = ['cli'];
@@ -108,7 +109,7 @@ describe("the package's folders", () => {
     expect(entries.filter((f) => /^export \* from/m.test(readFileSync(f, 'utf8')))).toEqual([]);
   });
 
-  it('the package exports its six entries and nothing deeper', () => {
+  it('the package exports its seven entries and nothing deeper', () => {
     const map = JSON.parse(readFileSync(join(PACKAGE, 'package.json'), 'utf8')).exports as Record<string, unknown>;
     expect(Object.keys(map).sort()).toEqual(['./_test/*', ...Object.keys(ALLOWED).map((f) => `./${f}`)].sort());
   });

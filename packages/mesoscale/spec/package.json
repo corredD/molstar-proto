@@ -15,6 +15,11 @@
       "types": "./lib/format/index.d.ts",
       "import": "./lib/format/index.js"
     },
+    "./builder": {
+      "molstar-src": "./src/builder/index.ts",
+      "types": "./lib/builder/index.d.ts",
+      "import": "./lib/builder/index.js"
+    },
     "./ir": {
       "molstar-src": "./src/ir/index.ts",
       "types": "./lib/ir/index.d.ts",
