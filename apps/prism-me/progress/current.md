@@ -45,7 +45,9 @@ is not built is [../TODO.md](../TODO.md).
   - `lipid-procedural` (`me/lipid-procedural` from `me/lipid-tiles` at 1727ae414, port 1354,
     [brief](2026-11-08-lipid-procedural.md) on its branch): round 4, started 2026-11-08 (Ludo: "run round 4 when round 3
     is ready"). Procedural, view-dependent membranes (the region cutter as generator, lipids only where ≥ 2 px), far
-    look spheres and bump texture both, switchable; the membrane as a particle system. Design checkpoint first.
+    look spheres and bump texture both, switchable; the membrane as a particle system. Built and gated at bbe875df3
+    (option A: fixed pool, 2 M budget; library culler ~95 lines; 5 must + 6 should fixed, S2/S4 open in TODO; ~1,100
+    lines vs ~950). Waits on Ludo's try on 1354; library commits need their own lane from master.
   - `paint` (`me/paint`, port 1352, [brief](2026-11-08-paint.md) on its branch): Paint v1, approved 2026-11-08 (the
     mesoscale extension, random orientation, no collisions in v1). On hold until the lipids (Ludo, 2026-11-08).
 
