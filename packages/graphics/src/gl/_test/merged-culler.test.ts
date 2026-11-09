@@ -277,7 +277,7 @@ describe('the GPU culler of a merged object', () => {
     const geometry = builder.getSpheres();
     const props = PD.getDefaultValues(Spheres.Params);
     const views: number[] = [];
-    let live = 3;
+    const live = 3;
     const writer = Object.assign((_c: unknown, target: { count: number }) => Math.min(live, target.count), {
       view: (_c: unknown, _t: unknown, view: { lod: LodView }) => {
         views.push(view.lod.depthScale);
