@@ -45,6 +45,8 @@ describe('validate', () => {
   it('a wrong format or a newer major version is refused', () => {
     expect(codes({ ...exosomeDoc(), format: 'mvsj' as 'meso_view_spec' })).toEqual(['format.version']);
     expect(codes({ ...exosomeDoc(), version: '1.0.0' })).toContain('format.version');
+    // a version is required (F11)
+    expect(codes({ ...exosomeDoc(), version: undefined as unknown as string })).toContain('format.version');
   });
 
   it('duplicate and malformed ids', () => {

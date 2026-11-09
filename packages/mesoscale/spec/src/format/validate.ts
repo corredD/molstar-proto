@@ -154,10 +154,11 @@ export function validate(doc: MesoViewSpecDoc, nested = false): Issue[] {
     err('format.version', `format is ${JSON.stringify(doc?.format)}, not "meso_view_spec"`, '/format');
     return out;
   }
-  const major = Number(String(doc.version ?? '').split('.')[0]);
-  if (!Number.isInteger(major) || major > SupportedMajor) {
+  const major = typeof doc.version === 'string' ? Number(doc.version.split('.')[0]) : Number.NaN;
+  if (!/^\d+\.\d+\.\d+/.test(String(doc.version)) || !Number.isInteger(major))
+    err('format.version', `version ${JSON.stringify(doc.version)} is not a semver x.y.z`, '/version');
+  else if (major > SupportedMajor)
     err('format.version', `version ${doc.version} is newer than this runtime reads (${SupportedMajor}.x)`, '/version');
-  }
   for (const s of ['entities', 'compartments', 'populations'] as const) {
     if (!Array.isArray(doc[s])) err('ref.missing', `${s} is required (an array)`, `/${s}`);
   }
