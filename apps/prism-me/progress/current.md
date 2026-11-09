@@ -23,8 +23,9 @@ is not built is [../TODO.md](../TODO.md).
   - `mvs-skill-cli`: done, merged into `me/mesoviewspec`: `meso-validate`, `-compile`, `-print`, `-trace`, `-query`;
     `_spec/reference/mesoql-skill.md` generated (10/10 on a blind eval before the review rework). Gate: all must- and
     should-fix fixed.
-  - `mvs-builder` (`me/mvs-builder` from `me/mesoviewspec`, [brief](2026-11-08-mvs-builder.md) on its branch): a typed
-    builder (refs, MesoQL helpers), the examples rebuilt `deepEqual`. Sonnet, the API on Opus.
+  - `mvs-builder`: done, merged into `me/mesoviewspec`: a typed builder (branded refs, `q.*` MesoQL helpers, `build()`
+    never throws); the five examples rebuilt, unchanged byte for byte. Gate: 19 confirmed, open items in its progress.
+  - Ludo, 2026-11-08: the app lanes' base is a PR of `me/mesoviewspec` to `prism-me`; the body drafted, not opened yet.
   - `mvs-entries` (`me/mvs-entries` from `me/mesoviewspec`, [brief](2026-11-08-mvs-entries.md) on its branch): one entry
     per folder, the folder graph and its layers test. Sonnet, the graph on Opus.
   - **#60** (GPU culling past 65,535 workgroups) and **#61** (cellPACK fibres as tubes) merged by Ludo 2026-11-08; lanes
