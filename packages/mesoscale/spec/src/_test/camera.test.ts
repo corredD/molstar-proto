@@ -167,4 +167,13 @@ describe('semantic camera', () => {
       expect(Math.hypot(...c.up), v.id).toBeCloseTo(1, 9);
     }
   });
+  it("a numeric annotation is a point in the view's frame, placed as the camera is", async () => {
+    const doc = turned({ position: [0, 0, 300], target: [0, 0, 0] });
+    const d = {
+      ...doc,
+      views: [{ ...doc.views![0], annotations: [{ id: 'a', text: 'a', target: { position: [0, 0, 300] } }] }],
+    };
+    const r = await compileExosome(d as MesoViewSpecDoc);
+    expect(dist(r.ir!.view.annotations![0].position!, r.ir!.view.camera!.position)).toBeLessThan(1e-6);
+  });
 });

@@ -1030,7 +1030,6 @@ function hsl(h: number, s: number, l: number) {
 
 export function deriveView(doc: MesoViewSpecDoc, root: IRNode): IRView {
   const view: View | undefined = (doc.views ?? []).find((v) => v.id === doc.session?.view) ?? doc.views?.[0];
-  const unit = doc.units?.length ?? 'nm';
   const ir = { root, view: { id: '', looks: [] } } as IR;
   const issues: Issue[] = [];
   const parsed = new Map<string, MesoLoci>();
@@ -1094,8 +1093,8 @@ export function deriveView(doc: MesoViewSpecDoc, root: IRNode): IRView {
   const selection = view?.selection
     ? [...materialize(view.selection)].map(([set, runs]) => ({ set, runs }))
     : undefined;
-  const f = LengthToAngstrom[unit];
   const camera = deriveCamera(doc, view, ir, materialize);
+  const place = viewFrame(doc, view).place;
   return {
     id: view?.id ?? 'default',
     camera,
@@ -1104,13 +1103,25 @@ export function deriveView(doc: MesoViewSpecDoc, root: IRNode): IRView {
     annotations: view?.annotations?.map((a) => ({
       id: a.id,
       text: a.text,
-      position:
-        typeof a.target === 'string'
-          ? lociSphere(materialize(a.target), ir)?.center
-          : a.target.position.map((x) => x * f),
+      position: typeof a.target === 'string' ? lociSphere(materialize(a.target), ir)?.center : place(a.target.position),
     })),
     ...(view?.cutaway ? { cutaway: [...materialize(view.cutaway)].map(([set, runs]) => ({ set, runs })) } : {}),
     ...(issues.length ? { issues } : {}),
+  };
+}
+
+/** Points (`place`) and directions (`turn`) of a view, from its frame to world Å. */
+function viewFrame(doc: MesoViewSpecDoc, view: View | undefined) {
+  const unit = doc.units?.length ?? 'nm';
+  const f = LengthToAngstrom[unit];
+  const M = view?.frame ? frameMatrices(doc, unit).get(view.frame) : undefined;
+  return {
+    // a frame matrix takes the frame's own units (or voxels) to world Å; without one, the document's unit
+    place: (p: readonly number[]) =>
+      M ? [0, 1, 2].map((r) => M[r] * p[0] + M[4 + r] * p[1] + M[8 + r] * p[2] + M[12 + r]) : p.map((x) => x * f),
+    // a direction, turned into the world (the frame's scale does not matter once normalized)
+    turn: (v: readonly number[]) =>
+      M ? [0, 1, 2].map((r) => M[r] * v[0] + M[4 + r] * v[1] + M[8 + r] * v[2]) : [...v],
   };
 }
 
@@ -1128,15 +1139,7 @@ function deriveCamera(
 ): IRView['camera'] {
   const cam = view?.camera;
   if (!cam) return undefined;
-  const unit = doc.units?.length ?? 'nm';
-  const f = LengthToAngstrom[unit];
-  const M = view?.frame ? frameMatrices(doc, unit).get(view.frame) : undefined;
-  // a frame matrix takes the frame's own units (or voxels) to world Å; without one, the document's unit
-  const place = (p: readonly number[]) =>
-    M ? [0, 1, 2].map((r) => M[r] * p[0] + M[4 + r] * p[1] + M[8 + r] * p[2] + M[12 + r]) : p.map((x) => x * f);
-  // a direction in the view frame, turned into the world (the frame's scale does not matter once normalized)
-  const turn = (v: readonly number[]) =>
-    M ? [0, 1, 2].map((r) => M[r] * v[0] + M[4 + r] * v[1] + M[8 + r] * v[2]) : [...v];
+  const { place, turn } = viewFrame(doc, view);
   const fov = cam.fov ?? 45;
   const upIn = cam.up ? turn(cam.up) : [0, 1, 0];
   if (cam.focus) {
