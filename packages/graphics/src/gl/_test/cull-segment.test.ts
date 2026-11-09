@@ -206,7 +206,18 @@ describe('culling a segment', () => {
       const mdb = createSegmentedMdbList();
       const prepared = mdb.prepare(lodLevels, grid.cellCount, false, LodView());
       const slack = v.animation ? getAnimationSlack(v.animation) : 0;
-      mdb.cullSegment(v, ZeroCullSegment, prepared, cameraPlane, frustum, null, createGraphicsStats(), false, false, slack);
+      mdb.cullSegment(
+        v,
+        ZeroCullSegment,
+        prepared,
+        cameraPlane,
+        frustum,
+        null,
+        createGraphicsStats(),
+        false,
+        false,
+        slack,
+      );
       return mdb.list.map((l) => {
         const out: number[] = [];
         for (let i = 0; i < l.count; ++i) out.push(l.baseInstances[i], l.instanceCounts[i]);
@@ -214,7 +225,9 @@ describe('culling a segment', () => {
       });
     };
     const draws = cull({ ...values, lodLevels, animation });
-    expect(draws).toEqual(referenceDraws(grid, value, frustum, cameraPlane, undefined, Clip.SphereClass.All, Math.sqrt(3) * 5));
+    expect(draws).toEqual(
+      referenceDraws(grid, value, frustum, cameraPlane, undefined, Clip.SphereClass.All, Math.sqrt(3) * 5),
+    );
     expect(draws).not.toEqual(referenceDraws(grid, value, frustum, cameraPlane));
     // still: as before
     expect(cull({ ...values, lodLevels })).toEqual(referenceDraws(grid, value, frustum, cameraPlane));

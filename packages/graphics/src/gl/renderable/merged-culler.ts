@@ -532,7 +532,8 @@ export function createMergedCuller(
   function computeMemberCells(s: number) {
     const member = members[s];
     const n = segments.instanceCounts[s];
-    if (memberSpheres.length < (n + 1) * 4) memberSpheres = new Float32Array(Math.max((n + 1) * 4, memberSpheres.length * 2));
+    if (memberSpheres.length < (n + 1) * 4)
+      memberSpheres = new Float32Array(Math.max((n + 1) * 4, memberSpheres.length * 2));
     if (memberCellOf.length < n * 2) memberCellOf = new Uint32Array(Math.max(n * 2, memberCellOf.length * 2));
     const grid = member.instanceGrid.ref.value;
     if (grid.cellSize <= 1) {
