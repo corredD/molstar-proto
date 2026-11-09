@@ -561,3 +561,25 @@ describe('review: malformed input is issues, never a throw', () => {
     expect(readPatch('(patch :ops [3])').error).toBeDefined();
   });
 });
+
+describe('review: diff of looks across views and to none', () => {
+  const view = (id: string, looks: string[]) => ({
+    id,
+    looks: looks.map((l) => ({ id: l, select: '(all)' })),
+  });
+  const base = (views: object[]) => ({ ...exosomeDoc(), session: undefined, views }) as unknown as MesoViewSpecDoc;
+  it('a look moved to an earlier view', () => {
+    const a = base([view('v.a', ['l.y']), view('v.b', ['l.x', 'l.z'])]);
+    const b = base([view('v.a', ['l.x', 'l.y']), view('v.b', ['l.z'])]);
+    const p = diff(a, b);
+    expect(p).not.toBeNull();
+    expect(applyPatch(a, p!).doc).toEqual(b);
+  });
+  it('a view whose looks are all gone, kept as an empty list', () => {
+    const a = base([view('v.a', ['l.x'])]);
+    const b = base([{ id: 'v.a', looks: [] }]);
+    const p = diff(a, b);
+    expect(p).not.toBeNull();
+    expect(applyPatch(a, p!).doc).toEqual(b);
+  });
+});

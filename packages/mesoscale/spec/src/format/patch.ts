@@ -400,12 +400,12 @@ const addressable = (xs: readonly PatchNode[] | undefined) =>
   (xs ?? []).every((x) => typeof x?.id === 'string') && new Set((xs ?? []).map((x) => x.id)).size === (xs ?? []).length;
 
 /** The ops that turn one list into another, nodes matched by id: removes, then inserts and moves, then sets. */
-function diffList(w: Where, a: readonly PatchNode[], b: readonly PatchNode[], ops: Op[]) {
+function diffList(w: Where, a: readonly PatchNode[], b: readonly PatchNode[], ops: Op[], rm: Op[]) {
   // a node whose kind changed is a replacement: removed, and inserted again
   const next = new Map(b.map((y) => [y.id, y]));
   const kept = a.filter((x) => next.has(x.id) && equal(x.kind, next.get(x.id)?.kind));
   const ids = new Set(kept.map((x) => x.id));
-  for (const x of a) if (!ids.has(x.id)) ops.push({ op: 'remove', id: x.id });
+  for (const x of a) if (!ids.has(x.id)) rm.push({ op: 'remove', id: x.id });
   const work = kept.map((x) => x.id);
   b.forEach((y, i) => {
     if (work[i] === y.id) return;
@@ -424,8 +424,9 @@ function diffList(w: Where, a: readonly PatchNode[], b: readonly PatchNode[], op
     for (const k of new Set([...Object.keys(x), ...Object.keys(y)])) {
       const nested = (k === 'looks' || k === 'annotations') && 'section' in w && w.section === 'views';
       const [p, q] = [x[k] as PatchNode[] | undefined, (y as Obj)[k] as PatchNode[] | undefined];
-      if (nested && Array.isArray(p) && Array.isArray(q) && addressable(p) && addressable(q))
-        diffList({ view: y.id, list: k }, p, q, ops);
+      // a list emptied but kept is the view's field; else its items by id
+      if (nested && Array.isArray(p) && Array.isArray(q) && q.length > 0 && addressable(p) && addressable(q))
+        diffList({ view: y.id, list: k }, p, q, ops, rm);
       else if (!equal(x[k], (y as Obj)[k])) fields[k] = (y as Obj)[k] ?? null;
     }
     if (Object.keys(fields).length) ops.push({ op: 'set', id: y.id, fields });
@@ -440,6 +441,8 @@ export function diff(a: MesoViewSpecDoc, b: MesoViewSpecDoc): Patch | null {
   if (!wellFormed(a) || !wellFormed(b)) return null;
   const [x, y] = [a as unknown as Obj, b as unknown as Obj];
   const ops: Op[] = [];
+  // every removal first: a node that moves between lists leaves one before it enters the other
+  const rm: Op[] = [];
   const fields: Record<string, unknown> = {};
   for (const k of new Set([...Object.keys(x), ...Object.keys(y)])) {
     if ((Sections as readonly string[]).includes(k) || k === 'revision') continue;
@@ -452,18 +455,19 @@ export function diff(a: MesoViewSpecDoc, b: MesoViewSpecDoc): Patch | null {
   for (const s of Sections) {
     const [p, q] = [(a[s] ?? []) as readonly PatchNode[], (b[s] ?? []) as readonly PatchNode[]];
     if (!addressable(p) || !addressable(q)) return null;
-    diffList({ section: s }, p, q, ops);
+    diffList({ section: s }, p, q, ops, rm);
   }
+  const all = [...rm, ...ops];
   const patch: Patch = {
     format: PatchFormat,
     ...(a.revision !== undefined ? { base: a.revision } : {}),
     ...(b.revision !== undefined ? { revision: b.revision } : {}),
-    ops,
+    ops: all,
   };
   // what the ops reach, checked by replaying them (no validation: `b` is the caller's)
   const bare = (d: MesoViewSpecDoc) => ({ ...d, revision: undefined });
   try {
-    return equal(bare(ops.reduce((d, op, k) => step(d, op, k).doc, a)), bare(b)) ? patch : null;
+    return equal(bare(all.reduce((d, op, k) => step(d, op, k).doc, a)), bare(b)) ? patch : null;
   } catch {
     return null;
   }
