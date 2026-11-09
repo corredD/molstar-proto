@@ -11,7 +11,12 @@ import { Vec3 } from '@molstar/core/math/linear-algebra/3d/vec3';
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
 import { HeadlessPluginContext } from '@molstar/plugin-headless/context';
 import { DefaultPluginSpec } from '@molstar/plugin/default-spec';
-import { LipidMembrane, LipidMembraneParams, registerLipidPatch } from '../lipids/membrane.js';
+import {
+  LipidMembrane,
+  LipidMembraneParams,
+  LipidMembraneRepresentation,
+  registerLipidPatch,
+} from '../lipids/membrane.js';
 import { syntheticPatchPdb } from './lipid-fixtures.js';
 
 /** Dawn's Node bindings (`pnpm native:install -- --webgpu`, run through `pnpm native:run`), else the test skips */
@@ -184,6 +189,15 @@ describe.skipIf(!webgpu)('lipid membrane on WebGPU (Dawn)', () => {
       repr.setGraphics!({ ...graphics, compute: undefined } as never);
       await repr.createOrUpdate().run();
       expect(repr.renderObjects.length).toBe(0);
+      // a new context while a build waits on the GPU (its count pass): the stale build keeps nothing (review S1)
+      const fresh = LipidMembraneRepresentation(graphics);
+      const data = plugin.state.data.cells.get(node.ref)!.obj!.data.sourceData;
+      const first = fresh.createOrUpdate(params, data).run();
+      fresh.setGraphics!({ ...graphics, compute: undefined } as never);
+      await fresh.createOrUpdate().run();
+      await first.catch(() => {});
+      expect(fresh.renderObjects.length).toBe(0);
+      fresh.destroy();
     } finally {
       plugin.dispose();
     }
