@@ -319,3 +319,41 @@ patch), `charmm-*` (the patch), `slack-*`, `final-*` (HEAD, mesh hidden: whole, 
 **Open (TODO.md):** the legs below the knee (thinner than 40 Å) are lost; the bands still repeat along edges (one edge
 type); heads and tails share a colour; the membrane does not follow a later scale; not tried in a browser (the Chrome
 extension was not connected); the 5 MB patch in git.
+
+## Round 2 brief (Ludo, 2026-11-08: both, compared side by side)
+
+Written before round 2's first code commit (the diagnosis probes ran first, uncommitted). Ludo's second try (Chrome,
+WebGPU, the cow ×100 by its Look's Scale, then Wrap with lipids): triangles of the mesh show through, "we need some LOD,
+and cellpackgpu is still more efficient and looks better". He chose to build both methods and compare them side by side
+before picking a default.
+
+**Spec sections it changes.** `apps/prism-me/_spec/features.md` (Wrap with lipids: two methods, LOD), `_spec/ui.md` §5
+(one right-click entry; the method is the operation's parameter), this lane's Design (a second method: the cutter), and
+`~/prism-me-lanes/mesobuild/docs/lipids.md` §1 only where measured numbers contradict it.
+
+**Parts, their tests, size (production lines), model.**
+
+1. **Tiles: close the holes** (~100 lines, Opus). Cause first, measured on the cow ×100 headless: the fraction of the
+   original mesh's area with a lipid atom within 10 Å (area-sampled points). Test: a coverage test on a synthetic thin
+   body (a capsule with thin limbs, in memory) that fails first, then passes with the fix; the mesh hidden after a wrap
+   in Ludo's path (scale by `cryoet.mesh`, then wrap: an app test).
+2. **LOD shared by both methods** (~200 lines, Opus for the hot path). Mol*'s own levels (the spheres' `lodLevels`, the
+   merged culler's LOD ranges, as cellPACK particles get theirs in prism-me), not a new system: atoms near, fewer beads a
+   lipid farther, sparse far. Tests: the levels made per tile (a quick test of counts per level); frame time whole and
+   close up, before and after (Dawn, measured, in the progress file).
+3. **The cutter, cellPACKgpu's way** (~500 lines, Opus for the WGSL): `mesoscale.wrapMembrane { method: 'tiles' |
+   'cutter' }`, one right-click entry, tiles the default until the comparison. On the original triangles (no remesh),
+   each triangle tests the patch's lipids by headgroup against the triangle flattened in the patch plane, with a real
+   random offset and spin per triangle, per leaflet along the normal; count, prefix sum, write, so the CPU knows the
+   counts per species for the merged layout. Tests: a Dawn test of the WGSL against a TypeScript reference, triangle for
+   triangle; a scaling guard (`*.scaling.ts`) at n and 4n triangles with its quadratic control.
+4. **Side by side** (measuring and screenshots: Sonnet subagents, one at a time). On the cow ×100, both methods: lipids,
+   coverage, atom pairs < 2 Å across triangles, wrap time (first and second), GPU bytes a lipid, frame time whole and
+   close up, with and without LOD; images whole, flank, seam in `~/prism-me-lanes/lipid-tiles-shots/compare-*`.
+
+**What Ludo checks in the app.** Open the cow, Look › Scale ×100, right-click › Wrap with lipids: the mesh hidden, no
+triangle showing through on the body, smooth when zoomed out; then the cutter by command
+(`mesoscale.wrapMembrane { mesh, method: 'cutter' }`) and the two compared.
+
+**Size.** About 800 production lines (100 + 200 + 500). The review gate (lane-reviewer, lane-skeptic) runs on the diff
+since `7829199ab` before the report.
