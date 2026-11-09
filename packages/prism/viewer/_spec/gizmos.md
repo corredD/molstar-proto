@@ -1,9 +1,9 @@
 # Handles that move things
 
-`GizmoHandles` (`src/sources/gizmos/handles.ts`, exported as `@molstar/prism-viewer/sources/gizmos`): the one host of
-the gizmo library's controller (`@molstar/graphics/util/gizmo/controller`) for anything Prism or an extension moves by
-hand: a structure ([structure-move.md](structure-move.md)), a cut ([clipping.md §4](clipping.md)), an extension's
-object.
+`GizmoHandles` (`src/sources/gizmos/handles.ts`, exported as `@molstar/prism-viewer/sources/gizmos`): a host of the
+gizmo library's controller (`@molstar/graphics/util/gizmo/controller`) for what an extension moves by hand: a particle,
+a slice's plane, a stage object. Prism's own move ([move.md](move.md)) and cuts ([clipping.md §4](clipping.md)) run the
+controller themselves.
 
 - **A host gives a binding, the class does the rest.** The binding is the library's (`layout`, `apply`, `preview`,
   `commit`, `cancel`, …) with its items read from the state (`items()`), not a stream: the class reads them again at
