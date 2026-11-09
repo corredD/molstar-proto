@@ -10,7 +10,7 @@
 // built-ins only in the CLIs. The tests in _test/ reach internals by path and are not checked here.
 
 import { readdirSync, readFileSync, statSync } from 'node:fs';
-import { dirname, join, relative, resolve, sep } from 'node:path';
+import { dirname, join, posix, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
@@ -69,6 +69,9 @@ export function violations(at: string, source: string, resolveRelative: (spec: s
   return wrong;
 }
 
+/** Whether `source` re-exports a module wholesale: `export * from`, `export type * from`, `export * as ns from`. */
+export const exportsStar = (source: string) => /^export (?:type )?\*(?: as \w+)? from/m.test(source);
+
 describe("the package's folders", () => {
   const all = files(SRC);
 
@@ -85,15 +88,28 @@ describe("the package's folders", () => {
   });
 
   it('the check fails when a folder imports what it may not', () => {
-    const at = (spec: string, from = 'format/doc.ts') => violations(from, `import { x } from '${spec}';`, (s) => s);
-    expect(at('@molstar/meso-spec/runtime')).toHaveLength(1);
+    const at = (spec: string, from: string) =>
+      violations(from, `import { x } from '${spec}';`, (s) => posix.join(posix.dirname(from), s));
+    expect(at('@molstar/meso-spec/runtime', 'format/doc.ts')).toHaveLength(1);
     expect(at('@molstar/meso-spec/format', 'ir/ir.ts')).toEqual([]);
     expect(at('../runtime/runtime.js', 'format/doc.ts')).toHaveLength(1);
+    expect(at('./units.js', 'format/doc.ts')).toEqual([]);
+    expect(at('./fixtures/synthetic.js', 'examples/exosome.ts')).toEqual([]);
     expect(at('@molstar/meso-spec/format', 'format/doc.ts')).toHaveLength(1);
     expect(at('@molstar/core/util', 'ir/ir.ts')).toHaveLength(1);
     expect(at('node:fs', 'runtime/runtime.ts')).toHaveLength(1);
     expect(at('node:fs', 'cli/io.ts')).toEqual([]);
     expect(at('@molstar/meso-spec/cli', 'examples/yeast.ts')).toHaveLength(1);
+    expect(at('@molstar/meso-spec/format', 'builder/ids.ts')).toEqual([]);
+    expect(at('@molstar/meso-spec/runtime', 'builder/ids.ts')).toHaveLength(1);
+  });
+
+  it('the no-star check sees every wholesale re-export', () => {
+    expect(exportsStar("export * from './a.js';")).toBe(true);
+    expect(exportsStar("export type * from './a.js';")).toBe(true);
+    expect(exportsStar("export * as ns from './a.js';")).toBe(true);
+    expect(exportsStar("export { a, type B } from './a.js';")).toBe(false);
+    expect(exportsStar("export type { B } from './a.js';")).toBe(false);
   });
 
   it('each entry names what it exports (no `export *`): a name exported is API a host may use', () => {
@@ -106,7 +122,7 @@ describe("the package's folders", () => {
         .map((t) => join(PACKAGE, '..', pkg, t));
     });
     expect(entries.length).toBeGreaterThan(6);
-    expect(entries.filter((f) => /^export \* from/m.test(readFileSync(f, 'utf8')))).toEqual([]);
+    expect(entries.filter((f) => exportsStar(readFileSync(f, 'utf8')))).toEqual([]);
   });
 
   it('the package exports its seven entries and nothing deeper', () => {
