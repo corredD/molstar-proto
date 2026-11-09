@@ -21,8 +21,11 @@
 // - an array → `[a b c]`; null → `nil`; strings are words when they read back as the same string, else quoted;
 // - camelCase keys → kebab-case keywords (`voxelSize` → `:voxel-size`); a key that would not read back (an id used as
 //   a key, `p.ALB`) → a quoted keyword `:"p.ALB"`;
-// - MesoQL expressions (the string values of `select`, `selection`, `at`, `target`, `entry`, `exit`) are inlined as
-//   forms, not quoted strings: the address is written in its own spelling inside the document's.
+// - MesoQL expressions (the string values at the codec's `inline` slots: a look's `select`, a view's `selection`,
+//   `cutaway` and camera `focus`, an annotation's `target`, a site's `at`, a relation's `entry` and `exit`) are inlined
+//   as forms, on one line: the address is written in its own spelling inside the document's. Only a string that is
+//   already its canonical one-line text is inlined; any other string (extra spaces, a comment) stays quoted, so
+//   read(print(json)) is the JSON for every string.
 
 export type SNode =
   | { readonly kind: 'list'; readonly items: readonly SNode[]; readonly start: number; readonly end: number }
@@ -110,7 +113,13 @@ export function readSexpr(text: string): { nodes: SNode[]; error?: SReadError } 
         while (i < n && text[i] !== '"') i += text[i] === '\\' ? 2 : 1;
         if (i >= n) return fail('unterminated keyword', start);
         i++;
-        push({ kind: 'keyword', name: JSON.parse(text.slice(s, i)) as string, quoted: true, start, end: i });
+        let name: string;
+        try {
+          name = JSON.parse(text.slice(s, i)) as string;
+        } catch {
+          return fail(`bad keyword ${text.slice(start, i)}`, start);
+        }
+        push({ kind: 'keyword', name, quoted: true, start, end: i });
         continue;
       }
       i++;
@@ -223,11 +232,6 @@ function fill(d: Exclude<Doc, string>, column: number): string {
   return lines.join('\n');
 }
 
-/** The canonical text of a single form already read (to reformat a MesoQL string). */
-export function printNode(node: SNode): string {
-  return layout(nodeDoc(node), 0);
-}
-
 function nodeDoc(node: SNode): Doc {
   if (node.kind === 'atom') return atomText(node.value);
   if (node.kind === 'keyword') return node.quoted ? `:${JSON.stringify(node.name)}` : kw(node.name);
@@ -259,7 +263,10 @@ export interface DataCodec {
   readonly positional?: string;
   /** The key the root's head is (`format`). */
   readonly root?: string;
-  /** String-valued keys that hold an S-expression (MesoQL), written inline. */
+  /**
+   * The slots whose string holds an S-expression (MesoQL), written inline: a key and its parent's key (`looks.select`;
+   * array indices are skipped), matched at the end of the value's key path, so a `select` under another key is data.
+   */
   readonly inline?: readonly string[];
 }
 
@@ -285,7 +292,16 @@ export const DocumentCodec: DataCodec = {
     states: 'state',
   },
   root: 'format',
-  inline: ['select', 'selection', 'at', 'target', 'entry', 'exit', 'focus', 'cutaway'],
+  inline: [
+    'looks.select',
+    'views.selection',
+    'views.cutaway',
+    'camera.focus',
+    'annotations.target',
+    'sites.at',
+    'relations.entry',
+    'relations.exit',
+  ],
 };
 
 export const IRCodec: DataCodec = { sections: {}, positional: 'ref', inline: [] };
@@ -304,13 +320,28 @@ const isQuantity = (o: Record<string, unknown>) => {
 const isWord = (v: unknown): v is string =>
   typeof v === 'string' && WORD.test(v) && !NUMBER.test(v) && v !== 'true' && v !== 'false' && v !== 'nil';
 
-function toDoc(v: unknown, codec: DataCodec, parentKey: string | undefined, root: boolean): Doc {
+/** The key path of a value: its keys from the root, dot-joined, array indices skipped (`views.looks.select`). */
+const under = (path: string, key: string) => (path ? `${path}.${key}` : key);
+const isInline = (codec: DataCodec, path: string) =>
+  !!codec.inline?.some((slot) => path === slot || path.endsWith(`.${slot}`));
+
+/** A MesoQL string at an inline slot: its form, flat, when the string is that form's canonical text; else undefined. */
+function inlineForm(v: string): string | undefined {
+  if (!v.startsWith('(')) return undefined;
+  const r = readSexpr(v);
+  const n = r.nodes[0];
+  // read back as a form only when headed by a word (as fromNode reads it): `(:a 1)` is a record, `(15 A)` a quantity
+  if (r.error || r.nodes.length !== 1 || n.kind !== 'list' || n.items[0]?.kind !== 'atom') return undefined;
+  if (typeof n.items[0].value !== 'string') return undefined;
+  const text = flat(nodeDoc(n));
+  return text === v ? text : undefined;
+}
+
+function toDoc(v: unknown, codec: DataCodec, parentKey: string | undefined, path: string, root: boolean): Doc {
   if (v === null || v === undefined) return 'nil';
   if (typeof v !== 'object') {
-    if (typeof v === 'string' && parentKey && codec.inline?.includes(parentKey) && v.trimStart().startsWith('(')) {
-      const r = readSexpr(v);
-      if (!r.error && r.nodes.length === 1) return nodeDoc(r.nodes[0]);
-    }
+    // a string Doc: layout never breaks it, so the address stays on one line
+    if (typeof v === 'string' && isInline(codec, path)) return inlineForm(v) ?? atomText(v);
     return atomText(v as string | number | boolean);
   }
   if (Array.isArray(v)) {
@@ -318,7 +349,8 @@ function toDoc(v: unknown, codec: DataCodec, parentKey: string | undefined, root
     return {
       open: '[',
       parts: v.map(
-        (x) => [null, singular ? itemDoc(x, codec, singular) : toDoc(x, codec, undefined, false)] as [null, Doc],
+        (x) =>
+          [null, singular ? itemDoc(x, codec, singular, path) : toDoc(x, codec, undefined, path, false)] as [null, Doc],
       ),
     };
   }
@@ -332,20 +364,20 @@ function toDoc(v: unknown, codec: DataCodec, parentKey: string | undefined, root
       ],
     };
   if (root && codec.root && isWord(o[codec.root]))
-    return form(atomText(o[codec.root] as string), undefined, o, [codec.root], codec);
+    return form(atomText(o[codec.root] as string), undefined, o, [codec.root], codec, path);
   if (isWord(o.kind)) {
     const pk = codec.positional;
     const pos = pk && isWord(o[pk]) ? (o[pk] as string) : undefined;
-    return form(o.kind as string, pos, o, pos !== undefined ? ['kind', pk!] : ['kind'], codec);
+    return form(o.kind as string, pos, o, pos !== undefined ? ['kind', pk!] : ['kind'], codec, path);
   }
-  return form(undefined, undefined, o, [], codec);
+  return form(undefined, undefined, o, [], codec, path);
 }
 
-function itemDoc(x: unknown, codec: DataCodec, singular: string): Doc {
+function itemDoc(x: unknown, codec: DataCodec, singular: string, path: string): Doc {
   const o = x as Record<string, unknown>;
   if (o && typeof o === 'object' && !Array.isArray(o) && isWord(o.id))
-    return form(singular, o.id as string, o, ['id'], codec);
-  return toDoc(x, codec, undefined, false);
+    return form(singular, o.id as string, o, ['id'], codec, path);
+  return toDoc(x, codec, undefined, path, false);
 }
 
 function form(
@@ -354,19 +386,20 @@ function form(
   o: Record<string, unknown>,
   skip: string[],
   codec: DataCodec,
+  path: string,
 ): Doc {
   const parts: [string | null, Doc][] = [];
   if (pos !== undefined) parts.push([null, atomText(pos)]);
   for (const [k, val] of Object.entries(o)) {
     if (skip.includes(k) || val === undefined) continue;
-    parts.push([keyName(k), toDoc(val, codec, k, false)]);
+    parts.push([keyName(k), toDoc(val, codec, k, under(path, k), false)]);
   }
   return { open: '(', head, parts };
 }
 
 /** JSON (a document, an IR summary, an issue list) as S-expression text. */
 export function printData(value: unknown, codec: DataCodec = DocumentCodec): string {
-  return layout(toDoc(value, codec, undefined, true), 0);
+  return layout(toDoc(value, codec, undefined, '', true), 0);
 }
 
 /** S-expression text back to JSON; the inverse of `printData` for the same codec. */
@@ -375,30 +408,36 @@ export function readData(text: string, codec: DataCodec = DocumentCodec): { valu
   if (r.error) return { error: r.error };
   if (r.nodes.length !== 1) return { error: { message: `expected one form, read ${r.nodes.length}`, offset: 0 } };
   try {
-    return { value: fromNode(r.nodes[0], codec, undefined, true, text) };
+    return { value: fromNode(r.nodes[0], codec, undefined, '', true, text) };
   } catch (e) {
     return { error: { message: (e as Error).message, offset: 0 } };
   }
 }
 
-function fromNode(node: SNode, codec: DataCodec, parentKey: string | undefined, root: boolean, text: string): unknown {
+function fromNode(
+  node: SNode,
+  codec: DataCodec,
+  parentKey: string | undefined,
+  path: string,
+  root: boolean,
+  text: string,
+): unknown {
   if (node.kind === 'atom') return node.value;
   if (node.kind === 'keyword') throw new Error(`a keyword :${node.name} with no value`);
-  // a MesoQL form (a list headed by a word) inside an inline key is kept as its canonical text; a record is data
+  // a MesoQL form (a list headed by a word) at an inline slot is its canonical one-line text; a record is data
   if (
-    parentKey &&
-    codec.inline?.includes(parentKey) &&
+    isInline(codec, path) &&
     node.kind === 'list' &&
     node.items[0]?.kind === 'atom' &&
     typeof node.items[0].value === 'string'
   )
-    return printNode(node);
+    return flat(nodeDoc(node));
   if (node.kind === 'vector') {
     const singular = parentKey ? codec.sections[parentKey] : undefined;
     return node.items.map((it) =>
       singular && it.kind === 'list'
-        ? fromItem(it, codec, singular, text)
-        : fromNode(it, codec, undefined, false, text),
+        ? fromItem(it, codec, singular, path, text)
+        : fromNode(it, codec, undefined, path, false, text),
     );
   }
   const items = node.items;
@@ -423,18 +462,24 @@ function fromNode(node: SNode, codec: DataCodec, parentKey: string | undefined, 
       i = 2;
     }
   }
-  readKeywords(items, i, o, codec, text);
+  readKeywords(items, i, o, codec, path, text);
   return o;
 }
 
-function fromItem(node: SNode & { kind: 'list' }, codec: DataCodec, singular: string, text: string): unknown {
+function fromItem(
+  node: SNode & { kind: 'list' },
+  codec: DataCodec,
+  singular: string,
+  path: string,
+  text: string,
+): unknown {
   const items = node.items;
   if (items[0]?.kind === 'atom' && items[0].value === singular && items[1]?.kind === 'atom') {
     const o: Record<string, unknown> = { id: items[1].value };
-    readKeywords(items, 2, o, codec, text);
+    readKeywords(items, 2, o, codec, path, text);
     return o;
   }
-  return fromNode(node, codec, undefined, false, text);
+  return fromNode(node, codec, undefined, path, false, text);
 }
 
 function readKeywords(
@@ -442,6 +487,7 @@ function readKeywords(
   from: number,
   o: Record<string, unknown>,
   codec: DataCodec,
+  path: string,
   text: string,
 ) {
   for (let i = from; i < items.length; i++) {
@@ -450,6 +496,6 @@ function readKeywords(
     const v = items[++i];
     if (!v) throw new Error(`:${k.name} has no value`);
     const key = !k.quoted && KEYWORD.test(k.name) ? kebabToCamel(k.name) : k.name;
-    o[key] = fromNode(v, codec, key, false, text);
+    o[key] = fromNode(v, codec, key, under(path, key), false, text);
   }
 }

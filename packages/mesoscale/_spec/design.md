@@ -341,8 +341,12 @@ JSON toggle.
 
 - **Codec:** a section item is `(section-singular id :key value …)`; an object with a `kind` word is `(kind …)`; a
   quantity is `(15 A)`; any other object is a record `(:key value …)`; arrays are `[…]`; camelCase keys are kebab-case
-  keywords, and a key that would not read back (an id used as a key) is quoted, `:"p.ALB"`. MesoQL values (`select`,
-  `selection`, `at`, `target`, `entry`, `exit`) are written as forms, not strings.
+  keywords, and a key that would not read back (an id used as a key) is quoted, `:"p.ALB"`. MesoQL values are written as
+  forms, not strings, at their slots only: a look's `select`, a view's `selection` and `cutaway`, a camera's `focus`, an
+  annotation's `target`, a site's `at`, a relation's `entry` and `exit` (matched by the key and its parent's, so
+  `params.target` stays data). A form is printed on one line, and only when the string is already its canonical text;
+  any other string (two spaces, a comment) stays a quoted string. So `read(print(json))` is the JSON for every string,
+  and reading hand-written text keeps an address's canonical text.
 - **Layout:** SeqQL's printer rules (positionals then keywords, one line when it fits 80 columns), Lisp indentation.
 - **Tested:** `read(print(json))` equals `json` and `print(read(text))` is a fixed point, on all five example documents
   and their IR summaries (`_test/sexpr.test.ts`).
@@ -355,7 +359,10 @@ form and a materialized one, as Mol\* has `SchemaItem` and `Location`/`Loci`.
 
 - **Schematized:** an address is written with document ids, `(and (entity e.catalase) (in c.exosome))`. It is checked
   against the document (symbol, arity, types, and that every id names a node of the right kind), with issues at the
-  document path, like any other.
+  document path, like any other. Its type is the one its slot asks for, not its head's: a look's `select`, a view's
+  `selection` and `cutaway`, a camera's `focus` and an annotation's `target` are selections; a relation's `entry` and
+  `exit` are sites, whose names are checked against the entity's `sites`; a site's `at` and a contact's `a` and `b` are
+  residues.
 - **Materialized:** `evaluateMesoQL` turns it into **MesoLoci**: per placement set, sorted runs `[start, end)` of copy
   indices. A **MesoLocation** is one copy, `{set, index}`, with the stable id `<population>#<ordinal>`. Runs, not one
   entry per copy: every resolver writes a population contiguously, so `(population p.lipids)` is one run however many
@@ -392,7 +399,10 @@ opaque form, "depending on context".
   entity names its structure: the insulin granule is an entity whose parts are a superstructure. Populations instance it
   like any entity. Superstructures nest; a cycle is refused (`superstructure.cycle`).
 - **Both levels from one description:** a population's `detail` is `parts` (each copy resolved into the superstructure's
-  contents) or `entity` (one body a copy). Ids inside share the document's namespace, so MesoQL addresses them.
+  contents) or `entity` (one body a copy). Ids inside share the document's namespace, so MesoQL addresses them; a
+  structural reference (a population's compartment or entity, a model's populations, a relation's subjects) sees only
+  its own document's sections, so a superstructure's contents stay its own, and a superstructure does not see a
+  sibling's.
 - **Resolved once:** the runtime compiles each superstructure as a document of its own, with the session's cache
   (`superstructureDoc`), and the IR keeps one `superstructure` node (its template sets, its frame) plus an `instances`
   node under each placement set whose copies stand for it. Nothing is multiplied in the IR.

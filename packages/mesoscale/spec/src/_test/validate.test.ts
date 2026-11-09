@@ -10,6 +10,10 @@ import { validate } from '../format/validate.js';
 import { exosomeDoc } from '../examples/exosome.js';
 import { galleryDoc, gallerySubset } from '../examples/gallery.js';
 import { yeastDoc } from '../examples/yeast.js';
+import { betaCellDoc, BetaCellResources } from '../examples/betacell.js';
+import { nucleoidDoc } from '../examples/nucleoid.js';
+import { DefaultResolvers } from '../resolvers/index.js';
+import { compile } from '../runtime/runtime.js';
 
 // Static validation (design.md §7.4): the examples are valid; each broken document gives the issue a UI can point at.
 
@@ -41,6 +45,8 @@ describe('validate', () => {
   it('a wrong format or a newer major version is refused', () => {
     expect(codes({ ...exosomeDoc(), format: 'mvsj' as 'meso_view_spec' })).toEqual(['format.version']);
     expect(codes({ ...exosomeDoc(), version: '1.0.0' })).toContain('format.version');
+    // a version is required (F11)
+    expect(codes({ ...exosomeDoc(), version: undefined as unknown as string })).toContain('format.version');
   });
 
   it('duplicate and malformed ids', () => {
@@ -117,5 +123,158 @@ describe('validate', () => {
   it('a spatial resource whose frame no alignment reaches the world', () => {
     const d = exosomeDoc();
     expect(codes({ ...d, alignments: [] })).toContain('frame.unaligned');
+  });
+
+  // F9: a malformed document (a missing field, a null where an object goes) is an issue, never a throw
+  const clone = <T>(x: T): T => JSON.parse(JSON.stringify(x));
+  /** Every object a document holds in a list: section items, superstructure contents, looks, annotations, steps. */
+  function* items(d: any): Generator<{ list: any[]; i: number }> {
+    const lists = (o: any, keys: readonly string[]) => keys.flatMap((k) => (Array.isArray(o?.[k]) ? [o[k]] : []));
+    const sections = ['frames', 'alignments', 'resources', 'entities', 'compartments', 'populations', 'instances'];
+    const rest = ['catalogs', 'relations', 'models', 'evidence', 'activities', 'views', 'superstructures', 'tours'];
+    const inner = ['entities', 'compartments', 'populations', 'models', 'relations'];
+    for (const list of lists(d, [...sections, ...rest])) for (let i = 0; i < list.length; i++) yield { list, i };
+    for (const ss of d.superstructures ?? [])
+      for (const list of lists(ss, inner)) for (let i = 0; i < list.length; i++) yield { list, i };
+    for (const v of d.views ?? [])
+      for (const list of lists(v, ['looks', 'annotations'])) for (let i = 0; i < list.length; i++) yield { list, i };
+    for (const t of d.tours ?? [])
+      for (const list of lists(t, ['steps'])) for (let i = 0; i < list.length; i++) yield { list, i };
+  }
+
+  it('never throws: every item nulled, every field of every item deleted or nulled (F9)', () => {
+    const docs = [exosomeDoc(), galleryDoc(), yeastDoc(), betaCellDoc(), nucleoidDoc()];
+    let tried = 0;
+    for (const doc of docs) {
+      const base = clone(doc) as any;
+      const n = [...items(base)].length;
+      for (let k = 0; k < n; k++) {
+        const nth = () => {
+          const d = clone(base);
+          return { d, at: [...items(d)][k] };
+        };
+        const { d, at } = nth();
+        const keys = Object.keys(at.list[at.i] ?? {});
+        at.list[at.i] = null;
+        expect(() => validate(d), `item ${k} null`).not.toThrow();
+        tried++;
+        for (const key of keys)
+          for (const value of [undefined, null]) {
+            const { d: e, at: a } = nth();
+            if (value === undefined) delete a.list[a.i][key];
+            else a.list[a.i][key] = null;
+            expect(() => validate(e), `item ${k} ${key} ${value}`).not.toThrow();
+            tried++;
+          }
+      }
+    }
+    expect(tried).toBeGreaterThan(1000);
+  });
+
+  it('the malformed documents the gate found: an error from validate, no throw from compile (F9)', async () => {
+    const opts = { resolvers: DefaultResolvers, load: (id: string) => BetaCellResources[id]?.() };
+    const d = exosomeDoc();
+    const b = betaCellDoc();
+    const c0 = d.compartments[0];
+    const cases: MesoViewSpecDoc[] = [
+      { ...d, compartments: [{ ...c0, geometry: { kind: 'ellipsoid' } as any }, ...d.compartments.slice(1)] },
+      { ...d, relations: [{ id: 'r.x', kind: 'binds' } as any] },
+      { ...d, entities: [null as any, ...d.entities] },
+      { ...d, models: d.models!.map((m, i) => (i ? m : ({ ...m, populations: undefined } as any))) },
+      { ...d, alignments: d.alignments!.map((a) => ({ ...a, transform: undefined }) as any) },
+      { ...b, tours: [{ id: 't.x' } as any] },
+      { ...d, views: [null as any] },
+    ];
+    for (const doc of cases) {
+      expect(errors(doc).length, JSON.stringify(doc).slice(0, 0)).toBeGreaterThan(0);
+      await expect(compile(doc, opts)).resolves.toBeDefined();
+    }
+  });
+
+  it('a location, a detail and an arrangement kind are one of their words (F6, FN3, FN6)', () => {
+    const b = betaCellDoc();
+    const [g, r] = b.populations;
+    const at = (doc: MesoViewSpecDoc) => errors(doc).map((i) => [i.code, i.path]);
+    expect(at({ ...b, populations: [g, { ...r, location: 'surface' as 'interior' }] })).toEqual([
+      ['value.range', '/populations/1/location'],
+    ]);
+    expect(at({ ...b, populations: [{ ...g, detail: 'part' as 'parts' }, r] })).toEqual([
+      ['value.range', '/populations/0/detail'],
+    ]);
+    expect(at({ ...b, populations: [g, { ...r, arrangement: { kind: 'lattic' } as never }] })).toEqual([
+      ['value.range', '/populations/1/arrangement/kind'],
+    ]);
+    const [i0, i1] = b.instances!;
+    expect(at({ ...b, instances: [{ ...i0, location: 'membrne' as 'membrane' }, i1] })).toEqual([
+      ['value.range', '/instances/0/location'],
+    ]);
+    expect(at({ ...b, instances: [i0, { ...i1, detail: 'body' as 'entity' }] })).toEqual([
+      ['value.range', '/instances/1/detail'],
+    ]);
+    // an instance in a membrane its compartment does not declare, as a population there
+    const bare = { ...b, compartments: b.compartments.map((c) => ({ ...c, membrane: undefined })) };
+    expect(at({ ...bare, instances: [{ ...i0, location: 'membrane' as const }, i1] })).toEqual([
+      ['location.membrane', '/instances/0/location'],
+    ]);
+  });
+
+  it('two models refining one model is an overlap, naming both refiners (R3)', () => {
+    const d = exosomeDoc();
+    const refiner = (id: string) => ({
+      id,
+      kind: 'procedural' as const,
+      method: 'meso.relax',
+      populations: [],
+      refines: 'm.recipe',
+    });
+    const one = { ...d, models: [...d.models!, refiner('m.r1')] };
+    expect(errors(one)).toEqual([]);
+    const two = { ...d, models: [...d.models!, refiner('m.r1'), refiner('m.r2')] };
+    const e = errors(two);
+    expect(e.map((i) => [i.code, i.path])).toEqual([['model.overlap', `/models/${d.models!.length + 1}/refines`]]);
+    expect(e[0].ids).toEqual(['m.r1', 'm.r2']);
+    // a chain (r2 refines r1 refines the recipe) is not an overlap
+    expect(errors({ ...d, models: [...d.models!, refiner('m.r1'), { ...refiner('m.r2'), refines: 'm.r1' }] })).toEqual(
+      [],
+    );
+  });
+
+  it('annotation ids are ids: the pattern, and unique across the document (F7)', () => {
+    const d = exosomeDoc();
+    const k = d.views!.length;
+    const withAnnotation = (id: string) => ({
+      ...d,
+      views: [...d.views!, { id: 'v.x', annotations: [{ id, target: '(all)', text: 't' }] }],
+    });
+    expect(errors(withAnnotation('bad id')).map((i) => [i.code, i.path])).toEqual([
+      ['id.invalid', `/views/${k}/annotations/0/id`],
+    ]);
+    expect(errors(withAnnotation(d.entities[0].id)).map((i) => [i.code, i.path])).toEqual([
+      ['id.duplicate', `/views/${k}/annotations/0/id`],
+    ]);
+  });
+
+  it("a positioned annotation's evidence is checked too (FN7)", () => {
+    const d = exosomeDoc();
+    const k = d.views!.length;
+    const v = {
+      id: 'v.x',
+      annotations: [{ id: 'an.x', target: { position: [0, 0, 0] }, text: 't', evidence: ['ev.nope'] }],
+    };
+    expect(errors({ ...d, views: [...d.views!, v] } as MesoViewSpecDoc).map((i) => [i.code, i.path])).toEqual([
+      ['ref.missing', `/views/${k}/annotations/0/evidence/0`],
+    ]);
+  });
+
+  it('a unit is a unit, not a property every object has (F10)', () => {
+    const d = galleryDoc();
+    const p = d.populations[1];
+    const with_ = (abundance: object) =>
+      errors({ ...d, populations: [d.populations[0], { ...p, abundance } as never, ...d.populations.slice(2)] }).map(
+        (i) => i.code,
+      );
+    expect(with_({ concentration: { value: 1, unit: 'toString' } })).toEqual(['unit.unknown']);
+    expect(with_({ density: { value: 1, unit: 'constructor' } })).toEqual(['unit.unknown']);
+    expect(errors({ ...d, units: { length: 'toString' as 'nm' } }).map((i) => i.code)).toContain('unit.unknown');
   });
 });

@@ -9,6 +9,7 @@ import { exosomeDoc, ExosomeResources } from '../examples/exosome.js';
 import { galleryDoc } from '../examples/gallery.js';
 import { yeastDoc } from '../examples/yeast.js';
 import { betaCellDoc, BetaCellResources } from '../examples/betacell.js';
+import { nucleoidDoc } from '../examples/nucleoid.js';
 import { DocumentCodec, IRCodec, printData, readData, readSexpr } from '../format/sexpr.js';
 import { irToJson } from '../ir/ir.js';
 import { DefaultResolvers } from '../resolvers/index.js';
@@ -17,7 +18,13 @@ import { compile } from '../runtime/runtime.js';
 // The S-expression spelling (design.md §3.7): a real second spelling of the same tree. read(print(json)) is the JSON;
 // print(read(text)) is the text (a fixed point).
 
-const docs = { exosome: exosomeDoc(), gallery: galleryDoc(), yeast: yeastDoc(), betacell: betaCellDoc() };
+const docs = {
+  exosome: exosomeDoc(),
+  gallery: galleryDoc(),
+  yeast: yeastDoc(),
+  betacell: betaCellDoc(),
+  nucleoid: nucleoidDoc(),
+};
 
 describe('S-expression spelling', () => {
   for (const [name, doc] of Object.entries(docs)) {
@@ -91,5 +98,44 @@ describe('S-expression spelling', () => {
     expect(readSexpr('(a (b c]').error?.message).toMatch(/closes a \(/);
     expect(readSexpr('(a "x').error?.message).toMatch(/unterminated/);
     expect(readData('(a :Bad 1)').error?.message).toMatch(/bad keyword/);
+  });
+
+  it('a quoted keyword with a bad escape is a read error, not a throw', () => {
+    expect(readSexpr(':"\\q"').error?.message).toMatch(/bad keyword/);
+    expect(readData('(a :"\\q" 1)').error?.message).toMatch(/bad keyword/);
+  });
+
+  it('a MesoQL string reads back exactly: printed flat when canonical, quoted when not (F2)', () => {
+    const d = exosomeDoc();
+    const long =
+      '(or (population p.CD9) (population p.CD63) (population p.ITGB1) (population p.RAB5A) (population p.catalase))';
+    for (const select of [
+      long,
+      '(population  p.catalase)',
+      '(population p.catalase) ; a note',
+      '(meso.population p.catalase)',
+      ' (population p.catalase)',
+      '(:a 1)',
+      '(15 A)',
+      '(nil)',
+      '()',
+    ]) {
+      const doc = { ...d, views: [{ id: 'v', looks: [{ select }], selection: select }] };
+      const text = printData(doc);
+      const back = readData(text);
+      expect(back.value).toEqual(JSON.parse(JSON.stringify(doc)));
+      expect(printData(back.value)).toBe(text);
+    }
+    // a canonical address is a form, on one line however long
+    expect(printData({ ...d, views: [{ id: 'v', looks: [{ select: long }] }] })).toContain(`:select ${long}`);
+  });
+
+  it('only the MesoQL slots are inlined, not a key of the same name elsewhere (F8)', () => {
+    const json = {
+      format: 'meso_view_spec',
+      models: [{ id: 'm', params: { target: { kind: 'sphere', radius: 5 }, at: '(entity e.x)' } }],
+      custom: { ns: { focus: { kind: 'box', size: [1, 2, 3] } } },
+    };
+    expect(readData(printData(json)).value).toEqual(json);
   });
 });
