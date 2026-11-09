@@ -103,7 +103,10 @@ maintainer first (2026-10-25). All are v6 (master); the MRC reader and the parti
   - Library: `segmentScale` reads a GPU-written member's CPU placeholder (zeros): with the sphere raster on,
     `predictRecords` may send its levels to the raster (unseen on the M1, which has none). The pool's library commits
     (`f99c9e0b1`, `a6d265ce8`) to their own lane from `origin/master`.
-  - A cell-sized surface not tried; the selection's cost is linear in the regions in view (scaling guard).
+  - A cell-sized surface not tried. A view's selection is O(regions) + O(taken) (review S1: the passes over every
+    triangle are gone), still linear in the mesh's regions: a hierarchy over the regions for a cell-sized surface.
+  - Object graphics on a membrane does not show its active Quality (review S4: `graphicsState` knows no membranes).
+  - Pool capacities sum to about 1.1 × the budget, and a hidden species keeps its share (review nits).
 
 - **Lipid membranes, left from lane `lipid-tiles`** (2026-11-08; progress/2026-11-08-lipid-tiles.md, Numbers):
   - Round 3, parked by Ludo (2026-11-08: the membrane goes view-dependent and procedural in round 4: lipids only for
