@@ -23,6 +23,8 @@ import { ApiArea, ApiResult } from './area.js';
 const SessionExtensions = ['.molx', '.molj'];
 /** SeqViewSpec documents: shown in the sequence by `load.svs` (the loaders feature), after the other files. */
 const SvsExtensions = ['svs', 'svsj', 'svsx'];
+/** What a lazy stub's `owns.opens` sniff reads of a file: its first bytes (viewer-spec.md §3). */
+const SniffBytes = 64 * 1024;
 
 export class LoadApi extends ApiArea {
   readonly id = 'load';
@@ -111,13 +113,23 @@ export class LoadApi extends ApiArea {
       const claimed: { file: File; op: string }[] = [];
       if (ctx.extensions.opener) {
         for (const f of rest) {
-          const op = await ctx.extensions.opener(fileOf(f));
+          // a document is told by its name or its first bytes: a large data file is not read whole for it
+          const head = {
+            name: f.name,
+            content: () =>
+              f
+                .slice(0, SniffBytes)
+                .arrayBuffer()
+                .then((b) => new Uint8Array(b)),
+          };
+          const op = await ctx.extensions.opener(head);
           if (op) claimed.push({ file: f, op });
         }
       }
       // The files dropped with a document are its resources, not data to open.
       const claimedFiles = claimed.map((c) => c.file);
-      const resources = claimed.length ? rest.filter((f) => !claimedFiles.includes(f)) : [];
+      const isClaimed = new Set(claimedFiles);
+      const resources = claimed.length ? rest.filter((f) => !isClaimed.has(f)) : [];
       const data = claimed.length ? [] : rest;
       const before = structureTransforms(ctx);
       const opened: string[] = [];

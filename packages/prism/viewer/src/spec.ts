@@ -573,7 +573,7 @@ export interface LazyViewerExtensionStub {
     /**
      * An operation of this extension that opens the files it claims (by `fileExtensions`, or `sniff` for files whose
      * extension does not tell) as documents, not data: `load.files` runs it with `{ file, files }` (the drop's other
-     * files) instead of the format readers.
+     * files) instead of the format readers. Its `sniff` then reads only a file's first 64 KiB.
      */
     readonly opens?: string;
   };
