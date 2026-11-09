@@ -94,20 +94,26 @@ maintainer first (2026-10-25). All are v6 (master); the MRC reader and the parti
   - Picking a lipid: a pick's slot maps to (triangle, lipid) through the selection (`LipidSelection.lipidAt`), but the
     membrane's `getLoci` is still empty; per-lipid layers stay per species (a slot is not a lipid).
   - Ghosts, outlines, transparency and glow per species: not mapped onto the membrane yet (colours by zoom are, round
-    4c: far its colour, then its species'). A colour change redraws every surface (0.95 s on model ×20): a colour-only
-    update path. A dither of the spheres themselves at the switch: a graphics library change (the object fade is off
-    with levels), Ludo's call.
+    4c: far its colour, then its species'; round 5: then its atoms by element). A colour change builds the membrane's
+    objects again (the patch texture itself is a few hundred kB): a colour-only update path. A dither of the spheres
+    themselves at the switch: a graphics library change (the object fade is off with levels), Ludo's call.
   - Spheres far look past the budget: far parts empty. Thinning lipids at generation needs each sphere grown by its
     instance's scale (the spheres shader takes the model scale only): a library change.
-  - The bump stands in for a head pattern (Mol*'s value noise) and has no fade with distance.
-  - The tiles are not made per view (built whole, as before).
+  - The far texture is flat colour (the heads' heights shaded into it), no normal from the head bumps; it switches from
+    the spheres at 2 px by default (round 5): the tube's silhouette is the mesh's there, not lipids'.
+  - Close views at x600 and x20 alike: about 170-240 ms a frame on the M1 under Dawn (lipids of 8-16 px at atom detail,
+    their spheres writing depth: no early-z); not the scale. A lighter close level (fewer, larger spheres from 8 px) is
+    the next lever, Ludo's call after Chrome.
+  - Bands where a cell or region seam meets the coarser levels (round 5 moved the near surface to the mid-plane: it
+    stood over them at the lowest head); the cause of the bands is not pinned.
+  - The tiles are not made per view (built whole, as before), and refused past 50 M lipids (round 5).
   - Export as Blob chunks (the browser holds the file before it saves it); streaming to disk through the File System
     Access API where there is one.
   - Library: `segmentScale` reads a GPU-written member's CPU placeholder (zeros): with the sphere raster on,
     `predictRecords` may send its levels to the raster (unseen on the M1, which has none). The pool's library commits
     (`f99c9e0b1`, `a6d265ce8`) to their own lane from `origin/master`.
-  - A cell-sized surface not tried. A view's selection is O(regions) + O(taken) (review S1: the passes over every
-    triangle are gone), still linear in the mesh's regions: a hierarchy over the regions for a cell-sized surface.
+  - A view's selection is O(triangles in view) + O(cells in reach) (round 5): linear in the mesh's triangles, 2-9 ms at
+    x600 for both leaflets; past the brief's 4 ms on wide close views.
   - Object graphics on a membrane does not show its active Quality (review S4: `graphicsState` knows no membranes).
   - Pool capacities sum to about 1.1 × the budget, and a hidden species keeps its share (review nits).
 

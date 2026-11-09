@@ -261,9 +261,12 @@ on a tree row (its right-click or its ⋯), the same menu, in this order:
   (tiles are built whole, no lipid dropped by its size on screen), Export (the cutter's full build). A wrap is a task on
   the status line (Ludo, 2026-11-08: its stage, as Remeshing at 42 Å 2/5, Baking lipid tiles (outer) 12/16, Cutting
   triangles, Uploading lipids, its percentage and Cancel; a cancel leaves no membrane and no step); it yields to the
-  page between stages, but a single stage (the patch's first read, the GPU count pass's readback, the render objects'
-  merge, the far surfaces' build) runs whole. Both draw with levels of detail (the membrane's `detail`, balanced by
-  default).
+  page between stages, but a single stage (the patch's first read, the GPU count pass's readback over the small
+  triangles, the render objects' merge, the far surfaces' build) runs whole. Round 5 (a billion lipids at x600): a large
+  triangle is cut by cells, each made in view only, the leaflet facing the camera; the far look is the patch's top view
+  as a mipmapped texture on the mesh's own triangles, mapped as the cutter maps it (the spheres' look at 2 px, their
+  mean far away); colours by zoom go far colour, species, atoms by element; tiles are refused past 50 M lipids, their
+  menu entry says small objects. Both draw with levels of detail (the membrane's `detail`, balanced by default).
 - **Remove** (an object: with its file and labels).
 
 On a clip or a label (its guide in 3D, or its row): **Move**, **Rotate**, (a clip: **Size**, **Flip**; a label: **Edit

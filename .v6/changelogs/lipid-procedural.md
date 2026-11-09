@@ -15,6 +15,12 @@
   (the GPU culler skips the rest) and may carry a view hook the culler calls where the view changed, before it culls.
 - A cut membrane's far surface takes over from its spheres without a seam: coloured as the switch's sphere level shows
   the patch from above, at that level's tops, dithered in by distance over a px band (round 4c).
+- A membrane of a billion lipids (model_vertexcolor at x600) wraps in about a second and flies at the texture's cost
+  far away: a large triangle is cut by cells made in view only (the leaflet facing the camera), nothing O(lipids) at
+  the wrap; the far look is the patch's top view as a mipmapped texture on the mesh's own triangles (any scale), from
+  2 px a lipid by default. Colours by zoom go down to each atom by element. Tiles are refused past 50 M lipids (the
+  message names Wrap with lipids). Graphics: a mesh's patch texture mapped by planes and cells (`dPatchTexture`,
+  WebGPU), and a repeat mipmap sampler.
 - A lipid membrane is coloured as a particle list: `mesoscale.style`, `mesoscale.colors` and `mesoscale.colorLevels`
   take it as `particles` (its species its entities; colours by zoom: its colour far, its species' near); the explorer's
   Look and right-click › Color… on it.
