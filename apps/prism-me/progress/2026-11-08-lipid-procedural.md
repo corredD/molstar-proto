@@ -379,3 +379,50 @@ conformer's atoms (greens dominate). Matching the surface to what the levels dra
    drops Clip; offer the clip items alone; the culler culls clipped instances (`syncClip`), the surfaces are meshes:
    check both looks and both methods in Dawn.
 4. The gate on `541038d31...HEAD` (lane-reviewer, lane-skeptic), the checks, `r4b` images for the cow, the report.
+
+## Round 4b, items 4–6 (2026-11-08, second session)
+
+**Item 4, the cutter's regularity: the cause, measured before the fix** (the CHARMM-GUI patch; a probe over the meshes
+in `~/Downloads/3D-Models`, not committed). The patch's box is **154 Å**, not the 232 Å the brief assumed. A copy: a hit
+of the same patch lipid, turned the same way, in one region.
+
+| Mesh       | triangles across (median / max) | triangles over the box | copies before | copies after (`a37397aea`) |
+| ---------- | ------------------------------- | ---------------------- | ------------- | -------------------------- |
+| teddy ×100 | 168 / 746 Å                     | 1,768 of 3,192         | 30.3 %        | 0.01 %                     |
+| model ×20  | 250 / 407 Å                     | 2,880 of 2,880         | 29.3 %        | 0.06 %                     |
+| cow ×100   | 24 / 98 Å                       | 0                      | 1.5 %         | 0.04 %                     |
+
+The patch repeated at its period inside a region, and inside one triangle (a smaller `RegionCell` cannot help: single
+triangles exceed the period). The other suspects, measured: conformers (40 members for 442 outer lipids, 13 lipids a
+conformer at the median, each lipid at its own head and azimuth: left as they are, the images do not read regular after
+the fix); neighbouring regions' offsets and spins (3 of 9,126 pairs alike on the teddy, the chance level: not a cause).
+Lipids a leaflet unchanged (teddy 594,817 → 594,768).
+
+**Fix (`9562891fe` failing, `a37397aea`):** each region is cut by cells in the patch's plane (p = offset + Rz(θ) q,
+before the wrap, so each region's grid is turned and moved), a side of 0.99 × box / √2 (a cell at any spin holds one
+image of a lipid at most); each cell takes the patch at one of 4,096 spins and offsets by a hash of its region and index
+(`cellEntry`, the same u32 arithmetic in WGSL). The kernel the same: equal counts and affines on Dawn, the fixture's
+triangles over several cells (asserted); the cells' table after the regions in one buffer, the write pass being at the
+stage's 10 storage buffers (an 11th made it write nothing). The far surface maps its points through the cell
+(`0f58da6eb` failing, `f55d5c821`): a point's colour the species of the nearest cut head, 90 % and up.
+
+**Decided (this session, for Ludo to confirm):** seams now lie at the cells' borders too (about every 108 Å inside a
+large region), not only at region borders as Ludo had them (2026-11-08): with a 154 Å patch and triangles up to 746 Å,
+no seam inside a region means the period. The flat-plane test reads "no seams inside a cell".
+
+**Item 5, one membrane, two generators (`d5e802216` failing, `5c2c7f614`).** A tiles membrane now has: species rows (eye
+and colour; a hidden species' lipids taken out of every tile's atoms, `shownLipids`, the assigner unchanged: a tile
+mixes species), colorBy (it had it), Levels (it had it), the far surfaces at its heads (Far: Both or Spheres). **What
+tiles cannot do, and why:** Texture and the pool's switches (Lipids from / down to / at most): tiles are built whole,
+every tile drawn, nothing dropped by its size on screen (the per-view selection is the cutter's); the operation refuses
+Texture on tiles. Their far surfaces are coloured as the cutter would cut the patch on the tiles' surface: the species'
+proportions and grain, not each tile's own lipids. Export stays the cutter's (a tiles membrane would export its tiles,
+not built here). ~70 production lines.
+
+**Item 6, Clip (`b53fbd70c` failing, `ae86ffed4`).** The membrane's params carry `clip` (Prism's cuts reach it, as
+`RepresentationClip.isClippable`); its spheres and surfaces are made with it; a clip alone updates the drawn objects'
+clip values (`BaseGeometry.updateValues` with the props they were made with), nothing built again, so a handle's preview
+does not rebuild 1 M-vertex surfaces a frame. The right-click offers Add clip… on a membrane. Dawn: a plane through the
+center removes one half of the image in all four looks (cutter spheres, cutter texture, tiles spheres, tiles both), the
+other half kept. Headless without WebGPU a membrane draws nothing, so `clipping.add` refuses it there ("draws nothing
+yet"); the app's test checks the menu item and that the cell is clippable.
