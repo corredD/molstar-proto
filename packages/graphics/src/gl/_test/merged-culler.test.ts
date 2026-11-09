@@ -260,5 +260,13 @@ describe('the GPU culler of a merged object', () => {
       expect(args[(j * 2 + 1) * words]).toBe(levels[j][3]);
     }
     expect(levels[3][3]).toBeLessThan(drawCount);
+    // and its spheres scaled at each level to make up for the fewer (`tSegment`, the shader's `segmentLod`): drawn at a
+    // coarse level at full size, a membrane read as scattered dots (Ludo's third try, 2026-11-08)
+    const segment = (ro.values as { tSegment: { ref: { value: { array: Float32Array } } } }).tSegment.ref.value.array;
+    for (let j = 0; j < levels.length; ++j) {
+      expect(segment[(0 * 2 + 1) * 4 + j]).toBe(1);
+      expect(segment[(1 * 2 + 1) * 4 + j]).toBeCloseTo((levels[j] as unknown as number[])[4], 5);
+    }
+    expect((levels[3] as unknown as number[])[4]).toBeGreaterThan(1);
   });
 });

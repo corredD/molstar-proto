@@ -86,6 +86,18 @@ import {
 
 export type MergeableValues = RenderableValues & BaseValues;
 
+/**
+ * The levels of detail a member of a merged object is drawn at: none for a gridless member (one cell: full detail at
+ * each level it overlaps, as the CPU culling in `cullSegment`), but for one whose instances the GPU writes
+ * (`gpuInstances`: no CPU culling to match), each instance at its own; the GPU culler's counts and the shader's
+ * per-level scales (`tSegment`) both follow it
+ */
+export function drawnLodLevels(member: MergeableValues): LodLevelsValue | undefined {
+  const gridless = member.instanceGrid.ref.value.cellSize <= 1;
+  if (gridless && !(member as { gpuInstances?: unknown }).gpuInstances) return undefined;
+  return member.lodLevels?.ref.value as LodLevelsValue | undefined;
+}
+
 export const MergedTypes = ['spheres', 'mesh', 'cylinders', 'lines', 'points'] as const;
 
 /**
@@ -867,12 +879,9 @@ export function createMergedValues(type: MergedType, members: readonly Mergeable
 
   /** member i's own (sphere-count-dependent) per-level scales, the second element of its segment data */
   function writeSegmentLod(i: number, array: Float32Array) {
-    const member = members[i];
-    // gridless members are drawn at full (undecimated) detail, see the
-    // `cellSize <= 1` branch in renderable.ts's cullSegment - no per-level
-    // scale compensation applies then, else spheres would render too large
-    const gridless = member.instanceGrid.ref.value.cellSize <= 1;
-    const lodLevels = !gridless ? (member.lodLevels?.ref.value as LodLevelsValue | undefined) : undefined;
+    // the scales of the levels the member is drawn at (`drawnLodLevels`): none for a plain gridless member, else its
+    // spheres would render too large
+    const lodLevels = drawnLodLevels(members[i]);
     const s0 = lodLevels?.[0]?.[4] ?? 1;
     const s1 = lodLevels?.[1]?.[4] ?? 1;
     const s2 = lodLevels?.[2]?.[4] ?? 1;

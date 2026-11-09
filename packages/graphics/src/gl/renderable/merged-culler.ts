@@ -37,7 +37,7 @@ import {
 import { IndirectRecordBytes, type MultiDrawBaseData } from '../render-item.js';
 import type { GraphicsResources } from '../context.js';
 import { type AnimationValues, getAnimationSlack, type LodLevelsValue, LodView } from '../renderable.js';
-import { InstanceDataVec4s, type Merged, type MergeableValues, packInstanceData } from './merged.js';
+import { drawnLodLevels, InstanceDataVec4s, type Merged, type MergeableValues, packInstanceData } from './merged.js';
 import { packAffineRows } from '../affine-rows.js';
 
 /**
@@ -175,16 +175,6 @@ export interface MergedRasterParams {
 const GpuCellDivisions = 4;
 
 const SplitBuckets = GpuCellDivisions * GpuCellDivisions * GpuCellDivisions;
-/**
- * A member's levels of detail as the culler draws them: none for a gridless member (one cell: full detail at each level
- * it overlaps, as the CPU culling), but for one whose instances the GPU writes (`gpuInstances`), each instance at its own
- */
-function levelsOf(member: MergeableValues) {
-  const gridless = member.instanceGrid.ref.value.cellSize <= 1;
-  if (gridless && !(member as { gpuInstances?: unknown }).gpuInstances) return undefined;
-  return member.lodLevels?.ref.value as LodLevelsValue | undefined;
-}
-
 const splitBox = new Float64Array(SplitBuckets * 6);
 const splitCount = new Uint32Array(SplitBuckets);
 const splitCellOf = new Int32Array(SplitBuckets);
@@ -517,7 +507,7 @@ export function createMergedCuller(
     const drawCount: number = member.drawCount.ref.value;
     // gridless members draw at full detail at each level they overlap, as the CPU culling (`cullSegment`), but those
     // whose instances the GPU writes (`gpuInstances`): no CPU culling to match, each instance's level its own
-    const memberLevels = levelsOf(member);
+    const memberLevels = drawnLodLevels(member);
     out[o] = levelCount === 0 || !memberLevels ? drawCount : memberLevels[j][3];
     const first = k * instanceCount + segments.instanceBases[s];
     if (indexed) {
@@ -704,7 +694,7 @@ export function createMergedCuller(
     out[o + 3] = radius;
     new Uint32Array(out.buffer, out.byteOffset + (o + 4) * 4, 1)[0] = segments.instanceBases[s];
     out[o + 5] = (member as { padding?: ValueCell<number> }).padding?.ref.value ?? 0;
-    const memberLevels = levelsOf(member);
+    const memberLevels = drawnLodLevels(member);
     for (let j = 0; j < 4; ++j) out[o + 8 + j] = memberLevels?.[j]?.[4] ?? 1;
   }
 
