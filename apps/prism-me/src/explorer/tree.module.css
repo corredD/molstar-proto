@@ -152,6 +152,11 @@
   animation-timeline: scroll(self inline);
 }
 
+/* a population short of its target ("354 of 506", prism.md §4.1) */
+.short {
+  color: var(--msp-color-warning);
+}
+
 .actions {
   flex: none;
   display: flex;

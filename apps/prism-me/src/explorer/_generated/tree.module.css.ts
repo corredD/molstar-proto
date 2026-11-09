@@ -32,6 +32,7 @@ export const classes = {
   'properties': 'msp-me-tree-properties',
   'propertiesContent': 'msp-me-tree-propertiesContent',
   'row': 'msp-me-tree-row',
+  'short': 'msp-me-tree-short',
   'slot': 'msp-me-tree-slot',
   'split': 'msp-me-tree-split',
   'swatch': 'msp-me-tree-swatch',
@@ -178,6 +179,10 @@ defineStyles('me/explorer/tree.module.css', `@layer msp.components {
   animation-fill-mode: both;
   animation-timeline: scroll(self inline);
   overflow: hidden;
+}
+
+.msp-me-tree-short {
+  color: var(--msp-color-warning);
 }
 
 .msp-me-tree-actions {
