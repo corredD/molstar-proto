@@ -63,6 +63,9 @@ is not built is [../TODO.md](../TODO.md).
     far texture, colour by zoom object → species → atoms, tiles texture. Built and gated at 3b71b9e84 (×600: wrap 1.4 s, whole
     18 ms, middle 21 ms; close 130–240 ms open, M5, Ludo’s call). Waits on Ludo’s try on 1354. Round 6 started 2026-11-09 (brief dbd4ac8bb): the yeast
     cell’s nine membranes (yeast_cell_viewer meshes, 1.08 M triangles, data outside the repo).
+  - `merge-master` (`me/merge-master` from `origin/prism-me`, port 1355, [brief](2026-11-09-merge-master.md) on its
+    branch): started 2026-11-09 (Ludo: merge master, conflicts favoring master). origin/master dabbf29f9, 59 commits,
+    474 files, mostly graphics.
   - `paint` (`me/paint`, port 1352, [brief](2026-11-08-paint.md) on its branch): Paint v1, approved 2026-11-08 (the
     mesoscale extension, random orientation, no collisions in v1). On hold until the lipids (Ludo, 2026-11-08).
 
