@@ -95,9 +95,9 @@ export function indexDoc(doc: MesoViewSpecDoc, inner = true): DocIndex {
   const kinds = new Map<Id, Kind>();
   const paths = new Map<Id, string>();
   for (const [section, kind] of Sections) {
-    const xs = (doc[section] as readonly { id: Id }[] | undefined) ?? [];
+    const xs = arrayOr(doc[section] as readonly ({ id: Id } | null)[] | undefined);
     xs.forEach((x, i) => {
-      if (!kinds.has(x.id)) {
+      if (x && !kinds.has(x.id)) {
         kinds.set(x.id, kind);
         paths.set(x.id, `/${section}/${i}`);
       }
@@ -107,16 +107,16 @@ export function indexDoc(doc: MesoViewSpecDoc, inner = true): DocIndex {
   if (inner)
     (doc.superstructures ?? []).forEach((ss, i) => {
       for (const [section, kind] of InnerSections)
-        ((ss[section] as readonly { id: Id }[] | undefined) ?? []).forEach((x, j) => {
-          if (!kinds.has(x.id)) {
+        arrayOr(ss?.[section] as readonly ({ id: Id } | null)[] | undefined).forEach((x, j) => {
+          if (x && !kinds.has(x.id)) {
             kinds.set(x.id, kind);
             paths.set(x.id, `/superstructures/${i}/${section}/${j}`);
           }
         });
     });
-  (doc.views ?? []).forEach((v, i) =>
-    (v.annotations ?? []).forEach((a, j) => {
-      if (!kinds.has(a.id)) {
+  arrayOr(doc.views).forEach((v, i) =>
+    arrayOr(v?.annotations).forEach((a, j) => {
+      if (a && !kinds.has(a.id)) {
         kinds.set(a.id, 'annotation');
         paths.set(a.id, `/views/${i}/annotations/${j}`);
       }
@@ -124,6 +124,8 @@ export function indexDoc(doc: MesoViewSpecDoc, inner = true): DocIndex {
   );
   return { kinds, paths };
 }
+
+const arrayOr = <T>(xs: readonly T[] | null | undefined): readonly T[] => (Array.isArray(xs) ? xs : []);
 
 /** `nested`: a superstructure checked as a document of its own, whose superstructures the outer check covers. */
 export function validate(doc: MesoViewSpecDoc, nested = false): Issue[] {
@@ -145,6 +147,34 @@ export function validate(doc: MesoViewSpecDoc, nested = false): Issue[] {
     if (!Array.isArray(doc[s])) err('ref.missing', `${s} is required (an array)`, `/${s}`);
   }
   if (out.length) return out;
+  // the shape the checks below read: lists are lists of objects (a malformed document is issues, never a throw)
+  const objects = (xs: unknown, path: string, required = false) => {
+    if (xs == null) return required ? err('value.missing', 'a list is required here', path) : undefined;
+    if (!Array.isArray(xs)) return err('value.missing', 'a list is expected here', path);
+    xs.forEach((x, i) => {
+      if (!x || typeof x !== 'object' || Array.isArray(x))
+        err('value.missing', 'an object is expected here', `${path}/${i}`);
+    });
+  };
+  for (const [section] of Sections) objects(doc[section], `/${section}`);
+  arrayOr(doc.superstructures).forEach((ss, i) => {
+    if (!ss || typeof ss !== 'object') return;
+    objects(ss.compartments, `/superstructures/${i}/compartments`, true);
+    objects(ss.populations, `/superstructures/${i}/populations`, true);
+    for (const [section] of InnerSections) objects(ss[section], `/superstructures/${i}/${section}`);
+  });
+  arrayOr(doc.views).forEach((v, i) => {
+    if (!v || typeof v !== 'object') return;
+    objects(v.looks, `/views/${i}/looks`);
+    objects(v.annotations, `/views/${i}/annotations`);
+  });
+  arrayOr(doc.tours).forEach((t, i) => {
+    if (t && typeof t === 'object') objects(t.steps, `/tours/${i}/steps`, true);
+  });
+  if (out.length) return out;
+  const need = (v: unknown, what: string, path: string) => {
+    if (v == null) err('value.missing', `${what} is required`, path);
+  };
 
   const docUnit = doc.units?.length ?? 'nm';
   if (!isLengthUnit(docUnit)) err('unit.unknown', `units.length ${docUnit} is not A, nm or um`, '/units/length');
@@ -184,12 +214,24 @@ export function validate(doc: MesoViewSpecDoc, nested = false): Issue[] {
   };
   const length = (l: Length | undefined, path: string, positive = true) => {
     if (l === undefined) return;
+    if (l === null || (typeof l !== 'number' && typeof l !== 'object'))
+      return err('value.missing', 'a length is a number or a quantity (value unit)', path);
     const v = typeof l === 'number' ? l : l.value;
     if (typeof l === 'object' && !isLengthUnit(l.unit)) err('unit.unknown', `length unit ${l.unit}`, path);
     if (!Number.isFinite(v) || (positive && v <= 0)) err('value.range', `length ${v} must be positive`, path);
   };
+  // MesoQL addresses (design.md §3.8): parsed and their ids checked against the document
+  const address = (q: string | undefined, path: string, required = false) => {
+    if (q == null) return required ? err('value.missing', 'an address is required', path) : undefined;
+    if (typeof q !== 'string') return err('mesoql.syntax', 'an address is a MesoQL string, (entity e.x)', path);
+    for (const i of parseMesoQL(q, { kinds }, path).issues) out.push(i);
+  };
   const evidence = (ids: readonly Id[] | undefined, path: string) =>
-    (ids ?? []).forEach((e, i) => ref(e, 'evidence', `${path}/${i}`));
+    arrayOr(ids).forEach((e, i) => ref(e, 'evidence', `${path}/${i}`));
+  const triple = (xs: readonly Length[] | undefined, path: string) => {
+    if (!Array.isArray(xs) || xs.length !== 3) return err('value.missing', 'three lengths [x y z]', path);
+    xs.forEach((r, j) => length(r, `${path}/${j}`));
+  };
 
   // frames and alignments
   const frames = doc.frames ?? [];
@@ -212,11 +254,14 @@ export function validate(doc: MesoViewSpecDoc, nested = false): Issue[] {
     }
   }
   als.forEach((a, i) => {
+    need(a.from, 'from', `/alignments/${i}/from`);
+    need(a.to, 'to', `/alignments/${i}/to`);
     ref(a.from, 'frame', `/alignments/${i}/from`);
     ref(a.to, 'frame', `/alignments/${i}/to`);
     ref(a.activity, 'activity', `/alignments/${i}/activity`);
     evidence(a.evidence, `/alignments/${i}/evidence`);
     const t = a.transform;
+    if (!t) return err('value.missing', 'an alignment has a transform', `/alignments/${i}/transform`);
     if (t.matrix && t.matrix.length !== 16)
       err('value.range', 'matrix has 16 numbers', `/alignments/${i}/transform/matrix`);
     if (t.rotation && Math.abs(Math.hypot(...t.rotation) - 1) > 1e-3)
@@ -254,8 +299,8 @@ export function validate(doc: MesoViewSpecDoc, nested = false): Issue[] {
     const g = c.geometry;
     if (!g) return err('ref.missing', 'geometry is required', `${p}/geometry`);
     if (g.kind === 'sphere') length(g.radius, `${p}/geometry/radius`);
-    else if (g.kind === 'ellipsoid') g.radii.forEach((r, j) => length(r, `${p}/geometry/radii/${j}`));
-    else if (g.kind === 'box') g.size.forEach((r, j) => length(r, `${p}/geometry/size/${j}`));
+    else if (g.kind === 'ellipsoid') triple(g.radii, `${p}/geometry/radii`);
+    else if (g.kind === 'box') triple(g.size, `${p}/geometry/size`);
     else if (g.kind === 'mesh' || g.kind === 'segmentation') ref(g.resource, 'resource', `${p}/geometry/resource`);
     else if (g.kind !== 'implicit')
       err('value.range', `geometry kind ${(g as { kind: string }).kind}`, `${p}/geometry/kind`);
@@ -275,6 +320,8 @@ export function validate(doc: MesoViewSpecDoc, nested = false): Issue[] {
   // populations
   doc.populations.forEach((pop, i) => {
     const p = `/populations/${i}`;
+    need(pop.entity, 'entity', `${p}/entity`);
+    need(pop.compartment, 'compartment', `${p}/compartment`);
     ref(pop.entity, 'entity', `${p}/entity`);
     ref(pop.compartment, 'compartment', `${p}/compartment`);
     evidence(pop.evidence, `${p}/evidence`);
@@ -298,11 +345,11 @@ export function validate(doc: MesoViewSpecDoc, nested = false): Issue[] {
         length(a.growth.length, `${p}/arrangement/growth/length`);
       }
     }
-    (pop.constraints ?? []).forEach((k, j) => {
-      if (k.kind === 'min-distance') {
+    arrayOr(pop.constraints).forEach((k, j) => {
+      if (k?.kind === 'min-distance') {
         ref(k.to, ['population', 'compartment'], `${p}/constraints/${j}/to`);
         length(k.distance, `${p}/constraints/${j}/distance`);
-      } else if (k.kind === 'placed-fraction' && !(k.min >= 0 && k.min <= 1))
+      } else if (k?.kind === 'placed-fraction' && !(k.min >= 0 && k.min <= 1))
         err('value.range', 'min is in [0, 1]', `${p}/constraints/${j}/min`);
     });
   });
@@ -312,14 +359,14 @@ export function validate(doc: MesoViewSpecDoc, nested = false): Issue[] {
     if ('count' in a) {
       if (!(a.count >= 0)) err('value.range', 'count is not negative', `${path}/count`);
     } else if ('concentration' in a) {
-      if (!(a.concentration.unit in ConcentrationToMolar))
-        err('unit.unknown', `concentration unit ${a.concentration.unit}`, `${path}/concentration/unit`);
-      if (!(a.concentration.value >= 0))
+      if (!(a.concentration?.unit in ConcentrationToMolar))
+        err('unit.unknown', `concentration unit ${a.concentration?.unit}`, `${path}/concentration/unit`);
+      if (!(a.concentration?.value >= 0))
         err('value.range', 'concentration is not negative', `${path}/concentration/value`);
     } else if ('density' in a) {
-      if (!(a.density.unit in DensityToPerA2))
-        err('unit.unknown', `density unit ${a.density.unit}`, `${path}/density/unit`);
-      if (!(a.density.value >= 0)) err('value.range', 'density is not negative', `${path}/density/value`);
+      if (!(a.density?.unit in DensityToPerA2))
+        err('unit.unknown', `density unit ${a.density?.unit}`, `${path}/density/unit`);
+      if (!(a.density?.value >= 0)) err('value.range', 'density is not negative', `${path}/density/value`);
     } else if ('volumeFraction' in a) {
       if (!(a.volumeFraction >= 0 && a.volumeFraction < 1))
         err('value.range', 'volumeFraction is in [0, 1)', `${path}/volumeFraction`);
@@ -333,7 +380,7 @@ export function validate(doc: MesoViewSpecDoc, nested = false): Issue[] {
   (doc.relations ?? []).forEach((r, i) => {
     for (const k of ['entry', 'exit'] as const) {
       const q = r[k];
-      if (q === undefined) continue;
+      if (q == null) continue;
       const parsed = parseMesoQL(q, { kinds }, `/relations/${i}/${k}`);
       out.push(...parsed.issues);
       if (parsed.expr && parsed.expr.symbol.name !== 'site')
@@ -342,14 +389,14 @@ export function validate(doc: MesoViewSpecDoc, nested = false): Issue[] {
     if (r.angle !== undefined && !(r.angle >= 0 && r.angle <= 180))
       err('value.range', 'angle is in [0, 180] degrees', `/relations/${i}/angle`, [r.id]);
     length(r.spacing, `/relations/${i}/spacing`);
-    (r.contacts ?? []).forEach((c, j) => {
-      for (const k of ['a', 'b'] as const)
-        out.push(...parseMesoQL(c[k], { kinds }, `/relations/${i}/contacts/${j}/${k}`).issues);
+    arrayOr(r.contacts).forEach((c, j) => {
+      for (const k of ['a', 'b'] as const) address(c?.[k], `/relations/${i}/contacts/${j}/${k}`, true);
     });
-    r.subjects.forEach((s, j) =>
+    if (!Array.isArray(r.subjects)) err('value.missing', 'a relation has subjects', `/relations/${i}/subjects`, [r.id]);
+    arrayOr(r.subjects).forEach((s, j) =>
       ref(s, ['population', 'instance', 'entity', 'compartment'], `/relations/${i}/subjects/${j}`),
     );
-    (r.objects ?? []).forEach((s, j) =>
+    arrayOr(r.objects).forEach((s, j) =>
       ref(s, ['population', 'instance', 'entity', 'compartment'], `/relations/${i}/objects/${j}`),
     );
     evidence(r.evidence, `/relations/${i}/evidence`);
@@ -360,7 +407,10 @@ export function validate(doc: MesoViewSpecDoc, nested = false): Issue[] {
   const models = doc.models ?? [];
   models.forEach((m, i) => {
     const p = `/models/${i}`;
-    m.populations.forEach((pid, j) => {
+    need(m.method, 'method', `${p}/method`);
+    if (!Array.isArray(m.populations))
+      err('value.missing', 'a model lists its populations ([] for a refiner)', `${p}/populations`, [m.id]);
+    arrayOr(m.populations).forEach((pid, j) => {
       ref(pid, 'population', `${p}/populations/${j}`);
       const by = realizedBy.get(pid);
       if (by) err('model.overlap', `${pid} is realized by ${by} and ${m.id}`, `${p}/populations/${j}`, [pid]);
@@ -369,7 +419,7 @@ export function validate(doc: MesoViewSpecDoc, nested = false): Issue[] {
     (m.inputs ?? []).forEach((r, j) => ref(r, 'resource', `${p}/inputs/${j}`));
     (m.avoid ?? []).forEach((r, j) => ref(r, 'model', `${p}/avoid/${j}`));
     ref(m.refines, 'model', `${p}/refines`);
-    if (m.refines && m.populations.length)
+    if (m.refines && m.populations?.length)
       warn(
         'value.range',
         `${m.id} refines ${m.refines}: it realizes that model's populations; its own list is ignored`,
@@ -379,7 +429,7 @@ export function validate(doc: MesoViewSpecDoc, nested = false): Issue[] {
     ref(m.activity, 'activity', `${p}/activity`);
     evidence(m.evidence, `${p}/evidence`);
   });
-  const avoid = new Map(models.map((m) => [m.id, [...(m.avoid ?? []), ...(m.refines ? [m.refines] : [])]]));
+  const avoid = new Map(models.map((m) => [m.id, [...arrayOr(m.avoid), ...(m.refines ? [m.refines] : [])]]));
   const state = new Map<Id, 1 | 2>();
   const visit = (id: Id, trail: Id[]): boolean => {
     if (state.get(id) === 2) return false;
@@ -415,18 +465,12 @@ export function validate(doc: MesoViewSpecDoc, nested = false): Issue[] {
     );
   });
 
-  // MesoQL addresses (design.md §3.8): parsed and their ids checked against the document
-  const address = (q: string | undefined, path: string) => {
-    if (q === undefined) return;
-    if (typeof q !== 'string') return err('mesoql.syntax', 'an address is a MesoQL string, (entity e.x)', path);
-    for (const i of parseMesoQL(q, { kinds }, path).issues) out.push(i);
-  };
   doc.entities.forEach((e, i) =>
-    (e.sites ?? []).forEach((s, j) => {
+    arrayOr(e.sites).forEach((s, j) => {
       const p = `/entities/${i}/sites/${j}`;
-      if (!s.at && !s.position) err('value.range', `site ${s.id} needs residues (:at) or a position`, p, [e.id]);
-      address(s.at, `${p}/at`);
-      if (s.axis && Math.abs(Math.hypot(...s.axis) - 1) > 1e-3)
+      if (!s?.at && !s?.position) err('value.range', `site ${s?.id} needs residues (:at) or a position`, p, [e.id]);
+      address(s?.at, `${p}/at`);
+      if (s?.axis && Math.abs(Math.hypot(...s.axis) - 1) > 1e-3)
         err('value.range', 'a site axis is a unit vector', `${p}/axis`);
     }),
   );
@@ -440,7 +484,7 @@ export function validate(doc: MesoViewSpecDoc, nested = false): Issue[] {
     }
     address(v.cutaway, `/views/${i}/cutaway`);
     (v.looks ?? []).forEach((l, j) => {
-      address(l.select, `/views/${i}/looks/${j}/select`);
+      address(l.select, `/views/${i}/looks/${j}/select`, true);
       if (l.color !== undefined && !/^#[0-9a-fA-F]{6}$/.test(l.color))
         err('value.range', `color ${l.color} is #rrggbb`, `/views/${i}/looks/${j}/color`);
       if (l.representation !== undefined && !['spheres', 'structure', 'surface'].includes(l.representation))
@@ -461,7 +505,12 @@ export function validate(doc: MesoViewSpecDoc, nested = false): Issue[] {
   });
   ref(doc.session?.view, 'view', '/session/view');
   ref(doc.session?.tour, 'tour', '/session/tour');
-  (doc.tours ?? []).forEach((t, i) => t.steps.forEach((st, j) => ref(st.view, 'view', `/tours/${i}/steps/${j}/view`)));
+  (doc.tours ?? []).forEach((t, i) =>
+    arrayOr(t.steps).forEach((st, j) => {
+      need(st.view, 'view', `/tours/${i}/steps/${j}/view`);
+      ref(st.view, 'view', `/tours/${i}/steps/${j}/view`);
+    }),
+  );
 
   // superstructures: each checked as a document of its own (its sections' issues, under its path); no cycles
   const ssById = new Map((doc.superstructures ?? []).map((x) => [x.id, x]));
@@ -472,6 +521,8 @@ export function validate(doc: MesoViewSpecDoc, nested = false): Issue[] {
   // instances: what they are, where they sit, and a pose that is a pose
   (doc.instances ?? []).forEach((x, i) => {
     const p = `/instances/${i}`;
+    need(x.entity, 'entity', `${p}/entity`);
+    need(x.compartment, 'compartment', `${p}/compartment`);
     ref(x.entity, 'entity', `${p}/entity`);
     ref(x.compartment, 'compartment', `${p}/compartment`);
     ref(x.frame, 'frame', `${p}/frame`);

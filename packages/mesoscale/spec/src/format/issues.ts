@@ -42,6 +42,7 @@ export const IssueCodes = {
   'location.membrane': 'A membrane location in a compartment without a membrane',
   'unit.unknown': 'A unit is not one the format knows',
   'value.range': 'A value is out of its range',
+  'value.missing': 'A required value is missing, or is not the shape it should be (a list, an object)',
   'model.overlap': 'A population is realized by more than one model',
   'model.unrealized': 'A population is realized by no model: the default resolver packs it',
   'model.cycle': "Models avoid each other's copies in a cycle",

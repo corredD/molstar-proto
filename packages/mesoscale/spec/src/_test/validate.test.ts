@@ -10,6 +10,10 @@ import { validate } from '../format/validate.js';
 import { exosomeDoc } from '../examples/exosome.js';
 import { galleryDoc, gallerySubset } from '../examples/gallery.js';
 import { yeastDoc } from '../examples/yeast.js';
+import { betaCellDoc, BetaCellResources } from '../examples/betacell.js';
+import { nucleoidDoc } from '../examples/nucleoid.js';
+import { DefaultResolvers } from '../resolvers/index.js';
+import { compile } from '../runtime/runtime.js';
 
 // Static validation (design.md §7.4): the examples are valid; each broken document gives the issue a UI can point at.
 
@@ -117,5 +121,71 @@ describe('validate', () => {
   it('a spatial resource whose frame no alignment reaches the world', () => {
     const d = exosomeDoc();
     expect(codes({ ...d, alignments: [] })).toContain('frame.unaligned');
+  });
+
+  // F9: a malformed document (a missing field, a null where an object goes) is an issue, never a throw
+  const clone = <T>(x: T): T => JSON.parse(JSON.stringify(x));
+  /** Every object a document holds in a list: section items, superstructure contents, looks, annotations, steps. */
+  function* items(d: any): Generator<{ list: any[]; i: number }> {
+    const lists = (o: any, keys: readonly string[]) => keys.flatMap((k) => (Array.isArray(o?.[k]) ? [o[k]] : []));
+    const sections = ['frames', 'alignments', 'resources', 'entities', 'compartments', 'populations', 'instances'];
+    const rest = ['catalogs', 'relations', 'models', 'evidence', 'activities', 'views', 'superstructures', 'tours'];
+    const inner = ['entities', 'compartments', 'populations', 'models', 'relations'];
+    for (const list of lists(d, [...sections, ...rest])) for (let i = 0; i < list.length; i++) yield { list, i };
+    for (const ss of d.superstructures ?? [])
+      for (const list of lists(ss, inner)) for (let i = 0; i < list.length; i++) yield { list, i };
+    for (const v of d.views ?? [])
+      for (const list of lists(v, ['looks', 'annotations'])) for (let i = 0; i < list.length; i++) yield { list, i };
+    for (const t of d.tours ?? [])
+      for (const list of lists(t, ['steps'])) for (let i = 0; i < list.length; i++) yield { list, i };
+  }
+
+  it('never throws: every item nulled, every field of every item deleted or nulled (F9)', () => {
+    const docs = [exosomeDoc(), galleryDoc(), yeastDoc(), betaCellDoc(), nucleoidDoc()];
+    let tried = 0;
+    for (const doc of docs) {
+      const base = clone(doc) as any;
+      const n = [...items(base)].length;
+      for (let k = 0; k < n; k++) {
+        const nth = () => {
+          const d = clone(base);
+          return { d, at: [...items(d)][k] };
+        };
+        const { d, at } = nth();
+        const keys = Object.keys(at.list[at.i] ?? {});
+        at.list[at.i] = null;
+        expect(() => validate(d), `item ${k} null`).not.toThrow();
+        tried++;
+        for (const key of keys)
+          for (const value of [undefined, null]) {
+            const { d: e, at: a } = nth();
+            if (value === undefined) delete a.list[a.i][key];
+            else a.list[a.i][key] = null;
+            expect(() => validate(e), `item ${k} ${key} ${value}`).not.toThrow();
+            tried++;
+          }
+      }
+    }
+    expect(tried).toBeGreaterThan(1000);
+  });
+
+  it('the malformed documents the gate found: an error from validate, no throw from compile (F9)', async () => {
+    const opts = { resolvers: DefaultResolvers, load: (id: string) => BetaCellResources[id]?.() };
+    const d = exosomeDoc();
+    const b = betaCellDoc();
+    const c0 = d.compartments[0];
+    const cases: MesoViewSpecDoc[] = [
+      { ...d, compartments: [{ ...c0, geometry: { kind: 'ellipsoid' } as any }, ...d.compartments.slice(1)] },
+      { ...d, relations: [{ id: 'r.x', kind: 'binds' } as any] },
+      { ...d, entities: [null as any, ...d.entities] },
+      { ...d, models: d.models!.map((m, i) => (i ? m : ({ ...m, populations: undefined } as any))) },
+      { ...d, alignments: d.alignments!.map((a) => ({ ...a, transform: undefined }) as any) },
+      { ...b, tours: [{ id: 't.x' } as any] },
+      { ...d, views: [null as any] },
+    ];
+    for (const doc of cases) {
+      expect(errors(doc).length, JSON.stringify(doc).slice(0, 0)).toBeGreaterThan(0);
+      await expect(compile(doc, opts)).resolves.toBeDefined();
+    }
   });
 });
