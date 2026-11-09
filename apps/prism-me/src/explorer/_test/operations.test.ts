@@ -551,6 +551,21 @@ await api.run('mesoscale.wrapMembrane', { mesh, method: 'cutter', patch: 'charmm
     expect(menu().some((i) => i.id === 'wrap-lipids-all')).toBe(false);
   });
 
+  it('names a VTP mesh row by its file, as before (review S4: its shape’s default label is not a name)', async () => {
+    const v = await viewer();
+    const vtp =
+      '<VTKFile type="PolyData" version="0.1" byte_order="LittleEndian">\n<PolyData>\n<Piece NumberOfPoints="3" NumberOfPolys="1">\n' +
+      '<Points><DataArray type="Float32" Name="Points" NumberOfComponents="3" format="ascii">0 0 0 100 0 0 0 100 0</DataArray></Points>\n' +
+      '<Polys><DataArray type="Int32" Name="connectivity" format="ascii">0 1 2</DataArray>\n' +
+      '<DataArray type="Int32" Name="offsets" format="ascii">3</DataArray></Polys>\n</Piece>\n</PolyData>\n</VTKFile>\n';
+    expectOk(await v.api.load.files({ files: [new File([vtp], 'cell.vtp')] }));
+    const labels = v.api
+      .explorer!.objectsState()
+      .value.filter((o) => o.kind === 'mesh')
+      .map((o) => o.label);
+    expect(labels).toEqual(['membrane.obj', 'cell.vtp']);
+  });
+
   it('maps a pick on a mesh, in a group or whole, to its row; its menu: color, move, clip, label, remove', async () => {
     const v = await viewer();
     const area = v.api.explorer!;
