@@ -14,8 +14,8 @@ is not built is [../TODO.md](../TODO.md).
   merged back (progress file, Review). Not pushed: Ludo signs off first.
   - `mesoviewspec-streaming`: done, merged into `me/mesoviewspec` (56335890c): design.md §6.8, manifest, provider,
     planner, budget, levels as a runtime concept; R5 measured (keep resident lists ≤ ~100). Gate: 13 findings, 9 fixed.
-  - `mvs-spec-reference` (`me/mvs-spec-reference` from `me/mesoviewspec`, [brief](2026-11-08-mvs-spec-reference.md) on
-    its branch): a Seq\*-style `_spec/` (README, topic files, generated reference, a spec check). Sonnet.
+  - `mvs-spec-reference`: done, merged into `me/mesoviewspec`: `_spec/README.md` and topic files, reference generated,
+    `spec` check (stale tables, headers, links, unregistered issue codes). Gate: 1 must-fix, 8 should-fix fixed.
   - `mvs-prism-design`: done, merged into `me/mesoviewspec` (c49e6a236): `packages/mesoscale/_spec/prism.md`, the app
     lanes 0-8 (~3,500 lines) and the questions for Ludo and David (its §11).
   - `mvs-patch`: done, merged into `me/mesoviewspec`: patches (applyPatch with inverses, diff, S-expression spelling),
