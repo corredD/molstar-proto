@@ -156,4 +156,17 @@ describe('a membrane’s far surfaces', () => {
     expect(capped.positions.length / 3).toBeLessThanOrEqual(3000);
     expect(capped.positions.length / 3).toBeGreaterThanOrEqual(mesh.positions.length / 3);
   });
+
+  it('meets the spheres it takes over from at their tops: no step at the switch (round 4c item 7)', () => {
+    // the coarse level: one sphere a lipid, its first atom (the head), grown to 9 Å
+    const table = cutterTable(patch.outer, 2);
+    const top = { atoms: table.members.map((m) => m.positions.slice(0, 3)), radius: 9 };
+    const mesh = flatMesh(200, 4);
+    const regions = cutterRegions(mesh.positions, mesh.indices, 1);
+    const s = farSurface(mesh, regions, table, 'outer', headOffset(table, 'outer'), () => true, 20, undefined, top);
+    // the heads at 20 Å, the spheres' tops at 29 Å over each head, lower between: the surface between, not under the
+    // heads (where the outline and the shadows drew the step as a line along the triangles: the probe, round 4c)
+    expect(s.positions[2]).toBeGreaterThan(22);
+    expect(s.positions[2]).toBeLessThan(29);
+  });
 });
