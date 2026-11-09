@@ -84,6 +84,12 @@ export class MesoDocumentModel {
   /** The issues of the last restore the session does not hold (a list whose placements were missing). */
   private restoreIssues: readonly Issue[] = [];
   private files: ReadonlyMap<string, string | Uint8Array> = new Map();
+  /**
+   * The files dropped with each document state (the saved state cannot hold them): a restore takes back the files of
+   * the document it restores, so an Undo past another open still reads its resources. A `.molx` does not keep them yet
+   * (prism.md §7.1, Mol* assets: open).
+   */
+  private readonly filesOf = new WeakMap<MesoViewSpecDoc, ReadonlyMap<string, string | Uint8Array>>();
   /** The states Undo can reach, newest last: their keys are kept (prism.md §7.3, point 3). */
   private held: Held[] = [];
   /** The custom state's value while the document is unchanged: one object, so a checkpoint measures it once. */
@@ -117,6 +123,7 @@ export class MesoDocumentModel {
       this.url = source.url;
       this.files = source.files ?? new Map();
       this.shown = undefined;
+      this.filesOf.set(doc, this.files);
       this.session = this.newSession(doc);
       const session = this.session;
       const record = await this.adapter.bound(api, () => session.start());
@@ -134,6 +141,7 @@ export class MesoDocumentModel {
     const r = applyPatch(doc, { ...patch, revision: patch.revision ?? newRevision() });
     if (r.issues.length) return { issues: r.issues, inverse: null };
     if (classifyEdit(doc, r.doc) === 'none') return { issues: [], unchanged: true };
+    this.filesOf.set(r.doc, this.files);
     return this.step(async () => {
       const record = await this.adapter.bound(api, () =>
         session.edit(r.doc, `${label} (${classifyPatch(doc, patch)})`),
@@ -174,7 +182,7 @@ export class MesoDocumentModel {
       return;
     }
     const same = saved.doc === this.doc && saved.url === this.url && this.session?.ir;
-    if (saved.url !== this.url) this.files = new Map();
+    this.files = this.filesOf.get(saved.doc) ?? new Map();
     this.url = saved.url;
     this.shown = saved.shown;
     this.session ??= this.newSession(saved.doc);
