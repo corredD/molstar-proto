@@ -364,17 +364,26 @@ export async function createLipidCutter(
     for (let m = 0; m < M; ++m) values.bases.ref.value.write(selection.bases.subarray(m * T, m * T + n), m * T * 4);
   };
   let kernel: ComputeKernel | undefined;
+  /** per member what its identity region holds: its buffer, base and live slots (the rest zeros) */
+  const cleared = Array.from({ length: M }, () => ({ buffer: -1, base: -1, live: 0 }));
   const write = (m: number, target: GpuInstanceTarget, selection: LipidSelection | undefined) => {
     upload(selection);
     const count = Math.min(target.count, selection ? selection.live[m] : totals[m]);
     const transformBytes = 3 * 16;
-    // the slots past the live ones: zeros where views culled on the CPU read them
-    if (count < target.count) {
+    // the slots past the live ones: zeros where views culled on the CPU read them; only those live before (review S3:
+    // the whole rest a frame), all of them in a new buffer or place
+    const last = cleared[m];
+    const fresh = last.buffer !== target.transforms.id || last.base !== target.identityBase + target.instanceBase;
+    const end = fresh ? target.count : Math.min(target.count, last.live);
+    if (count < end) {
       target.transforms.clear(
         (target.identityBase + target.instanceBase + count) * transformBytes,
-        (target.count - count) * transformBytes,
+        (end - count) * transformBytes,
       );
     }
+    last.buffer = target.transforms.id;
+    last.base = target.identityBase + target.instanceBase;
+    last.live = count;
     if (count === 0) return 0;
     const n = selection ? selection.count : T;
     ValueCell.update(values.uMember, m);
