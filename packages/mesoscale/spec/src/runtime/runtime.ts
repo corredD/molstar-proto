@@ -355,8 +355,17 @@ export async function compile(doc: MesoViewSpecDoc, o: RuntimeOptions, depth = 0
   const reports: Record<Id, Readonly<Record<string, unknown>> | undefined> = {};
   // a refined model's result is replaced by its refiner's: its constraints are checked there (design.md §6.7)
   const refinedBy = new Map(models.filter((m) => m.refines).map((m) => [m.refines!, m.id]));
-  const realizes = (m: Model): readonly Id[] =>
-    m.refines ? realizes(models.find((x) => x.id === m.refines) ?? m) : m.populations;
+  /** A model and the models it refines, up to the head of its chain. */
+  const chainOf = (m: Model): Model[] => {
+    const out = [m];
+    for (let x = m; x.refines; ) {
+      const up = models.find((y) => y.id === x.refines);
+      if (!up || out.includes(up)) break;
+      out.push((x = up));
+    }
+    return out;
+  };
+  const realizes = (m: Model): readonly Id[] => chainOf(m).at(-1)!.populations;
   for (const m of order) {
     const resolver = resolvers.get(m.method);
     const popsOf = realizes(m)
@@ -395,9 +404,11 @@ export async function compile(doc: MesoViewSpecDoc, o: RuntimeOptions, depth = 0
       if (lr) inputs.set(id, lr);
       else missing = true;
     }
-    const upstreamModel = m.refines ? models.find((x) => x.id === m.refines) : undefined;
     const upstream = m.refines ? outputs.get(m.refines) : undefined;
-    const avoided = [...(m.avoid ?? []), ...(upstreamModel?.avoid ?? [])].map((a) => outputs.get(a));
+    // a refine stage avoids what every model up its chain avoids
+    const avoids = new Set<Id>();
+    for (const x of chainOf(m)) for (const a of x.avoid ?? []) avoids.add(a);
+    const avoided = [...avoids].map((a) => outputs.get(a));
     if (missing || avoided.some((a) => !a) || (m.refines && !upstream)) {
       issues.push(
         issue(

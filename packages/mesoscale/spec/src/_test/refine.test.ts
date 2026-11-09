@@ -6,8 +6,12 @@
 
 import { describe, expect, it } from 'vitest';
 import { exosomeDoc } from '../examples/exosome.js';
+import type { MesoViewSpecDoc } from '../format/doc.js';
 import { validate } from '../format/validate.js';
 import { placementSets, walk } from '../ir/ir.js';
+import { DefaultResolvers } from '../resolvers/index.js';
+import type { Resolver } from '../runtime/resolver.js';
+import { compile } from '../runtime/runtime.js';
 import { compileExosome, countingResolvers } from './helpers.js';
 
 // Application composition (design.md §6.7): a rigid-body placement fed to a refine stage; both reconcile the same
@@ -69,5 +73,84 @@ describe('refine stages', () => {
     const recipe = [...walk(r.ir!.root)].map(([n]) => n).find((n) => n.ref === 'm.recipe/resolve')!;
     expect(recipe.params).toMatchObject({ refinedBy: 'm.relax' });
     expect(recipe.children ?? []).toEqual([]);
+  });
+});
+
+// Chains of refine stages and models around them (review gate R5, R6, R7): a refiner of a refiner keeps the original's
+// `avoid`; a model that avoids a refined model avoids the refined result; a failed refiner leaves the upstream drawn.
+describe('refine chains', () => {
+  const base = (models: MesoViewSpecDoc['models']): MesoViewSpecDoc => ({
+    format: 'meso_view_spec',
+    version: '0.2.0',
+    metadata: { title: 'chain' },
+    units: { length: 'nm' },
+    entities: [
+      { id: 'e.a', label: 'a', kind: 'protein', radius: 2 },
+      { id: 'e.b', label: 'b', kind: 'protein', radius: 2 },
+    ],
+    compartments: [{ id: 'c', label: 'c', kind: 'cell', geometry: { kind: 'sphere', radius: 100 } }],
+    populations: [
+      { id: 'p.a', entity: 'e.a', compartment: 'c', location: 'interior', abundance: { count: 20 } },
+      { id: 'p.b', entity: 'e.b', compartment: 'c', location: 'interior', abundance: { count: 5 } },
+    ],
+    instances: [{ id: 'i.a', entity: 'e.a', compartment: 'c', pose: { translation: [0, 0, 0] } }],
+    models,
+  });
+  /** A stage that records the obstacles it is given, and (refining) moves the upstream copies by `shift` Å in x. */
+  const stage = (id: string, seen: Map<string, number[]>, o: { shift?: number; fail?: boolean } = {}): Resolver => ({
+    id,
+    version: '0',
+    description: id,
+    arrangements: ['random'],
+    locations: ['interior'],
+    project: (job) => ({ m: job.model.id, obstacles: job.obstacles.map((s) => s.key) }),
+    resolve: (_i, job) => {
+      seen.set(
+        job.model.id,
+        job.obstacles.flatMap((s) => Array.from({ length: s.count }, (_, k) => s.positions[3 * k])),
+      );
+      if (o.fail) throw new Error('boom');
+      if (job.upstream)
+        return {
+          ...job.upstream,
+          sets: job.upstream.sets.map((s) => ({
+            ...s,
+            positions: s.positions.map((v, k) => (k % 3 === 0 ? v + (o.shift ?? 0) : v)),
+          })),
+        };
+      const pop = job.populations[0];
+      const positions = new Float32Array(3 * (pop.requested ?? 0));
+      return {
+        sets: [
+          {
+            key: '',
+            model: job.model.id,
+            frame: 'world',
+            count: pop.requested ?? 0,
+            positions,
+            rotations: new Float32Array(4 * (pop.requested ?? 0)).map((_, k) => (k % 4 === 3 ? 1 : 0)),
+            types: new Int32Array(pop.requested ?? 0),
+            ordinals: Int32Array.from({ length: pop.requested ?? 0 }, (_, k) => k),
+            typeTable: [{ index: 0, population: pop.id, entity: pop.entity.id, compartment: 'c', radius: 20 }],
+          },
+        ],
+        achieved: { [pop.id]: pop.requested ?? 0 },
+      };
+    },
+  });
+
+  it('a refiner of a refiner keeps the avoid of the model at the head of the chain (the instances)', async () => {
+    const seen = new Map<string, number[]>();
+    const doc = base([
+      { id: 'm.pack', kind: 'procedural', method: 'meso.pack', populations: ['p.a'] },
+      { id: 'm.r1', kind: 'procedural', method: 'gate.r1', refines: 'm.pack', populations: [] },
+      { id: 'm.r2', kind: 'procedural', method: 'gate.r2', refines: 'm.r1', populations: [] },
+    ]);
+    const r = await compile(doc, {
+      resolvers: [...DefaultResolvers, stage('gate.r1', seen), stage('gate.r2', seen)],
+    });
+    expect(r.issues.filter((i) => i.severity === 'error')).toEqual([]);
+    expect(seen.get('m.r1')!.length).toBe(1);
+    expect(seen.get('m.r2')!.length).toBe(1);
   });
 });
