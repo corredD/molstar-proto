@@ -141,6 +141,13 @@ function clash(doc: MesoViewSpecDoc, ids: unknown[], except?: Id): string | unde
   }
 }
 
+/** What a patch reads: sections are lists of objects, a view's looks and annotations too (`validate` says the rest). */
+function wellFormed(doc: unknown): boolean {
+  const list = (xs: unknown) => xs === undefined || (Array.isArray(xs) && xs.every(isObj));
+  if (!isObj(doc) || !Sections.every((s) => list(doc[s]))) return false;
+  return ((doc.views ?? []) as Obj[]).every((v) => list(v.looks) && list(v.annotations));
+}
+
 /** A node's place: the list, its index. */
 function find(doc: MesoViewSpecDoc, id: Id): { w: Where; i: number } | undefined {
   for (const s of Sections) {
@@ -339,6 +346,7 @@ export function applyPatch(doc: MesoViewSpecDoc, patch: Patch): PatchResult {
       `for revision "${patch.base}"; the document is at ${doc.revision === undefined ? 'none' : `"${doc.revision}"`}`,
       '/base',
     );
+  if (!wellFormed(doc)) return one('patch.shape', 'the document is not well formed (validate says where)', '');
   let next = doc;
   const inverse: Op[][] = [];
   const touched = new Map<Id, number>();
@@ -429,6 +437,7 @@ function diffList(w: Where, a: readonly PatchNode[], b: readonly PatchNode[], op
  * patch cannot name differs (`version`, `custom`), or a section has an item with no id or two with one.
  */
 export function diff(a: MesoViewSpecDoc, b: MesoViewSpecDoc): Patch | null {
+  if (!wellFormed(a) || !wellFormed(b)) return null;
   const [x, y] = [a as unknown as Obj, b as unknown as Obj];
   const ops: Op[] = [];
   const fields: Record<string, unknown> = {};
@@ -465,24 +474,28 @@ export function diff(a: MesoViewSpecDoc, b: MesoViewSpecDoc): Patch | null {
  * `metadata` (a view's looks and annotations are views'), else `model`. A patch that does not apply is `model`.
  */
 export function classifyPatch(doc: MesoViewSpecDoc, patch: Patch): 'view' | 'model' {
+  try {
+    return classify(doc, patch);
+  } catch {
+    return 'model';
+  }
+}
+
+function classify(doc: MesoViewSpecDoc, patch: Patch): 'view' | 'model' {
   const added = new Map<Id, Where>();
   const view = (w: Where | string | undefined) =>
     typeof w === 'object' && (!('section' in w) || ViewSections.includes(w.section));
+  const where = (parent: string, list?: ListKey) =>
+    list !== undefined && added.has(parent) ? { view: parent, list } : whereOf(doc, parent, list);
   const of = (id: Id) => added.get(id) ?? find(doc, id)?.w;
   for (const op of patch.ops) {
     if (op.op === 'set' && op.id === DocumentId) {
       if (Object.keys(op.fields).some((f) => f !== 'session' && f !== 'metadata')) return 'model';
     } else if (op.op === 'insert') {
-      const w =
-        op.list !== undefined && added.has(op.parent)
-          ? { view: op.parent, list: op.list }
-          : whereOf(doc, op.parent, op.list);
+      const w = where(op.parent, op.list);
       if (!view(w)) return 'model';
       added.set(op.node.id, w as Where);
-    } else if (
-      !view(of(op.id)) ||
-      (op.op === 'move' && op.parent !== undefined && !view(whereOf(doc, op.parent, op.list)))
-    )
+    } else if (!view(of(op.id)) || (op.op === 'move' && op.parent !== undefined && !view(where(op.parent, op.list))))
       return 'model';
   }
   return 'view';
@@ -502,5 +515,7 @@ export function readPatch(text: string): { patch?: Patch; error?: SReadError } {
   if (v.kind !== 'patch' || !Array.isArray(v.ops))
     return { error: { message: 'expected (patch :ops [...])', offset: 0 } };
   const { kind: _, ops, ...rest } = v;
+  if (!ops.every((o) => isObj(o) && typeof o.kind === 'string'))
+    return { error: { message: 'every op is a form, (set id ...)', offset: 0 } };
   return { patch: { format: PatchFormat, ...rest, ops: ops.map(({ kind, ...o }) => ({ op: kind, ...o }) as Op) } };
 }

@@ -520,3 +520,44 @@ describe('review: the document keeps its metadata and its field order', () => {
     expect(bytes(applyPatch(dropped.doc, dropped.inverse!).doc)).toBe(bytes(given.doc));
   });
 });
+
+describe('review: malformed input is issues, never a throw', () => {
+  const doc = exosomeDoc();
+  const bad = (x: object) => ({ ...doc, ...x }) as unknown as MesoViewSpecDoc;
+  const op = patch({ op: 'set', id: 'c.exosome', fields: { label: 'x' } });
+  it('a document that is not well formed is refused by apply and has no diff', () => {
+    for (const d of [
+      bad({ views: 'x' }),
+      bad({ views: [null] }),
+      bad({ frames: 'x' }),
+      bad({ views: [{ id: 'v', looks: [null] }] }),
+    ]) {
+      const r = applyPatch(d, op);
+      expect(r.doc).toBe(d);
+      expect(r.issues[0].code).toBe('patch.shape');
+      expect(diff(d, doc)).toBeNull();
+      expect(diff(doc, d)).toBeNull();
+    }
+  });
+  it('classifyPatch says model for ops it cannot read', () => {
+    for (const p of [
+      patch({ op: 'set', id: 'x', fields: null } as never),
+      { format: PatchFormat, ops: [null] },
+      patch({ op: 'insert', parent: 'views' } as never),
+      { format: PatchFormat, ops: null },
+    ])
+      expect(classifyPatch(doc, p as unknown as Patch)).toBe('model');
+  });
+  it('a move into a view inserted earlier in the patch is a view edit', () => {
+    const p = patch(
+      { op: 'insert', parent: 'views', node: { id: 'v.n' } },
+      { op: 'move', id: 'l.catalase', parent: 'v.n', list: 'looks' },
+    );
+    expect(applyPatch(doc, p).issues).toEqual([]);
+    expect(classifyPatch(doc, p)).toBe('view');
+  });
+  it('a text with an op that is not a form is an error', () => {
+    expect(readPatch('(patch :ops [nil])').error).toBeDefined();
+    expect(readPatch('(patch :ops [3])').error).toBeDefined();
+  });
+});
