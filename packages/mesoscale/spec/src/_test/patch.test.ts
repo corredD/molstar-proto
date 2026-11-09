@@ -377,3 +377,44 @@ describe('patch: the S-expression spelling', () => {
     expect(readPatch('(patch :ops [').error).toBeDefined();
   });
 });
+
+describe("review: nested ids are the document's ids", () => {
+  const doc = exosomeDoc();
+  it('a node that brings a look id the document has is refused, so the inverse of an accepted patch applies', () => {
+    for (const p of [
+      patch(
+        { op: 'insert', parent: 'views', node: { id: 'v.new', looks: [{ id: 'l.lipids', select: '(all)' }] } },
+        { op: 'remove', id: 'l.lipids' },
+      ),
+      patch(
+        { op: 'set', id: 'v.lumen', fields: { looks: [{ id: 'l.lipids', select: '(all)' }] } },
+        { op: 'remove', id: 'l.lipids' },
+      ),
+    ]) {
+      const r = applyPatch(doc, p);
+      expect(r.inverse).toBeNull();
+      expect(r.issues[0]).toMatchObject({ code: 'patch.target', path: '/ops/0' });
+    }
+    // a duplicate inside the node itself: the final check names it
+    const twice = patch({
+      op: 'insert',
+      parent: 'views',
+      node: {
+        id: 'v.new',
+        looks: [
+          { id: 'l.q', select: '(all)' },
+          { id: 'l.q', select: '(all)' },
+        ],
+      },
+    });
+    expect(applyPatch(doc, twice).inverse).toBeNull();
+  });
+  it('a view keeps its own look ids in a set of its looks', () => {
+    const looks = doc.views![0].looks!.map((l) => ({ ...l, color: '#010101' }));
+    expect(applyPatch(doc, patch({ op: 'set', id: 'v.overview', fields: { looks } })).issues).toEqual([]);
+  });
+  it('the reserved id document is no node id', () => {
+    const r = applyPatch(doc, patch({ op: 'insert', parent: 'views', node: { id: 'document' } }));
+    expect(r.issues[0]).toMatchObject({ code: 'patch.target' });
+  });
+});

@@ -123,6 +123,23 @@ function withList(doc: MesoViewSpecDoc, w: Where, list: readonly PatchNode[]): M
   return { ...doc, views: doc.views?.map((v) => (v.id === w.view ? (put(v, w.list) as unknown as typeof v) : v)) };
 }
 
+/** The ids of the looks and annotations a node carries (a view's own lists). */
+const nestedIds = (node: Obj): unknown[] =>
+  [node.looks, node.annotations].flatMap((l) => (Array.isArray(l) ? l.map((x) => (x as PatchNode)?.id) : []));
+
+/** An id the nodes bring that the document has (outside `except`, a view whose lists they replace) or twice; else none. */
+function clash(doc: MesoViewSpecDoc, ids: unknown[], except?: Id): string | undefined {
+  const seen = new Set<unknown>();
+  for (const id of ids) {
+    if (id === undefined) continue;
+    if (seen.has(id)) return `${String(id)} is twice in the node`;
+    seen.add(id);
+    const at = typeof id === 'string' ? find(doc, id) : undefined;
+    if (at && !(except !== undefined && 'view' in at.w && at.w.view === except))
+      return `${String(id)} is already in the document`;
+  }
+}
+
 /** A node's place: the list, its index. */
 function find(doc: MesoViewSpecDoc, id: Id): { w: Where; i: number } | undefined {
   for (const s of Sections) {
@@ -193,7 +210,9 @@ function step(doc: MesoViewSpecDoc, raw: unknown, k: number): { doc: MesoViewSpe
     if (!isObj(op.node) || typeof op.node.id !== 'string') return shape('insert takes a node with an id');
     const w = whereOf(doc, op.parent, op.list);
     if (typeof w === 'string') return bad(w);
-    if (find(doc, op.node.id)) return bad(`${op.node.id} is already in the document`);
+    if (op.node.id === DocumentId || find(doc, op.node.id)) return bad(`${op.node.id} is already in the document`);
+    const dup = clash(doc, nestedIds(op.node));
+    if (dup) return bad(dup);
     const list = listOf(doc, w);
     const at = slot(list, op.after);
     if (at < 0) return bad(`after ${String(op.after)} names no sibling in ${op.parent}`);
@@ -210,6 +229,8 @@ function step(doc: MesoViewSpecDoc, raw: unknown, k: number): { doc: MesoViewSpe
     const { fields } = op;
     if (!isObj(fields)) return shape('set takes fields, {name: value}, null removes a field');
     if ('id' in fields) return shape('set never changes an id');
+    const dup = clash(doc, nestedIds(fields), op.id);
+    if (dup) return bad(dup);
     if (op.id === DocumentId) {
       const f = Object.keys(fields).find((x) => !(TopFields as readonly string[]).includes(x));
       if (f) return shape(`set on ${DocumentId} takes ${TopFields.join(', ')}, not ${f}`);
