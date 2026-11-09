@@ -126,7 +126,8 @@ describe('a membrane’s far surfaces', () => {
       if (nearest === s.species[v]) same += 1;
     }
     expect(n).toBeGreaterThan(200);
-    expect(same / n).toBeGreaterThan(0.9);
+    // a point on an edge between two regions (welded, review S6) takes its first triangle's colour: about 1 in 9 here
+    expect(same / n).toBeGreaterThan(0.85);
   });
 
   it('is closed where its mesh is and holds its vertex cap (review S1, S6: cracks at T-junctions, 3 vertices a triangle)', () => {
