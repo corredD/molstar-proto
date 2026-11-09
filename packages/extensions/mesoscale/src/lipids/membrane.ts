@@ -785,6 +785,7 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
         release();
         builtFor = undefined;
         renderObjects = [];
+        members = [];
       }
       throw e;
     }
@@ -825,6 +826,7 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
       release();
       builtFor = undefined;
       renderObjects = [];
+      members = [];
       return;
     }
     const reuse = builtFor === data;
@@ -998,6 +1000,10 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
     }
     renderObjects = out;
     members = building;
+    // a clip given while this build ran (a handle's preview: outside the state) reached the old members only: all of
+    // this build's carry the latest (review S4)
+    for (const v of members) setClip(v, props.clip);
+    for (const o of out) setClip(o.values as BaseValues, props.clip);
   }
 
   const repr: Representation<MembraneData, typeof LipidMembraneReprParams> = {
@@ -1044,6 +1050,7 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
       release();
       builtFor = undefined;
       renderObjects = [];
+      members = [];
       merged.clear();
       graphics = g;
     },
@@ -1056,12 +1063,20 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
       release();
       builtFor = undefined;
       renderObjects = [];
+      members = [];
       merged.clear();
     },
   };
   // the cutter's lipids, counted on the GPU (the tiles' are `membraneCounts`)
   // a getter (`Object.assign` would copy its value of now)
   Object.defineProperty(repr, 'cutLipids', { get: () => cutLipids });
+  // the clip each drawn member and surface carries (its object count): the race with a redraw (review S4)
+  Object.defineProperty(repr, 'clipCounts', {
+    get: () => [
+      ...members.map((v) => v.dClipObjectCount.ref.value),
+      ...renderObjects.filter((o) => o.type === 'mesh').map((o) => (o.values as BaseValues).dClipObjectCount.ref.value),
+    ],
+  });
   // the pool: its live lipids, its views selected for and regenerations (lipid-procedural's camera path)
   Object.defineProperty(repr, 'pool', {
     get: () => {

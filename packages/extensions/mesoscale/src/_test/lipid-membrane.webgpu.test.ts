@@ -219,6 +219,55 @@ describe.skipIf(!webgpu)('lipid membrane on WebGPU (Dawn)', () => {
     }
   });
 
+  it('keeps a clip given while it redraws: every member and surface cut alike (review S4)', async () => {
+    const plugin = await HeadlessPluginContext.create(
+      { webgpu },
+      DefaultPluginSpec(),
+      { width: Size, height: Size },
+      { backend: 'webgpu' },
+    );
+    try {
+      await plugin.init();
+      registerLipidPatch('dawn-patch', syntheticPatchPdb().text);
+      const params = {
+        ...PD.getDefaultValues(LipidMembraneParams),
+        method: 'cutter' as const,
+        radius: 300,
+        edge: 80,
+        patch: 'dawn-patch',
+        center: Vec3.zero(),
+      };
+      const node = await plugin.build().toRoot().apply(LipidMembrane, params).commit();
+      const repr = plugin.state.data.cells.get(node.ref)!.obj!.data.repr as unknown as {
+        props: typeof params;
+        createOrUpdate: (p: unknown) => { run: () => Promise<void> };
+        clipCounts: number[];
+      };
+      const clip = {
+        variant: 'pixel' as const,
+        objects: [
+          {
+            type: 'plane' as const,
+            invert: false,
+            position: Vec3.zero(),
+            rotation: { axis: Vec3.create(1, 0, 0), angle: 0 },
+            scale: Vec3.create(1, 1, 1),
+            transform: Mat4.identity(),
+          },
+        ],
+      };
+      // a redraw in flight (a species hidden), a clip's preview landing during it (Prism's handle: outside the state)
+      const redraw = repr.createOrUpdate({ ...repr.props, hiddenSpecies: ['POPC'] }).run();
+      await Promise.resolve();
+      const cut = repr.createOrUpdate({ ...repr.props, clip }).run();
+      await Promise.all([redraw, cut]);
+      expect(repr.clipCounts.length).toBeGreaterThan(2);
+      expect(repr.clipCounts.every((n) => n === 1)).toBe(true);
+    } finally {
+      plugin.dispose();
+    }
+  });
+
   it('changes its look without cutting again: no count pass for a new detail (review S5)', async () => {
     const plugin = await HeadlessPluginContext.create(
       { webgpu },
