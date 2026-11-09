@@ -687,7 +687,10 @@ function mentionsId(text: string, id: string): boolean {
   for (let at = text.indexOf(id); at >= 0; at = text.indexOf(id, at + 1)) {
     if (at > 0 && IdChar.test(text[at - 1])) continue;
     const end = at + id.length;
-    if (end < text.length && IdChar.test(text[end])) continue;
+    // a `:` or `.` closing the id (followed by a space or the end) is punctuation, not more of an id
+    const next = text[end];
+    const closes = (next === ':' || next === '.') && (end + 1 === text.length || /\s/.test(text[end + 1]));
+    if (end < text.length && IdChar.test(next) && !closes) continue;
     return true;
   }
   return false;
