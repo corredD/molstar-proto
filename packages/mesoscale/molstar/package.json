@@ -9,12 +9,13 @@
     "node": ">=22.13.0"
   },
   "exports": {
-    "./*": {
-      "molstar-src": "./src/*.ts",
-      "types": "./lib/*.d.ts",
-      "import": "./lib/*.js"
+    ".": {
+      "molstar-src": "./src/index.ts",
+      "types": "./lib/index.d.ts",
+      "import": "./lib/index.js"
     },
-    "./_test/*": null
+    "./_test/*": null,
+    "./_stories/*": null
   },
   "files": [
     "lib",
