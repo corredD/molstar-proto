@@ -6,7 +6,7 @@
 
 import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { Vec3 } from '@molstar/core/math/linear-algebra/3d/vec3';
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
 import { HeadlessPluginContext } from '@molstar/plugin-headless/context';
@@ -64,6 +64,41 @@ describe.skipIf(!webgpu)('lipid membrane on WebGPU (Dawn)', () => {
       }
       // at its levels of detail (the default, balanced): a 512 stride level drew half of this (2026-11-08)
       expect(covered / (Size * Size * 0.25)).toBeGreaterThan(0.8);
+      expect(plugin.canvas3d!.graphics.takeErrors?.() ?? []).toEqual([]);
+    } finally {
+      plugin.dispose();
+    }
+  });
+
+  it('changes its look without cutting again: no count pass for a new detail (review S5)', async () => {
+    const plugin = await HeadlessPluginContext.create(
+      { webgpu },
+      DefaultPluginSpec(),
+      { width: Size, height: Size },
+      { backend: 'webgpu' },
+    );
+    try {
+      await plugin.init();
+      registerLipidPatch('dawn-patch', syntheticPatchPdb().text);
+      const compute = plugin.canvas3d!.graphics.compute!;
+      const created = vi.spyOn(compute, 'createKernel');
+      const params = {
+        ...PD.getDefaultValues(LipidMembraneParams),
+        method: 'cutter' as const,
+        radius: 300,
+        edge: 80,
+        patch: 'dawn-patch',
+        center: Vec3.zero(),
+      };
+      const node = await plugin.build().toRoot().apply(LipidMembrane, params).commit();
+      const counts = () => created.mock.calls.filter(([code]) => code.name === 'lipid-cut-count').length;
+      expect(counts()).toBe(2);
+      await plugin
+        .build()
+        .to(node.ref)
+        .update({ ...params, detail: 'quality' })
+        .commit();
+      expect(counts()).toBe(2);
       expect(plugin.canvas3d!.graphics.takeErrors?.() ?? []).toEqual([]);
     } finally {
       plugin.dispose();

@@ -412,30 +412,43 @@ export function LipidMembraneRepresentation(graphics: GraphicsContext | undefine
     return createRenderObject('spheres', values, Spheres.Utils.createRenderableState(p), -1);
   }
 
+  /** the data the GPU's cutters and assigners were made for: a new look of the same data reuses them (review S5) */
+  let builtFor: MembraneData | undefined;
+
   async function build(data: MembraneData) {
-    release();
     cutLipids = 0;
     if (!graphics?.compute || !canCullOnGpu(graphics)) {
+      release();
+      builtFor = undefined;
       renderObjects = [];
       return;
+    }
+    const reuse = builtFor === data;
+    if (!reuse) {
+      release();
+      builtFor = data;
     }
     const colorOf = speciesColors(data);
     const entries: { visual: number; renderObject: GraphicsRenderObject }[] = [];
     const bounds = Sphere3D.clone(data.sphere);
     groupCount = 0;
     let visual = 0;
-    for (const leaflet of data.cut) {
+    for (let c = 0; c < data.cut.length; ++c) {
+      const leaflet = data.cut[c];
       const { table, mesh } = leaflet;
-      const compute = graphics.compute;
-      const cutter = await createLipidCutter(
-        compute,
-        () => graphics.flush(),
-        table,
-        mesh.positions,
-        mesh.indices,
-        data.kinds.seed,
-      );
-      cutters.push(cutter);
+      if (!reuse) {
+        cutters.push(
+          await createLipidCutter(
+            graphics.compute,
+            () => graphics.flush(),
+            table,
+            mesh.positions,
+            mesh.indices,
+            data.kinds.seed,
+          ),
+        );
+      }
+      const cutter = cutters[c];
       const b = cutBounds(leaflet);
       table.members.forEach((member, m) => {
         const n = cutter.totals[m];
@@ -457,17 +470,14 @@ export function LipidMembraneRepresentation(graphics: GraphicsContext | undefine
         });
       });
     }
-    for (const leaflet of data.leaflets) {
-      const { tileSet, mesh, slots } = leaflet;
-      const assigner = createLipidTileAssigner(
-        graphics.compute,
-        data.kinds,
-        data.edge,
-        mesh.positions,
-        mesh.indices,
-        slots,
-      );
-      assigners.push(assigner);
+    for (let k = 0; k < data.leaflets.length; ++k) {
+      const { tileSet, mesh, slots } = data.leaflets[k];
+      if (!reuse) {
+        assigners.push(
+          createLipidTileAssigner(graphics.compute, data.kinds, data.edge, mesh.positions, mesh.indices, slots),
+        );
+      }
+      const assigner = assigners[k];
       bounds.radius = data.sphere.radius + Math.abs(tileSet.offset) + tileSet.sphere[3];
       tileSet.variants.forEach((tile, v) => {
         const n = slots.counts[v];
@@ -530,6 +540,7 @@ export function LipidMembraneRepresentation(graphics: GraphicsContext | undefine
     mark: () => false,
     destroy: () => {
       release();
+      builtFor = undefined;
       renderObjects = [];
       merged.clear();
     },
