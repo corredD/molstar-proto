@@ -132,7 +132,8 @@ merged object's by-member writes rewritten on master's layout (`syncInstanceRang
 - Quick lane,
   `packages/graphics packages/prism packages/extensions/{mesoscale,cryoet,stage-tools} apps/prism-me packages/plugin/headless`,
   WebGPU through Dawn (`NODE_PATH` the native modules of `~/prism-me-lanes/lipid-procedural`): before the gate's fixes
-  4754 passed, 2 failed, 1 error; after, see the final run.
+  4754 passed, 2 failed, 1 error; final run (on 7157723ea): 4757 passed, 1 failed (`webgpu-points`, inherited), 1 error
+  (the device-listener SIGSEGV, TODO); `decorate-transform` passes.
 - Inherited or not ours: `webgpu-points.test.ts` "picks a ring point" fails on master's own tree too (flaky: passed in
   the lane's full run); `webgpu-bundle-frag-depth.test.ts` fails only under the full parallel run (passes alone, here
   and on master). `webgpu-device-listener.test.ts` (master's) crashes Dawn with SIGSEGV on the lane, passes on master;
