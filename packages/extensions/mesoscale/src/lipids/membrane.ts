@@ -29,7 +29,7 @@ import { PluginStateObject as SO, PluginStateTransform } from '@molstar/plugin/s
 import { assignSlots, type TileKinds, type TriangleSlots } from './assign.js';
 import { createLipidTileAssigner, type LipidTileAssigner } from './assign-kernel.js';
 import { type LipidPatch, parsePatchPdb } from './patch.js';
-import { type CutterTable, cutterTable } from './cutter.js';
+import { type CutterRegions, cutterRegions, type CutterTable, cutterTable } from './cutter.js';
 import { createLipidCutter, type LipidCutter } from './cutter-kernel.js';
 import { farTriangles, icosphere, isotropicRemesh, offsetSurface, type TriMesh } from './remesh.js';
 import { bakeTileSet, type TileSet } from './tiles.js';
@@ -145,6 +145,8 @@ export interface CutLeaflet {
   readonly name: 'outer' | 'inner';
   readonly table: CutterTable;
   readonly mesh: TriMesh;
+  /** the mesh's regions (`cutter.ts`), shared by its leaflets */
+  readonly regions: CutterRegions;
 }
 
 /** How a membrane is made: matched-edge tiles on a remesh, or cellPACKgpu's cutter on the mesh's own triangles */
@@ -191,10 +193,11 @@ export function buildMembrane(
     const mesh =
       surface.mesh ?? centered(icosphere(surface.radius ?? 500, edge > 0 ? edge : suitedEdge(surface)), surface.center);
     const cut: CutLeaflet[] = [];
+    const regions = cutterRegions(mesh.positions, mesh.indices, kinds.seed);
     for (const name of names) {
       const table = getCutterTable(patch, name);
       if (!table) return `No lipid patch named ${patch}: open a patch (a PDB of a bilayer) first.`;
-      cut.push({ name, table, mesh });
+      cut.push({ name, table, mesh, regions });
     }
     const sphere = boundingSphereOf(mesh.positions, Sphere3D());
     return { method, leaflets: [], cut, kinds, edge, sphere };
@@ -215,12 +218,14 @@ export function buildMembrane(
   // triangles
   const lost = surface.mesh ? farTriangles(surface.mesh, base, LostDistance) : undefined;
   const cut: CutLeaflet[] = [];
+  const lostRegions =
+    lost && lost.indices.length > 0 ? cutterRegions(lost.positions, lost.indices, kinds.seed) : undefined;
   for (const name of names) {
     const tileSet = getTileSet(patch, name, edge, kinds);
     if (!tileSet) return `No lipid patch named ${patch}: open a patch (a PDB of a bilayer) first.`;
     const mesh = offsetSurface(base, tileSet.offset);
     out.push({ name, tileSet, mesh, slots: assignSlots(kinds, mesh.indices) });
-    if (lost && lost.indices.length > 0) cut.push({ name, table: getCutterTable(patch, name)!, mesh: lost });
+    if (lost && lostRegions) cut.push({ name, table: getCutterTable(patch, name)!, mesh: lost, regions: lostRegions });
   }
   return { method, leaflets: out, cut, kinds, edge, sphere };
 }
@@ -444,7 +449,7 @@ export function LipidMembraneRepresentation(graphics: GraphicsContext | undefine
             table,
             mesh.positions,
             mesh.indices,
-            data.kinds.seed,
+            leaflet.regions,
           ),
         );
       }

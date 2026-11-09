@@ -9,7 +9,7 @@ import { pathToFileURL } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { createWebGPUContext, requestWebGPUDevice } from '@molstar/graphics/gl/webgpu/context';
 import { InstanceDataVec4s } from '@molstar/graphics/gl/renderable/merged';
-import { cutterBases, cutterCounts, cutterReference, cutterTable } from '../lipids/cutter.js';
+import { cutterBases, cutterCounts, cutterReference, cutterRegions, cutterTable } from '../lipids/cutter.js';
 import { createLipidCutter } from '../lipids/cutter-kernel.js';
 import { parsePatchPdb } from '../lipids/patch.js';
 import { icosphere } from '../lipids/remesh.js';
@@ -40,15 +40,18 @@ describe.skipIf(!webgpu)('the lipid cutter on the GPU (Dawn)', () => {
       const table = cutterTable(parsePatchPdb(text, { box }).outer, 2);
       // triangles larger than the patch (images) and smaller
       const mesh = icosphere(300, 70);
-      const seed = 0xdeadbeef;
-      const reference = cutterBases(cutterCounts(table, mesh.positions, mesh.indices, seed), table.members.length);
+      const regions = cutterRegions(mesh.positions, mesh.indices, 0xdeadbeef);
+      // several regions (seams between them), several triangles a region (shared edges inside)
+      expect(regions.count).toBeGreaterThan(10);
+      expect(regions.count).toBeLessThan(mesh.indices.length / 3 / 2);
+      const reference = cutterBases(cutterCounts(table, mesh.positions, mesh.indices, regions), table.members.length);
       const cutter = await createLipidCutter(
         compute,
         () => graphics.flush(),
         table,
         mesh.positions,
         mesh.indices,
-        seed,
+        regions,
       );
       // f32 on the GPU: a head on a triangle's edge may land either side; none in this mesh
       expect(Array.from(cutter.totals)).toEqual(Array.from(reference.totals));
@@ -76,7 +79,7 @@ describe.skipIf(!webgpu)('the lipid cutter on the GPU (Dawn)', () => {
       const rows = new Float32Array(await transforms.readAsync());
       let maxError = 0;
       for (let m = 0; m < table.members.length; ++m) {
-        const want = cutterReference(table, mesh.positions, mesh.indices, seed, m, reference.totals[m]);
+        const want = cutterReference(table, mesh.positions, mesh.indices, regions, m, reference.totals[m]);
         for (let s = 0; s < reference.totals[m]; ++s) {
           for (let r = 0; r < 3; ++r) {
             for (let c = 0; c < 4; ++c) {

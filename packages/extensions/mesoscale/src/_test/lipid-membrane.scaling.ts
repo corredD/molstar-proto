@@ -7,7 +7,7 @@
 import { it } from 'vitest';
 import { checkLinear, quadraticControl, scaling } from '../../../../sequences/core/_test/model/scaling.js';
 import { assignReference, assignSlots } from '../lipids/assign.js';
-import { cutterBases, cutterCounts, cutterTable } from '../lipids/cutter.js';
+import { cutterBases, cutterCounts, cutterRegions, cutterTable } from '../lipids/cutter.js';
 import { parsePatchPdb } from '../lipids/patch.js';
 import { buildMembrane, registerLipidPatch } from '../lipids/membrane.js';
 import { farTriangles, icosphere, isotropicRemesh, type TriMesh } from '../lipids/remesh.js';
@@ -84,14 +84,15 @@ it('a membrane of N tiles built (a sphere, both leaflets)', () => {
   checkLinear('lipid membrane built, N tiles', s);
 }, 600_000);
 
-it('the cutter over N triangles: counts and bases (the reference of its count pass)', () => {
+it('the cutter over N triangles: regions, counts and bases (the reference of its count pass)', () => {
   const { text, box } = syntheticPatchPdb();
   const table = cutterTable(parsePatchPdb(text, { box }).outer, 2);
   const s = scaling(
     {
       setup: (n) => icosphere(radiusFor(n), 100),
       run: (mesh) => {
-        cutterBases(cutterCounts(table, mesh.positions, mesh.indices, 1), table.members.length);
+        const regions = cutterRegions(mesh.positions, mesh.indices, 1);
+        cutterBases(cutterCounts(table, mesh.positions, mesh.indices, regions), table.members.length);
       },
     },
     4000,
