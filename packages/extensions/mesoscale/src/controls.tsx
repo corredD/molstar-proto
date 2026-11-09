@@ -229,7 +229,6 @@ export function MembraneDetailControls(props: { area: MesoscaleApi; membrane: st
         min={key === 'distance' ? mapState(levels, (l) => (l[j - 1]?.distance ?? 0) + 1) : min}
         max={key === 'distance' ? mapState(levels, (l) => (l[j + 1]?.distance ?? max + 1) - 1) : max}
         scale={key === 'bias' ? undefined : 'log'}
-        clamp={key === 'distance'}
         {...(unit ? { unit } : {})}
         onCommit={(v) => setLevel(j, key, v)}
       />

@@ -170,7 +170,7 @@ export function cutterRegions(
     const nz = ux * vy - uy * vx;
     const area = Math.hypot(nx, ny, nz) / 2;
     const bin = area > 0 ? directionBin(nx, ny, nz) : 0;
-    // 15 bits a cell coordinate (± 3 mm at 200 Å), 7 the bin: exact in a double
+    // 15 bits a cell coordinate (± 0.33 mm at 200 Å), 7 the bin: exact in a double
     const key =
       ((Math.floor(cx / cell) + 16384) * 32768 + (Math.floor(cy / cell) + 16384)) * 32768 * 128 +
       (Math.floor(cz / cell) + 16384) * 128 +

@@ -108,9 +108,6 @@ maintainer first (2026-10-25). All are v6 (master); the MRC reader and the parti
     4 B a member and triangle. From the review: the cutter's write guards only its member's end (a float difference
     between its two passes could spill a hit into the next triangle's slots); on WebGL2 the description counts no cut
     lipids; the library commits `bde208175` and `4ac0c0de8` (round 3, review S7) to their own lane from `origin/master`.
-  - Not smooth zoomed out: a 1 µm sphere (7.9 M lipids, both leaflets) draws in about 380 ms a frame (Dawn, headless,
-    M1, 512²); every atom of every tile is drawn. The spheres' levels of detail do not reach the membrane (the balanced
-    preset changed nothing); a far level is needed (a tile as a few coarse spheres, or a textured triangle).
   - The tile sets are baked on the main thread when a membrane is first made: the CHARMM-GUI patch about 5 s (16
     variants a leaflet), 42 s with two vertex colours (128). The brief's worker is not built.
   - Corner discs are off: the transform makes one vertex colour (`vertexColors: 1`), the brief had two. To decide (two

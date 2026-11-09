@@ -169,6 +169,8 @@ function filledSquare(upper: RawLipid[], lower: RawLipid[]) {
     for (const l of leaflet) {
       const i = Math.floor((l.atoms[l.head * 3] - (x - full)) / cell);
       const j = Math.floor((l.atoms[l.head * 3 + 1] - (y - full)) / cell);
+      // past the square on a rectangular patch's longer axis: not a cell of it (an index would alias, review N4)
+      if (i < 0 || j < 0 || i > n || j > n) continue;
       set.add(i * (n + 1) + j);
     }
     return set;

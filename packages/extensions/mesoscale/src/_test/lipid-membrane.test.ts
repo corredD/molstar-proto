@@ -190,6 +190,7 @@ describe('lipid membrane', () => {
     expect([...v.plugin.state.data.cells.values()].some((c) => c.transform.transformer === LipidMembrane)).toBe(false);
     forgetLipidPatch('progress-patch');
     forgetLipidPatch('cancel-patch');
+    vi.restoreAllMocks();
   });
 
   it('cuts the mesh’s own triangles with the cutter: no remesh, every part covered', () => {
