@@ -554,6 +554,11 @@ function meanColor(names: readonly string[], counts: readonly number[], colorOf:
   return sum > 0 ? Color.fromRgb(Math.round(r / sum), Math.round(g / sum), Math.round(b / sum)) : Color(0x888888);
 }
 
+/** A membrane's species' default colors, by name (`speciesColors`) */
+export function membraneSpeciesColors(data: MembraneData) {
+  return speciesColors(data);
+}
+
 /** A species' color: distinct colors by species index across both leaflets (residue names as the tile sets have them) */
 function speciesColors(data: MembraneData) {
   const names = new Map<string, number>();

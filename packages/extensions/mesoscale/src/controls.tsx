@@ -348,19 +348,31 @@ export function MembraneSpeciesControls(props: { area: MesoscaleApi; membrane: s
                     class={classes.swatch}
                     style={mapState(
                       one,
-                      (x) => `background: ${x?.color === undefined ? 'transparent' : Color.toHexStyle(x.color)}`,
+                      (x) => `background: ${Color.toHexStyle(Color(x?.color ?? x?.shownColor ?? 0xffffff))}`,
                     )}
                   />
                 </Button>
                 <div class={classes.label}>{name}</div>
               </div>
               <Show when={mapState(picking.asReadonly, (p) => p === name)}>
-                {() => (
-                  <ColorPicker
-                    value={mapState(one, (x) => x?.color ?? 0xffffff)}
-                    onChange={(c) => run({ species: name, color: c })}
-                  />
-                )}
+                {() => {
+                  // previewed here, committed once by Apply (review M3: a drag was a step per move)
+                  const color = observableState(one.value?.color ?? one.value?.shownColor ?? 0xffffff);
+                  return (
+                    <div class={classes.tight}>
+                      <ColorPicker value={color.asReadonly} onChange={(c) => color.set(c)} />
+                      <Button
+                        size="xs"
+                        onClick={() => {
+                          run({ species: name, color: color.value });
+                          picking.set(undefined);
+                        }}
+                      >
+                        Apply
+                      </Button>
+                    </div>
+                  );
+                }}
               </Show>
             </div>
           );

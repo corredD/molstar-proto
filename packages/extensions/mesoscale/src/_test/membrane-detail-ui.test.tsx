@@ -141,7 +141,7 @@ describe('a membrane’s levels in its properties', () => {
     expect((await area.membraneSpecies({ membrane, species: names[1], color: 0xff0000 } as never)).ok).toBe(true);
     const params = () => v.plugin.state.data.cells.get(membrane)!.transform.params;
     expect(params()).toMatchObject({ hiddenSpecies: [names[0]], speciesColors: { [names[1]]: 0xff0000 } });
-    expect(area.membraneSpeciesState(membrane).value!.slice(0, 2)).toEqual([
+    expect(area.membraneSpeciesState(membrane).value!.slice(0, 2)).toMatchObject([
       { name: names[0], shown: false },
       { name: names[1], shown: true, color: 0xff0000 },
     ]);
@@ -164,6 +164,25 @@ describe('a membrane’s levels in its properties', () => {
     await until(() => !!eye());
     eye().click();
     await until(() => !(params().hiddenSpecies as string[]).includes(names[0]));
+    // a species' swatch shows the colour drawn; its picker previews and Apply commits once (review M3, S5)
+    const swatchOf = (n: string) =>
+      [...host.querySelectorAll('button')].find((b) =>
+        [b.getAttribute('title'), b.getAttribute('aria-label'), b.getAttribute('data-tip')].includes(
+          `${n}: its colour`,
+        ),
+      ) as HTMLButtonElement;
+    const shown = area.membraneSpeciesState(membrane).value!.find((x) => x.name === names[1])!;
+    expect(swatchOf(shown.name).querySelector('span')!.getAttribute('style')).toMatch(/background: #/);
+    swatchOf(shown.name).click();
+    const apply = () => [...host.querySelectorAll('button')].find((b) => b.textContent?.trim() === 'Apply');
+    await until(() => !!apply());
+    const before = JSON.stringify(params().speciesColors);
+    apply()!.click();
+    await until(() => (params().speciesColors as Record<string, number>)[shown.name] !== undefined);
+    expect((params().speciesColors as Record<string, number>)[shown.name]).toBe(shown.shownColor);
+    // one step: undone, the colours as before
+    expect((await v.api.history.undo({})).ok).toBe(true);
+    expect(JSON.stringify(params().speciesColors)).toBe(before);
     // the full build at export: every lipid of its shown species, no step
     const exported = await area.exportMembrane({ membrane } as never);
     expect(exported.ok).toBe(true);

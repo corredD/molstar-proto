@@ -42,6 +42,7 @@ import {
   type MembraneDetail,
   type MembraneLevel,
   membraneSpecies,
+  membraneSpeciesColors,
 } from './lipids/membrane.js';
 import type { MembraneFar } from './lipids/procedural.js';
 import { membraneStar } from './lipids/export.js';
@@ -534,7 +535,7 @@ export class MesoscaleApi extends ApiArea {
   /** A lipid membrane's species, each shown or not and its colour override, following the state while watched */
   membraneSpeciesState(
     membrane: string,
-  ): ReadonlyState<readonly { name: string; shown: boolean; color?: Color }[] | undefined> {
+  ): ReadonlyState<readonly { name: string; shown: boolean; color?: Color; shownColor: Color }[] | undefined> {
     const plugin = this.ctx.plugin;
     return watchedState(
       () => {
@@ -542,9 +543,13 @@ export class MesoscaleApi extends ApiArea {
         if (cell?.transform.transformer !== LipidMembrane || !cell.obj) return undefined;
         const p = cell.transform.params as LipidMembraneProps;
         const hidden = new Set(p.hiddenSpecies);
-        return membraneSpecies((cell.obj.data as { sourceData: MembraneData }).sourceData).map((name) => ({
+        const data = (cell.obj.data as { sourceData: MembraneData }).sourceData;
+        const byDefault = membraneSpeciesColors(data);
+        return membraneSpecies(data).map((name) => ({
           name,
           shown: !hidden.has(name),
+          // the colour drawn: its override, else its default (review S5: the swatch was blank)
+          shownColor: p.speciesColors[name] !== undefined ? Color(p.speciesColors[name]) : byDefault(name),
           ...(p.speciesColors[name] !== undefined ? { color: Color(p.speciesColors[name]) } : {}),
         }));
       },
