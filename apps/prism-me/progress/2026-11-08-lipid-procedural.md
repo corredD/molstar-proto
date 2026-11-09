@@ -969,3 +969,50 @@ membranes.
 
 **Size and model.** ~600 production lines (selection hierarchy 250, shared budget 120, reader and wrap-all 180, docs
 50); Opus. Gate on the round's diff.
+
+## Round 6, measured before code (2026-11-09)
+
+Probe (not committed; `lipid-yeast-probe.webgpu.test.ts`, kept outside the tree): the nine OBJs of `yeast-data/obj` at
+×10 (nm → Å), each wrapped by the cutter as its own `LipidMembrane` (what Wrap with lipids makes, nine times), CHARMM-GUI
+patch, budget 2 M, headless Dawn, M1, 900×600, perspective; whole (reset), middle (0.3 R above the PM's vertex nearest the
+camera), close (400 Å above it); frame ms the four frames at each view. Load 4–5.
+
+| what                                     | measured                                                                                                                              |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| wrap, nine membranes one by one          | 15.5 s (repr 1.1–2.6 s each: 6,890-triangle PEROX 1.1 s, of it 0.76 s its ~100 members' sphere objects); RSS 3.0 GB; first frame 5.1 s |
+| selection a view, all 18 leaflets        | 87–600 ms (whole, nothing taken: 87–360 ms; ER alone 26–136 ms): every triangle tested every view                                    |
+| whole / middle frame, nothing live       | 50–65 ms; 10 ms with `far: spheres`: the 36 patch surfaces (4 a membrane, 1.08 M triangles each set) cost ~45 ms                     |
+| close frame (PM 400 Å)                   | 500 ms (650 ms with the app's look, Hi-Z on or off); PM alone 49 ms. Of 502 k live lipids 447 k are VAC's, behind the opaque PM      |
+| pools                                    | nine pools of 2.2 M slots (2 M budget each): ~20 M slots, ~4 GB of culler buffers at four levels                                      |
+
+All nine meshes are closed (no border edge; MITO_IM 20 non-manifold edges); VAC, MITO, GOLGI, PEROX and LD are many
+components each. The 11-07 slab's file was not found (not in `~/Downloads` or the lanes): its alignment is not checked.
+
+## Round 6, design (checkpoint, 2026-11-09, before code)
+
+1. **One membrane over many meshes** (answers the per-representation floor, the nine pools, and "one budget"). Wrap all
+   makes one `LipidMembrane` whose surface is the meshes concatenated (`parts`: each mesh's triangle range and name): one
+   cutter a leaflet, one selection a leaflet, one pool a member, so the budget is one (`poolCapacities` over the two
+   leaflets, as now) and the fill is nearest first across every membrane (one candidate list). The member objects are
+   made once, not nine times. Costs: one far colour and one Look for the whole cell; a membrane's lipids are not hidden
+   alone (the meshes stay as nodes; Ludo clips through the cell). Rejected: nine cells and a coordinator (nine floors,
+   nine pools, a cross-cell fill).
+2. **A sphere tree over the triangles** (`procedural.ts`): per part, a bounding-sphere hierarchy (median split, leaves
+   of 8), built once a mesh and shared by its leaflets; a view descends it and prunes a node outside the frustum (its
+   sphere grown by a cell) or past the reach (`keepDepth`). A view's cost is the nodes it visits and the triangles in
+   reach, not T: whole and middle about nothing. Guard: n and 4n triangles, the close view's time about flat.
+3. **Enclosed membranes skipped** (new, answers the 447 k hidden VAC lipids): at the wrap, which part encloses which
+   (one vertex of B, a ray's crossings of A, odd: inside); per view, which closed parts hold the eye (the same test
+   through the sphere tree). A part enclosed by a part that does not hold the eye takes no cells and its far surfaces
+   are not drawn; off under a clip (as `facing`). Parts of many components over-include (the eye inside one
+   mitochondrion shows every IM): safe.
+4. **The far surfaces a part** (answers ~45 ms whole): each part's surfaces their own objects, so an enclosed part's are
+   hidden with its lipids. Outside the cell only the PM's draw. Under a clip all show (~45 ms: stated, open).
+5. **The reader** (`mesoscale`): + Open of the yeast viewer's `organelle_meshes.bin` (and `.bin.gz`, inflated by Mol*'s
+   open): u32 count, count × (membrane id, nV, nT) u32, then per mesh nV×3 f32 and nT×3 u32; each mesh an OBJ-like
+   shape (the existing `ShapeFromObj`) named by membrane (`mem_names` of the viewer's `geometry.json`), ×10 (nm → Å).
+   Wrap all with lipids: the right-click of the file's row (or any meshes), one operation, one commit.
+6. **Per-membrane composition** (stated, not built): a part's own patch would need a cutter (table) a part and leaflet,
+   its pools its own members: the floor again per composition, not per mesh.
+
+Size: selection tree and enclosure ~250, parts through the membrane ~120, reader and wrap all ~180, docs ~50: ~600.
