@@ -13,6 +13,7 @@ import { heapTests } from '../../sequences/vitest.shared.js';
 
 const root = join(import.meta.dirname, 'src');
 const base = heapTests();
+// biome-ignore lint/style/noDefaultExport: vitest reads the config's default export
 export default defineConfig({
   ...base,
   root,
