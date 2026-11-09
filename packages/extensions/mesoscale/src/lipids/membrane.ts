@@ -1093,7 +1093,9 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
     // the context of this build (`setGraphics` may replace the representation's while it waits)
     const graphics = currentGraphics();
     if (!graphics?.compute || !canCullOnGpu(graphics)) {
+      // nothing drawn: the last builds' patch textures go too (review X3)
       release();
+      releaseTextures();
       builtFor = undefined;
       renderObjects = [];
       members = [];
