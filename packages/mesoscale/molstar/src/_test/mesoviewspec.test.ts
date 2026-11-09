@@ -53,11 +53,17 @@ function fakeResources() {
 
 async function open() {
   const fake = fakeResources();
-  const v = await createPrismViewerHeadless({ spec: createMesoscaleExplorerSpec('') });
+  const v = await createPrismViewerHeadless({ spec: explorerSpec(false) });
   viewers.push(v);
   await v.extensions.mount(createMesoViewSpecExtension({ fetchText: fake.fetchText }));
   const api = (v.api as unknown as { mesoviewspec: MesoViewSpecApi }).mesoviewspec;
   return { v, fake, api, run: (id: string, values: Record<string, unknown>) => v.api.run(id, values) };
+}
+
+/** The explorer's spec, with the stub left out when the test mounts the extension itself. */
+function explorerSpec(withStub: boolean) {
+  const spec = createMesoscaleExplorerSpec('');
+  return withStub ? spec : { ...spec, extensions: (spec.extensions ?? []).filter((e) => e.id !== 'mesoviewspec') };
 }
 
 const lists = (v: PrismViewer) => v.plugin.managers.particles.hierarchy.current.lists.length;
@@ -211,10 +217,7 @@ describe('the stub', () => {
   it('loads at the first call, replays it as one step, and its flags are the definitions', {
     tags: ['medium'],
   }, async () => {
-    const base = createMesoscaleExplorerSpec('');
-    const v = await createPrismViewerHeadless({
-      spec: { ...base, extensions: [...(base.extensions ?? []), MesoViewSpecLazyExtension] },
-    });
+    const v = await createPrismViewerHeadless({ spec: explorerSpec(true) });
     viewers.push(v);
     const r = await v.api.run('mesoviewspec.open', { data: JSON.stringify(exosomeDoc()), files: resourceFiles() });
     expect(r.ok).toBe(true);
@@ -223,11 +226,25 @@ describe('the stub', () => {
     expect(v.managers.history.steps.value).toHaveLength(1);
   });
 
+  it("is in prism-me's spec: a dropped document opens through the stub, its files as resources", {
+    tags: ['medium'],
+  }, async () => {
+    const v = await createPrismViewerHeadless({ spec: explorerSpec(true) });
+    viewers.push(v);
+    expect(v.extensions.status('mesoviewspec')?.value).toBe('stub');
+    const doc = new File([JSON.stringify(exosomeDoc())], 'exosome.mesoviewspec.json');
+    const r = await v.api.load.files({ files: [doc, ...resourceFiles()] });
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.did).toMatch(/^Opened Exosome in plasma: \d+ copies in \d+ lists\.$/);
+    expect(v.extensions.status('mesoviewspec')?.value).toBe('loaded');
+    expect(lists(v)).toBeGreaterThan(0);
+    // the other files were its resources, not data of their own
+    expect(v.plugin.managers.structure.hierarchy.current.structures).toHaveLength(0);
+    expect(v.managers.history.steps.value).toHaveLength(1);
+  });
+
   it('is a stub at start in the viewer, and its source imports no code', { tags: ['medium'] }, async () => {
-    const base = createMesoscaleExplorerSpec('');
-    const v = await createPrismViewerHeadless({
-      spec: { ...base, extensions: [...(base.extensions ?? []), MesoViewSpecLazyExtension] },
-    });
+    const v = await createPrismViewerHeadless({ spec: explorerSpec(true) });
     viewers.push(v);
     expect(v.extensions.status('mesoviewspec')?.value).toBe('stub');
     expect(v.api.describe('mesoviewspec.open')).toBeDefined();

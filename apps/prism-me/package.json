@@ -29,6 +29,7 @@
     "@molstar/core": "workspace:*",
     "@molstar/cryoet-extension": "workspace:*",
     "@molstar/graphics": "workspace:*",
+    "@molstar/meso-molstar": "workspace:*",
     "@molstar/mesoscale-extension": "workspace:*",
     "@molstar/model": "workspace:*",
     "@molstar/plugin": "workspace:*",

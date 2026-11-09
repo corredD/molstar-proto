@@ -17,7 +17,9 @@ import {
   EmpiarUrlParameters,
   empiarOpenOf,
   MesoscaleUrlParameters,
+  MesoViewSpecUrlParameters,
   PortalUrlParameters,
+  mesoViewSpecOf,
   portalLoadOf,
   toLoaderSearch,
 } from './url.js';
@@ -43,6 +45,7 @@ async function main() {
   const unknown = unknownUrlParameters(location.search, [
     ...LoadUrlParameters,
     ...MesoscaleUrlParameters,
+    ...MesoViewSpecUrlParameters,
     ...PortalUrlParameters,
     ...EmpiarUrlParameters,
   ]);
@@ -57,6 +60,14 @@ async function main() {
   if (example) viewer.api.run('mesoscale.example', { id: example }).catch((e: unknown) => console.error(e));
   const graphics = own.get('graphics-mode');
   if (graphics) viewer.api.run('mesoscale.graphics', { mode: graphics }).catch((e: unknown) => console.error(e));
+  // A MesoViewSpec document by address (prism.md §3): `?mesoviewspec=https://…/cell.mesoviewspec.json`
+  const meso = mesoViewSpecOf(location.search);
+  if (meso) {
+    viewer.api
+      .run('mesoviewspec.open', { url: meso })
+      .then((r) => (r.ok ? r.warnings?.forEach((w) => console.warn(w)) : console.error(r.message)))
+      .catch((e: unknown) => console.error(e));
+  }
   // The CryoET Data Portal's: `?portal-dataset=10003&portal-run=TS_08`
   const portal = portalLoadOf(location.search);
   if (portal) {

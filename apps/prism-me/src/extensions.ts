@@ -8,6 +8,7 @@ import { CryoetExtension } from '@molstar/cryoet-extension/prism-viewer';
 import { EmpiarExtension } from '@molstar/cryoet-extension/empiar';
 import { CryoetPortalExtension, type PortalIndexSource } from '@molstar/cryoet-extension/portal';
 import type { PortalCatalog, PortalDataset } from '@molstar/cryoet-extension/portal-index';
+import { MesoViewSpecLazyExtension } from '@molstar/meso-molstar/prism-viewer';
 import { MesoscaleExtension } from '@molstar/mesoscale-extension/prism-viewer';
 import { ExplorerExtension } from './explorer/extension.js';
 import type { LazyViewerExtension, ViewerExtension } from '@molstar/prism-viewer/spec';
@@ -36,4 +37,5 @@ export const MesoscaleExplorerExtensions: readonly (ViewerExtension | LazyViewer
   EmpiarExtension,
   StageToolsExtension,
   ExplorerExtension,
+  MesoViewSpecLazyExtension,
 ];
