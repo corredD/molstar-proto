@@ -1167,3 +1167,62 @@ wraps as before; one heavy job at a time, wait while load > 12.
 
 **Size and model.** ~650 production lines (bilayer surfaces 200, parts as rows 200, mixes 150, slab frame 50, perf
 50); Opus. Gate on the round's diff.
+
+## Round 7, item 1: measured before code (2026-11-09)
+
+Probe (not committed; `lipid-tiles-shots/r7/probe/zz-r7-probe.webgpu.test.ts`, `run.sh`, `sum.py`): the cutter, the
+CHARMM-GUI patch, both leaflets, the app's look (occlusion, shadows, outline), perspective, headless Dawn, M1, 900×600.
+The cow ×100 (`cow-nonormals.obj`) and the yeast PM (`00-PM.obj` ×10). A ray from the mesh's box centre (+z) gives a
+point and its outward normal; a zoom sequence of 25 steps (ratio 1.08) from about 5 px a lipid to 0.8 px, outside (the
+camera along +n) and inside (along −n). Per step: the mean Oklab of the membrane's pixels in the middle third, `dE` the
+Oklab distance of that mean to the step before, `diff` the mean luminance change of 12 px blocks. And 4c's metric at the
+switch (the same camera, `spheresPx` ×1/1.3 and ×1.3). Load 3–8. Images `r7/probe/r7-<tag>-<cow|pm>-<side>-NN.png`.
+
+**What is drawn today.** Already a bilayer far look: per cut leaflet two `patchSurface`s, the outer one lifted out
+(normals out), the inner one lifted in (normals and winding flipped), each textured with its own leaflet's
+`patchRaster`: a near one at ±2 Å drawn while lipids are (`lod` 0 → d/keep), a far one at the switch level's mean top,
+dithered in from d/2 to d (the probe reads their `uLod`: four meshes). From inside the PM the inner copy is what shows
+(L 0.62 inside against 0.57 outside). Duplicating the mesh per leaflet, as the brief asks, is what rounds 4b–5 built.
+
+| sequence (largest step `dE`; the bound to aim at ~0.03)   | outside                         | inside                          | 4c metric at the switch, out / in (dL, dab) |
+| --------------------------------------------------------- | ------------------------------- | ------------------------------- | ------------------------------------------- |
+| PM, today (`both`, 2 px)                                   | **0.120 at 3.16 px**; 2 px 0.002 | **0.129 at 3.16 px**; 2 px 0.000 | 0.012, 0.002 / 0.028, 0.003                 |
+| PM, spheres only (no surface)                              | 0.122 at 3.16 px (then gaps)    | 0.118 at 3.16 px                | (no surface)                                |
+| PM, switch at 3.5 px                                       | 0.051 at 3.24 px                | 0.080 at 3.24 px                | 0.154, 0.010 / 0.098, 0.025                 |
+| cow ×100, today                                            | 0.042 at 3.16 px                | (never under 6 px inside: see below) | −0.006, 0.001                          |
+| cow ×100, switch at 3.5 px                                 | 0.036 at 8 px                   |                                 | 0.059, 0.031                                |
+
+**The cause, measured.** (1) **The pop is not the texture switch but the spheres' level change** at about 3.2 px a
+lipid (balanced: stride 8 → stride 64, grown ×8 with scale bias 2): the mean luminance jumps 0.46 → 0.57 in one 8 % zoom
+step, outside and inside, with or without the far surface (`sheet-pm.png`: mixed small heads, then large green DSM and
+orange spheres; 4c's cause, the species standing highest covering their neighbours, now between two sphere levels). The
+switch to the texture at 2 px is smooth by colour (step dE ≤ 0.002; 4c's metric inside its bounds). Moving the switch
+above the level (3.5 px) halves the pop but does not remove it: the selection keeps lipids down to 0.8 × the switch
+(2.8 px), so the coarse level still draws from 3.2 to 2.8 px, and the texture then matches less well (dL 0.15). (2) **On
+the cow the far surfaces crumple on thin parts** (`zoom-cow-head.png`, `cow-both-vs-spheres-k14.png`): past the switch,
+black strokes along the face, ears, eyes and legs, absent with spheres only. The far copies are lifted ~20 Å along the
+vertex normals; on features thinner than twice that (legs 20–35 Å across) the inner copy crosses the axis and comes out
+facing out, and the outline draws the folds. (3) The cow ×100 is too small to reach the switch from inside (inside it a
+lipid stays over 6 px at 900×600); its inside steps past k21 are the camera leaving the body. (4) Motion's pixel scale
+does not move the level or the switch (`LodView` is in CSS pixels).
+
+## Round 7, item 1: design checkpoint (2026-11-09; stopped: the design differs from the brief)
+
+The brief's design (a mesh per leaflet, at its heads, textured with its own leaflet) is already what is drawn, so no
+test can fail on it. What Ludo sees as the texture/sphere transition is, by the numbers, the coarse sphere level coming
+in at ~3.2 px, and on thin shapes the far copies folding. Options, Ludo's call:
+
+- **(A) The switch above the coarse level**: `spheresPx` past the stride-64 boundary over the hysteresis (~4 px), the
+  texture rastered from the stride-8 level. One default, no graphics. Measured at 3.5 px: the pop halves (0.051/0.080)
+  and the texture matches less well (dL 0.15): needs (A) at ~4 px with the raster's shade matched; fewer lipids drawn.
+- **(B) The coarse level made to look as the finer one**: stride 64's spheres chosen or sized so its top view's species
+  shares and luminance match stride 8's (4c's fix, between levels: e.g. a smaller grow, or the members' atoms ordered
+  so the head atoms are kept). Extension only, ~100 lines.
+- **(C) A dithered cross-fade between levels** over a px band: a graphics change (the levels' ranges have no overlap
+  with pixel presets; 4c already flagged the object dither off for objects with levels). Ludo's call, sized at a later
+  checkpoint.
+- **(D) The far lift clamped on thin features**: each vertex's lift bounded by the local thickness (a ray along −n to
+  the mesh's other side, half of it), or the inner copy dropped where it would invert. Extension only, ~80 lines.
+
+Proposed test (fails today): the PM zoom sequence's largest step dE under 0.03 outside and inside; and for (D) the cow's
+far surfaces with no triangle whose inner copy faces out (a pure test on `patchSurface` over the thin-limbed fixture).
