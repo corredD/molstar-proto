@@ -1737,7 +1737,10 @@ function ClipGhosts(props: { api: ViewerApi }) {
     undefined,
     { onChange: (values) => void api.run('clipping.settings', { ghost: values.ghost }) },
   );
-  bind(api.clipping.cutSettings, (c) => form.load({ ghost: c.ghost }));
+  bind(
+    mapState(api.clipping.cutSettings, (c) => c.ghost),
+    (ghost) => form.load({ ghost }),
+  );
   return <ParamsForm form={form} />;
 }
 

@@ -184,8 +184,8 @@ maintainer first (2026-10-25). All are v6 (master); the MRC reader and the parti
   its own (`common` cannot tell none from mixed); the Labels section lists the labels made at the row's key, not the
   tree's fallbacks (a label under its object's row when its own row is gone); each clip editor finds its cut among all
   (a Map by tag would do; a few at a node, at most 16 cuts a representation); icons beside words carried over (Remove
-  the label, Add a clip, On top: styling.md §4); a viewer test waits on the real clock (300 ms) to show a run of picks
-  makes one step; the extensions' `styles:check` is not in CI (`.github/workflows/node.yml` runs Prism's).
+  the label, Add a clip: styling.md §4); a viewer test waits on the real clock (300 ms) to show a run of picks makes one
+  step; the extensions' `styles:check` is not in CI (`.github/workflows/node.yml` runs Prism's).
 
 - The production build is over its size budget (`node scripts/esbuild/app.mjs apps/prism-me --prd`: index.js 5.78 MB
   against 3.40 MB), on prism-me before PR #9 too.
