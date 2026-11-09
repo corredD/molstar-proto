@@ -525,3 +525,31 @@ residues / the object) it should follow same coloring as particles (by zoom, etc
    is drawn in both looks. (Cut away = 4b item 6, Clip on a membrane: must land in 4b.)
 
 **Size and model.** ~300 production lines; Opus. Gate on the round's diff.
+
+## Round 4c, item 7: the cause, measured (2026-11-08, before code)
+
+Probe (not committed): model_vertexcolor ×20, cutter, CHARMM-GUI patch, Dawn, perspective, 900×600; the same view as
+Spheres, as the surface (Texture, from 16 px) and as Both; Oklab means over the 6 px either side of where the spheres
+stop (`lipid-tiles-shots/r4c-diag-*`, looked at).
+
+| at the same pixels        | L     | a      | b      |
+| ------------------------- | ----- | ------ | ------ |
+| the spheres               | 0.674 | −0.064 | 0.079  |
+| the surface               | 0.524 | 0.043  | −0.008 |
+| the surface without bumps | 0.528 | 0.043  | −0.008 |
+
+**The cause: the surface weights each species by its lipids, the spheres show the species on top.** The surface's
+vertex is the species of the nearest head (by count: CHL1 26 %, maroon; DLPC and POPC purples). Near the switch the
+spheres are the coarsest level (balanced: stride 64, one atom a lipid, grown about 7×, a 14 Å sphere), and the species
+whose head sits highest covers its neighbours: DSM's top is at 26.8 Å, CHL1's at 17.7 Å. A top-view raster of the patch
+(`zz-r4c-top`, the outer leaflet) gives DSM 17 % with atoms (2 Å), 34 % at stride 8, 73 % at stride 64 (green): what the
+image shows. The bumps are not it (ΔL 0.004). The hard cut along triangle borders shows because of this mismatch.
+
+**Design checkpoint.** (1) The surface's colours from the spheres it replaces: each vertex the species on top in a
+top-view raster of the patch drawn as the switch's level draws it (that level's atoms, `orderPositionGroup`'s order, its
+grown radius), the nearest head where no sphere covers. Built once a look, as the surface; nothing per frame. (2) The
+luminance measured again after (1), matched in the surface's material if it still differs. (3) A dithered fade over a px
+band needs the graphics library: the object dither (`fadeLod`) is off for objects with levels (`uLod.w`), and the
+pixel-mode levels' last range is open (`getLodLevelsValue`: Infinity). A library change, Ludo's call: proposed, not
+built. Test (Dawn): a patch whose rare species stands tallest, a perspective view across the switch (spheresPx just
+under and just over the lipids' size on screen), the mean Oklab of the membrane's pixels within a bound.
