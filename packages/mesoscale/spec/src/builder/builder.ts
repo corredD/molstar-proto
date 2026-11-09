@@ -245,13 +245,13 @@ class DocScope extends Scoped {
     this.sessionState = strip(s);
   }
   custom(namespace: string, value: unknown) {
-    this.extensions[namespace] = value;
+    if (value !== undefined) this.extensions[namespace] = value;
   }
   build() {
     const { version, revision, units, ...metadata } = this.options;
     const out: Obj = { format: 'meso_view_spec', version: version ?? '0.2.0' };
     if (revision !== undefined) out.revision = revision;
-    out.metadata = metadata;
+    out.metadata = strip(metadata);
     if (units) out.units = units;
     const required = new Set(['entities', 'compartments', 'populations']);
     for (const s of SectionOrder) {
@@ -260,7 +260,7 @@ class DocScope extends Scoped {
       if (this.sections[s]?.length || required.has(s)) out[s] = this.sections[s] ?? [];
     }
     if (this.sections.views?.length) out.views = this.sections.views;
-    if (this.sessionState) out.session = this.sessionState;
+    if (this.sessionState && Object.keys(this.sessionState).length) out.session = this.sessionState;
     if (this.sections.tours?.length) out.tours = this.sections.tours;
     if (Object.keys(this.extensions).length) out.custom = this.extensions;
     // a copy: the document and the builder share nothing, so neither changes the other

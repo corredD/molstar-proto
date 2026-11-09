@@ -179,6 +179,15 @@ describe('builder: review fixes', () => {
     (d1.entities[0] as { label: string }).label = 'MUT';
     expect(b.build().doc.entities[0].label).toBe('I');
   });
+  it('does not put undefined or empty values in the document', () => {
+    const b = createMesoDocument({ title: 'u', description: undefined });
+    b.session({ view: undefined });
+    b.custom('x', undefined);
+    const { doc } = b.build();
+    expect(Object.keys(doc.metadata)).toEqual(['title']);
+    expect(doc.session).toBeUndefined();
+    expect(doc.custom).toBeUndefined();
+  });
 });
 
 describe('builder: MesoQL helpers', () => {
