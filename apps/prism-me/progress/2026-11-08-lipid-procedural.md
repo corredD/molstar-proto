@@ -439,6 +439,68 @@ it hid them (`r4b-cow-x100-cutter-both-close.png` before, sparse heads poking th
 dense). Test `e95ec84a3` (failing), fix `deb51ee83`: the surface at the lowest top (5.6 Å under the mean, still at the
 heads).
 
+## Round 4b, the gate (2026-11-08)
+
+An Opus reviewer read `541038d31...b25246e5f` (2 must-fix, 6 should-fix, 5 nits); an Opus skeptic re-ran or re-read each
+(12 confirmed in whole or part, M1 already fixed, S1's RangeError refuted, S2 and S5 lowered to nits; 3 new).
+
+| Finding                                                                                                                                                                                                            | Outcome                                                                                                                                       |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| M1 the far surface at the tops' mean hid half the lipids in Both close up                                                                                                                                          | found by this session's images first; test `e95ec84a3` (failing), fix `deb51ee83` (the lowest head); ui.md `6b8d4887c`                        |
+| M2 cells put seams and clashes inside every region (145 atom pairs under 2 Å on the flat-plane fixture, none before)                                                                                               | open for Ludo: the trade-off of item 4 (no seams inside a region means the period); the seams bounded in the test `ea4c2a693` so a rise shows |
+| S1 the far surface's 1 M vertex cap not held (3 vertices a triangle)                                                                                                                                               | test `248604d91` (failing), fix `ebae633e4` (welded, n lowered until the cap holds; the mesh's own vertices at n = 1)                         |
+| S2 far surfaces rebuilt on every look change (one rebuild a committed change)                                                                                                                                      | nit, open (TODO: cache the geometry by leaflet and hidden species, recolour only)                                                             |
+| S3 no scaling guard for farSurface and shownLipids                                                                                                                                                                 | guards added `248604d91` (far surface over N triangles and N patch lipids; a tile of N lipids); pass after `ebae633e4`                        |
+| S4 a clip preview during a redraw left members with the old clip                                                                                                                                                   | fix `a02e61c97` by reading; its guard test passes before the fix too (the window did not open headless)                                       |
+| S5 members kept past a release                                                                                                                                                                                     | nit, fixed `a02e61c97`                                                                                                                        |
+| S6 cracks at T-junctions (35,118 edges of a bumpy sphere's surface used once)                                                                                                                                      | test `248604d91` (failing), fix `ebae633e4` (one n, edge points shared)                                                                       |
+| N1 headGrid quadratic in the patch (×25 at 4× the patch)                                                                                                                                                           | guard `248604d91` (failing), fix `ebae633e4` (heads bucketed, ring search)                                                                    |
+| N2 onlyClip: a no-op update rebuilds                                                                                                                                                                               | nit, open                                                                                                                                     |
+| N3 ui.md did not say where the surface sits                                                                                                                                                                        | fixed `6b8d4887c`                                                                                                                             |
+| Nits: Texture refusal read the data; setClip allocates per member per preview step; all species hidden leaves a grey surface; membranes wrapped before `ae86ffed4` have no clip (wrap again); ui.md's whole stages | refusal `2a8cd493c`, stages `6b8d4887c`; the rest open                                                                                        |
+
+A shared far-surface edge point takes its first triangle's colour: the colour test's bound went from 0.9 to 0.85.
+
+## Round 4b, checks (2026-11-08, after the gate's fixes)
+
+`npx tsc -b`, `npx tsc --noEmit -p apps/prism-me`, `pnpm lint`, `pnpm format:check`, `pnpm check:workspace`, mesoscale
+and prism-me `styles:check`, prism-me `typecheck:storybook` pass. Quick lane with Dawn (mesoscale, cryoet, stage-tools,
+prism-me): 77 files, 535 passed, 1 skipped. Scaling (mesoscale, the new guards and the positive control): pass.
+
+## Round 4b, images (headless Dawn, M1, 900×600, perspective, CHARMM-GUI patch; looked at)
+
+`~/prism-me-lanes/lipid-tiles-shots/r4b-<cow-x100|model-x20>-<cutter|tiles>-both-<whole|middle|close>.png`, the cow's
+`-middle-clipped` (a plane through its center: the top half cut away, both methods) and `-spheres-*` for comparison.
+Seen: no period at any distance (the model ×20 at its 250 Å triangles); close up Both now as dense as Spheres, the
+surface under the heads; the clip cuts lipids and surfaces alike; the far surface shows its triangles' facets in light
+and smooth colour streaks between vertices (open: 4c's smooth switch). Built: cow cutter 0.26 s, tiles 1.4 s; model ×20
+cutter 1.3 s (1,507,049 lipids), tiles 13.2 s (1,552,198 lipids, 6,008 tiles).
+
+## Round 4b, end
+
+**Built.** Items 1–3 (first session); item 4 the cutter's cells (`9562891fe`, `a37397aea`, `0f58da6eb`, `f55d5c821`);
+item 5 tiles with the cutter's Look but Texture (`d5e802216`, `5c2c7f614`); item 6 Clip on a membrane (`b53fbd70c`,
+`ae86ffed4`, end to end `3cbb1d081`); the gate's fixes above.
+
+**Decided.** This session: seams at the cells' borders (Ludo to confirm, M2); the far surface at the lowest head; tiles
+without Texture or the pool's switches (built whole); a tiles far surface coloured as the cutter would cut the patch
+there. Ludo (earlier): the round's brief.
+
+**Learned.** The CHARMM-GUI box is 154 Å, not 232: most triangles of a scaled model are larger than the period. A
+compute pass is limited to 10 storage buffers: an 11th made the write pass write nothing, silently. Prism's preview
+calls a representation's `createOrUpdate` outside the state, at the pointer's rate: a clip must be a values update. A
+membrane drawn beneath its lipids must sit under the lowest head, not at the heads' mean.
+
+**Size.** About 590 production lines this session (+588 −195: cutter and kernel ~170, far surface ~180 with the gate's
+rewrite, membrane ~100, ops and controls ~30, app ~10) against the brief's ~450 for items 4–6; the gate's far-surface
+rewrite (S1, S6, N1) took the room. Round 4b in all: about 745 lines added.
+
+**How Ludo checks it (1354, reload first: a membrane wrapped by an older build has no clip).** Open the teddy or the
+cow, Scale ×100, right-click › Wrap with lipids: no repeated patch close up (item 4). Right-click › Add clip… › New
+plane on the membrane: its spheres and surfaces cut away, the handle moving the cut live (item 6). Wrap with lipids
+(tiles): the Look has the species' eyes and colours, Far Both or Spheres (item 5). Both, close: the heads dense above
+the surface.
+
 ## Round 4c brief (Ludo, 2026-11-08, after trying 4b items 1–3; queued after 4b's gate)
 
 **Asked.** "the transition texture / spheres is not smooth yet, finally we still cant cut away, and color quickly (all
