@@ -7,9 +7,12 @@
 import { BetaCellResources, betaCellDoc, exosomeDoc, ExosomeResources } from '@molstar/meso-spec/examples';
 import { applyPatch, type MesoViewSpecDoc, type Patch } from '@molstar/meso-spec/format';
 import { DefaultResolvers } from '@molstar/meso-spec/resolvers';
-import { compile, updateView } from '@molstar/meso-spec/runtime';
+import { evaluateMesoQL, placementSets } from '@molstar/meso-spec/ir';
+import { compile, flattenInstances, updateView } from '@molstar/meso-spec/runtime';
 import { describe, expect, it } from 'vitest';
+import { parseMesoQL } from '@molstar/meso-spec/format';
 import { documentLooks, documentOutline, OutlineStats } from '../document-tree.js';
+import { PrismMesoAdapter } from '../prism-adapter.js';
 
 // The document's rows (prism.md §4.1, §4.2) without a viewer: compartments nested by `parent`, populations and
 // instances under them, a superstructure's parts made when opened, the counts with what was asked, the groupings, and
@@ -146,5 +149,74 @@ describe('documentLooks', () => {
     expect(looks.visible('p.CD63')).toBe(true);
     expect(looks.visible('c.exosome')).toBe(false);
     expect(looks.visible('medium')).toBe(false);
+  });
+});
+
+// review gate (M3, S1): a superstructure of superstructures, two levels deep (3 outer bodies, 4 inner each, 5 x each)
+const nested = {
+  format: 'meso_view_spec',
+  version: '0.2.0',
+  metadata: { title: 'nested' },
+  units: { length: 'nm' },
+  entities: [
+    { id: 'e.x', label: 'x', kind: 'protein', radius: 2 },
+    { id: 'e.inner', label: 'inner body', kind: 'assembly', superstructure: 's.inner' },
+    { id: 'e.outer', label: 'outer body', kind: 'assembly', superstructure: 's.outer' },
+  ],
+  superstructures: [
+    {
+      id: 's.inner',
+      label: 'inner',
+      compartments: [{ id: 'c.in', label: 'in', kind: 'vesicle', geometry: { kind: 'sphere', radius: 12 } }],
+      populations: [{ id: 'p.x', entity: 'e.x', compartment: 'c.in', location: 'interior', abundance: { count: 5 } }],
+    },
+    {
+      id: 's.outer',
+      label: 'outer',
+      compartments: [{ id: 'c.out', label: 'out', kind: 'vesicle', geometry: { kind: 'sphere', radius: 80 } }],
+      populations: [
+        { id: 'p.inner', entity: 'e.inner', compartment: 'c.out', location: 'interior', abundance: { count: 4 } },
+      ],
+    },
+  ],
+  compartments: [{ id: 'c.top', label: 'top', kind: 'cell', geometry: { kind: 'sphere', radius: 400 } }],
+  populations: [
+    { id: 'p.outer', entity: 'e.outer', compartment: 'c.top', location: 'interior', abundance: { count: 3 } },
+  ],
+} as unknown as MesoViewSpecDoc;
+
+describe('two levels of superstructures', () => {
+  it('counts every copy through both levels', async () => {
+    const r = await compile(nested, { resolvers: DefaultResolvers });
+    const o = documentOutline(nested, r.ir, r.counts);
+    expect(o.row('p.outer/p.inner/p.x')!.achieved).toBe(60);
+    expect(o.copies).toBe(3 + 12 + 60);
+    expect(o.row('c.top')!.achieved).toBe(o.copies);
+  });
+
+  it('names and lights the innermost copies of the drawn lists', async () => {
+    const r = await compile(nested, { resolvers: DefaultResolvers });
+    const adapter = new PrismMesoAdapter({} as never) as unknown as {
+      expansions: Map<string, unknown>;
+      placed: Map<string, { ref: string; label: string }>;
+      index(ir: unknown): void;
+      evict(keys: ReadonlySet<string>): void;
+      locate: PrismMesoAdapter['locate'];
+      drawnRuns: PrismMesoAdapter['drawnRuns'];
+    };
+    const flat = flattenInstances(r.ir!, adapter.expansions as never);
+    const keys = new Set(placementSets(flat.ir).map((s) => s.key));
+    // as a commit keeps them
+    adapter.evict(keys);
+    for (const k of keys) adapter.placed.set(k, { ref: `ref:${k}`, label: '' });
+    adapter.index(r.ir);
+    const deep = placementSets(flat.ir).find((s) => s.typeTable.some((t) => t.population === 'p.x'))!;
+    expect(adapter.locate(deep.key, 0)!.map((c) => c.population)).toEqual(['p.outer', 'p.inner', 'p.x']);
+    const loci = evaluateMesoQL(parseMesoQL('(population p.x)', {}, undefined, 'selection').expr!, {
+      doc: nested,
+      ir: r.ir!,
+    }).loci;
+    const runs = adapter.drawnRuns(loci).get(`ref:${deep.key}`);
+    expect(runs).toEqual([0, 60]);
   });
 });
