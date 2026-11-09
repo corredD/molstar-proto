@@ -14,7 +14,7 @@ import type { Resolver } from '../runtime/resolver.js';
 import { compile } from '../runtime/runtime.js';
 import { compileExosome, countingResolvers } from './helpers.js';
 
-// Application composition (design.md §6.7): a rigid-body placement fed to a refine stage; both reconcile the same
+// Application composition (_spec/runtime.md): a rigid-body placement fed to a refine stage; both reconcile the same
 // constraints, the refiner's result replaces the one it refines, and the stage before is a cache hit.
 
 describe('refine stages', () => {

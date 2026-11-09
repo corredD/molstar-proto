@@ -4,7 +4,7 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-// Content hashes (design.md §7.2): canonical JSON (sorted keys, typed arrays by content) through two FNV-1a 32-bit
+// Content hashes (_spec/ir.md): canonical JSON (sorted keys, typed arrays by content) through two FNV-1a 32-bit
 // streams, 16 hex digits. Used for resolution keys: equal inputs, equal keys, no work (as MolViewSpec's params-hash
 // versions, `jsonHash` in packages/mvs/runtime, and mol-state's `StateTransform.setParamsHashVersion`).
 

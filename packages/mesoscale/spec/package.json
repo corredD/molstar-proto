@@ -37,6 +37,7 @@
   "scripts": {
     "build": "tsc -b",
     "typecheck": "tsc -b && tsc -p tsconfig.test.json",
+    "spec": "node --conditions=molstar-src --experimental-transform-types --import ./scripts/ts-resolve.ts scripts/spec.ts",
     "test:scaling": "vitest run --config vitest.scaling.config.ts",
     "meso-validate": "tsc -b && cd .. && node spec/lib/cli/meso-validate.js",
     "meso-compile": "tsc -b && cd .. && node spec/lib/cli/meso-compile.js --base spec/src",
@@ -49,6 +50,7 @@
   },
   "devDependencies": {
     "@types/node": "catalog:",
+    "@typescript/typescript6": "catalog:",
     "typescript": "catalog:"
   }
 }

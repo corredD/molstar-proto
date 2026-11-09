@@ -1,0 +1,31 @@
+# MesoViewSpec: MesoQL
+
+What a MesoQL address means: the S-expression language that selects copies, sites and residues. The concepts and terms
+are in [README.md](README.md); the reasons and the numbers are in [design.md](design.md).
+
+## MesoQL: addresses, MesoLocation, MesoLoci (`format/mesoql.ts`, `ir/loci.ts`)
+
+David: "you need something like MesoQL … declarative addresses which then the runtime can resolve", with a schematized
+form and a materialized one, as Mol\* has `SchemaItem` and `Location`/`Loci`.
+
+- **Schematized:** an address is written with document ids, `(and (entity e.catalase) (in c.exosome))`. It is checked
+  against the document (symbol, arity, types, and that every id names a node of the right kind), with issues at the
+  document path, like any other. Its type is the one its slot asks for, not its head's: a look's `select`, a view's
+  `selection` and `cutaway`, a camera's `focus` and an annotation's `target` are selections; a relation's `entry` and
+  `exit` are sites, whose names are checked against the entity's `sites`; a site's `at` and a contact's `a` and `b` are
+  residues.
+- **Materialized:** `evaluateMesoQL` turns it into **MesoLoci**: per placement set, sorted runs `[start, end)` of copy
+  indices. A **MesoLocation** is one copy, `{set, index}`, with the stable id `<population>#<ordinal>`. Runs, not one
+  entry per copy: every resolver writes a population contiguously, so `(population p.lipids)` is one run however many
+  lipids there are (the exosome's 88,666; a quick test checks every population of the exosome is one run). This is what
+  [renderer finding R1](renderer-recommendations.md) asks Mol\* for.
+- **Symbols:** the table of symbols, their arguments, keywords and examples is generated from the code, in
+  [reference/mesoql.md](reference/mesoql.md).
+- **Where it is used:** a view's `looks[].select`, `selection` and annotation `target` (anchored at the selected copies'
+  centroid); relation `entry` and `exit`; site `at`. A look that covers part of a population becomes a partial look with
+  its runs; Prism cannot draw it ([renderer finding R8](renderer-recommendations.md)) and the adapter says so.
+- **Skill:** `mesoQLSkill()` (`format/mesoql-skill.ts`) writes the agent's text from the table; committed at
+  [reference/mesoql-skill.md](reference/mesoql-skill.md), which a test keeps equal (`-u` updates it). The CLIs
+  ([design.md](design.md) §12.1) print what it says a query reports.
+- **Stored as** its canonical S-expression string in JSON. SeqQL stores a JSON tree with full names; which to keep is
+  [open decision 10](design.md#11-what-held-what-the-prototypes-exposed-what-is-open).

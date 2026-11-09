@@ -14,7 +14,7 @@ import { PrismMesoAdapter } from '../prism-adapter.js';
 import { MesoSession } from '../session.js';
 import { h, onSpellingChange, panel, pre, showData, showHistory, showIssues, Styles } from './ui.js';
 
-// The semantic camera (design.md §5.1): a view says what to look at (a MesoQL address), how tightly (framing) and from
+// The semantic camera (_spec/views.md): a view says what to look at (a MesoQL address), how tightly (framing) and from
 // where (outside the scene); the runtime materializes the address over the resolved copies and places the camera.
 // Switching views reruns nothing upstream (the edit log shows it); the tour steps through views with their captions.
 

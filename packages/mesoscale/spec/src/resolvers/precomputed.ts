@@ -10,7 +10,7 @@ import { PlacementBuilder, type PlacementType, rotateVec } from '../ir/placement
 import type { StarTable } from '../runtime/readers.js';
 import type { Resolver, ResolveJob, ResolveOutput } from '../runtime/resolver.js';
 
-// `meso.precomputed` (design.md §4.5): placements someone else computed, read from their native format and carried into
+// `meso.precomputed` (_spec/runtime.md): placements someone else computed, read from their native format and carried into
 // the world frame by the resource frame's alignment. A precomputed model and a procedural one are the same to everything
 // after the resolver: both end as placement sets. Formats: RELION STAR (coordinates in voxels, ZYZ angles, as Mol*'s
 // reader reads them: packages/model/src/formats/particles/star.ts `relionEulerToRotation`) and a small JSON one. As
@@ -19,7 +19,7 @@ import type { Resolver, ResolveJob, ResolveOutput } from '../runtime/resolver.js
 // rotation: subtomogram · particle. An Å shift becomes voxels by the resource frame's scale (the voxel size).
 //
 // `params.placements`: an inline table in the same JSON shape, already in world Å (the runtime writes the document's
-// instances, design.md §3.13, this way, so given poses have one code path whether a file or the document holds them).
+// instances, _spec/format.md, this way, so given poses have one code path whether a file or the document holds them).
 //
 // `params.populations`: which population each row is: one id for the whole file, or `{ column, values: { <value>: id } }`.
 

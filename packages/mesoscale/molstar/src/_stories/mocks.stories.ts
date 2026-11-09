@@ -15,7 +15,7 @@ import { PrismMesoAdapter } from '../prism-adapter.js';
 import { MesoSession } from '../session.js';
 import { h, onSpellingChange, panel, pre, showHistory, showIr, showIssues, Styles } from './ui.js';
 
-// Smaller stories for what the slice leaves out (design.md §4.4): one gallery population kind each, its construction
+// Smaller stories for what the slice leaves out (_spec/runtime.md): one gallery population kind each, its construction
 // parameter on a slider. A slider moves a number the resolver reads, so the edit is a model edit that reruns that
 // resolver alone; the issues say when the request does not fit (a lattice on a too-small membrane).
 

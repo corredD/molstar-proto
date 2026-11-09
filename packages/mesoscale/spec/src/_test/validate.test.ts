@@ -15,7 +15,7 @@ import { nucleoidDoc } from '../examples/nucleoid.js';
 import { DefaultResolvers } from '../resolvers/index.js';
 import { compile } from '../runtime/runtime.js';
 
-// Static validation (design.md §7.4): the examples are valid; each broken document gives the issue a UI can point at.
+// Static validation (_spec/runtime.md): the examples are valid; each broken document gives the issue a UI can point at.
 
 const errors = (d: MesoViewSpecDoc) => validate(d).filter((i) => i.severity === 'error');
 const codes = (d: MesoViewSpecDoc) => validate(d).map((i) => i.code);

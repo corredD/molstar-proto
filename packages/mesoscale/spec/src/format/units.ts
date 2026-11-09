@@ -6,7 +6,7 @@
 
 import type { Abundance, ConcentrationUnit, DensityUnit, Length, LengthUnit, MassUnit, Quantity } from './doc.js';
 
-// Units (design.md §7.1): the document says its units, the IR is in ångström. Conversions happen once, when the runtime
+// Units (_spec/format.md): the document says its units, the IR is in ångström. Conversions happen once, when the runtime
 // normalizes the document; resolvers and adapters never see a document unit.
 
 export const LengthToAngstrom: Readonly<Record<LengthUnit, number>> = { A: 1, nm: 10, um: 1e4 };

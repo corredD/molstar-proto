@@ -257,7 +257,7 @@ recompute from a document) that a transform can reference.
 ## R7. No nested instancing — confirmed (v0.2)
 
 **Use case.** A superstructure placed many times: insulin granules in a β-cell, virions in plasma, nuclear pores in an
-envelope. The format keeps it once (its template sets) and its copies as poses (design.md §3.9).
+envelope. The format keeps it once (its template sets) and its copies as poses ([format.md](format.md)).
 
 **Observed.** `ParticleList.targetMapping` maps a target to a structure, a shape or a volume
 (`packages/model/src/model/particles/particle-list.ts`, `ParticleTarget`), not to another particle list. So the adapter

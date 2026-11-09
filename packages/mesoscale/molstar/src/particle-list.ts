@@ -10,7 +10,7 @@ import { CustomProperties } from '@molstar/model/model/custom-property';
 import type { ParticleList } from '@molstar/model/model/particles/particle-list';
 import { PluginStateObject as SO, PluginStateTransform } from '@molstar/plugin/state/objects';
 
-// A placement set as a Mol* particle list (design.md §6.5): positions, rotations and types are handed on as they are
+// A placement set as a Mol* particle list (_spec/runtime.md): positions, rotations and types are handed on as they are
 // (the IR's layout is the particle list's), so the only allocations are what the list needs and the set lacks: a radius
 // per copy (Mol*'s size theme reads `radii[index]`; there is no radius per target) and a key per copy
 // (renderer-recommendations.md R2). The list enters the state through a transform whose only param is the set's key:

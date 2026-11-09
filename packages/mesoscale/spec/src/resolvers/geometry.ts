@@ -8,10 +8,10 @@ import type { IRShape } from '../ir/ir.js';
 import type { Random } from '../runtime/random.js';
 import type { MeshData } from '../runtime/resolver.js';
 
-// Compartment shapes as samplers (design.md §4.4): inside tests, interior points kept a margin from the boundary, surface
+// Compartment shapes as samplers (_spec/runtime.md): inside tests, interior points kept a margin from the boundary, surface
 // points with their outward normal. Analytic shapes are exact; a mesh samples its triangles by area and tests inside by
 // ray parity (O(triangles) a test: fine for the fixtures' meshes, a signed distance grid for real segmentations, as
-// mesobuild's `engine/geometry.py` has; design.md §9).
+// mesobuild's `engine/geometry.py` has; design.md §11).
 
 export interface ShapeSampler {
   readonly volume?: number;
@@ -85,7 +85,7 @@ function ellipsoid(c: readonly number[], radii: readonly number[]): ShapeSampler
       return u * u + v * v + w * w <= 1;
     },
     sampleSurface(rand, p, n) {
-      // a sphere point scaled: denser where the curvature is high; fine for a prototype (design.md §9)
+      // a sphere point scaled: denser where the curvature is high; fine for a prototype (design.md §11)
       rand.onSphere(n);
       p[0] = cx + a * n[0];
       p[1] = cy + b * n[1];
@@ -233,7 +233,7 @@ function meshSampler(mesh: MeshData): ShapeSampler {
     contains(x, y, z, m) {
       if (!inside(x, y, z)) {
         // a negative margin grows the shape: a point outside it counts when the surface is within |m| (exact, the
-        // nearest point of the triangles; the margin's sign must not be dropped, design.md §4.4)
+        // nearest point of the triangles; the margin's sign must not be dropped, _spec/runtime.md)
         if (m >= 0) return false;
         const m2 = m * m;
         for (let i = 0; i < I.length; i += 3)
@@ -241,7 +241,7 @@ function meshSampler(mesh: MeshData): ShapeSampler {
         return false;
       }
       if (m <= 0) return true;
-      // the margin, checked along the six axis directions (approximate, design.md §9)
+      // the margin, checked along the six axis directions (approximate, design.md §11)
       return (
         inside(x + m, y, z) &&
         inside(x - m, y, z) &&

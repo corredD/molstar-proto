@@ -6,6 +6,8 @@ For David's review. Renderer findings are in a separate document,
 
 - **Status:** a prototype on branch `me/mesoviewspec` (worktree `~/prism-me-lanes/mesoviewspec`, off `prism-me`). It is
   not pushed. Nothing in Mol\* itself was changed.
+- **The spec** is [README.md](README.md) and its topic files; this document is its design record: why, the numbers and
+  the decisions. Each section moved to a topic file leaves its heading here, linked.
 - **Code:** `packages/mesoscale/spec` (`@molstar/meso-spec`: the format, IR, runtime and resolvers; no Mol\* imports)
   and `packages/mesoscale/molstar` (`@molstar/meso-molstar`: the Prism adapter, the MolViewSpec export and the stories).
 - **Paired examples:** each scene as a document and as the IR the runtime makes of it, in `packages/mesoscale/examples/`
@@ -23,7 +25,7 @@ flagellar motors, nuclear pores, lattices with defects, lipid composition) was t
 | -------------------------------------------------------------------------------- | ------- | ----------------------------------------------------------- |
 | The layers, named: document → constraint graph → MesoComplex → render IR         | §1      | built                                                       |
 | S-expression spelling: the document, IR, issues and traces in the UI             | §3.7    | built, round-trip tested                                    |
-| MesoQL: addresses, MesoLocation and MesoLoci (runs)                              | §3.8    | built: 13 symbols, views use it                             |
+| MesoQL: addresses, MesoLocation and MesoLoci (runs)                              | §3.8    | built: 14 symbols, views use it                             |
 | Superstructures: reusable, nested, instanced; `parts` or `entity` detail         | §3.9    | built: β-cell, 120 granules from Ludo's ISG recipe          |
 | Values by value or by reference: lipid composition, conformational states, sites | §3.10   | language; sites used by relations                           |
 | Relations as constraints with site addresses (binds, bends, branches, contacts)  | §3.11   | `bends` and `binds` reconciled (HU on DNA); others reported |
@@ -212,215 +214,24 @@ The two layers hold different things:
 
 ## 3. The language (`format/doc.ts`)
 
-### 3.1 Shape
+### 3.1 Shape → [format.md](format.md#shape)
 
-A document is plain JSON:
+### 3.2 Biology → [format.md](format.md#biology)
 
-```
-{ format: "meso_view_spec", version, revision?, metadata, units?,
-  frames, alignments, resources,                       // where things are and what data exist
-  entities, compartments, populations, catalogs, relations,  // the biology
-  models, evidence, activities,                         // how the biology was realized and why we believe it
-  views, session,                                       // persistent view state
-  custom }                                              // namespaced extensions
-```
+### 3.3 Resources in their native formats → [format.md](format.md#resources-in-their-native-formats)
 
-- **One id namespace for the whole document.** Ids are unique across all sections and match
-  `^[A-Za-z][A-Za-z0-9_.:-]*$`. Nodes refer to each other by id only. This is SeqViewSpec's rule (every node has a
-  `ref`; `packages/sequences/_spec/format.md`), not MolViewSpec's optional `ref`.
-- **A flat document, not a tree.** MolViewSpec is a tree (`packages/mvs/builder/src/tree/generic/tree-schema.ts`,
-  `Node`: `{kind, params, custom, ref}` with `children`), because it describes a render pipeline. A mesoscale scene is a
-  graph:
-  - a population refers to an entity, a compartment and its evidence;
-  - a model realizes several populations;
-  - an activity uses and generates resources.
+### 3.4 Frames and alignment → [format.md](format.md#frames-and-alignment)
 
-  The tree belongs in the IR (§4).
+### 3.5 Evidence, provenance, tracing → [format.md](format.md#evidence-provenance-tracing)
 
-- **`custom` is keyed by namespace** (as in SeqViewSpec), so an unknown extension is kept and ignored.
-- **Versioning:** semver. From 1.0 a minor version only adds; while the format is 0.x a minor version may break (0.2
-  made looks MesoQL strings instead of selector objects), with no upgrade path yet. A newer major version is refused
-  (`format.version`).
+### 3.6 Catalogs (a gap the yeast cell exposed) → [format.md](format.md#catalogs-a-gap-the-yeast-cell-exposed)
 
-### 3.2 Biology
+### 3.7 The S-expression spelling (`format/sexpr.ts`) → [format.md](format.md#the-s-expression-spelling-formatsexprts)
 
-| Concept       | Fields                                                                                                                                                                                                    | Meaning                                                         |
-| ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
-| `Entity`      | `kind` (protein, complex, nucleic-acid, lipid, glycan, small-molecule, assembly), `identifiers` (`uniprot`, `pdb`, `emdb`, …), `structure: {resource, assembly, selection}`, `radius`, `mass`, `topology` | a molecular species                                             |
-| `Compartment` | `kind`, `parent`, `geometry` (sphere, ellipsoid, box, `mesh` resource, `segmentation` resource + label, `implicit`), `membrane: {thickness, leaflets}`                                                    | nested containment (not a coordinate transform)                 |
-| `Population`  | `entity`, `compartment`, `location` (interior, membrane, outer-surface, inner-surface, exterior), `abundance` (count, concentration, density, volumeFraction), `range`, `arrangement`, `constraints`      | copies of an entity somewhere                                   |
-| `Arrangement` | `random`, `lattice` (hexagonal/square, spacing), `fiber` (rise, twist, path or growth rule), `bilayer`                                                                                                    | how copies are arranged, in biological terms                    |
-| `Constraint`  | `placed-fraction` (min), `min-distance` (to, distance)                                                                                                                                                    | a requirement the result must meet                              |
-| `Relation`    | binds, part-of, colocalizes, anchored-to, excludes                                                                                                                                                        | a statement; honoured only by resolvers that say so (`honours`) |
+### 3.8 MesoQL: addresses, MesoLocation, MesoLoci (`format/mesoql.ts`, `ir/loci.ts`) → [mesoql.md](mesoql.md#mesoql-addresses-mesolocation-mesoloci-formatmesoqlts-irlocits)
 
-**Biological constraints stay in the document; construction details go to the IR.**
+### 3.9 Superstructures: reusable, nested, instanced (`format/doc.ts` `Superstructure`) → [format.md](format.md#superstructures-reusable-nested-instanced-superstructure)
 
-- **Document (what is true).** "500 catalase in the lumen", "pores in a hexagonal lattice 22 nm apart", "actin with a
-  persistence length of 1 µm".
-- **Model `params`, opaque to the language, passed to the resolver.**
-  - packing tries and give-up thresholds;
-  - cellPACK principal vectors and membrane offsets;
-  - the recipe path an ingredient maps to.
-- **IR `resolve` node.** The params go into its normalized `input`, where they are visible and hashed (§4.3).
-
-### 3.3 Resources in their native formats
-
-A `Resource` is `{kind, format, uri | accession, frame, checksum, license, select}`. The document never copies data.
-
-- **`kind`:** tilt-series, tomogram, segmentation, mesh, structure, recipe, placements, volume, table, document,
-  dataset, …
-- **`format`:** the community's own name: `mrc`, `star`, `obj`, `pdb-id`, `cellpack-gpu-serialized`, `paxdb-tsv`, …
-- **`select`:** picks a part of a resource: a segmentation label, a STAR table, an mmCIF assembly.
-- **Readers** turn raw content into what resolvers use (`runtime/readers.ts`: STAR, OBJ, cellPACKgpu JSON, placement
-  JSON). They are pluggable, like resolvers.
-
-### 3.4 Frames and alignment
-
-- **`Frame`:**
-  - `kind`: one `world` frame, plus `instrument` or `resource` frames;
-  - `units`, `voxelSize`, `handedness`;
-  - `convention`: origin and axes, in words.
-- **`Alignment`:** `{from, to, transform, method, residual, evidence, activity}`.
-  - The transform is a similarity: a quaternion, a translation in the document's length unit, and a scale (or a 4×4
-    matrix).
-  - It acts on Å coordinates. The voxel size converts voxels to Å first.
-- **Spatial resources declare their frame.** The runtime composes alignments in either direction into each frame's
-  voxel-to-world-Å matrix (`frameMatrices`), and the IR records that matrix.
-- **Undeclared handedness is a warning, never a guess.** The yeast document shows why: its source states the units but
-  not the origin, axes or handedness, and the runtime reports exactly that (`frame.handedness` on three frames).
-- **A spatial resource whose frame no alignment reaches** is `frame.unaligned`.
-
-### 3.5 Evidence, provenance, tracing
-
-- **`Evidence`:**
-  `{kind: observation | measurement | literature | database | prediction | assumption, statement, source: {resource, citation, location}, confidence}`.
-  - Any node can cite evidence.
-  - Conflicting evidence is kept side by side. Yeast ribosomes cite both the model's 169,000 and a growth-law estimate
-    of about 3 × 10⁵, with `range: [169000, 300000]`.
-- **`Activity`:** after W3C PROV's activity: `{kind, used, generated, software, parameters, agent, date}`.
-  - Resources, models and alignments are generated by activities.
-  - A model points at the activity that made it.
-- **Tracing** (`format/trace.ts`, `trace(doc, id)`) walks this graph backwards from any population, compartment, model
-  or resource. Picked catalase gives:
-
-  ```
-  population p.catalase.observed  ─cites→ ev.catalase-picked ─source→ r.picks
-    ─realized by→ m.picks ─made by→ act.pick (template matching) ─used→ r.tomogram
-       ─generated by→ act.reconstruct ─used→ r.tilts ─generated by→ act.acquire
-    r.picks ─aligned by→ al.tomo-model ─made by→ act.align ─used→ r.membrane-mesh ─generated by→ act.segment
-  ```
-
-- **Every recipe choice is recorded.** The cellPACKgpu import records each choice it makes as an `assumption`, cited by
-  the populations that depend on it: which count field wins, what a surface molarity is per, the medium box, the
-  thickness unit.
-
-### 3.6 Catalogs (a gap the yeast cell exposed)
-
-- **The problem.** A proteome is 5,638 species: too many to list as populations, and as data they belong in a table.
-- **The prototype's answer.** `catalogs[]`: `{resource, columns, abundanceKind}`, one row per population.
-- **The gap.** The runtime has no catalog expander yet and says so (`catalog.unexpanded`).
-- **Open:** expand catalogs in the runtime (a reader that emits populations), or let a resolver consume them directly.
-
-### 3.7 The S-expression spelling (`format/sexpr.ts`)
-
-One tree, three spellings, as SeqQL has them (`packages/sequences/_spec/seqql.md`): the S-expression for people, agents
-and tests; JSON for storage; the types for code. Every data panel in the stories shows the S-expression first, with a
-JSON toggle.
-
-```lisp
-(meso_view_spec
-  :version 0.2.0
-  :populations
-    [(population p.catalase.observed
-       :entity e.catalase
-       :compartment c.exosome
-       :location interior
-       :abundance (:count 24)
-       :evidence [ev.catalase-picked])]
-  :views
-    [(view v.near-picks
-       :looks
-         [(:select (all) :visible false)
-          (:select (within (in c.exosome) :of (population p.catalase.observed) :distance 15) :visible true)])])
-```
-
-- **Patches** print as
-  `(patch :base r1 :revision r2 :ops [(set l.catalase :fields (:color #ff0000)) (remove an.picks)])` (`printPatch`,
-  `readPatch`, `PatchCodec`): an op is headed by its name with the id it addresses first; an inserted `node` is a
-  record, so its fields keep their order. A look with an id prints as `(look l.x …)` (`looks` is a section of the
-  codec); one without, as a record.
-- **Codec:** a section item is `(section-singular id :key value …)`; an object with a `kind` word is `(kind …)`; a
-  quantity is `(15 A)`; any other object is a record `(:key value …)`; arrays are `[…]`; camelCase keys are kebab-case
-  keywords, and a key that would not read back (an id used as a key) is quoted, `:"p.ALB"`. MesoQL values are written as
-  forms, not strings, at their slots only: a look's `select`, a view's `selection` and `cutaway`, a camera's `focus`, an
-  annotation's `target`, a site's `at`, a relation's `entry` and `exit` (matched by the key and its parent's, so
-  `params.target` stays data). A form is printed on one line, and only when the string is already its canonical text;
-  any other string (two spaces, a comment) stays a quoted string. So `read(print(json))` is the JSON for every string,
-  and reading hand-written text keeps an address's canonical text.
-- **Layout:** SeqQL's printer rules (positionals then keywords, one line when it fits 80 columns), Lisp indentation.
-- **Tested:** `read(print(json))` equals `json` and `print(read(text))` is a fixed point, on all five example documents
-  and their IR summaries (`_test/sexpr.test.ts`).
-- **Not done:** the S-expression is not yet editable in the stories (they display it); the reader exists for that.
-
-### 3.8 MesoQL: addresses, MesoLocation, MesoLoci (`format/mesoql.ts`, `ir/loci.ts`)
-
-David: "you need something like MesoQL … declarative addresses which then the runtime can resolve", with a schematized
-form and a materialized one, as Mol\* has `SchemaItem` and `Location`/`Loci`.
-
-- **Schematized:** an address is written with document ids, `(and (entity e.catalase) (in c.exosome))`. It is checked
-  against the document (symbol, arity, types, and that every id names a node of the right kind), with issues at the
-  document path, like any other. Its type is the one its slot asks for, not its head's: a look's `select`, a view's
-  `selection` and `cutaway`, a camera's `focus` and an annotation's `target` are selections; a relation's `entry` and
-  `exit` are sites, whose names are checked against the entity's `sites`; a site's `at` and a contact's `a` and `b` are
-  residues.
-- **Materialized:** `evaluateMesoQL` turns it into **MesoLoci**: per placement set, sorted runs `[start, end)` of copy
-  indices. A **MesoLocation** is one copy, `{set, index}`, with the stable id `<population>#<ordinal>`. Runs, not one
-  entry per copy: every resolver writes a population contiguously, so `(population p.lipids)` is one run however many
-  lipids there are (the exosome's 88,666; a quick test checks every population of the exosome is one run). This is what
-  renderer finding R1 asks Mol\* for.
-- **Symbols** (the reference is generated from the table, `mesoQLReference`):
-
-| Symbol                                         | Returns   | Meaning                                                                                 |
-| ---------------------------------------------- | --------- | --------------------------------------------------------------------------------------- |
-| `(all)`                                        | selection | every copy                                                                              |
-| `(population p…)`, `(entity e…)`, `(model m…)` | selection | copies by population, entity or model                                                   |
-| `(in c… :nested :location)`                    | selection | copies in compartments (and those nested in them unless `:nested false`), at a location |
-| `(copies p start count)`                       | selection | copies by ordinal (valid for one resolution)                                            |
-| `(and …)`, `(or …)`, `(not Q :in U)`           | selection | set algebra on runs                                                                     |
-| `(within Q :of Q2 :distance d)`                | selection | copies near others (hash grid, O(N))                                                    |
-| `(part Q p.inner)`                             | selection | an inner population in the superstructure instances `Q` picks (§3.9)                    |
-| `(site e name)`                                | site      | a named site of an entity: the "pointer" relations attach to (§3.11)                    |
-| `(residues e :chain :range)`                   | residues  | a schematized residue address; needs the structure loaded                               |
-
-- **Where it is used:** a view's `looks[].select`, `selection` and annotation `target` (anchored at the selected copies'
-  centroid); relation `entry` and `exit`; site `at`. A look that covers part of a population becomes a partial look with
-  its runs; Prism cannot draw it (renderer finding R8) and the adapter says so.
-- **Skill:** `mesoQLSkill()` (`format/mesoql-skill.ts`) writes the agent's text from the table; committed at
-  `_spec/reference/mesoql-skill.md`, which a test keeps equal (`-u` updates it). The CLIs of §12.1 print what it says a
-  query reports.
-- **Stored as** its canonical S-expression string in JSON. SeqQL stores a JSON tree with full names; which to keep is
-  open decision 10.
-
-### 3.9 Superstructures: reusable, nested, instanced (`format/doc.ts` `Superstructure`)
-
-Ludo: "a virus is an ultrastructure made of ultrastructures made of molecules made of atoms"; an insulin granule "can
-have thousands of instances in a cell". David: `.superstructure({ params })`, holding "both" the reconstructed and the
-opaque form, "depending on context".
-
-- **In the document:** `superstructures[]`, each a fragment of a document (compartments, populations, models, relations,
-  its own entities) in its own frame, centred on its envelope compartment. An entity names one (`superstructure`), as an
-  entity names its structure: the insulin granule is an entity whose parts are a superstructure. Populations instance it
-  like any entity. Superstructures nest; a cycle is refused (`superstructure.cycle`).
-- **Both levels from one description:** a population's `detail` is `parts` (each copy resolved into the superstructure's
-  contents) or `entity` (one body a copy). Ids inside share the document's namespace, so MesoQL addresses them; a
-  structural reference (a population's compartment or entity, a model's populations, a relation's subjects) sees only
-  its own document's sections, so a superstructure's contents stay its own, and a superstructure does not see a
-  sibling's.
-- **Resolved once:** the runtime compiles each superstructure as a document of its own, with the session's cache
-  (`superstructureDoc`), and the IR keeps one `superstructure` node (its template sets, its frame) plus an `instances`
-  node under each placement set whose copies stand for it. Nothing is multiplied in the IR.
-- **Copy ids through the nesting:** `(part (copies p.granules 12) p.Vamp2)` materializes as one virtual set per
-  instance, and its copies read `p.granules#12/p.Vamp2#305`.
 - **Measured [fixture]:** the β-cell example (`examples/betacell.ts`) imports the granule from Ludo's cellPACKgpu ISG
   recipe (trimmed to Vamp2, Rab3a, Chga, Scg2: 2,229 copies) and places 120 granules. The template resolves once; more
   granules rerun only the cell's packing; `detail: entity` reruns nothing and keeps the granules' poses. The IR holds 83
@@ -428,49 +239,9 @@ opaque form, "depending on context".
 - **Answers open decision 1 (placement frames) for superstructures:** frames travel (instances are poses in the IR), and
   the adapter expands only because Prism cannot instance lists. Plain placement sets stay baked in the world frame.
 
-### 3.10 By value or by reference
+### 3.10 By value or by reference → [format.md](format.md#by-value-or-by-reference)
 
-David: "it could be passed by value or reference … rigid and strict in one place, and use a recipe in another".
-
-- **Lipid composition:** `membrane.composition` is either `{lipids: [{entity, fraction, leaflet}]}` (by value) or
-  `{resource}` (a recipe or a table, by reference). It is metadata a resolver may honour; the prototype's bilayer draws
-  one lipid kind.
-- **Conformational states:** `entity.states[]`, each a structure reference and a fraction.
-- **Sites:** `entity.sites[]`, each a point and an axis in the entity's frame (by value) and/or a residue address (by
-  reference to the structure, materialized when it is loaded).
-- **Lattices with defects:** `arrangement.defects.vacancy`, the share of empty sites, honoured by `meso.lattice`
-  (seeded: the same holes every run). Ludo's example: a membrane protein placed at random until a cryo-ET study showed a
-  hexagonal lattice with defects. The fix is an edit of one arrangement, citing the new evidence.
-
-### 3.11 Relations as constraints with addresses
-
-David: "encode the relations as a graph … and then reconcile that in the runtime"; Ludo: "the bending is highly
-specific, you need point of entry/output".
-
-```lisp
-(relation rel.hu-bends-dna
-  :kind bends
-  :subjects [p.hu]
-  :objects [p.dna]
-  :entry (site e.hu dna-entry)
-  :exit (site e.hu dna-exit)
-  :angle 120
-  :spacing 30)
-```
-
-- **Kinds:** `binds`, `bends`, `branches` (Arp2/3, 73° in the yeast model), `contacts` (residue pairs for
-  bead-and-spring engines: `a`, `b` residue addresses, a distance), `part-of`, `colocalizes`, `anchored-to`, `excludes`.
-- **Reconciled by the resolvers that honour them** (`Resolver.honours`). `meso.fiber` honours `binds` and `bends`: every
-  `spacing` of strand it places a subject copy with its entry site on the strand and its entry→exit axis along it, using
-  MesoCraft's attachment-point rule `x = q − R·p` (Jia et al. 2026, eq. 1). The strand resumes at the exit site, turned
-  by the angle. A quick test checks every HU's entry site sits on a DNA copy, the next copy sits at its exit site, and
-  the turn is the stated angle. A traced path is an observation: binders go on it, but it is not bent (an info issue).
-- **Not reconciled, reported:** a site given only by residues cannot be materialized without the structure (IHF in the
-  nucleoid example: `constraint.unmet` with that reason); `branches` and `contacts` have no resolver yet
-  (`relation.ignored`).
-- **Rigid or bead-and-spring is the engine's choice, not the language's** (Ludo's question): a rigid-body engine uses
-  sites and angles; a bead-and-spring engine uses `contacts`. Each declares what it honours, and the runtime reports the
-  rest.
+### 3.11 Relations as constraints with addresses → [format.md](format.md#relations-as-constraints-with-addresses)
 
 ### 3.12 MesoCraft, mapped (Ivan's paper)
 
@@ -495,393 +266,48 @@ mmCIF carrying the rule graph. Its constraint catalogue is in `~/Dev/mesocraft-r
 A MesoCraft rule graph could be a resolver (`mesocraft`) that takes it as a model's input, as cellPACKgpu's recipe is.
 The gaps above are where its vocabulary is richer than this format's.
 
-### 3.13 Instances: copies stated one by one (v0.3, `Instance`)
+### 3.13 Instances: copies stated one by one (v0.3, `Instance`) → [format.md](format.md#instances-copies-stated-one-by-one-instance)
 
-David's comment on v0.2: a population is not the top-level abstraction, it is how we state copies today because we
-cannot list every one. The document now has three ways to state copies, and populations are one of them:
+### 3.14 Not in the document → [format.md](format.md#not-in-the-document)
 
-| Way           | The document says                                        | Example                                        |
-| ------------- | -------------------------------------------------------- | ---------------------------------------------- |
-| individually  | this copy, here, with this id (`instances`)              | a docked granule; a ribosome someone segmented |
-| statistically | how many, how arranged, where (`populations`)            | 2,000 ribosomes in the cytoplasm               |
-| structurally  | the copies a superstructure contains (`superstructures`) | the VAMP2 on every granule                     |
-
-```lisp
-(:instances
-  [(instance i.granule-docked
-      :label "a docked granule"
-      :entity e.granule  :compartment c.cell
-      :pose (:translation [0 -1300 0])
-      :evidence [ev.docked])])
-```
-
-**What an instance adds is identity.** `(copies p.granules 12)` is an ordinal: valid for one resolution, and a repack
-makes it another granule. `(instance i.granule-docked)` is the same copy after any edit that does not touch it. A quick
-test (`_test/instances.test.ts`) repacks the cell with another seed and with fewer ribosomes: the instance keeps its id,
-its pose and the camera framed on it, while granule 12 moves.
-
-**How it is realized.** The runtime turns each instance into a population of one copy under the instance's id, placed by
-`meso.precomputed` from an inline table in world Å (`withInstances`, `runtime/runtime.ts`). Given poses therefore have
-one code path, whether a file (picks) or the document holds them. Every procedural model avoids the instances, so a
-packer works around them. Superstructure expansion, looks, relations, MesoQL and the camera needed nothing new.
-
-**Limits.** Each instance is its own type: fine for tens or hundreds, not for 10⁵ copies, which belong in a resource
-read by `meso.precomputed` (§4.5). A pose is in the world frame, or in `frame`'s own coordinates (a tomogram's voxels).
-
-### 3.14 Not in the document
-
-- placements and other derived results;
-- renderer settings: representation types, LOD, quality;
-- transient UI state.
-
-See §5.
-
-### 3.15 Builder (`builder/`)
-
-A document written in TypeScript, as Seq\*'s builder (`@molstar/seq-core/builder`). A builder is not part of the format:
-a document from it means what the literal means. Nothing is added, empty optional sections are left out, sections come
-in the order of `MesoViewSpecDoc`, the nodes of a section in the order they were made, a node's keys `id` first and then
-in the order the caller wrote them, a superstructure's in `Superstructure`'s order (the S-expression print follows the
-order).
-
-```ts
-const b = createMesoDocument({ title: 'β-cell slice', organism: { name: 'Mus musculus', taxon: 10090 }, units: { length: 'nm' } });
-const granule = b.entity({ id: 'e.granule', label: 'insulin secretory granule', kind: 'assembly', superstructure: ss.ref });
-const cell = b.compartment({ id: 'c.cell', label: 'β-cell', kind: 'cell', geometry: { kind: 'sphere', radius: 1500 } });
-const granules = b.population({ id: 'p.granules', entity: granule, compartment: cell, location: 'interior', abundance: { count: 120 } });
-b.view({ id: 'v.g12', camera: { focus: q.part(q.copies(granules, 12), vamp2), framing: 'context' }, looks });
-const { doc, issues } = b.build();
-```
-
-- **Refs.** A node call returns the node's ref: its id, branded by the kind of node and by its scope (`doc`, or `inner`
-  inside a superstructure, as `validate`'s two indexes, §3.9). A slot that holds an id takes a ref of its kind and
-  scope, never a plain string: a population where a compartment is wanted, or a compartment of the document inside a
-  superstructure, is a TypeScript error (`_test/builder.types.test.ts`, run by `tsc -p spec/tsconfig.test.json`). A ref
-  is a string at run time. An entity's ref carries the names of its declared `sites`, so `q.site(e, 'name')` is checked.
-- **Where a string becomes a ref.** `get(kind, id)`: a node added elsewhere or made later (a cycle between an activity
-  and what it generated); `add(section, nodes)`: nodes made elsewhere (an importer's), copied as they are, their ids
-  registered; the node `get` names is made with that id given explicitly (a label's generated id would skip it, the id
-  being reserved). The MesoQL slots (`select`, `focus`, `cutaway`, `target`, `entry`) stay `MesoQL` strings. `validate`
-  checks all three (`ref.missing`, `ref.kind`, `mesoql.*`). A ref of another builder is not a TypeScript error.
-- **Ids.** An id nobody gave is made from the label (`insulin granule` → `e.insulin-granule`), else from what the node
-  refers to (a population `p.<entity>`, a relation `rel.<subjects>-<kind>-<objects>`, an alignment, a resource by its
-  accession or format), else counted. Prefixes: `f. al. r. e. s. c. p. i. cat. rel. m. ev. act. v. an. t.`. A slug is
-  lowercase ASCII words joined by `-`, at most 40 characters, cut on a word. A taken id takes `-2`, `-3`. An id depends
-  on the calls and their order only, one registry per builder. An explicit id is kept as given (a duplicate is
-  `id.duplicate` at build). Site and state ids are not document ids.
-- **Superstructures.** `superstructure()` returns a builder for its compartments, populations, models, relations and
-  entities, whose refs are `inner`. Nesting is an entity whose `superstructure` is its `ref`.
-- **MesoQL.** `q` has one helper per symbol of `MesoQLSymbols`, typed by the refs the symbol takes, printing the text
-  `printMesoQL` prints; a test checks that every symbol has a helper and that the output parses and prints back.
-- **`build()`** returns `{ doc, issues }`: `validate`'s issues, never thrown, callable again.
+### 3.15 Builder (`builder/`) → [format.md](format.md#builder-builder)
 
 ## 4. The IR (`ir/ir.ts`, `ir/placements.ts`)
 
-### 4.1 A tree in the manner of `mol-state`
+### 4.1 A tree in the manner of `mol-state` → [ir.md](ir.md#a-tree-in-the-manner-of-mol-state)
 
-- **The tree:** each node is `{ref, kind, params, children, origin}`. Children are evaluated after their parent, as in
-  `packages/core/src/state` (`StateTransform`: ref, parent, transformer, params).
-- **Units:** every length is in Å, every frame a matrix, every abundance a count.
-- **Node families:**
-  - **space:** `scene`, `frame`, `compartment` (shape, free volume, area), `membrane` (thickness);
-  - **construction:** `resolve` (model, resolver, version, normalized `input`, `key`, `cached`);
-  - **evaluated:** `placements` (a placement set).
-- **(v0.2) superstructures:** `superstructure` (a superstructure's resolved tree, once) and `instances` (under a
-  placement set: its copies of one type stand for a superstructure, `parts` or `entity`). Together with the placement
-  sets, this evaluated part is what David calls the MesoComplex.
-- **Looks and the camera are not in the tree.** They live in `IRView`: one look per (set, type), concrete colors, the
-  camera in Å. A color edit never touches a node.
-- **Refs come from document ids, never from content** (`m.recipe/placements/0`, `c.exosome/membrane`). The same scene
-  gets the same refs on every run.
+### 4.2 One leaf: the placement set → [ir.md](ir.md#one-leaf-the-placement-set)
 
-### 4.2 One leaf: the placement set
+### 4.3 Construction details live in `resolve` nodes → [ir.md](ir.md#construction-details-live-in-resolve-nodes)
 
-Every resolver produces placement sets, and every adapter consumes them:
+### 4.4 The cases → [runtime.md](runtime.md#which-resolver-by-case)
 
-- `positions` Float32 xyz Å, `rotations` Float32 xyzw, `types` Int32, `ordinals` Int32;
-- a `typeTable` of `{population, entity, compartment, radius, label}`;
-- optional `fibers` in CSR form.
+### 4.5 Procedural and precomputed models together → [runtime.md](runtime.md#procedural-and-precomputed-models-together)
 
-The layout is Mol\*'s particle list (`packages/model/src/model/particles/particle-list.ts`, `ParticleList.coordinates`,
-`.rotations`, `.targets`), so the adapter hands the buffers on without copying.
-
-- **Memory:** 36 B a copy (12 position + 16 rotation + 4 type + 4 ordinal). **[measured]**, exact: a quick test checks
-  it, and the heavy test checks that 1M lipids are allocated once.
-- **Stable copy ids:** `<population>#<ordinal>`.
-
-**Reuse the IR or extend it?** This single leaf is the test.
-
-- **It can reuse the IR:** a new kind whose output is copies of entities at poses. Examples: a new packer, a new recipe
-  format, a new particle-list format.
-- **It needs a new IR node:** a new kind of _geometry_: a volume to draw, a mesh to draw, a continuous density (a
-  filament drawn as a tube rather than copies).
-- **It needs the language extended:** a new _biological statement_ that the current concepts cannot express. Examples:
-  - a helical lattice on a tube, such as microtubule protofilaments;
-  - a binding relation a resolver must honour;
-  - a population defined by a table (§3.6).
-
-### 4.3 Construction details live in `resolve` nodes
-
-A resolver's `project(job)` returns the normalized input its result depends on:
-
-- radii, counts and shapes, all in Å;
-- the recipe's content hash;
-- its own `params`.
-
-The runtime keys the result by `hash(resolver id, version, input, keys of the sets it avoids)` (`ir/hash.ts`: canonical
-JSON, typed arrays hashed by content). The IR shows the input, so a reader can see exactly what a model was built from.
-
-**The rule:** what is not in the projection must not change the result.
-
-- **Same rule elsewhere:**
-  - MolViewSpec: Mol\* refs from a hash of the parent ref and transformer, versions from a params hash
-    (`setParamsHashVersion` in `packages/core/src/state/transform.ts`, used by `packages/mvs/runtime/src/load.ts`);
-  - SeqViewSpec: "affected" means modified or depending on a modified node (`packages/sequences/_spec/format.md`).
-- **Why it matters:** this is what makes "a color edit reuses placements" true by construction rather than by care.
-
-### 4.4 The cases
-
-| Case                       | In the document                                                                 | In the IR / resolver                                                                                                                          | Where it is exercised                                                          |
-| -------------------------- | ------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| Nested compartments        | `parent`                                                                        | compartment nodes nest; free volume = volume − children's; packers keep copies out of children (with their membranes)                         | gallery: ribosomes outside the nucleus, vesicle and mitochondrion (quick test) |
-| Spheres, ellipsoids, boxes | `geometry`                                                                      | `IRShape`, exact samplers (`resolvers/geometry.ts`)                                                                                           | gallery, scale scenes                                                          |
-| Imported geometry          | `geometry: {kind: mesh, resource}`                                              | mesh moved into the world frame by its frame's matrix; area-weighted surface sampling, ray-parity inside test                                 | exosome (OBJ)                                                                  |
-| Cryo-ET surfaces           | `geometry: {kind: segmentation, resource, label}` + the activities that made it | `implicit` here: surface extraction is not in the prototype; a mesh exported from the segmentation is the supported path                      | yeast (declared), exosome (as a mesh)                                          |
-| Curved lipid bilayers      | `arrangement: bilayer`, density per leaflet                                     | `meso.bilayer`: both leaflets ¼ of the thickness off the middle, heads out; Fibonacci sites on spheres; allocated once, exactly               | exosome (88k lipids), Bilayer mock, 1M scale                                   |
-| Oriented membrane proteins | `location: membrane`, `topology.nTerminus`; (recipe) principal vector           | the copy's axis turned onto the outward normal (inward if N-terminus inside), random spin; cellPACK offset along the axis                     | exosome: RAB5A's −z axis points out (quick test)                               |
-| Lattices                   | `arrangement: lattice`                                                          | `meso.lattice`: Fibonacci sites at the lattice density; a count below the sites fills a patch; above, a shortfall saying how many sites exist | gallery: pores (fits), ATP synthase (69 of 400 sites)                          |
-| Seeded packing             | `random` + model `seed`                                                         | `meso.pack` / `cellpack-gpu`: random sequential addition, hash grid, per-population sub-seeds                                                 | everywhere                                                                     |
-| Fibers, by path            | `fiber.path` (points or a resource)                                             | copies `rise` apart along the arc, +z on the tangent, `twist` a copy; CSR `fibers`                                                            | gallery microtubule                                                            |
-| Fibers, by growth          | `fiber.growth` (persistence, length, count)                                     | worm-like random walk, bend variance 2·rise/P, turned back at the boundary                                                                    | gallery actin, Fibers mock                                                     |
-
-### 4.5 Procedural and precomputed models together
-
-- **Both kinds end as placement sets.** A precomputed model (`meso.precomputed`: a RELION STAR file or placement JSON)
-  and a procedural one produce the same output.
-- **`avoid` orders them.** `m.recipe` has `avoid: ["m.picks"]`, so the picks are inserted into the packer's grid before
-  any procedural copy. A quick test checks that no procedural copy overlaps a pick.
-- **The key covers the avoided sets.** It includes the keys of the sets a model avoids, so re-picking reruns the
-  packing.
-- **Rotation conventions match Mol\*.** The precomputed resolver reads STAR angles with the same rotation as Mol\*'s
-  reader: `(Rz(rot) Ry(tilt) Rz(psi))ᵀ`, `relionEulerToRotation` in `packages/model/src/formats/particles/star.ts`. A
-  quick test compares the two. As that reader, it takes a row's origin shift (`rlnOrigin*`, pixels; `rlnOrigin*Angst`,
-  Å, by the frame's voxel size) off its coordinate, and turns the row by its subtomogram angles (subtomogram · particle,
-  the shift too). A `populations.column` the table does not have is an error.
 - **Saved results can stand in for procedural ones** (cache-as-precomputed). A procedural result could be saved as a
   `placements` resource with `custom.meso.derivedFrom: {model, key}`; on load, a matching key would replace resolution.
   This is not built: §11, open decision 3.
 
-## 5. Session state: what one document restores
+## 5. Session state: what one document restores → [views.md](views.md#session-state-what-one-document-restores)
 
-| Category            | Where                                   | Examples                                                                                                                                               | Persisted?                                                               |
-| ------------------- | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------ |
-| **Authored**        | the document, outside `views`/`session` | biology, evidence, models and their params, frames                                                                                                     | yes (the document)                                                       |
-| **Derived**         | the IR, the runtime's cache             | placements, counts, issues, frame matrices                                                                                                             | no; recomputed, keyed; optionally saved as a precomputed resource (§4.5) |
-| **Persistent view** | `views[]`, `session.view`               | camera, looks (color, visible, transparency) by population, entity or compartment, the selection (by population or copy id), annotations with evidence | yes (the document)                                                       |
-| **Transient UI**    | the viewer                              | hover, open panels, the undo stack, the scroll position                                                                                                | never (as in SeqViewSpec: "interaction is the viewer's")                 |
-
-`classifyEdit(prev, next)` (`runtime/runtime.ts`) returns `view` when only `views`, `session` or `metadata` differ. A
-`view` edit takes the fast path, `updateView(doc, ir)`: the IR tree is reused as is, and the work is O(types).
-
-**What the prototype restores:**
-
-- **Restored, into the viewer** (the Prism adapter applies them):
-  - the scene hierarchy (compartments, populations, models);
-  - visibility, colors and transparency;
-  - the camera.
-- **Derived into the IR, not yet applied by the Prism adapter:**
-  - the selection (by semantic id, or by copy id within one resolution): `IRView.selection`;
-  - annotations: `IRView.annotations`.
-
-  A quick test checks that switching `session.view` derives them, the looks and the camera; drawing them is adapter
-  work.
-
-- **Representations, as hints.** A look can carry `representation: spheres | structure | surface`. It is a hint with a
-  fallback, in SeqViewSpec's "what, not how" sense:
-  - the IR carries it (`IRLook.representation`);
-  - the Prism adapter draws spheres and reports a `render`-phase issue (`representation.fallback`) for the others
-    (medium-lane test, the exosome's _Lumen only_ view).
-
-  Open decision 4 is which hints beyond spheres an adapter must honour.
-
-- **Not restored:** clipping, and annotations drawn in the viewer.
-- **Copy ids are only as stable as the resolution.** A copy id (`p.catalase#12`) is valid only for one resolution key: a
-  model edit can renumber copies. Selections that must survive edits should use semantic selectors, or name the copy as
-  an instance (§3.13).
-
-### 5.1 The semantic camera (v0.3, `Camera`, `Tour`)
-
-David: "now we just need the semantic layer for it to control the camera". A camera can say what to look at instead of
-where to stand:
-
-```lisp
-(view v.docked
-  :camera (:focus (instance i.granule-docked)
-           :framing context        ; close | fit | context
-           :from outside           ; or a direction [x y z]
-           :transition 1500)       ; ms
-  :cutaway (within (population p.ribosomes) :of (instance i.granule-docked) :distance 250))
-
-(tour t.granule
-  :steps [(:view v.cell :duration 3000 :caption "A slice of a β-cell")
-          (:view v.docked :duration 4000 :caption "A granule named in the document")])
-```
-
-- **`focus`** is any MesoQL address. The runtime materializes it over the resolved copies (through superstructure
-  instances) into a bounding sphere (`lociSphere`, `ir/loci.ts`) and places the camera at radius / sin(fov / 2) × 0.6,
-  1.1 or 2.5 for `close`, `fit`, `context`. Because it is an address, the camera follows the scene when it is
-  re-resolved. An address that picks a superstructure's contents (`(population p.Vamp2)`) is read where those copies sit
-  in the world, through every instance: the template is bounded once and its ball moved by each instance pose, so the
-  centre is exact and the radius an upper bound (within 5 % on the β-cell); `within` reads them the same way.
-- **`from outside`** looks in from beyond the scene's centre through the focus: the natural way into a cell.
-- **`cutaway`** is an address for the copies to hide so the focus shows. It is materialized into the IR; Prism clips by
-  planes, not by copies, so the adapter reports it (renderer R8).
-- **A numeric camera** (`position`, `target`) is read in its view's `frame`: a camera written in a tomogram's voxels
-  lands where the tomogram is. Directions turn with the frame too (`up`, a `from` vector); a numeric annotation is a
-  point in the view's frame.
-- **`up`** written in the view turns with its frame; unstated, it is the world's y. Either way the runtime makes it
-  perpendicular to the view direction, so a camera looking along y (a granule docked below the cell's centre) still has
-  a defined roll.
-- **Tours** step through views with durations and captions; `session.tour` names one to play.
-
-The _Semantic camera_ story switches views (no resolver reruns; about 10 ms) and plays the tour.
+### 5.1 The semantic camera (v0.3, `Camera`, `Tour`) → [views.md](views.md#the-semantic-camera-camera-tour)
 
 ## 6. Runtime contracts
 
-### 6.1 Pipeline (`runtime/runtime.ts`, `compile`)
+### 6.1 Pipeline (`runtime/runtime.ts`, `compile`) → [runtime.md](runtime.md#pipeline-runtimeruntimets-compile)
 
-1. **Validate.** `format/validate.ts`, phase `static`. It checks ids, references and their kinds, containment cycles,
-   membranes for membrane locations, units and ranges, models realizing a population twice, `avoid` cycles, frames and
-   alignments. Nothing throws; errors stop before resolution.
-2. **Normalize.**
-   - frames into matrices;
-   - resources loaded once through `options.load`, then the format's reader;
-   - compartments in Å, with volume, free volume and area;
-   - populations as counts: a concentration × free volume, a density × area (×2 for a bilayer).
-3. **Assign models.**
-   - The document's models are used as written.
-   - Populations no model realizes go to the **default resolver of their arrangement**: random → `meso.pack`, lattice →
-     `meso.lattice`, fiber → `meso.fiber`, bilayer → `meso.bilayer`. The gallery declares no model at all.
-4. **Resolve.**
-   - Models run in `avoid` order. Each is `project`ed, keyed and looked up in the session's cache (`options.cache`);
-     only on a miss is `resolve` called.
-   - Each failure is reported where it happens:
-     - an unknown resolver, an arrangement or location it cannot place, an unavailable input;
-     - a model that avoids a failed model also fails (as SeqViewSpec's "unavailable with a cause"); when only the
-       refiner of an avoided model fails, the avoiding model avoids the unrefined result instead (§6.7).
-   - A model that avoids a refined model avoids what is drawn: it runs after the refiner and its key follows the
-     refiner's. A refiner keeps the `avoid` of every model up its chain, instances included.
-   - Constraints are checked against `achieved`, and each shortfall becomes an issue with the resolver's reason.
-5. **Assemble** the IR, then **derive the view** from the active view.
+### 6.2 The resolver contract (`runtime/resolver.ts`) → [runtime.md](runtime.md#the-resolver-contract-runtimeresolverts)
 
-### 6.2 The resolver contract (`runtime/resolver.ts`)
+### 6.3 Resolvers in the prototype → [runtime.md](runtime.md#resolvers-in-the-prototype)
 
-```ts
-interface Resolver<I> {
-  id: string; version: string;            // version bump: old cached results stop matching
-  arrangements: Arrangement['kind'][]; locations: Location[]; honours?: Relation['kind'][]; formats?: string[];
-  project(job: ResolveJob): I;            // the normalized inputs the result depends on (Å, counts), hashed into the key
-  resolve(input: I, job: ResolveJob): ResolveOutput | Promise<ResolveOutput>;
-}
-interface ResolveOutput { sets: PlacementSet[]; achieved: Record<Id, number>; shortfall?: Record<Id, string>;
-                          issues?: Issue[]; report?: Record<string, unknown> }
-```
-
-A `ResolveJob` holds:
-
-- the model;
-- its normalized populations;
-- all normalized compartments, including meshes in world Å;
-- the loaded inputs, with their content keys and world matrices;
-- the obstacle sets of the models it avoids;
-- the seed.
-
-### 6.3 Resolvers in the prototype
-
-| Id                 | Realizes                                                                                  | Complexity        |
-| ------------------ | ----------------------------------------------------------------------------------------- | ----------------- |
-| `meso.pack`        | random populations: interiors, membranes, surfaces, the space around a compartment        | O(N · tries)      |
-| `meso.lattice`     | lattices on spheres and ellipsoids                                                        | O(N)              |
-| `meso.fiber`       | fibers by path or by growth; honours `binds` and `bends` (subjects placed by their sites) | O(N)              |
-| `meso.bilayer`     | lipid bilayers                                                                            | O(N)              |
-| `meso.precomputed` | RELION STAR, placement JSON                                                               | O(rows)           |
-| `cellpack-gpu`     | cellPACKgpu serialized recipes                                                            | O(N · tries)      |
-| `meso.relax`       | (v0.2) refine stage: inserts missing copies, relaxes overlaps (§6.7)                      | O(N · iterations) |
-
-All of them are in `resolvers/index.ts`, `DefaultResolvers`. The copies of the models a model avoids: the packers place
-nothing on them, `meso.relax` holds them fixed, `meso.lattice` skips the sites they take, `meso.fiber` grows around them
-(a traced path is kept where it is and its overlaps reported); `meso.bilayer` and `meso.precomputed` do not look at them
-(lipids are drawn without footprints, §11; given poses are given).
-
-### 6.4 Plugging in a recipe kind: cellPACKgpu
-
-`resolvers/cellpack-gpu.ts` shows the split between the document and the adapter:
-
-- **The import reads the recipe's biology** (`parseCellpackGpuRecipe` → `importCellpackGpuRecipe`) and writes it as
-  MesoViewSpec.
-  - **Paths:** rebuilt as `PostProcessSceneGraph` does. `surface` and `interior` are child compartments by name in the
-    serialized format (`CellPackLoader.cs`), so they become locations, not compartments.
-  - **Counts:** `nbMol`, a concentration or a per-area density.
-  - **Every choice the recipe leaves open is made explicitly**, each with an `assumption` evidence and an issue:
-    - **Which count field wins.** `UImanager.cs:9231` lets a nonzero `nbMol` win; `PopulateTest.cs:4939` lets a molarity
-      in (0, 1) overwrite it. The two disagree on real data: the insulin granule recipe sets both, e.g. Chga `nbMol` 454
-      vs 4.39e-5 M. The import takes `countRule`, and a quick test shows both rules.
-    - **What unit a surface molarity is in.** The source asks the same question in its own comment
-      (`PopulateTest.cs:4953`).
-    - **The medium box.** The serialized format has none.
-    - **The thickness unit.**
-  - **Not imported:** fibers. A serialized recipe gives a fiber no path or length, so the import reports this
-    (`cellpack.fiber`) instead of inventing one.
-  - Ludo's rule that recipe counts are copies, never mass-rescaled, holds.
-- **The resolver reads the recipe's construction details** on top of the shared packer: principal vectors, membrane
-  offsets, cellPACK's largest-first order.
-  - **Counts and radii come from the document**, so a document edit wins over the recipe.
-  - **Not reproduced:** cellPACKgpu's offset sign quirks (`CellPackLoader.cs:850–877`). Noted in the code.
-
-**Adding a kind is a resolver entry.** A quick test plugs a toy `toy.grid` resolver into the runtime with no change to
-the format, the IR or the adapter.
-
-**When a kind needs more than a resolver:** see the criteria in §4.2.
+### 6.4 Plugging in a recipe kind: cellPACKgpu → [runtime.md](runtime.md#plugging-in-a-recipe-kind-cellpackgpu)
 
 **Comparison with Mesoscope.** Mesoscope's serialized parser (`~/Developments/mesoscope/js/cp_serialized.js`,
 `parseCellPackRecipeSerialized`) and its LLM authoring rules (`SKILLS.md`: an evidence CSV with confidence and
 references for each ingredient) are the authoring side of the same data. Its evidence CSV maps one-to-one onto
 `Evidence` plus population fields.
 
-### 6.5 The renderer adapter contract (`runtime/adapter.ts`)
-
-```ts
-interface RendererAdapter { id: string; commit(ir: IR): Promise<CommitReport>; dispose(): void | Promise<void> }
-```
-
-**The adapter diffs by keys, never by content.** It receives the whole IR on each commit, and `planCommit(prev, next)`
-gives the same diff to every adapter:
-
-- sets added, removed and kept, by key;
-- looks, by value, O(types);
-- the camera, by value.
-
-**The Prism adapter** (`molstar/src/prism-adapter.ts`, `PrismMesoAdapter`) follows prism-me's rules
-(`apps/prism-me/AGENTS.md`):
-
-- Each new set becomes one particle list, through a state transform whose only param is the set's key (`MesoPlacements`,
-  store: `MesoPlacementStore`). Arrays never go through params.
-- Each list gets one `spacefill` representation (`particles.representation`).
-- Looks are written as Prism layers: one `particles.look` call for all lists, one layer per type. There is never a
-  representation per type.
-- **No copy of the IR buffers.** The particle list shares the IR's `positions`, `rotations` and `types` buffers (a
-  medium-lane test checks identity). The adapter adds only what Mol\* requires and the IR does not have: a radius per
-  copy and a key per copy, 8 B a copy (renderer-recommendations R2).
-- **[measured] what each edit replaces** (medium lane, headless Prism with prism-me's spec):
-  - a color edit replaces no list or representation object;
-  - a density edit replaces exactly the rerun model's list.
-- **[measured] with a GL context** (`gl`, Node): the scene is drawn, and a color edit changes pixels without a new list.
-
-`molstar/src/session.ts`, `MesoSession`, is the host the stories use:
-
-- **A view edit** goes through `updateView`, then `commit`.
-- **A model edit** goes through `compile` with the session's cache, then `commit`.
-- **Every edit leaves a record:** kind, resolver runs, cache hits, and the time of each phase.
+### 6.5 The renderer adapter contract (`runtime/adapter.ts`) → [runtime.md](runtime.md#the-renderer-adapter-contract-runtimeadapterts)
 
 ### 6.6 Two integration paths
 
@@ -903,21 +329,8 @@ gives the same diff to every adapter:
 - **Treat MolViewSpec as a view target, not as this format's IR.** MVS describes how to draw a structure; MesoViewSpec
   describes a scene and its evidence. The two meet in a view.
 
-### 6.7 Application composition: refine stages
+### 6.7 Application composition: refine stages → [runtime.md](runtime.md#application-composition-refine-stages)
 
-David: "one engine/runtime can use some cheap fills, other can do a physical simulation … all trying to reconcile the
-same high-level constraints"; "Ivan's rigid body could feed into a simulation process that refines the structure".
-
-- **In the document:** a model with `refines: <model>` takes that model's result as its input and replaces it. It
-  realizes the same populations and is checked against the same constraints.
-- **In the runtime:** refine stages run after what they refine (`topoOrder`); their key includes the upstream key, so
-  re-resolving the upstream reruns them and nothing else; the refined model keeps its `resolve` node (key, input,
-  `refinedBy`) but its sets leave the IR, only once the refiner has resolved: a refiner that fails leaves the upstream
-  drawn and counted, with the failure reported. A model has at most one refiner (validation refuses two).
-- **`meso.relax`** (`resolvers/relax.ts`): inserts the copies still missing, relaxes overlaps by pushing pairs apart
-  (hash grid, O(N) an iteration), and keeps copies in their compartments with signed distance grids, then a last phase
-  with the exact inside test (`sdfGrid` in `resolvers/geometry.ts`, which also answers the O(triangles) mesh gap).
-  Membrane copies and avoided models stay fixed.
 - **Measured [fixture]:** on the exosome, the recipe's packing stops at 354 of 506 catalase; adding `m.relax` inserts
   152, converges in 41 iterations, then checks every copy against the exact mesh with its margin (and against the
   compartments it must stay out of, with theirs); it meets 506 of 506 with a largest overlap of 0.78 Å measured after
@@ -925,463 +338,19 @@ same high-level constraints"; "Ivan's rigid body could feed into a simulation pr
   without the proteins' footprints (a gap, §11). The packing is a cache hit when the stage is added. mesobuild's
   `relax.py` reached 506 of 506 on the same recipe.
 
-### 6.8 Streaming (v0.4)
+### 6.8 Streaming (v0.4) → [streaming.md](streaming.md#streaming)
 
-David, after v0.1: "it needs … streaming concepts". A document can name a scene too large to hold at once (L in §8.1:
-the yeast cell's 2.5 × 10⁷ copies in 6,416 tiles of 200 nm). The viewer shows all of it coarse first, then loads copies
-where the camera looks, within a budget.
+#### 6.8.1 Source (`format/doc.ts`) → [streaming.md](streaming.md#source-formatdocts)
 
-**Levels** (decision 12, as a runtime concept; the document's sections do not move):
+#### 6.8.2 Manifest (`format/doc.ts`, the `meso-tiles` format) → [streaming.md](streaming.md#manifest-formatdocts-the-meso-tiles-format)
 
-| Level | Holds                                                         | In v0.4                                          |
-| ----- | ------------------------------------------------------------- | ------------------------------------------------ |
-| 0     | statistical: per tile, a count and an envelope per population | always loaded, from the manifest; never budgeted |
-| 1     | copies: one placement set per tile                            | loaded around the focus, within the budget       |
-| 2     | atoms: the structures at those poses                          | declared in a manifest, never loaded             |
+#### 6.8.3 Provider contract (`runtime/streaming.ts`) → [streaming.md](streaming.md#provider-contract-runtimestreamingts)
 
-**The rules, in one place:**
+#### 6.8.4 Planner and budget (`runtime/streaming.ts`) → [streaming.md](streaming.md#planner-and-budget-runtimestreamingts)
 
-- Streaming is outside `compile`. `compile` loads the manifest and emits one `stream` IR node with level 0 and no
-  placement set. The session splices loaded tiles into that node as `placements` children. `planCommit` and the adapter
-  see ordinary sets and need no change.
-- One set per tile, keyed. A tile's key does not change while the manifest and the stream's types do not, so a stream
-  step commits only the tiles added and removed (decision 5).
-- The camera reads level 0, never the loaded copies. A focus that picks streamed populations frames their level-0
-  envelopes, before and after any tile loads. So the camera does not move as tiles arrive, and the planner sees the same
-  focus on every step.
-- The budget is a hard cap on loaded level-1 copies. It is a session option, not a document field (§3.14: renderer
-  settings stay out of the document).
+#### 6.8.5 The IR, the session and the adapter → [streaming.md](streaming.md#the-ir-the-session-and-the-adapter)
 
-#### 6.8.1 Source (`format/doc.ts`)
-
-A model realizes streamed populations through a `stream` source. Its tiles are a resource of kind `placements`, format
-`meso-tiles`. The host supplies the provider that reads that resource (`RuntimeOptions.tiles`), as it supplies `load`
-for other resources.
-
-```ts
-// format/doc.ts
-export interface Model {
-  // … as today
-  /** Streamed copies (design.md §6.8): the tiles of a `meso-tiles` resource, loaded by the host's provider. */
-  readonly stream?: StreamSource;
-}
-
-export interface StreamSource {
-  /** A resource of kind `placements`, format `meso-tiles`; its frame is the world frame (or none). */
-  readonly resource: Id;
-}
-```
-
-```lisp
-(model m.tiles :kind precomputed :method meso.stream
-  :populations [p.a p.b]
-  :stream (:resource r.tiles))
-```
-
-- **A stream model** has `kind: 'precomputed'` and `method: 'meso.stream'`. No resolver of that id exists. `compile`
-  never dispatches a model that has `stream`.
-- **S-expression:** no codec change. The generic codec writes `stream` as a record (above), and a quick test round-trips
-  it.
-- **Static validation** (`validate.ts`, phase `static`; codes in `format/issues.ts`):
-  - `stream.resource` names a resource (`ref.missing`) of kind `placements` (`ref.kind`) and format `meso-tiles`
-    (`value.range`);
-  - the model's `kind` is `precomputed` and its `method` is `meso.stream` (`value.range`);
-  - the resource's `frame` is absent or the world frame (`stream.unsupported`);
-  - the model has no `avoid` and no `refines`, and no model avoids or refines it (`stream.unsupported`): its copies
-    would be whatever happens to be loaded;
-  - no streamed population's entity has a `superstructure` (`stream.unsupported`);
-  - at most one model in the document has `stream` (`stream.unsupported`);
-  - its populations count as realized: `model.overlap` applies, `model.unrealized` does not, and no default resolver
-    takes them.
-- **New issue codes:** `stream.unsupported`, `stream.manifest` (the manifest is unavailable or invalid), `stream.tile`
-  (a tile failed to load or disagreed with its manifest), `stream.budget` (one tile alone exceeds the budget).
-
-#### 6.8.2 Manifest (`format/doc.ts`, the `meso-tiles` format)
-
-The manifest is the format of the tile resource, so its types sit beside the document's. Coordinates are world Å. Tiles
-are axis-aligned boxes; v0.4 refuses a stream in a rotated frame rather than transform boxes (above).
-
-```ts
-// format/doc.ts
-/** An axis-aligned box, Å, world frame; `min[k] < max[k]` on every axis. */
-export interface Box {
-  readonly min: readonly [number, number, number];
-  readonly max: readonly [number, number, number];
-}
-
-export type StreamLevel = 0 | 1 | 2;
-
-export interface TileManifest {
-  readonly format: 'meso-tiles';
-  /** Must hold 0 and 1, ascending, no repeats; 2 is declared only (an `info` issue: not loaded in v0.4). */
-  readonly levels: readonly StreamLevel[];
-  /** The box every tile lies in. */
-  readonly bounds: Box;
-  /** The populations the tiles hold, by document id: exactly the stream model's `populations`, in type order. */
-  readonly populations: readonly Id[];
-  /** In a fixed order: global copy ordinals follow it (below). */
-  readonly tiles: readonly TileEntry[];
-}
-
-export interface TileEntry {
-  /** Unique in the manifest; matches `IdPattern` (`t.3.0.7`). */
-  readonly id: string;
-  readonly box: Box;
-  /** Level 0: copies per population (non-negative integers); a population absent from the record has none here. */
-  readonly counts: Readonly<Record<Id, number>>;
-  /** Level 0: where a population's copies are in the tile; default the tile's box. Inside `box`. */
-  readonly envelopes?: Readonly<Record<Id, Box>>;
-}
-```
-
-- **Validation** (`validateManifest(m, model, doc): Issue[]` in `validate.ts`, phase `load`, code `stream.manifest`,
-  path `/models/<i>/stream`). It is synchronous and pure, and is called by `compile` once the provider returns the
-  manifest:
-  - `format` is `meso-tiles`;
-  - `levels` holds 0 and 1, only values in {0, 1, 2}, ascending, unique; a 2 gives an `info` issue;
-  - `bounds` and every box: six finite numbers, `min < max` on each axis;
-  - every tile box lies inside `bounds` (tolerance 10⁻³ Å); tiles may touch; overlap is not checked;
-  - `populations`: unique, and the same set as the model's `populations`;
-  - at least one tile; tile ids match `IdPattern` and are unique;
-  - `counts`: keys in `populations`, values non-negative integers;
-  - `envelopes`: keys in `counts`, each box inside its tile's box (same tolerance).
-- **An invalid or unavailable manifest** fails the stream model as a failed resolver does: its populations are achieved
-  0, the issue says why, and the rest of the scene compiles.
-- **Global ordinals.** A copy's ordinal is its index in the tile among its population's copies, plus the sum of that
-  population's counts in the tiles before it in manifest order. Copy ids (`<population>#<ordinal>`, §7.2) are therefore
-  unique and stable across loads and evictions.
-- **Keys.** `streamKey = <model>@<contentHash({manifest, types})>` (`ir/hash.ts`; `types` is the stream's type table
-  below, so an entity radius edit changes it). A tile's set key is `<streamKey>#<tileId>`, its IR ref
-  `<model>/stream/<tileId>`. This follows §7.2's `<key>#<n>`, with the tile id as `n`.
-
-#### 6.8.3 Provider contract (`runtime/streaming.ts`)
-
-```ts
-// runtime/streaming.ts
-export interface TileProvider {
-  /** The manifest; the provider memoizes it (compile asks on every model edit). Rejects: `stream.manifest`. */
-  manifest(signal?: AbortSignal): Promise<TileManifest>;
-  /**
-   * A tile's copies at `level` (1 in v0.4). Rejects with an `AbortError` once `signal` aborts; a result that arrives
-   * after the abort is ignored anyway. Any other rejection, an `AbortError` of the provider's own included (the
-   * signal not aborted), and a throw before it returns a promise: `stream.tile`, and the tile is not asked for again
-   * until the stream key changes.
-   */
-  load(tile: string, level: 1, signal: AbortSignal): Promise<TilePayload>;
-}
-
-/** A tile's copies, in the placement set's layout (design.md §4.2), world Å; the streamer adds the rest. */
-export interface TilePayload {
-  readonly count: number;
-  /** x y z per copy. */
-  readonly positions: Float32Array;
-  /** x y z w per copy. */
-  readonly rotations: Float32Array;
-  /** Index into the manifest's `populations` (= the stream's type table) per copy. */
-  readonly types: Int32Array;
-}
-
-// runtime/runtime.ts
-export interface RuntimeOptions {
-  // … as today
-  /** The provider of a `meso-tiles` resource, by resource id; undefined: `stream.manifest` (unavailable). */
-  readonly tiles?: (resource: Id) => TileProvider | undefined;
-}
-```
-
-- **The streamer makes the set:**
-  `{key, model, frame: 'world', count, positions, rotations, types, ordinals, typeTable}`. It shares the payload's
-  buffers (no copy). It allocates `ordinals` and fills them with global ordinals. Every tile shares one `typeTable`
-  object, the stream node's `types`, so MesoQL, looks and the adapter work unchanged.
-- **A payload is checked before it is kept.** Buffer lengths must match `count`, every type must be in range, and the
-  copies per type must equal the tile's manifest `counts`. Otherwise the tile is rejected (`stream.tile`, warning) and
-  marked failed. A rejected tile never counts toward the budget.
-- **Ownership.** The provider may cache raw data (HTTP, IndexedDB); nothing relies on it. The streamer owns residency: a
-  tile is loaded exactly when its set is in the IR. Eviction removes it from the IR, and the adapter deletes its list
-  (and store entry) as for any removed set. v0.4 keeps no CPU cache of evicted tiles: a tile seen again is loaded again.
-- **Concurrency.** At most `maxInFlight` loads (default 4), started in the plan's order. One `AbortController` per load.
-  The streamer aborts a load when the plan cancels it or the stream key changes. Each load carries the stream key and a
-  generation number, and a result whose key or generation is stale is dropped.
-
-#### 6.8.4 Planner and budget (`runtime/streaming.ts`)
-
-`planStream` is pure and deterministic. It reads no clock and no randomness, and its output depends only on its
-arguments, never on the order of `manifest.tiles`.
-
-```ts
-// runtime/streaming.ts
-/** A sphere in world Å: the camera's target and its focus radius (0 for a numeric camera). */
-export interface StreamFocus {
-  readonly center: readonly [number, number, number];
-  readonly radius: number;
-}
-
-export interface StreamState {
-  /** Resident tiles and their copies. */
-  readonly loaded: ReadonlyMap<string, number>;
-  /** Tiles being loaded. */
-  readonly pending: ReadonlySet<string>;
-  /** Tiles that failed or were rejected: never planned again for this stream key. */
-  readonly failed: ReadonlySet<string>;
-}
-
-export interface StreamBudget {
-  /** Hard cap on resident level-1 copies plus copies in flight. */
-  readonly copies: number;
-  /** Å subtracted from a resident tile's distance (floored at 0), so a tile at the edge does not thrash. Default 0. */
-  readonly hysteresis?: number;
-}
-
-export interface StreamPlan {
-  /** The tiles wanted at level 1, nearest first: resident, pending and new. Their copies total at most the budget. */
-  readonly want: readonly string[];
-  /** To start loading, nearest first (want minus loaded, pending and failed). */
-  readonly request: readonly string[];
-  /** Resident tiles to drop now, farthest first. */
-  readonly evict: readonly string[];
-  /** Pending loads to abort. */
-  readonly cancel: readonly string[];
-  /** The tiles the focus sphere touches (distance ≤ radius). */
-  readonly focus: readonly string[];
-  /** Tiles shown at level 0 only once the plan is done: every tile not in `want`, in id order. */
-  readonly level0: readonly string[];
-  /** Copies of `want`: resident once the requests arrive. */
-  readonly copies: number;
-  /** A tile that alone exceeds the budget, when one stopped the walk (reported as `stream.budget`). */
-  readonly overBudget?: string;
-}
-
-export function planStream(
-  manifest: TileManifest,
-  focus: StreamFocus,
-  state: StreamState,
-  budget: StreamBudget,
-): StreamPlan;
-```
-
-The algorithm:
-
-1. **Copies and distance.** `copies(t)` is the sum of the tile's `counts`. `d(t)` is the Euclidean distance from
-   `focus.center` to the tile's box (0 inside or on it). For a resident tile, `d'(t) = max(0, d(t) − hysteresis)`;
-   otherwise `d' = d`. Failed tiles are left out. A `focus.center` with a non-finite component is read as the bounds'
-   centre with radius 0 (a non-finite radius is 0).
-2. **Order.** Sort by (not a focus tile, `d'`, id) ascending, a focus tile being one with `d ≤ focus.radius` (step 4),
-   so hysteresis never lets a resident tile push one out; ids compare by UTF-16 code units (`a < b`), never
-   `localeCompare`.
-3. **Walk, nearest first.** Add each tile's copies while the total stays at or under `budget.copies`, and stop at the
-   first tile that does not fit. The walk never skips ahead to a smaller tile farther out, so the loaded region stays
-   one shell around the focus.
-   - A tile with 0 copies is wanted at no cost.
-   - If the first tile that does not fit has more copies than the whole budget, it is `overBudget`. The walk stops there
-     anyway: the cap is hard, so that tile stays at level 0 and the issue says so.
-4. **Focus tiles.** `focus` is every tile with `d ≤ focus.radius`. A focus on a tile boundary has `d = 0` for the tiles
-   on both sides, so both sort first and both are wanted when the budget allows. Ties at `d = 0` go by id.
-5. **Diff.**
-   - `request` is `want` minus resident, pending and failed, in `want` order.
-   - `evict` is resident minus `want`, sorted by `(d, id)` descending: farthest first. A focus tile is never evicted
-     while a non-focus tile is wanted, because focus tiles come first in the walk.
-   - `cancel` is pending minus `want`.
-6. **Level 0** needs no work: every tile is at level 0 from compile on, and level 0 never counts toward the budget.
-
-- **Invariant (quick test):** after the session applies a plan, resident copies plus copies in flight are at most
-  `budget.copies`. Evictions and cancellations apply in the same step that starts the requests, and `want`'s total is
-  within the budget.
-- **Budget 0** gives a level-0-only scene: no request.
-- **No load radius.** The budget bounds the region. A distance cap and prefetch by camera velocity are not in v0.4.
-
-#### 6.8.5 The IR, the session and the adapter
-
-**The `stream` node** (`ir/ir.ts`), a child of the world frame node beside the `resolve` nodes:
-
-```ts
-// ir/ir.ts, added to IRNode
-  | IRNodeOf<
-    'stream',
-    {
-      readonly model: string;
-      readonly resource: string;
-      /** `<model>@<hash>`: tile set keys are `<key>#<tileId>`. */
-      readonly key: string;
-      readonly levels: readonly StreamLevel[];
-      readonly bounds: Box;
-      /** One per manifest population, in its order; shared by every tile's set. */
-      readonly types: readonly PlacementType[];
-      /** Level 0: the manifest's tiles (the same objects), with their counts and envelopes. */
-      readonly tiles: readonly TileEntry[];
-    }
-  >
-```
-
-- At compile time the node has no children. `ir.streams` and per-model annotations were rejected: the node is the
-  smallest thing that already sits in the tree, is walked by `placementSets`, and carries level 0 to any reader.
-- **Who reads level 0:** the camera (below), the story's panel (counts by population, tiles), and `irToJson`. `irToJson`
-  prints a stream node as `{model, key, levels, bounds, tiles: <n>, copies: <total by population>}`, not every tile. The
-  Prism adapter does not draw envelopes in v0.4.
-- **`compile`** (`runtime/runtime.ts`). For the stream model it calls `o.tiles?.(resource)?.manifest()` (phase `load`),
-  then `validateManifest`, and builds `types` from the normalized populations as `meso.precomputed` builds its type
-  table. It emits the node with no resolver run. `counts[p]` is `{requested, achieved}` with `achieved` the manifest
-  total: level 0 is the realization. Constraints are not checked for streamed populations: their copies are given.
-- **The paired examples** (`examples.test.ts`) leave the tiled fixture out: its IR is level 0 only, and its provider is
-  code, not a file.
-
-**Pure helpers** (`runtime/streaming.ts`):
-
-```ts
-/** The stream node of an IR (v0.4: at most one). */
-export function streamNode(ir: IR): Extract<IRNode, { kind: 'stream' }> | undefined;
-
-/**
- * The IR with `sets` as the stream node's `placements` children (refs `<model>/stream/<tileId>`), in manifest order.
- * Every other node keeps its object; the view is unchanged (call `updateView` after).
- */
-export function withTiles(ir: IR, sets: ReadonlyMap<string, PlacementSet>): IR;
-
-/** The tile's placement set from a checked payload: global ordinals, the stream's types, the key `<key>#<tile>`. */
-export function tileSet(node: Extract<IRNode, { kind: 'stream' }>, tile: TileEntry, p: TilePayload): PlacementSet;
-
-/**
- * The IR as the camera reads it: each stream node's tiles replaced by one proxy set (key `<key>#level0`) with one copy
- * per (population, tile) with a count > 0 (population-major, so a population is one run), at the envelope's centre, identity rotation, and its own type whose radius
- * is the envelope's half-diagonal (population, entity and compartment as the stream's type).
- */
-export function level0IR(ir: IR): IR;
-```
-
-**The camera reads level 0.** `deriveCamera` (`runtime/runtime.ts`) materializes `focus`, and the scene centre for
-`from outside`, over `level0IR(ir)` instead of `ir`. `lociSphere` then gives a sphere that holds the envelopes of the
-streamed copies the address picks, together with the non-streamed copies it picks. The sphere is the same whether 0 or
-all tiles are loaded. Addresses by ordinal (`(copies p.a 12)`) on a streamed population pick proxy rows, not copies:
-this is a v0.4 limit, and the fixture's tour does not use them. Looks, selection and cutaway still read the real IR. The
-camera gets its own materializer and loci cache over `level0IR(ir)`, and calls `lociSphere` with that same IR:
-`deriveView`'s materializer is bound to the real IR and caches by address string, so a look and a focus with the same
-address (`v.all`'s `(population p.a)`) would otherwise hand the camera real-IR loci that miss in the level-0 IR. The
-proxy set is cached per stream node object (a `WeakMap`), since `updateView` runs at least twice an edit.
-
-**The streamer** (`runtime/streaming.ts`) holds the state between steps and calls the provider. It imports nothing of
-Mol\*:
-
-```ts
-export interface StreamOptions {
-  readonly budget: StreamBudget;
-  /** Default 4. */
-  readonly maxInFlight?: number;
-}
-
-export interface StreamStats {
-  readonly tiles: number;
-  /** Resident now. */
-  readonly resident: number;
-  readonly inFlight: number;
-  /** Cumulative since the stream key last changed; `requested` counts loads started (not plan entries). */
-  readonly requested: number;
-  readonly loaded: number;
-  readonly evicted: number;
-  readonly cancelled: number;
-  readonly failed: number;
-  /** Resident level-1 copies, the budget, and the copies level 0 stands for. */
-  readonly copies: number;
-  readonly budget: number;
-  readonly level0Copies: number;
-}
-
-export class TileStreamer {
-  constructor(
-    tiles: (resource: Id) => TileProvider | undefined,
-    options: StreamOptions,
-    /** Called when a load settles; the session queues one stream step (coalesced). */
-    onSettled: () => void,
-  );
-  /**
-   * One step over a freshly compiled or view-updated IR. It takes in the arrivals still wanted, plans from
-   * `ir.view.camera` (center = target, radius = focus radius or 0; no camera: the bounds' centre, radius 0), aborts
-   * `cancel`, drops `evict`, starts `request` up to `maxInFlight`, and returns the IR with the resident tiles spliced
-   * in (`withTiles`), the plan and issues (`stream.tile`, `stream.budget`; phase `load`). A changed stream key (or no
-   * stream node) aborts everything and drops every resident tile first.
-   */
-  step(ir: IR): { readonly ir: IR; readonly plan?: StreamPlan; readonly issues: readonly Issue[] };
-  /** Every issue standing for the stream key: failed tiles, the over-budget tile while it is over. `step` returns the new ones. */
-  issues(): readonly Issue[];
-  /** The viewer did not take the last step's IR: resident becomes the tiles `drawn` holds, the rest wait as arrivals. */
-  restore(drawn: IR | undefined): void;
-  stats(): StreamStats;
-  dispose(): void;
-}
-```
-
-**The session** (`molstar/src/session.ts`):
-
-- `MesoSession` takes `stream?: StreamOptions`. When the options have `tiles` and `stream` is set, the session makes a
-  `TileStreamer`.
-- **Every edit runs the streamer before it commits.** A view edit runs `updateView`; a model edit runs `compile`. Then
-  `streamer.step(ir)`, then `updateView(doc, stepped.ir)` (looks for the spliced sets), then `adapter.commit`. After a
-  model edit with an unchanged stream key, `step` splices the same set objects back, so `planCommit` keeps them: no full
-  rebuild.
-- **Issues.** Each step replaces the session's `stream.tile` and `stream.budget` issues with `streamer.issues()`, so a
-  model edit keeps a failed-tile warning. A stream step is recorded only when it adds, removes or reports something new.
-- **A commit that throws.** The streamer goes back to what the viewer still shows (`restore(this.ir)`): a tile it took
-  in that was not drawn is not resident, and the next step takes it in again. An edit's commit failure rejects the edit
-  and changes nothing else (as before). A stream step's commit failure is a `render`-phase error issue
-  (`adapter.failed`) on the session; nothing rejects, since no caller waits for a settled load.
-- **A settled load queues a `stream` step** through the session's existing `queue`, so it never diffs against the same
-  previous IR as an edit. Arrivals while a step is queued and not started join that step: one commit per burst. A stream
-  step is `step(this.ir)` with the last IR's tile children ignored (the streamer splices its own), then `updateView`,
-  then `commit`.
-- **`EditRecord`** gains `kind: 'stream'` and
-  `stream?: StreamStats & { readonly plan?: { readonly request: number; readonly evict: number; readonly cancel: number } }`.
-- **A tour** is a sequence of view edits (`session.view` set to each step's view). Each edit moves the semantic camera
-  (§5.1), and the step after it requests and evicts. The tour does not wait for tiles; arrivals commit as they come.
-- **The panel reports**, from the last record and `streamer.stats()`: tiles requested, loaded, evicted, cancelled and
-  failed (cumulative); resident tiles and in flight; resident copies against the budget (a bar); level-0 copies.
-
-**The adapter needs nothing new.** `planCommit` sees tile sets as sets. Each stream step adds and removes lists by key,
-and keeps the other lists' objects.
-
-- **Known cost [measured]:** `looksChanged` is true whenever a set is added, so each step that adds a tile rewrites
-  every list's looks (one `particles.look` call): 4,004 layers at 1,000 lists, 44 at 10. A remove writes none. Up to 100
-  lists a remove stays at 5 ms or less and a color edit about 105 ms; at 1,000 they take 163 and 218 ms (§6.8.7, R5).
-
-#### 6.8.6 Fixture (`spec/src/examples/streaming.ts`)
-
-```ts
-export interface TiledFixtureOptions {
-  /** Tiles per axis; default [4, 4, 2]. */
-  readonly grid?: readonly [number, number, number];
-  /** Å, default 2000 (200 nm, the yeast viewer's tile). */
-  readonly tileSize?: number;
-  /** Copies a tile per population; default { 'p.a': 300, 'p.b': 100 }. */
-  readonly perTile?: Readonly<Record<string, number>>;
-  readonly seed?: number;
-  /** For tests: ms before a load resolves (abort tests), and tiles whose load rejects. */
-  readonly delayMs?: number;
-  readonly fail?: readonly string[];
-}
-
-export function tiledFixture(o?: TiledFixtureOptions): {
-  readonly doc: MesoViewSpecDoc;
-  readonly provider: TileProvider;
-};
-```
-
-- **The document:**
-  - a world frame (right-handed);
-  - a box compartment `c.box` over the grid;
-  - entities `e.a` (radius 40 Å) and `e.b` (radius 60 Å);
-  - populations `p.a` and `p.b` with `count` the grid total;
-  - resource `r.tiles` (`placements`, `meso-tiles`), with no `uri`;
-  - model `m.tiles` (above);
-  - three instances as landmarks: `i.corner` inside the first tile, `i.middle` exactly on the boundary between two
-    tiles, `i.far` in the last tile;
-  - views: `v.all` (focus `(population p.a)`, `fit`), and `v.corner`, `v.middle` and `v.far` (focus on each landmark,
-    `context`);
-  - tour `t.stream`: `v.all`, `v.corner`, `v.middle`, `v.far`.
-- **The provider** generates everything; there is no file.
-  - The manifest is the grid in x, y, z order, with tile id `t.<i>.<j>.<k>` and envelopes equal to the tile box shrunk
-    by the population's radius.
-  - A tile's copies are uniform in its envelope with random unit quaternions, from `createRandom(subSeed(seed, tileId))`
-    (`runtime/random.ts`). They are deterministic, need no overlap test, and are sorted by type.
-  - `manifest()` is memoized.
-- **Sizes:** the default is 32 tiles and 12,800 copies. The story uses budget 3,000 (7 tiles). The quick tests use
-  `grid: [3, 3, 1]` and small counts.
+#### 6.8.6 Fixture (`spec/src/examples/streaming.ts`) → [streaming.md](streaming.md#fixture-specsrcexamplesstreamingts)
 
 #### 6.8.7 Tests and the R5 measurement
 
@@ -1449,20 +418,7 @@ The 1,000-set case peaks at about 6 GB of RSS. **[observed]** In the browser the
 resident and commits only arrivals and evictions. Conclusion: per-list overhead is real for commit and memory; keep
 resident lists at 100 or fewer; frame cost per list is still open (R5).
 
-#### 6.8.8 Not in v0.4, and what it touches
-
-**Not in v0.4:**
-
-- level 2 (atoms at close range);
-- prefetch, and priorities by camera velocity or view direction;
-- a distance cap or a load radius beyond the budget;
-- GPU culling per tile, and a list that grows by appending tiles (R5's recommendation);
-- a network protocol or a tile file format: a provider is code, and a `meso-tiles` reader for HTTP comes later;
-- more than one stream model, and streams in rotated frames;
-- streamed superstructures, and streamed models in `avoid` or `refines`;
-- a CPU cache of evicted tiles;
-- envelopes drawn in the viewer;
-- camera addresses by ordinal on streamed populations.
+#### 6.8.8 Not in v0.4, and what it touches → [streaming.md](streaming.md#not-yet-and-what-it-touches)
 
 **Touched files** (production, about 600 lines [target]):
 
@@ -1482,58 +438,13 @@ resident lists at 100 or fewer; frame cost per list is still open (R5).
 
 ## 7. Units, ids, reproducibility, failures
 
-### 7.1 Units
+### 7.1 Units → [format.md](format.md#units)
 
-- **The document** chooses its length unit (`units.length`: A, nm or µm; nm by default). A `{value, unit}` quantity
-  overrides it.
-- **Other quantities:** concentrations in nM, µM, mM or M; densities per nm² or per µm² (per leaflet for a bilayer);
-  masses in Da, kDa or MDa.
-- **The IR is in Å.** Every structure and every renderer we target already is.
-- **Conversion happens once,** when the runtime normalizes (`format/units.ts`). Resolvers and adapters never see a
-  document unit.
+### 7.2 Ids and keys → [ir.md](ir.md#ids-and-keys)
 
-### 7.2 Ids and keys
+### 7.3 Reproducibility → [runtime.md](runtime.md#reproducibility)
 
-| What            | Form                                                | Stability                                                                          |
-| --------------- | --------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| Document ids    | `^[A-Za-z][A-Za-z0-9_.:-]*$`                        | author-chosen                                                                      |
-| IR refs         | derived from document ids (`m.recipe/placements/0`) | stable across runs                                                                 |
-| Resolution keys | `<model>@<hash>`                                    | change exactly when the projection, the resolver version or an avoided set changes |
-| Set keys        | `<key>#<n>`                                         | follow the resolution key                                                          |
-| Copy ids        | `<population>#<ordinal>`                            | stable within one key                                                              |
-
-### 7.3 Reproducibility
-
-- **Deterministic resolution.** The same document, resolver versions and seed give the same placements, bit for bit
-  (quick test: content digest).
-- **Per-population sub-seeds** (`subSeed(seed, populationId)`): adding a population does not reseed the others.
-  - **Limit:** in a shared packing, exclusion still couples them.
-- **What reproducing a result needs:**
-  - the document;
-  - the resolver ids and versions, which the IR records;
-  - the resources' content keys: the `checksum` when declared, otherwise a hash of the content.
-- **A resource without a checksum** can only be checked after loading.
-
-### 7.4 Failures and unmet constraints
-
-Each issue is `{code, severity, phase, message, path, ids, constraint?}`:
-
-- **`code`:** namespaced and stable (`IssueCodes` in `format/issues.ts`).
-- **`phase`:** `static`, `load`, `resolve` or `render`.
-- **`path`:** a JSON pointer into the document.
-- **`constraint`:** for an unmet constraint, `{kind, requested, achieved, reason}`. The UI shows it as is.
-
-The stories show each case:
-
-- **An unmet constraint:**
-  - the 506 catalase copies, with the reason;
-  - ATP synthase: `the membrane of mitochondrion holds 69 hexagonal sites 120 Å apart; 400 asked`.
-  - A shortfall is a `warning` by default and an `error` when the population asked for a `placed-fraction` it did not
-    reach.
-- **A missing resource** fails its model and every model that avoids it, each reported where it happens.
-- **An unknown resolver** is reported, and the rest of the scene still resolves.
-- **A catalog** that is not expanded.
-- **A relation** that no resolver honours (`relation.ignored`, info).
+### 7.4 Failures and unmet constraints → [runtime.md](runtime.md#failures-and-unmet-constraints)
 
 ## 8. Performance
 

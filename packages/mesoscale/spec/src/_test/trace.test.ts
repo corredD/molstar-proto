@@ -9,7 +9,7 @@ import { trace, traceToText } from '../format/trace.js';
 import { exosomeDoc } from '../examples/exosome.js';
 import { yeastDoc } from '../examples/yeast.js';
 
-// Tracing (design.md §3.5): from a modeled feature back to its evidence and processing.
+// Tracing (_spec/format.md): from a modeled feature back to its evidence and processing.
 
 describe('trace', () => {
   it('picked catalase: its model, the picks, the picking, the tomogram, its reconstruction and acquisition', () => {

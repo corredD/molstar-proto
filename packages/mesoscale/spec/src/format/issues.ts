@@ -4,7 +4,7 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-// Issues (design.md §7.4): every failure, unmet constraint and assumption the runtime reports, as data a UI can explain.
+// Issues (_spec/runtime.md): every failure, unmet constraint and assumption the runtime reports, as data a UI can explain.
 // Codes are stable and namespaced; `path` is a JSON pointer into the document; `phase` says which stage found it.
 
 export type IssueSeverity = 'error' | 'warning' | 'info';
@@ -60,6 +60,25 @@ export const IssueCodes = {
   'patch.shape': 'A patch, or one of its ops, is not the shape it should be',
   'patch.base': "A patch's base is not the document's revision",
   'patch.target': 'An op names no node a patch can address, or an anchor names no sibling',
+  'relation.path':
+    'A relation on a population that follows a traced path: binders are placed on it, bends are not applied',
+  'superstructure.cycle': 'Superstructures contain each other',
+  'superstructure.depth': 'Superstructures nest deeper than the runtime resolves',
+  'cellpack.geometry': 'A cellPACK compartment that is not a sphere imports as one, or not at all',
+  'cellpack.fiber': 'A cellPACK fiber with no length or path in the serialized recipe: not imported',
+  'cellpack.count-conflict': 'A cellPACK ingredient with both a count and a molarity: one wins',
+  'mesoql.syntax': 'A MesoQL address is not one well-formed S-expression',
+  'mesoql.form': 'A MesoQL expression is not a form like (entity e.x)',
+  'mesoql.symbol.unknown': 'A MesoQL symbol is not one the language has',
+  'mesoql.ref.missing': 'A MesoQL id names no node',
+  'mesoql.ref.kind': 'A MesoQL id names a node of the wrong kind for its argument',
+  'mesoql.type': 'A MesoQL expression is not the type its slot asks for',
+  'mesoql.keyword': 'A MesoQL keyword is unknown, repeated, valueless or given the wrong kind of value',
+  'mesoql.range': 'A MesoQL range is not a label range like 53-63',
+  'mesoql.arity': 'A MesoQL symbol has too few or too many arguments',
+  'mesoql.argument': 'A MesoQL argument is not the kind its symbol takes',
+  'mesoql.site': 'A MesoQL `site` names a site its entity does not have',
+  'mesoql.empty': 'A MesoQL selection finds nothing in this resolution',
   assumption: 'The resolver made a choice the document did not make',
 } as const;
 

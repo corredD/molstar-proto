@@ -21,7 +21,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { PrismMesoAdapter } from '../prism-adapter.js';
 import { MesoSession } from '../session.js';
 
-// The integration lane (design.md §12): the IR into the real Prism viewer (prism-me's spec, headless, no canvas) through
+// The integration lane (design.md §10): the IR into the real Prism viewer (prism-me's spec, headless, no canvas) through
 // the adapter. What it proves: the lists hold the IR's own buffers; a color edit writes looks and touches no list or
 // representation object; a density edit replaces only the list of the model it reran.
 

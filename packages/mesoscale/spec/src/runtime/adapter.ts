@@ -8,7 +8,7 @@ import type { Issue } from '../format/issues.js';
 import { type IR, type IRLook, placementSets } from '../ir/ir.js';
 import type { PlacementSet } from '../ir/placements.js';
 
-// The renderer adapter contract (design.md §6.5): an adapter is told the whole IR each time and works out what changed
+// The renderer adapter contract (_spec/runtime.md): an adapter is told the whole IR each time and works out what changed
 // by keys, never by content. `planCommit` is that diff, the same for every adapter: placement sets by key (a set whose
 // key is unchanged is the same object and never re-uploaded), looks by value (O(types)), the camera by value.
 

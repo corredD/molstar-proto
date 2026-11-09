@@ -15,7 +15,7 @@ import { describe, expect, it } from 'vitest';
 import { PrismMesoAdapter } from '../prism-adapter.js';
 import { tryGl } from './gl.js';
 
-// The integration lane's rendered check (design.md §12): the exosome drawn by Mol* through Prism with a WebGL context
+// The integration lane's rendered check (design.md §10): the exosome drawn by Mol* through Prism with a WebGL context
 // (`gl`, Node), the image not empty, and a color edit changing pixels without a new list. Skipped without `gl`.
 
 const gl = tryGl();

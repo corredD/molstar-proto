@@ -13,7 +13,7 @@ import { compile } from '../runtime/runtime.js';
 import { DefaultResolvers } from '../resolvers/index.js';
 import { abundanceToCount } from '../format/units.js';
 
-// The IR cases beyond the slice (design.md §4.4), on the gallery: dispatch by arrangement, nesting, lattices, fibers,
+// The IR cases beyond the slice (_spec/runtime.md), on the gallery: dispatch by arrangement, nesting, lattices, fibers,
 // bilayers; and the yeast document's failures, reported.
 
 const run = (d = galleryDoc()) => compile(d, { resolvers: DefaultResolvers });

@@ -7,9 +7,9 @@
 import type { Resource } from '../format/doc.js';
 import type { MeshData, ResourceReader } from './resolver.js';
 
-// Readers (design.md §6.2): a resource's raw content made usable, by its native format. Pluggable like resolvers; the
+// Readers (_spec/format.md): a resource's raw content made usable, by its native format. Pluggable like resolvers; the
 // prototype has the few its fixtures need. A viewer with its own readers (Mol*'s STAR, OBJ, mmCIF) can hand resources
-// over instead (design.md §6.5).
+// over instead (_spec/runtime.md).
 
 export interface StarTable {
   readonly columns: readonly string[];

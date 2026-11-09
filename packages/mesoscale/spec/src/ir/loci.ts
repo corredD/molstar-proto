@@ -11,7 +11,7 @@ import { LengthToAngstrom } from '../format/units.js';
 import { type IR, placementSets } from './ir.js';
 import type { PlacementSet } from './placements.js';
 
-// MesoLocation and MesoLoci (design.md §3.8): what a MesoQL address materializes to, as Mol*'s Location and Loci
+// MesoLocation and MesoLoci (_spec/mesoql.md): what a MesoQL address materializes to, as Mol*'s Location and Loci
 // materialize a MolQL selection. A MesoLocation is one copy, `{set, index}` (its stable id `<population>#<ordinal>`).
 // MesoLoci are many: per placement set, sorted disjoint runs `[start, end)` of copy indices. Runs, not one entry per
 // copy: every resolver writes a population's copies contiguously, so "the copies of p.lipids" is one run however many
@@ -487,7 +487,7 @@ export function lociToIds(l: MesoLoci, ir: IR, limit = 50): string[] {
 /**
  * The bounding sphere of the selected copies (Å, world frame): centre and radius including the copies' own radii.
  * Copies inside superstructures are where they are in the world: a template set's in every instance, a virtual set's
- * (`<instance set>@<i>><template>`) in its one instance. What a semantic camera frames (design.md §5.1).
+ * (`<instance set>@<i>><template>`) in its one instance. What a semantic camera frames (_spec/views.md).
  *
  * A template set's copies are bounded once in the template's frame, and that ball is moved by each instance's pose:
  * the centre stays exact (every instance holds the same copies), the radius is an upper bound, and the cost is

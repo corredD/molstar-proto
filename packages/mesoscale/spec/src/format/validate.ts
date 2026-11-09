@@ -22,7 +22,7 @@ import { type Issue, type IssueCode, issue } from './issues.js';
 import { parseMesoQL, type QType } from './mesoql.js';
 import { ConcentrationToMolar, DensityToPerA2, isLengthUnit, isUnitOf } from './units.js';
 
-// Static validation (design.md §7.4, phase `static`): the document alone, no resource loaded, no resolver run. Every
+// Static validation (_spec/runtime.md, phase `static`): the document alone, no resource loaded, no resolver run. Every
 // problem is an issue with a JSON pointer; nothing throws. A document with errors is not resolved; warnings are
 // carried into the runtime's report.
 
@@ -79,7 +79,7 @@ const InnerSections: readonly [keyof Superstructure, Kind][] = [
 ];
 
 /**
- * A superstructure as a document of its own (design.md §3.9): its contents, the document's entities (and its own),
+ * A superstructure as a document of its own (_spec/format.md): its contents, the document's entities (and its own),
  * resources, evidence and activities, so its references resolve; no frames or views. The runtime resolves it with this.
  */
 export function superstructureDoc(doc: MesoViewSpecDoc, ss: Superstructure): MesoViewSpecDoc {
@@ -108,7 +108,7 @@ export interface DocIndex {
 /**
  * Every id of the document, by kind. `inner` (default) adds the superstructures' contents: MesoQL addresses them
  * (`(part Q p.inner)`); a structural reference (a population's compartment, a model's populations) sees only the
- * document's own sections (`inner` false), so a superstructure's contents stay its own (design.md §3.9).
+ * document's own sections (`inner` false), so a superstructure's contents stay its own (_spec/format.md).
  */
 export function indexDoc(doc: MesoViewSpecDoc, inner = true): DocIndex {
   const kinds = new Map<Id, Kind>();
@@ -260,7 +260,7 @@ export function validate(doc: MesoViewSpecDoc, nested = false): Issue[] {
     if (typeof l === 'object' && !isLengthUnit(l.unit)) err('unit.unknown', `length unit ${l.unit}`, path);
     if (!Number.isFinite(v) || (positive && v <= 0)) err('value.range', `length ${v} must be positive`, path);
   };
-  // MesoQL addresses (design.md §3.8): parsed and their ids checked against the document
+  // MesoQL addresses (_spec/mesoql.md): parsed and their ids checked against the document
   // (the slot says the type: a selection to draw or frame, a site to attach at, residues to resolve)
   const sites = new Map<Id, readonly string[]>();
   for (const e of [...doc.entities, ...arrayOr(doc.superstructures).flatMap((x) => arrayOr(x.entities))])
@@ -501,7 +501,7 @@ export function validate(doc: MesoViewSpecDoc, nested = false): Issue[] {
     return false;
   };
   for (const m of models) if (visit(m.id, [])) break;
-  // streams (design.md §6.8.1): what v0.4 streams, and what it refuses rather than guess
+  // streams (_spec/streaming.md): what v0.4 streams, and what it refuses rather than guess
   const streams = models.flatMap((m, i) => (m.stream ? [[m, i] as const] : []));
   streams.forEach(([m, i], n) => {
     const p = `/models/${i}`;
@@ -679,7 +679,7 @@ const inside = (b: Box, outer: Box, tol = 1e-3) =>
   b.min.every((x, k) => x >= outer.min[k] - tol && b.max[k] <= outer.max[k] + tol);
 
 /**
- * A tile manifest checked against the stream model it feeds (design.md §6.8.2): pure, synchronous, phase `load`, code
+ * A tile manifest checked against the stream model it feeds (_spec/streaming.md): pure, synchronous, phase `load`, code
  * `stream.manifest`. Nothing throws; an invalid manifest is not streamed.
  */
 export function validateManifest(m: TileManifest, model: Model, doc: MesoViewSpecDoc): Issue[] {

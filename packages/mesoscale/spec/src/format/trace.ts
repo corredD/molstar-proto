@@ -6,7 +6,7 @@
 
 import type { Activity, Evidence, Id, MesoViewSpecDoc, Resource } from './doc.js';
 
-// Tracing (design.md §3.5): from a modeled feature (a population, a compartment, a model, a resource) back to the
+// Tracing (_spec/format.md): from a modeled feature (a population, a compartment, a model, a resource) back to the
 // evidence and the processing that produced it. The document's provenance is a graph: resources are used and generated
 // by activities (W3C PROV's entities and activities), models and alignments come from activities, and any node cites
 // evidence. A trace walks it backwards, each step saying why it was taken.
@@ -125,7 +125,7 @@ export function traceToText(steps: readonly TraceStep[]): string {
 }
 
 /**
- * A trace as a tree for the S-expression spelling (design.md §3.7): each step a form headed by its kind, its id first,
+ * A trace as a tree for the S-expression spelling (_spec/format.md): each step a form headed by its kind, its id first,
  * the steps it leads to grouped under the keyword of their relation (`:cites`, `:realized-by`, `:generated-by`, …).
  */
 export function traceToSexprData(steps: readonly TraceStep[]): unknown {

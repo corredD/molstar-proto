@@ -7,7 +7,7 @@
 import { type Issue, issue } from './issues.js';
 import { readSexpr, type SNode } from './sexpr.js';
 
-// MesoQL (design.md §3.8): declarative addresses into a mesoscale scene, after SeqQL and MolQL
+// MesoQL (_spec/mesoql.md): declarative addresses into a mesoscale scene, after SeqQL and MolQL
 // (packages/sequences/_spec/seqql.md). An address is schematized (written with document ids: "the copies of p.catalase
 // in c.exosome", "HU's DNA entry site") and materialized by the runtime into MesoLoci (placement set → runs of copy
 // indices), as Mol*'s Loci materialize a MolQL selection. The S-expression is the spelling people and agents write and

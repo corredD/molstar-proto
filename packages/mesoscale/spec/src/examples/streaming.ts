@@ -8,7 +8,7 @@ import type { Box, MesoViewSpecDoc, TileEntry, TileManifest } from '../format/do
 import { createRandom, subSeed } from '../runtime/random.js';
 import type { TilePayload, TileProvider } from '../runtime/streaming.js';
 
-// The tiled fixture (design.md §6.8.6): a box of tiles, two populations, three instances as landmarks (inside a tile, on
+// The tiled fixture (_spec/streaming.md): a box of tiles, two populations, three instances as landmarks (inside a tile, on
 // the boundary between two, in the last), and a provider that makes every tile's copies from a seed. No file: the
 // document's `meso-tiles` resource has no uri, the provider is code.
 

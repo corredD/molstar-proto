@@ -19,7 +19,7 @@ import { issue, type Issue } from '../format/issues.js';
 import type { Resolver, ResolveJob } from '../runtime/resolver.js';
 import { DefaultPackParams, pack, type PackInput, packCompartments } from './packing.js';
 
-// The cellPACKgpu adapter (design.md §6.4): a recipe kind plugged in without touching the language or the IR. Two
+// The cellPACKgpu adapter (_spec/runtime.md): a recipe kind plugged in without touching the language or the IR. Two
 // halves, both reading cellPACKgpu's serialized recipe (`CompartmentUtils.cs` `Compartment`/`IngredientGroup`/
 // `Ingredient`, loaded by `CellPackLoader.LoadRecipe`):
 // - `importCellpackGpuRecipe`: the recipe's biology as MesoViewSpec (entities, compartments, populations), every
@@ -382,7 +382,7 @@ export const CellpackGpuResolver: Resolver<PackInput & { readonly recipe: string
         const pv = ing?.principalVector ?? [0, 0, 1];
         const l = Math.hypot(...pv) || 1;
         // the membrane offset: the recipe's offset along the principal vector (CellPackLoader.cs:850–877 mirrors x
-        // and negates it for non-surface ingredients; not reproduced, design.md §6.4)
+        // and negates it for non-surface ingredients; not reproduced, _spec/runtime.md)
         const along = ing ? (ing.offset[0] * pv[0] + ing.offset[1] * pv[1] + ing.offset[2] * pv[2]) / l : 0;
         return {
           population: p.id,

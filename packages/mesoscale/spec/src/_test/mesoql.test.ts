@@ -14,7 +14,7 @@ import { evaluateMesoQL, intersectRuns, lociSize, lociToIds, subtractRuns, typeR
 import { updateView } from '../runtime/runtime.js';
 import { compileExosome } from './helpers.js';
 
-// MesoQL (design.md §3.8): addresses are checked against the document, materialized into MesoLoci (runs per set),
+// MesoQL (_spec/mesoql.md): addresses are checked against the document, materialized into MesoLoci (runs per set),
 // and a view's looks, selection and annotations come from them.
 
 const kinds = indexDoc(exosomeDoc()).kinds as ReadonlyMap<string, string>;
