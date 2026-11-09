@@ -26,7 +26,7 @@ import { canCullOnGpu } from '@molstar/graphics/gl/renderable/merged';
 import { type MergedEntry, mergeRenderObjectsByType } from '@molstar/graphics/repr/merged';
 import { Representation } from '@molstar/graphics/repr/representation';
 import { LocationIterator } from '@molstar/graphics/geo/util/location-iterator';
-import { orderLodLevels } from '@molstar/graphics/geo/geometry/lod-levels';
+import { LodNominalRadius, orderLodLevels } from '@molstar/graphics/geo/geometry/lod-levels';
 import { ColorLevels } from '@molstar/graphics/geo/geometry/color-levels';
 import { PositionGroupStride } from '@molstar/graphics/geo/geometry/center-group';
 import { createDataArray } from '@molstar/graphics/gl/renderable/util';
@@ -580,7 +580,9 @@ export function switchSpheres(table: CutterTable, props: LipidMembraneReprProps,
     const array = new Float32Array(count * PositionGroupStride);
     for (let i = 0; i < count; ++i) array.set(member.positions.subarray(i * 3, i * 3 + 3), i * PositionGroupStride);
     const cell = ValueCell.create(createDataArray(count, PositionGroupStride, Float32Array, array));
-    const levels = orderLodLevels(cell, count, lodLevels, 1, lodPixelSize);
+    // the members' pixel boundaries: their spheres' nominal radius (`Spheres.Params.lodRadius`; review M1: none, every
+    // boundary 0 and always the coarsest level)
+    const levels = orderLodLevels(cell, count, lodLevels, 1, lodPixelSize, LodNominalRadius);
     let j = levels.length - 1;
     if (lodPixelSize > 0) while (j > 0 && perPixel < levels[j][0]) j -= 1;
     const n = Math.max(1, Math.min(count, Math.round(levels[j][3] / 6)));
