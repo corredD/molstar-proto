@@ -93,7 +93,10 @@ maintainer first (2026-10-25). All are v6 (master); the MRC reader and the parti
   - A row per species in the tree (eye and colour): the membrane's Look holds them this round.
   - Picking a lipid: a pick's slot maps to (triangle, lipid) through the selection (`LipidSelection.lipidAt`), but the
     membrane's `getLoci` is still empty; per-lipid layers stay per species (a slot is not a lipid).
-  - Colours by zoom, ghosts, outlines and transparency per species: not mapped onto the membrane yet.
+  - Ghosts, outlines, transparency and glow per species: not mapped onto the membrane yet (colours by zoom are, round
+    4c: far its colour, then its species'). A colour change redraws every surface (0.95 s on model ×20): a colour-only
+    update path. A dither of the spheres themselves at the switch: a graphics library change (the object fade is off
+    with levels), Ludo's call.
   - Spheres far look past the budget: far parts empty. Thinning lipids at generation needs each sphere grown by its
     instance's scale (the spheres shader takes the model scale only): a library change.
   - The bump stands in for a head pattern (Mol*'s value noise) and has no fade with distance.
