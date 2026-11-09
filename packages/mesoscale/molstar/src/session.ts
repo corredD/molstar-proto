@@ -70,20 +70,23 @@ export class MesoSession {
     return done;
   }
 
+  // The session's state (ir, doc, issues, counts, history) changes only once the commit has succeeded: an edit that
+  // fails leaves the session as it was, consistent with what the viewer last drew.
   private async run(kind: EditRecord['kind'], next: MesoViewSpecDoc, label: string): Promise<EditRecord> {
     const t0 = performance.now();
     let record: EditRecord;
     if (kind === 'none') record = { label, kind, resolverRuns: 0, cacheHits: 0, totalMs: 0 };
     else if (kind === 'view' && this.ir) {
-      this.ir = updateView(next, this.ir);
-      const commit = await this.adapter?.commit(this.ir);
+      const ir = updateView(next, this.ir);
+      const commit = await this.adapter?.commit(ir);
+      this.ir = ir;
       this.issues = [...this.issues.filter((i) => i.phase !== 'render'), ...(commit?.issues ?? [])];
       record = { label, kind, resolverRuns: 0, cacheHits: 0, commit, totalMs: performance.now() - t0 };
     } else {
       const r = await compile(next, { ...this.options, cache: this.cache });
+      const commit = r.ir ? await this.adapter?.commit(r.ir) : undefined;
       this.counts = r.counts;
       if (r.ir) this.ir = r.ir;
-      const commit = r.ir ? await this.adapter?.commit(r.ir) : undefined;
       this.issues = [...r.issues, ...(commit?.issues ?? [])];
       record = {
         label,
