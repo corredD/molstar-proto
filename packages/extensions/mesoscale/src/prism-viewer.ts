@@ -84,6 +84,12 @@ export const MesoscaleSkill: ViewerSkill = {
         "Sets a lipid membrane's levels of detail: a preset, or custom levels by distance from the camera (each its start in Å, stride and scale bias); a cut membrane's far look (spheres, texture or both), the pixel sizes it switches at and its lipids at most.",
     },
     {
+      id: 'export_lipid_membrane',
+      operation: 'mesoscale.exportMembrane',
+      description:
+        "Exports a cut lipid membrane's full build (every lipid of every triangle, its shown species) as a RELION STAR particle list.",
+    },
+    {
       id: 'set_lipid_membrane_species',
       operation: 'mesoscale.membraneSpecies',
       description: "Shows, hides or colors one species of a lipid membrane (its entities, as a particle system's).",
@@ -172,6 +178,12 @@ export const MesoscaleExtension: ViewerExtension = {
         icon: 'layers',
         alias: ['membrane levels', 'lipid lod', 'membrane detail', 'levels of detail', 'far look'],
         action: 'Apply',
+      }),
+      operationCommand(api, m.exportMembrane, {
+        category,
+        icon: 'download',
+        alias: ['export lipids', 'membrane star', 'full build'],
+        action: 'Export',
       }),
       operationCommand(api, m.membraneSpecies, {
         category,

@@ -162,6 +162,10 @@ describe('a membrane’s levels in its properties', () => {
     await until(() => !!eye());
     eye().click();
     await until(() => !(params().hiddenSpecies as string[]).includes(names[0]));
+    // the full build at export: every lipid of its shown species, no step
+    const exported = await area.exportMembrane({ membrane } as never);
+    expect(exported.ok).toBe(true);
+    expect((exported as { did: string }).did).toMatch(/Exported [1-9][\d,]* lipids/);
     // Object graphics' quality: the levels' preset
     expect((await area.graphics({ mode: 'performance', object: membrane } as never)).ok).toBe(true);
     expect(params()).toMatchObject({ detail: 'performance' });

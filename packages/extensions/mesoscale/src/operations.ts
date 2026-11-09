@@ -5,6 +5,8 @@
  */
 
 import { Color } from '@molstar/core/util/color';
+import { download } from '@molstar/core/util/download';
+import { Task } from '@molstar/core/task';
 import { distinctColors } from '@molstar/core/util/color/distinct';
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
 import type { VisualQuality } from '@molstar/graphics/geo/geometry/base';
@@ -42,6 +44,7 @@ import {
   membraneSpecies,
 } from './lipids/membrane.js';
 import type { MembraneFar } from './lipids/procedural.js';
+import { membraneStar } from './lipids/export.js';
 import {
   findGroup,
   generateColors,
@@ -480,6 +483,50 @@ export class MesoscaleApi extends ApiArea {
       if (JSON.stringify(next) === JSON.stringify(old)) return ApiResult.already(`${species} is already so.`);
       await ctx.plugin.state.data.build().to(cell).update(next).commit({ revertOnError: true });
       return ApiResult.ok(`${species}: ${hidden.has(species) ? 'hidden' : 'shown'}.`, { nodes: [membrane] });
+    },
+  });
+
+  /**
+   * A cut lipid membrane's full build (Ludo, 2026-11-08: "only do the full build at export time"): every triangle cut by
+   * the TypeScript reference, its shown species, a STAR particle list (`lipids/export.ts`) a chunk of triangles at a
+   * time, each chunk a Blob of its own (the strings let go as it goes); downloaded. No history step
+   */
+  readonly exportMembrane = this.operation({
+    id: 'mesoscale.exportMembrane',
+    title: 'Export a lipid membrane’s full build',
+    params: {
+      membrane: PD.Text('', { description: 'The lipid membrane by state ref' }),
+      filename: OptionalParam(PD.Text('lipid-membrane.star')),
+    },
+    history: false,
+    async run(values, ctx) {
+      const { membrane, filename } = values as { membrane: string; filename?: string };
+      const cell = ctx.plugin.state.data.cells.get(membrane);
+      if (cell?.transform.transformer !== LipidMembrane || !cell.obj) {
+        return ApiResult.fail('not-found', `No lipid membrane ${membrane} in the scene.`);
+      }
+      const data = (cell.obj.data as { sourceData: MembraneData }).sourceData;
+      if (data.cut.length === 0) {
+        return ApiResult.fail('invalid', 'Only a membrane cut by the cutter is exported (tiles are built whole).');
+      }
+      const hidden = new Set((cell.transform.params as LipidMembraneProps).hiddenSpecies);
+      const parts: Blob[] = [];
+      let rows = 0;
+      await ctx.plugin.runTask(
+        Task.create('Exporting lipids', async (runtime) => {
+          let k = 0;
+          for (const chunk of membraneStar(data, hidden)) {
+            parts.push(new Blob([chunk]));
+            if (k++ > 0) rows += chunk.split('\n').length - 1;
+            if (runtime.shouldUpdate) await runtime.update({ message: `${rows.toLocaleString()} lipids written` });
+          }
+        }),
+      );
+      const name = filename?.trim() || 'lipid-membrane.star';
+      // a page downloads it (not a test's DOM, without object URLs)
+      if (typeof document !== 'undefined' && typeof URL.createObjectURL === 'function')
+        download(new Blob(parts, { type: 'text/plain' }), name);
+      return ApiResult.ok(`Exported ${rows.toLocaleString()} lipids to ${name}.`);
     },
   });
 
