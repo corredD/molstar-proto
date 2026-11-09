@@ -401,8 +401,8 @@
             "params": {
               "model": "default:meso.fiber",
               "resolver": "meso.fiber",
-              "version": "0.2.0",
-              "key": "default:meso.fiber@252ff73e5b2905c1",
+              "version": "0.2.1",
+              "key": "default:meso.fiber@b8f2eca5e5769e14",
               "input": {
                 "strands": [
                   {
@@ -504,7 +504,7 @@
                 "origin": ["p.actin", "p.microtubule"],
                 "params": {
                   "set": {
-                    "key": "default:meso.fiber@252ff73e5b2905c1#0",
+                    "key": "default:meso.fiber@b8f2eca5e5769e14#0",
                     "model": "default:meso.fiber",
                     "frame": "world",
                     "count": 510,
@@ -661,13 +661,13 @@
         "visible": true
       },
       {
-        "set": "default:meso.fiber@252ff73e5b2905c1#0",
+        "set": "default:meso.fiber@b8f2eca5e5769e14#0",
         "types": [0],
         "color": 5940570,
         "visible": true
       },
       {
-        "set": "default:meso.fiber@252ff73e5b2905c1#0",
+        "set": "default:meso.fiber@b8f2eca5e5769e14#0",
         "types": [1],
         "color": 10181046,
         "visible": true

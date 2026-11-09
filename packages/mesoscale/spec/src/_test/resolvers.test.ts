@@ -6,6 +6,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { PlacementBuilder, type PlacementSet } from '../ir/placements.js';
+import { MesoFiberResolver } from '../resolvers/fiber.js';
 import { MesoRelaxResolver } from '../resolvers/relax.js';
 import { createRandom } from '../runtime/random.js';
 import type { ResolveJob, ResolveOutput } from '../runtime/resolver.js';
@@ -70,5 +71,54 @@ describe('meso.relax', () => {
       { params: { iterations: 1, tolerance: 1 }, upstream: { sets: [up], achieved: { p: n } } },
     );
     expect(() => run(MesoRelaxResolver, j)).not.toThrow();
+  });
+});
+
+const xs = (s: PlacementSet) => Array.from({ length: s.count }, (_, i) => s.positions[3 * i]);
+const line = (step: number, n: number) => Array.from({ length: n + 1 }, (_, i) => [step * i, 0, 0] as const);
+const bigSphere = { c: { shape: { kind: 'sphere', center: [0, 0, 0], radius: 1e4 } } };
+const strand = (id: string, requested: number, path: readonly (readonly number[])[]) => ({
+  id,
+  compartment: 'c',
+  location: 'interior',
+  requested,
+  radius: 5,
+  arrangement: { kind: 'fiber', rise: 10, twist: 0, path },
+});
+
+describe('meso.fiber', () => {
+  it('a traced path keeps copies one rise apart whatever its point spacing (the carry crosses short segments)', () => {
+    for (const step of [2, 7, 25]) {
+      const len = 200 - (200 % step);
+      const n = Math.floor(len / 10) + 1;
+      const out = run(MesoFiberResolver, job([strand('f', n, line(step, len / step))], bigSphere));
+      expect(out.achieved.f).toBe(n);
+      const x = xs(out.sets[0]);
+      for (let i = 0; i < n; i++) expect(x[i]).toBeCloseTo(10 * i, 3);
+    }
+  });
+
+  it("a binder's shortfall gives its own strand's length, not every strand's before it", () => {
+    const binder = {
+      id: 'b',
+      compartment: 'c',
+      location: 'interior',
+      requested: 100,
+      radius: 5,
+      arrangement: { kind: 'random' },
+    };
+    const rel = {
+      id: 'r',
+      kind: 'binds',
+      subjects: ['b'],
+      objects: ['g'],
+      entry: { position: [0, 0, 0] },
+      spacing: 50,
+    };
+    const out = run(
+      MesoFiberResolver,
+      job([strand('f', 101, line(10, 100)), strand('g', 21, line(10, 20)), binder], bigSphere, { relations: [rel] }),
+    );
+    expect(out.shortfall?.b).toMatch(/the strand g is 200 Å long/);
   });
 });

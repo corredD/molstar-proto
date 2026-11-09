@@ -64,7 +64,7 @@ const OnStrand = ['binds', 'bends'] as const;
 
 export const MesoFiberResolver: Resolver<FiberInput> = {
   id: 'meso.fiber',
-  version: '0.2.0',
+  version: '0.2.1',
   description:
     'Filaments along a given path or grown as a persistent random walk; binders and benders placed on them by their sites',
   arrangements: ['fiber', 'random'],
@@ -220,7 +220,10 @@ export const MesoFiberResolver: Resolver<FiberInput> = {
           const tx = (x1 - x0) / len,
             ty = (y1 - y0) / len,
             tz = (z1 - z0) / len;
-          for (let u = carry; u <= len && b.count - start < it.requested; u += a.rise) {
+          // the carry is what is left of the rise past the last copy: a segment shorter than it places none and
+          // passes the rest on (dense traced points, a few Å apart)
+          let u = carry;
+          for (; u <= len + 1e-6 && b.count - start < it.requested; u += a.rise) {
             const cur = [x0 + tx * u, y0 + ty * u, z0 + tz * u];
             const dir = [tx, ty, tz];
             sinceBinder += a.rise;
@@ -242,8 +245,8 @@ export const MesoFiberResolver: Resolver<FiberInput> = {
             }
             quatFromTo(q, 0, 0, 1, tx, ty, tz, twist * k++);
             strandIdx.push(b.push(t, x0 + tx * u, y0 + ty * u, z0 + tz * u, q));
-            carry = u + a.rise - len;
           }
+          carry = u - len;
         }
         offsets.push(strandIdx.length);
       } else if (a.growth) {
@@ -322,7 +325,7 @@ export const MesoFiberResolver: Resolver<FiberInput> = {
         achieved[x.bd.population] = (achieved[x.bd.population] ?? 0) + x.poses.length;
         if (x.poses.length < x.bd.requested && !shortfall[x.bd.population])
           shortfall[x.bd.population] =
-            `the strand ${it.population} is ${(strandIdx.length * a.rise).toFixed(0)} Å long: ${x.poses.length} copies ${spacingOf(x).toFixed(0)} Å apart on it; ${x.bd.requested} asked`;
+            `the strand ${it.population} is ${(a.path ? pathLength(a.path) : placed * a.rise).toFixed(0)} Å long: ${x.poses.length} copies ${spacingOf(x).toFixed(0)} Å apart on it; ${x.bd.requested} asked`;
       }
     });
     const fibers = {
