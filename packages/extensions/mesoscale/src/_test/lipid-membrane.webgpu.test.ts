@@ -244,7 +244,8 @@ describe.skipIf(!webgpu)('lipid membrane on WebGPU (Dawn)', () => {
       expect(asked).toBe(true);
       const cell = plugin.state.data.cells.get(node.ref)!;
       expect(cell.status).toBe('ok');
-      expect(cell.obj?.data.repr.renderObjects.length).toBe(1);
+      // the cutter's lipids merged, and the far look's surface (lipid-procedural)
+      expect(cell.obj?.data.repr.renderObjects.length).toBe(2);
     } finally {
       vi.restoreAllMocks();
       plugin.dispose();

@@ -99,15 +99,17 @@ describe.skipIf(!webgpu)('a lipid membrane made per view (Dawn)', () => {
       const covered = (image: Uint8Array | Uint8ClampedArray) => {
         const bg = Array.from(image.subarray(0, 3)).join();
         let n = 0;
-        for (let y = Size / 3; y < (2 * Size) / 3; ++y) {
-          for (let x = Size / 3; x < (2 * Size) / 3; ++x) {
+        let all = 0;
+        for (let y = Math.round(Size / 3); y < Math.round((2 * Size) / 3); ++y) {
+          for (let x = Math.round(Size / 3); x < Math.round((2 * Size) / 3); ++x) {
             const o = (y * Size + x) * 4;
             if (Array.from(image.subarray(o, o + 3)).join() !== bg) n += 1;
+            all += 1;
           }
         }
-        return n / (Size / 3) ** 2;
+        return n / all;
       };
-      if (!process.env.LIPID_NUMBERS) expect(covered(a.image)).toBeGreaterThan(0.95);
+      expect(covered(a.image)).toBeGreaterThan(0.95);
       // close: the triangles in view
       expect(b.pool.live).toBeGreaterThan(0);
       expect(b.pool.live).toBeLessThan(repr.cutLipids);
