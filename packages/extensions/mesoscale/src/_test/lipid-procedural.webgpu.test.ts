@@ -531,6 +531,20 @@ describe.skipIf(!webgpu)('a lipid membrane made per view (Dawn)', () => {
       expect(close.live).toBeGreaterThan(1000);
       expect(close.surfaces).toBe(4);
       expect(close.selectMs).toBeLessThan(50);
+      // a new look with the camera still: the enclosed parts' new surfaces hidden too (review S1)
+      await repr
+        .createOrUpdate(
+          {
+            ...PD.getDefaultValues(LipidMembraneParams),
+            method: 'cutter',
+            patch: 'dawn-cell',
+            color: 0x3366cc as never,
+          },
+          data,
+        )
+        .run();
+      await plugin.getImageRaw({ width: Size, height: Size });
+      expect(surfacesShown()).toBe(4);
       // inside, over the VAC: its lipids too, every surface
       const inside = await go('inside', Vec3.create(5000, 0, 3300), Vec3.create(5000, 0, 3000));
       expect(inside.live).toBeGreaterThan(1000);

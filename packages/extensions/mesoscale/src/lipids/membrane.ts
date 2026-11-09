@@ -1362,6 +1362,8 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
     }
     fading = nextFading;
     partSurfaces = nextPartSurfaces;
+    // as the last view showed them, before the next view's hook (review S1, nit)
+    showParts();
     // the textures of two builds ago: the last build's objects may draw once more (a frame before the swap)
     for (const t of retiredTextures) t.destroy();
     retiredTextures = patchTexturesInUse;
