@@ -56,7 +56,9 @@ is not built is [../TODO.md](../TODO.md).
     lines vs ~950). Round 4b (Ludo's teddy notes) built and gated at 1859f56ea: far surfaces per leaflet at the heads,
     coloured by species; cutter cells ~108 Å with own spin/offset (the 154 Å patch repeated); tiles get species rows and
     far surfaces; Clip on a membrane. Open for Ludo: M2 seams at cell borders. Round 4c (smooth switch, colouring as a
-    particle list) started after it. Library commits need their own lane from master.
+    particle list) built and gated at e3ee04308: surface coloured as the switch's spheres show the patch, at their
+    tops, dithered in over a px band; a membrane coloured through mesoscale.style/colors/colorLevels. Waits on Ludo's
+    try on 1354; open for Ludo: M2 seams, a sphere dither (graphics change). Library commits need their own lane.
   - `paint` (`me/paint`, port 1352, [brief](2026-11-08-paint.md) on its branch): Paint v1, approved 2026-11-08 (the
     mesoscale extension, random orientation, no collisions in v1). On hold until the lipids (Ludo, 2026-11-08).
 
