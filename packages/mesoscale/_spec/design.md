@@ -1191,7 +1191,7 @@ export function tileSet(node: Extract<IRNode, { kind: 'stream' }>, tile: TileEnt
 
 /**
  * The IR as the camera reads it: each stream node's tiles replaced by one proxy set (key `<key>#level0`) with one copy
- * per (tile, population) with a count > 0, at the envelope's centre, identity rotation, and its own type whose radius
+ * per (population, tile) with a count > 0 (population-major, so a population is one run), at the envelope's centre, identity rotation, and its own type whose radius
  * is the envelope's half-diagonal (population, entity and compartment as the stream's type).
  */
 export function level0IR(ir: IR): IR;

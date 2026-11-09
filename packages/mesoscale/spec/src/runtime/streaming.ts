@@ -232,7 +232,7 @@ const level0Cache = new WeakMap<IRNode, IRNode>();
 
 /**
  * The IR as the camera reads it: each stream node's tiles replaced by one proxy set (key `<key>#level0`) with one copy
- * per (tile, population) with a count > 0, at the envelope's centre, identity rotation, and its own type whose radius
+ * per (population, tile) with a count > 0, population-major, at the envelope's centre, identity rotation, and its own type whose radius
  * is the envelope's half-diagonal (population, entity and compartment as the stream's type).
  */
 export function level0IR(ir: IR): IR {
@@ -241,8 +241,9 @@ export function level0IR(ir: IR): IR {
     root = rewrite(ir, (n) => {
       const typeTable: PlacementType[] = [];
       const pos: number[] = [];
-      for (const t of n.params.tiles)
-        for (const ty of n.params.types) {
+      // population by population, so a selection of a population is one run (`byTypes` unions run after run)
+      for (const ty of n.params.types)
+        for (const t of n.params.tiles) {
           if (!(t.counts[ty.population] > 0)) continue;
           const e = t.envelopes?.[ty.population] ?? t.box;
           for (let k = 0; k < 3; k++) pos.push((e.min[k] + e.max[k]) / 2);
