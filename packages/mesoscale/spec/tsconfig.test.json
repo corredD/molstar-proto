@@ -1,0 +1,15 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  // The type tests of the builder (src/_test/builder.types.test.ts): `@ts-expect-error` lines, checked by
+  // `npx tsc -p packages/mesoscale/spec/tsconfig.test.json`. The other tests are not type-checked (tsconfig.json excludes _test).
+  "compilerOptions": {
+    "composite": false,
+    "declaration": false,
+    "declarationMap": false,
+    "noEmit": true,
+    "resolveJsonModule": true,
+    "rootDir": "src",
+    "types": ["node"]
+  },
+  "include": ["src/_test/builder.types.test.ts"]
+}
