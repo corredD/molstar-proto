@@ -228,7 +228,8 @@ export interface LipidCutter {
 
 /**
  * The mesh and the table uploaded, the count pass run and read back, the bases uploaded: then a writer per member. Byte
- * cost: 12 B a vertex and a triangle, 16 B a patch lipid, 8 B a (member, triangle) (its count and first instance)
+ * cost: 12 B a vertex and a triangle, 16 B a patch lipid, 4 B a (member, triangle) (its first instance; its count, 4 B
+ * more, only until read back)
  */
 export async function createLipidCutter(
   compute: ComputeContext,
@@ -238,6 +239,15 @@ export async function createLipidCutter(
   indices: Uint32Array,
   seed: number,
 ): Promise<LipidCutter> {
+  const T = indices.length / 3;
+  const M = table.members.length;
+  // a count and a first instance a member and triangle, each one buffer (review S4: past the device's size, a WebGPU
+  // error and an empty membrane)
+  if (M * T * 4 > compute.maxStorageBufferSize) {
+    throw new Error(
+      `The cutter has too many triangles (${T.toLocaleString()}) for this GPU's buffers: remesh the mesh coarser, or wrap it with tiles.`,
+    );
+  }
   const buffers: StorageBuffer[] = [];
   const buffer = (data: ArrayBufferView & { byteLength: number }, label: string) => {
     const b = compute.createBuffer(Math.max(16, data.byteLength), label);
@@ -245,8 +255,6 @@ export async function createLipidCutter(
     buffers.push(b);
     return b;
   };
-  const T = indices.length / 3;
-  const M = table.members.length;
   const uniforms = {
     uSeed: ValueCell.create(seed | 0),
     uBoxX: ValueCell.create(table.box[0]),
@@ -270,9 +278,17 @@ export async function createLipidCutter(
   countKernel.dispatch(...workgroupRows(T, 64, compute.maxWorkgroupsPerDimension));
   compute.endComputePass();
   flush();
-  const counts = new Uint32Array(await countBuffer.readAsync(0, M * T * 4));
-  countKernel.destroy();
-  countBuffer.destroy();
+  let counts: Uint32Array;
+  try {
+    counts = new Uint32Array(await countBuffer.readAsync(0, M * T * 4));
+  } catch (e) {
+    // nothing left on the GPU by a failed readback (review N2)
+    for (const b of buffers) b.destroy();
+    throw e;
+  } finally {
+    countKernel.destroy();
+    countBuffer.destroy();
+  }
   const { bases, totals } = cutterBases(counts, M);
   const values = {
     ...uniforms,
