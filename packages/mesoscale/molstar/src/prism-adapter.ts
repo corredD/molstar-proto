@@ -140,10 +140,11 @@ export class PrismMesoAdapter implements RendererAdapter {
       const set = byKey.get(key)!;
       if (!p || !v.plugin.state.data.cells.get(p.ref)?.obj) {
         this.placed.delete(key);
-        relist.push(set);
+        if (set.count) relist.push(set);
       } else if (!this.hasRepresentation(p.ref)) redraw.push(set);
     }
-    for (const set of [...plan.add, ...relist]) {
+    // an empty set (a model whose input is missing) has nothing Prism can draw: no list (spacefill refuses it)
+    for (const set of [...plan.add.filter((x) => x.count > 0), ...relist]) {
       const label = listLabel(set);
       if (!store.has(set.key)) store.set(set.key, toParticleList(set, label));
       const b = v.plugin.state.data.build().toRoot().apply(MesoPlacements, { key: set.key, label });

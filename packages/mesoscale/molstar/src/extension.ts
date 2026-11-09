@@ -155,7 +155,7 @@ export class MesoViewSpecApi extends ApiArea {
           'Close it first with mesoviewspec.close, then open the other.',
         );
       }
-      const url = values.url?.trim();
+      const url = absolute(values.url?.trim());
       let text: string | undefined;
       try {
         text = url ? await this.model.options.fetchText?.(url) : values.file ? await values.file.text() : values.data;
@@ -393,3 +393,13 @@ export function createMesoViewSpecExtension(o: MesoViewSpecOptions = {}): Viewer
 }
 
 export const MesoViewSpecExtension: ViewerExtension = createMesoViewSpecExtension();
+
+/** An address relative to the page (`?mesoviewspec=/path/doc.json`) made absolute: the resources resolve against it. */
+function absolute(url: string | undefined): string | undefined {
+  if (!url) return undefined;
+  try {
+    return new URL(url, (globalThis as { location?: { href?: string } }).location?.href).href;
+  } catch {
+    return url;
+  }
+}

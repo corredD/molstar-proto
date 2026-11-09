@@ -14,7 +14,7 @@ import { createMesoscaleExplorerSpec } from '@molstar/prism-me-app/spec';
 import { createAgentPolicy } from '@molstar/prism-viewer/agent/policies';
 import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
 import type { PrismViewer } from '@molstar/prism-viewer/viewer';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createMesoViewSpecExtension, type MesoViewSpecApi } from '../extension.js';
 import { MesoPlacements } from '../particle-list.js';
 import { MesoViewSpecLazyExtension } from '../prism-viewer.js';
@@ -115,6 +115,31 @@ describe('mesoviewspec.open', () => {
     expect(r.ok).toBe(true);
     expect(fake.asked).toEqual([]);
     expect(lists(v)).toBeGreaterThan(0);
+  });
+
+  // the app's check (prism.md §3): a document alone, its resources missing, some sets come out empty; an empty set has no
+  // representation Prism can draw, and it failed the whole open
+  it('opens with a resource missing: the empty sets are not drawn, the rest is', { tags: ['medium'] }, async () => {
+    const { v, run } = await open();
+    const r = await run('mesoviewspec.open', { data: JSON.stringify(exosomeDoc()), files: [resourceFiles()[1]] });
+    expect(r.ok).toBe(true);
+    expect(lists(v)).toBeGreaterThan(0);
+    const reprs = v.plugin.managers.particles.hierarchy.current.lists.map((l) => l.representations.length);
+    expect(reprs.every((n) => n === 1)).toBe(true);
+  });
+
+  // `?mesoviewspec=/path/doc.json` in the app: an address relative to the page is resolved against it
+  it('opens by an address relative to the page: its resources too', { tags: ['medium'] }, async () => {
+    vi.stubGlobal('location', { href: 'https://example.org/app/index.html' });
+    try {
+      const { v, fake, run } = await open();
+      const r = await run('mesoviewspec.open', { url: '/d/exosome.mesoviewspec.json' });
+      expect(r.ok).toBe(true);
+      expect(fake.asked).toContain(`${Base}examples/fixtures/${RecipeName}`);
+      expect(lists(v)).toBeGreaterThan(0);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it('opens the S-expression', { tags: ['medium'] }, async () => {
