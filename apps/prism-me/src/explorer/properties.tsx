@@ -660,17 +660,48 @@ function resolveOf(model: DocModel, id: string) {
   return undefined;
 }
 
+/** The place of each population and instance in its list, by id: made once per document */
+const placesOf = new WeakMap<object, Map<string, readonly [list: 'populations' | 'instances', at: number]>>();
+function placeOf(doc: DocData, id: string) {
+  let places = placesOf.get(doc);
+  if (!places) {
+    places = new Map();
+    for (const [list, items] of [
+      ['populations', doc.populations],
+      ['instances', doc.instances ?? []],
+    ] as const) {
+      items.forEach((x, at) => {
+        // the first of an id, as `findIndex` found it (populations before instances)
+        if (!places!.has(x.id)) places!.set(x.id, [list, at]);
+      });
+    }
+    placesOf.set(doc, places);
+  }
+  return places.get(id);
+}
+
+const IdChar = /[A-Za-z0-9_.:-]/;
+/** Is the id in the text as a whole: not touching a character of an id on either side */
+function mentionsId(text: string, id: string): boolean {
+  if (!id) return false;
+  for (let at = text.indexOf(id); at >= 0; at = text.indexOf(id, at + 1)) {
+    if (at > 0 && IdChar.test(text[at - 1])) continue;
+    const end = at + id.length;
+    if (end < text.length && IdChar.test(text[end])) continue;
+    return true;
+  }
+  return false;
+}
+
 /** Does the issue speak of this population or instance: by its path (id or index), ids, or message */
 export function issueMentions(doc: DocData, issue: DocIssue, id: string): boolean {
-  if (issue.ids?.includes(id) || issue.message.includes(id)) return true;
+  if (issue.ids?.includes(id) || mentionsId(issue.message, id)) return true;
   const path = issue.path;
   if (!path) return false;
-  for (const [list, items] of [
-    ['populations', doc.populations],
-    ['instances', doc.instances ?? []],
-  ] as const) {
-    const at = items.findIndex((x) => x.id === id);
-    if (at >= 0 && (path === `/${list}/${at}` || path.startsWith(`/${list}/${at}/`))) return true;
+  const place = placeOf(doc, id);
+  if (place) {
+    const [list, at] = place;
+    if (path === `/${list}/${at}` || path.startsWith(`/${list}/${at}/`)) return true;
   }
   return path.split('/').includes(id);
 }
