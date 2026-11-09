@@ -114,7 +114,8 @@ describe.skipIf(!webgpu)('a lipid membrane made per view (Dawn)', () => {
       const surfaces = (
         plugin.state.data.cells.get(node.ref)!.obj!.data.repr as { renderObjects: { type: string }[] }
       ).renderObjects.filter((o) => o.type === 'mesh');
-      expect(surfaces.length).toBe(2);
+      // and beneath the lipids, near, one a leaflet (round 4c)
+      expect(surfaces.length).toBe(4);
       const colors = new Set<string>();
       for (let o = 0; o < a.image.length; o += 4 * 97) colors.add(`${a.image[o]},${a.image[o + 1]},${a.image[o + 2]}`);
       expect(colors.size).toBeGreaterThan(20);
@@ -190,11 +191,7 @@ describe.skipIf(!webgpu)('a lipid membrane made per view (Dawn)', () => {
       expect(hidden.image).not.toEqual(all.image);
       const shown = await look({ hiddenSpecies: [] });
       expect(shown.live).toBe(all.live);
-      // the same but at the switch's edge: the selection keeps a triangle by hysteresis, so the first build's path (the
-      // whole view first) left a few more there; the far surface drawn beneath hid them until it faded (round 4c)
-      let differ = 0;
-      for (let i = 0; i < all.image.length; i += 4) if (all.image[i] !== shown.image[i]) differ += 1;
-      expect(differ).toBeLessThan(Size * Size * 0.005);
+      expect(shown.image).toEqual(all.image);
       const colored = await look({ speciesColors: { [species[0]]: 0x000000 } });
       expect(colored.image).not.toEqual(all.image);
       const larger = await look({ speciesColors: {}, sizeFactor: 3 });

@@ -592,24 +592,41 @@ export function switchSpheres(table: CutterTable, props: LipidMembraneReprProps,
   return { atoms, radius };
 }
 
+/** The selection's hysteresis: a triangle taken keeps its lipids down to this share of the switch's px */
+const Keep = 0.8;
+
 /** A distance past any view, Å: a surface's fade (`lod`) open at its far end */
 const NoFade = 1e9;
 
 /**
- * The fade of a cut leaflet's far surface (round 4c item 7): over the spheres it takes over from, dithered in by distance
- * (`lod`, Mol*'s object fade) from where a lipid is twice `enter` px on screen to where it is `enter` (the selection's
- * switch: a lipid of `size` Å at `depthScale` Å a pixel a unit of depth), opaque past it, not drawn nearer; with an
- * orthographic camera (one size on screen) drawn or not. Its props' `lod` too (`setClip` updates the values with them)
+ * The fade of a cut leaflet's surfaces (round 4c item 7) by distance (`lod`, Mol*'s object fade), set from the switch: a
+ * lipid of `size` Å `enter` px on screen at `depthScale` Å a pixel a unit of depth. The far one dithered in from where a
+ * lipid is twice `enter` px to the switch, opaque past it, not drawn nearer; the `near` one (beneath the lipids) drawn to
+ * where the selection lets a lipid go (`keep` of the switch's px). Orthographic (one size on screen): drawn or not. Its
+ * props' `lod` too (`setClip` updates the values with them)
  */
-function fadeSurface(values: BaseValues, size: number, enter: number, depthScale: number, pixelSize: number) {
+function fadeSurface(
+  values: BaseValues,
+  size: number,
+  enter: number,
+  near: boolean,
+  depthScale: number,
+  pixelSize: number,
+) {
   const made = clipped.get(values);
   if (!made) return;
   const lod = made.lod;
+  const keep = Keep;
   if (depthScale > 0) {
     const d = size / (depthScale * enter);
-    Vec3.set(lod, d / 2, NoFade, d / 2);
-  } else if (pixelSize > 0 && size / pixelSize >= enter) Vec3.set(lod, NoFade, 2 * NoFade, 1);
-  else Vec3.set(lod, 0, NoFade, 1);
+    if (near) Vec3.set(lod, 0, d / keep, 1);
+    else Vec3.set(lod, d / 2, NoFade, d / 2);
+  } else {
+    const px = pixelSize > 0 ? size / pixelSize : Infinity;
+    const drawn = near ? px >= enter * keep : px < enter;
+    if (drawn) Vec3.set(lod, 0, NoFade, 1);
+    else Vec3.set(lod, NoFade, 2 * NoFade, 1);
+  }
   const u = values.uLod.ref.value;
   if (u[0] === lod[0] && u[1] === lod[1] && u[2] === lod[2]) return;
   ValueCell.update(values.uLod, Vec4.set(u, lod[0], lod[1], lod[2], 0));
@@ -755,7 +772,7 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
   let members: BaseValues[] = [];
   let building: BaseValues[] = [];
   /** the cut leaflets' far surfaces, faded in by distance (`fadeSurface`), and their lipids' size */
-  let fading: { values: BaseValues; size: number }[] = [];
+  let fading: { values: BaseValues; size: number; near: boolean }[] = [];
   /** the last view's size on screen: a new look's surfaces faded from their first frame (the hook comes after it) */
   const lastLod = { depthScale: 0, pixelSize: 0 };
 
@@ -854,7 +871,7 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
       lastLod.depthScale = view.lod.depthScale;
       lastLod.pixelSize = view.lod.pixelSize;
       const enter = enterPx(props.far, props.atomsPx, props.spheresPx);
-      for (const f of fading) fadeSurface(f.values, f.size, enter, lastLod.depthScale, lastLod.pixelSize);
+      for (const f of fading) fadeSurface(f.values, f.size, enter, f.near, lastLod.depthScale, lastLod.pixelSize);
     }
     for (let i = 0; i < 7; ++i) {
       const { normal, constant } = i < 6 ? view.frustum[i as 0] : view.cameraPlane;
@@ -875,7 +892,7 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
     selectionParams.enterPx = builtFor?.method === 'cutter' ? enterPx(props.far, props.atomsPx, props.spheresPx) : 0;
     selection.select(view.cameraPlane, view.frustum, view.lod.depthScale, view.lod.pixelSize, selectionParams);
   }
-  const selectionParams = { lipidSize: 8, enterPx: 2, keep: 0.8 };
+  const selectionParams = { lipidSize: 8, enterPx: 2, keep: Keep };
 
   /** the data the GPU's cutters and assigners were made for: a new look of the same data reuses them (review S5) */
   let builtFor: MembraneData | undefined;
@@ -1091,32 +1108,37 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
         ...data.cut.map((l) => ({ ...l, offset: 0 })),
         ...data.leaflets.map((l) => ({ ...l, offset: l.tileSet.offset })),
       ];
+      const enter = enterPx(props.far, props.atomsPx, props.spheresPx);
       for (const leaflet of surfaces) {
         const { table } = leaflet;
         const size = lipidSize(table);
         const shown = (sp: number) => !hidden.has(table.species[sp]);
-        // a cut leaflet's surface coloured as its spheres show the patch where it takes over (round 4c item 7)
-        const cut = leaflet.offset === 0 && data.method === 'cutter';
-        const f = farSurface(
-          leaflet.mesh,
-          leaflet.regions,
-          table,
-          leaflet.name,
-          headOffset(table, leaflet.name) - leaflet.offset,
-          shown,
-          2 * size,
-          undefined,
-          cut ? switchSpheres(table, props, enterPx(props.far, props.atomsPx, props.spheresPx)) : undefined,
-        );
         const speciesColor = (sp: number) =>
           props.colorBy === 'uniform' || sp < 0 ? props.color : colorOf(table.species[sp]);
-        const object = surfaceObject(f, speciesColor, size, props.clip, cut, props);
-        if (cut) {
-          nextFading.push({ values: object.values as BaseValues, size });
-          const enter = enterPx(props.far, props.atomsPx, props.spheresPx);
-          fadeSurface(object.values as BaseValues, size, enter, lastLod.depthScale, lastLod.pixelSize);
+        // a cut leaflet's two (round 4c item 7): beneath its lipids at the lowest head, coarser, where they are drawn
+        // (the gaps between them, no gap at any distance), and where its spheres stop the one that takes over, coloured
+        // as they show the patch, at their tops; a tiles leaflet's beneath its tiles, always
+        const cut = leaflet.offset === 0 && data.method === 'cutter';
+        for (const fade of cut ? (['near', 'far'] as const) : ([undefined] as const)) {
+          const f = farSurface(
+            leaflet.mesh,
+            leaflet.regions,
+            table,
+            leaflet.name,
+            headOffset(table, leaflet.name) - leaflet.offset,
+            shown,
+            (fade === 'near' ? 4 : 2) * size,
+            undefined,
+            fade === 'far' ? switchSpheres(table, props, enter) : undefined,
+          );
+          const object = surfaceObject(f, speciesColor, size, props.clip, !!fade, props);
+          if (fade) {
+            const values = object.values as BaseValues;
+            nextFading.push({ values, size, near: fade === 'near' });
+            fadeSurface(values, size, enter, fade === 'near', lastLod.depthScale, lastLod.pixelSize);
+          }
+          out.push(object);
         }
-        out.push(object);
       }
     }
     fading = nextFading;

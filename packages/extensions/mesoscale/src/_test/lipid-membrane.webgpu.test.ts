@@ -357,8 +357,8 @@ describe.skipIf(!webgpu)('lipid membrane on WebGPU (Dawn)', () => {
       await plugin.build().delete(cell!.transform.ref).commit();
       const node = await plugin.build().toRoot().apply(LipidMembrane, params).commit();
       const repr = plugin.state.data.cells.get(node.ref)!.obj!.data.repr;
-      // the cutter's lipids merged, and the far look's surfaces, one a leaflet
-      expect(repr.renderObjects.length).toBe(3);
+      // the cutter's lipids merged, and the far look's surfaces, two a leaflet (beneath them and far: round 4c)
+      expect(repr.renderObjects.length).toBe(5);
       repr.setGraphics!({ ...graphics, compute: undefined } as never);
       await repr.createOrUpdate().run();
       expect(repr.renderObjects.length).toBe(0);
@@ -416,8 +416,8 @@ describe.skipIf(!webgpu)('lipid membrane on WebGPU (Dawn)', () => {
       expect(asked).toBe(true);
       const cell = plugin.state.data.cells.get(node.ref)!;
       expect(cell.status).toBe('ok');
-      // the cutter's lipids merged, and the far look's surfaces, one a leaflet (lipid-procedural round 4b)
-      expect(cell.obj?.data.repr.renderObjects.length).toBe(3);
+      // the cutter's lipids merged, and the far look's surfaces, two a leaflet (lipid-procedural rounds 4b, 4c)
+      expect(cell.obj?.data.repr.renderObjects.length).toBe(5);
     } finally {
       vi.restoreAllMocks();
       plugin.dispose();
