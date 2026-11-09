@@ -156,6 +156,14 @@ function find(doc: MesoViewSpecDoc, id: Id): { w: Where; i: number } | undefined
 
 const place = (w: Where): { parent: string; list?: ListKey } =>
   'section' in w ? { parent: w.section } : { parent: w.view, list: w.list };
+/** A look put back after one with no id could not be anchored: the inverse then sets the view's whole list. */
+const unanchored = (w: Where, list: readonly PatchNode[], i: number) =>
+  !('section' in w) && i > 0 && typeof list[i - 1]?.id !== 'string';
+const wholeList = (w: Where, list: readonly PatchNode[]): Op => ({
+  op: 'set',
+  id: (w as { view: Id }).view,
+  fields: { [(w as { list: ListKey }).list]: list },
+});
 const prevOf = (list: readonly PatchNode[], i: number): Anchor => (i === 0 ? 'first' : list[i - 1].id);
 /** The index an anchor gives in a list (the node itself, if in it, is not counted); -1: no such sibling. */
 function slot(list: readonly PatchNode[], after: Anchor | undefined): number {
@@ -258,12 +266,15 @@ function step(doc: MesoViewSpecDoc, raw: unknown, k: number): { doc: MesoViewSpe
     const cur = list[at.i] as Obj;
     // a field removed and put back would land last: the inverse of that is the node itself, where it was
     const dropped = Object.entries(fields).some(([f, v]) => v === null && f in cur);
-    const inverse: Op[] = dropped
-      ? [
-          { op: 'remove', id: op.id },
-          { op: 'insert', node: cur as PatchNode, ...place(at.w), after: prevOf(list, at.i) },
-        ]
-      : [{ op: 'set', id: op.id, fields: Object.fromEntries(Object.keys(fields).map((f) => [f, cur[f] ?? null])) }];
+    const inverse: Op[] =
+      unanchored(at.w, list, at.i) && dropped
+        ? [wholeList(at.w, list)]
+        : dropped
+          ? [
+              { op: 'remove', id: op.id },
+              { op: 'insert', node: cur as PatchNode, ...place(at.w), after: prevOf(list, at.i) },
+            ]
+          : [{ op: 'set', id: op.id, fields: Object.fromEntries(Object.keys(fields).map((f) => [f, cur[f] ?? null])) }];
     return {
       doc: withList(doc, at.w, splice(list, at.i, 1, merge(cur, fields) as PatchNode)),
       inverse,
@@ -276,7 +287,9 @@ function step(doc: MesoViewSpecDoc, raw: unknown, k: number): { doc: MesoViewSpe
   const node = list[at.i];
   const out = withList(doc, at.w, splice(list, at.i, 1));
   const back = { ...place(at.w), after: prevOf(list, at.i) };
-  if (op.op === 'remove') return { doc: out, inverse: [{ op: 'insert', node, ...back }], touched: [op.id] };
+  const wide = unanchored(at.w, list, at.i);
+  if (op.op === 'remove')
+    return { doc: out, inverse: [wide ? wholeList(at.w, list) : { op: 'insert', node, ...back }], touched: [op.id] };
   const to = op.parent === undefined ? at.w : whereOf(doc, op.parent, op.list);
   if (typeof to === 'string') return bad(to);
   if (typeOf(to) !== typeOf(at.w)) return bad(`${op.id} is in ${typeOf(at.w)}, not ${typeOf(to)}`);
@@ -287,7 +300,9 @@ function step(doc: MesoViewSpecDoc, raw: unknown, k: number): { doc: MesoViewSpe
   if (i < 0) return bad(`after ${String(op.after)} names no sibling`);
   return {
     doc: withList(sameList ? doc : out, to, splice(dest, i, 0, node)),
-    inverse: [{ op: 'move', id: op.id, ...back }],
+    inverse: wide
+      ? [...(sameList ? [] : [{ op: 'remove', id: op.id } as Op]), wholeList(at.w, list)]
+      : [{ op: 'move', id: op.id, ...back }],
     touched: [op.id],
   };
 }

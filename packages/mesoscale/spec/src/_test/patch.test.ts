@@ -443,3 +443,30 @@ describe('review: a list that empties and comes back is where it was', () => {
     undone(a, patch({ op: 'move', id: 'l.tmp', parent: 'v.overview', list: 'looks' }));
   });
 });
+
+describe('review: a look after one with no id is put back where it was', () => {
+  const doc = {
+    ...exosomeDoc(),
+    views: [
+      {
+        id: 'v.x',
+        looks: [
+          { select: '(all)' },
+          { id: 'l.a', select: '(all)', color: '#111111' },
+          { select: '(population p.lipids)' },
+        ],
+      },
+    ],
+    session: undefined,
+  } as unknown as MesoViewSpecDoc;
+  it('remove, a field dropped, a move: each undone byte for byte', () => {
+    undone(doc, patch({ op: 'remove', id: 'l.a' }));
+    undone(doc, patch({ op: 'set', id: 'l.a', fields: { color: null } }));
+    undone(doc, patch({ op: 'move', id: 'l.a', after: 'last' }));
+    const other = applyPatch(
+      doc,
+      patch({ op: 'insert', parent: 'v.x', list: 'annotations', node: { id: 'an.q', target: '(all)', text: 't' } }),
+    ).doc;
+    undone(other, patch({ op: 'move', id: 'l.a', parent: 'v.x', list: 'looks', after: 'last' }));
+  });
+});
