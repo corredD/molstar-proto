@@ -417,7 +417,8 @@ export class MesoscaleApi extends ApiArea {
       // tiles are built whole: no lipid dropped by its size on screen, so no Texture (round 4b item 5)
       if (
         view.far === 'texture' &&
-        (cell.obj?.data as { sourceData?: MembraneData })?.sourceData?.method !== 'cutter'
+        // by its params (review nit: an errored cut membrane has no data)
+        (cell.transform.params as LipidMembraneProps).method !== 'cutter'
       ) {
         return ApiResult.fail('invalid', 'Texture needs a membrane made per view (the cutter): tiles are built whole.');
       }
