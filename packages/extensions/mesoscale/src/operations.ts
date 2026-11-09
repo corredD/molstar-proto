@@ -246,8 +246,12 @@ export class MesoscaleApi extends ApiArea {
         ['outer', 'Outer'],
         ['inner', 'Inner'],
       ] as const),
+      method: PD.Select('tiles', [
+        ['tiles', 'Tiles: matched-edge tiles on a remesh'],
+        ['cutter', 'Cutter: cellPACKgpu’s, the patch cut on each of the mesh’s own triangles'],
+      ] as const),
     },
-    async run({ mesh, compartment, particles, radius, patch, patchPdb, patchUrl, edge, leaflets }, ctx) {
+    async run({ mesh, compartment, particles, radius, patch, patchPdb, patchUrl, edge, leaflets, method }, ctx) {
       if (patchPdb) registerLipidPatch(patch, patchPdb);
       else if (patchUrl && !hasLipidPatch(patch)) {
         // a static file, fetched on the first wrap (never in the start bundle)
@@ -281,6 +285,7 @@ export class MesoscaleApi extends ApiArea {
           patch,
           edge,
           leaflets,
+          method,
         },
         // removed with its mesh (moving the mesh does not move it yet: TODO.md)
         mesh ? { dependsOn: [mesh] } : undefined,
