@@ -13,3 +13,8 @@
 - `mesoscale.exportMembrane`: the full build only at export, a RELION STAR particle list (right-click › Export lipids).
 - Graphics: a GPU-written member of a merged object may be a pool: its writer returns how many instances are live
   (the GPU culler skips the rest) and may carry a view hook the culler calls where the view changed, before it culls.
+- A cut membrane's far surface takes over from its spheres without a seam: coloured as the switch's sphere level shows
+  the patch from above, at that level's tops, dithered in by distance over a px band (round 4c).
+- A lipid membrane is coloured as a particle list: `mesoscale.style`, `mesoscale.colors` and `mesoscale.colorLevels`
+  take it as `particles` (its species its entities; colours by zoom: its colour far, its species' near); the explorer's
+  Look and right-click › Color… on it.
