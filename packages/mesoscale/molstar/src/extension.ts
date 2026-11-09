@@ -229,8 +229,12 @@ export class MesoViewSpecApi extends ApiArea {
         return ApiResult.fail('invalid', issueLines(step.issues).join('; ') || 'The patch was refused.');
       }
       const r = step.record;
+      // what the edit left unresolved is said, as an open says it (a model whose resource is missing draws nothing)
+      const problems = step.issues.filter((i) => i.severity === 'error' || i.severity === 'warning');
       return ApiResult.ok(
         `Edited the ${r.kind}: ${r.resolverRuns} resolver ${r.resolverRuns === 1 ? 'run' : 'runs'}, ${r.cacheHits} cache ${r.cacheHits === 1 ? 'hit' : 'hits'}.`,
+        {},
+        problems.length ? { warnings: issueLines(problems) } : {},
       );
     },
   });
