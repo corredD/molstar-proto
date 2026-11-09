@@ -579,8 +579,26 @@ function wrapItems(
     if (isMembrane(area, picked)) return [];
     // both methods, one entry each (ui.md §5): cellPACKgpu's cutter on the mesh's own triangles, made per view (lane
     // lipid-procedural: the default), or tiles on a remesh
+    // every mesh not wrapped yet as one membrane (lipid-procedural round 6: a cell's membranes, one budget, the inner
+    // ones hidden while the eye is outside): one step
+    const all = area
+      .objectsState()
+      .value.filter((o) => o.kind === 'mesh' && !o.membrane)
+      .map((o) => o.ref);
+    const wrapAll: ContextMenuItem[] =
+      all.length > 1
+        ? [
+            {
+              id: 'wrap-lipids-all',
+              label: `Wrap all ${all.length} meshes with lipids (one membrane)`,
+              icon: 'layers',
+              run: wrap({ meshes: all.join(','), method: 'cutter' }),
+            },
+          ]
+        : [];
     return [
       { id: 'wrap-lipids', label: 'Wrap with lipids', icon: 'layers', run: wrap({ mesh: node.ref, method: 'cutter' }) },
+      ...wrapAll,
       {
         id: 'wrap-lipids-tiles',
         label: 'Wrap with lipids (tiles, small objects)',

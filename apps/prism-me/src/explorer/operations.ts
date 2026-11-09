@@ -809,11 +809,14 @@ function meshes(plugin: PluginContext): SceneObject[] {
     if (ofModel) continue;
     const data = cells.get(root)?.obj;
     if (!SO.Data.String.is(data) && !SO.Data.Binary.is(data) && !SO.Data.Response.is(data)) continue;
+    // a file of many meshes names each (the yeast cell's organelle meshes, a membrane each: lipid-procedural round 6);
+    // a shape with its default label is its file's
+    const own = cells.get(cell.transform.parent)?.obj?.label;
     out.push({
       ref: cell.transform.ref,
       category: 'meshes',
       kind: 'mesh',
-      label: data.label,
+      label: own && own !== 'Shape' && own !== 'Mesh' ? own : data.label,
       visible: !cell.state.isHidden,
     });
   }

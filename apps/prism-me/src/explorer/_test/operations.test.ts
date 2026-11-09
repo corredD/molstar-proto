@@ -493,6 +493,50 @@ await api.run('mesoscale.wrapMembrane', { mesh, method: 'cutter', patch: 'charmm
     }
   });
 
+  it('opens the yeast cell’s organelle meshes as a row a membrane, and wraps them all as one membrane (round 6)', async () => {
+    const v = await viewer();
+    // two tetrahedra, the PM's and a VAC's inside it, in the yeast cell viewer's format (u32 count, (id, nV, nT) u32, nm)
+    const tetra = (s: number) => [s, s, s, s, -s, -s, -s, s, -s, -s, -s, s];
+    const meshes = [
+      { id: 0, p: tetra(100) },
+      { id: 3, p: tetra(20) },
+    ];
+    const faces = [0, 1, 2, 0, 3, 1, 0, 2, 3, 1, 3, 2];
+    const view = new DataView(new ArrayBuffer(4 + 2 * 12 + 2 * (12 * 4 + 12 * 4)));
+    view.setUint32(0, 2, true);
+    let at = 28;
+    meshes.forEach((m, i) => {
+      view.setUint32(4 + i * 12, m.id, true);
+      view.setUint32(8 + i * 12, 4, true);
+      view.setUint32(12 + i * 12, 4, true);
+      for (const x of m.p) view.setFloat32((at += 4) - 4, x, true);
+      for (const f of faces) view.setUint32((at += 4) - 4, f, true);
+    });
+    const opened = await v.api.load.files({ files: [new File([view.buffer], 'organelle_meshes.bin')] });
+    expectOk(opened);
+    const area = v.api.explorer!;
+    const rows = area.objectsState().value.filter((o) => o.kind === 'mesh');
+    expect(rows.map((o) => o.label)).toEqual(['membrane.obj', 'PM', 'VAC']);
+    const pm = rows[1];
+    const items = nodeMenuItems(
+      v.api,
+      area,
+      { key: `o:${pm.ref}`, kind: 'mesh', label: 'PM', node: { ref: pm.ref } } as never,
+      {
+        open: () => {},
+      },
+    );
+    const all = items.find((i) => i.id === 'wrap-lipids-all')!;
+    expect(all.label).toBe('Wrap all 3 meshes with lipids (one membrane)');
+    vi.stubGlobal('document', { baseURI: 'http://localhost:1353/' });
+    const run = vi.spyOn(v.api, 'run').mockResolvedValue({ ok: true } as never);
+    all.run!();
+    expect(run.mock.calls[0][0]).toBe('mesoscale.wrapMembrane');
+    expect(run.mock.calls[0][1]).toMatchObject({ meshes: rows.map((o) => o.ref).join(','), method: 'cutter' });
+    run.mockRestore();
+    vi.unstubAllGlobals();
+  });
+
   it('maps a pick on a mesh, in a group or whole, to its row; its menu: color, move, clip, label, remove', async () => {
     const v = await viewer();
     const area = v.api.explorer!;
