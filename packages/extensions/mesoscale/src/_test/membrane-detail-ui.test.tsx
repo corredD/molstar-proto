@@ -118,6 +118,8 @@ describe('a membrane’s levels in its properties', () => {
     );
     await until(() => !!tiles.querySelector('button'));
     expect([...tiles.querySelectorAll('button')].some((b) => b.textContent?.trim() === 'Texture')).toBe(false);
+    // and no export: tiles are built whole (review M4)
+    expect((await area.exportMembrane({ membrane: t.changed!.nodes![0] } as never)).ok).toBe(false);
     forgetLipidPatch('ui-patch-far');
   });
   it('shows, hides and colors a membrane’s species, and sets its graphics mode, one step each', async () => {

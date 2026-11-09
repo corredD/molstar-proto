@@ -475,7 +475,10 @@ export function nodeMenuItems(
     // a lipid membrane has no shape of its own to move, color or clip (`mesoscale.wrapMembrane`): focus, label, remove;
     // its full build exported (lipid-procedural: a cut one, built only then)
     if (!isMembrane(area, picked)) items.push(...moveItems(api, area, picked));
-    else if (api.describe('mesoscale.exportMembrane')) {
+    else if (
+      api.describe('mesoscale.exportMembrane') &&
+      api.mesoscale?.membraneDetailState(node.ref).value?.method === 'cutter'
+    ) {
       items.push({
         id: 'export-lipids',
         label: 'Export lipids (full build)',

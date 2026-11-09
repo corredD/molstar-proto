@@ -506,7 +506,8 @@ export class MesoscaleApi extends ApiArea {
         return ApiResult.fail('not-found', `No lipid membrane ${membrane} in the scene.`);
       }
       const data = (cell.obj.data as { sourceData: MembraneData }).sourceData;
-      if (data.cut.length === 0) {
+      // the cutter's alone: a tiles membrane's cut parts are only its lost limbs (review M4)
+      if (data.method !== 'cutter' || data.cut.length === 0) {
         return ApiResult.fail('invalid', 'Only a membrane cut by the cutter is exported (tiles are built whole).');
       }
       const hidden = new Set((cell.transform.params as LipidMembraneProps).hiddenSpecies);

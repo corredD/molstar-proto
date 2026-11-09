@@ -536,7 +536,8 @@ await api.run('mesoscale.wrapMembrane', { mesh, method: 'cutter', patch: 'charmm
       node: { ref: membrane!.ref },
     };
     const membraneIds = nodeMenuItems(v.api, area, membraneRow as never, { open: () => {} }).map((i) => i.id);
-    expect(membraneIds).toEqual(['focus', 'export-lipids', 'label', 'remove']);
+    // a tiles membrane: no export (the cutter's only, review M4)
+    expect(membraneIds).toEqual(['focus', 'label', 'remove']);
     // its eye hides it; its Remove removes it in one step
     await setEyes(v.api, area, [membraneRow as never], false);
     expect(v.plugin.state.data.cells.get(membrane!.ref)!.state.isHidden).toBe(true);
