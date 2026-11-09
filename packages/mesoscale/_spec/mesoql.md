@@ -1,6 +1,9 @@
 # MesoViewSpec: MesoQL
 
-### 3.8 MesoQL: addresses, MesoLocation, MesoLoci (`format/mesoql.ts`, `ir/loci.ts`)
+What a MesoQL address means: the S-expression language that selects copies, sites and residues. The concepts and terms
+are in [README.md](README.md); the reasons and the numbers are in [design.md](design.md).
+
+## MesoQL: addresses, MesoLocation, MesoLoci (`format/mesoql.ts`, `ir/loci.ts`)
 
 David: "you need something like MesoQL … declarative addresses which then the runtime can resolve", with a schematized
 form and a materialized one, as Mol\* has `SchemaItem` and `Location`/`Loci`.
@@ -15,23 +18,23 @@ form and a materialized one, as Mol\* has `SchemaItem` and `Location`/`Loci`.
   indices. A **MesoLocation** is one copy, `{set, index}`, with the stable id `<population>#<ordinal>`. Runs, not one
   entry per copy: every resolver writes a population contiguously, so `(population p.lipids)` is one run however many
   lipids there are (the exosome's 88,666; a quick test checks every population of the exosome is one run). This is what
-  renderer finding R1 asks Mol\* for.
+  [renderer finding R1](renderer-recommendations.md) asks Mol\* for.
 - **Symbols** (the reference is generated from the table, `mesoQLReference`):
 
-| Symbol                                         | Returns   | Meaning                                                                                 |
-| ---------------------------------------------- | --------- | --------------------------------------------------------------------------------------- |
-| `(all)`                                        | selection | every copy                                                                              |
-| `(population p…)`, `(entity e…)`, `(model m…)` | selection | copies by population, entity or model                                                   |
-| `(in c… :nested :location)`                    | selection | copies in compartments (and those nested in them unless `:nested false`), at a location |
-| `(copies p start count)`                       | selection | copies by ordinal (valid for one resolution)                                            |
-| `(and …)`, `(or …)`, `(not Q :in U)`           | selection | set algebra on runs                                                                     |
-| `(within Q :of Q2 :distance d)`                | selection | copies near others (hash grid, O(N))                                                    |
-| `(part Q p.inner)`                             | selection | an inner population in the superstructure instances `Q` picks (§3.9)                    |
-| `(site e name)`                                | site      | a named site of an entity: the "pointer" relations attach to (§3.11)                    |
-| `(residues e :chain :range)`                   | residues  | a schematized residue address; needs the structure loaded                               |
+| Symbol                                         | Returns   | Meaning                                                                                                                                         |
+| ---------------------------------------------- | --------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `(all)`                                        | selection | every copy                                                                                                                                      |
+| `(population p…)`, `(entity e…)`, `(model m…)` | selection | copies by population, entity or model                                                                                                           |
+| `(in c… :nested :location)`                    | selection | copies in compartments (and those nested in them unless `:nested false`), at a location                                                         |
+| `(copies p start count)`                       | selection | copies by ordinal (valid for one resolution)                                                                                                    |
+| `(and …)`, `(or …)`, `(not Q :in U)`           | selection | set algebra on runs                                                                                                                             |
+| `(within Q :of Q2 :distance d)`                | selection | copies near others (hash grid, O(N))                                                                                                            |
+| `(part Q p.inner)`                             | selection | an inner population in the superstructure instances `Q` picks ([format.md](format.md#superstructures-reusable-nested-instanced-superstructure)) |
+| `(site e name)`                                | site      | a named site of an entity: the "pointer" relations attach to ([format.md](format.md#relations-as-constraints-with-addresses))                   |
+| `(residues e :chain :range)`                   | residues  | a schematized residue address; needs the structure loaded                                                                                       |
 
 - **Where it is used:** a view's `looks[].select`, `selection` and annotation `target` (anchored at the selected copies'
   centroid); relation `entry` and `exit`; site `at`. A look that covers part of a population becomes a partial look with
-  its runs; Prism cannot draw it (renderer finding R8) and the adapter says so.
+  its runs; Prism cannot draw it ([renderer finding R8](renderer-recommendations.md)) and the adapter says so.
 - **Stored as** its canonical S-expression string in JSON. SeqQL stores a JSON tree with full names; which to keep is
-  open decision 10.
+  [open decision 10](design.md#11-what-held-what-the-prototypes-exposed-what-is-open).

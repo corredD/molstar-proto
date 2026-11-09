@@ -212,23 +212,23 @@ The two layers hold different things:
 
 ## 3. The language (`format/doc.ts`)
 
-### 3.1 Shape → [format.md](format.md)
+### 3.1 Shape → [format.md](format.md#shape)
 
-### 3.2 Biology → [format.md](format.md)
+### 3.2 Biology → [format.md](format.md#biology)
 
-### 3.3 Resources in their native formats → [format.md](format.md)
+### 3.3 Resources in their native formats → [format.md](format.md#resources-in-their-native-formats)
 
-### 3.4 Frames and alignment → [format.md](format.md)
+### 3.4 Frames and alignment → [format.md](format.md#frames-and-alignment)
 
-### 3.5 Evidence, provenance, tracing → [format.md](format.md)
+### 3.5 Evidence, provenance, tracing → [format.md](format.md#evidence-provenance-tracing)
 
-### 3.6 Catalogs (a gap the yeast cell exposed) → [format.md](format.md)
+### 3.6 Catalogs (a gap the yeast cell exposed) → [format.md](format.md#catalogs-a-gap-the-yeast-cell-exposed)
 
-### 3.7 The S-expression spelling (`format/sexpr.ts`) → [format.md](format.md)
+### 3.7 The S-expression spelling (`format/sexpr.ts`) → [format.md](format.md#the-s-expression-spelling-formatsexprts)
 
-### 3.8 MesoQL: addresses, MesoLocation, MesoLoci (`format/mesoql.ts`, `ir/loci.ts`) → [mesoql.md](mesoql.md)
+### 3.8 MesoQL: addresses, MesoLocation, MesoLoci (`format/mesoql.ts`, `ir/loci.ts`) → [mesoql.md](mesoql.md#mesoql-addresses-mesolocation-mesoloci-formatmesoqlts-irlocits)
 
-### 3.9 Superstructures: reusable, nested, instanced (`format/doc.ts` `Superstructure`) → [format.md](format.md)
+### 3.9 Superstructures: reusable, nested, instanced (`format/doc.ts` `Superstructure`) → [format.md](format.md#superstructures-reusable-nested-instanced-superstructure)
 
 - **Measured [fixture]:** the β-cell example (`examples/betacell.ts`) imports the granule from Ludo's cellPACKgpu ISG
   recipe (trimmed to Vamp2, Rab3a, Chga, Scg2: 2,229 copies) and places 120 granules. The template resolves once; more
@@ -237,9 +237,9 @@ The two layers hold different things:
 - **Answers open decision 1 (placement frames) for superstructures:** frames travel (instances are poses in the IR), and
   the adapter expands only because Prism cannot instance lists. Plain placement sets stay baked in the world frame.
 
-### 3.10 By value or by reference → [format.md](format.md)
+### 3.10 By value or by reference → [format.md](format.md#by-value-or-by-reference)
 
-### 3.11 Relations as constraints with addresses → [format.md](format.md)
+### 3.11 Relations as constraints with addresses → [format.md](format.md#relations-as-constraints-with-addresses)
 
 ### 3.12 MesoCraft, mapped (Ivan's paper)
 
@@ -264,46 +264,46 @@ mmCIF carrying the rule graph. Its constraint catalogue is in `~/Dev/mesocraft-r
 A MesoCraft rule graph could be a resolver (`mesocraft`) that takes it as a model's input, as cellPACKgpu's recipe is.
 The gaps above are where its vocabulary is richer than this format's.
 
-### 3.13 Instances: copies stated one by one (v0.3, `Instance`) → [format.md](format.md)
+### 3.13 Instances: copies stated one by one (v0.3, `Instance`) → [format.md](format.md#instances-copies-stated-one-by-one-instance)
 
-### 3.14 Not in the document → [format.md](format.md)
+### 3.14 Not in the document → [format.md](format.md#not-in-the-document)
 
 ## 4. The IR (`ir/ir.ts`, `ir/placements.ts`)
 
-### 4.1 A tree in the manner of `mol-state` → [ir.md](ir.md)
+### 4.1 A tree in the manner of `mol-state` → [ir.md](ir.md#a-tree-in-the-manner-of-mol-state)
 
-### 4.2 One leaf: the placement set → [ir.md](ir.md)
+### 4.2 One leaf: the placement set → [ir.md](ir.md#one-leaf-the-placement-set)
 
-### 4.3 Construction details live in `resolve` nodes → [ir.md](ir.md)
+### 4.3 Construction details live in `resolve` nodes → [ir.md](ir.md#construction-details-live-in-resolve-nodes)
 
-### 4.4 The cases → [runtime.md](runtime.md)
+### 4.4 The cases → [runtime.md](runtime.md#which-resolver-by-case)
 
-### 4.5 Procedural and precomputed models together → [runtime.md](runtime.md)
+### 4.5 Procedural and precomputed models together → [runtime.md](runtime.md#procedural-and-precomputed-models-together)
 
 - **Saved results can stand in for procedural ones** (cache-as-precomputed). A procedural result could be saved as a
   `placements` resource with `custom.meso.derivedFrom: {model, key}`; on load, a matching key would replace resolution.
   This is not built: §11, open decision 3.
 
-## 5. Session state: what one document restores → [views.md](views.md)
+## 5. Session state: what one document restores → [views.md](views.md#session-state-what-one-document-restores)
 
-### 5.1 The semantic camera (v0.3, `Camera`, `Tour`) → [views.md](views.md)
+### 5.1 The semantic camera (v0.3, `Camera`, `Tour`) → [views.md](views.md#the-semantic-camera-camera-tour)
 
 ## 6. Runtime contracts
 
-### 6.1 Pipeline (`runtime/runtime.ts`, `compile`) → [runtime.md](runtime.md)
+### 6.1 Pipeline (`runtime/runtime.ts`, `compile`) → [runtime.md](runtime.md#pipeline-runtimeruntimets-compile)
 
-### 6.2 The resolver contract (`runtime/resolver.ts`) → [runtime.md](runtime.md)
+### 6.2 The resolver contract (`runtime/resolver.ts`) → [runtime.md](runtime.md#the-resolver-contract-runtimeresolverts)
 
-### 6.3 Resolvers in the prototype → [runtime.md](runtime.md)
+### 6.3 Resolvers in the prototype → [runtime.md](runtime.md#resolvers-in-the-prototype)
 
-### 6.4 Plugging in a recipe kind: cellPACKgpu → [runtime.md](runtime.md)
+### 6.4 Plugging in a recipe kind: cellPACKgpu → [runtime.md](runtime.md#plugging-in-a-recipe-kind-cellpackgpu)
 
 **Comparison with Mesoscope.** Mesoscope's serialized parser (`~/Developments/mesoscope/js/cp_serialized.js`,
 `parseCellPackRecipeSerialized`) and its LLM authoring rules (`SKILLS.md`: an evidence CSV with confidence and
 references for each ingredient) are the authoring side of the same data. Its evidence CSV maps one-to-one onto
 `Evidence` plus population fields.
 
-### 6.5 The renderer adapter contract (`runtime/adapter.ts`) → [runtime.md](runtime.md)
+### 6.5 The renderer adapter contract (`runtime/adapter.ts`) → [runtime.md](runtime.md#the-renderer-adapter-contract-runtimeadapterts)
 
 ### 6.6 Two integration paths
 
@@ -325,7 +325,7 @@ references for each ingredient) are the authoring side of the same data. Its evi
 - **Treat MolViewSpec as a view target, not as this format's IR.** MVS describes how to draw a structure; MesoViewSpec
   describes a scene and its evidence. The two meet in a view.
 
-### 6.7 Application composition: refine stages → [runtime.md](runtime.md)
+### 6.7 Application composition: refine stages → [runtime.md](runtime.md#application-composition-refine-stages)
 
 - **Measured [fixture]:** on the exosome, the recipe's packing stops at 354 of 506 catalase; adding `m.relax` inserts
   152, converges in 41 iterations, then checks every copy against the exact mesh with its margin (and against the
@@ -334,19 +334,19 @@ references for each ingredient) are the authoring side of the same data. Its evi
   without the proteins' footprints (a gap, §11). The packing is a cache hit when the stage is added. mesobuild's
   `relax.py` reached 506 of 506 on the same recipe.
 
-### 6.8 Streaming (v0.4) → [streaming.md](streaming.md)
+### 6.8 Streaming (v0.4) → [streaming.md](streaming.md#streaming)
 
-#### 6.8.1 Source (`format/doc.ts`) → [streaming.md](streaming.md)
+#### 6.8.1 Source (`format/doc.ts`) → [streaming.md](streaming.md#source-formatdocts)
 
-#### 6.8.2 Manifest (`format/doc.ts`, the `meso-tiles` format) → [streaming.md](streaming.md)
+#### 6.8.2 Manifest (`format/doc.ts`, the `meso-tiles` format) → [streaming.md](streaming.md#manifest-formatdocts-the-meso-tiles-format)
 
-#### 6.8.3 Provider contract (`runtime/streaming.ts`) → [streaming.md](streaming.md)
+#### 6.8.3 Provider contract (`runtime/streaming.ts`) → [streaming.md](streaming.md#provider-contract-runtimestreamingts)
 
-#### 6.8.4 Planner and budget (`runtime/streaming.ts`) → [streaming.md](streaming.md)
+#### 6.8.4 Planner and budget (`runtime/streaming.ts`) → [streaming.md](streaming.md#planner-and-budget-runtimestreamingts)
 
-#### 6.8.5 The IR, the session and the adapter → [streaming.md](streaming.md)
+#### 6.8.5 The IR, the session and the adapter → [streaming.md](streaming.md#the-ir-the-session-and-the-adapter)
 
-#### 6.8.6 Fixture (`spec/src/examples/streaming.ts`) → [streaming.md](streaming.md)
+#### 6.8.6 Fixture (`spec/src/examples/streaming.ts`) → [streaming.md](streaming.md#fixture-specsrcexamplesstreamingts)
 
 #### 6.8.7 Tests and the R5 measurement
 
@@ -414,7 +414,7 @@ The 1,000-set case peaks at about 6 GB of RSS. **[observed]** In the browser the
 resident and commits only arrivals and evictions. Conclusion: per-list overhead is real for commit and memory; keep
 resident lists at 100 or fewer; frame cost per list is still open (R5).
 
-#### 6.8.8 Not in v0.4, and what it touches → [streaming.md](streaming.md)
+#### 6.8.8 Not in v0.4, and what it touches → [streaming.md](streaming.md#not-yet-and-what-it-touches)
 
 **Touched files** (production, about 600 lines [target]):
 
@@ -434,13 +434,13 @@ resident lists at 100 or fewer; frame cost per list is still open (R5).
 
 ## 7. Units, ids, reproducibility, failures
 
-### 7.1 Units → [format.md](format.md)
+### 7.1 Units → [format.md](format.md#units)
 
-### 7.2 Ids and keys → [ir.md](ir.md)
+### 7.2 Ids and keys → [ir.md](ir.md#ids-and-keys)
 
-### 7.3 Reproducibility → [runtime.md](runtime.md)
+### 7.3 Reproducibility → [runtime.md](runtime.md#reproducibility)
 
-### 7.4 Failures and unmet constraints → [runtime.md](runtime.md)
+### 7.4 Failures and unmet constraints → [runtime.md](runtime.md#failures-and-unmet-constraints)
 
 ## 8. Performance
 

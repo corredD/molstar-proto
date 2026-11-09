@@ -1,6 +1,10 @@
 # MesoViewSpec: Runtime
 
-### 4.4 The cases
+What the runtime and its resolvers guarantee: the pipeline, the resolver and adapter contracts, composition,
+reproducibility and failures. The concepts and terms are in [README.md](README.md); the reasons and the numbers are in
+[design.md](design.md).
+
+## Which resolver, by case
 
 | Case                       | In the document                                                                 | In the IR / resolver                                                                                                                          | Where it is exercised                                                          |
 | -------------------------- | ------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
@@ -15,7 +19,7 @@
 | Fibers, by path            | `fiber.path` (points or a resource)                                             | copies `rise` apart along the arc, +z on the tangent, `twist` a copy; CSR `fibers`                                                            | gallery microtubule                                                            |
 | Fibers, by growth          | `fiber.growth` (persistence, length, count)                                     | worm-like random walk, bend variance 2·rise/P, turned back at the boundary                                                                    | gallery actin, Fibers mock                                                     |
 
-### 4.5 Procedural and precomputed models together
+## Procedural and precomputed models together
 
 - **Both kinds end as placement sets.** A precomputed model (`meso.precomputed`: a RELION STAR file or placement JSON)
   and a procedural one produce the same output.
@@ -29,7 +33,7 @@
   Å, by the frame's voxel size) off its coordinate, and turns the row by its subtomogram angles (subtomogram · particle,
   the shift too). A `populations.column` the table does not have is an error.
 
-### 6.1 Pipeline (`runtime/runtime.ts`, `compile`)
+## Pipeline (`runtime/runtime.ts`, `compile`)
 
 1. **Validate.** `format/validate.ts`, phase `static`. It checks ids, references and their kinds, containment cycles,
    membranes for membrane locations, units and ranges, models realizing a population twice, `avoid` cycles, frames and
@@ -49,13 +53,14 @@
    - Each failure is reported where it happens:
      - an unknown resolver, an arrangement or location it cannot place, an unavailable input;
      - a model that avoids a failed model also fails (as SeqViewSpec's "unavailable with a cause"); when only the
-       refiner of an avoided model fails, the avoiding model avoids the unrefined result instead (§6.7).
+       refiner of an avoided model fails, the avoiding model avoids the unrefined result instead
+       ([refine stages](#application-composition-refine-stages)).
    - A model that avoids a refined model avoids what is drawn: it runs after the refiner and its key follows the
      refiner's. A refiner keeps the `avoid` of every model up its chain, instances included.
    - Constraints are checked against `achieved`, and each shortfall becomes an issue with the resolver's reason.
 5. **Assemble** the IR, then **derive the view** from the active view.
 
-### 6.2 The resolver contract (`runtime/resolver.ts`)
+## The resolver contract (`runtime/resolver.ts`)
 
 ```ts
 interface Resolver<I> {
@@ -77,24 +82,25 @@ A `ResolveJob` holds:
 - the obstacle sets of the models it avoids;
 - the seed.
 
-### 6.3 Resolvers in the prototype
+## Resolvers in the prototype
 
-| Id                 | Realizes                                                                                  | Complexity        |
-| ------------------ | ----------------------------------------------------------------------------------------- | ----------------- |
-| `meso.pack`        | random populations: interiors, membranes, surfaces, the space around a compartment        | O(N · tries)      |
-| `meso.lattice`     | lattices on spheres and ellipsoids                                                        | O(N)              |
-| `meso.fiber`       | fibers by path or by growth; honours `binds` and `bends` (subjects placed by their sites) | O(N)              |
-| `meso.bilayer`     | lipid bilayers                                                                            | O(N)              |
-| `meso.precomputed` | RELION STAR, placement JSON                                                               | O(rows)           |
-| `cellpack-gpu`     | cellPACKgpu serialized recipes                                                            | O(N · tries)      |
-| `meso.relax`       | (v0.2) refine stage: inserts missing copies, relaxes overlaps (§6.7)                      | O(N · iterations) |
+| Id                 | Realizes                                                                                                             | Complexity        |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------- | ----------------- |
+| `meso.pack`        | random populations: interiors, membranes, surfaces, the space around a compartment                                   | O(N · tries)      |
+| `meso.lattice`     | lattices on spheres and ellipsoids                                                                                   | O(N)              |
+| `meso.fiber`       | fibers by path or by growth; honours `binds` and `bends` (subjects placed by their sites)                            | O(N)              |
+| `meso.bilayer`     | lipid bilayers                                                                                                       | O(N)              |
+| `meso.precomputed` | RELION STAR, placement JSON                                                                                          | O(rows)           |
+| `cellpack-gpu`     | cellPACKgpu serialized recipes                                                                                       | O(N · tries)      |
+| `meso.relax`       | refine stage: inserts missing copies, relaxes overlaps (see [refine stages](#application-composition-refine-stages)) | O(N · iterations) |
 
 All of them are in `resolvers/index.ts`, `DefaultResolvers`. The copies of the models a model avoids: the packers place
 nothing on them, `meso.relax` holds them fixed, `meso.lattice` skips the sites they take, `meso.fiber` grows around them
 (a traced path is kept where it is and its overlaps reported); `meso.bilayer` and `meso.precomputed` do not look at them
-(lipids are drawn without footprints, §11; given poses are given).
+(lipids are drawn without footprints, [design.md](design.md#11-what-held-what-the-prototypes-exposed-what-is-open);
+given poses are given).
 
-### 6.4 Plugging in a recipe kind: cellPACKgpu
+## Plugging in a recipe kind: cellPACKgpu
 
 `resolvers/cellpack-gpu.ts` shows the split between the document and the adapter:
 
@@ -122,9 +128,9 @@ nothing on them, `meso.relax` holds them fixed, `meso.lattice` skips the sites t
 **Adding a kind is a resolver entry.** A quick test plugs a toy `toy.grid` resolver into the runtime with no change to
 the format, the IR or the adapter.
 
-**When a kind needs more than a resolver:** see the criteria in §4.2.
+**When a kind needs more than a resolver:** see the criteria in [ir.md](ir.md#one-leaf-the-placement-set).
 
-### 6.5 The renderer adapter contract (`runtime/adapter.ts`)
+## The renderer adapter contract (`runtime/adapter.ts`)
 
 ```ts
 interface RendererAdapter { id: string; commit(ir: IR): Promise<CommitReport>; dispose(): void | Promise<void> }
@@ -147,7 +153,7 @@ gives the same diff to every adapter:
   representation per type.
 - **No copy of the IR buffers.** The particle list shares the IR's `positions`, `rotations` and `types` buffers (a
   medium-lane test checks identity). The adapter adds only what Mol\* requires and the IR does not have: a radius per
-  copy and a key per copy, 8 B a copy (renderer-recommendations R2).
+  copy and a key per copy, 8 B a copy ([renderer-recommendations.md](renderer-recommendations.md), R2).
 - **[measured] what each edit replaces** (medium lane, headless Prism with prism-me's spec):
   - a color edit replaces no list or representation object;
   - a density edit replaces exactly the rerun model's list.
@@ -159,7 +165,7 @@ gives the same diff to every adapter:
 - **A model edit** goes through `compile` with the session's cache, then `commit`.
 - **Every edit leaves a record:** kind, resolver runs, cache hits, and the time of each phase.
 
-### 6.7 Application composition: refine stages
+## Application composition: refine stages
 
 David: "one engine/runtime can use some cheap fills, other can do a physical simulation … all trying to reconcile the
 same high-level constraints"; "Ivan's rigid body could feed into a simulation process that refines the structure".
@@ -175,7 +181,7 @@ same high-level constraints"; "Ivan's rigid body could feed into a simulation pr
   with the exact inside test (`sdfGrid` in `resolvers/geometry.ts`, which also answers the O(triangles) mesh gap).
   Membrane copies and avoided models stay fixed.
 
-### 7.3 Reproducibility
+## Reproducibility
 
 - **Deterministic resolution.** The same document, resolver versions and seed give the same placements, bit for bit
   (quick test: content digest).
@@ -187,7 +193,7 @@ same high-level constraints"; "Ivan's rigid body could feed into a simulation pr
   - the resources' content keys: the `checksum` when declared, otherwise a hash of the content.
 - **A resource without a checksum** can only be checked after loading.
 
-### 7.4 Failures and unmet constraints
+## Failures and unmet constraints
 
 Each issue is `{code, severity, phase, message, path, ids, constraint?}`:
 

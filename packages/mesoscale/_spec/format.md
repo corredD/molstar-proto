@@ -1,6 +1,9 @@
 # MesoViewSpec: The document
 
-### 3.1 Shape
+What a MesoViewSpec document means: its nodes, what each says, and what it leaves out. The concepts and terms are in
+[README.md](README.md); the reasons and the numbers are in [design.md](design.md).
+
+## Shape
 
 A document is plain JSON:
 
@@ -23,14 +26,14 @@ A document is plain JSON:
   - a model realizes several populations;
   - an activity uses and generates resources.
 
-  The tree belongs in the IR (§4).
+  The tree belongs in the [IR](ir.md).
 
 - **`custom` is keyed by namespace** (as in SeqViewSpec), so an unknown extension is kept and ignored.
 - **Versioning:** semver. From 1.0 a minor version only adds; while the format is 0.x a minor version may break (0.2
   made looks MesoQL strings instead of selector objects), with no upgrade path yet. A newer major version is refused
   (`format.version`).
 
-### 3.2 Biology
+## Biology
 
 | Concept       | Fields                                                                                                                                                                                                    | Meaning                                                         |
 | ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
@@ -49,9 +52,10 @@ A document is plain JSON:
   - packing tries and give-up thresholds;
   - cellPACK principal vectors and membrane offsets;
   - the recipe path an ingredient maps to.
-- **IR `resolve` node.** The params go into its normalized `input`, where they are visible and hashed (§4.3).
+- **IR `resolve` node.** The params go into its normalized `input`, where they are visible and hashed
+  ([ir.md](ir.md#construction-details-live-in-resolve-nodes)).
 
-### 3.3 Resources in their native formats
+## Resources in their native formats
 
 A `Resource` is `{kind, format, uri | accession, frame, checksum, license, select}`. The document never copies data.
 
@@ -62,7 +66,7 @@ A `Resource` is `{kind, format, uri | accession, frame, checksum, license, selec
 - **Readers** turn raw content into what resolvers use (`runtime/readers.ts`: STAR, OBJ, cellPACKgpu JSON, placement
   JSON). They are pluggable, like resolvers.
 
-### 3.4 Frames and alignment
+## Frames and alignment
 
 - **`Frame`:**
   - `kind`: one `world` frame, plus `instrument` or `resource` frames;
@@ -78,7 +82,7 @@ A `Resource` is `{kind, format, uri | accession, frame, checksum, license, selec
   not the origin, axes or handedness, and the runtime reports exactly that (`frame.handedness` on three frames).
 - **A spatial resource whose frame no alignment reaches** is `frame.unaligned`.
 
-### 3.5 Evidence, provenance, tracing
+## Evidence, provenance, tracing
 
 - **`Evidence`:**
   `{kind: observation | measurement | literature | database | prediction | assumption, statement, source: {resource, citation, location}, confidence}`.
@@ -102,14 +106,14 @@ A `Resource` is `{kind, format, uri | accession, frame, checksum, license, selec
   the populations that depend on it: which count field wins, what a surface molarity is per, the medium box, the
   thickness unit.
 
-### 3.6 Catalogs (a gap the yeast cell exposed)
+## Catalogs (a gap the yeast cell exposed)
 
 - **The problem.** A proteome is 5,638 species: too many to list as populations, and as data they belong in a table.
 - **The prototype's answer.** `catalogs[]`: `{resource, columns, abundanceKind}`, one row per population.
 - **The gap.** The runtime has no catalog expander yet and says so (`catalog.unexpanded`).
 - **Open:** expand catalogs in the runtime (a reader that emits populations), or let a resolver consume them directly.
 
-### 3.7 The S-expression spelling (`format/sexpr.ts`)
+## The S-expression spelling (`format/sexpr.ts`)
 
 One tree, three spellings, as SeqQL has them (`packages/sequences/_spec/seqql.md`): the S-expression for people, agents
 and tests; JSON for storage; the types for code. Every data panel in the stories shows the S-expression first, with a
@@ -145,7 +149,7 @@ JSON toggle.
   and their IR summaries (`_test/sexpr.test.ts`).
 - **Not done:** the S-expression is not yet editable in the stories (they display it); the reader exists for that.
 
-### 3.9 Superstructures: reusable, nested, instanced (`format/doc.ts` `Superstructure`)
+## Superstructures: reusable, nested, instanced (`Superstructure`)
 
 Ludo: "a virus is an ultrastructure made of ultrastructures made of molecules made of atoms"; an insulin granule "can
 have thousands of instances in a cell". David: `.superstructure({ params })`, holding "both" the reconstructed and the
@@ -166,7 +170,7 @@ opaque form, "depending on context".
 - **Copy ids through the nesting:** `(part (copies p.granules 12) p.Vamp2)` materializes as one virtual set per
   instance, and its copies read `p.granules#12/p.Vamp2#305`.
 
-### 3.10 By value or by reference
+## By value or by reference
 
 David: "it could be passed by value or reference … rigid and strict in one place, and use a recipe in another".
 
@@ -180,7 +184,7 @@ David: "it could be passed by value or reference … rigid and strict in one pla
   (seeded: the same holes every run). Ludo's example: a membrane protein placed at random until a cryo-ET study showed a
   hexagonal lattice with defects. The fix is an edit of one arrangement, citing the new evidence.
 
-### 3.11 Relations as constraints with addresses
+## Relations as constraints with addresses
 
 David: "encode the relations as a graph … and then reconcile that in the runtime"; Ludo: "the bending is highly
 specific, you need point of entry/output".
@@ -210,7 +214,7 @@ specific, you need point of entry/output".
   sites and angles; a bead-and-spring engine uses `contacts`. Each declares what it honours, and the runtime reports the
   rest.
 
-### 3.13 Instances: copies stated one by one (v0.3, `Instance`)
+## Instances: copies stated one by one (`Instance`)
 
 David's comment on v0.2: a population is not the top-level abstraction, it is how we state copies today because we
 cannot list every one. The document now has three ways to state copies, and populations are one of them:
@@ -241,17 +245,18 @@ one code path, whether a file (picks) or the document holds them. Every procedur
 packer works around them. Superstructure expansion, looks, relations, MesoQL and the camera needed nothing new.
 
 **Limits.** Each instance is its own type: fine for tens or hundreds, not for 10⁵ copies, which belong in a resource
-read by `meso.precomputed` (§4.5). A pose is in the world frame, or in `frame`'s own coordinates (a tomogram's voxels).
+read by `meso.precomputed` ([runtime.md](runtime.md#procedural-and-precomputed-models-together)). A pose is in the world
+frame, or in `frame`'s own coordinates (a tomogram's voxels).
 
-### 3.14 Not in the document
+## Not in the document
 
 - placements and other derived results;
 - renderer settings: representation types, LOD, quality;
 - transient UI state.
 
-See §5.
+See [views.md](views.md#session-state-what-one-document-restores).
 
-### 7.1 Units
+## Units
 
 - **The document** chooses its length unit (`units.length`: A, nm or µm; nm by default). A `{value, unit}` quantity
   overrides it.

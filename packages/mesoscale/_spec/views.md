@@ -1,6 +1,9 @@
 # MesoViewSpec: Views
 
-## 5. Session state: what one document restores
+What one document restores besides its data: view state, the session, and the semantic camera. The concepts and terms
+are in [README.md](README.md); the reasons and the numbers are in [design.md](design.md).
+
+## Session state: what one document restores
 
 | Category            | Where                                   | Examples                                                                                                                                               | Persisted?                                                               |
 | ------------------- | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------ |
@@ -31,14 +34,15 @@
   - the Prism adapter draws spheres and reports a `render`-phase issue (`representation.fallback`) for the others
     (medium-lane test, the exosome's _Lumen only_ view).
 
-  Open decision 4 is which hints beyond spheres an adapter must honour.
+  [Open decision 4](design.md#11-what-held-what-the-prototypes-exposed-what-is-open) is which hints beyond spheres an
+  adapter must honour.
 
 - **Not restored:** clipping, and annotations drawn in the viewer.
 - **Copy ids are only as stable as the resolution.** A copy id (`p.catalase#12`) is valid only for one resolution key: a
   model edit can renumber copies. Selections that must survive edits should use semantic selectors, or name the copy as
-  an instance (§3.13).
+  an instance ([format.md](format.md#instances-copies-stated-one-by-one-instance)).
 
-### 5.1 The semantic camera (v0.3, `Camera`, `Tour`)
+### The semantic camera (`Camera`, `Tour`)
 
 David: "now we just need the semantic layer for it to control the camera". A camera can say what to look at instead of
 where to stand:
@@ -64,7 +68,7 @@ where to stand:
   centre is exact and the radius an upper bound (within 5 % on the β-cell); `within` reads them the same way.
 - **`from outside`** looks in from beyond the scene's centre through the focus: the natural way into a cell.
 - **`cutaway`** is an address for the copies to hide so the focus shows. It is materialized into the IR; Prism clips by
-  planes, not by copies, so the adapter reports it (renderer R8).
+  planes, not by copies, so the adapter reports it ([renderer-recommendations.md](renderer-recommendations.md), R8).
 - **A numeric camera** (`position`, `target`) is read in its view's `frame`: a camera written in a tomogram's voxels
   lands where the tomogram is. Directions turn with the frame too (`up`, a `from` vector); a numeric annotation is a
   point in the view's frame.

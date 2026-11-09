@@ -1,14 +1,18 @@
 # MesoViewSpec: Streaming
 
-### 6.8 Streaming (v0.4)
+How a document names data too large to hold at once: the source, the tile manifest, the provider, the planner and the IR
+it makes. The concepts and terms are in [README.md](README.md); the reasons and the numbers are in
+[design.md](design.md).
 
-David, after v0.1: "it needs … streaming concepts". A document can name a scene too large to hold at once (L in §8.1:
-the yeast cell's 2.5 × 10⁷ copies in 6,416 tiles of 200 nm). The viewer shows all of it coarse first, then loads copies
-where the camera looks, within a budget.
+## Streaming
+
+David, after v0.1: "it needs … streaming concepts". A document can name a scene too large to hold at once (L in
+[design.md](design.md#81-budgets-and-complexity-target): the yeast cell's 2.5 × 10⁷ copies in 6,416 tiles of 200 nm).
+The viewer shows all of it coarse first, then loads copies where the camera looks, within a budget.
 
 **Levels** (decision 12, as a runtime concept; the document's sections do not move):
 
-| Level | Holds                                                         | In v0.4                                          |
+| Level | Holds                                                         | Today                                            |
 | ----- | ------------------------------------------------------------- | ------------------------------------------------ |
 | 0     | statistical: per tile, a count and an envelope per population | always loaded, from the manifest; never budgeted |
 | 1     | copies: one placement set per tile                            | loaded around the focus, within the budget       |
@@ -24,10 +28,10 @@ where the camera looks, within a budget.
 - The camera reads level 0, never the loaded copies. A focus that picks streamed populations frames their level-0
   envelopes, before and after any tile loads. So the camera does not move as tiles arrive, and the planner sees the same
   focus on every step.
-- The budget is a hard cap on loaded level-1 copies. It is a session option, not a document field (§3.14: renderer
-  settings stay out of the document).
+- The budget is a hard cap on loaded level-1 copies. It is a session option, not a document field
+  ([format.md](format.md#not-in-the-document): renderer settings stay out of the document).
 
-#### 6.8.1 Source (`format/doc.ts`)
+### Source (`format/doc.ts`)
 
 A model realizes streamed populations through a `stream` source. Its tiles are a resource of kind `placements`, format
 `meso-tiles`. The host supplies the provider that reads that resource (`RuntimeOptions.tiles`), as it supplies `load`
@@ -71,10 +75,10 @@ export interface StreamSource {
 - **New issue codes:** `stream.unsupported`, `stream.manifest` (the manifest is unavailable or invalid), `stream.tile`
   (a tile failed to load or disagreed with its manifest), `stream.budget` (one tile alone exceeds the budget).
 
-#### 6.8.2 Manifest (`format/doc.ts`, the `meso-tiles` format)
+### Manifest (`format/doc.ts`, the `meso-tiles` format)
 
 The manifest is the format of the tile resource, so its types sit beside the document's. Coordinates are world Å. Tiles
-are axis-aligned boxes; v0.4 refuses a stream in a rotated frame rather than transform boxes (above).
+are axis-aligned boxes; this version refuses a stream in a rotated frame rather than transform boxes (above).
 
 ```ts
 // format/doc.ts
@@ -88,7 +92,7 @@ export type StreamLevel = 0 | 1 | 2;
 
 export interface TileManifest {
   readonly format: 'meso-tiles';
-  /** Must hold 0 and 1, ascending, no repeats; 2 is declared only (an `info` issue: not loaded in v0.4). */
+  /** Must hold 0 and 1, ascending, no repeats; 2 is declared only (an `info` issue: not loaded yet). */
   readonly levels: readonly StreamLevel[];
   /** The box every tile lies in. */
   readonly bounds: Box;
@@ -123,13 +127,13 @@ export interface TileEntry {
 - **An invalid or unavailable manifest** fails the stream model as a failed resolver does: its populations are achieved
   0, the issue says why, and the rest of the scene compiles.
 - **Global ordinals.** A copy's ordinal is its index in the tile among its population's copies, plus the sum of that
-  population's counts in the tiles before it in manifest order. Copy ids (`<population>#<ordinal>`, §7.2) are therefore
-  unique and stable across loads and evictions.
+  population's counts in the tiles before it in manifest order. Copy ids (`<population>#<ordinal>`,
+  [ids and keys](ir.md#ids-and-keys)) are therefore unique and stable across loads and evictions.
 - **Keys.** `streamKey = <model>@<contentHash({manifest, types})>` (`ir/hash.ts`; `types` is the stream's type table
   below, so an entity radius edit changes it). A tile's set key is `<streamKey>#<tileId>`, its IR ref
-  `<model>/stream/<tileId>`. This follows §7.2's `<key>#<n>`, with the tile id as `n`.
+  `<model>/stream/<tileId>`. This follows [ids and keys](ir.md#ids-and-keys)'s `<key>#<n>`, with the tile id as `n`.
 
-#### 6.8.3 Provider contract (`runtime/streaming.ts`)
+### Provider contract (`runtime/streaming.ts`)
 
 ```ts
 // runtime/streaming.ts
@@ -137,7 +141,7 @@ export interface TileProvider {
   /** The manifest; the provider memoizes it (compile asks on every model edit). Rejects: `stream.manifest`. */
   manifest(signal?: AbortSignal): Promise<TileManifest>;
   /**
-   * A tile's copies at `level` (1 in v0.4). Rejects with an `AbortError` once `signal` aborts; a result that arrives
+   * A tile's copies at `level` (1 today). Rejects with an `AbortError` once `signal` aborts; a result that arrives
    * after the abort is ignored anyway. Any other rejection, an `AbortError` of the provider's own included (the
    * signal not aborted), and a throw before it returns a promise: `stream.tile`, and the tile is not asked for again
    * until the stream key changes.
@@ -173,12 +177,12 @@ export interface RuntimeOptions {
   marked failed. A rejected tile never counts toward the budget.
 - **Ownership.** The provider may cache raw data (HTTP, IndexedDB); nothing relies on it. The streamer owns residency: a
   tile is loaded exactly when its set is in the IR. Eviction removes it from the IR, and the adapter deletes its list
-  (and store entry) as for any removed set. v0.4 keeps no CPU cache of evicted tiles: a tile seen again is loaded again.
+  (and store entry) as for any removed set. there is no CPU cache of evicted tiles: a tile seen again is loaded again.
 - **Concurrency.** At most `maxInFlight` loads (default 4), started in the plan's order. One `AbortController` per load.
   The streamer aborts a load when the plan cancels it or the stream key changes. Each load carries the stream key and a
   generation number, and a result whose key or generation is stale is dropped.
 
-#### 6.8.4 Planner and budget (`runtime/streaming.ts`)
+### Planner and budget (`runtime/streaming.ts`)
 
 `planStream` is pure and deterministic. It reads no clock and no randomness, and its output depends only on its
 arguments, never on the order of `manifest.tiles`.
@@ -262,9 +266,9 @@ The algorithm:
   `budget.copies`. Evictions and cancellations apply in the same step that starts the requests, and `want`'s total is
   within the budget.
 - **Budget 0** gives a level-0-only scene: no request.
-- **No load radius.** The budget bounds the region. A distance cap and prefetch by camera velocity are not in v0.4.
+- **No load radius.** The budget bounds the region. A distance cap and prefetch by camera velocity are not built yet.
 
-#### 6.8.5 The IR, the session and the adapter
+### The IR, the session and the adapter
 
 **The `stream` node** (`ir/ir.ts`), a child of the world frame node beside the `resolve` nodes:
 
@@ -291,7 +295,7 @@ The algorithm:
   smallest thing that already sits in the tree, is walked by `placementSets`, and carries level 0 to any reader.
 - **Who reads level 0:** the camera (below), the story's panel (counts by population, tiles), and `irToJson`. `irToJson`
   prints a stream node as `{model, key, levels, bounds, tiles: <n>, copies: <total by population>}`, not every tile. The
-  Prism adapter does not draw envelopes in v0.4.
+  Prism adapter does not draw envelopes yet.
 - **`compile`** (`runtime/runtime.ts`). For the stream model it calls `o.tiles?.(resource)?.manifest()` (phase `load`),
   then `validateManifest`, and builds `types` from the normalized populations as `meso.precomputed` builds its type
   table. It emits the node with no resolver run. `counts[p]` is `{requested, achieved}` with `achieved` the manifest
@@ -302,7 +306,7 @@ The algorithm:
 **Pure helpers** (`runtime/streaming.ts`):
 
 ```ts
-/** The stream node of an IR (v0.4: at most one). */
+/** The stream node of an IR (at most one today). */
 export function streamNode(ir: IR): Extract<IRNode, { kind: 'stream' }> | undefined;
 
 /**
@@ -326,11 +330,11 @@ export function level0IR(ir: IR): IR;
 `from outside`, over `level0IR(ir)` instead of `ir`. `lociSphere` then gives a sphere that holds the envelopes of the
 streamed copies the address picks, together with the non-streamed copies it picks. The sphere is the same whether 0 or
 all tiles are loaded. Addresses by ordinal (`(copies p.a 12)`) on a streamed population pick proxy rows, not copies:
-this is a v0.4 limit, and the fixture's tour does not use them. Looks, selection and cutaway still read the real IR. The
-camera gets its own materializer and loci cache over `level0IR(ir)`, and calls `lociSphere` with that same IR:
-`deriveView`'s materializer is bound to the real IR and caches by address string, so a look and a focus with the same
-address (`v.all`'s `(population p.a)`) would otherwise hand the camera real-IR loci that miss in the level-0 IR. The
-proxy set is cached per stream node object (a `WeakMap`), since `updateView` runs at least twice an edit.
+this is a limit of this version, and the fixture's tour does not use them. Looks, selection and cutaway still read the
+real IR. The camera gets its own materializer and loci cache over `level0IR(ir)`, and calls `lociSphere` with that same
+IR: `deriveView`'s materializer is bound to the real IR and caches by address string, so a look and a focus with the
+same address (`v.all`'s `(population p.a)`) would otherwise hand the camera real-IR loci that miss in the level-0 IR.
+The proxy set is cached per stream node object (a `WeakMap`), since `updateView` runs at least twice an edit.
 
 **The streamer** (`runtime/streaming.ts`) holds the state between steps and calls the provider. It imports nothing of
 Mol\*:
@@ -404,7 +408,8 @@ export class TileStreamer {
 - **`EditRecord`** gains `kind: 'stream'` and
   `stream?: StreamStats & { readonly plan?: { readonly request: number; readonly evict: number; readonly cancel: number } }`.
 - **A tour** is a sequence of view edits (`session.view` set to each step's view). Each edit moves the semantic camera
-  (§5.1), and the step after it requests and evicts. The tour does not wait for tiles; arrivals commit as they come.
+  ([views.md](views.md#the-semantic-camera-camera-tour)), and the step after it requests and evicts. The tour does not
+  wait for tiles; arrivals commit as they come.
 - **The panel reports**, from the last record and `streamer.stats()`: tiles requested, loaded, evicted, cancelled and
   failed (cumulative); resident tiles and in flight; resident copies against the budget (a bar); level-0 copies.
 
@@ -413,9 +418,10 @@ and keeps the other lists' objects.
 
 - **Known cost [measured]:** `looksChanged` is true whenever a set is added, so each step that adds a tile rewrites
   every list's looks (one `particles.look` call): 4,004 layers at 1,000 lists, 44 at 10. A remove writes none. Up to 100
-  lists a remove stays at 5 ms or less and a color edit about 105 ms; at 1,000 they take 163 and 218 ms (§6.8.7, R5).
+  lists a remove stays at 5 ms or less and a color edit about 105 ms; at 1,000 they take 163 and 218 ms
+  ([design.md](design.md#687-tests-and-the-r5-measurement), R5).
 
-#### 6.8.6 Fixture (`spec/src/examples/streaming.ts`)
+### Fixture (`spec/src/examples/streaming.ts`)
 
 ```ts
 export interface TiledFixtureOptions {
@@ -458,9 +464,9 @@ export function tiledFixture(o?: TiledFixtureOptions): {
 - **Sizes:** the default is 32 tiles and 12,800 copies. The story uses budget 3,000 (7 tiles). The quick tests use
   `grid: [3, 3, 1]` and small counts.
 
-#### 6.8.8 Not in v0.4, and what it touches
+### Not yet, and what it touches
 
-**Not in v0.4:**
+**Not yet:**
 
 - level 2 (atoms at close range);
 - prefetch, and priorities by camera velocity or view direction;

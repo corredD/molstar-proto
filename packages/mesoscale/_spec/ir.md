@@ -1,6 +1,9 @@
 # MesoViewSpec: The IR
 
-### 4.1 A tree in the manner of `mol-state`
+The render IR the runtime makes of a document: its tree, the placement set, and how ids and keys are made. The concepts
+and terms are in [README.md](README.md); the reasons and the numbers are in [design.md](design.md).
+
+## A tree in the manner of `mol-state`
 
 - **The tree:** each node is `{ref, kind, params, children, origin}`. Children are evaluated after their parent, as in
   `packages/core/src/state` (`StateTransform`: ref, parent, transformer, params).
@@ -9,15 +12,15 @@
   - **space:** `scene`, `frame`, `compartment` (shape, free volume, area), `membrane` (thickness);
   - **construction:** `resolve` (model, resolver, version, normalized `input`, `key`, `cached`);
   - **evaluated:** `placements` (a placement set).
-- **(v0.2) superstructures:** `superstructure` (a superstructure's resolved tree, once) and `instances` (under a
-  placement set: its copies of one type stand for a superstructure, `parts` or `entity`). Together with the placement
-  sets, this evaluated part is what David calls the MesoComplex.
+- **Superstructures:** `superstructure` (a superstructure's resolved tree, once) and `instances` (under a placement set:
+  its copies of one type stand for a superstructure, `parts` or `entity`). Together with the placement sets, this
+  evaluated part is what David calls the MesoComplex.
 - **Looks and the camera are not in the tree.** They live in `IRView`: one look per (set, type), concrete colors, the
   camera in Å. A color edit never touches a node.
 - **Refs come from document ids, never from content** (`m.recipe/placements/0`, `c.exosome/membrane`). The same scene
   gets the same refs on every run.
 
-### 4.2 One leaf: the placement set
+## One leaf: the placement set
 
 Every resolver produces placement sets, and every adapter consumes them:
 
@@ -41,9 +44,9 @@ The layout is Mol\*'s particle list (`packages/model/src/model/particles/particl
 - **It needs the language extended:** a new _biological statement_ that the current concepts cannot express. Examples:
   - a helical lattice on a tube, such as microtubule protofilaments;
   - a binding relation a resolver must honour;
-  - a population defined by a table (§3.6).
+  - a population defined by a table ([format.md](format.md#catalogs-a-gap-the-yeast-cell-exposed)).
 
-### 4.3 Construction details live in `resolve` nodes
+## Construction details live in `resolve` nodes
 
 A resolver's `project(job)` returns the normalized input its result depends on:
 
@@ -62,7 +65,7 @@ JSON, typed arrays hashed by content). The IR shows the input, so a reader can s
   - SeqViewSpec: "affected" means modified or depending on a modified node (`packages/sequences/_spec/format.md`).
 - **Why it matters:** this is what makes "a color edit reuses placements" true by construction rather than by care.
 
-### 7.2 Ids and keys
+## Ids and keys
 
 | What            | Form                                                | Stability                                                                          |
 | --------------- | --------------------------------------------------- | ---------------------------------------------------------------------------------- |
