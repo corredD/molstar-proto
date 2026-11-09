@@ -55,7 +55,16 @@ export function flattenInstances(ir: IR, cache: ExpansionCache = new Map()): Fla
         (c): c is Extract<IRNode, { kind: 'instances' }> => c.kind === 'instances' && c.params.detail === 'parts',
       );
       out.push(set);
+      // the set's own looks before its instanced types are hidden below: an instance type a look hides is hidden in
+      // its parts too (an eye on the granules hides the granules' contents; later looks win, so the last one says)
+      const own = looksOf.get(set.key) ?? [];
+      const hiddenType = (type: number) => {
+        let visible: boolean | undefined;
+        for (const l of own) if (!l.runs && l.visible !== undefined && l.types.includes(type)) visible = l.visible;
+        return visible === false;
+      };
       for (const i of inst) {
+        const hidden = hiddenType(i.params.type);
         if (!hiddenSet.has(`${set.key}|${i.params.type}`)) {
           hiddenSet.add(`${set.key}|${i.params.type}`);
           looksOf.set(set.key, [
@@ -89,6 +98,7 @@ export function flattenInstances(ir: IR, cache: ExpansionCache = new Map()): Fla
             for (let q = 0; q < at; q++) if (set.types[q] === i.params.type) rank++;
             looks.push({ ...l, set: key, runs: l.runs.map((v) => v + rank * t.count) });
           }
+          if (hidden) looks.push({ set: key, types: e.typeTable.map((t) => t.index), visible: false });
           looksOf.set(key, looks);
           out.push(e);
         }
