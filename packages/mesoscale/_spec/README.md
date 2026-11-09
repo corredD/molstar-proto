@@ -155,14 +155,15 @@ Written by `packages/mesoscale/spec/scripts/spec.ts generate` from the code; `sp
 | ------------------------------------------------ | --------------------------------------------------------------------------------------------------- | ------------------ |
 | [reference/format.md](reference/format.md)       | the document's node kinds and their fields (`format/doc.ts`)                                        | `spec.ts generate` |
 | [reference/issues.md](reference/issues.md)       | the issue codes, their meaning (`IssueCodes`, `format/issues.ts`)                                   | `spec.ts generate` |
-| [reference/mesoql.md](reference/mesoql.md)       | MesoQL's symbols (`MesoQLSymbols`, `mesoQLReference`, `format/mesoql.ts`)                           | `spec.ts generate` |
+| [reference/mesoql.md](reference/mesoql.md)       | MesoQL's symbols (`MesoQLSymbols`, `format/mesoql.ts`)                                              | `spec.ts generate` |
 | [reference/resolvers.md](reference/resolvers.md) | the built-in resolvers (`DefaultResolvers`): id, version, arrangements, locations, formats, honours | `spec.ts generate` |
 
-[reference/mesoql-skill.md](reference/mesoql-skill.md), the agent's MesoQL skill, arrives with `mvs-skill-cli` and is
-that lane's, not this check's.
+`reference/mesoql-skill.md`, the agent's MesoQL skill, arrives with `mvs-skill-cli` and is that lane's: written by its
+own generator, not by `spec.ts generate`.
 
 ## Keeping the spec
 
 A change to a contract updates this spec in the same commit; where spec and code disagree, fix whichever is wrong. The
 check (`pnpm -C packages/mesoscale/spec spec`) fails when a reference is stale, when a source file under
-`packages/mesoscale` lacks Mol\*'s header, or when a link between `_spec` files does not resolve.
+`packages/mesoscale` lacks Mol\*'s header, when a link between `_spec` files does not resolve, or when a source under
+`packages/mesoscale/spec/src` reports an issue code `format/issues.ts` does not register.
