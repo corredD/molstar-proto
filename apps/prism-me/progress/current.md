@@ -61,7 +61,8 @@ is not built is [../TODO.md](../TODO.md).
     try on 1354; open for Ludo: M2 seams, a sphere dither (graphics change). Library commits need their own lane.
     Round 5 started 2026-11-09 (brief 8ad314736): model_vertexcolor ×600 (~1 G lipids) at interactive rate, scale-free
     far texture, colour by zoom object → species → atoms, tiles texture. Built and gated at 3b71b9e84 (×600: wrap 1.4 s, whole
-    18 ms, middle 21 ms; close 130–240 ms open, M5, Ludo’s call). Waits on Ludo’s try on 1354.
+    18 ms, middle 21 ms; close 130–240 ms open, M5, Ludo’s call). Waits on Ludo’s try on 1354. Round 6 started 2026-11-09 (brief dbd4ac8bb): the yeast
+    cell’s nine membranes (yeast_cell_viewer meshes, 1.08 M triangles, data outside the repo).
   - `paint` (`me/paint`, port 1352, [brief](2026-11-08-paint.md) on its branch): Paint v1, approved 2026-11-08 (the
     mesoscale extension, random orientation, no collisions in v1). On hold until the lipids (Ludo, 2026-11-08).
 
