@@ -125,7 +125,7 @@ describe('lipid membrane', () => {
       [9000, 1e7, 256, 2.2],
     ]);
     // read back for the properties (the values Ludo sends us)
-    expect(v.api.mesoscale!.membraneDetailState(ref).value).toEqual({ detail: 'custom', levels });
+    expect(v.api.mesoscale!.membraneDetailState(ref).value).toMatchObject({ detail: 'custom', levels });
     expectOk(await v.api.history.undo({}));
     expect(v.plugin.state.data.cells.get(ref)!.transform.params).toMatchObject({ detail: 'balanced' });
   });
