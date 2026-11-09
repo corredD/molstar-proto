@@ -537,6 +537,13 @@ always the same lipids, no seams inside a region; TypeScript reference = WGSL). 
 radius growth, far surface) and 5 (the 27.7 M numbers) are parked in TODO.md, superseded by round 4; no code for them
 past what was already committed and tested (the library's level scales, `4ac0c0de8`).
 
+8. **The membrane's levels in its properties (keep, Ludo, 2026-11-08, added after the narrowing: "in round 3 I would
+   like to control the LOD distance so I can setup the default values").** Per level where it switches, its stride and
+   its sphere scale, and the `detail` preset, changed live in the membrane's properties (the particle lists' control if
+   it fits, else Prism's shared controls; a slider previews and commits once); a level's change never cuts or bakes
+   again (a test that fails first, as round 2's S5); the values readable there for Ludo to send back; ui.md and
+   features.md say the parameters and their defaults. About 60 lines.
+
 **Proof.** Images of this mesh ×100, looked at, before and after:
 `~/prism-me-lanes/lipid-tiles-shots/r3-<before|after>-<close|middle|whole>.png`, and the coverage numbers.
 
