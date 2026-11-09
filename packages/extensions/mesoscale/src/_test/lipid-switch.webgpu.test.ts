@@ -144,4 +144,71 @@ describe.skipIf(!webgpu)('the switch between a membrane’s spheres and its far 
       }
     });
   }
+
+  // round 7 item 1 (Ludo, 2026-11-09, option B): zooming across the spheres' level change (stride 8 → 64, at about 3.4
+  // px a lipid) no pop: the coarse level shows the finer one's top view. Before, the coarse level kept each lipid's first
+  // atom (its head), so the tallest species covered its neighbours (the yeast PM: a step dE of 0.12, the probe)
+  it('zooms across the spheres’ coarse level with no pop (the largest step’s Oklab under 0.03)', {
+    timeout: 120_000,
+  }, async () => {
+    const plugin = await HeadlessPluginContext.create(
+      { webgpu },
+      DefaultPluginSpec(),
+      { width: Size, height: Size },
+      { backend: 'webgpu' },
+    );
+    try {
+      await plugin.init();
+      const canvas = plugin.canvas3d!;
+      canvas.setProps({ camera: { ...canvas.props.camera, mode: 'perspective' } });
+      registerLipidPatch('dawn-levels', syntheticPatchPdb(12, 14, { POPC: 27, CHL1: 17 }).text);
+      const params = {
+        ...PD.getDefaultValues(LipidMembraneParams),
+        method: 'cutter' as const,
+        radius: Radius,
+        edge: 100,
+        leaflets: 'outer' as const,
+        patch: 'dawn-levels',
+        center: Vec3.zero(),
+      };
+      const node = await plugin.build().toRoot().apply(LipidMembrane, params).commit();
+      const camera = canvas.camera;
+      canvas.requestCameraReset({ durationMs: 0 });
+      await plugin.getImageRaw({ width: Size, height: Size });
+      const top = Radius + 20;
+      const lipid = Math.sqrt((12 * 8 * (14 * 8 * 0.866)) / (12 * 14));
+      const steps: { px: number; L: number; a: number; b: number }[] = [];
+      // a lipid from 6 px down to 2.4 px (the far surface's switch at 2), 4 % a step
+      for (let px = 6; px > 2.4; px /= 1.04) {
+        const depth = (lipid * Size * camera.projection[5]) / (2 * px);
+        camera.setState(
+          {
+            ...camera.getSnapshot(),
+            target: Vec3.create(0, 0, top),
+            position: Vec3.create(0, 0, top + depth),
+            up: Vec3.create(0, 1, 0),
+          },
+          0,
+        );
+        await plugin.getImageRaw({ width: Size, height: Size });
+        const image = (await plugin.getImageRaw({ width: Size, height: Size })).data;
+        if (process.env.LIPID_SHOTS) {
+          await writePng(`${process.env.LIPID_SHOTS}/r7-levels-${px.toFixed(2)}.png`, Size, Size, image);
+        }
+        steps.push({ px, ...meanOklab(image) });
+      }
+      let largest = 0;
+      for (let i = 1; i < steps.length; ++i) {
+        const [p, q] = [steps[i - 1], steps[i]];
+        largest = Math.max(largest, Math.hypot(q.L - p.L, q.a - p.a, q.b - p.b));
+      }
+      if (process.env.LIPID_NUMBERS) console.log(JSON.stringify({ largest, steps }));
+      expect(largest).toBeLessThan(0.03);
+      await plugin.build().delete(node.ref).commit();
+      expect(canvas.graphics.takeErrors?.() ?? []).toEqual([]);
+    } finally {
+      forgetLipidPatch('dawn-levels');
+      plugin.dispose();
+    }
+  });
 });
