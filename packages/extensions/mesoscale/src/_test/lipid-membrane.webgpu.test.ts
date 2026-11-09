@@ -56,8 +56,8 @@ describe.skipIf(!webgpu)('lipid membrane on WebGPU (Dawn)', () => {
         .commit();
       const cell = [...plugin.state.data.cells.values()].find((c) => c.transform.transformer === LipidMembrane)!;
       const repr = cell.obj!.data.repr;
-      // one merged object of every variant's spheres, culled on the GPU
-      expect(repr.renderObjects.length).toBe(1);
+      // one merged object of every variant's spheres, culled on the GPU (and the far surfaces: round 4b item 5)
+      expect(repr.renderObjects.filter((o: { type: string }) => o.type === 'spheres').length).toBe(1);
       plugin.canvas3d!.requestCameraReset({ durationMs: 0 });
       const image = await plugin.getImageRaw({ width: Size, height: Size });
       // the sphere covers the middle of the image: lipids drawn where the CPU's transforms are zeros
@@ -90,6 +90,50 @@ describe.skipIf(!webgpu)('lipid membrane on WebGPU (Dawn)', () => {
         }
       }
       expect(coarseCovered / (Size * Size * 0.25)).toBeGreaterThan(0.8);
+      expect(plugin.canvas3d!.graphics.takeErrors?.() ?? []).toEqual([]);
+    } finally {
+      plugin.dispose();
+    }
+  });
+
+  it('gives tiles the cutter’s looks: the far surfaces at the heads, its species hidden lipid by lipid (round 4b item 5)', async () => {
+    const plugin = await HeadlessPluginContext.create(
+      { webgpu },
+      DefaultPluginSpec(),
+      { width: Size, height: Size },
+      { backend: 'webgpu' },
+    );
+    try {
+      await plugin.init();
+      registerLipidPatch('dawn-patch', syntheticPatchPdb().text);
+      const params = {
+        ...PD.getDefaultValues(LipidMembraneParams),
+        radius: 300,
+        edge: 80,
+        patch: 'dawn-patch',
+        center: Vec3.zero(),
+      };
+      const node = await plugin.build().toRoot().apply(LipidMembrane, params).commit();
+      const repr = () => plugin.state.data.cells.get(node.ref)!.obj!.data.repr;
+      const types = () => repr().renderObjects.map((o: { type: string }) => o.type);
+      // Both (the default): a surface a leaflet beneath the tiles
+      expect(types().filter((t: string) => t === 'mesh').length).toBe(2);
+      const all = repr().groupCount;
+      await plugin
+        .build()
+        .to(node.ref)
+        .update({ ...params, far: 'spheres' })
+        .commit();
+      expect(types()).not.toContain('mesh');
+      // a hidden species: its lipids out of every tile that has them (a tile mixes species)
+      await plugin
+        .build()
+        .to(node.ref)
+        .update({ ...params, far: 'spheres', hiddenSpecies: ['POPC'] })
+        .commit();
+      const without = repr().groupCount;
+      expect(without).toBeLessThan(all * 0.9);
+      expect(without).toBeGreaterThan(0);
       expect(plugin.canvas3d!.graphics.takeErrors?.() ?? []).toEqual([]);
     } finally {
       plugin.dispose();

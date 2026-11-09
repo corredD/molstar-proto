@@ -107,7 +107,8 @@ describe('a membrane’s levels in its properties', () => {
     expect(params()).toMatchObject({ far: 'texture', atomsPx: 4 });
     expect((await v.api.history.undo({})).ok).toBe(true);
     expect(params()).toMatchObject({ far: 'texture', atomsPx: 2 });
-    // tiles: no far look (they are built whole)
+    // tiles: the cutter's properties (round 4b item 5: one membrane, two generators), but no Texture (built whole: no
+    // lipid dropped by its size on screen)
     const t = await v.api.mesoscale!.wrapMembrane({ radius: 300, edge: 80, patch: 'ui-patch-far' });
     const tiles = document.createElement('div');
     document.body.append(tiles);
@@ -117,13 +118,18 @@ describe('a membrane’s levels in its properties', () => {
       undefined as never,
     );
     await until(() => !!tiles.querySelector('button'));
-    expect([...tiles.querySelectorAll('button')].some((b) => b.textContent?.trim() === 'Texture')).toBe(false);
-    // no species to hide (review S6), and no export: tiles are built whole (review M4)
-    const tilesSpecies = area.membraneSpeciesState(t.changed!.nodes![0]).value?.[0]?.name ?? 'X';
-    expect(
-      (await area.membraneSpecies({ membrane: t.changed!.nodes![0], species: tilesSpecies, shown: false } as never)).ok,
-    ).toBe(false);
-    expect((await area.exportMembrane({ membrane: t.changed!.nodes![0] } as never)).ok).toBe(false);
+    const labels = () => [...tiles.querySelectorAll('button')].map((b) => b.textContent?.trim());
+    await until(() => labels().includes('Spheres'));
+    expect(labels()).toContain('Both');
+    expect(labels()).not.toContain('Texture');
+    expect(tiles.querySelector('[aria-label="Lipids at most"]')).toBeNull();
+    const tm = t.changed!.nodes![0];
+    expect((await area.membraneDetail({ membrane: tm, far: 'texture' } as never)).ok).toBe(false);
+    expect((await area.membraneDetail({ membrane: tm, far: 'spheres' } as never)).ok).toBe(true);
+    // its species shown and hidden (a per-lipid mask: a tile mixes species), but no export: tiles are built whole
+    const tilesSpecies = area.membraneSpeciesState(tm).value?.[0]?.name ?? 'X';
+    expect((await area.membraneSpecies({ membrane: tm, species: tilesSpecies, shown: false } as never)).ok).toBe(true);
+    expect((await area.exportMembrane({ membrane: tm } as never)).ok).toBe(false);
     forgetLipidPatch('ui-patch-far');
   });
   it('shows, hides and colors a membrane’s species, and sets its graphics mode, one step each', async () => {
