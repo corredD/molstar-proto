@@ -135,7 +135,7 @@ export function createLipidSelection(
 
   // the triangles' totals over the shown members, and the state of a selection
   const taken = new Uint8Array(T);
-  const next = new Uint8Array(T);
+  const nextList = new Uint32Array(T);
   const candidates = new Uint32Array(T);
   const bucketOf = new Uint8Array(T);
   const depth = new Float32Array(T);
@@ -149,6 +149,8 @@ export function createLipidSelection(
   let count = 0;
   let version = 0;
   let visible = 0;
+  /** a selection due whatever the set (`reset`) */
+  let forced = false;
 
   const outside = (frustum: Frustum3D, x: number, y: number, z: number, r: number) => {
     for (let i = 0; i < 6; ++i) {
@@ -206,28 +208,28 @@ export function createLipidSelection(
       order[bucketStart[bucketOf[t]]++] = t;
     }
     // within each member's capacity, nearest first; the first that does not fit ends the selection
-    next.fill(0);
+    // within each member's capacity, nearest first; the first that does not fit ends the selection. O(taken), not
+    // O(triangles): the set compared and swapped through its lists (review S1)
     used.fill(0);
+    let k = 0;
+    let same = true;
     for (let i = 0; i < n; ++i) {
       const t = order[i];
       let fits = true;
       for (let m = 0; m < M && fits; ++m) if (shown[m]) fits = used[m] + counts[m * T + t] <= capacity[m];
       if (!fits) break;
       for (let m = 0; m < M; ++m) if (shown[m]) used[m] += counts[m * T + t];
-      next[t] = 1;
+      nextList[k++] = t;
+      if (!taken[t]) same = false;
     }
+    if (same && k === count && version > 0 && !forced) return false;
+    forced = false;
+    for (let i = 0; i < count; ++i) taken[selected[i]] = 0;
     // in triangle order: slots the same for the same set
-    let changed = false;
-    for (let t = 0; t < T; ++t) {
-      if (next[t] !== taken[t]) {
-        changed = true;
-        break;
-      }
-    }
-    if (!changed && version > 0) return false;
-    taken.set(next);
-    count = 0;
-    for (let t = 0; t < T; ++t) if (taken[t]) selected[count++] = t;
+    const list = nextList.subarray(0, k).sort();
+    selected.set(list);
+    count = k;
+    for (let i = 0; i < count; ++i) taken[selected[i]] = 1;
     for (let m = 0; m < M; ++m) {
       let sum = 0;
       for (let i = 0; i < count; ++i) {
@@ -270,8 +272,10 @@ export function createLipidSelection(
       return true;
     },
     reset: () => {
+      // the version goes on (a writer's uploads are keyed by it: review nit)
       taken.fill(0);
-      version = 0;
+      count = 0;
+      forced = true;
     },
   };
 }
