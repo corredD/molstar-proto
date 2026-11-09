@@ -21,6 +21,9 @@
   2 px a lipid by default. Colours by zoom go down to each atom by element. Tiles are refused past 50 M lipids (the
   message names Wrap with lipids). Graphics: a mesh's patch texture mapped by planes and cells (`dPatchTexture`,
   WebGPU), and a repeat mipmap sampler.
+- A cut membrane's far texture shows each lipid's species where that lipid stands on a curved mesh (it slid by up to
+  the lift times a crease's angle). The cutter refuses meshes past 2,097,152 triangles (decimate first). Graphics: a
+  mesh's patch texture shifted per vertex (`tPatchTable`'s texels after the cells), read in the colour variants only.
 - A lipid membrane is coloured as a particle list: `mesoscale.style`, `mesoscale.colors` and `mesoscale.colorLevels`
   take it as `particles` (its species its entities; colours by zoom: its colour far, its species' near); the explorer's
   Look and right-click › Color… on it.

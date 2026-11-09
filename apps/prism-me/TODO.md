@@ -117,6 +117,14 @@ maintainer first (2026-10-25). All are v6 (master); the MRC reader and the parti
     x600 for both leaflets; past the brief's 4 ms on wide close views.
   - Object graphics on a membrane does not show its active Quality (review S4: `graphicsState` knows no membranes).
   - Pool capacities sum to about 1.1 × the budget, and a hidden species keeps its share (review nits).
+  - Round 5's gate, open (progress file, round 5 gate table): `farSurface` and `cutterBases` are test-only since the
+    patch texture (N4: remove them with their tests, or keep them as the references); a failed build destroys textures
+    the last build's objects may still draw (X4); the texture's v stretched under 0.6 Å (X5); the reviewer's N1-N9.
+  - A view's selection allocates about 80 bytes (`lipid-selection.quick.ts`): core's `sortArrayRange` makes its
+    partition pair a call (a module-level pair would make it 0: a core change, its own lane), and the upload makes a
+    view of each array a changed selection (a storage buffer's `write` takes no length: a graphics change).
+  - The cutter refuses meshes past 2^21 triangles (a unit's key in a double): decimate first; a wider key if a mesh
+    needs it.
 
 - **Lipid membranes, left from lane `lipid-tiles`** (2026-11-08; progress/2026-11-08-lipid-tiles.md, Numbers):
   - Round 3, parked by Ludo (2026-11-08: the membrane goes view-dependent and procedural in round 4: lipids only for
