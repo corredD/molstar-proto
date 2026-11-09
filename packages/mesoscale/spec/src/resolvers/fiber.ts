@@ -17,7 +17,7 @@ import type {
   ResolveOutput,
 } from '../runtime/resolver.js';
 import { shapeSampler } from './geometry.js';
-import { type PackCompartment, packCompartments, SpatialHash } from './packing.js';
+import { avoidedHash, type PackCompartment, packCompartments } from './packing.js';
 
 // `meso.fiber` (design.md §4.4, §3.11): filaments as copies `rise` apart along a path, each turned by `twist` about the
 // path's tangent. A path is given (traced from a tomogram, or inline) or grown: a persistent random walk inside the
@@ -68,7 +68,7 @@ const OnStrand = ['binds', 'bends'] as const;
 
 export const MesoFiberResolver: Resolver<FiberInput> = {
   id: 'meso.fiber',
-  version: '0.3.1',
+  version: '0.3.2',
   description:
     'Filaments along a given path or grown as a persistent random walk; binders and benders placed on them by their sites',
   arrangements: ['fiber', 'random'],
@@ -142,15 +142,7 @@ export const MesoFiberResolver: Resolver<FiberInput> = {
     // the copies of the models it avoids
     let maxR = 1;
     for (const it of items) maxR = Math.max(maxR, it.radius);
-    const avoided = new SpatialHash(2 * maxR);
-    for (const o of job.obstacles)
-      for (let i = 0; i < o.count; i++)
-        avoided.insert(
-          o.positions[3 * i],
-          o.positions[3 * i + 1],
-          o.positions[3 * i + 2],
-          o.typeTable[o.types[i]].radius,
-        );
+    const avoided = avoidedHash(job, maxR);
     for (const id of input.stray) {
       achieved[id] = 0;
       shortfall[id] = 'meso.fiber places strands and what binds or bends them; this population is neither';

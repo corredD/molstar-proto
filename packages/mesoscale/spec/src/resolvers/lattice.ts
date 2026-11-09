@@ -8,7 +8,7 @@ import type { Id } from '../format/doc.js';
 import { PlacementBuilder, type PlacementType, quatFromTo } from '../ir/placements.js';
 import { createRandom, subSeed } from '../runtime/random.js';
 import type { NormalizedArrangement, Resolver, ResolveJob, ResolveOutput } from '../runtime/resolver.js';
-import { type PackCompartment, packCompartments, SpatialHash } from './packing.js';
+import { avoidedHash, type PackCompartment, packCompartments, SpatialHash } from './packing.js';
 
 // `meso.lattice` (design.md §4.4): a 2D lattice on a closed membrane. Sites follow a Fibonacci spiral, locally close to
 // hexagonal, at the density the spacing gives; a population asking fewer copies than there are sites fills a contiguous
@@ -38,7 +38,7 @@ interface LatticeInput {
 
 export const MesoLatticeResolver: Resolver<LatticeInput> = {
   id: 'meso.lattice',
-  version: '0.2.1',
+  version: '0.2.2',
   description:
     'Lattices on spherical and ellipsoidal membranes: Fibonacci sites at the lattice density, patches by count',
   arrangements: ['lattice'],
@@ -86,14 +86,8 @@ export const MesoLatticeResolver: Resolver<LatticeInput> = {
     let maxR = 1;
     for (const it of input.items) maxR = Math.max(maxR, it.radius);
     const taken = new SpatialHash(2 * maxR);
-    for (const o of job.obstacles)
-      for (let i = 0; i < o.count; i++)
-        taken.insert(
-          o.positions[3 * i],
-          o.positions[3 * i + 1],
-          o.positions[3 * i + 2],
-          o.typeTable[o.types[i]].radius,
-        );
+    // the avoided copies in a grid of their own: a large one in this grid would widen every lookup's reach
+    const avoided = avoidedHash(job, maxR);
     input.items.forEach((it, t) => {
       const c = input.compartments[it.compartment];
       const shape = c?.shape;
@@ -132,7 +126,7 @@ export const MesoLatticeResolver: Resolver<LatticeInput> = {
         const x = center[0] + R[0] * v[0],
           y = center[1] + R[1] * v[1],
           zz = center[2] + R[2] * v[2];
-        if (taken.overlaps(x, y, zz, it.radius)) {
+        if (taken.overlaps(x, y, zz, it.radius) || avoided.overlaps(x, y, zz, it.radius)) {
           skipped++;
           continue;
         }

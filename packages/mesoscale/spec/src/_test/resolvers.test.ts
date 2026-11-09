@@ -521,3 +521,23 @@ describe('small things', () => {
     expect(out.issues?.some((i) => i.severity === 'info' && i.ids?.includes('l'))).toBe(true);
   });
 });
+
+describe('a large avoided copy', () => {
+  it('does not widen every lattice or filament lookup (its own grid)', () => {
+    const far = setOf(1, () => [1e5, 0, 0], { population: 'x', compartment: 'c', radius: 3000 }, 'm.x');
+    const t = performance.now();
+    const lattice = run(MesoLatticeResolver, job([latticePop('p', 400)], membrane, { obstacles: [far] }));
+    const grown = {
+      ...strand('f', 2000, []),
+      arrangement: { kind: 'fiber', rise: 10, twist: 0, growth: { persistence: 300, length: 1000, count: 2 } },
+    };
+    const fiber = run(
+      MesoFiberResolver,
+      job([grown], { c: { shape: { kind: 'box', center: [0, 0, 0], size: [800, 800, 800] } } }, { obstacles: [far] }),
+    );
+    expect(lattice.achieved.p).toBe(400);
+    expect(fiber.achieved.f).toBe(200);
+    // a reach of 300 cells a lookup took minutes; one grid of the avoided copies' own size, milliseconds
+    expect(performance.now() - t).toBeLessThan(2000);
+  });
+});

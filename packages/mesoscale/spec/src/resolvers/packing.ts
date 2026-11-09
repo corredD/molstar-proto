@@ -145,6 +145,20 @@ export class SpatialHash {
   }
 }
 
+/**
+ * The copies of the models a job avoids, in a grid whose cell spans the largest of them and `radius` (the querier's
+ * largest): a lookup's reach stays one cell whatever their sizes.
+ */
+export function avoidedHash(job: ResolveJob, radius: number): SpatialHash {
+  let maxR = radius;
+  for (const o of job.obstacles) for (const t of o.typeTable) maxR = Math.max(maxR, t.radius);
+  const h = new SpatialHash(2 * maxR);
+  for (const o of job.obstacles)
+    for (let i = 0; i < o.count; i++)
+      h.insert(o.positions[3 * i], o.positions[3 * i + 1], o.positions[3 * i + 2], o.typeTable[o.types[i]].radius);
+  return h;
+}
+
 /** A uniformly random rotation (Shoemake). */
 export function randomQuat(r: Random, out: number[]): number[] {
   const u1 = r.next(),
