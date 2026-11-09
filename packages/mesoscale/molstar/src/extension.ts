@@ -20,6 +20,7 @@ import { operationCommand } from '@molstar/prism-viewer/commands/operations';
 import type { ViewerExtension } from '@molstar/prism-viewer/spec';
 import { downloadBlob } from '@molstar/prism-viewer/ui/download';
 import { MesoDocumentModel } from './document-model.js';
+import { openAddresses } from './prism-viewer.js';
 
 declare module '@molstar/prism-viewer/api' {
   // The `mesoviewspec` area: the open MesoViewSpec document (prism.md §5.3).
@@ -92,9 +93,6 @@ const SaveParams = {
     { description: 'The file format' },
   ),
 };
-
-/** A URL's resource hosts are known only once it is read: the document's own address is what is judged. */
-const openAddresses = (v: { readonly url?: string }) => (v.url ? [v.url] : []);
 
 export class MesoViewSpecApi extends ApiArea {
   readonly id = 'mesoviewspec';

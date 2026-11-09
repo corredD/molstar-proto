@@ -25,6 +25,17 @@ function claims(file: { readonly name: string }, content: string | Uint8Array): 
   return FormatText.test(head);
 }
 
+/**
+ * What an open reaches (prism.md §3, the agent's policy): the document's address, and every absolute address a
+ * document given as data names (its resources), read before anything is fetched. A URL's resources are known only once
+ * it is read: its own address is what is judged.
+ */
+export function openAddresses(v: { readonly url?: string; readonly data?: string }): string[] {
+  const out = v.url ? [v.url] : [];
+  if (typeof v.data === 'string') for (const m of v.data.matchAll(/https?:\/\/[^\s"'()[\]{}<>\\]+/g)) out.push(m[0]);
+  return out;
+}
+
 export const MesoViewSpecLazyExtension: LazyViewerExtension = {
   id: 'mesoviewspec',
   title: 'MesoViewSpec',
@@ -35,8 +46,7 @@ export const MesoViewSpecLazyExtension: LazyViewerExtension = {
         id: 'mesoviewspec.open',
         title: 'Open a MesoViewSpec document',
         approval: 'network',
-        // A URL's resource hosts are known only once it is read: the document's own address is what is judged.
-        addresses: (v) => (v.url ? [v.url] : []),
+        addresses: openAddresses,
       },
       { id: 'mesoviewspec.close', title: 'Close the MesoViewSpec document', approval: 'destructive' },
       { id: 'mesoviewspec.get', title: 'Describe the MesoViewSpec document', read: true },
