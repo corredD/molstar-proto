@@ -201,4 +201,114 @@ describe.skipIf(!webgpu)('a lipid membrane made per view (Dawn)', () => {
       plugin.dispose();
     }
   });
+
+  it('flies over a billion lipids (round 5: the model at x600, a sphere of its triangles): cells near, nothing far', {
+    timeout: 300_000,
+  }, async () => {
+    const plugin = await HeadlessPluginContext.create(
+      { webgpu },
+      DefaultPluginSpec(),
+      { width: Size, height: Size },
+      { backend: 'webgpu' },
+    );
+    try {
+      await plugin.init();
+      registerLipidPatch('dawn-x600', syntheticPatchPdb().text);
+      // 2,880 triangles of about 6,000 Å over a sphere of 50,000 Å: the model's triangles and area at x600
+      const R = 50000;
+      const t0 = performance.now();
+      const node = await plugin
+        .build()
+        .toRoot()
+        .apply(LipidMembrane, {
+          ...PD.getDefaultValues(LipidMembraneParams),
+          method: 'cutter',
+          radius: R,
+          edge: (R * 1.2) / 12,
+          patch: 'dawn-x600',
+          center: Vec3.zero(),
+        })
+        .commit();
+      const wrapMs = performance.now() - t0;
+      const repr = plugin.state.data.cells.get(node.ref)!.obj!.data.repr as unknown as {
+        cutLipids: number;
+        pool: {
+          live: number;
+          triangles: number;
+          inView: number;
+          selectMs: number;
+          selects: number;
+          regenerations: number;
+        };
+      };
+      expect(repr.cutLipids).toBeGreaterThan(5e8);
+      const canvas = plugin.canvas3d!;
+      const camera = canvas.camera;
+      canvas.requestCameraReset({ durationMs: 0 });
+      await plugin.getImageRaw({ width: Size, height: Size });
+      const whole = camera.getSnapshot();
+      const above = (h: number) => ({
+        ...whole,
+        target: Vec3.create(0, 0, R),
+        position: Vec3.create(0, 0, R + h),
+        up: Vec3.create(0, 1, 0),
+      });
+      const numbers: Record<string, unknown>[] = [{ wrapMs: Math.round(wrapMs), full: repr.cutLipids }];
+      const at = async (name: string, snapshot: typeof whole) => {
+        camera.setState(snapshot, 0);
+        const t = performance.now();
+        const image = await plugin.getImageRaw({ width: Size, height: Size });
+        const ms = performance.now() - t;
+        const pool = { ...repr.pool };
+        numbers.push({ name, ms: Math.round(ms), ...pool });
+        // a second frame: the occlusion culling reads the frame before (another view's on the first)
+        const settled = await plugin.getImageRaw({ width: Size, height: Size });
+        if (process.env.LIPID_SHOTS) {
+          await writePng(`${process.env.LIPID_SHOTS}/r5-x600-${name.replace(/ /g, '-')}.png`, Size, Size, settled.data);
+        }
+        expect(repr.pool.selects).toBe(pool.selects);
+        return { image: settled.data, pool, first: image.data };
+      };
+      const a = await at('whole', whole);
+      const b = await at('middle', above(20000));
+      const c = await at('close', above(300));
+      const d = await at('whole again', whole);
+      const e = await at('close again', above(300));
+      if (process.env.LIPID_NUMBERS) console.log(JSON.stringify(numbers));
+      // whole and middle: the texture alone; close: cells of the leaflet facing the camera, a few hundred thousand lipids
+      expect(a.pool.live).toBe(0);
+      expect(b.pool.live).toBe(0);
+      expect(c.pool.live).toBeGreaterThan(1000);
+      expect(c.pool.live).toBeLessThan(1_000_000);
+      expect(c.pool.triangles).toBeGreaterThan(4);
+      expect(d.pool.live).toBe(0);
+      // the same view from the same start: the same lipids, drawn the same
+      expect(e.pool.live).toBe(c.pool.live);
+      let diff = 0;
+      for (let o = 0; o < c.image.length; o += 4)
+        if (c.image[o] !== e.image[o] || c.image[o + 1] !== e.image[o + 1]) diff += 1;
+      // the same cells and slots; a few pixels apart (3 of 65,536 here: the frame before differs, middle or whole)
+      expect(e.pool.triangles).toBe(c.pool.triangles);
+      expect(diff / (Size * Size), 'pixels').toBeLessThan(1e-3);
+      // close: covered (lipids and the surface beneath: no hole), in more than the surface's colours
+      const bg = Array.from(c.image.subarray(0, 3)).join();
+      let drawn = 0;
+      const colors = new Set<string>();
+      for (let o = 0; o < c.image.length; o += 4) {
+        const k = `${c.image[o]},${c.image[o + 1]},${c.image[o + 2]}`;
+        if (k !== bg) drawn += 1;
+        if (o % (4 * 13) === 0) colors.add(k);
+      }
+      expect(drawn / (Size * Size)).toBeGreaterThan(0.95);
+      expect(colors.size).toBeGreaterThan(50);
+      // at rest: no selection, no regeneration
+      const rest = { ...repr.pool };
+      for (let i = 0; i < 3; ++i) await plugin.getImageRaw({ width: Size, height: Size });
+      expect(repr.pool.selects).toBe(rest.selects);
+      expect(repr.pool.regenerations).toBe(rest.regenerations);
+      expect(canvas.graphics.takeErrors?.() ?? []).toEqual([]);
+    } finally {
+      plugin.dispose();
+    }
+  });
 });
