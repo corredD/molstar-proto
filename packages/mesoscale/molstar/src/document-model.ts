@@ -254,12 +254,13 @@ export class MesoDocumentModel {
   }
 
   private isInstance(id: string) {
-    return !!this.doc?.instances?.some((i) => i.id === id);
+    // the session's document: an open draws its lists before `doc` is set
+    return !!(this.session?.doc ?? this.doc)?.instances?.some((i) => i.id === id);
   }
 
   /** A type's entity and compartment, by their labels: the hover label's second line (prism.md §4.6). */
   private describe(t: PlacementType): string | undefined {
-    const doc = this.doc;
+    const doc = this.session?.doc ?? this.doc;
     if (!doc) return undefined;
     const entity = findById(doc, 'entities', t.entity)?.label;
     const compartment = findById(doc, 'compartments', t.compartment)?.label;
