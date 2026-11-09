@@ -706,7 +706,7 @@ export function MeshControls(props: {
           aria-label="Scale"
           value={mapState(mesh, (m) => m?.scale ?? 1)}
           min={0.01}
-          max={100}
+          max={1000}
           scale="log"
           clamp={false}
           onCommit={(scale) => set({ scale })}

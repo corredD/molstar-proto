@@ -383,6 +383,17 @@ describe('cryoet', () => {
     expect(await c.mesh({ mesh: 'seg.obj', scale: 8 } as never)).toMatchObject({ ok: true, unchanged: true });
   });
 
+  it('scales a mesh up to 1000 (a model in cm wrapped in lipids: Ludo, 2026-11-08)', async () => {
+    const v = await viewer();
+    const obj = 'v 0 0 0\nv 10 0 0\nv 0 10 0\nf 1 2 3\n';
+    expectOk(await v.api.load.files({ files: [new File([obj], 'seg.obj')] }));
+    const c = v.api.cryoet!;
+    expectOk(await c.mesh({ mesh: 'seg.obj', scale: 1000 } as never));
+    const r = await c.meshes({});
+    expectOk(r);
+    expect((r.value as MeshInfo[])[0].scale).toBeCloseTo(1000);
+  });
+
   it('keeps drawing the particles through targets by class and back to the file', async () => {
     const v = await viewer();
     const c = v.api.cryoet!;

@@ -270,7 +270,7 @@ export class CryoetApi extends ApiArea {
       scale: OptionalParam(
         PD.Numeric(
           1,
-          { min: 0.01, max: 100, step: 0.01 },
+          { min: 0.01, max: 1000, step: 0.01 },
           {
             description: 'Scales it about the origin: 1 as in the file; a mesh in pixels, the pixel size (Å)',
           },
