@@ -5,7 +5,10 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { compile } from '@molstar/meso-spec/runtime/runtime';
+import { compile, updateView } from '@molstar/meso-spec/runtime/runtime';
+import { betaCellDoc, BetaCellResources } from '@molstar/meso-spec/examples/betacell';
+import { flattenInstances } from '@molstar/meso-spec/runtime/instancing';
+import type { IR } from '@molstar/meso-spec/ir/ir';
 import { DefaultResolvers } from '@molstar/meso-spec/resolvers/index';
 import { exosomeDoc, ExosomeResources } from '@molstar/meso-spec/examples/exosome';
 import { placementSets } from '@molstar/meso-spec/ir/ir';
@@ -74,4 +77,42 @@ describe('the Mol* side, without a viewer', () => {
     ];
     for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) expect(Q[i][j]).toBeCloseTo(M[j][i], 6);
   });
+
+  // gate A2: the export read the IR's sets as they are, so a superstructure's template copies were exported once, in
+  // the template's frame (the β-cell: 4,351 copies of 274,060 drawn)
+  it('superstructure instances are exported expanded, as drawn', async () => {
+    const r = await compile(betaCellDoc(), { resolvers: DefaultResolvers, load: (id) => BetaCellResources[id]?.() });
+    const drawn = placementSets(flattenInstances(r.ir!).ir).reduce((n, s) => n + s.count, 0);
+    expect(drawn).toBeGreaterThan(placementSets(r.ir!).reduce((n, s) => n + s.count, 0));
+    expect(irToMolViewSpec(r.ir!, { maxCopies: drawn }).copies).toBe(expectedLooks(flattenInstances(r.ir!).ir).visible);
+  });
 });
+
+/** The oracle: per copy, the whole-type look, then each partial look over its runs (`[start, end)`), in order. */
+function expectedLooks(ir: IR) {
+  let visible = 0;
+  const byColor = new Map<string, number>();
+  for (const s of placementSets(ir)) {
+    for (let i = 0; i < s.count; i++) {
+      const t = s.types[i];
+      let look: { color?: number; visible?: boolean } = {};
+      for (const l of ir.view.looks) if (l.set === s.key && !l.runs && l.types.includes(t)) look = { ...look, ...l };
+      for (const l of ir.view.looks) {
+        if (l.set !== s.key || !l.runs || !l.types.includes(t)) continue;
+        for (let k = 0; k < l.runs.length; k += 2)
+          if (i >= l.runs[k] && i < l.runs[k + 1]) {
+            look = {
+              ...look,
+              ...(l.color !== undefined ? { color: l.color } : {}),
+              ...(l.visible !== undefined ? { visible: l.visible } : {}),
+            };
+          }
+      }
+      if (look.visible === false) continue;
+      visible++;
+      const c = `#${(look.color ?? 0xcccccc).toString(16).padStart(6, '0')}`;
+      byColor.set(c, (byColor.get(c) ?? 0) + 1);
+    }
+  }
+  return { visible, byColor };
+}

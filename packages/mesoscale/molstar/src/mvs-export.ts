@@ -7,15 +7,19 @@
 import { createMVSBuilder } from '@molstar/mvs-builder/tree/mvs/mvs-builder';
 import type { MVSData } from '@molstar/mvs-builder';
 import { type IR, placementSets } from '@molstar/meso-spec/ir/ir';
+import { flattenInstances } from '@molstar/meso-spec/runtime/instancing';
 
 // Compiling the IR to MolViewSpec (design.md §6.6), to measure that path: per placement type, one `primitives` group
 // with one ellipsoid at the origin and the copies as its `instances` (4×4 matrices). MVS has no particle or placement
 // node, so a copy costs 16 numbers of JSON, and a change to any copy rewrites its group (its instance list is one param).
+// Superstructure instances are expanded first (`flattenInstances`, as the Prism adapter does): the copies exported are
+// the copies drawn, in the world frame.
 
 export function irToMolViewSpec(
-  ir: IR,
+  source: IR,
   options: { readonly maxCopies?: number } = {},
 ): { data: MVSData; copies: number; truncated: boolean } {
+  const ir = flattenInstances(source).ir;
   const builder = createMVSBuilder();
   const looks = new Map(ir.view.looks.map((l) => [`${l.set}:${l.types[0]}`, l]));
   let copies = 0;
