@@ -178,6 +178,13 @@ describe('the check', () => {
     expect(check(o)).toEqual([]);
   });
 
+  it('accepts a header after a shebang line (a CLI), and still fails a shebang with no header', () => {
+    const o = sandbox();
+    writeFileSync(join(o.src, 'cli.ts'), `#!/usr/bin/env node\n${HEADER}export const c = 1;\n`);
+    writeFileSync(join(o.src, 'bare.ts'), '#!/usr/bin/env node\nexport const b = 1;\n');
+    expect(check(o)).toEqual([expect.stringMatching(/bare\.ts:1\tno Mol\* header/)]);
+  });
+
   it('fails links whose text wraps, that carry a title, or are reference-style', () => {
     const o = sandbox();
     const f = join(o.spec, 'views.md');

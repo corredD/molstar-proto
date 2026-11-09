@@ -302,11 +302,13 @@ export function checkReference(o: CheckOptions, misses: string[]) {
 const HEADER_LINE =
   /^ \* Copyright \(c\) \d{4}(-\d{4})? mol\* contributors, licensed under MIT, See LICENSE file for more info\.$/;
 
-/** Every `.ts` and `.tsx` source starts with Mol*'s header: the copyright line and an `@author`. */
+/** Every `.ts` and `.tsx` source starts with Mol*'s header (after a shebang line, if any): the copyright line and an `@author`. */
 export function checkHeaders(o: CheckOptions, misses: string[]): number {
   const files = walk(o.sources, (f) => /\.tsx?$/.test(f) && !f.endsWith('.d.ts'));
   for (const f of files) {
-    const lines = readFileSync(f, 'utf8').split('\n', 8);
+    // a CLI's shebang line comes before the header
+    const all = readFileSync(f, 'utf8').split('\n', 9);
+    const lines = all[0].startsWith('#!') ? all.slice(1) : all.slice(0, 8);
     const close = lines.indexOf(' */');
     if (lines[0] !== '/**' || !HEADER_LINE.test(lines[1] ?? ''))
       misses.push(`${relative(o.root, f)}:1\tno Mol* header`);
