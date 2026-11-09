@@ -145,8 +145,13 @@ checkpoint, not undone by inverse).
 - **The network policy reads the document first.** `addresses(values)` lists the document's URL and every resource host,
   so the agent's policy (agent.md §4) asks for an unknown host before anything is fetched.
 - **The resolvers run where the runtime runs**: on the main thread in this design. A long resolution shows in the status
-  pill as a Mol\* task, with Cancel (the session's edit is dropped and nothing changes). A worker is a later lane, not
-  designed here.
+  pill as a Mol\* task, with Cancel: the session's edit is dropped when it ends and nothing changes (the step's
+  rollback). Stopping the work early needs a signal the runtime does not take today (`RuntimeOptions`, the resolvers);
+  lane `mvs-model-edits` adds one. A worker is a later lane, not designed here.
+- **The alternative, the viewer's loaders** (`load.files`, `load.url` with a `mesoviewspec` format): a document is not
+  one data cell but a description that resolves into several lists, with a cache and an owner; a format provider has
+  neither. The sniff routes a dropped document to `mesoviewspec.open` instead, as `load.svs` is its own operation
+  (sequence.md §6).
 - **Not a loader of everything.** A cellPACK `.bcif` is still `mmcif_particles` (§1). Turning a cellPACK model into a
   document (`importCellpackGpuRecipe` exists for cellPACKgpu's serialized recipes, design.md §6.4) is an import, not an
   open; out of this design.
@@ -173,6 +178,11 @@ drawn. Under it, its parts, made from the document and the IR, not from the list
   warning tone, its issue in its properties.
 - **Lists are not rows.** A model's placement set is a Prism list, but the person sees compartments and populations. The
   lists stay reachable through ⌘K and the state tree.
+- **Parts are not drawn apart yet.** A part's address picks copies inside expanded instances: a partial look (runs),
+  which the adapter drops (`look.partial`, renderer-recommendations R8). So a part row's eye, color and Show only change
+  the document and say, in its Look, that Prism draws them only for whole populations; the superstructure's population
+  row (every part of every instance) is the one that draws. Its hover and pick need the expansion's own ids (below,
+  §4.6). Until Prism layers select copy runs, a part row is for reading, focus and the document's own edits.
 - **Built incrementally**: a view edit changes no row structure (only dots, eyes); a model edit rebuilds the rows of the
   populations whose counts changed. A part's rows are made when first opened (ui.md §3: thousands of entities cost
   nothing until looked at).
@@ -201,7 +211,9 @@ For a document row, the sections of ui.md §4 that apply, and three of its own:
 ### 4.4 Views and tours
 
 - **The Views row** lists the document's views and tours. One view is **shown**: the one the person picked, else
-  `session.view`, else the first, else none (the runtime's default looks).
+  `session.view`, else the first, else none (the runtime's default looks). Today `deriveView` reads only
+  `session.view ?? views[0]` and `updateView(doc, ir)` takes no view; the runtime gains a view argument
+  (`updateView(doc, ir, view?)`, lane `mvs-views`).
 - **Showing a view** is `mesoviewspec.view { view }`, `undoable: false`: in order with the steps, no checkpoint, the
   steps before it stay undoable, and a checkpoint notes the view shown with it, so Undo makes it shown again with the
   scene it restores. The precedent is `snapshot.apply` (sequence.md §7.3 "Showing a snapshot is no step", David
@@ -209,14 +221,18 @@ For a document row, the sections of ui.md §4 that apply, and three of its own:
   change what the saved document opens with. As in Seq\* (format.md § Snapshots, "a view the reader picked stays"),
   `session.view` changes only by **Open with this view** (a patch), from the view's ⋯.
 - **Look edits go to the shown view.** Switching to another view shows that view's looks; switching back shows the
-  edits, which are that view's. With no view at all, the first look edit inserts `v.prism` ("Edited in Prism") and sets
-  `session.view` to it, in the same patch.
+  edits, which are that view's. With no view at all, the first look edit inserts `v.prism` ("Edited in Prism"), the
+  shown view from then on; `session.view` is not set (a document with one view opens on it).
 - **New view from here** (the Views row's ⋯) inserts a view with the current camera (numeric, `position`, `target`,
   `up`, in Å, the world frame) and the shown view's looks copied with new ids. **Update camera** sets the shown view's
   `camera` to the current one. Both are patches, one step each.
-- **A tour plays** (`mesoviewspec.tour.play`, `history: false`, as `snapshot.play`): each step shows its view over its
-  transition, its caption in the canvas's caption line. Playing records nothing; stopping leaves the last view shown (as
-  an animation's frame, sequence.md §7.3).
+- **A tour plays** (`mesoviewspec.tour.play`, `history: false`, as `snapshot.play`): it runs each step as the person's
+  `mesoviewspec.view` (`undoable: false`: in order, with a history context, no checkpoint), so the adapter's look writes
+  are inside that run, never steps of their own and never changes outside the API; the caption in the canvas's caption
+  line. Stopping leaves the last view shown. The alternative, writing each step from a `history: false` run, fails in
+  the code: such a run has no history context (`api/run.ts`), so each `particles.look` would be a recorded step, and
+  direct tree writes would mark every checkpoint unsafe (`watchOutsideChanges` excepts only snapshots playing,
+  animations and the cells behaviors own).
 
 ### 4.5 Focus and the semantic camera
 
@@ -229,14 +245,18 @@ For a document row, the sections of ui.md §4 that apply, and three of its own:
 
 ### 4.6 Hover, pick and the selection
 
-- **Hover** on a document copy: the 3D label is `getParticleLabel`'s `<population>#<ordinal>` (an instance: its id),
-  then the entity's label and the compartment's. Mol\*'s label providers, as for any particle (sequence.md §10's rule:
-  one hover label, Mol\*'s).
+- **Hover** on a document copy: the 3D label is `getParticleLabel`'s `<population>#<ordinal>` (an instance: `i.x#0`,
+  shown as its id by the owner's label provider), then the entity's label and the compartment's. Mol\*'s label
+  providers, as for any particle (sequence.md §10's rule: one hover label, Mol\*'s).
 - **A click in 3D picks the row** of the copy's population (or instance), opening the way to it, as the tree follows a
   particle pick today (ui.md §3). The pick is a **MesoLocation** (`{set, index}` from the particle loci's list and
-  index), named by its stable id.
+  index), named by its stable id. An expanded instance's copies (keys `<set>|<type>*<template>`,
+  `runtime/instancing.ts`) copy the template's ordinals, so their label and pick need the instance's id too
+  (`p.granules#12/p.Vamp2#305`, design.md §3.9): the adapter keeps, per expanded list, its instance and template, and
+  the label provider reads them.
 - **A row picked highlights its copies**: its address materialized (`evaluateMesoQL`) into MesoLoci, each set's runs
-  turned into one `Particle.Loci` per list, through the explorer's lasting highlight (`area.highlight`). View state, no
+  turned into one `Particle.Loci` per list. The explorer's `area.highlight` takes one node and one loci
+  (`highlightOnly`); a document row lights several lists, so it gains a path for a row's several loci. View state, no
   step.
 - **Prism's selection is not used for copies.** `select.*` takes structure targets (operations.md); it has no particle
   loci. So a view's `selection` (design.md §5, derived into `IRView.selection`, drawn by no one today) is shown as the
@@ -470,6 +490,9 @@ The status says so once when it passes the history's size budget (proposed: the 
 - **Untrusted text**: labels, titles, evidence notes and annotations are the document's: `quoted()`.
 - **Evals** (agent.md §6): a task's prompts on the exosome headless: "hide the lipids", "color catalase red", "focus on
   the docked granule", each checked on the document (its looks) and on the drawn layers; Undo turn restores both.
+- **The alternative:** the mesoscale skill's tools alone, extended for documents. Refused: they name entities and groups
+  of one list; a document's addresses (MesoQL) reach compartments, instances and parts across models, and its edits
+  (counts, views) are not looks.
 
 ## 9. Streaming (decision 6)
 
@@ -481,8 +504,12 @@ Streaming is the `mesoviewspec-streaming` lane's (design.md §6.8, written there
   canvas camera (view state; `camera.*` changes are not steps).
 - **Streamed sets are not steps.** Tiles loaded and evicted are cells the owner's behavior makes, not the person's: as
   volume streaming's cells (sequence.md §7.3, "cells behaviors own" are not changes outside the API). Undo restores the
-  document; the tiles follow the camera, not the history. A checkpoint leaves streamed lists out; a restore asks the
-  provider again.
+  document; the tiles follow the camera, not the history. Today neither holds for a new kind of cell: the behaviors'
+  cells are a fixed list (`isBehaviorOwned`, `sources/checkpoint.ts`) and a checkpoint serializes the whole tree. So the
+  tile cells' transformer joins that list, and the checkpoint port leaves those cells out (a filter by transformer in
+  `createCheckpointPort`); a restore asks the provider again. Both are Prism viewer changes (lane `mvs-streaming-app`).
+- **The alternative, tiles as steps:** every camera move would fill the history, and Undo would unload what the person
+  is looking at.
 - **The budget** is a viewer setting (Settings), never the document's.
 
 ## 10. No MesoViewerContext (decision 7)
