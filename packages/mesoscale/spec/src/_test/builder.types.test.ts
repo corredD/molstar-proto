@@ -65,6 +65,28 @@ function types() {
     arrangement: { kind: 'fiber', rise: 1, path: { resource: b.resource({ kind: 'mesh', format: 'obj' }) } },
   });
 
+  // an inner membrane takes an inner lipid (and a document one); a document membrane takes no inner entity
+  const lipid = ss.entity({ label: 'lipid', kind: 'lipid' });
+  ss.compartment({
+    label: 'bilayer',
+    kind: 'vesicle',
+    geometry: { kind: 'sphere', radius: 5 },
+    membrane: { leaflets: { outer: lipid } },
+  });
+  ss.compartment({
+    label: 'bilayer2',
+    kind: 'vesicle',
+    geometry: { kind: 'sphere', radius: 5 },
+    membrane: { composition: { lipids: [{ entity: e, fraction: 1 }] } },
+  });
+  // @ts-expect-error an inner entity is not visible from a document membrane
+  b.compartment({
+    label: 'm',
+    kind: 'cell',
+    geometry: { kind: 'sphere', radius: 5 },
+    membrane: { leaflets: { outer: lipid } },
+  });
+
   // addresses take refs of the kind of the symbol
   q.population(p, ip);
   q.copies(p, 12);

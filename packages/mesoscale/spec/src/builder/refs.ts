@@ -111,12 +111,12 @@ export type EntityInput<Names extends string = string> = In<
     sites?: readonly (Omit<Site, 'id' | 'evidence'> & { readonly id: Names } & Ev)[];
   }
 >;
-type MembraneInput = Omit<Membrane, 'leaflets' | 'composition'> & {
-  readonly leaflets?: { readonly inner?: EntityRef; readonly outer?: EntityRef };
+type MembraneInput<S extends Scope> = Omit<Membrane, 'leaflets' | 'composition'> & {
+  readonly leaflets?: { readonly inner?: EntityOf<S>; readonly outer?: EntityOf<S> };
   readonly composition?:
     | {
         readonly lipids: readonly {
-          readonly entity: EntityRef;
+          readonly entity: EntityOf<S>;
           readonly fraction: number;
           readonly leaflet?: 'inner' | 'outer' | 'both';
         }[];
@@ -129,7 +129,7 @@ type GeometryInput =
   | { readonly kind: 'segmentation'; readonly resource: ResourceRef; readonly label?: number | string };
 export type CompartmentInput<S extends Scope = 'doc'> = In<
   Compartment,
-  Ev & { parent?: CompartmentRef<S>; geometry: GeometryInput; membrane?: MembraneInput }
+  Ev & { parent?: CompartmentRef<S>; geometry: GeometryInput; membrane?: MembraneInput<S> }
 >;
 type FiberArrangement = Extract<Arrangement, { readonly kind: 'fiber' }>;
 type ArrangementInput =
