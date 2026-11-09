@@ -14,3 +14,12 @@
   first wrap, not the synthetic lattice), up to 8 interior variants a tile, atoms at 2 Å, lipids 3 Å across a seam's
   ends (no gaps at small tiles' vertices), the mesh hidden under its membrane, and a mesh too small is refused with
   "scale it first".
+- Ludo's second try (the cow ×100: triangles of the mesh showed through, "we need some LOD"):
+  - `mesoscale.wrapMembrane { method: 'tiles' | 'cutter' }`: the cutter is cellPACKgpu's way, on the GPU, improved
+    (each of the mesh's own triangles flattened, given a real random spin and place in the periodic patch, takes the
+    lipids whose headgroup falls in it; a count pass, a sum on the CPU, a write pass). The right-click keeps one entry
+    (tiles).
+  - The tiles cover what their remesh loses (a cow's legs, thinner than the tiles' edge): those triangles are cut.
+  - Levels of detail for both (Mol*'s spheres levels by size on screen, `detail`, balanced by default): each tile or
+    lipid at its own level.
+  - Graphics: a gridless member of a merged object whose instances the GPU writes draws at its levels of detail.

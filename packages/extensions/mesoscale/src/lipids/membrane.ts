@@ -297,8 +297,9 @@ function boundingSphereOf(p: Float32Array, out: Sphere3D) {
  */
 function membraneLevels(detail: 'quality' | 'balanced' | 'performance') {
   const lodPixelSize = Spheres.LodPixelPresets[detail].lodPixelSize;
-  // the distances are the pixel boundaries' (`getLodLevelsValue` with a pixel size), these unused
-  const lodLevels = [1, 8, 64, 512].map((stride, j) => ({
+  // the distances are the pixel boundaries' (`getLodLevelsValue` with a pixel size), these unused; no 512 stride: at
+  // it a wrapped sphere 96 px across drew half its pixels (Dawn), a sphere of radius 45 Å a tile
+  const lodLevels = [1, 8, 64].map((stride, j) => ({
     minDistance: j,
     maxDistance: j + 1,
     overlap: 0,

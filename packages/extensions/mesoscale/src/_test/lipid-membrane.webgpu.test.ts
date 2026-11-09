@@ -62,6 +62,7 @@ describe.skipIf(!webgpu)('lipid membrane on WebGPU (Dawn)', () => {
       for (let y = Size / 4; y < (3 * Size) / 4; ++y) {
         for (let x = Size / 4; x < (3 * Size) / 4; ++x) if (at(x, y).join() !== background.join()) covered += 1;
       }
+      // at its levels of detail (the default, balanced): a 512 stride level drew half of this (2026-11-08)
       expect(covered / (Size * Size * 0.25)).toBeGreaterThan(0.8);
       expect(plugin.canvas3d!.graphics.takeErrors?.() ?? []).toEqual([]);
     } finally {
