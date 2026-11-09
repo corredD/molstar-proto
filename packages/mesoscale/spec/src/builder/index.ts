@@ -9,11 +9,24 @@ export {
   type MesoBuilder,
   type MesoDocumentOptions,
   type ScopeBuilder,
+  type InnerSection,
+  type Section,
+  type SectionNodes,
+  type SectionOf,
   type SuperstructureBuilder,
 } from './builder.js';
 export { IdPrefix, slug } from './ids.js';
 export { q, type ResiduesAddress, type Selection, type SiteAddress } from './query.js';
 export type {
+  Subject,
+  ConstraintInput,
+  ArrangementInput,
+  FiberArrangement,
+  GeometryInput,
+  MembraneInput,
+  In,
+  Ev,
+  EntityOf,
   ActivityInput,
   ActivityRef,
   AlignmentInput,

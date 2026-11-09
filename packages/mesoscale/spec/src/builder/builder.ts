@@ -4,9 +4,14 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import type { Issue } from '../format/issues.js';
-import { validate } from '../format/validate.js';
-import type { Id, Metadata, MesoViewSpecDoc, Superstructure } from '../format/doc.js';
+import {
+  type Id,
+  type Issue,
+  type MesoViewSpecDoc,
+  type Metadata,
+  type Superstructure,
+  validate,
+} from '@molstar/meso-spec/format';
 import { IdRegistry, tail } from './ids.js';
 import type {
   ActivityInput,
@@ -39,7 +44,7 @@ import type {
   ViewInput,
   ViewRef,
 } from './refs.js';
-import type * as D from '../format/doc.js';
+import type * as D from '@molstar/meso-spec/format';
 
 // The builder (design.md §3.15): a MesoViewSpec document written in TypeScript. A node-making call returns the node's
 // ref, which later calls take; ids nobody gave are generated (`ids.ts`); `build()` returns the document and what
@@ -47,7 +52,7 @@ import type * as D from '../format/doc.js';
 // out, sections come in the order of `MesoViewSpecDoc`, the nodes of a section in the order they were made.
 
 /** The sections a scope holds, by the kind of node in each. */
-interface SectionNodes {
+export interface SectionNodes {
   frames: [D.Frame, 'frame'];
   alignments: [D.Alignment, 'alignment'];
   resources: [D.Resource, 'resource'];
@@ -61,9 +66,9 @@ interface SectionNodes {
   evidence: [D.Evidence, 'evidence'];
   activities: [D.Activity, 'activity'];
 }
-type Section = keyof SectionNodes;
-type InnerSection = 'entities' | 'compartments' | 'populations' | 'models' | 'relations';
-type SectionOf<S extends Scope> = S extends 'inner' ? InnerSection : Section;
+export type Section = keyof SectionNodes;
+export type InnerSection = 'entities' | 'compartments' | 'populations' | 'models' | 'relations';
+export type SectionOf<S extends Scope> = S extends 'inner' ? InnerSection : Section;
 
 /** Both builders: the nodes that live in a document and in a superstructure alike. */
 export interface ScopeBuilder<S extends Scope> {

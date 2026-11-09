@@ -4,7 +4,7 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import type { Id } from '../format/doc.js';
+import type { Id } from '@molstar/meso-spec/format';
 import type { NodeKind } from './refs.js';
 
 // The id policy of the builder (design.md §3.15): an id nobody gave is made from the node's label (or, for a node

@@ -4,7 +4,7 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import { createMesoDocument, q } from '../builder/index.js';
+import { createMesoDocument, q } from '@molstar/meso-spec/builder';
 import type { MesoViewSpecDoc } from '@molstar/meso-spec/format';
 
 // The gallery (design.md §10): the cases the exosome slice leaves out, each small, in one made-up cell: nested

@@ -4,7 +4,7 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import { createMesoDocument, q } from '../builder/index.js';
+import { createMesoDocument, q } from '@molstar/meso-spec/builder';
 import type { MesoViewSpecDoc } from '@molstar/meso-spec/format';
 import { importCellpackGpuRecipe, parseCellpackGpuRecipe } from '@molstar/meso-spec/resolvers';
 import recipeJson from './fixtures/exosome.cellpack-gpu.json' with { type: 'json' };

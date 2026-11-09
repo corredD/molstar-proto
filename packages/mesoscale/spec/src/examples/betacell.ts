@@ -5,7 +5,7 @@
  */
 
 import type { Look, MesoViewSpecDoc } from '@molstar/meso-spec/format';
-import { createMesoDocument, q } from '../builder/index.js';
+import { createMesoDocument, q } from '@molstar/meso-spec/builder';
 import { importCellpackGpuRecipe, parseCellpackGpuRecipe } from '@molstar/meso-spec/resolvers';
 import isgJson from './fixtures/isg.cellpack-gpu.json' with { type: 'json' };
 
