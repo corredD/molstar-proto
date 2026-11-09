@@ -20,8 +20,9 @@ export interface TileProvider {
   manifest(signal?: AbortSignal): Promise<TileManifest>;
   /**
    * A tile's copies at `level` (1 in v0.4). Rejects with an `AbortError` once `signal` aborts; a result that arrives
-   * after the abort is ignored anyway. Any other rejection: `stream.tile`, and the tile is not asked for again until
-   * the stream key changes.
+   * after the abort is ignored anyway. Any other rejection, an `AbortError` of the provider's own included (the
+   * signal not aborted): `stream.tile`, and the tile is not asked for again until the stream
+   * key changes.
    */
   load(tile: string, level: 1, signal: AbortSignal): Promise<TilePayload>;
 }
@@ -483,7 +484,8 @@ export class TileStreamer {
           return true;
         },
         (e) => {
-          if (stale() || isAbort(e)) return false;
+          // an abort is the streamer's own only when it aborted this load; any other rejection is the tile's failure
+          if (stale() || (isAbort(e) && ctl.signal.aborted)) return false;
           this.pending.delete(tile.id);
           fail(`failed to load (${(e as Error)?.message ?? e})`);
           return true;

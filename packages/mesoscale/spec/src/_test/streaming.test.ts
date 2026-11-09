@@ -727,6 +727,31 @@ describe('TileStreamer', () => {
     expect(resident().length).toBe(2);
   });
 
+  it('an AbortError the streamer did not cause is a failed tile, reported once and not retried', async () => {
+    const loads: string[] = [];
+    const foreign: TileProvider = {
+      manifest: () => provider.manifest(),
+      load: async (id, level, signal) => {
+        loads.push(id);
+        // a network layer's own abort: the streamer's signal is untouched
+        if (id === 't.0.0.0') throw new DOMException('connection reset', 'AbortError');
+        return provider.load(id, level, signal);
+      },
+    };
+    const { s, drain, issues, resident, step } = await streamer(doc, foreign, 60);
+    await drain('v.corner');
+    for (let i = 0; i < 3; i++) {
+      step('v.corner');
+      await sleep(2);
+    }
+    expect(loads.filter((id) => id === 't.0.0.0').length).toBe(1);
+    expect(issues.filter((i) => i.code === 'stream.tile').length).toBe(1);
+    expect(issues[0].message).toContain('t.0.0.0');
+    // its in-flight slot is free, and the budget went to the next tiles
+    expect(s.stats()).toMatchObject({ failed: 1, inFlight: 0, resident: 2 });
+    expect(resident()).not.toContain('t.0.0.0');
+  });
+
   it('a payload whose counts disagree with the manifest is rejected', async () => {
     const wrong = spy(provider, (id, p) => {
       if (id !== 't.0.0.0') return p;
