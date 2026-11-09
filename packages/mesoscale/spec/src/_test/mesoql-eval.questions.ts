@@ -21,6 +21,8 @@ import { compile } from '../runtime/runtime.js';
 export interface MesoQLEvalQuestion {
   readonly ask: string;
   readonly expect: string;
+  /** A plausible wrong answer: it must pick other copies, or the question tests nothing. */
+  readonly near?: string;
 }
 
 export const MesoQLEvalQuestions: readonly MesoQLEvalQuestion[] = [
@@ -28,27 +30,39 @@ export const MesoQLEvalQuestions: readonly MesoQLEvalQuestion[] = [
   {
     ask: 'Highlight every insulin secretory granule, the packed ones and the two stated by id.',
     expect: '(entity e.granule)',
+    near: '(population p.granules)',
   },
   {
-    ask: 'Show what the cell compartment holds directly, not what sits in compartments inside it.',
-    expect: '(in c.cell :nested false)',
+    ask: 'Show the membrane proteins of the granule compartment.',
+    expect: '(in c.isg :location membrane)',
+    near: '(in c.isg)',
   },
-  { ask: 'Show the first five packed granules (ordinals 0 to 4).', expect: '(copies p.granules 0 5)' },
-  { ask: 'Show me the docked granule.', expect: '(instance i.granule-docked)' },
+  {
+    ask: 'Show the first five packed granules (ordinals 0 to 4).',
+    expect: '(copies p.granules 0 5)',
+    near: '(copies p.granules 0 4)',
+  },
+  { ask: 'Show me the docked granule.', expect: '(instance i.granule-docked)', near: '(population p.granules)' },
   {
     ask: 'Of the copies in the granule compartment, keep only those of the Vamp2 entity.',
     expect: '(and (entity e.Vamp2) (in c.isg))',
   },
   { ask: 'Show the granule cargo, Chga and Scg2, together.', expect: '(or (population p.Chga) (population p.Scg2))' },
   {
-    ask: 'Show everything in the cell compartment except the ribosomes.',
-    expect: '(not (population p.ribosomes) :in (in c.cell))',
+    ask: 'Of the copies in the granule compartment, leave out the Vamp2 and Rab3a proteins.',
+    expect: '(not (population p.Vamp2 p.Rab3a) :in (in c.isg))',
+    near: '(not (population p.Vamp2 p.Rab3a))',
   },
   {
     ask: 'Which ribosomes are within 250 nm of granule 12?',
     expect: '(within (population p.ribosomes) :of (copies p.granules 12) :distance 250)',
+    near: '(population p.ribosomes)',
   },
-  { ask: 'Show me the Vamp2 on granule 12.', expect: '(part (copies p.granules 12) p.Vamp2)' },
+  {
+    ask: 'Show me the Vamp2 on granule 12.',
+    expect: '(part (copies p.granules 12) p.Vamp2)',
+    near: '(population p.Vamp2)',
+  },
 ];
 
 /** The compiled β-cell the questions are asked of, and the ids an address is checked against. */

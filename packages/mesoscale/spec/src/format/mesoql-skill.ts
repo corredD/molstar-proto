@@ -38,14 +38,17 @@ export function mesoQLSignature(s: QSymbol): string {
 /** Compositions the symbols' own examples do not show; each parses (a test checks it against the β-cell's ids). */
 export const MesoQLComposed: readonly { readonly text: string; readonly says: string }[] = [
   { text: '(and (entity e.Vamp2) (in c.isg))', says: 'the Vamp2 copies in the granule compartment' },
-  { text: '(not (entity e.ribosome) :in (in c.cell))', says: 'everything in the cell but ribosomes' },
+  {
+    text: '(not (population p.Vamp2 p.Rab3a) :in (in c.isg))',
+    says: 'the granule compartment without its membrane proteins',
+  },
   {
     text: '(within (population p.ribosomes) :of (copies p.granules 12) :distance 250)',
     says: 'ribosomes near granule 12',
   },
   { text: '(or (population p.Vamp2) (population p.Rab3a))', says: 'two proteins together' },
   { text: '(part (copies p.granules 0 5) p.Chga)', says: 'Chga in the first five granules' },
-  { text: '(in c.cell :nested false)', says: 'the cell itself, not what is inside its compartments' },
+  { text: '(in c.isg :location membrane)', says: 'the membrane proteins of the granule compartment' },
 ];
 
 /** What each `mesoql.*` code means, in the order the skill lists them. */

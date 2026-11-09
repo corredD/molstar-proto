@@ -65,11 +65,11 @@ Ids in the examples are illustrative; use the ids you were given.
 (residues e.hu :chain A :range 53-63)  residues of an entity's structure, by chain and label range (a schematized address: needs the structure loaded)
 (part (copies p.granules 12) p.Vamp2)  copies of an inner population of a superstructure, in the instances the first selection picks
 (and (entity e.Vamp2) (in c.isg))  the Vamp2 copies in the granule compartment
-(not (entity e.ribosome) :in (in c.cell))  everything in the cell but ribosomes
+(not (population p.Vamp2 p.Rab3a) :in (in c.isg))  the granule compartment without its membrane proteins
 (within (population p.ribosomes) :of (copies p.granules 12) :distance 250)  ribosomes near granule 12
 (or (population p.Vamp2) (population p.Rab3a))  two proteins together
 (part (copies p.granules 0 5) p.Chga)  Chga in the first five granules
-(in c.cell :nested false)  the cell itself, not what is inside its compartments
+(in c.isg :location membrane)  the membrane proteins of the granule compartment
 
 RESULTS AND ERRORS
 A query reports its canonical address, the number of copies, the count per population and the first copy ids: check

@@ -41,6 +41,12 @@ describe(':location on a superstructure compartment', () => {
 });
 
 describe('the MesoQL eval questions', () => {
+  it('reject their near miss: the answer is not what the obvious wrong one picks', () => {
+    const withNear = MesoQLEvalQuestions.filter((q) => q.near);
+    expect(withNear.length).toBeGreaterThanOrEqual(7);
+    for (const q of withNear) expect([q.ask, answerMatches(q.near!, q.expect, scene)]).toEqual([q.ask, false]);
+  });
+
   it('are ten, with distinct addresses', () => {
     expect(MesoQLEvalQuestions).toHaveLength(10);
     expect(new Set(MesoQLEvalQuestions.map((q) => q.expect)).size).toBe(10);
@@ -52,7 +58,7 @@ describe('the MesoQL eval questions', () => {
       expect([s, heads.has(s)]).toEqual([s, true]);
     expect(MesoQLEvalQuestions.some((q) => /\(copies \S+ \d+ \d+\)/.test(q.expect))).toBe(true);
     expect(MesoQLEvalQuestions.some((q) => /\(not .* :in /.test(q.expect))).toBe(true);
-    expect(MesoQLEvalQuestions.some((q) => /\(in .* :(nested|location) /.test(q.expect))).toBe(true);
+    expect(MesoQLEvalQuestions.some((q) => /\(in .* :location /.test(q.expect))).toBe(true);
   });
 
   for (const q of MesoQLEvalQuestions)
