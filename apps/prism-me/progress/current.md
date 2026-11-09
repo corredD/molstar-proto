@@ -10,7 +10,12 @@ is not built is [../TODO.md](../TODO.md).
   [progress](2026-11-08-mesoviewspec.md) on its branch). A declarative format for mesoscale scenes, its IR and runtime,
   Storybook stories, a design doc for David and renderer recommendations for Alex. v0.1-v0.3 built (the semantic camera,
   instances). Ran as one session, not as lanes, until 2026-11-08: the review gate runs now, then streaming as its own
-  lane (`mesoviewspec-streaming`, from `me/mesoviewspec`). Not pushed: Ludo signs off first.
+  lane. Review gate run 2026-11-08: 14 must-fix and 23 should-fix confirmed, fixed in four `me/mvs-gate-*` branches
+  merged back (progress file, Review). Not pushed: Ludo signs off first.
+  - `mesoviewspec-streaming` (`me/mesoviewspec-streaming` from `me/mesoviewspec`, worktree
+    `~/prism-me-lanes/mesoviewspec-streaming`, Storybook port 6008, [brief](2026-11-08-mesoviewspec-streaming.md) on its
+    branch): David's "streaming concepts": manifest of tiles and levels, provider, budget, camera-driven coarse-first;
+    R5 measured. Sonnet lane, design step on Opus.
 
 - **Mesoscale building** (Ludo, 2026-11-07 night → 2026-11-08; engine `~/prism-me-lanes/mesobuild`, local git, its
   report `NIGHT-2026-11-08.md`). Ludo looked at the exosome-in-plasma model: ok. Decided 2026-11-08: a recipe entry's
