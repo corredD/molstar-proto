@@ -501,17 +501,18 @@ await api.run('mesoscale.wrapMembrane', { mesh, method: 'cutter', patch: 'charmm
     expect(area.pickedOf(Shape.Loci(shape))).toMatchObject(row);
     expect(area.pickedOf(ShapeGroup.Loci(shape, [{ ids: OrderedSet.ofSingleton(0), instance: 0 }]))).toMatchObject(row);
     const ids = nodeMenuItems(v.api, area, area.pickedOf(Shape.Loci(shape)), { open: () => {} }).map((i) => i.id);
-    expect(ids).toEqual(['focus', 'move', 'color', 'label', 'clip', 'wrap-lipids', 'wrap-lipids-cutter', 'remove']);
-    // the cutter from the right-click (Ludo's third try, 2026-11-08: the command given in prose was not JavaScript)
+    expect(ids).toEqual(['focus', 'move', 'color', 'label', 'clip', 'wrap-lipids', 'wrap-lipids-tiles', 'remove']);
+    // the cutter from the right-click (Ludo's third try, 2026-11-08: the command given in prose was not JavaScript),
+    // the default since round 4 (made per view, lipid-procedural); the tiles the second entry
     const items = nodeMenuItems(v.api, area, area.pickedOf(Shape.Loci(shape)), { open: () => {} });
     vi.stubGlobal('document', { baseURI: 'http://localhost:1353/' });
     const run = vi.spyOn(v.api, 'run').mockResolvedValue({ ok: true } as never);
-    for (const id of ['wrap-lipids', 'wrap-lipids-cutter']) items.find((i) => i.id === id)!.run!();
+    for (const id of ['wrap-lipids', 'wrap-lipids-tiles']) items.find((i) => i.id === id)!.run!();
     expect(run.mock.calls.map((c) => [c[0], (c[1] as { method?: string }).method])).toEqual([
-      ['mesoscale.wrapMembrane', 'tiles'],
       ['mesoscale.wrapMembrane', 'cutter'],
+      ['mesoscale.wrapMembrane', 'tiles'],
     ]);
-    expect(run.mock.calls[1][1]).toMatchObject({ mesh: mesh.ref, patch: 'charmm-gui' });
+    expect(run.mock.calls[0][1]).toMatchObject({ mesh: mesh.ref, patch: 'charmm-gui' });
     run.mockRestore();
     vi.unstubAllGlobals();
     // Wrap with lipids: a lipid membrane of the mesh, one step (not drawn headless: WebGPU only)

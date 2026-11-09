@@ -555,14 +555,15 @@ function wrapItems(
   if (kind === 'mesh') {
     // a membrane is not wrapped again
     if (isMembrane(area, picked)) return [];
-    // both methods, one entry each (ui.md §5): tiles on a remesh, or cellPACKgpu's cutter on the mesh's own triangles
+    // both methods, one entry each (ui.md §5): cellPACKgpu's cutter on the mesh's own triangles, made per view (lane
+    // lipid-procedural: the default), or tiles on a remesh
     return [
-      { id: 'wrap-lipids', label: 'Wrap with lipids', icon: 'layers', run: wrap({ mesh: node.ref, method: 'tiles' }) },
+      { id: 'wrap-lipids', label: 'Wrap with lipids', icon: 'layers', run: wrap({ mesh: node.ref, method: 'cutter' }) },
       {
-        id: 'wrap-lipids-cutter',
-        label: 'Wrap with lipids (cutter)',
+        id: 'wrap-lipids-tiles',
+        label: 'Wrap with lipids (tiles)',
         icon: 'layers',
-        run: wrap({ mesh: node.ref, method: 'cutter' }),
+        run: wrap({ mesh: node.ref, method: 'tiles' }),
       },
     ];
   }
@@ -573,7 +574,7 @@ function wrapItems(
       id: 'wrap-lipids',
       label: 'Wrap with lipids',
       icon: 'layers',
-      run: wrap({ compartment: path, particles: node.ref }),
+      run: wrap({ compartment: path, particles: node.ref, method: 'cutter' }),
     },
   ];
 }
