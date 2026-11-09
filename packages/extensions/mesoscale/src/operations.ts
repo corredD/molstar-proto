@@ -39,6 +39,7 @@ import {
   type MembraneDetail,
   type MembraneLevel,
 } from './lipids/membrane.js';
+import type { MembraneFar } from './lipids/procedural.js';
 import {
   findGroup,
   generateColors,
@@ -323,16 +324,25 @@ export class MesoscaleApi extends ApiArea {
   });
 
   /** A lipid membrane's levels (`detail`, and with `custom` its `levels`), following the state while watched: a read for views */
-  membraneDetailState(
-    membrane: string,
-  ): ReadonlyState<{ detail: MembraneDetail; levels: readonly MembraneLevel[] } | undefined> {
+  membraneDetailState(membrane: string): ReadonlyState<
+    | {
+        detail: MembraneDetail;
+        levels: readonly MembraneLevel[];
+        method: LipidMembraneProps['method'];
+        far: MembraneFar;
+        atomsPx: number;
+        spheresPx: number;
+        budget: number;
+      }
+    | undefined
+  > {
     const plugin = this.ctx.plugin;
     return watchedState(
       () => {
         const cell = plugin.state.data.cells.get(membrane);
         if (cell?.transform.transformer !== LipidMembrane) return undefined;
-        const { detail, levels } = cell.transform.params as LipidMembraneProps;
-        return { detail, levels };
+        const { detail, levels, method, far, atomsPx, spheresPx, budget } = cell.transform.params as LipidMembraneProps;
+        return { detail, levels, method, far, atomsPx, spheresPx, budget };
       },
       () => plugin.state.data.events.changed,
       { compare: (a, b) => JSON.stringify(a) === JSON.stringify(b) },
@@ -355,13 +365,33 @@ export class MesoscaleApi extends ApiArea {
           description: 'Custom levels (detail: custom), at most 4: { distance (Å from the camera), stride, bias }',
         }),
       ),
+      // made per view (the cutter; lipid-procedural): the far look and its switches
+      far: OptionalParam(PD.Select<MembraneFar>('both', LipidMembraneReprParams.far.options)),
+      atomsPx: OptionalParam(
+        PD.Numeric(2, { min: 0.25, max: 16 }, { description: 'Texture: lipids from this size, px' }),
+      ),
+      spheresPx: OptionalParam(
+        PD.Numeric(0.5, { min: 0.05, max: 8 }, { description: 'Spheres: lipids down to this size, px' }),
+      ),
+      budget: OptionalParam(PD.Numeric(2_000_000, { min: 10_000, max: 8_000_000 }, { description: 'Lipids at most' })),
     },
     async run(values, ctx) {
-      const { membrane, detail, levels } = values as {
+      const { membrane, detail, levels, ...view } = values as {
         membrane: string;
         detail?: MembraneDetail;
         levels?: readonly MembraneLevel[];
+        far?: MembraneFar;
+        atomsPx?: number;
+        spheresPx?: number;
+        budget?: number;
       };
+      const ranges = { atomsPx: [0.25, 16], spheresPx: [0.05, 8], budget: [10_000, 8_000_000] } as const;
+      for (const [k, [min, max]] of Object.entries(ranges)) {
+        const v = view[k as keyof typeof ranges];
+        if (v !== undefined && !(v >= min && v <= max)) {
+          return ApiResult.fail('invalid', `${k}: from ${min} to ${max}.`);
+        }
+      }
       const cell = ctx.plugin.state.data.cells.get(membrane);
       if (cell?.transform.transformer !== LipidMembrane) {
         return ApiResult.fail('not-found', `No lipid membrane ${membrane} in the scene.`);
@@ -379,7 +409,8 @@ export class MesoscaleApi extends ApiArea {
         );
       }
       const old = cell.transform.params as LipidMembraneProps;
-      const next = { ...old, ...(detail ? { detail } : {}), ...(levels ? { levels } : {}) };
+      const defined = Object.fromEntries(Object.entries(view).filter(([, v]) => v !== undefined));
+      const next = { ...old, ...(detail ? { detail } : {}), ...(levels ? { levels } : {}), ...defined };
       if (JSON.stringify(next) === JSON.stringify(old)) return ApiResult.already('The membrane already draws so.');
       // a redraw that fails (past the device's buffers with more levels, a cancel) leaves the membrane as it was, no
       // step: reverted, its error read as it happened (as `wrapMembrane`; review M1)

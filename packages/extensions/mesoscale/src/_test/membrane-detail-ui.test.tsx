@@ -75,4 +75,49 @@ describe('a membrane’s levels in its properties', () => {
     expect(v.plugin.state.data.cells.get(membrane)!.transform.params).toMatchObject({ detail: 'balanced' });
     forgetLipidPatch('ui-patch');
   });
+  it('switches a cut membrane’s far look and its switches in one step each, no switch for tiles', async () => {
+    registerLipidPatch('ui-patch-far', syntheticPatchPdb().text);
+    const base = DefaultPrismViewerSpec();
+    const v = await createPrismViewerHeadless({
+      spec: { ...base, extensions: [...(base.extensions ?? []), MesoscaleExtension] },
+    });
+    viewers.push(v);
+    const r = await v.api.mesoscale!.wrapMembrane({ radius: 300, edge: 80, patch: 'ui-patch-far', method: 'cutter' });
+    if (!r.ok) throw new Error(r.message);
+    const membrane = r.changed!.nodes![0];
+    const host = document.createElement('div');
+    document.body.append(host);
+    const area = v.api.as({ kind: 'person' }).mesoscale!;
+    domView(() => <MembraneDetailControls area={area} membrane={membrane} />).mount(
+      host,
+      { shell: new ShellModel() } as never,
+      undefined as never,
+    );
+    const button = (label: string) =>
+      [...host.querySelectorAll('button')].find((b) => b.textContent?.trim() === label) as HTMLButtonElement;
+    await until(() => button('Both')?.getAttribute('aria-pressed') === 'true');
+    expect(host.querySelector('[aria-label="Lipids down to"]')).not.toBeNull();
+    button('Texture').click();
+    await until(() => !!host.querySelector('[aria-label="Lipids from"]'));
+    const params = () => v.plugin.state.data.cells.get(membrane)!.transform.params;
+    expect(params()).toMatchObject({ far: 'texture' });
+    // the operation checks its switches; a valid one is one step
+    expect((await area.membraneDetail({ membrane, atomsPx: 100 } as never)).ok).toBe(false);
+    expect((await area.membraneDetail({ membrane, atomsPx: 4 } as never)).ok).toBe(true);
+    expect(params()).toMatchObject({ far: 'texture', atomsPx: 4 });
+    expect((await v.api.history.undo({})).ok).toBe(true);
+    expect(params()).toMatchObject({ far: 'texture', atomsPx: 2 });
+    // tiles: no far look (they are built whole)
+    const t = await v.api.mesoscale!.wrapMembrane({ radius: 300, edge: 80, patch: 'ui-patch-far' });
+    const tiles = document.createElement('div');
+    document.body.append(tiles);
+    domView(() => <MembraneDetailControls area={area} membrane={t.changed!.nodes![0]} />).mount(
+      tiles,
+      { shell: new ShellModel() } as never,
+      undefined as never,
+    );
+    await until(() => !!tiles.querySelector('button'));
+    expect([...tiles.querySelectorAll('button')].some((b) => b.textContent?.trim() === 'Texture')).toBe(false);
+    forgetLipidPatch('ui-patch-far');
+  });
 });

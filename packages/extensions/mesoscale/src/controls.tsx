@@ -11,6 +11,7 @@ import { mapState } from '@molstar/prism-ui/reactive/map-state';
 import type { ReadonlyState } from '@molstar/prism-ui/reactive/readonly-state';
 import { classes } from './_generated/controls.module.css.js';
 import { DefaultCustomLevels, type MembraneDetail, type MembraneLevel } from './lipids/membrane.js';
+import type { MembraneFar } from './lipids/procedural.js';
 import type { GraphicsInfo, GraphicsMode, MesoscaleApi } from './operations.js';
 
 // The mesoscale controls, shown by the extension's Entities tab and by a host's panels (prism-me's properties): the
@@ -199,6 +200,13 @@ export function ImportColors(props: { area: MesoscaleApi; particles?: string }) 
   );
 }
 
+/** A membrane's far look (lipid-procedural; Ludo compares them, 2026-11-08) */
+const FarChoices: { id: MembraneFar; label: string }[] = [
+  { id: 'both', label: 'Both' },
+  { id: 'spheres', label: 'Spheres' },
+  { id: 'texture', label: 'Texture' },
+];
+
 const DetailChoices: { id: MembraneDetail; label: string }[] = [
   { id: 'off', label: 'Atoms' },
   { id: 'quality', label: 'Quality' },
@@ -215,8 +223,31 @@ const DetailChoices: { id: MembraneDetail; label: string }[] = [
 export function MembraneDetailControls(props: { area: MesoscaleApi; membrane: string }) {
   const state = props.area.membraneDetailState(props.membrane);
   const levels = mapState(state, (s) => s?.levels ?? DefaultCustomLevels);
-  const run = (patch: { detail?: MembraneDetail; levels?: readonly MembraneLevel[] }) =>
-    void props.area.membraneDetail({ membrane: props.membrane, ...patch } as never);
+  const run = (patch: {
+    detail?: MembraneDetail;
+    levels?: readonly MembraneLevel[];
+    far?: MembraneFar;
+    atomsPx?: number;
+    spheresPx?: number;
+    budget?: number;
+  }) => void props.area.membraneDetail({ membrane: props.membrane, ...patch } as never);
+  /** a switch of the far look (lipid-procedural): a slider committing once */
+  const viewRow = (label: string, key: 'atomsPx' | 'spheresPx' | 'budget', min: number, max: number, unit?: string) => (
+    <div class={classes.line}>
+      <div class={classes.label}>{label}</div>
+      <Slider
+        aria-label={label}
+        value={mapState(state, (s) => s?.[key] ?? 0)}
+        min={min}
+        max={max}
+        scale="log"
+        {...(unit ? { unit } : {})}
+        onCommit={(v) => run({ [key]: v })}
+      />
+    </div>
+  );
+  const cutter = mapState(state, (s) => s?.method === 'cutter');
+  const far = mapState(state, (s) => s?.far ?? 'both');
   const setLevel = (j: number, key: keyof MembraneLevel, v: number) =>
     run({ levels: levels.value.map((l, k) => (k === j ? { ...l, [key]: key === 'stride' ? Math.round(v) : v } : l)) });
   const row = (j: number, label: string, key: keyof MembraneLevel, min: number, max: number, unit?: string) => (
@@ -236,6 +267,20 @@ export function MembraneDetailControls(props: { area: MesoscaleApi; membrane: st
   );
   return (
     <div class={classes.tight}>
+      <Show when={cutter}>
+        {() => (
+          <div class={classes.tight}>
+            <Choices label="Far" choices={FarChoices} active={far} onPick={(id) => run({ far: id as MembraneFar })} />
+            <Show when={mapState(far, (f) => f === 'texture')}>
+              {() => viewRow('Lipids from', 'atomsPx', 0.25, 16, 'px')}
+            </Show>
+            <Show when={mapState(far, (f) => f !== 'texture')}>
+              {() => viewRow('Lipids down to', 'spheresPx', 0.05, 8, 'px')}
+            </Show>
+            {viewRow('Lipids at most', 'budget', 10_000, 8_000_000)}
+          </div>
+        )}
+      </Show>
       <Choices
         label="Levels"
         choices={DetailChoices}
