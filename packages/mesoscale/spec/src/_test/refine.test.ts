@@ -184,4 +184,20 @@ describe('refine chains', () => {
     expect(key(again.r)).not.toBe(key(r));
     expect(again.seen.get('m.b')!.filter((x) => x === 600).length).toBe(20);
   });
+
+  it('a refiner that fails leaves the model it refines drawn and counted, without a refinedBy', async () => {
+    const seen = new Map<string, number[]>();
+    const doc = base([
+      { id: 'm.pack', kind: 'procedural', method: 'gate.pack', populations: ['p.a'] },
+      { id: 'm.r1', kind: 'procedural', method: 'gate.r1', refines: 'm.pack', populations: [] },
+    ]);
+    const r = await compile(doc, {
+      resolvers: [...DefaultResolvers, stage('gate.pack', seen), stage('gate.r1', seen, { fail: true })],
+    });
+    expect(r.issues.some((i) => i.code === 'resolver.failed' && i.ids?.[0] === 'm.r1')).toBe(true);
+    const pack = [...walk(r.ir!.root)].map(([n]) => n).find((n) => n.ref === 'm.pack/resolve')!;
+    expect(pack.params).not.toHaveProperty('refinedBy');
+    expect(placementSets(r.ir!).find((s) => s.model === 'm.pack')?.count).toBe(20);
+    expect(r.counts['p.a']).toEqual({ requested: 20, achieved: 20 });
+  });
 });

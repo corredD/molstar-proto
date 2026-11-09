@@ -355,6 +355,7 @@ export async function compile(doc: MesoViewSpecDoc, o: RuntimeOptions, depth = 0
   let hits = 0;
   const counts: Record<Id, { requested?: number; achieved: number }> = {};
   const reports: Record<Id, Readonly<Record<string, unknown>> | undefined> = {};
+  const placed = new Map<Id, readonly NormalizedPopulation[]>();
   /** A model and the models it refines, up to the head of its chain. */
   const chainOf = (m: Model): Model[] => {
     const out = [m];
@@ -473,8 +474,16 @@ export async function compile(doc: MesoViewSpecDoc, o: RuntimeOptions, depth = 0
     outputs.set(m.id, { key, out, cached, resolver, input });
     reports[m.id] = out.report;
     for (const i of out.issues ?? []) issues.push(i);
-    if (refinedBy.has(m.id)) continue;
-    for (const p of job.populations) {
+    placed.set(m.id, job.populations);
+  }
+  // counts and constraints on the result that stands: a refined model's are checked at its refiner, unless the
+  // refiner failed and the refined result is what is drawn
+  for (const m of order) {
+    const pops = placed.get(m.id);
+    const out = outputs.get(m.id)?.out;
+    const by = refinedBy.get(m.id);
+    if (!pops || !out || (by && outputs.has(by))) continue;
+    for (const p of pops) {
       const achieved = out.achieved[p.id] ?? 0;
       counts[p.id] = { requested: p.requested, achieved };
       const need = Math.ceil((p.requested ?? 0) * p.minFraction);
@@ -891,8 +900,10 @@ function assemble(
   for (const m of models) {
     const o = outputs.get(m.id);
     if (!o) continue;
-    // a refined model keeps its resolve node (its key, its input) but not its sets: the refiner's replace them
-    const superseded = refiner.get(m.id);
+    // a refined model keeps its resolve node (its key, its input) but not its sets: the refiner's replace them (when
+    // the refiner resolved; a failed refiner leaves the refined result drawn)
+    const by = refiner.get(m.id);
+    const superseded = by && outputs.has(by) ? by : undefined;
     resolves.push({
       ref: `${m.id}/resolve`,
       kind: 'resolve',
