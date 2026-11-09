@@ -2,10 +2,9 @@
  * Copyright (c) 2020-2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
- * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import { Scene } from '@molstar/graphics/gl/scene';
+import type { Scene } from '@molstar/graphics/gl/scene';
 import type { GraphicsContext } from '@molstar/graphics/gl/context';
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
 import { DebugRegistry } from './debug-registry.js';
@@ -35,12 +34,6 @@ export class Helper {
   /** the scale line, in the screen layer */
   readonly scaleLine: ScaleLine;
   readonly pointer: PointerHelper;
-  /**
-   * The representations drawn on top of the scene (`Canvas3D.setOnTop`): after it, with a depth of their own, so they
-   * show through what is in front of them; picked after it the same way, so a pick on them wins. Their marking is their
-   * material color (as the other helpers'), not the marking pass's
-   */
-  readonly onTop: Scene;
 
   constructor(graphics: GraphicsContext, scene: Scene, props: Partial<HelperProps> = {}) {
     const p = { ...DefaultHelperProps, ...props };
@@ -52,6 +45,5 @@ export class Helper {
     this.scaleLine = new ScaleLine(this.screen);
     this.scaleLine.setProps(p.camera.helper.scale);
     this.pointer = new PointerHelper(graphics, p.pointer);
-    this.onTop = Scene.create(graphics, 'blended');
   }
 }
