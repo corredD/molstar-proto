@@ -25,6 +25,9 @@ import { canCullOnGpu } from '@molstar/graphics/gl/renderable/merged';
 import { type MergedEntry, mergeRenderObjectsByType } from '@molstar/graphics/repr/merged';
 import { Representation } from '@molstar/graphics/repr/representation';
 import { LocationIterator } from '@molstar/graphics/geo/util/location-iterator';
+import { orderLodLevels } from '@molstar/graphics/geo/geometry/lod-levels';
+import { PositionGroupStride } from '@molstar/graphics/geo/geometry/center-group';
+import { createDataArray } from '@molstar/graphics/gl/renderable/util';
 import type { ColorTheme } from '@molstar/graphics/theme/color';
 import { UniformSizeTheme } from '@molstar/graphics/theme/size/uniform';
 import { EmptyLoci } from '@molstar/model/model/loci';
@@ -35,7 +38,7 @@ import { createLipidTileAssigner, type LipidTileAssigner } from './assign-kernel
 import { type LipidPatch, parsePatchPdb } from './patch.js';
 import { type CutterRegions, cutterRegions, type CutterTable, cutterTable } from './cutter.js';
 import { createLipidCutter, type LipidCutter } from './cutter-kernel.js';
-import { type FarSurface, farSurface, headOffset } from './far-surface.js';
+import { type FarSurface, farSurface, headOffset, type SwitchSpheres } from './far-surface.js';
 import { createLipidSelection, enterPx, type LipidSelection, type MembraneFar, poolCapacities } from './procedural.js';
 import type { GpuInstanceView, GpuInstanceWriter } from '@molstar/graphics/gl/renderable/merged-culler';
 import { farTriangles, icosphere, isotropicRemeshSteps, offsetSurface, type TriMesh } from './remesh.js';
@@ -557,6 +560,34 @@ function lipidSize(table: CutterTable) {
 }
 
 /**
+ * The spheres a cut leaflet's lipids are drawn as where its far surface takes over (round 4c item 7), a lipid `enter` px
+ * on screen there (`enterPx`): the level Mol*'s levels by size on screen pick at that size (custom levels, by distance:
+ * their last; none: the atoms), each member's atoms in the level's order (`orderLodLevels`, as its spheres are ordered),
+ * the sphere's radius grown as the level grows it. Once a look, on the leaflet's few members
+ */
+export function switchSpheres(table: CutterTable, props: LipidMembraneReprProps, enter: number): SwitchSpheres {
+  if (props.detail === 'off') return { atoms: table.members.map((m) => m.positions), radius: props.sizeFactor };
+  const { lodLevels, lodPixelSize } = membraneLevels(props.detail, props.levels);
+  const perPixel = lipidSize(table) / Math.max(enter, 1e-3);
+  let radius = props.sizeFactor;
+  const atoms = table.members.map((member) => {
+    const count = member.positions.length / 3;
+    const array = new Float32Array(count * PositionGroupStride);
+    for (let i = 0; i < count; ++i) array.set(member.positions.subarray(i * 3, i * 3 + 3), i * PositionGroupStride);
+    const cell = ValueCell.create(createDataArray(count, PositionGroupStride, Float32Array, array));
+    const levels = orderLodLevels(cell, count, lodLevels, 1, lodPixelSize);
+    let j = levels.length - 1;
+    if (lodPixelSize > 0) while (j > 0 && perPixel < levels[j][0]) j -= 1;
+    const n = Math.max(1, Math.min(count, Math.round(levels[j][3] / 6)));
+    radius = props.sizeFactor * levels[j][4];
+    const out = new Float32Array(n * 3);
+    for (let i = 0; i < n; ++i) out.set(array.subarray(i * PositionGroupStride, i * PositionGroupStride + 3), i * 3);
+    return out;
+  });
+  return { atoms, radius };
+}
+
+/**
  * A leaflet's far surface (lipid-procedural round 4b, `far-surface.ts`): at its heads, single-sided, each vertex a group
  * coloured as its species (the patch's head where the cutter maps it), Mol*'s material bump at a lipid's spacing
  */
@@ -984,6 +1015,8 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
         const { table } = leaflet;
         const size = lipidSize(table);
         const shown = (sp: number) => !hidden.has(table.species[sp]);
+        // a cut leaflet's surface coloured as its spheres show the patch where it takes over (round 4c item 7)
+        const cut = leaflet.offset === 0 && data.method === 'cutter';
         const f = farSurface(
           leaflet.mesh,
           leaflet.regions,
@@ -992,6 +1025,8 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
           headOffset(table, leaflet.name) - leaflet.offset,
           shown,
           2 * size,
+          undefined,
+          cut ? switchSpheres(table, props, enterPx(props.far, props.atomsPx, props.spheresPx)) : undefined,
         );
         const speciesColor = (sp: number) =>
           props.colorBy === 'uniform' || sp < 0 ? props.color : colorOf(table.species[sp]);

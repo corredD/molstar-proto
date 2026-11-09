@@ -109,6 +109,64 @@ function headGrid(table: CutterTable, shown: (species: number) => boolean, cell:
   return { grid, nx, ny, cell };
 }
 
+/**
+ * What the spheres draw where the far surface takes over (round 4c item 7): per member the atoms of the level drawn at
+ * the switch (as `members[m].positions`: about its head, z from the bilayer's center), each sphere's radius, Å
+ */
+export interface SwitchSpheres {
+  readonly atoms: readonly Float32Array[];
+  readonly radius: number;
+}
+
+/**
+ * The patch seen from its leaflet's side as `top` draws it (round 4c item 7: the spheres near the switch show the
+ * species whose heads stand highest, a CHARMM-GUI patch's DSM 73 % at the coarsest level for its 13 % of the heads):
+ * each cell of `g` the species of the highest sphere over it, periodic; a cell no sphere covers keeps its nearest head.
+ * O(lipids × level atoms × a sphere's cells)
+ */
+function topGrid(
+  table: CutterTable,
+  shown: (species: number) => boolean,
+  side: 'outer' | 'inner',
+  g: { grid: Int32Array; nx: number; ny: number; cell: number },
+  top: SwitchSpheres,
+) {
+  const { grid, nx, ny, cell } = g;
+  const height = new Float32Array(nx * ny).fill(-Infinity);
+  const f = side === 'outer' ? 1 : -1;
+  const r = top.radius;
+  for (let m = 0; m < table.members.length; ++m) {
+    const species = table.members[m].species;
+    const atoms = top.atoms[m];
+    if (!shown(species) || !atoms) continue;
+    for (let l = table.memberStart[m]; l < table.memberStart[m + 1]; ++l) {
+      const hx = table.lipids[l * 4];
+      const hy = table.lipids[l * 4 + 1];
+      const c = table.lipids[l * 4 + 2];
+      const s = table.lipids[l * 4 + 3];
+      for (let a = 0; a < atoms.length; a += 3) {
+        const x = hx + c * atoms[a] - s * atoms[a + 1];
+        const y = hy + s * atoms[a] + c * atoms[a + 1];
+        const z = f * atoms[a + 2];
+        for (let j = Math.floor((y - r) / cell); j <= Math.floor((y + r) / cell); ++j) {
+          const dy = (j + 0.5) * cell - y;
+          for (let i = Math.floor((x - r) / cell); i <= Math.floor((x + r) / cell); ++i) {
+            const dx = (i + 0.5) * cell - x;
+            const d = r * r - dx * dx - dy * dy;
+            if (d < 0) continue;
+            const k = (((j % ny) + ny) % ny) * nx + (((i % nx) + nx) % nx);
+            const h = z + Math.sqrt(d);
+            if (h > height[k]) {
+              height[k] = h;
+              grid[k] = species;
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
 export interface FarSurface {
   readonly positions: Float32Array;
   readonly normals: Float32Array;
@@ -122,7 +180,7 @@ export interface FarSurface {
  * one's winding flipped): each triangle split in n × n, one n for the whole mesh and each edge's points shared by its two
  * triangles (welded: no crack at a crease, review S6), n from the mean edge over `spacing` and lowered until at most
  * `maxVertices` vertices (review S1; the mesh's own vertices at n = 1). A vertex on a shared edge or corner takes the
- * colour its first triangle maps it to
+ * colour its first triangle maps it to; with `top`, the species the spheres show there from above (`topGrid`)
  */
 export function farSurface(
   mesh: TriMesh,
@@ -133,6 +191,7 @@ export function farSurface(
   shown: (species: number) => boolean,
   spacing: number,
   maxVertices = 1_000_000,
+  top?: SwitchSpheres,
 ): FarSurface {
   const p = mesh.positions;
   const ix = mesh.indices;
@@ -186,6 +245,7 @@ export function farSurface(
   const made = new Uint8Array(count);
   const indices = new Uint32Array(T * n * n * 3);
   const g = headGrid(table, shown, Math.max(1, spacing / 4));
+  if (top) topGrid(table, shown, side, g, top);
   const [bx, by] = table.box;
   const rg = regions.table;
   const cells = regions.cells;
