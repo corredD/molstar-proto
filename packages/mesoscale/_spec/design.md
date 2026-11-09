@@ -731,7 +731,8 @@ line (`file#path: severity code: message`). Exit 0: no errors; 1: errors; 2: usa
 | `meso-query <doc> <address\|-> [--limit]` | the address checked, then its copies: count, per population, first copy ids             |
 
 `pnpm -C packages/mesoscale/spec meso-<cmd>` builds first and runs from `packages/mesoscale`, so example paths are
-relative to it and `--base spec/src` (where the examples' recipe uris resolve) is passed for compile and query.
+relative to it. A relative resource `uri` resolves against the document's folder
+([format.md](format.md#resources-in-their-native-formats)); `--base dir` (repeatable) adds folders tried after it.
 
 ### 12.2 Entries
 
