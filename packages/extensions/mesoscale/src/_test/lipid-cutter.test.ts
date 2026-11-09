@@ -29,6 +29,9 @@ describe('the lipid cutter', () => {
     expect(Math.abs(lipids - area / perLipid)).toBeLessThan(0.05 * (area / perLipid));
     // inside a cell no two lipids closer than the patch's own (8 Å apart: no atom pair under 2 Å) across triangles
     expect(closePairs(atoms, atomLipid, atomCell, 2).within).toBe(0);
+    // the cells' seams, bounded (review M2: 145 atom pairs under 2 Å across this plane's 7 cells, 2026-11-08; none
+    // before cells): a rise is a change of the cut, for Ludo to see
+    expect(closePairs(atoms, atomLipid, atomCell, 2).across).toBeLessThanOrEqual(160);
     // the inner part (away from the plane's border, where lipids reach out of it) covered as the patch
     const inner = flatMesh(10, 12);
     for (let i = 0; i < inner.positions.length; i += 3) {
