@@ -164,6 +164,21 @@ describe('builder: review fixes', () => {
     expect(issues.some((i) => i.code === 'id.duplicate')).toBe(false);
     expect(b.get('look', 'e.x')).toBe('e.x');
   });
+  it('build() is pure: a document is unchanged by later calls, and later edits do not reach the builder', () => {
+    const b = createMesoDocument({ title: 'p' });
+    const ss = b.superstructure({ label: 's' });
+    b.add('entities', [{ id: 'e.imp', label: 'I', kind: 'protein' }]);
+    b.entity({ label: 'a', kind: 'protein' });
+    b.custom('ns', { a: 1 });
+    const d1 = b.build().doc;
+    const before = JSON.stringify(d1);
+    b.entity({ label: 'b', kind: 'protein' });
+    ss.entity({ label: 'inner', kind: 'protein' });
+    b.custom('ns2', 1);
+    expect(JSON.stringify(d1)).toBe(before);
+    (d1.entities[0] as { label: string }).label = 'MUT';
+    expect(b.build().doc.entities[0].label).toBe('I');
+  });
 });
 
 describe('builder: MesoQL helpers', () => {

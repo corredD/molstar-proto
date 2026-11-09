@@ -263,7 +263,8 @@ class DocScope extends Scoped {
     if (this.sessionState) out.session = this.sessionState;
     if (this.sections.tours?.length) out.tours = this.sections.tours;
     if (Object.keys(this.extensions).length) out.custom = this.extensions;
-    const doc = out as unknown as MesoViewSpecDoc;
+    // a copy: the document and the builder share nothing, so neither changes the other
+    const doc = structuredClone(out) as unknown as MesoViewSpecDoc;
     return { doc, issues: validate(doc) };
   }
 }
