@@ -19,8 +19,8 @@ The Mesoscale Explorer on Prism. The repository's rules ([../../AGENTS.md](../..
   scene tree, its properties, its right-click menu and + Open ([_spec/ui.md](_spec/ui.md)), never in an extension's tab,
   because prism-me hides those tabs (`HiddenParts` in src/spec.ts) and one panel is the layout.
   `src/_test/hidden-parts.test.ts` checks only this much: no tab of the app's extensions is visible but the Scene, and
-  their hidden ids are real parts (it fails on a lazy extension that has parts, which it cannot read). It cannot see UI added
-  inside a tab already hidden: that is the review's.
+  their hidden ids are real parts (it fails on a lazy extension that has parts, which it cannot read). It cannot see UI
+  added inside a tab already hidden: that is the review's.
 - **No accidental quadratic, few allocations** (David, 2026-10-24; Prism's "Bulk operations are one change" and "Snappy
   is a requirement", [styling.md §5](../../packages/prism/ui/_spec/styling.md)): over entities, particles, targets or
   cells, index once (a Map, a Set) and never `find`, `includes`, `indexOf` or a rebuild per item; one commit per
