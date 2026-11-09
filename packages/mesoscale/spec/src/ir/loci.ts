@@ -212,7 +212,7 @@ export function evaluateMesoQL(e: QExpr, ctx: LociContext): { loci: MesoLoci; is
       case 'within': {
         const of = x.keywords.of ? ev(x.keywords.of as QExpr) : EmptyLoci;
         const d = Number(x.keywords.distance ?? 0) * unit;
-        return within(sets, ev(x.args[0] as QExpr), of, d);
+        return within(ctx.ir, ev(x.args[0] as QExpr), of, d);
       }
       case 'part': {
         // copies of an inner population in the instances picked: one virtual set per instance,
@@ -262,53 +262,112 @@ function instancesOf(ir: IR, key: string): { type: number; templates: readonly s
   return out;
 }
 
-/** Copies of `a` whose centre is within `d` Å of a copy of `b`: a hash grid over `b`, O(|a| + |b|). */
-function within(sets: readonly PlacementSet[], a: MesoLoci, b: MesoLoci, d: number): MesoLoci {
-  const byKey = new Map(sets.map((s) => [s.key, s]));
+// ---- copies in the world ----
+
+/** A rigid pose: rotation quaternion `q` (x, y, z, w), then translation `t`. */
+interface Pose {
+  readonly q: readonly [number, number, number, number];
+  readonly t: readonly [number, number, number];
+}
+
+const IdentityPose: Pose = { q: [0, 0, 0, 1], t: [0, 0, 0] };
+
+const VirtualKey = /^(.*)@(\d+)>(.*)$/;
+
+function poseOf(set: PlacementSet, i: number): Pose {
+  const r = set.rotations;
+  const p = set.positions;
+  return { q: [r[4 * i], r[4 * i + 1], r[4 * i + 2], r[4 * i + 3]], t: [p[3 * i], p[3 * i + 1], p[3 * i + 2]] };
+}
+
+/** `p` moved by `a` (p' = q·p·q⁻¹ + t), into `out`. */
+function apply(a: Pose, x: number, y: number, z: number, out: number[]) {
+  const [qx, qy, qz, qw] = a.q;
+  const tx = 2 * (qy * z - qz * y),
+    ty = 2 * (qz * x - qx * z),
+    tz = 2 * (qx * y - qy * x);
+  out[0] = x + qw * tx + (qy * tz - qz * ty) + a.t[0];
+  out[1] = y + qw * ty + (qz * tx - qx * tz) + a.t[1];
+  out[2] = z + qw * tz + (qx * ty - qy * tx) + a.t[2];
+}
+
+/**
+ * Where the copies of a loci entry are in the world: the set holding them and the poses that move them there. A world
+ * set is as it is; a virtual set `<instance set>@<i>><template>` (a `part`) is its template moved by that instance's pose.
+ */
+function worldOf(
+  byKey: ReadonlyMap<string, PlacementSet>,
+  key: string,
+): { set: PlacementSet; poses: Pose[] } | undefined {
+  const m = VirtualKey.exec(key);
+  if (!m) {
+    const set = byKey.get(key);
+    return set && { set, poses: [IdentityPose] };
+  }
+  const set = byKey.get(m[3]);
+  const outer = byKey.get(m[1]);
+  if (!set || !outer) return undefined;
+  return { set, poses: [poseOf(outer, Number(m[2]))] };
+}
+
+/** Each copy of a loci entry in the world: `(index, x, y, z)`, once per pose. */
+function forEachInWorld(
+  w: { set: PlacementSet; poses: readonly Pose[] },
+  runs: readonly number[],
+  f: (i: number, x: number, y: number, z: number) => void,
+) {
+  const v = [0, 0, 0];
+  const p = w.set.positions;
+  for (const pose of w.poses)
+    for (let j = 0; j < runs.length; j += 2)
+      for (let i = runs[j]; i < runs[j + 1]; i++) {
+        apply(pose, p[3 * i], p[3 * i + 1], p[3 * i + 2], v);
+        f(i, v[0], v[1], v[2]);
+      }
+}
+
+/** Copies of `a` whose centre is within `d` Å of a copy of `b`, both in the world: a hash grid over `b`, O(|a| + |b|). */
+function within(ir: IR, a: MesoLoci, b: MesoLoci, d: number): MesoLoci {
+  const byKey = new Map(placementSets(ir).map((s) => [s.key, s]));
   const cell = Math.max(d, 1);
   const grid = new Map<string, number[]>();
   for (const [k, r] of b) {
-    const s = byKey.get(k)!;
-    for (let j = 0; j < r.length; j += 2)
-      for (let i = r[j]; i < r[j + 1]; i++) {
-        const x = s.positions[3 * i],
-          y = s.positions[3 * i + 1],
-          z = s.positions[3 * i + 2];
-        const g = `${Math.floor(x / cell)},${Math.floor(y / cell)},${Math.floor(z / cell)}`;
-        const l = grid.get(g);
-        if (l) l.push(x, y, z);
-        else grid.set(g, [x, y, z]);
-      }
+    const w = worldOf(byKey, k);
+    if (!w) continue;
+    forEachInWorld(w, r, (_, x, y, z) => {
+      const g = `${Math.floor(x / cell)},${Math.floor(y / cell)},${Math.floor(z / cell)}`;
+      const l = grid.get(g);
+      if (l) l.push(x, y, z);
+      else grid.set(g, [x, y, z]);
+    });
   }
+  const near = (x: number, y: number, z: number) => {
+    const cx = Math.floor(x / cell),
+      cy = Math.floor(y / cell),
+      cz = Math.floor(z / cell);
+    for (let u = -1; u <= 1; u++)
+      for (let v = -1; v <= 1; v++)
+        for (let w = -1; w <= 1; w++) {
+          const l = grid.get(`${cx + u},${cy + v},${cz + w}`);
+          if (!l) continue;
+          for (let q = 0; q < l.length; q += 3)
+            if ((l[q] - x) ** 2 + (l[q + 1] - y) ** 2 + (l[q + 2] - z) ** 2 <= d * d) return true;
+        }
+    return false;
+  };
   const out = new Map<string, number[]>();
   for (const [k, r] of a) {
-    const s = byKey.get(k)!;
+    const w = worldOf(byKey, k);
+    if (!w) continue;
+    const hit = new Set<number>();
+    forEachInWorld(w, r, (i, x, y, z) => {
+      if (!hit.has(i) && near(x, y, z)) hit.add(i);
+    });
     const res: number[] = [];
-    for (let j = 0; j < r.length; j += 2)
-      for (let i = r[j]; i < r[j + 1]; i++) {
-        const x = s.positions[3 * i],
-          y = s.positions[3 * i + 1],
-          z = s.positions[3 * i + 2];
-        const cx = Math.floor(x / cell),
-          cy = Math.floor(y / cell),
-          cz = Math.floor(z / cell);
-        let hit = false;
-        for (let u = -1; u <= 1 && !hit; u++)
-          for (let v = -1; v <= 1 && !hit; v++)
-            for (let w = -1; w <= 1 && !hit; w++) {
-              const l = grid.get(`${cx + u},${cy + v},${cz + w}`);
-              if (!l) continue;
-              for (let q = 0; q < l.length; q += 3)
-                if ((l[q] - x) ** 2 + (l[q + 1] - y) ** 2 + (l[q + 2] - z) ** 2 <= d * d) {
-                  hit = true;
-                  break;
-                }
-            }
-        if (hit) {
-          if (res.length && res[res.length - 1] === i) res[res.length - 1] = i + 1;
-          else res.push(i, i + 1);
-        }
-      }
+    for (const i of [...hit].sort((x, y) => x - y)) {
+      if (res.length && res[res.length - 1] === i) res[res.length - 1] = i + 1;
+      else res.push(i, i + 1);
+    }
     if (res.length) out.set(k, res);
   }
   return out;

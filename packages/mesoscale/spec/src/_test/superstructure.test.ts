@@ -14,6 +14,7 @@ import { evaluateMesoQL, lociSize, lociToIds } from '../ir/loci.js';
 import { planCommit } from '../runtime/adapter.js';
 import { flattenInstances } from '../runtime/instancing.js';
 import { compile, updateView } from '../runtime/runtime.js';
+import { DefaultResolvers } from '../resolvers/index.js';
 import { countingResolvers } from './helpers.js';
 
 // Superstructures (design.md §3.9): reusable, nested, instanced. One description, resolved once, placed many times;
@@ -21,6 +22,26 @@ import { countingResolvers } from './helpers.js';
 
 const load = (id: string) => BetaCellResources[id]?.();
 const PerGranule = 548 + 940 + 454 + 287;
+
+const runsOf = (runs: readonly number[]) => {
+  const out: number[] = [];
+  for (let j = 0; j < runs.length; j += 2) for (let i = runs[j]; i < runs[j + 1]; i++) out.push(i);
+  return out;
+};
+/** A template point moved by the pose of copy `i` of `set` (p' = q·p·q⁻¹ + t). */
+function rotate(set: { positions: ArrayLike<number>; rotations: ArrayLike<number> }, i: number, p: number[]) {
+  const [x, y, z, w] = [0, 1, 2, 3].map((k) => set.rotations[4 * i + k]);
+  const [px, py, pz] = p;
+  // t = 2 q×p; p' = p + w t + q×t
+  const tx = 2 * (y * pz - z * py),
+    ty = 2 * (z * px - x * pz),
+    tz = 2 * (x * py - y * px);
+  return [
+    px + w * tx + (y * tz - z * ty) + set.positions[3 * i],
+    py + w * ty + (z * tx - x * tz) + set.positions[3 * i + 1],
+    pz + w * tz + (x * ty - y * tx) + set.positions[3 * i + 2],
+  ];
+}
 
 /** Three outer bodies of four inner bodies of five x: superstructures two deep. */
 const nested: MesoViewSpecDoc = {
@@ -195,5 +216,52 @@ describe('superstructures', () => {
     const xs = looksOn('p.x');
     expect(xs.reduce((n, x) => n + x.s.count, 0)).toBe(60);
     for (const x of xs) expect(x.looks.some((l) => l.color === 0xff0000)).toBe(true);
+  });
+  // review gate R1: `within` over copies inside one instance (`part`, virtual sets) reads them in the world
+  it('within reads the copies of a part where they are in the world, on either side', async () => {
+    const doc = betaCellDoc();
+    const r = await compile(doc, { resolvers: DefaultResolvers, load });
+    const kinds = indexDoc(doc).kinds as ReadonlyMap<string, string>;
+    const ev = (q: string) => evaluateMesoQL(parseMesoQL(q, { kinds }).expr!, { doc, ir: r.ir! });
+    const sets = placementSets(r.ir!);
+    // brute force: the docked granule's Vamp2, moved by its pose; the ribosomes as they are
+    const [[instKey, [i0]]] = [...ev('(instance i.granule-docked)').loci];
+    const inst = sets.find((s) => s.key === instKey)!;
+    const part = ev('(part (instance i.granule-docked) p.Vamp2)').loci;
+    const [[virtual, vRuns]] = [...part];
+    const tpl = sets.find((s) => s.key === virtual.slice(virtual.lastIndexOf('>') + 1))!;
+    const vamp2 = runsOf(vRuns).map((i) =>
+      rotate(inst, i0, [tpl.positions[3 * i], tpl.positions[3 * i + 1], tpl.positions[3 * i + 2]]),
+    );
+    const ribo = [...ev('(population p.ribosomes)').loci].flatMap(([k, runs]) => {
+      const s = sets.find((x) => x.key === k)!;
+      return runsOf(runs).map((i) => [s.positions[3 * i], s.positions[3 * i + 1], s.positions[3 * i + 2]]);
+    });
+    const d = 500; // Å
+    const near = (a: number[][], b: number[][]) =>
+      a.filter((p) => b.some((q) => Math.hypot(p[0] - q[0], p[1] - q[1], p[2] - q[2]) <= d)).length;
+    const riboNear = near(ribo, vamp2);
+    expect(riboNear).toBeGreaterThan(0);
+    const a = ev('(within (population p.ribosomes) :of (part (instance i.granule-docked) p.Vamp2) :distance 50)');
+    expect(lociSize(a.loci)).toBe(riboNear);
+    const b = ev('(within (part (instance i.granule-docked) p.Vamp2) :of (population p.ribosomes) :distance 50)');
+    expect([...b.loci.keys()]).toEqual([virtual]);
+    expect(lociSize(b.loci)).toBe(near(vamp2, ribo));
+    // and through a view (a cutaway), without throwing
+    const v = {
+      ...doc,
+      views: [
+        ...doc.views!,
+        {
+          id: 'v.x',
+          cutaway: '(within (population p.ribosomes) :of (part (instance i.granule-docked) p.Vamp2) :distance 50)',
+        },
+      ],
+      session: { view: 'v.x' },
+    };
+    expect(validate(v).filter((i) => i.severity === 'error')).toEqual([]);
+    expect(
+      updateView(v, r.ir!).view.cutaway!.reduce((n, c) => n + c.runs.reduce((x, e, j) => x + (j % 2 ? e : -e), 0), 0),
+    ).toBe(riboNear);
   });
 });
