@@ -23,3 +23,15 @@ export {
   type SavedMesoViewSpec,
 } from './document-model.js';
 export { type EditRecord, MesoSession, type SessionOptions } from './session.js';
+export {
+  type DocumentGroupBy,
+  DocumentGroupings,
+  type DocumentLooks,
+  type DocumentOutline,
+  type DocumentRow,
+  type DocumentRowKind,
+  documentLooks,
+  documentOutline,
+  documentVisible,
+} from './document-tree.js';
+export type { DocumentTree, MesoViewSpecApi } from './extension.js';

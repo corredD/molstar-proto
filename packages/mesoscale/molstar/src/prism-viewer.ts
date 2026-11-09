@@ -52,6 +52,20 @@ export const MesoViewSpecLazyExtension: LazyViewerExtension = {
       { id: 'mesoviewspec.get', title: 'Describe the MesoViewSpec document', read: true },
       { id: 'mesoviewspec.edit', title: 'Edit the MesoViewSpec document' },
       { id: 'mesoviewspec.save', title: 'Save the MesoViewSpec document', history: false, undoable: false },
+      {
+        id: 'mesoviewspec.focus',
+        title: 'Focus the camera on part of the MesoViewSpec document',
+        history: false,
+        undoable: false,
+      },
+      {
+        id: 'mesoviewspec.highlight',
+        title: 'Highlight part of the MesoViewSpec document',
+        history: false,
+        undoable: false,
+      },
+      { id: 'mesoviewspec.eye', title: 'Show or hide part of the MesoViewSpec document' },
+      { id: 'mesoviewspec.showOnly', title: 'Show only part of the MesoViewSpec document' },
     ],
     commands: [
       { id: 'mesoviewspec.open', title: 'Open a MesoViewSpec document', category, icon: 'folder-open' },
