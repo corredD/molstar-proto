@@ -129,7 +129,7 @@ class Scoped {
 
   /** `{ id, ...input }`: the given id or a generated one, undefined-valued keys left out, the caller's key order kept. */
   protected make(kind: NodeKind, section: string, input: object & { id?: Id; label?: string }, fallback?: string) {
-    const id = input.id !== undefined ? this.ids.reserve(input.id) : this.ids.make(kind, input.label ?? fallback);
+    const id = input.id !== undefined ? this.ids.reserve(input.id) : this.ids.make(kind, input.label || fallback);
     const node = { id, ...strip(input) };
     (this.sections[section] ??= []).push(node);
     return id;

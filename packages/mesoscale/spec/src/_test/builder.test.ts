@@ -188,6 +188,10 @@ describe('builder: review fixes', () => {
     expect(doc.session).toBeUndefined();
     expect(doc.custom).toBeUndefined();
   });
+  it('an empty label falls back like a missing one', () => {
+    const b = createMesoDocument({ title: 'l' });
+    expect(b.compartment({ label: '', kind: 'cell', geometry: { kind: 'sphere', radius: 1 } })).toBe('c.cell');
+  });
 });
 
 describe('builder: MesoQL helpers', () => {
