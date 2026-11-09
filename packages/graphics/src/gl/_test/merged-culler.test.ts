@@ -220,4 +220,45 @@ describe('the GPU culler of a merged object', () => {
     // every instance has a thread: the kernels index workgroups by `wid.x + wid.y * num_workgroups.x`
     expect(copy.x * copy.y * copy.z * 64).toBeGreaterThanOrEqual(320);
   });
+
+  it('draws a gridless member whose instances the GPU writes at its levels of detail, each instance at its own', () => {
+    // 300 spheres in a ball, levels by size on screen: fewer at each coarser level
+    const builder = SpheresBuilder.create(300, 1);
+    for (let i = 0; i < 300; ++i) builder.add(Math.cos(i) * 10, Math.sin(i * 1.7) * 10, Math.cos(i * 2.3) * 10, i);
+    const geometry = builder.getSpheres();
+    const props = { ...PD.getDefaultValues(Spheres.Params), ...Spheres.LodPixelPresets.balanced };
+    const members = [false, true].map((gpu) => {
+      const transforms = new Float32Array(4 * 16);
+      for (let i = 0; i < 4; ++i)
+        Mat4.toArray(Mat4.fromTranslation(Mat4(), Vec3.create(i * 40, 0, 0)), transforms, i * 16);
+      // gridless: one cell, its bounding sphere
+      const transform = createTransform(transforms, 4, undefined, 0, 0);
+      const values = Spheres.Utils.createValuesSimple(geometry, props, ColorNames.orange, 1, transform);
+      if (gpu) Object.assign(values, { gpuInstances: { ref: { value: () => {}, version: 0 } } });
+      return createRenderObject('spheres', values, Spheres.Utils.createRenderableState(props), -1);
+    });
+    const ro = createMergedRenderObject(members, { gpuCulling: true });
+    ro.merged.sync();
+    const fake = fakeCompute(65535);
+    const culler = createMergedCuller(
+      fake.compute,
+      fake.resources,
+      ro.merged,
+      members.map((o) => o.values as MergeableValues),
+      false,
+    );
+    culler.dispatch(Plane3D.create(Vec3.create(0, 0, -1), 0), Frustum3D(), LodView());
+    const levels = members[1].values.lodLevels!.ref.value as unknown as [number, number, number, number][];
+    expect(levels.length).toBe(4);
+    const args = fake.uints('culled draw arguments');
+    // spheres draw unindexed: a record of 4 words (vertex count, instance count, first vertex, first instance)
+    const words = 4;
+    const drawCount = members[0].values.drawCount.ref.value as number;
+    for (let j = 0; j < levels.length; ++j) {
+      // the plain gridless member at full detail at every level (as the CPU culling); the GPU-written one at its level's
+      expect(args[(j * 2 + 0) * words]).toBe(drawCount);
+      expect(args[(j * 2 + 1) * words]).toBe(levels[j][3]);
+    }
+    expect(levels[3][3]).toBeLessThan(drawCount);
+  });
 });

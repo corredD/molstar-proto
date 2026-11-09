@@ -175,6 +175,16 @@ export interface MergedRasterParams {
 const GpuCellDivisions = 4;
 
 const SplitBuckets = GpuCellDivisions * GpuCellDivisions * GpuCellDivisions;
+/**
+ * A member's levels of detail as the culler draws them: none for a gridless member (one cell: full detail at each level
+ * it overlaps, as the CPU culling), but for one whose instances the GPU writes (`gpuInstances`), each instance at its own
+ */
+function levelsOf(member: MergeableValues) {
+  const gridless = member.instanceGrid.ref.value.cellSize <= 1;
+  if (gridless && !(member as { gpuInstances?: unknown }).gpuInstances) return undefined;
+  return member.lodLevels?.ref.value as LodLevelsValue | undefined;
+}
+
 const splitBox = new Float64Array(SplitBuckets * 6);
 const splitCount = new Uint32Array(SplitBuckets);
 const splitCellOf = new Int32Array(SplitBuckets);
@@ -505,10 +515,10 @@ export function createMergedCuller(
     const j = k % levels;
     const member = members[s];
     const drawCount: number = member.drawCount.ref.value;
-    // gridless members draw at full detail at each level they overlap, as the CPU culling (`cullSegment`)
-    const gridless = member.instanceGrid.ref.value.cellSize <= 1;
-    const memberLevels = member.lodLevels?.ref.value as LodLevelsValue | undefined;
-    out[o] = levelCount === 0 || gridless || !memberLevels ? drawCount : memberLevels[j][3];
+    // gridless members draw at full detail at each level they overlap, as the CPU culling (`cullSegment`), but those
+    // whose instances the GPU writes (`gpuInstances`): no CPU culling to match, each instance's level its own
+    const memberLevels = levelsOf(member);
+    out[o] = levelCount === 0 || !memberLevels ? drawCount : memberLevels[j][3];
     const first = k * instanceCount + segments.instanceBases[s];
     if (indexed) {
       out[o + 2] = segments.elementOffsets[s] / 4;
@@ -694,8 +704,7 @@ export function createMergedCuller(
     out[o + 3] = radius;
     new Uint32Array(out.buffer, out.byteOffset + (o + 4) * 4, 1)[0] = segments.instanceBases[s];
     out[o + 5] = (member as { padding?: ValueCell<number> }).padding?.ref.value ?? 0;
-    const gridless = member.instanceGrid.ref.value.cellSize <= 1;
-    const memberLevels = !gridless ? (member.lodLevels?.ref.value as LodLevelsValue | undefined) : undefined;
+    const memberLevels = levelsOf(member);
     for (let j = 0; j < 4; ++j) out[o + 8 + j] = memberLevels?.[j]?.[4] ?? 1;
   }
 
