@@ -19,7 +19,7 @@ import type { Resolver, ResolveJob, ResolveOutput } from '../runtime/resolver.js
 // rotation: subtomogram · particle. An Å shift becomes voxels by the resource frame's scale (the voxel size).
 //
 // `params.placements`: an inline table in the same JSON shape, already in world Å (the runtime writes the document's
-// instances, _spec/format.mdthis way, so given poses have one code path whether a file or the document holds them).
+// instances, _spec/format.md, this way, so given poses have one code path whether a file or the document holds them).
 //
 // `params.populations`: which population each row is: one id for the whole file, or `{ column, values: { <value>: id } }`.
 

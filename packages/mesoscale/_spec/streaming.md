@@ -137,7 +137,7 @@ export interface RuntimeOptions {
   marked failed. A rejected tile never counts toward the budget.
 - **Ownership.** The provider may cache raw data (HTTP, IndexedDB); nothing relies on it. The streamer owns residency: a
   tile is loaded exactly when its set is in the IR. Eviction removes it from the IR, and the adapter deletes its list
-  (and store entry) as for any removed set. there is no CPU cache of evicted tiles: a tile seen again is loaded again.
+  (and store entry) as for any removed set. There is no CPU cache of evicted tiles: a tile seen again is loaded again.
 - **Concurrency.** At most `maxInFlight` loads (default 4), started in the plan's order. One `AbortController` per load.
   The streamer aborts a load when the plan cancels it or the stream key changes. Each load carries the stream key and a
   generation number, and a result whose key or generation is stale is dropped.

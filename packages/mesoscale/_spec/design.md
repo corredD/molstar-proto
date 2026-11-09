@@ -25,7 +25,7 @@ flagellar motors, nuclear pores, lattices with defects, lipid composition) was t
 | -------------------------------------------------------------------------------- | ------- | ----------------------------------------------------------- |
 | The layers, named: document → constraint graph → MesoComplex → render IR         | §1      | built                                                       |
 | S-expression spelling: the document, IR, issues and traces in the UI             | §3.7    | built, round-trip tested                                    |
-| MesoQL: addresses, MesoLocation and MesoLoci (runs)                              | §3.8    | built: 13 symbols, views use it                             |
+| MesoQL: addresses, MesoLocation and MesoLoci (runs)                              | §3.8    | built: 14 symbols, views use it                             |
 | Superstructures: reusable, nested, instanced; `parts` or `entity` detail         | §3.9    | built: β-cell, 120 granules from Ludo's ISG recipe          |
 | Values by value or by reference: lipid composition, conformational states, sites | §3.10   | language; sites used by relations                           |
 | Relations as constraints with site addresses (binds, bends, branches, contacts)  | §3.11   | `bends` and `binds` reconciled (HU on DNA); others reported |

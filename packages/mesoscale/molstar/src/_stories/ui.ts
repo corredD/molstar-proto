@@ -12,7 +12,7 @@ import { trace, traceToSexprData, traceToText } from '@molstar/meso-spec/format/
 import type { EditRecord } from '../session.js';
 
 // Plain DOM for the stories: panels of documents, IR, issues, an edit log. No framework: the stories test the format,
-// not a UI. Data panels are spelled as S-expressions by default (_spec/format.mdSeqQL's "one tree, three spellings"),
+// not a UI. Data panels are spelled as S-expressions by default (_spec/format.md, SeqQL's "one tree, three spellings"),
 // JSON on a toggle: the stored spelling, for comparison.
 
 type Attrs = Record<string, string | ((e: Event) => void) | undefined>;

@@ -22,7 +22,7 @@ import { type Issue, type IssueCode, issue } from './issues.js';
 import { parseMesoQL, type QType } from './mesoql.js';
 import { ConcentrationToMolar, DensityToPerA2, isLengthUnit, isUnitOf } from './units.js';
 
-// Static validation (_spec/runtime.mdphase `static`): the document alone, no resource loaded, no resolver run. Every
+// Static validation (_spec/runtime.md, phase `static`): the document alone, no resource loaded, no resolver run. Every
 // problem is an issue with a JSON pointer; nothing throws. A document with errors is not resolved; warnings are
 // carried into the runtime's report.
 

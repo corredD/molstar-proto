@@ -262,8 +262,8 @@ For a document row, the sections of ui.md §4 that apply, and three of its own:
   (`highlightOnly`); a document row lights several lists, so it gains a path for a row's several loci. View state, no
   step.
 - **Prism's selection is not used for copies.** `select.*` takes structure targets (operations.md); it has no particle
-  loci. So a view's `selection` ([views.md](views.md)derived into `IRView.selection`, drawn by no one today) is shown as
-  the lasting highlight of the shown view; the picked row is the person's selection. **Keep as the view's selection**
+  loci. So a view's `selection` ([views.md](views.md)), derived into `IRView.selection`, drawn by no one today) is shown
+  as the lasting highlight of the shown view; the picked row is the person's selection. **Keep as the view's selection**
   (the row's ⋯) sets the shown view's `selection` to the row's address (a patch). The alternative, mirroring into
   Mol\*'s selection manager, waits for particle selection in Prism.
 
@@ -500,7 +500,7 @@ The status says so once when it passes the history's size budget (proposed: the 
 
 ## 9. Streaming (decision 6)
 
-Streaming is the `mesoviewspec-streaming` lane's ([streaming.md](streaming.md)written there). This design names only
+Streaming is the `mesoviewspec-streaming` lane's ([streaming.md](streaming.md): written there). This design names only
 where it plugs:
 
 - **The provider and the planner** are the streaming lane's `runtime/streaming.ts` contract; the owner hands them to its
@@ -600,7 +600,7 @@ Each in the shape of the briefs in `apps/prism-me/progress/`.
 
 - **Check (Ludo):** in Storybook (MesoViewSpec › Patches), a look edit on the exosome as a patch, its S-expression and
   its inverse shown; Undo by the inverse puts the document back, byte for byte.
-- **Spec:** prism.md §2; [format.md](format.md) (the patch), §3.7 (its spelling), §11 decision 6.
+- **Spec:** prism.md §2; [format.md](format.md) (the document, its spelling), design.md §11 decision 6.
 - **Tests:** quick: every op (`set`, `remove`, `insert`, `move`) and its inverse on the five examples; all or nothing (a
   bad op leaves the document `===` the same); dangling references refused; `diff(a, b)` applied to `a` is `b`; untouched
   sections shared (`===`); a patch touching only views classified `view`; Look `id` and `emissive` validated; the
@@ -698,7 +698,7 @@ Each in the shape of the briefs in `apps/prism-me/progress/`.
 
 - **Check (Ludo):** the exosome's catalase: its count from 506 to 300 in Built by, the copies repacked (one step, the
   status shows the resolution); its seed changed; Add relax stage: 506 of 506; Undo each; Cancel a long one.
-- **Spec:** prism.md §4.3 (Built by), §7.2; [runtime.md](runtime.md)
+- **Spec:** prism.md §4.3 (Built by), §7.2; [runtime.md](runtime.md) (pipeline, refine stages).
 - **Tests:** unit: a count edit is one model edit rerunning only its model (the session's record); a seed edit; adding
   `meso.relax` as a refining model; a cancelled resolution restores the checkpoint; a refused patch (a count below 0)
   changes nothing.
