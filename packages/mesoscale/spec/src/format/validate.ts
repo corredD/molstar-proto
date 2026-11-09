@@ -28,7 +28,7 @@ import { ConcentrationToMolar, DensityToPerA2, isLengthUnit, isUnitOf } from './
 
 export const SupportedMajor = 0;
 
-type Kind =
+export type Kind =
   | 'frame'
   | 'alignment'
   | 'resource'

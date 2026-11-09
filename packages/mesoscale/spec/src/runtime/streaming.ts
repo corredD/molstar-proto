@@ -13,7 +13,7 @@ import type { PlacementSet, PlacementType } from '../ir/placements.js';
 // around the focus within a budget. Outside `compile`: the session splices loaded tiles into the stream node as
 // `placements` children, so `planCommit` and the adapters see ordinary sets. Imports nothing of Mol*.
 
-type StreamNode = Extract<IRNode, { kind: 'stream' }>;
+export type StreamNode = Extract<IRNode, { kind: 'stream' }>;
 
 export interface TileProvider {
   /** The manifest; the provider memoizes it (compile asks on every model edit). Rejects: `stream.manifest`. */
