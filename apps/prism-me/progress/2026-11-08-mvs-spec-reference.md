@@ -38,6 +38,18 @@
 
 ## Decided
 
+- **Split plan (Opus, step 1).** Topic files have an H1, a line linking README, unnumbered headings (stable slugs);
+  design.md keeps its numbering and each moved section leaves a one-line stub heading linking the topic file (the stubs
+  are the section-to-file map; old citations in progress files keep resolving). One file added beyond the brief:
+  `streaming.md` (6.8 is ~470 lines). Moves (HEAD design.md lines): format.md 3.1-3.7, 3.9-3.11, 3.13, 3.14, 7.1;
+  mesoql.md 3.8; ir.md 4.1-4.3, 7.2; runtime.md 4.4, 4.5, 6.1-6.3, 6.4, 6.5, 6.7, 7.3, 7.4; streaming.md 6.8 (to 6.8.6)
+  and 6.8.8; views.md 5, 5.1. Stays: intro and version tables, 1, 2, 3.12, fragments answering decisions, 6.6, 6.8.7,
+  8-13.
+- **Commits:** README; one pure-move commit per file (byte-identical, later ranges cut first); edits (headings, links,
+  version tags); dedupe against generated references; citation fixes outside `_spec`.
+- **Avoid duplication:** README defines terms/principles/packages one line each; topic files state meaning and contracts
+  and link back; design.md holds why, numbers, decisions; a generated table is never retyped in prose.
+
 ## Learned
 
 ## Size
