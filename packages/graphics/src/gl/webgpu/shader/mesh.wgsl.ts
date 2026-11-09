@@ -300,7 +300,8 @@ fn fragmentMain(in: VertexOutput, @builtin(front_facing) frontFacing: bool) -> F
     #endif
 
     ${assign_material_wgsl}
-    #if defined(dPatchTexture)
+    // the patch's colour where colour is drawn (not in the depth, pick or marking variants)
+    #if defined(dPatchTexture) && (defined(dRenderVariant_colorBlended) || defined(dRenderVariant_colorWboit) || defined(dRenderVariant_colorDpoit) || defined(dRenderVariant_tracing) || defined(dRenderVariant_emissive))
         material = vec4<f32>(patchColor(modelPosition, fdx, fdy, u32(in.vPatchRegion + 0.5), in.vPatchShift, material.rgb), material.a);
     #endif
     ${check_transparency_wgsl}
