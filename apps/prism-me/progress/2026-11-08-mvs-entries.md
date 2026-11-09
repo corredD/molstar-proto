@@ -46,9 +46,13 @@
 - design.md 12.2 Entries, README lines. Checks run: `tsc -b`, `tsc --noEmit -p apps/prism-me`, `lint`,
   `check:workspace`, `test:unit`/`medium`/`heavy` of `packages/mesoscale`, Storybook dev: the stories' modules and their
   meso-spec entries resolve (HTTP 200; index.json 422 entries, 20 mesoscale).
-- Note for `mvs-builder`: not merged at the time of step 3 (`git log me/mesoviewspec` ended at the R5 opt-in). When it
-  merges: add `builder` to `ALLOWED` in `layers.test.ts`, a `./builder` export block and `builder/index.ts`, a row in
-  design.md 12.2, and the `@molstar/meso-spec/builder` negation in `biome.json`.
+- Rebased onto `me/mesoviewspec` after the review began: `mvs-builder` and `mvs-spec-reference` had merged (the review's
+  M1). Added the `/builder` entry (explicit type exports for its refs; `builder` <- `format`; `examples` <- `builder`),
+  rewrote the examples' conflicted import blocks with the same script, rewrote `_spec/README.md`'s Packages section (the
+  entries and graph live there; design.md 12.2 points to it).
+- (superseded) note for `mvs-builder`: not merged at the time of step 3 (`git log me/mesoviewspec` ended at the R5
+  opt-in). When it merges: add `builder` to `ALLOWED` in `layers.test.ts`, a `./builder` export block and
+  `builder/index.ts`, a row in design.md 12.2, and the `@molstar/meso-spec/builder` negation in `biome.json`.
 
 ## Decided
 
@@ -96,5 +100,17 @@ rewrites.
 
 ## Review
 
-| Finding | Severity | Verdict | Commit / open |
-| ------- | -------- | ------- | ------------- |
+| Finding                                                                                                                         | Severity   | Verdict                                                           | Commit / open                                                                                           |
+| ------------------------------------------------------------------------------------------------------------------------------- | ---------- | ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| M1 the `/builder` entry missing, lane behind its base (rebase conflicts: 5 example import blocks, `src/index.ts` modify/delete) | must-fix   | confirmed (skeptic: 6 conflicts)                                  | rebased; entry and graph in the commits "the /builder entry" and "builder and examples import by entry" |
+| M2 importing `@molstar/meso-spec/cli` throws when `argv[1]` is no path (`node -e`), `runMain` called `realpathSync`             | must-fix   | confirmed (minor)                                                 | test `runMain ... does not throw`, fix `runMain is false, not a throw`                                  |
+| M3 no changelog; `mvs-patch.md` and `mvs-builder.md` name paths that no longer resolve                                          | must-fix   | confirmed                                                         | `.v6/changelogs/mvs-entries.md` says what replaces them; other lanes' files left alone                  |
+| S1 `prism.md` proposes `@molstar/meso-molstar/document-model`                                                                   | should-fix | confirmed                                                         | prism.md one line                                                                                       |
+| S2 contract test tagged heavy, brief says quick                                                                                 | should-fix | partly refuted (it takes ~2.5 s, not 0.5 s; the deviation stands) | quick lane, 30 s timeout                                                                                |
+| S3 no-star regex misses `export type *`, `export * as` (the builder index had one)                                              | should-fix | confirmed                                                         | `exportsStar` with cases, in the layers test commit                                                     |
+| S4 negative self-check used an identity resolver                                                                                | should-fix | confirmed                                                         | real resolver and legal relative cases, same commit                                                     |
+| S5 `mvs-spec-reference`'s README said the opposite                                                                              | should-fix | confirmed                                                         | Packages section rewritten here                                                                         |
+| N1 unused `examples` Biome negation                                                                                             | nit        | fixed                                                             | dropped with the builder commit                                                                         |
+| N2 design text "unit tables not exported" vs `LengthToAngstrom`                                                                 | nit        | fixed                                                             | README says "but `LengthToAngstrom`"                                                                    |
+| N3 specifier regex misses template-literal `import()`, `require`, `@import`                                                     | nit        | left open                                                         | none in src today                                                                                       |
+| N4 `@typescript/typescript6` not in spec's devDependencies                                                                      | nit        | left open                                                         | resolves through the root; one line when someone adds the dependency                                    |
