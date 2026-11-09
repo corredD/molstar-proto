@@ -5,7 +5,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { cutterRegions, cutterTable } from '../lipids/cutter.js';
+import { cutterRegions, cutterTable, eachHit, emptyCut, hitAffine, triangleCut } from '../lipids/cutter.js';
 import { farSurface, headOffset } from '../lipids/far-surface.js';
 import { parsePatchPdb } from '../lipids/patch.js';
 import { flatMesh, syntheticPatchPdb } from './lipid-fixtures.js';
@@ -51,5 +51,49 @@ describe('a membrane’s far surfaces', () => {
     expect(counts.size).toBeGreaterThan(1);
     const without = farSurface(mesh, regions, table, 'outer', 0, (s) => s !== 0, 4);
     expect(without.species.includes(0)).toBe(false);
+  });
+
+  it('is coloured where the lipids are: a point the species of the nearest cut head (round 4b item 4: by cell)', () => {
+    // the far look the near look blurred: its colours where the cutter puts the species, on triangles larger than the
+    // box too, where each cell turns the patch its own way
+    const table = cutterTable(patch.outer, 2);
+    const mesh = flatMesh(400, 2);
+    const regions = cutterRegions(mesh.positions, mesh.indices, 1);
+    const heads: number[] = [];
+    const species: number[] = [];
+    const cut = emptyCut();
+    const affine = new Float32Array(16);
+    for (let t = 0; t < mesh.indices.length / 3; ++t) {
+      if (!triangleCut(mesh.positions, mesh.indices, t, regions, table.box, cut)) continue;
+      for (let m = 0; m < table.members.length; ++m) {
+        eachHit(table, cut, m, (l, x, y) => {
+          hitAffine(table, cut, l, x, y, affine, 0);
+          heads.push(affine[12], affine[13]);
+          species.push(table.members[m].species);
+        });
+      }
+    }
+    const s = farSurface(mesh, regions, table, 'outer', 0, () => true, 8);
+    let same = 0;
+    let n = 0;
+    // the vertices away from the plane's border
+    for (let v = 0; v < s.species.length; v += 7) {
+      const x = s.positions[v * 3];
+      const y = s.positions[v * 3 + 1];
+      if (x < 300 || x > 700 || y < 50 || y > 300) continue;
+      let best = Infinity;
+      let nearest = -1;
+      for (let h = 0; h < species.length; ++h) {
+        const d = (heads[h * 2] - x) ** 2 + (heads[h * 2 + 1] - y) ** 2;
+        if (d < best) {
+          best = d;
+          nearest = species[h];
+        }
+      }
+      n += 1;
+      if (nearest === s.species[v]) same += 1;
+    }
+    expect(n).toBeGreaterThan(200);
+    expect(same / n).toBeGreaterThan(0.9);
   });
 });
