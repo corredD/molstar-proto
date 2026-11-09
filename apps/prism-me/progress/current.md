@@ -26,8 +26,9 @@ is not built is [../TODO.md](../TODO.md).
   - `mvs-builder`: done, merged into `me/mesoviewspec`: a typed builder (branded refs, `q.*` MesoQL helpers, `build()`
     never throws); the five examples rebuilt, unchanged byte for byte. Gate: 19 confirmed, open items in its progress.
   - Ludo, 2026-11-08: the app lanes' base is a PR of `me/mesoviewspec` to `prism-me`; the body drafted, not opened yet.
-  - `mvs-entries` (`me/mvs-entries` from `me/mesoviewspec`, [brief](2026-11-08-mvs-entries.md) on its branch): one entry
-    per folder, the folder graph and its layers test. Sonnet, the graph on Opus.
+  - `mvs-entries`: done, merged into `me/mesoviewspec`: seven entries for `@molstar/meso-spec` (format, builder, ir,
+    runtime, resolvers, examples, cli), one for `@molstar/meso-molstar`; the folder graph and its layers test.
+  - The library side of "usable like Seq\*" is done; the PR of `me/mesoviewspec` awaits Ludo's word on its body.
   - **#60** (GPU culling past 65,535 workgroups) and **#61** (cellPACK fibres as tubes) merged by Ludo 2026-11-08; lanes
     closed, worktrees removed (and `meso-showcase`'s). Master ports kept as local branches only
     (`fix/cull-dispatch-rows` a3d8c396d, `fix/fibers-targeted` bb2dbced6); Ludo: the fixes go to prism-me, not upstream.
