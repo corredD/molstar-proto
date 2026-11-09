@@ -772,6 +772,13 @@
     },
     {
       "code": "constraint.unmet",
+      "severity": "info",
+      "phase": "resolve",
+      "message": "p.vesicle-lipids: 23599 lipids for 23562 asked: each leaflet is filled at the density over its own area (12742 and 10857)",
+      "ids": ["p.vesicle-lipids"]
+    },
+    {
+      "code": "constraint.unmet",
       "severity": "error",
       "phase": "resolve",
       "message": "p.atpsynthase: 69 of 400 placed",
@@ -782,13 +789,6 @@
         "achieved": 69,
         "reason": "the membrane of mitochondrion holds 69 hexagonal sites 120 Å apart; 400 asked"
       }
-    },
-    {
-      "code": "constraint.unmet",
-      "severity": "info",
-      "phase": "resolve",
-      "message": "p.vesicle-lipids: 23599 lipids for 23562 asked: each leaflet is filled at the density over its own area (12742 and 10857)",
-      "ids": ["p.vesicle-lipids"]
     },
     {
       "code": "relation.ignored",
