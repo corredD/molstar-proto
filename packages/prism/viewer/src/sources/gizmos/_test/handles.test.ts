@@ -119,7 +119,7 @@ describe('GizmoHandles', () => {
     canvas.remove();
   });
 
-  it("cancels a new drag on an undo though the last drag's cancel waited for its preview (Esc, then a press)", async () => {
+  it('starts no drag while a cancel waits for its preview (Esc, then a press), and cancels the next on an undo', async () => {
     const v = await headlessViewer({ files: [cbs()] });
     const { handles, log, key, binding } = host(v);
     expectOk(await v.api.run('structure.transform', { structure: key, translation: [5, 0, 0] }));
@@ -136,10 +136,15 @@ describe('GizmoHandles', () => {
     await canvas.hover();
     await canvas.drag([5]);
     canvas.escape();
+    // a press while Esc's cancel waits: no drag (it would start from the preview the cancel reverts; the controller's)
     await canvas.hover();
     await canvas.drag([7]);
+    expect(handles.dragging).toBeUndefined();
     release();
-    await canvas.drag([]);
+    await canvas.release();
+    // the cancel done: a press starts a drag
+    await canvas.hover();
+    await canvas.drag([7]);
     expect(handles.dragging).toBe(key);
     // the item's undone: the new drag is cancelled, its release commits nothing
     expectOk(await v.api.run('history.undo', {}));

@@ -7,6 +7,8 @@
 import { OrderedSet } from '@molstar/core/data/int';
 import { Vec3, type Vec4 } from '@molstar/core/math/linear-algebra';
 import { Binding } from '@molstar/core/util/binding';
+import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
+import { Canvas3DParams, type Canvas3DProps } from '@molstar/graphics/canvas3d/canvas3d';
 import type { Representation } from '@molstar/graphics/repr/representation';
 import { Shape, ShapeGroup } from '@molstar/model/model/shape';
 import type { PluginContext } from '@molstar/plugin/context';
@@ -50,6 +52,9 @@ export function mountGizmoCanvas(plugin: PluginContext): GizmoCanvas {
   };
   const input = {
     pixelRatio: 1,
+    // the element's size: the viewport's (what a drag's moves are fractions of)
+    width: 100,
+    height: 100,
     drag: new Subject<{ isStart: boolean; x: number; y: number; dx: number; dy: number }>(),
     interactionEnd: new Subject<void>(),
     keyDown: new Subject<{ key: string }>(),
@@ -75,6 +80,12 @@ export function mountGizmoCanvas(plugin: PluginContext): GizmoCanvas {
       held = until.catch(() => {});
     },
     attribs,
+    // a canvas's default props (the trackball's speed: a turn's rate, `trackballTurnRate`; what the views read)
+    props: PD.getDefaultValues(Canvas3DParams) as Canvas3DProps,
+    // a checkpoint's restore (an undo) sets back the props it read
+    setProps(p: Partial<Canvas3DProps>) {
+      canvas.props = { ...canvas.props, ...p };
+    },
     setAttribs: (a: { trackball: { bindings: Record<string, Binding> } }) => {
       attribs.trackball.bindings = a.trackball.bindings;
     },
