@@ -206,9 +206,10 @@ The code is the truth for how.
 - **Headless**: `camera: false` keeps the checkpoint from reading the canvas.
 - **A lazy extension's load** stays across a restore to before it (its registrations stay; its cells go).
 - **Behavior-owned cells are left out** (`registerBehaviorOwned`, `sources/checkpoint.ts`): an extension whose behavior
-  makes and removes cells on its own (streamed tiles) registers their transformers once per plugin:
-  `registerBehaviorOwned(plugin, [transformer | id, …])` returns the function that takes the registration back (two
-  registrations of one id count twice). A transformer is matched by its whole id. For a registered cell:
+  makes and removes cells on its own (streamed tiles) registers their transformers once per plugin (import
+  `@molstar/prism-viewer/sources/checkpoint`): `registerBehaviorOwned(plugin, [transformer | id, …])` returns the
+  function that takes the registration back (two registrations of one id count twice). A transformer is matched by its
+  whole id. For a registered cell:
   - **no change outside the API** (§7.3), made, updated or removed by anyone, and so is every cell under it;
   - **a checkpoint leaves it out with everything under it** (the data tree only; the behaviors' tree is whole), so the
     history holds neither its size nor its params;

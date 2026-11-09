@@ -4,6 +4,7 @@
  * Developed in collaboration with Anyfold <https://anyfold.ai/>
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { StateTransform, StateTree } from '@molstar/core/state';
@@ -171,10 +172,12 @@ describe('behavior-owned cells', () => {
 
     // A step after the checkpoint is undone; the tiles stay, as the same cells (not made again).
     const cell = v.plugin.state.data.cells.get(tiles)!;
+    const version = cell.transform.version;
     expectOk(await v.api.representation.color({ target: 'polymer', theme: 'hydrophobicity' }));
     await port.restore(before);
     expect(treeOf(v)).toContain(tiles);
     expect(v.plugin.state.data.cells.get(tiles)).toBe(cell);
+    expect(cell.transform.version).toBe(version);
     expect(v.plugin.state.data.tree.children.get(tiles).toArray()).toEqual([nested]);
     expect(v.plugin.state.data.tree.transforms.get(tiles)!.parent).toBe(StateTransform.RootRef);
     // The scene is what the checkpoint held.
@@ -235,7 +238,9 @@ describe('behavior-owned cells', () => {
     registerBehaviorOwned(v.plugin, [Tile]);
     const b = v.plugin.state.data.build();
     for (let i = 0; i < 140; i++) {
-      b.toRoot().apply(Tile, {}, { ref: `t${i}` }).apply(CreateGroup, { label: 'rep' }, { ref: `t${i}-c` });
+      b.toRoot()
+        .apply(Tile, {}, { ref: `t${i}` })
+        .apply(CreateGroup, { label: 'rep' }, { ref: `t${i}-c` });
     }
     await b.commit();
     const next = v.plugin.state.data.build();
@@ -268,7 +273,11 @@ describe('behavior-owned cells', () => {
     const structure = [...v.plugin.state.data.cells.values()].find((c) =>
       c.transform.transformer.id.endsWith('structure-from-model'),
     )!.transform.ref;
-    await v.plugin.state.data.build().toRoot().apply(Tile, {}, { ref: 'dep', dependsOn: [structure] }).commit();
+    await v.plugin.state.data
+      .build()
+      .toRoot()
+      .apply(Tile, {}, { ref: 'dep', dependsOn: [structure] })
+      .commit();
     await port.restore(empty);
     expect(v.plugin.state.data.cells.has('dep')).toBe(false);
   });
@@ -286,7 +295,7 @@ describe('custom state in the size', () => {
     let measured = 0;
     const real = JSON.stringify;
     const spy = (value: unknown, ...rest: unknown[]) => {
-      if (value === doc) measured++;
+      if ((value as { items?: unknown } | null)?.items === doc.items) measured++;
       return (real as (...a: unknown[]) => string)(value, ...rest);
     };
     const original = JSON.stringify;
@@ -304,6 +313,7 @@ describe('custom state in the size', () => {
       current = { ...doc, version: 2 };
       const c = port.checkpoint();
       expect(port.size!(c)).toBeGreaterThan(0);
+      expect(measured).toBe(2);
       expect(real(c.plugin.custom!['test.document'])).toContain('"version":2');
     } finally {
       JSON.stringify = original;
