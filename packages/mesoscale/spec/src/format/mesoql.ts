@@ -181,10 +181,21 @@ export interface QExpr {
 export interface QContext {
   /** id → kind, for reference checks (`validate`'s DocIndex). */
   readonly kinds?: ReadonlyMap<string, string>;
+  /** entity id → the names of its sites, to check `(site e name)`; an entity not in it is not checked. */
+  readonly sites?: ReadonlyMap<string, readonly string[]>;
 }
 
-/** Parses and checks an address; issues carry `path` (the document pointer it was found at). */
-export function parseMesoQL(text: string, ctx: QContext = {}, path?: string): { expr?: QExpr; issues: Issue[] } {
+/**
+ * Parses and checks an address; issues carry `path` (the document pointer it was found at). `want` is the type the
+ * slot asks for (a look's `select` a selection, a relation's `entry` a site, a site's `at` residues); without it, the
+ * type the address's own head returns.
+ */
+export function parseMesoQL(
+  text: string,
+  ctx: QContext = {},
+  path?: string,
+  want?: QType,
+): { expr?: QExpr; issues: Issue[] } {
   const issues: Issue[] = [];
   const err = (code: string, message: string) =>
     issues.push(issue(`mesoql.${code}`, 'error', 'static', message, { path }));
@@ -266,6 +277,11 @@ export function parseMesoQL(text: string, ctx: QContext = {}, path?: string): { 
         args.push(it.value);
       } else err('argument', `${def.name} of (${s.name}) is a ${def.kind}, found ${text.slice(it.start, it.end)}`);
     }
+    if (s.name === 'site' && typeof args[0] === 'string' && typeof args[1] === 'string') {
+      const names = ctx.sites?.get(args[0]);
+      if (names && !names.includes(args[1]))
+        err('site', `${args[0]} has no site ${args[1]}${names.length ? `; its sites: ${names.join(', ')}` : ''}`);
+    }
     const required = s.args.filter((x) => !x.optional && !x.rest).length;
     if (a < required || (s.args[0]?.rest && a === 0 && s.name !== 'all'))
       err('arity', `(${s.name}) needs ${s.args.map((x) => x.name).join(', ')}`);
@@ -273,8 +289,7 @@ export function parseMesoQL(text: string, ctx: QContext = {}, path?: string): { 
   };
   const first = r.nodes[0];
   const head = first.kind === 'list' && first.items[0]?.kind === 'atom' ? String(first.items[0].value) : '';
-  const want = bySymbol.get(head)?.returns ?? 'selection';
-  const expr = check(first, want);
+  const expr = check(first, want ?? bySymbol.get(head)?.returns ?? 'selection');
   return { expr: issues.length ? undefined : expr, issues };
 }
 

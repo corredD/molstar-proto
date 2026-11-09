@@ -6,6 +6,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { exosomeDoc } from '../examples/exosome.js';
+import { nucleoidDoc } from '../examples/nucleoid.js';
 import { mesoQLReference, parseMesoQL, printMesoQL } from '../format/mesoql.js';
 import { indexDoc, validate } from '../format/validate.js';
 import { placementSets } from '../ir/ir.js';
@@ -103,5 +104,34 @@ describe('MesoQL', () => {
 
   it('the reference is generated from the table', () => {
     expect(mesoQLReference()).toContain('| `within` | selection |');
+  });
+
+  it('an address has the type its slot asks for, and a site name its entity declares (F5)', () => {
+    const d = exosomeDoc();
+    const at = (doc: typeof d) =>
+      validate(doc)
+        .filter((i) => i.severity === 'error')
+        .map((i) => [i.code, i.path]);
+    const k = d.views!.length;
+    const view = (v: object) => ({ ...d, views: [...d.views!, { id: 'v.x', ...v }] });
+    expect(at(view({ camera: { focus: '(site e.catalase x)' } }))).toEqual([
+      ['mesoql.type', `/views/${k}/camera/focus`],
+    ]);
+    expect(at(view({ looks: [{ select: '(residues e.catalase)' }] }))).toEqual([
+      ['mesoql.type', `/views/${k}/looks/0/select`],
+    ]);
+    expect(at(view({ cutaway: '(site e.catalase x)' }))).toEqual([['mesoql.type', `/views/${k}/cutaway`]]);
+    // the slot, not the head, says the type: parseMesoQL takes it
+    expect(parseMesoQL('(site e.catalase x)', { kinds }, undefined, 'selection').issues.map((i) => i.code)).toEqual([
+      'mesoql.type',
+    ]);
+    const n = nucleoidDoc();
+    const withEntry = (entry: string) => ({
+      ...n,
+      relations: n.relations!.map((r, i) => (i ? r : { ...r, entry })),
+    });
+    expect(at(withEntry('(site e.hu nope)'))).toEqual([['mesoql.site', '/relations/0/entry']]);
+    expect(at(withEntry('(population p.hu)'))).toEqual([['mesoql.type', '/relations/0/entry']]);
+    expect(at(withEntry('(site e.hu dna-exit)'))).toEqual([]);
   });
 });
