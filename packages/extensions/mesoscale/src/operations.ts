@@ -237,6 +237,10 @@ export class MesoscaleApi extends ApiArea {
     title: 'Wrap with lipids',
     params: {
       mesh: PD.Text('', { description: 'A mesh by state ref (a shape opened from OBJ, PLY, VTP)' }),
+      meshes: PD.Text('', {
+        description:
+          'Meshes by state ref, comma-separated, wrapped as one membrane (a cell’s membranes: one budget, inner ones hidden while the eye is outside): over `mesh`',
+      }),
       compartment: PD.Text('', {
         description:
           'A compartment of a particle list by its dotted path (root.exosome): a sphere fitted to its particles',
@@ -268,7 +272,19 @@ export class MesoscaleApi extends ApiArea {
         ['cutter', 'Cutter: cellPACKgpu’s, the patch cut on each of the mesh’s own triangles'],
       ] as const),
     },
-    async run({ mesh, compartment, particles, radius, patch, patchPdb, patchUrl, edge, leaflets, method }, ctx) {
+    async run(
+      { mesh, meshes, compartment, particles, radius, patch, patchPdb, patchUrl, edge, leaflets, method },
+      ctx,
+    ) {
+      // round 6: many meshes as one membrane (Wrap all with lipids: one step), cut by the cutter
+      const parts = meshes
+        .split(',')
+        .map((r: string) => r.trim())
+        .filter((r: string) => r);
+      for (const ref of parts) {
+        if (!ctx.plugin.state.data.cells.has(ref)) return ApiResult.fail('not-found', `No mesh ${ref} in the scene.`);
+      }
+      if (parts.length > 0) method = 'cutter';
       if (patchPdb) registerLipidPatch(patch, patchPdb);
       else if (patchUrl && !hasLipidPatch(patch)) {
         // a static file, fetched on the first wrap (never in the start bundle)
@@ -297,6 +313,7 @@ export class MesoscaleApi extends ApiArea {
         {
           ...PD.getDefaultValues(LipidMembraneParams),
           mesh,
+          meshes: parts,
           center,
           radius: r,
           patch,
@@ -305,7 +322,7 @@ export class MesoscaleApi extends ApiArea {
           method,
         },
         // removed with its mesh (moving the mesh does not move it yet: TODO.md)
-        mesh ? { dependsOn: [mesh] } : undefined,
+        parts.length > 0 ? { dependsOn: parts } : mesh ? { dependsOn: [mesh] } : undefined,
       );
       // a failed transform (an unknown patch, a ref that is not a mesh) leaves no cell and no step: reverted, its error
       // read as it happened
@@ -326,10 +343,12 @@ export class MesoscaleApi extends ApiArea {
         );
       }
       // the mesh hidden under its membrane, as cellPACKgpu shows it (its eye shows it again)
-      if (mesh) ctx.plugin.state.data.updateCellState(mesh, { isHidden: true });
+      for (const ref of parts.length > 0 ? parts : mesh ? [mesh] : []) {
+        ctx.plugin.state.data.updateCellState(ref, { isHidden: true });
+      }
       const drawn = canDrawLipidMembranes(ctx.plugin);
       return ApiResult.ok(
-        `Wrapped ${mesh ? 'the mesh' : compartment || `a sphere of ${Math.round(r)} Å`} with lipids${drawn ? '' : ' (not drawn: WebGPU only)'}.`,
+        `Wrapped ${parts.length > 0 ? `${parts.length} meshes as one membrane` : mesh ? 'the mesh' : compartment || `a sphere of ${Math.round(r)} Å`} with lipids${drawn ? '' : ' (not drawn: WebGPU only)'}.`,
         { nodes: [node.ref] },
       );
     },
