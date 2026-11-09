@@ -137,6 +137,12 @@ describe('meso-query', () => {
     expect(v.copies).toBeGreaterThan(0);
   });
 
+  it('compile errors are reported with the counts: a resource that cannot load exits 1', async () => {
+    const { io, o } = memory();
+    expect(await queryCmd([BETA, '(all)', '--json'], io)).toBe(1); // no --base: the recipe is not found
+    expect(o.err).toContain('resource.unavailable');
+  });
+
   it('an address with errors exits 1 and says where; --check stops there', async () => {
     const bad = memory();
     expect(await queryCmd([BETA, '(population p.nope)'], bad.io)).toBe(1);

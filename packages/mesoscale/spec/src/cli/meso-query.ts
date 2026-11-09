@@ -77,7 +77,7 @@ export const run = (argv: readonly string[], io: CliIO = nodeIO) =>
           }
       }
       emit(io, a, { address, type, copies: lociSize(loci), populations, ids: lociToIds(loci, r.ir, limit) }, IRCodec);
-      return reportIssues(io, 'query', [...issues, ...found]);
+      return reportIssues(io, 'query', [...issues, ...r.issues, ...found]);
     },
   );
 
