@@ -49,8 +49,8 @@
             "params": {
               "model": "default:meso.instances",
               "resolver": "meso.precomputed",
-              "version": "0.2.0",
-              "key": "default:meso.instances@3d98815227f311d3",
+              "version": "0.3.0",
+              "key": "default:meso.instances@c89e35ad71969096",
               "input": {
                 "resources": [],
                 "inline": {
@@ -87,7 +87,7 @@
                 "origin": ["i.granule-docked", "i.granule-deep"],
                 "params": {
                   "set": {
-                    "key": "default:meso.instances@3d98815227f311d3#0",
+                    "key": "default:meso.instances@c89e35ad71969096#0",
                     "model": "default:meso.instances",
                     "frame": "world",
                     "count": 2,
@@ -152,7 +152,7 @@
               "model": "default:meso.pack",
               "resolver": "meso.pack",
               "version": "0.1.1",
-              "key": "default:meso.pack@eb85bc1315df6850",
+              "key": "default:meso.pack@95885af35347fc3c",
               "input": {
                 "items": [
                   {
@@ -203,7 +203,7 @@
                 "origin": ["p.granules", "p.ribosomes"],
                 "params": {
                   "set": {
-                    "key": "default:meso.pack@eb85bc1315df6850#0",
+                    "key": "default:meso.pack@95885af35347fc3c#0",
                     "model": "default:meso.pack",
                     "frame": "world",
                     "count": 2120,
@@ -427,25 +427,25 @@
     },
     "looks": [
       {
-        "set": "default:meso.instances@3d98815227f311d3#0",
+        "set": "default:meso.instances@c89e35ad71969096#0",
         "types": [0],
         "color": 6927827,
         "visible": true
       },
       {
-        "set": "default:meso.instances@3d98815227f311d3#0",
+        "set": "default:meso.instances@c89e35ad71969096#0",
         "types": [1],
         "color": 6924243,
         "visible": true
       },
       {
-        "set": "default:meso.pack@eb85bc1315df6850#0",
+        "set": "default:meso.pack@95885af35347fc3c#0",
         "types": [0],
         "color": 13154528,
         "visible": true
       },
       {
-        "set": "default:meso.pack@eb85bc1315df6850#0",
+        "set": "default:meso.pack@95885af35347fc3c#0",
         "types": [1],
         "color": 8035526,
         "visible": true,

@@ -10,8 +10,10 @@ import { MesoFiberResolver } from '../resolvers/fiber.js';
 import { sdfGrid, shapeSampler } from '../resolvers/geometry.js';
 import { MesoLatticeResolver } from '../resolvers/lattice.js';
 import { MesoPackResolver } from '../resolvers/meso-pack.js';
+import { MesoPrecomputedResolver } from '../resolvers/precomputed.js';
 import { MesoRelaxResolver } from '../resolvers/relax.js';
 import { createRandom } from '../runtime/random.js';
+import { readStar } from '../runtime/readers.js';
 import type { ResolveJob, ResolveOutput } from '../runtime/resolver.js';
 
 // The resolvers' review-gate findings (progress/2026-11-08-mesoviewspec.md, the gate): each a resolver run on a small
@@ -403,5 +405,101 @@ describe('meso.fiber and obstacles', () => {
         (i) => i.severity === 'warning' && /f follows a traced path: \d+ copies overlap/.test(i.message),
       ),
     ).toBe(true);
+  });
+});
+
+/** A precomputed job reading one STAR table (columns without their leading underscore, one row of values each). */
+function starJob(columns: string[], rows: (string | number)[][], extra: { toWorld?: number[]; params?: unknown } = {}) {
+  const text = [
+    'data_particles',
+    '',
+    'loop_',
+    ...columns.map((c, i) => `_${c} #${i + 1}`),
+    ...rows.map((r) => r.join(' ')),
+    '',
+  ].join('\n');
+  const j = job(
+    [
+      { id: 'p', compartment: 'c', location: 'interior', radius: 10, arrangement: { kind: 'random' } },
+      { id: 'q', compartment: 'c', location: 'interior', radius: 10, arrangement: { kind: 'random' } },
+    ],
+    { c: { shape: { kind: 'sphere', center: [0, 0, 0], radius: 1e4 } } },
+    { params: extra.params },
+  );
+  return {
+    ...j,
+    model: { ...j.model, inputs: ['r'] },
+    inputs: new Map([
+      [
+        'r',
+        {
+          resource: { id: 'r', format: 'relion-star' },
+          content: readStar(text),
+          contentKey: 'k',
+          toWorld: extra.toWorld,
+        },
+      ],
+    ]),
+  } as unknown as ResolveJob;
+}
+
+const xyz = ['rlnCoordinateX', 'rlnCoordinateY', 'rlnCoordinateZ'];
+const firstPos = (o: ResolveOutput) => Array.from(o.sets[0].positions.slice(0, 3));
+
+describe('meso.precomputed, RELION STAR', () => {
+  it('subtracts rlnOrigin (pixels) from the coordinates, as Mol*’s reader', () => {
+    const out = run(
+      MesoPrecomputedResolver,
+      starJob([...xyz, 'rlnOriginX', 'rlnOriginY', 'rlnOriginZ'], [[100, 100, 100, 5, 0, -2]]),
+    );
+    expect(firstPos(out)).toEqual([95, 100, 102]);
+  });
+
+  it('subtracts rlnOriginAngst in Å: the voxel size is the frame’s', () => {
+    const scale10 = [10, 0, 0, 0, 0, 10, 0, 0, 0, 0, 10, 0, 0, 0, 0, 1];
+    const out = run(
+      MesoPrecomputedResolver,
+      starJob([...xyz, 'rlnOriginXAngst', 'rlnOriginYAngst', 'rlnOriginZAngst'], [[100, 100, 100, 50, 0, 0]], {
+        toWorld: scale10,
+      }),
+    );
+    expect(firstPos(out)).toEqual([950, 1000, 1000]);
+  });
+
+  it('applies the subtomogram angles: to the rotation and to the origin shift', () => {
+    const out = run(
+      MesoPrecomputedResolver,
+      starJob(
+        [
+          ...xyz,
+          'rlnOriginX',
+          'rlnOriginY',
+          'rlnOriginZ',
+          'rlnAngleRot',
+          'rlnAngleTilt',
+          'rlnAnglePsi',
+          'rlnTomoSubtomogramRot',
+          'rlnTomoSubtomogramTilt',
+          'rlnTomoSubtomogramPsi',
+        ],
+        [[100, 100, 100, 5, 0, 0, 0, 90, 0, 90, 0, 0]],
+      ),
+    );
+    // (Rz(90))ᵀ takes the shift (5, 0, 0) to (0, -5, 0); the rotation is subtomogram · particle:
+    // (0, 0, -√½, √½) · (0, -√½, 0, √½) = (-½, -½, -½, ½) (the other order gives (½, -½, -½, ½))
+    const p = firstPos(out);
+    [100, 105, 100].forEach((v, i) => expect(p[i]).toBeCloseTo(v, 4));
+    const q = Array.from(out.sets[0].rotations.slice(0, 4));
+    [-0.5, -0.5, -0.5, 0.5].forEach((v, i) => expect(q[i]).toBeCloseTo(v, 5));
+  });
+
+  it('a populations column the table does not have is an error, not every row dropped in silence', () => {
+    const out = run(
+      MesoPrecomputedResolver,
+      starJob([...xyz, 'rlnClassNumber'], [[1, 2, 3, 1]], {
+        params: { populations: { column: 'rlnClass', values: { 1: 'p' } } },
+      }),
+    );
+    expect(out.issues?.some((i) => i.severity === 'error' && /rlnClass/.test(i.message))).toBe(true);
   });
 });

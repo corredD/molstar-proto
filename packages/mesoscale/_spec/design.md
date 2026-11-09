@@ -602,7 +602,9 @@ JSON, typed arrays hashed by content). The IR shows the input, so a reader can s
   packing.
 - **Rotation conventions match Mol\*.** The precomputed resolver reads STAR angles with the same rotation as Mol\*'s
   reader: `(Rz(rot) Ry(tilt) Rz(psi))ᵀ`, `relionEulerToRotation` in `packages/model/src/formats/particles/star.ts`. A
-  quick test compares the two.
+  quick test compares the two. As that reader, it takes a row's origin shift (`rlnOrigin*`, pixels; `rlnOrigin*Angst`,
+  Å, by the frame's voxel size) off its coordinate, and turns the row by its subtomogram angles (subtomogram · particle,
+  the shift too). A `populations.column` the table does not have is an error.
 - **Saved results can stand in for procedural ones** (cache-as-precomputed). A procedural result could be saved as a
   `placements` resource with `custom.meso.derivedFrom: {model, key}`; on load, a matching key would replace resolution.
   This is not built: §11, open decision 3.
