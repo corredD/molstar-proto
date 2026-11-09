@@ -4,26 +4,45 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import type {
-  Arrangement,
-  Compartment,
-  Entity,
-  Id,
-  LengthUnit,
-  MesoViewSpecDoc,
-  Model,
-  TileManifest,
-  Transform,
-  View,
-} from '../format/doc.js';
-import { hasErrors, issue, type Issue } from '../format/issues.js';
-import { abundanceToCount, LengthToAngstrom, toAngstrom } from '../format/units.js';
-import { superstructureDoc, validate, validateManifest } from '../format/validate.js';
-import { contentHash } from '../ir/hash.js';
-import { type IR, type IRLook, type IRNode, type IRShape, type IRView, placementSets } from '../ir/ir.js';
-import { type PlacementType, rotationOf } from '../ir/placements.js';
-import { evaluateMesoQL, intersectRuns, lociSphere, type MesoLoci, runsSize, typeRuns } from '../ir/loci.js';
-import { parseMesoQL } from '../format/mesoql.js';
+import {
+  abundanceToCount,
+  type Arrangement,
+  type Compartment,
+  type Entity,
+  hasErrors,
+  type Id,
+  issue,
+  type Issue,
+  LengthToAngstrom,
+  type LengthUnit,
+  type MesoViewSpecDoc,
+  type Model,
+  parseMesoQL,
+  superstructureDoc,
+  type TileManifest,
+  toAngstrom,
+  type Transform,
+  validate,
+  validateManifest,
+  type View,
+} from '@molstar/meso-spec/format';
+import {
+  contentHash,
+  evaluateMesoQL,
+  intersectRuns,
+  type IR,
+  type IRLook,
+  type IRNode,
+  type IRShape,
+  type IRView,
+  lociSphere,
+  type MesoLoci,
+  placementSets,
+  type PlacementType,
+  rotationOf,
+  runsSize,
+  typeRuns,
+} from '@molstar/meso-spec/ir';
 import { DefaultReaders, meshArea, readerFor } from './readers.js';
 import { level0IR, type TileProvider } from './streaming.js';
 import type {

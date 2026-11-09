@@ -5,14 +5,10 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import { indexDoc } from '../format/validate.js';
-import { type QType, parseMesoQL, printMesoQL } from '../format/mesoql.js';
-import { issue } from '../format/issues.js';
-import { IRCodec } from '../format/sexpr.js';
-import { placementSets } from '../ir/ir.js';
-import { evaluateMesoQL, lociSize, lociToIds } from '../ir/loci.js';
-import { DefaultResolvers } from '../resolvers/index.js';
-import { compile } from '../runtime/runtime.js';
+import { indexDoc, IRCodec, issue, parseMesoQL, printMesoQL, type QType } from '@molstar/meso-spec/format';
+import { evaluateMesoQL, lociSize, lociToIds, placementSets } from '@molstar/meso-spec/ir';
+import { DefaultResolvers } from '@molstar/meso-spec/resolvers';
+import { compile } from '@molstar/meso-spec/runtime';
 import { CliError, type CliIO, command, emit, nodeIO, readDoc, reportIssues, resourceLoader, runMain } from './io.js';
 
 // `meso-query <doc> <address|-> [--limit n] [--check] [--want type] [--base dir]... [--json] [-o file]`: checks a

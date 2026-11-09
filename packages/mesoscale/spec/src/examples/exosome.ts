@@ -5,8 +5,8 @@
  */
 
 import { createMesoDocument, q } from '../builder/index.js';
-import type { MesoViewSpecDoc } from '../format/doc.js';
-import { importCellpackGpuRecipe, parseCellpackGpuRecipe } from '../resolvers/cellpack-gpu.js';
+import type { MesoViewSpecDoc } from '@molstar/meso-spec/format';
+import { importCellpackGpuRecipe, parseCellpackGpuRecipe } from '@molstar/meso-spec/resolvers';
 import recipeJson from './fixtures/exosome.cellpack-gpu.json' with { type: 'json' };
 import { syntheticPicksStar, syntheticVesicleObj } from './fixtures/synthetic.js';
 

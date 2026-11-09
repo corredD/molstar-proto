@@ -4,10 +4,7 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import type { MesoViewSpecDoc } from '../format/doc.js';
-import { type Issue, issue } from '../format/issues.js';
-import type { QExpr } from '../format/mesoql.js';
-import { LengthToAngstrom } from '../format/units.js';
+import { type Issue, issue, LengthToAngstrom, type MesoViewSpecDoc, type QExpr } from '@molstar/meso-spec/format';
 import { type IR, placementSets } from './ir.js';
 import type { PlacementSet } from './placements.js';
 

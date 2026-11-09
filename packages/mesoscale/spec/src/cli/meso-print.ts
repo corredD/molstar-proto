@@ -5,7 +5,7 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import { DocumentCodec, IRCodec } from '../format/sexpr.js';
+import { DocumentCodec, IRCodec } from '@molstar/meso-spec/format';
 import { type CliIO, command, emit, nodeIO, readValue, runMain } from './io.js';
 
 // `meso-print <file> [--json] [-o file]`: JSON or S-expression text as the S-expression (default) or JSON

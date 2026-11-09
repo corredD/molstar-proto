@@ -4,7 +4,7 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import type { Resolver, ResolveJob } from '../runtime/resolver.js';
+import type { ResolveJob, Resolver } from '@molstar/meso-spec/runtime';
 import { DefaultPackParams, pack, type PackInput, packCompartments } from './packing.js';
 
 // `meso.pack`: the document's own resolver for randomly arranged populations (_spec/runtime.md). Every number comes from

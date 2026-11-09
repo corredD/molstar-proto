@@ -4,11 +4,9 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import type { Id } from '../format/doc.js';
-import { issue, type Issue } from '../format/issues.js';
-import { PlacementBuilder, type PlacementType, quatFromTo } from '../ir/placements.js';
-import { createRandom, subSeed } from '../runtime/random.js';
-import type { Resolver, ResolveJob, ResolveOutput } from '../runtime/resolver.js';
+import { type Id, issue, type Issue } from '@molstar/meso-spec/format';
+import { PlacementBuilder, type PlacementType, quatFromTo } from '@molstar/meso-spec/ir';
+import { createRandom, type ResolveJob, type ResolveOutput, type Resolver, subSeed } from '@molstar/meso-spec/runtime';
 import { shapeSampler } from './geometry.js';
 import { type PackCompartment, packCompartments } from './packing.js';
 

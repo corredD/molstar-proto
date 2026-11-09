@@ -4,9 +4,9 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import type { Look, MesoViewSpecDoc } from '../format/doc.js';
+import type { Look, MesoViewSpecDoc } from '@molstar/meso-spec/format';
 import { createMesoDocument, q } from '../builder/index.js';
-import { importCellpackGpuRecipe, parseCellpackGpuRecipe } from '../resolvers/cellpack-gpu.js';
+import { importCellpackGpuRecipe, parseCellpackGpuRecipe } from '@molstar/meso-spec/resolvers';
 import isgJson from './fixtures/isg.cellpack-gpu.json' with { type: 'json' };
 
 // A slice of a β-cell with insulin secretory granules (_spec/format.md, design.md §10): the granule is a superstructure, imported

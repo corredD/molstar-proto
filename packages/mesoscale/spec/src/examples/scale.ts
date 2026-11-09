@@ -4,7 +4,7 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import type { MesoViewSpecDoc } from '../format/doc.js';
+import type { MesoViewSpecDoc } from '@molstar/meso-spec/format';
 
 // Scenes of a given size for the performance lane and story (design.md §8): `pack`, N proteins of 3 kinds packed in a
 // sphere sized for a 15% volume fraction (random sequential addition, far from jamming); `bilayer`, N lipids on a

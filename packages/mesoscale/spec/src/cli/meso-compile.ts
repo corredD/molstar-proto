@@ -5,10 +5,10 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import { irToJson } from '../ir/ir.js';
-import { DefaultResolvers } from '../resolvers/index.js';
-import { compile } from '../runtime/runtime.js';
-import { IRCodec } from '../format/sexpr.js';
+import { irToJson } from '@molstar/meso-spec/ir';
+import { DefaultResolvers } from '@molstar/meso-spec/resolvers';
+import { compile } from '@molstar/meso-spec/runtime';
+import { IRCodec } from '@molstar/meso-spec/format';
 import { type CliIO, command, emit, nodeIO, readDoc, reportIssues, resourceLoader, runMain } from './io.js';
 
 // `meso-compile <doc> [--base dir]... [--json] [-o file]`: the IR summary the runtime makes of the document, the

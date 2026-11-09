@@ -4,11 +4,22 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import type { Id, Location } from '../format/doc.js';
-import type { IRShape } from '../ir/ir.js';
-import { PlacementBuilder, type PlacementSet, type PlacementType, quatFromTo } from '../ir/placements.js';
-import { createRandom, type Random, subSeed } from '../runtime/random.js';
-import type { NormalizedCompartment, ResolveJob, ResolveOutput } from '../runtime/resolver.js';
+import type { Id, Location } from '@molstar/meso-spec/format';
+import {
+  type IRShape,
+  PlacementBuilder,
+  type PlacementSet,
+  type PlacementType,
+  quatFromTo,
+} from '@molstar/meso-spec/ir';
+import {
+  createRandom,
+  type NormalizedCompartment,
+  type Random,
+  type ResolveJob,
+  type ResolveOutput,
+  subSeed,
+} from '@molstar/meso-spec/runtime';
 import { type ShapeSampler, shapeSampler } from './geometry.js';
 
 // Seeded random sequential addition (_spec/runtime.md, design.md §8): copies tried one at a time, a try kept when its sphere overlaps

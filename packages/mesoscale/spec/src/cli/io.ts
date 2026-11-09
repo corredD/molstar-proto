@@ -7,9 +7,15 @@
 import { readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import type { MesoViewSpecDoc } from '../format/doc.js';
-import type { Issue } from '../format/issues.js';
-import { type DataCodec, DocumentCodec, IRCodec, printData, readData } from '../format/sexpr.js';
+import {
+  type DataCodec,
+  DocumentCodec,
+  IRCodec,
+  type Issue,
+  type MesoViewSpecDoc,
+  printData,
+  readData,
+} from '@molstar/meso-spec/format';
 
 // The meso-* commands' shared parts (design.md §12.1): argument parsing, reading JSON or S-expression text, writing a
 // product to stdout or a file, issues to stderr, and resources from files. Each command is `run(argv, io)`, so tests

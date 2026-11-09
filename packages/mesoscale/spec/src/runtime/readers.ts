@@ -4,7 +4,7 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import type { Resource } from '../format/doc.js';
+import type { Resource } from '@molstar/meso-spec/format';
 import type { MeshData, ResourceReader } from './resolver.js';
 
 // Readers (_spec/format.md): a resource's raw content made usable, by its native format. Pluggable like resolvers; the

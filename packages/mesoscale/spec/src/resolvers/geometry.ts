@@ -4,10 +4,8 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import type { IRShape } from '../ir/ir.js';
-import type { Random } from '../runtime/random.js';
-import { meshArea } from '../runtime/readers.js';
-import type { MeshData } from '../runtime/resolver.js';
+import type { IRShape } from '@molstar/meso-spec/ir';
+import { meshArea, type MeshData, type Random } from '@molstar/meso-spec/runtime';
 
 // Compartment shapes as samplers (_spec/runtime.md): inside tests, interior points kept a margin from the boundary, surface
 // points with their outward normal. Analytic shapes are exact; a mesh samples its triangles by area and tests inside by

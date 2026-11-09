@@ -968,8 +968,18 @@
               "options": {
                 "patterns": [
                   {
-                    "group": ["molstar", "molstar/**", "@molstar/*", "@molstar/*/**"],
-                    "message": "MesoViewSpec's format, IR and runtime import nothing of Mol* (packages/mesoscale/_spec/design.md §12): adapters live in packages/mesoscale/molstar."
+                    "group": [
+                      "molstar",
+                      "molstar/**",
+                      "@molstar/*",
+                      "@molstar/*/**",
+                      "!@molstar/meso-spec/format",
+                      "!@molstar/meso-spec/ir",
+                      "!@molstar/meso-spec/runtime",
+                      "!@molstar/meso-spec/resolvers",
+                      "!@molstar/meso-spec/examples"
+                    ],
+                    "message": "MesoViewSpec's format, IR and runtime import nothing of Mol*, only their own entries (packages/mesoscale/_spec/design.md §12): adapters live in packages/mesoscale/molstar. Across folders name the entry (@molstar/meso-spec/format), never a path."
                   }
                 ]
               }

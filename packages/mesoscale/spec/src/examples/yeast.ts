@@ -4,7 +4,7 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import type { MesoViewSpecDoc } from '../format/doc.js';
+import type { MesoViewSpecDoc } from '@molstar/meso-spec/format';
 import { createMesoDocument } from '../builder/index.js';
 import type { ResourceRef } from '../builder/index.js';
 

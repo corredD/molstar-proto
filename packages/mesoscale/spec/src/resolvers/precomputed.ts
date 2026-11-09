@@ -4,11 +4,9 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import type { Id } from '../format/doc.js';
-import { issue, type Issue } from '../format/issues.js';
-import { mulQuat, PlacementBuilder, type PlacementType, rotationOf, rotateVec } from '../ir/placements.js';
-import type { StarTable } from '../runtime/readers.js';
-import type { Resolver, ResolveJob, ResolveOutput } from '../runtime/resolver.js';
+import { type Id, issue, type Issue } from '@molstar/meso-spec/format';
+import { mulQuat, PlacementBuilder, type PlacementType, rotateVec, rotationOf } from '@molstar/meso-spec/ir';
+import type { ResolveJob, ResolveOutput, Resolver, StarTable } from '@molstar/meso-spec/runtime';
 
 // `meso.precomputed` (_spec/runtime.md): placements someone else computed, read from their native format and carried into
 // the world frame by the resource frame's alignment. A precomputed model and a procedural one are the same to everything
