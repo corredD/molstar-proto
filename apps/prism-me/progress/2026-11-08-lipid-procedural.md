@@ -242,7 +242,7 @@ each (9 confirmed, 3 by a run; 2 plausible; 0 refuted; S3 down to a nit; N1 plau
 | N1 solid-interior caps draw the pool's full capacity                                                                                                         | covered by M1's fix (dead slots past any far plane)                    |
 | Nits: capacities 1.1 × budget, grey surface with all hidden, `find` per species row, reset's version, `lipidAt` unused, export's row count, camera test gaps | reset fixed `230359421`; the rest open (TODO or here)                  |
 
-## PR body (draft; rounds 4 to 5, the lane's PR)
+## PR body (draft; rounds 4 to 6, the lane's PR)
 
 **What.** Lipid membranes made per view, rounds 4 to 5 (Ludo, 2026-11-08: "completely procedural ... camera distance
 dependant, and size on screen ... only do the full build at export time"; 2026-11-09: a billion lipids at interactive
@@ -252,7 +252,11 @@ rest; a large triangle is cut by cells made in view only, nothing O(lipids) at t
 G lipids: wrap 1.4 s, 0.8 GB). Far away each leaflet is the mesh's own triangles with the patch's top view as a
 mipmapped texture mapped as the cutter maps the lipids, taking over from the spheres without a seam. Colours by zoom go
 from the membrane's colour to species to atoms by element. The membrane is coloured and styled as a particle list, takes
-Prism's clips, and is fully built only at export (STAR). Tiles stay whole, refused past 50 M lipids.
+Prism's clips, and is fully built only at export (STAR). Tiles stay whole, refused past 50 M lipids. Round 6 (the yeast
+cell's nine membranes, 1.08 M triangles, ~0.7 G lipids): + Open reads the yeast cell viewer's
+`organelle_meshes.bin(.gz)`, and right-click › Wrap all N meshes with lipids makes one membrane over them (one step, one
+pool and budget nearest first across them; a membrane inside a closed one is skipped while the eye is outside it); the
+selection descends a sphere tree (0.1-8 ms a view, from 87-600 ms); close on the PM 104 ms from 500-650.
 
 **Changes.**
 
@@ -266,6 +270,9 @@ Prism's clips, and is fully built only at export (STAR). Tiles stay whole, refus
   `far-surface.ts` (the patch surface and raster), `membrane.ts` (pool, surfaces, textures' lifetime, colours by zoom,
   clips), `export.ts`; operations `membraneDetail`, `membraneSpecies`, `exportMembrane`, `graphics`, and the particle
   list's `style`, `colors`, `colorLevels` on a membrane; a `test:perf` tier (`lipid-selection.quick.ts`).
+- Round 6, `mesoscale`: `lipids/triangle-tree.ts` (the tree, the parity test, enclosures), `procedural.ts` (the descent,
+  the parts shown), `membrane.ts` (`meshes`, `concatMeshes`, a part's surfaces), `organelle-meshes.ts` (the reader and
+  its transform), `wrapMembrane { meshes }`; `apps/prism-me`: rows named by their shape's label, Wrap all.
 - `apps/prism-me`: Wrap with lipids = the cutter (tiles: small objects); Export lipids; the membrane's Look; ui.md,
   features.md, TODO, the changelog `.v6/changelogs/lipid-procedural.md`.
 
@@ -282,8 +289,15 @@ clip with a still camera; the patch textures' lifetime; the patch texture's pixe
 lipids' camera path, the switch's colour at x600), `test:perf` (a view's selection), scaling (selection over n and 4n
 triangles; the wrap flat at x20 and x80 with an O(lipids) control). Images and numbers: the rounds' sections above.
 
-**Review.** Rounds 4, 4b, 4c: their gates above. Round 5: an Opus reviewer (5 must-fix, 7 should-fix, 9 nits), the
-skeptic, then a failing test and a fix each: "Round 5, the gate closed". Open: M5 (Ludo), N4, X4, X5, N1-N9 (TODO).
+**Round 6 notes.** One Look for the whole cell (a membrane's own colour or hide: Ludo's call); one patch for every
+membrane; wrap ~9.6 s; the selection's perf baseline 79.6 → 95.6 B a view. Testing round 6: the reader and its open
+guard (n/4n meshes), wrap all one step, enclosures and one budget (`lipid-cell.test.ts`), the close view's scaling guard
+with parts (n/4n, a scan control), the Dawn nested cell (medium), prism-me's open and menu; the yeast data never
+committed (probes outside the tree).
+
+**Review.** Round 6: "Round 6, the gate" (M1, M2, S2, S4, S6 fixed after failing tests; S1 refuted). Rounds 4, 4b, 4c:
+their gates above. Round 5: an Opus reviewer (5 must-fix, 7 should-fix, 9 nits), the skeptic, then a failing test and a
+fix each: "Round 5, the gate closed". Open: M5 (Ludo), N4, X4, X5, N1-N9 (TODO).
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
 
@@ -1063,3 +1077,44 @@ The headless camera's frustum is orthographic-like (parallel side planes): an ey
 
 **Size.** About 700 production lines against ~600 (tree and enclosure 290, selection 80, membrane parts 120, reader 170,
 operation and menu 60); the reader's response handling and the near-plane viewer took the room.
+
+## Round 6, the gate (2026-11-09)
+
+An Opus reviewer read `dbd4ac8bb...6f81e7a20` (2 must-fix, 7 should-fix, 4 nits); the lane-skeptic re-ran or re-read
+each (10 confirmed, 1 plausible, 2 refuted; 2 new nits).
+
+| Finding                                                      | Skeptic                           | Test (fails first)                           | Fix                                  |
+| ------------------------------------------------------------ | --------------------------------- | -------------------------------------------- | ------------------------------------ |
+| M1 Wrap all took meshes already wrapped                      | confirmed, must-fix               | `a243fb958` (counted 3 with the PM wrapped)  | `30fd7f1ed` (a membrane row's wraps) |
+| M2 the reader decoded the file once a mesh                   | confirmed, should-fix             | `b592cb758` (scaling guard, ×18)             | `325e86959` (header read once)       |
+| S1 enclosed surfaces shown after a rebuild at rest           | refuted (new selections reselect) | `d47da3805` coverage only (passes before)    | `d47da3805` `showParts` at build end |
+| S2 a small component outside unsampled: part called enclosed | confirmed, should-fix             | `cbd0d1d5c`-era test in `lipid-cell.test.ts` | `110b8dc55` (a vertex a component)   |
+| S3 tree cache keyed by indices only                          | confirmed latent, nit             |                                              | open (TODO)                          |
+| S4 VTP rows lost their file name                             | confirmed, should-fix             | `4578f10d7`                                  | `14f550fe6`                          |
+| S5 one cell-state notification a wrapped mesh                | confirmed, nit                    |                                              | open (the single-mesh path's too)    |
+| S6 the selection guard: no control, no alloc, no parts       | confirmed, should-fix             | the guard itself                             | `03d49c4fc`                          |
+| S7 enclosures over P² pairs                                  | confirmed, nit (34 ms at 800)     |                                              | open                                 |
+| N1 inclusive edges in the parity test                        | plausible, nit                    |                                              | open                                 |
+| N2 a degenerate near plane hides enclosed parts              | confirmed, unreachable            |                                              | open                                 |
+| N3 stack overflow drops a subtree                            | refuted                           |                                              |                                      |
+| N4 `meshes` description silent on the cutter                 | confirmed, nit                    |                                              | `a9be31c55`                          |
+| X1 the operation accepts wrapped meshes (agents)             | new, nit                          |                                              | open (as the single-mesh path)       |
+
+Numbers after the gate (load 9-43): wrap 9.6 s, RSS 1.1 GB; enclosures on the yeast meshes unchanged (every part in the
+PM); frames whole 32-37, middle 45-48, PM close 104 ms (73 k lipids), a mitochondrion inside 206 ms (145 k), the slice
+75 ms; selection 0.1-1.3 ms far, 8-20 ms close (load 43).
+
+## Round 6, end
+
+**Measured before.** Nine membranes wrapped one by one: 15.5 s and nine 2.2 M pools; every triangle tested every view
+(87-600 ms); the hidden inner membranes selected and drawn (close on the PM 500-650 ms, 447 k of 502 k lipids VAC's); 36
+patch surfaces ~45 ms a frame.
+
+**Built.** Wrap all as one membrane (a part a mesh, one budget nearest first across them), a sphere tree a part for the
+selection, enclosed parts skipped (cells and surfaces) while the viewer is outside, the reader of the yeast viewer's
+file, the right-click. **Open, Ludo's call:** one Look for the whole cell (a membrane's own colour, hiding one
+membrane's lipids); a per-membrane composition; close frames bound by the lipids drawn (round 5's M5); wrap ~9 s (the
+surfaces and the cutters over 1.08 M triangles).
+
+**Next (precise).** Per-part far colour (a part's surfaces take their mesh's colour); patch surfaces built a part at a
+time (no whole-then-slice copy); a `test:perf` case with parts and enclosures; S3, S5, S7, N1 (TODO).
