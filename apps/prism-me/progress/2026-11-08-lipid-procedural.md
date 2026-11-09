@@ -273,6 +273,12 @@ over n and 4n triangles). Images and numbers: Numbers above. Not tried in Chrome
 
 **Review.** The table above.
 
+**Round 4b.** The far look as two welded surfaces at each leaflet's lowest head, in the species' colours where the
+cutter puts them; the cutter cuts each region by cells under the patch's box (no period on a large triangle: copies 30 %
+→ 0.01 % on the teddy ×100); a tiles membrane has the cutter's Look but Texture; Add clip… on a membrane, both methods,
+spheres and surfaces cut alike. Notes for review: seams now at the cells' borders too (M2, Ludo's call); a membrane
+wrapped before the clip change must be wrapped again. Review: "Round 4b, the gate" above.
+
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
 
 ## Checks (2026-11-08, after the review's fixes)
