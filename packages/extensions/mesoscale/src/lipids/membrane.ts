@@ -660,8 +660,8 @@ function surfaceObject(
     bumpAmplitude: 1,
     material: { ...defaults.material, bumpiness: 1 },
     clip,
-    // a cut leaflet's surface fades in over the spheres by distance (`fadeSurfaces`, set per view): its define on from
-    // the start, drawn whole until the first view
+    // a cut leaflet's surfaces fade by distance (`fadeSurface`, set where the size on screen changes): the define on
+    // from the start, the values set at once from the last view seen (none yet: as orthographic, px unbounded)
     lod: fade ? Vec3.create(0, NoFade, 1) : defaults.lod,
   };
   const transform = createIdentityTransform();
