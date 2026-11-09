@@ -47,7 +47,7 @@
 
 ## Built
 
-- `packages/mesoscale/_spec/prism.md` (new, 714 lines): Prism over MesoViewSpec, modelled on
+- `packages/mesoscale/_spec/prism.md` (new, ~740 lines): Prism over MesoViewSpec, modelled on
   `packages/prism/viewer/_spec/sequence.md`. Decisions with alternatives (§1-§4, §8-§10), the operation → patch tables
   (§5), every features.md mesoscale row and ui.md gesture (§6), snapshots and undo (§7), open questions by who decides
   (§11), the eight app lanes' briefs and the base decision (§12).
@@ -73,6 +73,9 @@ Each tagged in prism.md; (L) needs Ludo's word, (D) David's, (C) proposed by Cla
 6. Streaming: the streaming lane's provider and session requests; tile cells behavior-owned and out of checkpoints (C).
 7. No `MesoViewerContext`: Prism's state plus a DOM-free `MesoDocumentModel` (C).
 8. The base: a PR of `me/mesoviewspec` to `prism-me` first, recommended (L).
+9. After the gate (prism.md §11 rows 11-13): `show_meso_view` asks the agent every time (L); part rows read-only in 3D
+   until Prism layers select copy runs (L); look ids carry the edit's kind (D). The two checkpoint changes are a library
+   lane 0 from master (C).
 
 ## Learned
 
@@ -85,7 +88,7 @@ Each tagged in prism.md; (L) needs Ludo's word, (D) David's, (C) proposed by Cla
 
 ## Size
 
-714 lines of spec against ~400-600: the operation and gesture tables (§5, §6) and the undo contract (§7.3, rewritten
+~740 lines of spec against ~400-600: the operation and gesture tables (§5, §6) and the undo contract (§7.3, rewritten
 after the gate) took the room. No production code.
 
 ## Review
