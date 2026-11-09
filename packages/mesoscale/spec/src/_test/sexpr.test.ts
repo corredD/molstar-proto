@@ -9,6 +9,7 @@ import { exosomeDoc, ExosomeResources } from '../examples/exosome.js';
 import { galleryDoc } from '../examples/gallery.js';
 import { yeastDoc } from '../examples/yeast.js';
 import { betaCellDoc, BetaCellResources } from '../examples/betacell.js';
+import { nucleoidDoc } from '../examples/nucleoid.js';
 import { DocumentCodec, IRCodec, printData, readData, readSexpr } from '../format/sexpr.js';
 import { irToJson } from '../ir/ir.js';
 import { DefaultResolvers } from '../resolvers/index.js';
@@ -17,7 +18,13 @@ import { compile } from '../runtime/runtime.js';
 // The S-expression spelling (design.md §3.7): a real second spelling of the same tree. read(print(json)) is the JSON;
 // print(read(text)) is the text (a fixed point).
 
-const docs = { exosome: exosomeDoc(), gallery: galleryDoc(), yeast: yeastDoc(), betacell: betaCellDoc() };
+const docs = {
+  exosome: exosomeDoc(),
+  gallery: galleryDoc(),
+  yeast: yeastDoc(),
+  betacell: betaCellDoc(),
+  nucleoid: nucleoidDoc(),
+};
 
 describe('S-expression spelling', () => {
   for (const [name, doc] of Object.entries(docs)) {
