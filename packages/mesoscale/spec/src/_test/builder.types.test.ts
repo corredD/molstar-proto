@@ -49,12 +49,12 @@ function types() {
   // @ts-expect-error a superstructure takes no instance
   ss.instance({});
 
-  // @ts-expect-error a fiber's path resource is a resource ref, not a string
   b.population({
     entity: e,
     compartment: c,
     location: 'interior',
     abundance: { count: 1 },
+    // @ts-expect-error a fiber's path resource is a resource ref, not a string
     arrangement: { kind: 'fiber', rise: 1, path: { resource: 'r.x' } },
   });
   b.population({
@@ -79,11 +79,11 @@ function types() {
     geometry: { kind: 'sphere', radius: 5 },
     membrane: { composition: { lipids: [{ entity: e, fraction: 1 }] } },
   });
-  // @ts-expect-error an inner entity is not visible from a document membrane
   b.compartment({
     label: 'm',
     kind: 'cell',
     geometry: { kind: 'sphere', radius: 5 },
+    // @ts-expect-error an inner entity is not visible from a document membrane
     membrane: { leaflets: { outer: lipid } },
   });
 
