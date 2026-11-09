@@ -3,6 +3,7 @@
  *
  * @author David Sehnal <david.sehnal@gmail.com>
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import type { Mat4 } from '@molstar/core/math/linear-algebra';
@@ -154,7 +155,13 @@ export class VisualSet {
   /** Updates one of the set's representations; the canvas follows (auto-sync) */
   async update<R extends AnyRepresentation>(repr: R, props?: Partial<PD.Values<R['params']>>, data?: unknown) {
     if (!this.has(repr)) return;
-    await repr.createOrUpdate(props, data).run();
+    try {
+      await repr.createOrUpdate(props, data).run();
+    } catch (e) {
+      // removed (and destroyed) while it ran: nothing left to update (a gizmo part hidden during its update)
+      if (!this.has(repr)) return;
+      throw e;
+    }
     this.canvas.requestDraw();
   }
 

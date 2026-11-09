@@ -2,6 +2,7 @@
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import fs from 'node:fs';
@@ -97,6 +98,16 @@ describe('VisualSet', () => {
     expect(set.owns({ loci: repr.getAllLoci()[0], repr })).toBe(true);
     expect(set.owns({ loci: repr.getAllLoci()[0], repr: stubRepresentation() })).toBe(false);
     expect(set.owns({ loci: repr.getAllLoci()[0] })).toBe(false);
+    set.dispose();
+  });
+
+  it('settles an update not awaited when its representation is removed meanwhile (a gizmo part hidden)', async () => {
+    const { canvas } = fakeCanvas();
+    const set = new VisualSet(canvas);
+    const repr = await set.addShape(sphereShape, Mesh.Utils, 3);
+    const update = set.update(repr, {});
+    set.remove(repr);
+    await expect(update).resolves.toBeUndefined();
     set.dispose();
   });
 
