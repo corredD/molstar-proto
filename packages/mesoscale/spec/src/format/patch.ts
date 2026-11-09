@@ -6,6 +6,7 @@
 
 import type { Id, MesoViewSpecDoc } from './doc.js';
 import { type Issue, issue } from './issues.js';
+import { PatchCodec, printData, readData, type SReadError } from './sexpr.js';
 import { validate } from './validate.js';
 
 // Patches over a MesoViewSpec document (prism.md §2, design.md §3.1): Seq*'s, over this document. Ops by id (`set`,
@@ -439,4 +440,21 @@ export function classifyPatch(doc: MesoViewSpecDoc, patch: Patch): 'view' | 'mod
       return 'model';
   }
   return 'view';
+}
+
+/** A patch as S-expression text. */
+export function printPatch(patch: Patch): string {
+  const { format: _, ops, ...rest } = patch;
+  return printData({ kind: 'patch', ...rest, ops: ops.map(({ op, ...r }) => ({ kind: op, ...r })) }, PatchCodec);
+}
+
+/** S-expression text back to a patch; the inverse of `printPatch`. */
+export function readPatch(text: string): { patch?: Patch; error?: SReadError } {
+  const r = readData(text, PatchCodec);
+  const v = r.value as { kind?: string; ops?: { kind: string }[] } | undefined;
+  if (!v) return { error: r.error };
+  if (v.kind !== 'patch' || !Array.isArray(v.ops))
+    return { error: { message: 'expected (patch :ops [...])', offset: 0 } };
+  const { kind: _, ops, ...rest } = v;
+  return { patch: { format: PatchFormat, ...rest, ops: ops.map(({ kind, ...o }) => ({ op: kind, ...o }) as Op) } };
 }

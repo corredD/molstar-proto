@@ -11,7 +11,16 @@ import { galleryDoc } from '../examples/gallery.js';
 import { nucleoidDoc } from '../examples/nucleoid.js';
 import { yeastDoc } from '../examples/yeast.js';
 import type { MesoViewSpecDoc } from '../format/doc.js';
-import { applyPatch, classifyPatch, diff, type Op, type Patch, PatchFormat } from '../format/patch.js';
+import {
+  applyPatch,
+  classifyPatch,
+  diff,
+  type Op,
+  type Patch,
+  PatchFormat,
+  printPatch,
+  readPatch,
+} from '../format/patch.js';
 import { classifyEdit } from '../runtime/runtime.js';
 
 // Patches (prism.md §2): every op and its inverse on the five examples, all or nothing, no cascade, diff, sharing,
@@ -287,5 +296,84 @@ describe('patch: sharing and cost', () => {
     const r = applyPatch(doc, { ...patch(), revision: 'r1' }).doc;
     expect(r.revision).toBe('r1');
     expect(classifyEdit(doc, r)).toBe('none');
+  });
+});
+
+describe('patch: the S-expression spelling', () => {
+  const text = (p: Patch) => printPatch(p);
+  it('a look edit reads as it is meant', () => {
+    const p = patch({ op: 'set', id: 'l.catalase', fields: { color: '#ff0000', emissive: null } });
+    expect(text(p)).toBe('(patch :ops [(set l.catalase :fields (:color #ff0000 :emissive nil))])');
+  });
+  const ops: Op[] = [
+    { op: 'set', id: 'document', fields: { metadata: { title: 'A "title"' }, session: null } },
+    {
+      op: 'set',
+      id: 'v.overview',
+      fields: { selection: '(population p.miRNA)', camera: { focus: '(entity e.catalase)' } },
+    },
+    {
+      op: 'insert',
+      parent: 'v.overview',
+      list: 'looks',
+      after: 'first',
+      node: {
+        id: 'l.a',
+        select: '(and (entity e.catalase) (not (population p.lipids)))',
+        color: '#00ff00',
+        emissive: 0.25,
+      },
+    },
+    {
+      op: 'insert',
+      parent: 'entities',
+      after: 'e.catalase',
+      node: { id: 'e.new', label: 'new', kind: 'protein', radius: { value: 5, unit: 'nm' } },
+    },
+    {
+      op: 'insert',
+      parent: 'views',
+      node: {
+        id: 'v.new',
+        cutaway: '(in c.exosome)',
+        looks: [
+          { id: 'l.x', select: '(all)' },
+          { select: '(all)', visible: false },
+        ],
+      },
+    },
+    { op: 'move', id: 'l.a', parent: 'v.lumen', list: 'looks', after: 'last' },
+    { op: 'move', id: 'v.new', after: 'first' },
+    { op: 'remove', id: 'an.picks' },
+  ];
+  it('read(print(patch)) is the patch, print(read(text)) the text', () => {
+    for (const p of [patch(...ops), { ...patch(...ops), base: 'r1', revision: 'r2' }, patch()]) {
+      const s = text(p);
+      const back = readPatch(s);
+      expect(back.error).toBeUndefined();
+      expect(back.patch).toEqual(JSON.parse(JSON.stringify(p)));
+      expect(text(back.patch!)).toBe(s);
+    }
+  });
+  it('the diff of an example edit and its inverse round-trip, and the read patch applies', () => {
+    const a = exosomeDoc();
+    const edit = applyPatch(
+      a,
+      patch({
+        op: 'insert',
+        parent: 'v.overview',
+        list: 'looks',
+        node: { id: 'l.red', select: '(entity e.catalase)', color: '#ff0000' },
+      }),
+    );
+    for (const p of [edit.inverse!, diff(a, edit.doc)!]) {
+      const back = readPatch(text(p)).patch!;
+      expect(back).toEqual(p);
+      expect(applyPatch(a, back.ops.length === 1 && back.ops[0].op === 'remove' ? patch() : back).issues).toEqual([]);
+    }
+  });
+  it('a text that is not a patch is an error, not a throw', () => {
+    expect(readPatch('(entity e.x)').error?.message).toMatch(/patch/);
+    expect(readPatch('(patch :ops [').error).toBeDefined();
   });
 });

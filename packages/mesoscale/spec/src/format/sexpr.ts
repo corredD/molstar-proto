@@ -285,6 +285,7 @@ export const DocumentCodec: DataCodec = {
     evidence: 'evidence',
     activities: 'activity',
     views: 'view',
+    looks: 'look',
     annotations: 'annotation',
     superstructures: 'superstructure',
     tours: 'tour',
@@ -301,6 +302,27 @@ export const DocumentCodec: DataCodec = {
     'sites.at',
     'relations.entry',
     'relations.exit',
+  ],
+};
+
+/**
+ * A patch (format/patch.ts, prism.md §2.1): `(patch :base r1 :revision r2 :ops [(set v.cell :fields (:color nil)) …])`,
+ * each op headed by its name with the id it addresses first; a node is a record or, with a `kind` word, a form of it.
+ */
+export const PatchCodec: DataCodec = {
+  ...DocumentCodec,
+  positional: 'id',
+  root: undefined,
+  inline: [
+    ...(DocumentCodec.inline ?? []),
+    'node.select',
+    'fields.select',
+    'node.selection',
+    'fields.selection',
+    'node.cutaway',
+    'fields.cutaway',
+    'node.target',
+    'fields.target',
   ],
 };
 
