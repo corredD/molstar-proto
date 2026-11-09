@@ -21,9 +21,14 @@ is not built is [../TODO.md](../TODO.md).
     (`fix/cull-dispatch-rows` a3d8c396d, `fix/fibers-targeted` bb2dbced6); Ludo: the fixes go to prism-me, not upstream.
   - `lipid-tiles` (`me/lipid-tiles`, port 1353, [brief](2026-11-08-lipid-tiles.md) on its branch): procedural lipid
     membranes on the GPU (Ludo, 2026-11-08: "just do the gpu"), matched-edge triangle tiles, design in
-    `~/prism-me-lanes/mesobuild/docs/lipids.md`. WebGL2 shows no membrane in this lane.
+    `~/prism-me-lanes/mesobuild/docs/lipids.md`. WebGL2 shows no membrane in this lane. Round 1 built and gated (26
+    commits). Ludo's first try (the cow ×100): patchy, repetitive; fixed (suited tile edge, CHARMM-GUI patch, mesh
+    hidden), gate skipped. Mesh Scale to 1000 (Ludo). Second try: uncovered triangles, no LOD, "cellpackgpu is still
+    more efficient and looks better". Round 2 in progress (Ludo, 2026-11-08: "both, compared side by side"): close the
+    tiles' holes, LOD for both, cellPACKgpu's cutter in WGSL as a second method, the comparison on the cow; then the
+    gate. Server on 1353 stays up for Ludo.
   - `paint` (`me/paint`, port 1352, [brief](2026-11-08-paint.md) on its branch): Paint v1, approved 2026-11-08 (the
-    mesoscale extension, random orientation, no collisions in v1).
+    mesoscale extension, random orientation, no collisions in v1). On hold until the lipids (Ludo, 2026-11-08).
 
 - **Fast particle drag** (Ludo, 2026-11-05, on the workstation: MG lags on a handle's drag, the release blocks): **PR
   #59 merged 2026-11-06** ([progress](2026-11-05-fast-particle-drag.md)). The handle previews by writing the moved
