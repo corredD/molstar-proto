@@ -6,6 +6,15 @@ is not built is [../TODO.md](../TODO.md).
 
 ## In flight
 
+- **Paint round 2** (Ludo, 2026-11-09, after trying v1 on 1352): `me/paint` with #62 merged in, worktree
+  `~/prism-me-lanes/paint-live`, dev server 1352 ([progress](2026-11-08-paint.md), Round 2). Built: the camera on Alt,
+  soluble copies at the pointer's depth (the wheel), the brush's copy under the pointer, fibres. Review gate running;
+  not checked in a browser (the Chrome extension was not connected): Ludo's check.
+- **Other lanes on the fork, no PR**: `me/lipid-tiles` (round 3, Ludo testing on 1353), `me/lipid-procedural` (rounds
+  4-7; rebases on #62 before its PR), `me/mesoviewspec` (MesoViewSpec v0.3, #62 merged in; waits on Ludo's sign-off).
+- **Merged 2026-11-08/09**: #60 (GPU culling dispatched in rows), #61 (targeted cellPACK fibres without tubes), #62
+  (master v6 #2069 in, conflicts favoring master; [progress](2026-11-09-merge-master.md)).
+
 - **Fast particle drag** (Ludo, 2026-11-05, on the workstation: MG lags on a handle's drag, the release blocks): **PR
   #59 merged 2026-11-06** ([progress](2026-11-05-fast-particle-drag.md)). The handle previews by writing the moved
   instances; the merged object and the WebGPU culler write only what moved; a release keeps the unmoved targets (MG ~1.5
