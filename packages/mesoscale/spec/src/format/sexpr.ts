@@ -268,6 +268,8 @@ export interface DataCodec {
    * array indices are skipped), matched at the end of the value's key path, so a `select` under another key is data.
    */
   readonly inline?: readonly string[];
+  /** Keys whose object value prints as a record even with a `kind` word, so its fields keep their order (a patch's node). */
+  readonly records?: readonly string[];
 }
 
 export const DocumentCodec: DataCodec = {
@@ -313,6 +315,7 @@ export const PatchCodec: DataCodec = {
   ...DocumentCodec,
   positional: 'id',
   root: undefined,
+  records: ['node'],
   inline: [
     ...(DocumentCodec.inline ?? []),
     'node.select',
@@ -387,7 +390,7 @@ function toDoc(v: unknown, codec: DataCodec, parentKey: string | undefined, path
     };
   if (root && codec.root && isWord(o[codec.root]))
     return form(atomText(o[codec.root] as string), undefined, o, [codec.root], codec, path);
-  if (isWord(o.kind)) {
+  if (isWord(o.kind) && !(parentKey !== undefined && codec.records?.includes(parentKey))) {
     const pk = codec.positional;
     const pos = pk && isWord(o[pk]) ? (o[pk] as string) : undefined;
     return form(o.kind as string, pos, o, pos !== undefined ? ['kind', pk!] : ['kind'], codec, path);

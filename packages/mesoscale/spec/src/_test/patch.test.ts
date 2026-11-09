@@ -583,3 +583,21 @@ describe('review: diff of looks across views and to none', () => {
     expect(applyPatch(a, p!).doc).toEqual(b);
   });
 });
+
+describe('review: a printed patch applies to the same bytes', () => {
+  it('an inserted node with a kind keeps its field order through the S-expression', () => {
+    for (const make of Object.values(docs)) {
+      const doc = make();
+      const p = patch(
+        { op: 'insert', parent: 'entities', node: { ...doc.entities[0], id: 'e.clone' } },
+        { op: 'insert', parent: 'compartments', node: { ...doc.compartments[0], id: 'c.clone' } },
+        ...(doc.frames?.length
+          ? [{ op: 'insert', parent: 'frames', node: { ...doc.frames[0], id: 'f.clone', kind: 'instrument' } } as Op]
+          : []),
+      );
+      const back = readPatch(printPatch(p)).patch!;
+      expect(bytes(applyPatch(doc, back).doc)).toBe(bytes(applyPatch(doc, p).doc));
+      expect(JSON.stringify(back)).toBe(JSON.stringify(p));
+    }
+  });
+});
