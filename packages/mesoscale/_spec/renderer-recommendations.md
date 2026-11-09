@@ -17,16 +17,16 @@ from outside it.
 
 ## Priorities
 
-| #   | Finding                                                                                             | Layer                        | Status                      | Impact on mesoscale workflows                                                            | Priority                  |
-| --- | --------------------------------------------------------------------------------------------------- | ---------------------------- | --------------------------- | ---------------------------------------------------------------------------------------- | ------------------------- |
-| R1  | A per-type color or visibility edit costs O(copies)                                                 | renderer (looks / overpaint) | confirmed                   | recoloring, hiding a population, look animation on 10⁶–10⁷ copies                        | **P1**                    |
-| R3  | Memory per copy beyond the IR is not measured reliably (21–87 B a copy by the JS heap; GPU unknown) | renderer (measurement)       | observed; a measurement gap | sets the ceiling on scene size                                                           | P2 (measure first)        |
-| R4  | Sub-pixel copies alias into moiré                                                                   | renderer (impostors, LOD)    | observed                    | whole-cell and membrane views, where most copies are under a pixel                       | P2                        |
-| R2  | A radius and a key are required per copy                                                            | renderer / model API         | confirmed                   | 8 B a copy, an O(N) pass at load                                                         | P2                        |
-| R5  | One list and representation per placement set                                                       | renderer / plugin            | hypothesis, untested        | tiled scenes (the yeast cell's 6,416 tiles) would be thousands of lists                  | P3                        |
-| R6  | In-memory data enter the state only through a side store                                            | plugin API                   | confirmed                   | sessions holding generated data cannot be saved or restored                              | P2 (plugin, not renderer) |
-| R7  | (v0.2) No nested instancing: a particle list cannot target another list                             | renderer / model API         | confirmed                   | every superstructure (granules, virions, pores) is expanded instances × template         | **P1**                    |
-| R8  | (v0.2) Looks select whole targets: no layer for a range of copies                                   | Prism layers / renderer      | confirmed                   | an address that picks some copies (one granule, copies near the picks) cannot be colored | P2                        |
+| #   | Finding                                                                                                        | Layer                        | Status                                                   | Impact on mesoscale workflows                                                            | Priority                  |
+| --- | -------------------------------------------------------------------------------------------------------------- | ---------------------------- | -------------------------------------------------------- | ---------------------------------------------------------------------------------------- | ------------------------- |
+| R1  | A per-type color or visibility edit costs O(copies)                                                            | renderer (looks / overpaint) | confirmed                                                | recoloring, hiding a population, look animation on 10⁶–10⁷ copies                        | **P1**                    |
+| R3  | Memory per copy beyond the IR is not measured reliably (21–87 B a copy by the JS heap; GPU unknown)            | renderer (measurement)       | observed; a measurement gap                              | sets the ceiling on scene size                                                           | P2 (measure first)        |
+| R4  | Sub-pixel copies alias into moiré                                                                              | renderer (impostors, LOD)    | observed                                                 | whole-cell and membrane views, where most copies are under a pixel                       | P2                        |
+| R2  | A radius and a key are required per copy                                                                       | renderer / model API         | confirmed                                                | 8 B a copy, an O(N) pass at load                                                         | P2                        |
+| R5  | One list and representation per placement set: ~36 ms and ~0.1 MB a list; looks rewritten on every list a step | renderer / plugin            | confirmed for commit and memory; frame time not measured | 1,000 lists: 39 s commit, ~6 GB peak; ≤ 100 lists: a remove ≤ 5 ms, a color edit ~105 ms | P3                        |
+| R6  | In-memory data enter the state only through a side store                                                       | plugin API                   | confirmed                                                | sessions holding generated data cannot be saved or restored                              | P2 (plugin, not renderer) |
+| R7  | (v0.2) No nested instancing: a particle list cannot target another list                                        | renderer / model API         | confirmed                                                | every superstructure (granules, virions, pores) is expanded instances × template         | **P1**                    |
+| R8  | (v0.2) Looks select whole targets: no layer for a range of copies                                              | Prism layers / renderer      | confirmed                                                | an address that picks some copies (one granule, copies near the picks) cannot be colored | P2                        |
 
 ## R1. A per-type look edit costs O(copies) — confirmed
 
@@ -169,25 +169,68 @@ rerun the probe to see it.
 **What it enables.** Readable overviews at every zoom without per-scene tuning: the "zoom from the cell to the atom"
 workflow.
 
-## R5. One list per placement set — hypothesis, untested
+## R5. One list per placement set — confirmed for commit and memory; frame time not measured
 
 **Use case.** Tiled scenes:
 
 - the yeast viewer stores 6,416 tiles of 200 nm (`source/pipeline/webenc.py` in zoidpuff/yeast_cell_viewer);
 - the open decision on L scenes (design.md §11.5).
 
-**Observed.** Nothing yet. The prototype's largest scene has 3 lists.
+**Hypothesis tested.** One state cell, list and representation per tile costs per-cell overhead (state, draw calls,
+culling) that thousands of tiles would expose.
 
-**Hypothesis.** One state cell, list and representation per tile costs per-cell overhead (state, draw calls, culling)
-that thousands of tiles would expose.
+**Measured (headless Prism, Node, M1 Pro; no GL context, so no frame was drawn).** 1M copies of one population split
+into 1, 10, 100 and 1,000 equal tiles, the whole scene committed through `PrismMesoAdapter`. A stream step is one set
+removed, then the same set added back; each commit includes the looks rewrite. Heap Δ after `gc()` (`--expose-gc`). Two
+runs agree within about 15%.
 
-**To test.** A probe scene of 1M copies split into 1, 10, 100 and 1,000 sets.
+| Sets  | Commit ms | ms a set | Remove 1 ms | Add 1 ms | Color edit ms | Heap Δ MB | Looks written (remove + add) |
+| ----- | --------- | -------- | ----------- | -------- | ------------- | --------- | ---------------------------- |
+| 1     | 772       | 772      | 2.2         | 707      | 105           | 4.6       | 8                            |
+| 10    | 1,540     | 154      | 2.1         | 154      | 100           | −5.3      | 44                           |
+| 100   | 5,586     | 56       | 5.3         | 60       | 111           | 10.4      | 404                          |
+| 1,000 | 39,443    | 39       | **163**     | 108      | **218**       | **103**   | 4,004                        |
 
-**Measurement pending (v0.4).** Streaming now commits one set per tile (design.md §6.8); its heavy lane measures commit
-time, frame time and memory for this split through the Prism adapter (§6.8.7). The conclusion comes with the numbers.
+- Placements are 34.3 MB (32 B a copy) and the adapter 7.6 MB (8 B a copy, R2) at every split: the split adds no
+  per-copy bytes.
+- **Per list:** about 36 ms of commit and about 0.1 MB of heap.
+- **Peak process RSS:** about 6 GB for the 1,000-set case alone (7.3 GB with the Vitest parent). Run after the other
+  cases in one worker, it was killed (SIGKILL); the cases now run in files of their own (`molstar/src/_test/r5-*.ts`).
+- **Browser, the _Streaming_ story** (budget 3,000 copies, 32 tiles of 400): 7 tiles resident; each tour step commits
+  only its arrivals and evictions; no console errors.
 
-**Recommendation (if confirmed).** A list that can grow by appending or swapping tiles, culled per tile on the GPU,
-instead of one representation per tile.
+**Why (from `molstar/src/prism-adapter.ts`).**
+
+- Each new set is a state cell and a `ParticleList` (one `updateTree`) plus a spacefill representation: the per-list
+  commit cost above.
+- Looks are written in one `particles.look` call over **every** list whenever a set is added (`planCommit`'s
+  `looksChanged`): 4 layers for each of the n + 1 lists (the tiles and the fixture's instance list), 4,004 at 1,000
+  sets. The looks rewrite is O(sets) a step, not O(changed sets). A color edit pays the same rewrite: 218 ms at 1,000
+  sets against about 105 ms up to 100.
+- The remove writes no looks (all of a step's layers come from the add), yet takes 163 ms at 1,000 sets. Each commit
+  also walks every kept list (a state cell lookup and a representation check, to repair what Prism's undo stripped), and
+  the delete updates a state tree of 1,000 cells. Which of the two dominates was not profiled.
+
+**Conclusion.** The hypothesis holds for commit and memory, and for a step only at 1,000 lists:
+
+- **Whole commit:** 51× for 1,000× the lists. The cost a set falls only because the 1-set case pays for one 34 MB list;
+  the per-list overhead (~36 ms) dominates from 100 sets on.
+- **A stream step stays small up to 100 sets** (remove 5 ms, add 60 ms, color 111 ms) and grows at 1,000 (remove 163 ms,
+  color 218 ms), because the looks are rewritten on every list and every kept list is checked.
+- **Memory is the real limit:** about 0.1 MB a list and a ~6 GB peak at 1,000 lists, enough to kill a worker.
+- **Not measured: frame time.** There was no GL context, so draw calls and culling per list, the part of the hypothesis
+  that concerns the renderer most, are untested. **To measure on a machine with GL:** first and steady frame at each
+  split, the draw calls a frame, and how many lists are culled when the camera sees one tile.
+
+**Recommendation for Mol\*:**
+
+- a list that grows and shrinks by appending or swapping tiles: one representation, culled per tile on the GPU, instead
+  of one cell, list and representation per tile;
+- per-set looks written only for the sets that changed (a layer update per list, not one call over every list).
+
+**For the prototype now:** keep the resident lists at 100 or fewer, i.e. size tiles so the budget holds at most about
+100 of them. The _Streaming_ story holds 7 (budget 3,000, tiles of 400). The adapter could also write looks only for the
+added lists when the view's looks are unchanged; that is an adapter fix, not a renderer one.
 
 ## R6. In-memory data and the state — confirmed; plugin API, not renderer
 

@@ -1275,8 +1275,9 @@ export class TileStreamer {
 **The adapter needs nothing new.** `planCommit` sees tile sets as sets. Each stream step adds and removes lists by key,
 and keeps the other lists' objects.
 
-- **Known cost:** `looksChanged` is true whenever a set is added, so each step that adds a tile rewrites every list's
-  looks (one `particles.look` call). R5 measures it.
+- **Known cost [measured]:** `looksChanged` is true whenever a set is added, so each step that adds a tile rewrites
+  every list's looks (one `particles.look` call): 4,004 layers at 1,000 lists, 44 at 10. A remove writes none. Up to 100
+  lists a remove stays at 5 ms or less and a color edit about 105 ms; at 1,000 they take 163 and 218 ms (§6.8.7, R5).
 
 #### 6.8.6 Fixture (`spec/src/examples/streaming.ts`)
 
@@ -1365,12 +1366,21 @@ split into 1, 10, 100 and 1,000 placement sets by the fixture (one population, t
 through the Prism adapter:
 
 - commit time of the whole scene;
-- the first frame and a steady frame (mean of 10);
+- the first frame and a steady frame (mean of 10), when a GL context exists (none in the run below);
 - memory: placement and adapter bytes (exact), and the JS heap Δ after `gc()`;
 - a stream step: add 1 set and remove 1 set at that split, which includes the looks rewrite;
 - a color edit.
 
 The numbers go into renderer-recommendations R5, with its conclusion. `MESO_PERF_OUT` writes them as JSON.
+
+**Results [measured]** (headless Prism, M1 Pro, no GL context: no frame was drawn, so frame times are not measured; heap
+Δ with `--expose-gc`; the cases run in files of their own, `molstar/src/_test/r5-*.ts`). Commit of the whole scene: 772,
+1,540, 5,586 and 39,443 ms for 1, 10, 100 and 1,000 sets, about 36 ms and 0.1 MB of heap per list; placements (34.3 MB)
+and adapter (7.6 MB) are the same at every split. A stream step stays small up to 100 sets (remove 5 ms, add 60 ms,
+color 111 ms) and grows at 1,000 (remove 163 ms, add 108 ms, color 218 ms), since the looks are rewritten on every list.
+The 1,000-set case peaks at about 6 GB of RSS. **[observed]** In the browser the _Streaming_ story keeps 7 tiles of 400
+resident and commits only arrivals and evictions. Conclusion: per-list overhead is real for commit and memory; keep
+resident lists at 100 or fewer; frame cost per list is still open (R5).
 
 #### 6.8.8 Not in v0.4, and what it touches
 
@@ -1379,7 +1389,7 @@ The numbers go into renderer-recommendations R5, with its conclusion. `MESO_PERF
 - level 2 (atoms at close range);
 - prefetch, and priorities by camera velocity or view direction;
 - a distance cap or a load radius beyond the budget;
-- GPU culling per tile, and a list that grows by appending tiles (R5's recommendation, if confirmed);
+- GPU culling per tile, and a list that grows by appending tiles (R5's recommendation);
 - a network protocol or a tile file format: a provider is code, and a `meso-tiles` reader for HTTP comes later;
 - more than one stream model, and streams in rotated frames;
 - streamed superstructures, and streamed models in `avoid` or `refines`;
@@ -1553,6 +1563,9 @@ Notes on the browser table:
 
 The GC-dependent heap numbers are approximate. The placement and adapter numbers are exact.
 
+**(v0.4) One list per tile:** 1M copies as 1 to 1,000 lists, commit, stream step, color edit and memory: §6.8.7 and
+renderer-recommendations R5.
+
 ### 8.3 What is fixture-backed
 
 - **Expensive modeling steps are stand-ins.** cellPACKgpu's GPU packing, the segmentation, the template matching and the
@@ -1659,8 +1672,8 @@ Fibers mock exposed the adapter's `excludeFibers` bug (§11).
    **(v0.4) Decided for the IR:** one placement set per tile, keyed `<model>@<hash>#<tileId>`, spliced under a `stream`
    node by the session, so `planCommit` commits only the tiles added and removed and every adapter gets streaming for
    free (§6.8). **Still open:** whether a renderer should hold thousands of tiles as thousands of lists, or one list
-   that grows and is culled per tile (renderer-recommendations R5, measurement pending); a tile file format and its
-   network protocol.
+   that grows and is culled per tile (renderer-recommendations R5: commit and memory grow per list, about 36 ms and 0.1
+   MB each; frame cost not measured); a tile file format and its network protocol.
 6. **Patches and history.** Patches over one tree for snapshots and undo (SeqViewSpec: `applyPatch`, `diff`, inverses),
    or whole documents with `classifyEdit`, as the prototype does?
 7. **Schema.** JSON Schema or OpenAPI published (as MolViewSpec), or reference tables generated from the types (as
