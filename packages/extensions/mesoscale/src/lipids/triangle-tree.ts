@@ -263,12 +263,58 @@ export function insidePart(
   return (crossings & 1) === 1;
 }
 
-/** Vertices of a part tested against another to call it enclosed (all inside): one stray vertex is not enough */
+/** Vertices of a part tested against another to call it enclosed (all inside), besides one a component */
 const EnclosureSamples = 16;
 
 /**
- * Per part the parts that enclose it: every one of `EnclosureSamples` of its vertices (spread over its triangles) is
- * inside the other. Not transitive by itself: a cell's mitochondrion's IM is enclosed by its OM and by the PM
+ * A part's sample vertices: `EnclosureSamples` spread over its triangles and one a connected component (review S2: a
+ * small component outside its encloser is sampled too)
+ */
+function partSamples(indices: ArrayLike<number>, start: number, end: number) {
+  // union-find over the part's vertices (by their first triangle's corner), a map from vertex to its slot
+  const slot = new Map<number, number>();
+  const parent: number[] = [];
+  const find = (x: number) => {
+    while (parent[x] !== x) {
+      parent[x] = parent[parent[x]];
+      x = parent[x];
+    }
+    return x;
+  };
+  for (let t = start; t < end; ++t) {
+    let first = -1;
+    for (let k = 0; k < 3; ++k) {
+      const v = indices[t * 3 + k];
+      let s = slot.get(v);
+      if (s === undefined) {
+        s = parent.length;
+        slot.set(v, s);
+        parent.push(s);
+      }
+      if (first < 0) first = find(s);
+      else {
+        const r = find(s);
+        if (r !== first) parent[r] = first;
+      }
+    }
+  }
+  const out: number[] = [];
+  const seen = new Set<number>();
+  for (let t = start; t < end; ++t) {
+    const v = indices[t * 3];
+    const root = find(slot.get(v)!);
+    if (seen.has(root)) continue;
+    seen.add(root);
+    out.push(v);
+  }
+  for (let s = 0; s < EnclosureSamples; ++s)
+    out.push(indices[(start + Math.floor(((end - start) * s) / EnclosureSamples)) * 3]);
+  return out;
+}
+
+/**
+ * Per part the parts that enclose it: every sample vertex of it (`partSamples`) is inside the other. Not transitive by
+ * itself: a cell's mitochondrion's IM is enclosed by its OM and by the PM
  */
 export function enclosures(tree: TriangleTree, positions: ArrayLike<number>, indices: ArrayLike<number>) {
   const { parts } = tree;
@@ -277,12 +323,12 @@ export function enclosures(tree: TriangleTree, positions: ArrayLike<number>, ind
   for (let q = 0; q < parts.length; ++q) {
     const { start, end } = parts[q];
     if (end <= start) continue;
+    const samples = partSamples(indices, start, end);
     for (let p = 0; p < parts.length; ++p) {
       if (p === q || tree.roots[p] < 0) continue;
       let all = true;
-      for (let s = 0; s < EnclosureSamples && all; ++s) {
-        const t = start + Math.floor(((end - start) * s) / EnclosureSamples);
-        const v = indices[t * 3] * 3;
+      for (let i = 0; i < samples.length && all; ++i) {
+        const v = samples[i] * 3;
         all = insidePart(tree, positions, indices, p, positions[v], positions[v + 1], positions[v + 2], stack);
       }
       if (all) out[q].push(p);
