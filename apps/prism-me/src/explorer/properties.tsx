@@ -6,8 +6,8 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import type { DocumentGroupBy, DocumentTree } from '@molstar/meso-molstar';
-import type { DocumentRef } from './document.js';
+import type { DocumentGroupBy, DocumentRow, DocumentTree, MesoViewSpecApi } from '@molstar/meso-molstar';
+import { DocumentGroupings, type DocumentRef } from './document.js';
 import { Mat4, Quat, Vec3 } from '@molstar/core/math/linear-algebra';
 import { Color } from '@molstar/core/util/color';
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
@@ -100,6 +100,8 @@ export interface Subject {
   readonly parts: ReadonlyState<Parts>;
   /** A model's grouping as its rows show it */
   groupByOf(model: string): MesoGroupBy | undefined;
+  /** The open MesoViewSpec document's rows, following the owner (a document row's sections read it) */
+  readonly document?: ReadonlyState<DocumentTree | undefined>;
 }
 
 export function Properties(props: {
@@ -128,6 +130,7 @@ export function Properties(props: {
           picked,
           parts: props.parts,
           groupByOf: props.groupByOf,
+          document: props.document,
         };
         return (
           <PropertiesFrame
@@ -139,6 +142,8 @@ export function Properties(props: {
             above={
               picked.node && picked.kind === 'mesoscale model' ? (
                 <GroupBy model={picked.node.ref} parts={props.parts} groupings={props.groupings} />
+              ) : picked.doc && picked.doc.id === '' && props.documentGrouping ? (
+                <DocumentGroupBy grouping={props.documentGrouping} />
               ) : undefined
             }
             collapsed
@@ -151,6 +156,7 @@ export function Properties(props: {
 
 /** The header's kind: a measurement's own (a distance, an angle, a dihedral), else the row's */
 function headerKind(api: ViewerApi, picked: Picked): string {
+  if (picked.doc) return DocumentKindWords[picked.kind] ?? picked.kind;
   if (picked.kind !== 'distance' || !picked.node) return picked.kind;
   const ref = picked.node.ref;
   return api.stage?.distancesState().value.find((d) => d.ref === ref)?.measure ?? picked.kind;
@@ -158,6 +164,8 @@ function headerKind(api: ViewerApi, picked: Picked): string {
 
 /** A mesoscale entity's description (its file's text, Markdown), a portal annotation's words, for its row */
 function descriptionOf(api: ViewerApi, picked: Picked, parts: Parts): string | undefined {
+  // the document's own row: its metadata's description
+  if (picked.doc) return picked.doc.id === '' ? api.mesoviewspec?.model.doc?.metadata.description : undefined;
   const node = picked.node;
   if (node && (picked.kind === 'particle list' || picked.kind === 'volume')) {
     return api.cryoetPortal?.annotationTextOf(node.ref);
@@ -420,6 +428,27 @@ export const Sections: readonly Section[] = [
     when: ({ picked }) => picked.kind === 'distance' && !!picked.node,
     render: ({ api, area, picked }) => <DistanceProps api={api} area={area} node={picked.node!} />,
   },
+  {
+    // why a document's population says what it says: its evidence and the entity's identifiers (prism.md §4.3)
+    id: 'evidence',
+    title: 'Evidence',
+    when: (s) => !!s.document && ['population', 'instance', 'part'].includes(s.picked.kind) && !!s.picked.doc,
+    render: (s) => <DocumentBlocks blocks={documentBlocks(s, evidenceBlocks)} none="No evidence." />,
+  },
+  {
+    // the model that placed a document's population or instance (prism.md §4.3)
+    id: 'built-by',
+    title: 'Built by',
+    when: (s) => !!s.document && ['population', 'instance'].includes(s.picked.kind) && !!s.picked.doc,
+    render: (s) => <DocumentBlocks blocks={documentBlocks(s, builtByBlocks)} none="No model placed it." />,
+  },
+  {
+    // the session's issues, by phase, on the document's own row (prism.md §4.3)
+    id: 'issues',
+    title: 'Issues',
+    when: (s) => !!s.document && s.picked.kind === 'mesoviewspec document' && !!s.picked.doc,
+    render: (s) => <DocumentBlocks blocks={documentBlocks(s, issueBlocks)} none="No issues." />,
+  },
 ];
 
 /** The shells whose sections are registered (once each: the owner keeps one for the session) */
@@ -470,6 +499,222 @@ function GroupBy(props: { model: string; parts: ReadonlyState<Parts>; groupings:
       )}
     </Show>
   );
+}
+
+// --- a MesoViewSpec document's rows (prism.md §4.2, §4.3) --------------------------------------------------------------
+
+/** The header's words for a document row's kind */
+const DocumentKindWords: Readonly<Record<string, string>> = {
+  'mesoviewspec document': 'MesoViewSpec document',
+  compartment: 'Compartment',
+  population: 'Population',
+  instance: 'Instance',
+  part: 'Part (read-only in 3D)',
+  'model group': 'Model',
+  'kind group': 'Kind',
+};
+
+/** The document's grouping in the tree: Compartment, Model or Kind (view state: no operation; none set: Compartment) */
+function DocumentGroupBy(props: { grouping: ObservableState<DocumentGroupBy | undefined> }) {
+  return (
+    <Choices
+      label="Group by"
+      choices={DocumentGroupings.map(([id, label]) => ({ id, label }))}
+      active={mapState(props.grouping.asReadonly, (g) => g ?? 'compartment')}
+      onPick={(id) => props.grouping.set(id as DocumentGroupBy)}
+    />
+  );
+}
+
+/** A line of a block: a label and its words, or a link */
+interface DocLine {
+  readonly label?: string;
+  readonly text: string;
+  /** A link, opened in a new tab */
+  readonly href?: string;
+}
+/** Lines that go together (one evidence, the model, a phase's issues) */
+type DocBlock = readonly DocLine[];
+
+type DocModel = MesoViewSpecApi['model'];
+type DocData = NonNullable<DocModel['doc']>;
+type DocIssue = DocumentTree['issues'][number];
+
+/** The sections' blocks for the picked row, from the document as the tree has it now: the same blocks while equal */
+function documentBlocks(
+  s: Subject,
+  make: (model: DocModel, tree: DocumentTree, row: DocumentRow | undefined, picked: Picked) => readonly DocBlock[],
+): ReadonlyState<readonly DocBlock[]> {
+  const model = s.api.mesoviewspec!.model;
+  const id = s.picked.doc!.id;
+  return mapState(
+    s.document!,
+    (tree) => (tree ? make(model, tree, id ? tree.outline.row(id) : undefined, s.picked) : []),
+    (a, b) => a === b || JSON.stringify(a) === JSON.stringify(b),
+  );
+}
+
+function DocumentBlocks(props: { blocks: ReadonlyState<readonly DocBlock[]>; none: string }) {
+  return (
+    <div class={classes.stack}>
+      <For each={props.blocks} by={(b) => b} fallback={() => <Hint>{props.none}</Hint>}>
+        {(block) => (
+          <div class={classes.tight}>
+            {block.map((l) => (
+              <Line label={l.label}>
+                {l.href ? (
+                  <a href={l.href} target="_blank" rel="noopener noreferrer">
+                    {l.text}
+                  </a>
+                ) : (
+                  <span>{l.text}</span>
+                )}
+              </Line>
+            ))}
+          </div>
+        )}
+      </For>
+    </div>
+  );
+}
+
+const IdentifierLinks: Readonly<Record<string, string>> = {
+  uniprot: 'https://www.uniprot.org/uniprotkb/',
+  pdb: 'https://www.rcsb.org/structure/',
+  emdb: 'https://www.ebi.ac.uk/emdb/',
+};
+
+/** The evidence of a population, instance or part, and of its entity, then the entity's identifiers as links */
+function evidenceBlocks(model: DocModel, _tree: DocumentTree, row: DocumentRow | undefined): readonly DocBlock[] {
+  const doc = model.doc;
+  if (!doc || !row) return [];
+  const entity = entityOf(doc, row);
+  const own = ownOf(doc, row);
+  const out: DocBlock[] = [];
+  const evidenceOf = (ids: readonly string[] | undefined, whose: string) => {
+    for (const id of ids ?? []) {
+      const e = doc.evidence?.find((x) => x.id === id);
+      if (!e) {
+        out.push([{ label: whose, text: `${id} (not in the document)` }]);
+        continue;
+      }
+      const c = e.source?.citation;
+      const lines: DocLine[] = [{ label: `${whose}: ${e.kind}`, text: e.statement }];
+      if (c?.text) lines.push({ label: 'Citation', text: c.text });
+      if (c?.doi) lines.push({ label: 'DOI', text: c.doi });
+      if (c?.pmid) lines.push({ label: 'PMID', text: c.pmid });
+      if (e.confidence) lines.push({ label: 'Confidence', text: e.confidence });
+      out.push(lines);
+    }
+  };
+  evidenceOf(own?.evidence, row.kind === 'instance' ? 'Instance' : 'Population');
+  evidenceOf(entity?.evidence, entity?.label ?? 'Entity');
+  const ids = Object.entries(entity?.identifiers ?? {});
+  if (ids.length) {
+    out.push(
+      ids.map(([database, value]) => {
+        const base = IdentifierLinks[database.toLowerCase()];
+        return base
+          ? { label: database, text: value, href: `${base}${encodeURIComponent(value)}` }
+          : { label: database, text: value };
+      }),
+    );
+  }
+  return out;
+}
+
+/** The population or instance a row stands for (a part: its inner population, in the superstructures') */
+function ownOf(doc: DocData, row: DocumentRow) {
+  if (row.kind === 'instance') return doc.instances?.find((i) => i.id === row.id);
+  if (row.kind === 'population') return doc.populations.find((p) => p.id === row.id);
+  if (row.kind === 'part') {
+    for (const ss of doc.superstructures ?? []) {
+      const p = ss.populations.find((x) => x.id === row.ref);
+      if (p) return p;
+    }
+  }
+  return undefined;
+}
+
+function entityOf(doc: DocData, row: DocumentRow) {
+  if (!row.entity) return undefined;
+  const found = doc.entities.find((e) => e.id === row.entity);
+  if (found) return found;
+  for (const ss of doc.superstructures ?? []) {
+    const e = ss.entities?.find((x) => x.id === row.entity);
+    if (e) return e;
+  }
+  return undefined;
+}
+
+/** The resolve node of a model (its resolver's key, cached or not), walking the IR's tree */
+function resolveOf(model: DocModel, id: string) {
+  const root = model.session?.ir?.root;
+  if (!root) return undefined;
+  const stack = [root];
+  while (stack.length) {
+    const n = stack.pop()!;
+    if (n.kind === 'resolve' && n.params.model === id) return n.params;
+    for (const c of n.children ?? []) stack.push(c);
+  }
+  return undefined;
+}
+
+/** Does the issue speak of this population or instance: by its path (id or index), ids, or message */
+function issueMentions(doc: DocData, issue: DocIssue, id: string): boolean {
+  if (issue.ids?.includes(id) || issue.message.includes(id)) return true;
+  const path = issue.path;
+  if (!path) return false;
+  for (const [list, items] of [
+    ['populations', doc.populations],
+    ['instances', doc.instances ?? []],
+  ] as const) {
+    const at = items.findIndex((x) => x.id === id);
+    if (at >= 0 && (path === `/${list}/${at}` || path.startsWith(`/${list}/${at}/`))) return true;
+  }
+  return path.split('/').includes(id);
+}
+
+/** The model that placed a population or instance: its method, its resolve node, its counts and its issues */
+function builtByBlocks(model: DocModel, tree: DocumentTree, row: DocumentRow | undefined): readonly DocBlock[] {
+  const doc = model.doc;
+  if (!doc || !row?.model) return [];
+  const m = doc.models?.find((x) => x.id === row.model);
+  const resolve = resolveOf(model, row.model);
+  const counts = `${row.achieved.toLocaleString('en')}${row.requested !== undefined ? ` of ${row.requested.toLocaleString('en')} requested` : ''}`;
+  const lines: DocLine[] = [{ label: 'Model', text: m?.label ? `${m.label} (${row.model})` : row.model }];
+  const method = resolve?.resolver ?? m?.method;
+  if (method) lines.push({ label: 'Resolver', text: resolve ? `${method} ${resolve.version}` : method });
+  if (resolve) {
+    lines.push({ label: 'Key', text: resolve.key });
+    lines.push({ label: 'Cached', text: resolve.cached ? 'Yes' : 'No' });
+  }
+  lines.push({ label: 'Copies', text: counts });
+  const out: DocBlock[] = [lines];
+  const issues = tree.issues.filter((i) => issueMentions(doc, i, row.id));
+  if (issues.length) out.push(issues.map((i) => ({ label: i.severity, text: i.message })));
+  return out;
+}
+
+const IssuePhases = [
+  ['static', 'Static'],
+  ['load', 'Load'],
+  ['resolve', 'Resolve'],
+  ['render', 'Render'],
+] as const;
+
+/** The session's issues by phase, each its severity and message (and path) */
+function issueBlocks(_model: DocModel, tree: DocumentTree): readonly DocBlock[] {
+  const out: DocBlock[] = [];
+  for (const [phase, name] of IssuePhases) {
+    const here = tree.issues.filter((i) => i.phase === phase);
+    if (!here.length) continue;
+    out.push([
+      { label: name, text: `${here.length} ${here.length === 1 ? 'issue' : 'issues'}` },
+      ...here.map((i) => ({ label: i.severity, text: i.path ? `${i.message} (${i.path})` : i.message })),
+    ]);
+  }
+  return out;
 }
 
 // --- shared fields -----------------------------------------------------------------------------------------------------
