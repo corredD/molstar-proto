@@ -6,6 +6,8 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
+import type { DocumentGroupBy, DocumentTree } from '@molstar/meso-molstar';
+import type { DocumentRef } from './document.js';
 import { Mat4, Quat, Vec3 } from '@molstar/core/math/linear-algebra';
 import { Color } from '@molstar/core/util/color';
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
@@ -45,6 +47,7 @@ import type { KeyedState } from '@molstar/prism-ui/reactive/keyed-state';
 import { mapState } from '@molstar/prism-ui/reactive/map-state';
 import { observableState } from '@molstar/prism-ui/reactive/observable-state';
 import type { ReadonlyState } from '@molstar/prism-ui/reactive/readonly-state';
+import type { ObservableState } from '@molstar/prism-ui/reactive/observable-state';
 import { derive } from '@molstar/prism-ui/reactive/state';
 import type { ViewerApi } from '@molstar/prism-viewer/api';
 import { gestureSteps } from '@molstar/prism-viewer/sources/gesture-steps';
@@ -85,6 +88,8 @@ export interface Picked {
   readonly representation?: string;
   /** A clip's row: its cut's tag (Prism's) */
   readonly clip?: string;
+  /** A MesoViewSpec document's row: its id and address (prism.md §4) */
+  readonly doc?: DocumentRef;
 }
 
 /** What a section is given: the pick and what acts on it (the section list's subject, one per pick) */
@@ -105,6 +110,10 @@ export function Properties(props: {
   /** Each model's grouping in the tree, by ref (the explorer's view state) */
   groupings: KeyedState<string, MesoGroupBy>;
   groupByOf(model: string): MesoGroupBy | undefined;
+  /** The open MesoViewSpec document's grouping in the tree (view state, prism.md §4.2) */
+  documentGrouping?: ObservableState<DocumentGroupBy | undefined>;
+  /** The open document's rows (prism.md §4): its rows' sections read the document through `api.mesoviewspec` */
+  document?: ReadonlyState<DocumentTree | undefined>;
   /** Kept by the owner for the session: the sections' open state, from pick to pick */
   shell: ShellModel;
 }) {

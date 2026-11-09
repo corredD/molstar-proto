@@ -36,6 +36,8 @@ import type { ViewerApi } from '@molstar/prism-viewer/api';
 import type { ViewerExtensionUI, ViewerUIContext } from '@molstar/prism-viewer/spec';
 import type { Subscription } from 'rxjs';
 import type { DistanceInfo, LabelInfo } from '@molstar/stage-tools-extension/operations';
+import type { DocumentGroupBy, DocumentTree } from '@molstar/meso-molstar';
+import { documentLoci, documentMenuItems, documentPicked } from './document.js';
 import { editInline } from './inline-edit.js';
 import { distancePicker, selectionModeHint } from './measure.js';
 import { colorItems, nodeMenuItems, showClipHandles, useItems } from './menu.js';
@@ -79,7 +81,7 @@ export const SceneTab = 'explorer.tab.scene';
 export function explorerUI(ctx: ViewerUIContext): ViewerExtensionUI {
   const area = ctx.api.explorer;
   if (!area) return {};
-  const model = sceneModel(area, ctx.api.stage);
+  const model = sceneModel(area, ctx.api.stage, ctx.api);
   scenes.set(area, model);
   area.setOnReveal((key) => {
     // a clip's row: in the Clips category, by its tag
@@ -97,7 +99,12 @@ export function explorerUI(ctx: ViewerUIContext): ViewerExtensionUI {
       key,
       stage?.labelsState().value,
       stage?.distancesState().value,
+      model.documentTree(),
     );
+    if (row?.doc) {
+      model.reveal({ key, label: row.label, kind: row.kind, doc: row.doc });
+      return;
+    }
     if (row?.node) {
       model.reveal({
         key,
@@ -121,13 +128,21 @@ export function explorerUI(ctx: ViewerUIContext): ViewerExtensionUI {
   // the tree follows a pick in 3D (a left-click): its row picked and the way to it unfolded
   // what a click is on, as the stage says (a label under the pointer first: drawn, not picked by Mol*), as a row
   // (without the stage area, what Mol* picked: no label under the pointer)
-  const pickedAt = (click: CanvasClick): PickedNode | undefined =>
-    ctx.api.stage ? area.pickedRow(ctx.api.stage.pickedAt(click)) : area.pickedOf(click.loci);
+  const pickedAt = (click: CanvasClick): PickedNode | DocumentPick | undefined => {
+    const at = ctx.api.stage?.pickedAt(click);
+    // a document's copy: its row is the document's (prism.md §4.6); a label under the pointer stays the label's
+    if (at?.kind !== 'label') {
+      const d = documentPicked(ctx.api, model.documentTree(), click.loci);
+      if (d) return d;
+    }
+    return ctx.api.stage ? area.pickedRow(at) : area.pickedOf(click.loci);
+  };
   area.setOnClick((click) => {
     // a distance's point: Ctrl or ⌘ + click in selection mode; else the click picks a row as any other
     if (click.measure && area.selectionMode) {
       // a label: no point of a distance, as nothing is (ui.md §7)
-      void picker.click(pickedAt(click)?.kind === 'label' ? { ...click, loci: EmptyLoci } : click);
+      const at = pickedAt(click);
+      void picker.click(at?.kind === 'label' || (at && 'doc' in at) ? { ...click, loci: EmptyLoci } : click);
       return;
     }
     // outside it nothing measures: said, and the click picks its row as any other
@@ -144,8 +159,14 @@ export function explorerUI(ctx: ViewerUIContext): ViewerExtensionUI {
       close?.();
       const root = rootOf(request.anchor);
       const at = { x: request.x, y: request.y };
-      const p = pickedAt(request);
-      if (p) model.reveal(p);
+      const picked = pickedAt(request);
+      if (picked) model.reveal(picked);
+      // a document's copy: the document row's menu (no Move: a document places its copies, prism.md §5.2)
+      if (picked && 'doc' in picked) {
+        close = openContextMenu(root, at, documentMenuItems(ctx.api, model.documentTree(), picked));
+        return;
+      }
+      const p = picked;
       const items: ContextMenuItem[] = nodeMenuItems(ctx.api, area, p, {
         open: (sub) => {
           close = openContextMenu(root, at, sub);
@@ -204,6 +225,9 @@ export function particleBehind(area: ExplorerApi, picked: PickedNode | undefined
   return picked?.kind === 'label' ? undefined : area.particleOf(loci);
 }
 
+/** A 3D pick on a document's copy, as its row (prism.md §4.6) */
+type DocumentPick = NonNullable<ReturnType<typeof documentPicked>>;
+
 /** The tree's state of each explorer area (its viewer's): for tests */
 const scenes = new WeakMap<ExplorerApi, SceneModel>();
 export const sceneModelOf = (area: ExplorerApi): SceneModel | undefined => scenes.get(area);
@@ -227,16 +251,28 @@ export interface SceneModel {
   groupByOf(model: string): MesoGroupBy | undefined;
   /** The properties' sections, their open state kept from pick to pick for the session (ui.md §4) */
   readonly sections: ShellModel;
+  /** The open MesoViewSpec document's grouping (prism.md §4.2): view state, as a model's */
+  readonly documentGrouping: ObservableState<DocumentGroupBy | undefined>;
+  /** The open document's rows as they are now (none: no document, or its extension not loaded) */
+  documentTree(): DocumentTree | undefined;
+  /** The document's rows, following the owner (made when its extension is loaded) */
+  documentState(): ReadonlyState<DocumentTree | undefined> | undefined;
 }
 
-function sceneModel(area: ExplorerApi, stage: ViewerApi['stage']): SceneModel {
+function sceneModel(area: ExplorerApi, stage: ViewerApi['stage'], api: ViewerApi): SceneModel {
   const open = observableState<ReadonlySet<string>>(new Set([...Categories.map((c) => `c:${c.id}`), ClipsKey]));
   const picked = observableState<Picked | undefined>(undefined);
   const parts = observableState<Parts>(new Map());
   const groupings = keyedState<string, MesoGroupBy>();
   const scrollTo = observableState<string | undefined>(undefined);
+  const documentGrouping = observableState<DocumentGroupBy | undefined>(undefined);
+  let docState: ReadonlyState<DocumentTree | undefined> | undefined;
+  const documentState = () => (docState ??= api.mesoviewspec?.treeState(documentGrouping.asReadonly));
   return {
     open,
+    documentGrouping,
+    documentState,
+    documentTree: () => documentState()?.value,
     filter: observableState(''),
     picked,
     parts,
@@ -247,7 +283,8 @@ function sceneModel(area: ExplorerApi, stage: ViewerApi['stage']): SceneModel {
     reveal(p) {
       const labels = stage?.labelsState().value ?? [];
       const distances = stage?.distancesState().value ?? [];
-      const above = ancestorKeys(area.objectsState().value, parts.value, p.key, labels, distances) ?? [];
+      const above =
+        ancestorKeys(area.objectsState().value, parts.value, p.key, labels, distances, documentState()?.value) ?? [];
       if (above.some((k) => !open.value.has(k))) open.set(new Set([...open.value, ...above]));
       picked.set(p);
       scrollTo.set(p.key);
@@ -294,8 +331,20 @@ function ScenePanel(props: { ctx: ViewerUIContext; area: ExplorerApi; model: Sce
       partStates.set(o.ref, { state, sub });
     }
   });
+  // the open document's rows, once its extension is loaded (a document opened loads it, and draws lists)
+  const document = observableState<DocumentTree | undefined>(undefined);
+  let documentSub: Subscription | undefined;
+  const followDocument = () => {
+    if (documentSub) return;
+    const state = model.documentState();
+    if (state) documentSub = state.subscribe((t) => document.set(t));
+  };
+  followDocument();
+  const documentFollow = objects.subscribe(() => followDocument());
   onCleanup(() => {
     objectsSub.unsubscribe();
+    documentFollow.unsubscribe();
+    documentSub?.unsubscribe();
     for (const { sub } of partStates.values()) sub.unsubscribe();
   });
 
@@ -318,8 +367,18 @@ function ScenePanel(props: { ctx: ViewerUIContext; area: ExplorerApi; model: Sce
     if (folded.value.size) folded.set(new Set());
   });
   const rows = derive(
-    [objects, parts.asReadonly, open.asReadonly, filter.asReadonly, labels, distances, clips, folded.asReadonly],
-    (o, p, op, f, l, d, k, fo) => keep(rowsOf(o, p, op, f, l, d, k, fo)),
+    [
+      objects,
+      parts.asReadonly,
+      open.asReadonly,
+      filter.asReadonly,
+      labels,
+      distances,
+      clips,
+      folded.asReadonly,
+      document.asReadonly,
+    ],
+    (o, p, op, f, l, d, k, fo, doc) => keep(rowsOf(o, p, op, f, l, d, k, fo, doc)),
   );
   // a picked row whose cell is gone (its object, label, distance or representation removed) or whose cut is gone: no
   // longer picked, so the properties do not act on it
@@ -330,12 +389,19 @@ function ScenePanel(props: { ctx: ViewerUIContext; area: ExplorerApi; model: Sce
       (p.node && !area.exists(p.node.ref)) ||
       (p.representation && !area.exists(p.representation)) ||
       (p.clip && !cuts.value.some((c) => c.object.tag === p.clip));
-    if (gone) picked.set(undefined);
+    // a document row gone (the document closed, the row's population removed)
+    const docGone = p.doc && (!document.value || (p.doc.id !== '' && !document.value.outline.row(p.doc.id)));
+    if (gone || docGone) picked.set(undefined);
   });
   const pickedKey = derive(picked.asReadonly, (p) => p?.key);
   // the row under the pointer: lit in 3D (the picked row's highlight comes back when it leaves)
   const hover = (row: Row | undefined) => {
     const p = picked.value;
+    const doc = row ? row.doc : p?.doc;
+    if (doc) {
+      area.highlightLoci(documentLoci(api, doc));
+      return;
+    }
     area.highlight(row?.node ? row.node : p && lastingHighlight(p) ? p.node : undefined);
   };
   const toggleOpen = (key: string) => {
@@ -351,10 +417,12 @@ function ScenePanel(props: { ctx: ViewerUIContext; area: ExplorerApi; model: Sce
     ...(row.node ? { node: row.node } : {}),
     ...(row.representation ? { representation: row.representation } : {}),
     ...(row.clip ? { clip: row.clip } : {}),
+    ...(row.doc ? { doc: row.doc } : {}),
   });
   const pick = (row: Row) => {
     if (picked.value?.key !== row.key) picked.set(pickedOf(row));
-    area.highlight(lastingHighlight(row) ? row.node : undefined);
+    if (row.doc) area.highlightLoci(documentLoci(api, row.doc));
+    else area.highlight(lastingHighlight(row) ? row.node : undefined);
   };
   onCleanup(() => area.highlight(undefined));
 
@@ -428,6 +496,11 @@ function ScenePanel(props: { ctx: ViewerUIContext; area: ExplorerApi; model: Sce
         ],
         onClose,
       );
+      return;
+    }
+    if (row.doc) {
+      pick(row);
+      openContextMenu(r, at, documentMenuItems(api, document.value, { label: row.label, doc: row.doc }), onClose);
       return;
     }
     if (row.kind === 'clip' && row.clip) {
@@ -508,13 +581,17 @@ function ScenePanel(props: { ctx: ViewerUIContext; area: ExplorerApi; model: Sce
             rows={rows}
             picked={pickedKey}
             shown={shown}
-            more={(row) => !!row.node || !!row.objects?.length || !!row.clip || row.key === ClipsKey}
+            more={(row) => !!row.node || !!row.objects?.length || !!row.clip || !!row.doc || row.key === ClipsKey}
             onPick={pick}
             onToggle={(row) => toggleOpen(row.key)}
             onEyes={setShown}
             onMenu={menu}
             onColor={colors}
-            onDblClick={(row) => row.node && area.focus(row.node)}
+            onDblClick={(row) =>
+              row.doc
+                ? void api.run('mesoviewspec.focus', { select: row.doc.select })
+                : row.node && area.focus(row.node)
+            }
             onHover={hover}
             ref={(t) => (tree = t)}
           />
@@ -549,6 +626,8 @@ function ScenePanel(props: { ctx: ViewerUIContext; area: ExplorerApi; model: Sce
                 parts={parts.asReadonly}
                 groupings={model.groupings}
                 groupByOf={model.groupByOf}
+                documentGrouping={model.documentGrouping}
+                document={document.asReadonly}
                 shell={model.sections}
               />
             )}

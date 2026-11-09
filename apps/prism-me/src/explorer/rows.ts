@@ -16,6 +16,8 @@ import { MeasureNames } from '@molstar/stage-tools-extension/distance';
 import type { Category, ExplorerApi, NodeRef, SceneObject } from './operations.js';
 import { type Ids, isCover, kindOf, PlainCut, type Way, wayOfRecord } from './clips.js';
 import { filterRows, type TreeRowView } from './tree-view.js';
+import type { DocumentTree } from '@molstar/meso-molstar';
+import { DocumentKey, documentAncestorKeys, type DocumentRef, documentRowByKey, pushDocumentRows } from './document.js';
 
 // The rows of the explorer's tree (_spec/ui.md §3), flat, from the scene's objects and the parts the mesoscale and
 // cryo-ET areas read; and what a row's eye runs.
@@ -43,6 +45,10 @@ export interface Row extends TreeRowView {
   readonly clip?: string;
   /** The Clips category: its clips' tags (its eye draws them all in the scene, or none) */
   readonly clips?: readonly string[];
+  /** A MesoViewSpec document's row: its id and address (prism.md §4.1) */
+  readonly doc?: DocumentRef;
+  /** The Particles category with a document under it: its eye sets the document's too */
+  readonly document?: boolean;
 }
 
 /** A clip (Prism's cut) as a row of the Clips category (ui.md §3) */
@@ -97,6 +103,9 @@ export function sameRow(a: Row, b: Row): boolean {
     a.expanded === b.expanded &&
     a.representation === b.representation &&
     a.clip === b.clip &&
+    a.short === b.short &&
+    a.doc?.select === b.doc?.select &&
+    a.document === b.document &&
     sameRefs(a.objects, b.objects) &&
     sameRefs(a.clips, b.clips)
   );
@@ -122,6 +131,8 @@ export function rowsOf(
   clips: readonly ClipRow[] = [],
   /** While filtering, the rows the person folded (the filter opens every other) */
   folded: ReadonlySet<string> = NoKeys,
+  /** The open MesoViewSpec document: one item of Particles, its rows under it (prism.md §4.1) */
+  doc?: DocumentTree,
 ): Row[] {
   const f = filter.trim().toLowerCase();
   const rows: Row[] = [];
@@ -176,7 +187,8 @@ export function rowsOf(
   };
   for (const c of Categories) {
     const items = objects.filter((o) => o.category === c.id);
-    if (!items.length) continue;
+    const withDoc = c.id === 'particles' && !!doc;
+    if (!items.length && !withDoc) continue;
     push(
       {
         key: `c:${c.id}`,
@@ -184,14 +196,16 @@ export function rowsOf(
         label: c.label,
         kind: 'category',
         category: true,
-        count: String(items.length),
+        count: String(items.length + (withDoc ? 1 : 0)),
         // its eye sets every object under it, all of each; open when they all are (never "some shown")
-        visible: items.every((o) => objectOpen(o, parts.get(o.ref))),
+        visible: items.every((o) => objectOpen(o, parts.get(o.ref))) && (!withDoc || doc.visible),
         objects: items.map((o) => o.ref),
+        ...(withDoc ? { document: true } : {}),
         hasChildren: true,
       },
       () => {
         for (const o of items) objectRows(o, parts.get(o.ref), push);
+        if (withDoc) pushDocumentRows(doc, 1, push);
       },
     );
   }
@@ -495,7 +509,7 @@ export function categoryTheme(
 }
 
 /** What an eye sets: a row, as the scene knows it */
-export type EyeRow = Pick<Row, 'kind' | 'node' | 'objects' | 'representation' | 'clip' | 'clips'>;
+export type EyeRow = Pick<Row, 'kind' | 'node' | 'objects' | 'representation' | 'clip' | 'clips' | 'doc' | 'document'>;
 
 /**
  * Eyes set, one step (a click's row, or each row a drag passed; Ludo, 2026-10-28): each row's and every part under it
@@ -507,7 +521,14 @@ export function setEyes(api: ViewerApi, area: ExplorerApi, rows: readonly EyeRow
   return api.group(visible ? 'Show' : 'Hide', async (g) => {
     const entities = new Map<string, number[]>();
     const targets = new Map<string, number[]>();
+    // a document's rows: their addresses, one look patch for all of them (saved in the document, prism.md §5.2)
+    const looks = new Set<string>();
     for (const row of rows) {
+      if (row.doc) {
+        if (row.doc.select) looks.add(row.doc.select);
+        continue;
+      }
+      if (row.document) looks.add('(all)');
       const node = row.node;
       if (node && 'particles' in node && PartKinds.has(row.kind)) {
         const [by, ids] =
@@ -540,6 +561,10 @@ export function setEyes(api: ViewerApi, area: ExplorerApi, rows: readonly EyeRow
         layers: t.map((id) => ({ selector: { targets: [id] }, visible })),
       });
       if (!l.ok) return l;
+    }
+    if (looks.size) {
+      const r = await g.run('mesoviewspec.eye', { select: [...looks].join('\n'), visible });
+      if (!r.ok) return r;
     }
     return undefined;
   });
@@ -660,7 +685,13 @@ export function rowOf(
   key: string,
   labels: readonly LabelInfo[] = [],
   distances: readonly DistanceInfo[] = [],
+  doc?: DocumentTree,
 ): Row | undefined {
+  // a document's row: from its outline, not from every row unfolded (a part's rows are made when opened)
+  if (key.startsWith(DocumentKey)) {
+    const r = documentRowByKey(doc, key);
+    return r && { ...r, expanded: false };
+  }
   return rowsOf(objects, parts, AllOpen, '', labels, distances).find((r) => r.key === key);
 }
 
@@ -671,9 +702,11 @@ export function ancestorKeys(
   key: string,
   labels: readonly LabelInfo[] = [],
   distances: readonly DistanceInfo[] = [],
+  doc?: DocumentTree,
 ): string[] | undefined {
   // a clip's row: under the Clips category
   if (key.startsWith('k:')) return [ClipsKey];
+  if (key.startsWith(DocumentKey)) return documentAncestorKeys(doc, key);
   const rows = rowsOf(objects, parts, AllOpen, '', labels, distances);
   const i = rows.findIndex((r) => r.key === key);
   if (i < 0) return undefined;
