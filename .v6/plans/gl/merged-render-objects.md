@@ -119,6 +119,11 @@ culled on the GPU as a merged object of one member (`mergeRenderObjectsByType`).
   its range (layout, `syncInstanceRange`); its CPU `aTransform` is a placeholder and it is gridless (one cell: its
   bounding sphere), so the counts per segment and the cells stay the CPU's and the kernels are unchanged. Only with GPU
   culling: without a culler such a member has no transforms.
+- **A pool made per view** (lipid-procedural, 2026-11-08): such a member's instance count is its capacity; its writer
+  returns how many are live (the first ones; the segment row's word 6, `instance-copy` skips a local index past it) and
+  may carry a `view` hook, called in `dispatch` where the view changed (the planes, the range, the `LodView`'s scales),
+  before the culling, once per frame for its first view: it writes the instances of that view and returns the live
+  count (16 B written), or nothing. No layout and no CPU write per view; the counts per segment stay the CPU's.
 - **When**: before the passes (`Renderer.prepareCull`, called by the draw pass after its `update`; passes update the
   renderer with their render pass open, a compute pass would end it), once per frame for its first view.
 - **Draw lists**: the draw key of indirect lists is their buffers (the GPU writes the counts): recordings stay valid
