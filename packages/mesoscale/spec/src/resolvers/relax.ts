@@ -36,7 +36,7 @@ interface RelaxInput {
 
 export const MesoRelaxResolver: Resolver<RelaxInput> = {
   id: 'meso.relax',
-  version: '0.1.1',
+  version: '0.1.2',
   description:
     "Refines another model's placement: inserts missing copies, relaxes overlaps, keeps copies in their compartments",
   arrangements: ['random'],
@@ -198,26 +198,41 @@ export const MesoRelaxResolver: Resolver<RelaxInput> = {
     // obstacles were pushed before the inserted copies: keep them where `fixed` says, wherever they sit in the list
     void firstMovable;
 
-    // relax: pairs pushed apart (a fixed body does not move), then each movable body kept in its volume
-    // a loop, not Math.max(...bodies): an argument spread overflows the stack past ~100 000 bodies
+    // the overlap grid: its cell sized by the copies it relaxes (upstream and inserted), not by the avoided ones, so one
+    // large avoided copy does not put every copy in one cell. The avoided copies larger than that (fixed: they never
+    // move) sit in grids of their own by size class, class c in cells of 2·maxR·2^c, each found in 27 cells.
     let maxR = 1;
-    for (const b of bodies) if (b.r > maxR) maxR = b.r;
+    for (const b of bodies) if (b.set >= 0 && b.r > maxR) maxR = b.r;
     const cell = 2 * maxR;
     const key = (i: number, j: number, k: number) => ((i + 4096) * 8192 + (j + 4096)) * 8192 + (k + 4096);
-    let largest = 0;
-    let it = 0;
-    const gr = [0, 0, 0];
-    for (; it < input.iterations; it++) {
-      const cells = new Map<number, number[]>();
-      bodies.forEach((b, i) => {
+    const classes = new Map<number, { cell: number; cells: Map<number, number[]> }>();
+    for (let i = 0; i < bodies.length; i++) {
+      const b = bodies[i];
+      if (b.r <= maxR) continue;
+      const c = Math.ceil(Math.log2(b.r / maxR));
+      let g = classes.get(c);
+      if (!g) classes.set(c, (g = { cell: 2 * maxR * 2 ** c, cells: new Map() }));
+      const k = key(Math.floor(b.x / g.cell), Math.floor(b.y / g.cell), Math.floor(b.z / g.cell));
+      const l = g.cells.get(k);
+      if (l) l.push(i);
+      else g.cells.set(k, [i]);
+    }
+    const large = [...classes.values()];
+    const cells = new Map<number, number[]>();
+    /** Every pair of bodies near enough to overlap (two large ones never: both fixed), each once, in index order. */
+    const eachPair = (visit: (i: number, j: number) => void) => {
+      cells.clear();
+      for (let i = 0; i < bodies.length; i++) {
+        const b = bodies[i];
+        if (b.r > maxR) continue;
         const k = key(Math.floor(b.x / cell), Math.floor(b.y / cell), Math.floor(b.z / cell));
         const l = cells.get(k);
         if (l) l.push(i);
         else cells.set(k, [i]);
-      });
-      largest = 0;
+      }
       for (let i = 0; i < bodies.length; i++) {
         const a = bodies[i];
+        if (a.r > maxR) continue;
         const ci = Math.floor(a.x / cell),
           cj = Math.floor(a.y / cell),
           ck = Math.floor(a.z / cell);
@@ -226,33 +241,56 @@ export const MesoRelaxResolver: Resolver<RelaxInput> = {
             for (let w = -1; w <= 1; w++) {
               const l = cells.get(key(ci + u, cj + v, ck + w));
               if (!l) continue;
-              for (const j of l) {
-                if (j <= i) continue;
-                const b = bodies[j];
-                if (a.fixed && b.fixed) continue;
-                const dx = b.x - a.x,
-                  dy = b.y - a.y,
-                  dz = b.z - a.z;
-                const d = Math.hypot(dx, dy, dz);
-                const overlap = a.r + b.r - d;
-                if (overlap <= 0) continue;
-                if (overlap > largest) largest = overlap;
-                const nx = d > 1e-6 ? dx / d : 1,
-                  ny = d > 1e-6 ? dy / d : 0,
-                  nz = d > 1e-6 ? dz / d : 0;
-                const sa = a.fixed ? 0 : b.fixed ? 1 : 0.5;
-                const sb = 1 - sa;
-                // a little past contact, so neighbours settle instead of chattering
-                const push = overlap * 1.02;
-                a.x -= nx * push * sa;
-                a.y -= ny * push * sa;
-                a.z -= nz * push * sa;
-                b.x += nx * push * sb;
-                b.y += ny * push * sb;
-                b.z += nz * push * sb;
-              }
+              for (const j of l) if (j > i) visit(i, j);
             }
+        for (const g of large) {
+          const li = Math.floor(a.x / g.cell),
+            lj = Math.floor(a.y / g.cell),
+            lk = Math.floor(a.z / g.cell);
+          for (let u = -1; u <= 1; u++)
+            for (let v = -1; v <= 1; v++)
+              for (let w = -1; w <= 1; w++) {
+                const l = g.cells.get(key(li + u, lj + v, lk + w));
+                if (l) for (const j of l) visit(i, j);
+              }
+        }
       }
+    };
+    /** Pushes a pair apart, a little past contact so neighbours settle instead of chattering; returns the overlap. */
+    const separate = (i: number, j: number, push: boolean) => {
+      const a = bodies[i],
+        b = bodies[j];
+      if (a.fixed && b.fixed) return 0;
+      const dx = b.x - a.x,
+        dy = b.y - a.y,
+        dz = b.z - a.z;
+      const d = Math.hypot(dx, dy, dz);
+      const overlap = a.r + b.r - d;
+      if (overlap <= 0 || !push) return overlap;
+      const nx = d > 1e-6 ? dx / d : 1,
+        ny = d > 1e-6 ? dy / d : 0,
+        nz = d > 1e-6 ? dz / d : 0;
+      const sa = a.fixed ? 0 : b.fixed ? 1 : 0.5;
+      const p = overlap * 1.02;
+      a.x -= nx * p * sa;
+      a.y -= ny * p * sa;
+      a.z -= nz * p * sa;
+      b.x += nx * p * (1 - sa);
+      b.y += ny * p * (1 - sa);
+      b.z += nz * p * (1 - sa);
+      return overlap;
+    };
+
+    // relax: pairs pushed apart (a fixed body does not move), then each movable body kept in its volume
+    let largest = 0;
+    let it = 0;
+    const gr = [0, 0, 0];
+    for (; it < input.iterations; it++) {
+      largest = 0;
+      eachPair((i, j) => {
+        const o = separate(i, j, true);
+        if (o > largest) largest = o;
+      });
       for (const b of bodies) {
         if (b.fixed || !b.owner) continue;
         const g = grid(b.owner);
@@ -306,48 +344,11 @@ export const MesoRelaxResolver: Resolver<RelaxInput> = {
     };
     const isOut = (b: Body) => outOfOwner(b) || inChild(b) !== undefined;
     const pairPass = (push: boolean) => {
-      const cells = new Map<number, number[]>();
-      bodies.forEach((b, i) => {
-        const k = key(Math.floor(b.x / cell), Math.floor(b.y / cell), Math.floor(b.z / cell));
-        const l = cells.get(k);
-        if (l) l.push(i);
-        else cells.set(k, [i]);
-      });
       let worst = 0;
-      for (let i = 0; i < bodies.length; i++) {
-        const a = bodies[i];
-        const ci = Math.floor(a.x / cell),
-          cj = Math.floor(a.y / cell),
-          ck = Math.floor(a.z / cell);
-        for (let u = -1; u <= 1; u++)
-          for (let v = -1; v <= 1; v++)
-            for (let w = -1; w <= 1; w++)
-              for (const j of cells.get(key(ci + u, cj + v, ck + w)) ?? []) {
-                if (j <= i) continue;
-                const b = bodies[j];
-                if (a.fixed && b.fixed) continue;
-                const dx = b.x - a.x,
-                  dy = b.y - a.y,
-                  dz = b.z - a.z;
-                const d = Math.hypot(dx, dy, dz);
-                const overlap = a.r + b.r - d;
-                if (overlap <= 0) continue;
-                worst = Math.max(worst, overlap);
-                if (!push) continue;
-                const nx = d > 1e-6 ? dx / d : 1,
-                  ny = d > 1e-6 ? dy / d : 0,
-                  nz = d > 1e-6 ? dz / d : 0;
-                // a copy that is in only by its margin is not pushed further out: its partner moves
-                const sa = a.fixed ? 0 : b.fixed ? 1 : 0.5;
-                const p = overlap * 1.02;
-                a.x -= nx * p * sa;
-                a.y -= ny * p * sa;
-                a.z -= nz * p * sa;
-                b.x += nx * p * (1 - sa);
-                b.y += ny * p * (1 - sa);
-                b.z += nz * p * (1 - sa);
-              }
-      }
+      eachPair((i, j) => {
+        const o = separate(i, j, push);
+        if (o > worst) worst = o;
+      });
       return worst;
     };
     let outsideCount = 0;
@@ -378,27 +379,14 @@ export const MesoRelaxResolver: Resolver<RelaxInput> = {
 
     // what still overlaps by more than the tolerance after the last iteration: inserted copies dropped, greedily
     const dropped = new Set<number>();
-    if (largest > input.tolerance) {
-      const cells = new Map<number, number[]>();
-      bodies.forEach((b, i) => {
-        const k = key(Math.floor(b.x / cell), Math.floor(b.y / cell), Math.floor(b.z / cell));
-        cells.set(k, [...(cells.get(k) ?? []), i]);
+    if (largest > input.tolerance)
+      eachPair((i, j) => {
+        if (dropped.has(i) || dropped.has(j)) return;
+        const a = bodies[i],
+          b = bodies[j];
+        if (!a.inserted && !b.inserted) return;
+        if (a.r + b.r - Math.hypot(b.x - a.x, b.y - a.y, b.z - a.z) > input.tolerance) dropped.add(a.inserted ? i : j);
       });
-      bodies.forEach((a, i) => {
-        if (!a.inserted || dropped.has(i)) return;
-        const ci = Math.floor(a.x / cell),
-          cj = Math.floor(a.y / cell),
-          ck = Math.floor(a.z / cell);
-        for (let u = -1; u <= 1; u++)
-          for (let v = -1; v <= 1; v++)
-            for (let w = -1; w <= 1; w++)
-              for (const j of cells.get(key(ci + u, cj + v, ck + w)) ?? []) {
-                if (j === i || dropped.has(j)) continue;
-                const b = bodies[j];
-                if (a.r + b.r - Math.hypot(b.x - a.x, b.y - a.y, b.z - a.z) > input.tolerance) dropped.add(i);
-              }
-      });
-    }
 
     // the result: each upstream set rebuilt type by type (every population one run), inserted copies after the others
     const achieved: Record<Id, number> = {};
