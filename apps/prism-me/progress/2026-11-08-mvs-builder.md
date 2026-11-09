@@ -55,6 +55,13 @@
 - **Type tests** run by `tsconfig.test.json` in the spec package (tsconfig.json excludes `_test`); not in `tsc -b`. The
   package `typecheck` script is not changed (the entries lane edits that package.json).
 
+- **A ref of another builder compiles** (§3.15 says so): branding refs per builder would need a type parameter on every
+  call. A departure from the brief's check (a population on a compartment the builder never made is a TS error holds for
+  a compartment of the wrong kind or scope, not for one of another builder); `validate` reports it (`ref.missing`). Open
+  for Ludo.
+- **Merge:** me/mesoviewspec moved during the lane (Look.id, Look.emissive, `revision`, look ids in exosome); merged
+  forward, the builder gained `revision`, the `look` kind and reserved look ids.
+
 ## Learned
 
 - Explicit ids dominate the rewrites: a label's slug rarely equals the short ids the literals use (`e.granule` for
@@ -66,12 +73,34 @@
 
 ## Size
 
-Production lines: builder/ 605 (refs 182, builder 271, query 67, ids 69, index 16) against ~450: over by ~155, the room
-went to the doc.ts-derived input types (refs.ts) and to the doc-order emission. Examples: betacell 212 -> 176, nucleoid
-115 -> 119, gallery 187 -> 179, exosome 328 -> 332, yeast 419 -> 448 (1261 -> 1254): not shorter overall, the brief's
-"reads shorter" holds only for betacell (shared looks, `q`).
+Production lines: builder/ 623 after the review fixes (605 at first build) against ~450: over by ~155, the room went to
+the doc.ts-derived input types (refs.ts) and to the doc-order emission. Examples: betacell 212 -> 176, nucleoid 115 ->
+119, gallery 187 -> 179, exosome 328 -> 332, yeast 419 -> 448 (1261 -> 1254): not shorter overall, the brief's "reads
+shorter" holds only for betacell (shared looks, `q`).
 
 ## Review
 
-| Finding | Severity | Verdict | Commit / open |
-| ------- | -------- | ------- | ------------- |
+| Finding                                                                              | Severity               | Verdict   | Commit / open                                                                |
+| ------------------------------------------------------------------------------------ | ---------------------- | --------- | ---------------------------------------------------------------------------- |
+| M1 base moved: no `revision`, no `look` kind; NEW1 look ids not reserved             | must                   | confirmed | f5639148c                                                                    |
+| M2 `build()` shares arrays and nodes with the builder; N5 `add` keeps caller objects | must                   | confirmed | c989145ad                                                                    |
+| M3 fiber `path.resource` a plain string                                              | must (skeptic: should) | confirmed | 85fff6637, a00243212                                                         |
+| M4 no changelog                                                                      | must (skeptic: should) | confirmed | 03e477fd8                                                                    |
+| S1 type tests run by nothing                                                         | should                 | confirmed | 325f332ea (script; CI does not follow `tsconfig.test.json`, repo-wide, open) |
+| S2 `get` reserves, a later generated id skips it                                     | should (skeptic: nit)  | confirmed | wording in §3.15, 74ecea7b4; open: no code change                            |
+| S3 id suffix scan quadratic                                                          | should                 | confirmed | 2d7c9b0dc                                                                    |
+| S4 inner membrane a type error                                                       | should                 | confirmed | 04f2570c8, a00243212                                                         |
+| S5a `range` one number                                                               | should                 | confirmed | 1506c6c2e                                                                    |
+| S5b/NEW2 `q` and `printMesoQL` do not quote numeric or `;` atoms                     | should                 | confirmed | open (TODO: shared printer fix in format/mesoql.ts)                          |
+| S6 other-builder ref compiles                                                        | nit                    | confirmed | Decided, open for Ludo                                                       |
+| N1 undefined or empty values in the document                                         | nit                    | confirmed | a1743055c                                                                    |
+| N2 key order wording                                                                 | nit                    | confirmed | 74ecea7b4 (wording)                                                          |
+| N3 weak site typing for non-literal `sites`, `get`                                   | nit                    | confirmed | open                                                                         |
+| N4 `q` accepts empty variadics, negative copies                                      | nit                    | confirmed | open                                                                         |
+| N6 generated annotation ids collide with later explicit                              | nit                    | refuted   | the general explicit-id rule                                                 |
+| N7 empty label skips the fallback                                                    | nit                    | confirmed | ac19e116b; open: ß/Æ/α slugs                                                 |
+| N8 site-id test cannot fail                                                          | nit                    | confirmed | c5162a26d                                                                    |
+| N9 `as unknown as MesoBuilder` cast                                                  | nit                    | confirmed | open                                                                         |
+
+Counts: 20 reviewer findings (4 must, 6 should, 9 nits + 1 more should) of which 19 confirmed, 1 refuted; 3 new from the
+skeptic (NEW1 fixed, NEW2, NEW3 as above).
