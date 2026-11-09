@@ -90,6 +90,13 @@ maintainer first (2026-10-25). All are v6 (master); the MRC reader and the parti
 
 - **Lipid membranes made per view, left from lane `lipid-procedural`** (2026-11-08;
   progress/2026-11-08-lipid-procedural.md):
+  - Round 6, a cell's membranes as one (Wrap all): one Look and far colour for all of them (a membrane's own colour,
+    hiding one membrane's lipids: a part's params); one patch for all (a membrane's own composition, yeast PM, mito IM's
+    cardiolipin, LD's monolayer, needs a cutter a part and leaflet and its own pools); the wrap of the yeast cell takes
+    about 7-10 s (cutters, pools, four patch surfaces over 1.08 M triangles: a range a part rather than whole then
+    sliced); under a clip every part's surfaces draw (~45 ms at the whole cell); a part's enclosure is one bit for all
+    its components (the eye in one mitochondrion shows every IM). The 11-07 slab's alignment with these meshes is not
+    checked (its file not found).
   - A row per species in the tree (eye and colour): the membrane's Look holds them this round.
   - Picking a lipid: a pick's slot maps to (triangle, lipid) through the selection (its units and bases; `lipidAt` went
     with round 5's cells), but the membrane's `getLoci` is still empty; per-lipid layers stay per species (a slot is not

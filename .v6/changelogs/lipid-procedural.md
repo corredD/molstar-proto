@@ -27,3 +27,8 @@
 - A lipid membrane is coloured as a particle list: `mesoscale.style`, `mesoscale.colors` and `mesoscale.colorLevels`
   take it as `particles` (its species its entities; colours by zoom: its colour far, its species' near); the explorer's
   Look and right-click › Color… on it.
+- A cell's membranes wrap as one: right-click › Wrap all N meshes with lipids (`mesoscale.wrapMembrane { meshes }`), one
+  step, one pool and budget nearest first across them; a membrane inside a closed one is neither selected nor drawn
+  while the eye is outside it (and is under a clip). A view's selection descends a sphere tree over the triangles (the
+  yeast cell's 1.08 M triangles: under 5 ms a view). + Open reads the yeast cell viewer's `organelle_meshes.bin`
+  (`.bin.gz`): a mesh a membrane, named, in Å.
