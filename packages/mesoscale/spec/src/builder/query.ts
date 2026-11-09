@@ -57,11 +57,11 @@ export const q = {
   site: <N extends string>(e: EntityRef<Scope, N>, name: NoInfer<N>) => form('site', ids([e, name])) as SiteAddress,
   residues: (
     e: Ref<'entity', Scope>,
-    o: { chain?: string; range?: string | number | readonly [number, number] } = {},
+    o: { chain?: string; range?: `${number}-${number}` | readonly [number, number] } = {},
   ) =>
     form('residues', ids([e]), [
       ['chain', opt(o.chain)],
-      ['range', opt(typeof o.range === 'object' ? o.range.join('-') : o.range)],
+      ['range', opt(typeof o.range === 'string' ? o.range : o.range?.join('-'))],
     ]) as ResiduesAddress,
   part: (instances: Selection, inner: PopulationRef<'inner'>) => sel('part', [instances, atom(inner)]),
 };

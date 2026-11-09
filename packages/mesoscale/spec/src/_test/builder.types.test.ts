@@ -101,6 +101,10 @@ function types() {
   q.site(hu, 'nope');
   // @ts-expect-error catalase declares no sites
   q.site(e, 'dna-entry');
+  q.residues(e, { chain: 'A', range: '53-63' });
+  q.residues(e, { range: [53, 63] });
+  // @ts-expect-error a label range is two numbers or `a-b`, never one number
+  q.residues(e, { range: 5 });
   // @ts-expect-error a selection is not a site address
   q.not(q.site(hu, 'dna-entry'));
 }
