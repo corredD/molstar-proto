@@ -1,0 +1,640 @@
+# Prism over MesoViewSpec
+
+How prism-me opens, shows and edits a MesoViewSpec document: what the document owns, what Prism owns, how an edit in the
+Scene tree becomes a patch, how Undo spans both, and the app lanes that build it. Modelled on
+`packages/prism/viewer/_spec/sequence.md` (Seq\* in the Prism viewer). The format, IR and runtime are
+[design.md](design.md)'s; the renderer findings are [renderer-recommendations.md](renderer-recommendations.md)'s.
+
+- **Status:** a design, not built (lane `mvs-prism-design`, 2026-11-08). Nothing here is code yet; §12 is the build.
+- **Who decides:** each decision is tagged **(Ludo)** when it is the app's or the base's, **(David)** when it changes
+  the format, **(proposed)** when it follows from the code and the specs. §11 lists what waits for a word.
+- **Reading of the brief:** "features.md rows 13-39" is read as the whole _Mesoscale_ section of
+  `apps/prism-me/_spec/features.md` plus the opening rows that bring a mesoscale scene (cellPACK, PetWorld, examples,
+  sessions, the URL). §6 covers every one of them, and every gesture of `apps/prism-me/_spec/ui.md` §3-§5.
+
+## 1. One owner, one viewer (decision 1: drive, not beside)
+
+- **The document drives the lists it makes.** A MesoViewSpec document opened in prism-me is the one source of what its
+  particle lists show: which copies, where, in which colors, visible or not. Every edit a person or the agent makes to
+  such a list that the document can say is a **patch** to the document (§2). The runtime derives the view, and the Prism
+  adapter (`PrismMesoAdapter`, design.md §6.5) writes it as Prism layers. Nothing writes those layers beside it.
+  **(proposed)**
+- **A document list is known by its source.** `toParticleList` (`packages/mesoscale/molstar/src/particle-list.ts`) sets
+  `sourceData.kind: 'meso-view-spec'` and the set's key as `sourceData.name`. That is the hook: an operation that meets
+  such a list asks the document's owner (§1.1) instead of writing the list.
+- **Every other list is as today.** A cellPACK or PetWorld model (`mmcif_particles`), a STAR, Dynamo, EM or NDJSON list,
+  a Simularium file: the mesoscale extension's operations write their layers as now (`mesoscale.style` →
+  `particles.look`). Nothing in this design changes them.
+- **The alternative, beside:** the extension's operations keep writing `particles.look` on document lists too, and the
+  document only seeds the first look. Refused, for three reasons the code shows:
+  - **Silent divergence.** The adapter rewrites a list's look layers whenever the view's looks change
+    (`plan.looksChanged` in `commit`): a color set by `mesoscale.style` is lost at the next document edit, or kept in
+    some lists and not others. Neither side knows.
+  - **Saving loses the work.** The person's colors and eyes would live only in Prism's layers; the saved document (the
+    thing to share, diff and trace, design.md §1) would not have them.
+  - **The extension's model is not the document's.** `toParticleList` sets `entities = targets = types`: each list
+    numbers its types 0..n, so ids collide across lists (one list per placement set, one set per model). It sets no
+    `compartments` or `compartmentInfo`, so `mesoGroups` (`packages/extensions/mesoscale/src/model.ts`) gives a flat
+    list per model. A document's compartment spans several models. So the extension's per-list entities and groups
+    cannot be the document's tree (§4); the document's own sections are.
+- **This answers the brief's spike question without a spike:** the adapter's lists can carry the extension's entities
+  (one entity per type, its label the population's), so the extension's reads still work on them; they cannot carry its
+  groups, and they should not carry its writes.
+
+### 1.1 The owner
+
+- **`MesoDocumentModel`** (proposed, `packages/mesoscale/molstar/src/document-model.ts`, exported as
+  `@molstar/meso-molstar/document-model`) holds the open document: `doc`, `revision`, the `MesoSession` (runtime cache,
+  IR, issues, counts, edit records), the adapter, the shown view (§4.4). It commits patches (§2.3). It takes the
+  viewer's API, a loader and a scheduler as plain arguments: no DOM, testable on a headless Prism viewer, as the
+  adapter's medium tests are.
+- **One document at a time** **(Ludo)**: opening a second asks, then replaces the first (`destructive`, as `load.mvs`).
+  Why: the format has one id namespace a document (design.md §3.1); two open documents would need ids qualified by
+  document in every address, row and patch. Seq\*'s precedent is one structure at a time (sequence.md §3). The
+  alternative, several documents keyed by id, waits for a case that needs it.
+- **The owner port in the mesoscale extension** (proposed):
+  `ParticleListOwner { owns(list): boolean; info(list, groupBy); propose(edit): Promise<OperationResult> }`, registered
+  on the `mesoscale` area by the `mesoviewspec` extension. `mesoscale.style`, `.colors`, `.importColors`, `.theme` and
+  `.entities` call it first for each list they touch; an owned list's edit becomes the owner's patch, inside the same
+  run (so one step). The extension imports nothing of `@molstar/meso-*`; the owner is the only bridge.
+
+## 2. Patches (decision 2; design.md §11 decision 6)
+
+### 2.1 The patch
+
+Seq\*'s, as `packages/sequences/_spec/format.md` § Patches states it, over the MesoViewSpec document **(David)**:
+
+```
+{ format: "meso_view_spec_patch", base?: <revision>, revision?: <revision>, ops: [...] }
+```
+
+- **Ops by id:** `set` (a shallow merge of a node's fields; `null` removes a field, back to its default), `remove` (the
+  node; no cascade), `insert` (a node into a section or a list, after a sibling id, `"first"` or `"last"`, never a
+  number), `move`. A node is any object with an `id`: a section item (entity, compartment, population, instance, model,
+  view, tour, …) or a view's look or annotation (§2.2). `set` never changes a node's `kind` or `id`.
+- **Top-level fields** (`session`, `metadata`, `units`) are set with `set` on the reserved id `document`.
+- **All or nothing.** Shapes first, then the ops in order, then the result validated (`format/validate.ts`, phase
+  `static`). Any error leaves the document as it was; issues are pathed `/ops/<k>`.
+- **No cascade:** removing a population a model or a look names leaves a dangling reference; validation refuses the
+  patch. The caller removes what refers to it in the same patch.
+- **Inverse and diff:** applying returns the inverse; `diff(a, b)` gives the patch from `a` to `b`, nodes matched by id.
+  Untouched sections are shared, so a look edit on a 200k-copy document copies one view.
+- **The S-expression spelling** prints a patch as it prints a document (design.md §3.7):
+  `(patch :ops [(set v.cell …)])`. The agent and the History list read that.
+- **Where:** `packages/mesoscale/spec/src/format/patch.ts` (`applyPatch`, `diff`), no Mol\* import (the Biome rule).
+
+### 2.2 What a patch can name: two format additions
+
+A ref patch needs a target, and two edits the UI makes have none today **(David)**:
+
+- **Looks get an `id`** (optional in the format; the viewer always writes one). `Look` has no id (`format/doc.ts`), and
+  Seq\*'s rule is "anchors are refs, never numbers". Without one, "make catalase red" cannot be told from "the third
+  look", and an undo of the second of two edits would remove the wrong one. A look without an id (hand-written) is
+  addressed through its view: the viewer rewrites the view's looks with ids in its first patch of that view (one `set`
+  of `looks`).
+- **Looks get `emissive`** (0-1, as `transparency`). Prism's look has it (`mesoscale.style` `emissive`); the document
+  does not. The alternative, keeping emissive viewer-only, loses it on save and splits one look across two owners.
+- Tour steps and catalog rows have no id either; nothing the UI does edits them one by one (a tour is replaced whole).
+
+### 2.3 The owner commits
+
+- **A viewer proposes; the owner commits** (Seq\*'s principle, `packages/sequences/_spec/README.md` § Principles). In
+  prism-me the owner is `MesoDocumentModel`; the operation that proposes is `mesoviewspec.edit { patch }` or one of the
+  helpers that build a patch (`mesoviewspec.look`, §5). The owner applies it, keeps the inverse for the record, sets a
+  new `revision`, then runs the session's edit.
+- **What it costs** is read from the ops, not from hashing: a patch that touches only `views`, `tours`, `session` and
+  `metadata` is a **view** edit (`updateView`, no resolver, O(types)); one that touches a population, a model, a
+  compartment, an entity, a resource or a frame is a **model** edit (`compile` with the session's cache: only the models
+  whose projection changed resolve). `classifyEdit` stays the check for whole documents (an open, an undo).
+- **A refused patch changes nothing** and says why (the validation's issues, in the operation's result).
+- **The adapter runs inside the operation.** Today it writes through `viewer.api` and `plugin.state.data.updateTree`
+  directly. Under a step it must use the operation's `ctx.api` (the step's history context, sequence.md §7.3 "Inside a
+  step") for `particles.representation` and `particles.look`, and its own tree updates happen inside that run, so they
+  are part of the step and not "changes outside the API" (which would mark every checkpoint unsafe).
+
+### 2.4 Undo: the alternative of inverses
+
+Undo stays Prism's one history (§7), with checkpoints that hold the document. The inverses are kept for the record
+(journal.md: each step names its patch and inverse) and for a later "Changes" list, not for Undo. The alternative, Undo
+by inverse patches, would be a second history beside Prism's: an undo that crosses a clip (Prism's) and a look (the
+document's) would need both in step. Seq\* in Prism made the same choice (sequence.md §7.1: the edits overlay is in the
+checkpoint, not undone by inverse).
+
+## 3. Loading (decision 3)
+
+- **`mesoviewspec.open`** (`network` with `addresses`; `destructive` when a document is open): a URL, a file, or data.
+  `.mesoviewspec.json` (JSON) or `.mesoviewspec` (the S-expression, `readData` in `format/sexpr.ts`). The URL parameter
+  `?mesoviewspec=<url>` (`apps/prism-me/src/url.ts`). A file dropped or picked in + Open › Files… goes to it by its
+  extension or, for `.json`, by `"format": "meso_view_spec"` (the lazy stub's `sniff`, as the particles feature sniffs
+  mmCIF).
+- **A runtime chunk.** `@molstar/meso-spec` (format, runtime, resolvers) and `@molstar/meso-molstar` (adapter, owner)
+  are a lazy viewer extension, `mesoviewspec`, whose stub declares its operations, commands, sniff and skill
+  (viewer-spec.md, lazy extensions). Nothing of it loads at start; the first open loads it (sequence.md §2's runtime
+  chunk). The stub lives in `packages/mesoscale/molstar/src/prism-viewer.ts`; prism-me adds it in
+  `apps/prism-me/src/extensions.ts`.
+- **Resources** (`resources[].uri`) are read through the runtime's `options.load(resourceId)`:
+  - a relative URI resolves against the document's own URL;
+  - bytes come through Mol\*'s asset manager (`packages/core/src/util/assets.ts`), so a recipe, mesh or STAR file the
+    viewer already fetched is fetched once (sequence.md §2, "Bytes, in core");
+  - a dropped document's relative URIs are the files dropped with it, by name; one missing is an unavailable input
+    (design.md §6.1: the model fails with its cause, the rest is drawn), and the issue says to drop it with the
+    document;
+  - an `accession` with no `uri` (`pdb-id`) is resolved by the known services, as `load.entry` is.
+- **The network policy reads the document first.** `addresses(values)` lists the document's URL and every resource host,
+  so the agent's policy (agent.md §4) asks for an unknown host before anything is fetched.
+- **The resolvers run where the runtime runs**: on the main thread in this design. A long resolution shows in the status
+  pill as a Mol\* task, with Cancel (the session's edit is dropped and nothing changes). A worker is a later lane, not
+  designed here.
+- **Not a loader of everything.** A cellPACK `.bcif` is still `mmcif_particles` (§1). Turning a cellPACK model into a
+  document (`importCellpackGpuRecipe` exists for cellPACKgpu's serialized recipes, design.md §6.4) is an import, not an
+  open; out of this design.
+
+## 4. The document in the Scene tree (decision 4)
+
+### 4.1 Rows
+
+The document is one item of the **Particles** category (ui.md §3), named by its `metadata.title`, its count the copies
+drawn. Under it, its parts, made from the document and the IR, not from the lists:
+
+| Row         | From                                                                    | Its address (MesoQL)        | Count                               |
+| ----------- | ----------------------------------------------------------------------- | --------------------------- | ----------------------------------- |
+| compartment | `compartments[]`, nested by `parent`                                    | `(in c.x)`                  | copies in it and nested             |
+| population  | `populations[]`, under its compartment; label: its entity's, a location | `(population p.x)`          | achieved, "of requested" when short |
+| instance    | `instances[]`, under its compartment                                    | `(instance i.x)`            | 1                                   |
+| part        | a population with `detail: parts`: its superstructure's rows, nested    | `(part (population p) p.y)` | copies through every instance       |
+| Views       | `views[]` and `tours[]` (§4.4)                                          | none                        | none                                |
+
+- **A row stands for its address**, so its eye, color, Show only, label and focus all write or read that address. A
+  group row (a compartment) is one look `(in c.x)`, never one look per population under it: MesoQL makes a group edit
+  O(1) looks.
+- **Counts** are the session's (`CompileResult.counts`): a population short of its target reads "354 of 506", in the
+  warning tone, its issue in its properties.
+- **Lists are not rows.** A model's placement set is a Prism list, but the person sees compartments and populations. The
+  lists stay reachable through ⌘K and the state tree.
+- **Built incrementally**: a view edit changes no row structure (only dots, eyes); a model edit rebuilds the rows of the
+  populations whose counts changed. A part's rows are made when first opened (ui.md §3: thousands of entities cost
+  nothing until looked at).
+
+### 4.2 Group by
+
+A document's Group by (properties, above the sections, view state as today) offers **Compartment** (the default: the
+`parent` tree), **Model** (each model a group, its populations under it; where a person sees which resolver built what)
+and **Kind** (the entities' `kind`: protein, lipid, nucleic-acid, …). The extension's **Function** has no source in a
+document (an entity has no `function`); Kind stands in for it **(Ludo)**.
+
+### 4.3 Properties
+
+For a document row, the sections of ui.md §4 that apply, and three of its own:
+
+- **Look** (color, opacity, glow, Shown): the shown view's looks for the row's address (§5). Shown (%) stays Prism's
+  (§6).
+- **Evidence** (proposed): the population's or entity's `evidence[]`, each its kind, citation and note; the entity's
+  identifiers as links. This is where the Mesoscale Explorer's description goes (features.md "An entity's description");
+  the format has no `description` on an entity, and evidence is where the document keeps why it says what it says.
+- **Built by**: the model that realizes the population, its resolver, its key, cached or not, its time, its issues
+  (requested, achieved, the reason: design.md §7.4). The model edits of §12, lane `mvs-model-edits`, go here.
+- **Issues**, on the document's row: the session's issues by phase (`static`, `resolve`, `render`), each with its path.
+  A `render` issue is what the adapter could not draw (a partial look, a cutaway, a structure hint).
+
+### 4.4 Views and tours
+
+- **The Views row** lists the document's views and tours. One view is **shown**: the one the person picked, else
+  `session.view`, else the first, else none (the runtime's default looks).
+- **Showing a view** is `mesoviewspec.view { view }`, `undoable: false`: in order with the steps, no checkpoint, the
+  steps before it stay undoable, and a checkpoint notes the view shown with it, so Undo makes it shown again with the
+  scene it restores. The precedent is `snapshot.apply` (sequence.md §7.3 "Showing a snapshot is no step", David
+  2026-10-20); the alternative, a `set` of `session.view` (a step), would make browsing views fill the history and
+  change what the saved document opens with. As in Seq\* (format.md § Snapshots, "a view the reader picked stays"),
+  `session.view` changes only by **Open with this view** (a patch), from the view's ⋯.
+- **Look edits go to the shown view.** Switching to another view shows that view's looks; switching back shows the
+  edits, which are that view's. With no view at all, the first look edit inserts `v.prism` ("Edited in Prism") and sets
+  `session.view` to it, in the same patch.
+- **New view from here** (the Views row's ⋯) inserts a view with the current camera (numeric, `position`, `target`,
+  `up`, in Å, the world frame) and the shown view's looks copied with new ids. **Update camera** sets the shown view's
+  `camera` to the current one. Both are patches, one step each.
+- **A tour plays** (`mesoviewspec.tour.play`, `history: false`, as `snapshot.play`): each step shows its view over its
+  transition, its caption in the canvas's caption line. Playing records nothing; stopping leaves the last view shown (as
+  an animation's frame, sequence.md §7.3).
+
+### 4.5 Focus and the semantic camera
+
+- **Focus** (a row's double click, the right-click's Focus) on a document row is
+  `mesoviewspec.focus { select, framing? }`, `history: false` (as `camera.*`, `focus.*`): the runtime's semantic camera
+  (design.md §5.1) on the row's address, `framing: fit` by default, from the current direction. It uses `lociSphere`
+  over the IR, so it frames the copies wherever the last resolution put them, through superstructure instances.
+- **A view's semantic camera** is placed on show (§4.4), as the adapter does now (`commitCamera`).
+- Prism's own Focus on a list (`area.focus`, the explorer's) stays for lists that are not a document's.
+
+### 4.6 Hover, pick and the selection
+
+- **Hover** on a document copy: the 3D label is `getParticleLabel`'s `<population>#<ordinal>` (an instance: its id),
+  then the entity's label and the compartment's. Mol\*'s label providers, as for any particle (sequence.md §10's rule:
+  one hover label, Mol\*'s).
+- **A click in 3D picks the row** of the copy's population (or instance), opening the way to it, as the tree follows a
+  particle pick today (ui.md §3). The pick is a **MesoLocation** (`{set, index}` from the particle loci's list and
+  index), named by its stable id.
+- **A row picked highlights its copies**: its address materialized (`evaluateMesoQL`) into MesoLoci, each set's runs
+  turned into one `Particle.Loci` per list, through the explorer's lasting highlight (`area.highlight`). View state, no
+  step.
+- **Prism's selection is not used for copies.** `select.*` takes structure targets (operations.md); it has no particle
+  loci. So a view's `selection` (design.md §5, derived into `IRView.selection`, drawn by no one today) is shown as the
+  lasting highlight of the shown view; the picked row is the person's selection. **Keep as the view's selection** (the
+  row's ⋯) sets the shown view's `selection` to the row's address (a patch). The alternative, mirroring into Mol\*'s
+  selection manager, waits for particle selection in Prism.
+
+## 5. Operations → patches
+
+The extension's operations from the inventory of `packages/extensions/mesoscale/src` (`operations.ts`,
+`prism-viewer.ts`) and the other operations the Scene tree calls (`apps/prism-me/src/explorer`). For a list that is not
+a document's, every row is as today. For a document list:
+
+### 5.1 The mesoscale extension
+
+| Operation                | Today                                                                                      | On a document list                                                                                                                                                                                                                                                                                    |
+| ------------------------ | ------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `mesoscale.entities`     | read: a list's entities and groups                                                         | read, answered by the owner (`info`): the list's populations as entities (label, count, the compartment's dotted path from `parent`), groups by the document's compartments; `groupBy: 'function'` reads Kind (§4.2)                                                                                  |
+| `mesoscale.style`        | `particles.look` layers: visible, color, transparency, emissive, reset                     | a patch of the shown view: one look `{id, select, visible?, color?, transparency?, emissive?}`, `select` the entities' populations `(population p…)` or the group's `(in c.x)`; an existing look of the same `select` is `set`, else `insert`ed last (later looks win). `reset`: `remove` those looks |
+| `mesoscale.colors`       | color layers: generate (a hue per group), uniform, theme                                   | `generate`: one look a population, its color from `generateColors` over the document's groups (O(types)); `uniform`: one look `(all)`, or the group's or the entities' address; `theme`: the looks' `color` set to `null` (the runtime's default colors, §5.3)                                        |
+| `mesoscale.importColors` | color layers for matched entities                                                          | one patch: a look a matched population (matched by entity label, then population id); `matched`, `unmatched` as now                                                                                                                                                                                   |
+| `mesoscale.theme`        | agent-only: theme on several objects in one transaction                                    | for the document's lists: `object` → one look `(all)` (one document, one color); `entity` → one look a population, the default colors; `generate`, `uniform` as `mesoscale.colors`; `zoom` → `colorLevels` on (viewer, below) and the looks' `color` `null` in the same step                          |
+| `mesoscale.colorLevels`  | the representation's `colorLevels`                                                         | **viewer-only**, as today: a renderer setting (design.md §3.14), a step on the representation. A look's color still wins "until the atoms" (ui.md §4)                                                                                                                                                 |
+| `mesoscale.graphics`     | representations' quality and LOD; without `object`, the canvas' pixel scale and sharpening | **viewer-only**, as today. The canvas props are outside the history (ui.md §4: an undo does not bring them back)                                                                                                                                                                                      |
+| `mesoscale.motion`       | the representation's `animation` params                                                    | **viewer-only**, as today                                                                                                                                                                                                                                                                             |
+| `mesoscale.example`      | `load.url` of an Explorer example                                                          | not a document: an `mmcif_particles` list (§1). The five MesoViewSpec examples (`packages/mesoscale/examples`) are opened by `mesoviewspec.open` from + Open › Examples, a section of their own                                                                                                       |
+
+- **Viewer-only settings survive a re-pack.** A model edit gives the model a new set key, so the adapter deletes its
+  list and makes another. The new list's representation takes the params of the one it replaces (quality, LOD,
+  `colorLevels`, `animation`) and its cut records (clipping, §5.2), so a graphics mode, a motion or a clip on a document
+  list is the model's, not the key's (proposed; the adapter matches by `set.model`).
+
+### 5.2 What the tree calls besides
+
+| Call (from `apps/prism-me/src/explorer`)                                                        | On a document list                                                                                                                                                                                                                 |
+| ----------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `particles.visibility` (a list's eye; `rows.ts`, `menu.ts`)                                     | the document's eye is a look `(all)` `visible`; a model's (Group by Model) is `(model m)`. A patch, so the saved document keeps it                                                                                                 |
+| `particles.look` direct: Show only (`menu.ts`), Shown (%) (`properties.tsx`), cuts (`clips.ts`) | Show only: one patch, `(all) :visible false` then the kept address `:visible true` (later looks win); Show all again removes the two. Shown (%) and cuts: **viewer-only** (no format field; design.md §5 "Not restored: clipping") |
+| `particles.remove`                                                                              | refused, saying to close the document (`mesoviewspec.close`) or remove the model from it (a patch, ⌘K or the agent)                                                                                                                |
+| `particles.representation`, `particles.update`                                                  | **viewer-only**: the representation's type and settings. A look's `representation` hint (design.md §5) is the document's; drawing it is decision 4 (design.md §11)                                                                 |
+| `particles.targets`, `cryoet.decorate`                                                          | **viewer-only**, a step, not saved. The document's way is a look's `structure` hint, which the adapter draws as spheres today (`representation.fallback`)                                                                          |
+| `clipping.*`, `explorer.clipUse`, `explorer.clipWay`                                            | **viewer-only**, steps, as today. A view's `cutaway` is the document's and is not drawn (renderer-recommendations R8)                                                                                                              |
+| `explorer.representationVisibility`                                                             | as `particles.visibility`                                                                                                                                                                                                          |
+| `structure.transform` (Move and turn), the Position section                                     | **not offered** on a document's rows: a document places its copies by its frames and poses. The alternative, a viewer-only transform, would draw copies where the document says they are not                                       |
+| `stage.label` (Add label)                                                                       | an annotation `{id, target: <row's address>, text}` inserted in the shown view; drawn as Prism's label by the adapter (§12, `mvs-views`). Its text, its removal: patches                                                           |
+| `stage.distance` (measurements)                                                                 | **viewer-only**, as today                                                                                                                                                                                                          |
+| `area.highlight`, `area.focus` (no operation)                                                   | §4.5, §4.6                                                                                                                                                                                                                         |
+
+### 5.3 The new operations
+
+The `mesoviewspec` area (proposed ids; flags as operations.md):
+
+| Operation                              | Flags                                    | What                                                                                         |
+| -------------------------------------- | ---------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `mesoviewspec.open`                    | network (addresses); destructive if open | open a document (§3)                                                                         |
+| `mesoviewspec.close`                   | destructive                              | close it: its lists and the saved state go                                                   |
+| `mesoviewspec.get`                     | read                                     | the outline: compartments, populations with counts, models, views, issues; S-expression      |
+| `mesoviewspec.edit`                    |                                          | apply a patch (§2); a step                                                                   |
+| `mesoviewspec.look`                    |                                          | a look patch on the shown view from `select`, `color`, `visible`, `transparency`, `emissive` |
+| `mesoviewspec.view`                    | no undo                                  | show a view (§4.4)                                                                           |
+| `mesoviewspec.tour.play`, `.tour.stop` | view                                     | play, stop a tour                                                                            |
+| `mesoviewspec.focus`                   | view                                     | frame an address (§4.5)                                                                      |
+| `mesoviewspec.highlight`               | view                                     | light an address's copies (§4.6)                                                             |
+| `mesoviewspec.save`                    | view; no undo                            | the document as `.mesoviewspec.json` or `.mesoviewspec`, with every patch committed          |
+
+- **Defaults when a look has no color.** Today `deriveView` gives every type a color (`defaultColor`) and the adapter
+  writes a color layer for each, so a theme (By zoom) never shows through. A look with no stated color must write no
+  color layer, so the list's theme shows; the IR keeps the stated color apart from the default one (proposed, lane
+  `mvs-drive`).
+
+## 6. What a person does → what it becomes
+
+The opening rows and the _Mesoscale_ section of features.md, then ui.md's gestures, for a document.
+
+| features.md row                                                         | With a document                                                                                            |
+| ----------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| cellPACK and PetWorld models; fibres; particle lists                    | unchanged (not documents)                                                                                  |
+| Sessions `.molx`, `.molj`                                               | carry the document (§7.1)                                                                                  |
+| Mesoscale Explorer examples; `?example=`                                | unchanged; the MesoViewSpec examples are their own (§5.1)                                                  |
+| The explorer's URL                                                      | gains `?mesoviewspec=<url>` (§3)                                                                           |
+| Entities, by compartment tree or function, with counts                  | the document's rows (§4.1), Group by Compartment, Model, Kind (§4.2); counts achieved of requested         |
+| Show, hide an entity or a group                                         | a look patch (§5.1)                                                                                        |
+| A parent's eye sets all under it; eyes dragged (one step)               | one patch for the whole drag (`setEyes`' one `api.group` → one `mesoviewspec.edit`, its ops in drag order) |
+| Show only an entity, its group, its compartment; Show all again         | a patch of two looks (§5.2); "its compartment" is `(in c.x :nested false)`                                 |
+| Color an entity, generate colors, theme colors, reset                   | look patches (§5.1)                                                                                        |
+| Colors that follow the zoom; on at load                                 | viewer-only (§5.1); a document's lists open with zoom colors off (spacefill, the looks' colors)            |
+| Opacity, emissive                                                       | look patch; emissive needs the format addition (§2.2)                                                      |
+| Filter the entities by name                                             | as today, over the document's rows                                                                         |
+| Graphics modes; Representation form; smooth close up; wiggle and tumble | viewer-only, kept across a re-pack (§5.1)                                                                  |
+| The explorer's look (occlusion, shadows, outlines)                      | unchanged (the canvas)                                                                                     |
+| Group by function                                                       | Kind (§4.2) **(Ludo)**                                                                                     |
+| Lightness, pattern, cel shading per entity (Deferred)                   | still deferred; a look field when Prism has the layer                                                      |
+| Level of detail per entity (Partial)                                    | still one level a list; a document's `detail` (parts or entity) is the nearest thing, a model edit         |
+| Clip per entity, group or target                                        | viewer-only (§5.2)                                                                                         |
+| Quick styles (Deferred)                                                 | unchanged                                                                                                  |
+| Color file import                                                       | one look patch (§5.1)                                                                                      |
+| An entity's description                                                 | the Evidence section (§4.3); the hover label (§4.6)                                                        |
+| Snapshot descriptions' links (Deferred)                                 | a view's `description`; links to views (`#v.id`) are a later choice                                        |
+| The guided tour (Deferred)                                              | a document's tours (§4.4) are the closest; the Explorer's driver.js tour stays deferred                    |
+| Selection list, focus info, measurements (Partial)                      | the picked row and its properties (§4.6); measurements viewer-only                                         |
+
+| ui.md gesture                                    | With a document                                    |
+| ------------------------------------------------ | -------------------------------------------------- |
+| Drop, + Open › Files…, Examples                  | `mesoviewspec.open` (§3)                           |
+| Hover in 3D                                      | §4.6                                               |
+| Click a row, arrows                              | picks it: its copies lit (§4.6)                    |
+| Click in 3D                                      | picks the copy's population or instance row (§4.6) |
+| Double click, right-click › Focus                | `mesoviewspec.focus` (§4.5)                        |
+| The eye, a parent's eye, a drag along the column | look patches, one step (§5)                        |
+| A category's ⋯ › Color…                          | `mesoscale.theme`, the document's lists by §5.1    |
+| Color… (a row), its color dot                    | a look patch                                       |
+| Add label                                        | an annotation patch (§5.2)                         |
+| Add clip…, the Clips section and category        | viewer-only (§5.2)                                 |
+| Show only, Show all again                        | a look patch (§5.2)                                |
+| Move and turn                                    | not offered on a document (§5.2)                   |
+| Remove (the document's ⋯)                        | `mesoviewspec.close`                               |
+| Group by                                         | view state, as today (§4.2)                        |
+| The filter, folding                              | view state, as today                               |
+| Graphics & Motion                                | viewer-only (§5.1)                                 |
+| The Views row: a view, a tour                    | §4.4                                               |
+
+## 7. Snapshots, history and undo
+
+Prism's one history (sequence.md §7.3) holds every step; the document is part of what a checkpoint holds.
+
+### 7.1 The document in the state
+
+- **Saved as `prism-viewer.mesoviewspec`**: `{ version: 1, doc, revision, url?, shown? }` through
+  `PluginState.registerCustomState` (sequence.md §7.1): the document itself (with every patch committed), the address it
+  came from (to resolve relative resources again) and the view shown. Content, so Undo keeps it. Snapshots, their
+  playback and `.molx` / `.molj` sessions carry it with no other hook. Another version or none: no document.
+- **The checkpoint is cheap**: a patch shares every untouched part of the document (§2.1), and the checkpoint's
+  per-transform sharing (sequence.md §7.4, `SerializedTrees`) keeps a document checkpoint to what changed. A model edit
+  costs the patched population, not the copies: placements are derived (design.md §5) and never in the state.
+
+### 7.2 What a step is
+
+- **A step**: `mesoviewspec.edit`, `.look`, `.open`, `.close`; a mesoscale operation on a document list (§5.1); the
+  viewer-only operations on a document's representations (they are Prism steps as on any list).
+- **Not steps**: `.view` (no undo, §4.4), `.tour.*`, `.focus`, `.highlight` (view); `.get` (read); `.save` (no undo); a
+  patch that changes nothing ("it is already so").
+- **A model edit is one step however long its resolution**: the checkpoint is taken when it opens; a failed or cancelled
+  resolution restores it (nothing half-drawn).
+
+### 7.3 Lists and checkpoints: the contract
+
+The adapter makes a list with a state transform whose only param is the set's key (`MesoPlacements`), over a side store
+(`MesoPlacementStore`); `apply` throws when the key is not in the store, and the adapter deletes the key when the set
+goes. A checkpoint restores the data tree first and the custom state after it. So an Undo past a re-pack would apply a
+transform whose key is gone. The contract **(proposed)**:
+
+1. **Document lists stay in the data tree and in checkpoints**, with their representations and layers. So clips, motion,
+   graphics and colorLevels on them undo as on any list.
+2. **The adapter runs under the operation's `ctx.api`** (§2.3): making and deleting lists is inside the step.
+3. **A set's list stays in the store while Undo can reach it**: the session keeps each model's last
+   `options.ui.undoSteps` (10) resolutions in its cache and the store keeps a list while its key is in the cache. Older
+   checkpoints are "Too old to undo" (sequence.md §7.4), so none names a key the store has let go.
+4. **`MesoPlacements.apply` never throws on a missing key**: it gives an empty list and a `render` issue
+   (`placements.missing`), so a restore never fails; the owner's commit (5) draws it again.
+5. **After a restore** the custom state's `set` gives the owner the checkpoint's document: it compiles it with the
+   session's cache (every model a hit: no resolver runs), finds its lists in the tree by key, and commits only if they
+   differ (the adapter's repair, AN1 in the parent lane's gate).
+6. **Redo** is the same restore.
+
+Tests that pin it (lane `mvs-open`, then `mvs-drive`): Undo after a re-pack that removed a set does not throw and draws
+the old set; a clip, a motion and a graphics mode on a document list undo; the canvas props of `mesoscale.graphics` do
+not (ui.md §4).
+
+### 7.4 The shown view
+
+The checkpoint notes the view shown; Undo shows it again with the document it restores (§4.4, the `snapshot.apply`
+rule). A view removed by the undone document falls back as §4.4 says.
+
+### 7.5 Large scenes
+
+A document's checkpoint holds no copies, so the history's budgets (sequence.md §7.4) are met by the lists' cells, as for
+any particle list. The session's cache (7.3, point 3) is the memory Undo costs: up to 10 resolutions a model. The status
+says so once when it passes the history's size budget (proposed: the same 50 MB).
+
+## 8. The agent (decision 5)
+
+- **A skill, `mesoviewspec`**, in the lazy stub (agent.md §3: disclosing it loads the extension). Its guidance is the
+  MesoQL reference (`mesoQLReference`) and the document's S-expression spelling, from lane `mvs-skill-cli`'s skill; this
+  design names the tools, that lane writes the words.
+- **Tools** (thin adapters over §5.3's operations, agent.md §2):
+  - `open_mesoviewspec` (url), `close_mesoviewspec`;
+  - `get_mesoviewspec` (read: `summary`, `outline`, `document`; the S-expression, at most the state lines of agent.md
+    §5, the rest on request);
+  - `edit_mesoviewspec` (a patch, as S-expression or JSON: the general tool, validated, refused whole);
+  - `style_meso` (`select` MesoQL, color, visible, transparency, emissive: one look);
+  - `show_meso_view` (a view id), `focus_meso` (`select`, framing), `highlight_meso` (`select`);
+  - `save_mesoviewspec`.
+- **The mesoscale skill's tools** (`style_mesoscale_entities`, `color_mesoscale_entities`, …) work on a document's lists
+  through the owner (§1.1), so an agent that knows only them still edits the document.
+- **What it sees each turn**: the document's outline joins the scene outline (agent.md §5) as one line a compartment
+  (populations and counts), the shown view, and the issues' count.
+- **Policies** (agent.md §4): edits are preauthorized while the turn can be undone; `open` asks for unknown hosts (§3);
+  `close` asks (destructive); `save` asks (no undo, a file for the person). A model edit's resolution can take seconds:
+  the tool's result says what ran (resolver runs, cache hits, time).
+- **Untrusted text**: labels, titles, evidence notes and annotations are the document's: `quoted()`.
+- **Evals** (agent.md §6): a task's prompts on the exosome headless: "hide the lipids", "color catalase red", "focus on
+  the docked granule", each checked on the document (its looks) and on the drawn layers; Undo turn restores both.
+
+## 9. Streaming (decision 6)
+
+Streaming is the `mesoviewspec-streaming` lane's (design.md §6.8, written there). This design names only where it plugs:
+
+- **The provider and the planner** are the streaming lane's `runtime/streaming.ts` contract; the owner hands them to its
+  `MesoSession` as that lane defines.
+- **Camera-driven requests** are `molstar/src/session.ts`'s, as that lane adds them. In Prism the owner feeds them the
+  canvas camera (view state; `camera.*` changes are not steps).
+- **Streamed sets are not steps.** Tiles loaded and evicted are cells the owner's behavior makes, not the person's: as
+  volume streaming's cells (sequence.md §7.3, "cells behaviors own" are not changes outside the API). Undo restores the
+  document; the tiles follow the camera, not the history. A checkpoint leaves streamed lists out; a restore asks the
+  provider again.
+- **The budget** is a viewer setting (Settings), never the document's.
+
+## 10. No MesoViewerContext (decision 7)
+
+- **Prism's state is enough.** Seq\* needed `SeqViewerContext` because it is a second engine with its own viewports,
+  hover, selection and focus (sequence.md §1). MesoViewSpec draws through Mol\* only: its copies are Mol\* particle
+  lists, its hover, pick and camera are Mol\*'s. What it adds is a document and its derivation, which
+  `MesoDocumentModel` (§1.1) holds with no DOM.
+- **What would change that:** a second drawing of the document (a 2D compartment map, a population table with its own
+  hover) that needs state Mol\* does not hold. Then a context with that state, as Seq\*'s, beside the owner.
+
+## 11. Open: who decides
+
+| #   | Question                                                                         | Proposed                        | Who   |
+| --- | -------------------------------------------------------------------------------- | ------------------------------- | ----- |
+| 1   | The base: a PR of `me/mesoviewspec` to `prism-me`, or stacking (§12.1)           | the PR                          | Ludo  |
+| 2   | One document at a time (§1.1)                                                    | yes                             | Ludo  |
+| 3   | A document's eye and Show only saved in the document, not viewer-only (§5.2)     | saved                           | Ludo  |
+| 4   | Group by: Compartment, Model, Kind; Kind in place of Function (§4.2)             | yes                             | Ludo  |
+| 5   | Move and turn not offered on a document (§5.2)                                   | not offered                     | Ludo  |
+| 6   | Patches as Seq\*'s, ops by id (§2.1); decision 6                                 | yes                             | David |
+| 7   | Looks get `id` and `emissive` (§2.2)                                             | yes, 0.4                        | David |
+| 8   | Showing a view is no step; `session.view` set only by Open with this view (§4.4) | yes (the `snapshot.apply` rule) | David |
+| 9   | Annotations as Prism labels; Add label writes an annotation (§5.2)               | yes                             | David |
+| 10  | The undo contract for lists (§7.3)                                               | as written                      | ours  |
+
+## 12. The app lanes
+
+### 12.1 The base decision
+
+`packages/mesoscale/*` exists only on `me/mesoviewspec` (local, not pushed). Every lane below needs it.
+
+- **A PR of `me/mesoviewspec` to `prism-me` first** (recommended): Ludo reads its body (the parent lane's gate is done),
+  merges, and every lane here is a lane as How we work says:
+  `git worktree add ~/prism-me-lanes/<slug> -b me/<slug> origin/prism-me`, its own dev port, its PR to the fork's
+  `prism-me`, Ludo's check in the running app.
+- **Stacking**: each lane branches from `me/mesoviewspec` (the first) or from the lane before it, and merges back into
+  `me/mesoviewspec` locally, no PR (nothing is pushed before Ludo signs off). What changes for the lanes:
+  - there is no PR body to merge on; the gate's Review table and the progress file are the record;
+  - Ludo's check runs on a dev server started in the stack's worktree (`npm run dev:all` there, its own port), not on
+    `prism-me`;
+  - `prism-me`'s own lanes and the weekly master merge must be merged into the stack too, each a merge commit of its
+    own, or the stack drifts;
+  - lanes 3-5 can run in parallel only as branches of lane 2, merged in order.
+- **Now** (Ludo, 2026-11-08: "library lanes only for now"): only `mvs-patch` (a library lane inside
+  `packages/mesoscale/spec`) starts before the base is decided, from `me/mesoviewspec`; under the PR option it is
+  rebased on `prism-me` after the merge.
+
+### 12.2 The briefs, in build order
+
+Each in the shape of the briefs in `apps/prism-me/progress/`.
+
+#### 1. `mvs-patch`: patches over a MesoViewSpec document
+
+- **Check (Ludo):** in Storybook (MesoViewSpec › Patches), a look edit on the exosome as a patch, its S-expression and
+  its inverse shown; Undo by the inverse puts the document back, byte for byte.
+- **Spec:** prism.md §2; design.md §3.1 (the patch), §3.7 (its spelling), §11 decision 6.
+- **Tests:** quick: every op (`set`, `remove`, `insert`, `move`) and its inverse on the five examples; all or nothing (a
+  bad op leaves the document `===` the same); dangling references refused; `diff(a, b)` applied to `a` is `b`; untouched
+  sections shared (`===`); a patch touching only views classified `view`; Look `id` and `emissive` validated; the
+  S-expression round trip of a patch.
+- **Touches:** `packages/mesoscale/spec/src/format/patch.ts` (new), `doc.ts` (Look `id`, `emissive`), `validate.ts`,
+  `sexpr.ts` (the patch codec), `runtime/runtime.ts` (a look's `emissive` into `IRLook`), the adapter (emissive in its
+  layers), a story.
+- **Size:** ~350 production lines.
+- **Lane model:** Sonnet; the contract is §2.
+- **Steps:** 1. types and `applyPatch` with quick tests (Sonnet) 2. `diff` and the codec (Sonnet) 3. emissive through IR
+  and adapter (Sonnet) 4. the story, checked in Storybook (Sonnet) 5. checks, the gate (Opus).
+- **Base:** starts now from `me/mesoviewspec`.
+
+#### 2. `mvs-open`: a document opened in prism-me
+
+- **Check (Ludo):** drop `exosome.mesoviewspec.json` on prism-me: drawn, one row in Particles; `?mesoviewspec=<url>`
+  opens it; Save gives the file; open it again: the same scene. Re-pack (⌘K `mesoviewspec.edit` with a count), then
+  Undo: the old copies back, no error.
+- **Spec:** prism.md §1.1, §2.3, §3, §5.3 (open, close, get, save, edit), §7.
+- **Tests:** unit (headless viewer): open by URL, file and data; a relative resource resolved against the URL; an
+  unknown host asks the agent's policy; the stub loads nothing at start (the boundary test); the custom state saved and
+  restored through a `.molj`; the §7.3 contract: Undo after a re-pack does not throw and draws the old set, a clip and a
+  motion on a document list undo, `MesoPlacements` with a missing key gives an empty list and an issue; the adapter's
+  calls are inside the step (no "outside change").
+- **Touches:** `packages/mesoscale/molstar/src/` (`document-model.ts`, `prism-viewer.ts` stub and extension,
+  `prism-adapter.ts` under `ctx.api` and keeping params across a re-pack, `particle-list.ts`, `session.ts` cache bound),
+  `apps/prism-me/src/extensions.ts`, `url.ts`, the drop sniff; features.md (a new row).
+- **Size:** ~550 production lines.
+- **Lane model:** Opus for the owner and the undo contract (the state's hot path); Sonnet for tests and checks.
+- **Steps:** 1. the owner and the custom state (Opus) 2. the stub, open, close, save, URL, sniff (Sonnet) 3. the adapter
+  under `ctx.api`, the store bound, no-throw apply (Opus) 4. the undo tests (Sonnet) 5. checked in the app (Sonnet:
+  drop, reload, undo; no console errors) 6. the gate (Opus).
+- **Base:** PR option: from `prism-me` after the merge. Stacking: from `me/mesoviewspec` with lane 1 merged.
+
+#### 3. `mvs-tree`: the document in the Scene tree
+
+- **Check (Ludo):** the exosome's tree: compartments, then populations with "354 of 506" where short; Group by Model and
+  Kind; hover a lipid: `p.lipids#…` and its entity; click a catalase in 3D: its row picked; double click a row: the
+  camera frames it; the β-cell: a granule's parts under it, opened on demand.
+- **Spec:** prism.md §4.1-§4.3, §4.5, §4.6.
+- **Tests:** unit: the rows of each example (compartments nested by `parent`, instances, parts); counts with requested;
+  Group by switching remakes the document's rows only; a 3D pick maps to its row (MesoLocation → population or
+  instance); a row's highlight is one `Particle.Loci` a list from its runs; focus frames `lociSphere`; the Evidence and
+  Issues sections; the scaling guard (`test:scaling`): a view edit rebuilds no row.
+- **Touches:** `apps/prism-me/src/explorer/` (a document source beside the lists', `ui.tsx`, `rows.ts`,
+  `properties.tsx`), `packages/mesoscale/molstar/src/` (the owner's rows and focus); ui.md §3-§4, features.md.
+- **Size:** ~550 production lines.
+- **Lane model:** Opus for the tree source (incremental, hot path); Sonnet for sections and tests.
+- **Steps:** 1. the rows and their addresses (Opus) 2. counts, Group by (Sonnet) 3. hover, pick, highlight, focus
+  (Sonnet) 4. Evidence, Built by, Issues sections (Sonnet) 5. checked in the app (Sonnet) 6. the gate (Opus).
+- **Base:** after lane 2 (PR option: from `prism-me` once lane 2 is merged).
+
+#### 4. `mvs-drive`: the mesoscale operations as patches
+
+- **Check (Ludo):** on the exosome: hide the lipids by their eye, color catalase, Generate colors, Show only the lumen,
+  Import colors; Save: the file has those looks; Undo each; the same gestures on a cellPACK `.bcif` work as before.
+- **Spec:** prism.md §1, §1.1 (the owner port), §5.1, §5.2, §6.
+- **Tests:** one unit test a row of §5.1 and §5.2 (the patch it proposes, then the layers drawn); a drag of eyes is one
+  patch; the first edit without a view inserts `v.prism`; a look with no color writes no color layer (By zoom shows); an
+  `mmcif_particles` list unchanged (the extension's own tests still pass); Undo of each.
+- **Touches:** `packages/extensions/mesoscale/src/operations.ts` (the owner port, no `@molstar/meso-*` import),
+  `packages/mesoscale/molstar/src/` (the owner's `propose`, `info`), `runtime/runtime.ts` (stated vs default colors),
+  `apps/prism-me/src/explorer/` (the document's eyes and menus); features.md.
+- **Size:** ~500 production lines.
+- **Lane model:** Opus (the port crosses three packages); Sonnet for the per-row tests.
+- **Steps:** 1. the port and `mesoscale.style` (Opus) 2. the other rows of §5.1 (Sonnet) 3. §5.2's calls (Sonnet) 4.
+  checked in the app (Sonnet) 5. the gate (Opus).
+- **Base:** after lanes 1 and 2; parallel with lane 3 (they touch different explorer files; merge order 3 then 4).
+
+#### 5. `mvs-views`: views, tours, labels
+
+- **Check (Ludo):** the β-cell: the Views row lists `v.cell`, `v.docked` and the tour; a click shows a view (the camera
+  moves, the looks change); Play tour; New view from here, then Open with this view, Save: the file opens on it; Add
+  label on a granule: a label in 3D, saved.
+- **Spec:** prism.md §4.4, §5.2 (Add label), §7.4.
+- **Tests:** unit: `mesoviewspec.view` is no step and Undo restores the view shown with its checkpoint; look edits go to
+  the shown view; tour play records nothing; New view and Update camera are patches; annotations drawn as labels and
+  removed with their view.
+- **Touches:** `packages/mesoscale/molstar/src/` (the adapter draws `IRView.annotations`; the owner's shown view),
+  `apps/prism-me/src/explorer/` (the Views row, its menus); ui.md.
+- **Size:** ~400 production lines.
+- **Lane model:** Sonnet; Opus for the history rule (step 1).
+- **Steps:** 1. show a view as `undoable: false` with the checkpoint note (Opus) 2. the Views row and tours (Sonnet) 3.
+  new view, camera, open with (Sonnet) 4. annotations (Sonnet) 5. checked in the app (Sonnet) 6. the gate (Opus).
+- **Base:** after lane 3.
+
+#### 6. `mvs-model-edits`: change the biology from the properties
+
+- **Check (Ludo):** the exosome's catalase: its count from 506 to 300 in Built by, the copies repacked (one step, the
+  status shows the resolution); its seed changed; Add relax stage: 506 of 506; Undo each; Cancel a long one.
+- **Spec:** prism.md §4.3 (Built by), §7.2; design.md §6.1, §6.7.
+- **Tests:** unit: a count edit is one model edit rerunning only its model (the session's record); a seed edit; adding
+  `meso.relax` as a refining model; a cancelled resolution restores the checkpoint; a refused patch (a count below 0)
+  changes nothing.
+- **Touches:** `apps/prism-me/src/explorer/properties.tsx` (Built by's controls), `packages/mesoscale/molstar/src/`
+  (cancel through a Mol\* task).
+- **Size:** ~350 production lines.
+- **Lane model:** Sonnet.
+- **Steps:** 1. the controls as patches (Sonnet) 2. progress and Cancel (Sonnet) 3. checked in the app (Sonnet) 4. the
+  gate (Opus).
+- **Base:** after lane 3; parallel with lane 5.
+
+#### 7. `mvs-agent`: the agent edits the document
+
+- **Check (Ludo):** in the assistant, on the exosome: "hide the lipids and color catalase red", "frame the docked
+  granule" (β-cell), "show me the lumen only"; Undo turn puts it back; Save has the edits.
+- **Spec:** prism.md §8; agent.md; lane `mvs-skill-cli`'s skill.
+- **Tests:** unit: each tool over a scripted model; the outline lines; `open` with an unknown host asks; evals
+  (headless) for the three prompts, checked on the document and the layers, Undo turn restoring both.
+- **Touches:** `packages/mesoscale/molstar/src/prism-viewer.ts` (the skill, tools), the evals.
+- **Size:** ~300 production lines.
+- **Lane model:** Sonnet; Opus for the eval tasks' design.
+- **Steps:** 1. tools over §5.3 (Sonnet) 2. the skill from `mvs-skill-cli` (Sonnet) 3. evals (Opus writes, Sonnet
+  runs) 4. checked in the app with a real model (Sonnet) 5. the gate (Opus).
+- **Base:** after lanes 4 and 5, and `mvs-skill-cli` merged.
+
+#### 8. `mvs-streaming-app`: a streamed document in prism-me
+
+- **Check (Ludo):** the streaming lane's tiled fixture opened in prism-me: coarse first, copies where the camera looks,
+  the budget in Settings; History shows no tile steps; Undo of a look edit while tiles stream.
+- **Spec:** prism.md §9; design.md §6.8 (the streaming lane's).
+- **Tests:** unit: tiles requested from the canvas camera; tile lists are no step and no outside change; a checkpoint
+  leaves them out; the budget setting.
+- **Touches:** `packages/mesoscale/molstar/src/document-model.ts`, Settings.
+- **Size:** ~250 production lines.
+- **Lane model:** Sonnet.
+- **Steps:** 1. the camera feed and the budget (Sonnet) 2. the history rule (Opus) 3. checked in the app (Sonnet) 4. the
+  gate (Opus).
+- **Base:** after lane 2 and the streaming lane merged.
+
+**In all:** ~3,250 production lines in eight lanes; lanes 3 and 4, then 5 and 6, can run two at a time.
