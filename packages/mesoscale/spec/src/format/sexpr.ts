@@ -268,6 +268,8 @@ export interface DataCodec {
    * array indices are skipped), matched at the end of the value's key path, so a `select` under another key is data.
    */
   readonly inline?: readonly string[];
+  /** Keys whose object value prints as a record even with a `kind` word, so its fields keep their order (a patch's node). */
+  readonly records?: readonly string[];
 }
 
 export const DocumentCodec: DataCodec = {
@@ -285,6 +287,7 @@ export const DocumentCodec: DataCodec = {
     evidence: 'evidence',
     activities: 'activity',
     views: 'view',
+    looks: 'look',
     annotations: 'annotation',
     superstructures: 'superstructure',
     tours: 'tour',
@@ -301,6 +304,28 @@ export const DocumentCodec: DataCodec = {
     'sites.at',
     'relations.entry',
     'relations.exit',
+  ],
+};
+
+/**
+ * A patch (format/patch.ts, prism.md §2.1): `(patch :base r1 :revision r2 :ops [(set v.cell :fields (:color nil)) …])`,
+ * each op headed by its name with the id it addresses first; a node is a record or, with a `kind` word, a form of it.
+ */
+export const PatchCodec: DataCodec = {
+  ...DocumentCodec,
+  positional: 'id',
+  root: undefined,
+  records: ['node'],
+  inline: [
+    ...(DocumentCodec.inline ?? []),
+    'node.select',
+    'fields.select',
+    'node.selection',
+    'fields.selection',
+    'node.cutaway',
+    'fields.cutaway',
+    'node.target',
+    'fields.target',
   ],
 };
 
@@ -365,7 +390,7 @@ function toDoc(v: unknown, codec: DataCodec, parentKey: string | undefined, path
     };
   if (root && codec.root && isWord(o[codec.root]))
     return form(atomText(o[codec.root] as string), undefined, o, [codec.root], codec, path);
-  if (isWord(o.kind)) {
+  if (isWord(o.kind) && !(parentKey !== undefined && codec.records?.includes(parentKey))) {
     const pk = codec.positional;
     const pos = pk && isWord(o[pk]) ? (o[pk] as string) : undefined;
     return form(o.kind as string, pos, o, pos !== undefined ? ['kind', pk!] : ['kind'], codec, path);

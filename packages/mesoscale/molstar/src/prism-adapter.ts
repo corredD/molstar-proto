@@ -122,6 +122,7 @@ export class PrismMesoAdapter implements RendererAdapter {
             color: l.color !== undefined ? Color(l.color) : null,
             visible: l.visible ?? true,
             transparency: l.transparency ?? null,
+            emissive: l.emissive ?? null,
           })),
       }));
       looksWritten = lists.reduce((s, l) => s + l.layers.length, 0);

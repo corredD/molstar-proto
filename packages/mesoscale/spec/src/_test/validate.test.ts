@@ -278,3 +278,39 @@ describe('validate', () => {
     expect(errors({ ...d, units: { length: 'toString' as 'nm' } }).map((i) => i.code)).toContain('unit.unknown');
   });
 });
+
+// Looks, for patches (prism.md §2.2): an optional id and an emissive.
+describe('format: a look has an id and an emissive', () => {
+  const withLook = (look: object) =>
+    ({ ...exosomeDoc(), session: undefined, views: [{ id: 'v.x', looks: [look] }] }) as unknown as MesoViewSpecDoc;
+  const codes = (d: MesoViewSpecDoc) =>
+    validate(d)
+      .filter((i) => i.severity === 'error')
+      .map((i) => [i.code, i.path]);
+  it('the id is optional, a word of the pattern, unique in the document', () => {
+    expect(codes(withLook({ select: '(all)' }))).toEqual([]);
+    expect(codes(withLook({ id: 'l.ok', select: '(all)', emissive: 0.4 }))).toEqual([]);
+    expect(codes(withLook({ id: '9 no', select: '(all)' }))).toEqual([['id.invalid', '/views/0/looks/0/id']]);
+    expect(codes(withLook({ id: 'e.catalase', select: '(all)' }))).toEqual([['id.duplicate', '/views/0/looks/0/id']]);
+    const two = {
+      ...exosomeDoc(),
+      session: undefined,
+      views: [
+        {
+          id: 'v.x',
+          looks: [
+            { id: 'l.a', select: '(all)' },
+            { id: 'l.a', select: '(all)' },
+          ],
+        },
+      ],
+    } as unknown as MesoViewSpecDoc;
+    expect(codes(two)).toEqual([['id.duplicate', '/views/0/looks/1/id']]);
+  });
+  it('emissive is in [0, 1]', () => {
+    expect(codes(withLook({ select: '(all)', emissive: 1.5 }))).toEqual([['value.range', '/views/0/looks/0/emissive']]);
+    expect(codes(withLook({ select: '(all)', emissive: -0.1 }))).toEqual([
+      ['value.range', '/views/0/looks/0/emissive'],
+    ]);
+  });
+});

@@ -113,6 +113,7 @@ export interface IRLook {
   readonly color?: number;
   readonly visible?: boolean;
   readonly transparency?: number;
+  readonly emissive?: number;
   /**
    * Only these copies of the type (runs of copy indices), when the look's address picks part of a type (a few copies, a
    * `within`): applied after the whole-type looks.

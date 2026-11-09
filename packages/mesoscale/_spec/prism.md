@@ -83,7 +83,17 @@ Seq\*'s, as `packages/sequences/_spec/format.md` § Patches states it, over the 
   Untouched sections are shared, so a look edit on a 200k-copy document copies one view.
 - **The S-expression spelling** prints a patch as it prints a document (design.md §3.7):
   `(patch :ops [(set v.cell …)])`. The agent and the History list read that.
-- **Where:** `packages/mesoscale/spec/src/format/patch.ts` (`applyPatch`, `diff`), no Mol\* import (the Biome rule).
+- **Where:** `packages/mesoscale/spec/src/format/patch.ts` (`applyPatch`, `diff`, `classifyPatch`, `printPatch`,
+  `readPatch`), no Mol\* import (the Biome rule). As built:
+  - `kind`, in `set`, is the node's field (an entity's `protein`, a relation's `binds`) as well as its section: `set`
+    refuses `id` and `kind`; a node whose kind changes is replaced (`remove` and `insert`; `diff` writes that).
+  - `insert` and `move` name a section (`parent: 'views'`) or a view's list (`parent: 'v.x', list: 'looks'`); a node
+    that brings a look or annotation id the document has is refused; `document` is no node id, `metadata` is not
+    removed.
+  - The inverse of an edit that cannot be anchored (the look before it has no id) sets the view's whole `looks`; a list
+    that empties and returns goes back where the field order (doc.ts) has it, so an inverse restores the bytes.
+  - Shapes are checked op by op as it applies (the first error is the one reported), not all before the first.
+  - `classifyPatch(doc, patch)` reads the cost of a patch from its ops; `classifyEdit` ignores `revision`.
 
 ### 2.2 What a patch can name: two format additions
 

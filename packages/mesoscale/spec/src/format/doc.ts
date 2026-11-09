@@ -35,6 +35,8 @@ export interface MesoViewSpecDoc {
   readonly format: 'meso_view_spec';
   /** Semver; a minor version only adds. */
   readonly version: string;
+  /** What a patch's `base` names (format/patch.ts): the committer's, compared for equality only. */
+  readonly revision?: string;
   readonly metadata: Metadata;
   readonly units?: { readonly length?: LengthUnit };
   /** Coordinate frames: the model's world frame and each resource's own (an instrument's, a file's). */
@@ -504,11 +506,15 @@ export interface Activity {
 export type MesoQL = string;
 
 export interface Look {
+  /** Optional: a patch addresses a look by it (the viewer always writes one); a look without one is its view's. */
+  readonly id?: Id;
   readonly select: MesoQL;
   /** `#rrggbb` */
   readonly color?: string;
   readonly visible?: boolean;
   readonly transparency?: number;
+  /** Glow, 0-1 (as `transparency`). */
+  readonly emissive?: number;
   /**
    * How to draw it: a hint, never a requirement ("what, not how"). An adapter that cannot draw it falls back to spheres
    * and says so (a `render` issue).

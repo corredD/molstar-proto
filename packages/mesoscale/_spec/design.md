@@ -217,7 +217,7 @@ The two layers hold different things:
 A document is plain JSON:
 
 ```
-{ format: "meso_view_spec", version, metadata, units?,
+{ format: "meso_view_spec", version, revision?, metadata, units?,
   frames, alignments, resources,                       // where things are and what data exist
   entities, compartments, populations, catalogs, relations,  // the biology
   models, evidence, activities,                         // how the biology was realized and why we believe it
@@ -344,6 +344,11 @@ JSON toggle.
           (:select (within (in c.exosome) :of (population p.catalase.observed) :distance 15) :visible true)])])
 ```
 
+- **Patches** print as
+  `(patch :base r1 :revision r2 :ops [(set l.catalase :fields (:color #ff0000)) (remove an.picks)])` (`printPatch`,
+  `readPatch`, `PatchCodec`): an op is headed by its name with the id it addresses first; an inserted `node` is a
+  record, so its fields keep their order. A look with an id prints as `(look l.x …)` (`looks` is a section of the
+  codec); one without, as a record.
 - **Codec:** a section item is `(section-singular id :key value …)`; an object with a `kind` word is `(kind …)`; a
   quantity is `(15 A)`; any other object is a record `(:key value …)`; arrays are `[…]`; camelCase keys are kebab-case
   keywords, and a key that would not read back (an id used as a key) is quoted, `:"p.ALB"`. MesoQL values are written as
@@ -1698,10 +1703,10 @@ Fibers mock exposed the adapter's `excludeFibers` bug (§11).
    that grows and is culled per tile (renderer-recommendations R5: commit and memory grow per list, about 36 ms and 0.1
    MB each; frame cost not measured); a tile file format and its network protocol.
 6. **Patches and history.** Patches over one tree for snapshots and undo (SeqViewSpec: `applyPatch`, `diff`, inverses),
-   or whole documents with `classifyEdit`, as the prototype does? **Proposed** ([prism.md](prism.md) §2): Seq\*'s
-   patches, ops by id (`set`, `remove`, `insert`, `move`), all or nothing, an inverse returned; a viewer proposes, the
-   document's owner commits. Looks need an `id` and `emissive` for it. Undo stays Prism's checkpoints, which hold the
-   document; inverses are for the record. `classifyEdit` stays for whole documents (an open, an undo).
+   or whole documents with `classifyEdit`, as the prototype does? **Built** (lane `mvs-patch`; [prism.md](prism.md) §2):
+   Seq\*'s patches, ops by id (`set`, `remove`, `insert`, `move`), all or nothing, an inverse returned; a viewer
+   proposes, the document's owner commits. Looks need an `id` and `emissive` for it. Undo stays Prism's checkpoints,
+   which hold the document; inverses are for the record. `classifyEdit` stays for whole documents (an open, an undo).
 7. **Schema.** JSON Schema or OpenAPI published (as MolViewSpec), or reference tables generated from the types (as
    SeqViewSpec)?
 8. **(v0.2) Detail per view.** Is `parts` vs `entity` a population's property (now) or a view's (David's "depending on
