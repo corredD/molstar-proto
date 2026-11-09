@@ -535,6 +535,20 @@ await api.run('mesoscale.wrapMembrane', { mesh, method: 'cutter', patch: 'charmm
     expect(run.mock.calls[0][1]).toMatchObject({ meshes: rows.map((o) => o.ref).join(','), method: 'cutter' });
     run.mockRestore();
     vi.unstubAllGlobals();
+    // a mesh wrapped already is not wrapped again by Wrap all (review M1): the PM wrapped, two left
+    expectOk(await v.api.run('mesoscale.wrapMembrane', { mesh: pm.ref, method: 'cutter' }));
+    const menu = () =>
+      nodeMenuItems(
+        v.api,
+        area,
+        { key: `o:${rows[2].ref}`, kind: 'mesh', label: 'VAC', node: { ref: rows[2].ref } } as never,
+        {
+          open: () => {},
+        },
+      );
+    expect(menu().find((i) => i.id === 'wrap-lipids-all')!.label).toBe('Wrap all 2 meshes with lipids (one membrane)');
+    expectOk(await v.api.run('mesoscale.wrapMembrane', { mesh: rows[0].ref, method: 'cutter' }));
+    expect(menu().some((i) => i.id === 'wrap-lipids-all')).toBe(false);
   });
 
   it('maps a pick on a mesh, in a group or whole, to its row; its menu: color, move, clip, label, remove', async () => {
