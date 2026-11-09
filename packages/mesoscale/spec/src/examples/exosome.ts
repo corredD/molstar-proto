@@ -4,7 +4,8 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import type { MesoViewSpecDoc, Population } from '../format/doc.js';
+import { createMesoDocument, q } from '../builder/index.js';
+import type { MesoViewSpecDoc } from '../format/doc.js';
 import { importCellpackGpuRecipe, parseCellpackGpuRecipe } from '../resolvers/cellpack-gpu.js';
 import recipeJson from './fixtures/exosome.cellpack-gpu.json' with { type: 'json' };
 import { syntheticPicksStar, syntheticVesicleObj } from './fixtures/synthetic.js';
@@ -32,297 +33,300 @@ export function exosomeDoc(options: { relax?: boolean } = {}): MesoViewSpecDoc {
     modelId: 'm.recipe',
     seed: 1,
   });
-  // the exosome's boundary is the segmented membrane, not the recipe's 50 nm sphere
-  const compartments = imported.compartments.map((c) =>
-    c.id === 'c.exosome'
-      ? {
-          ...c,
-          label: 'exosome',
-          geometry: { kind: 'mesh' as const, resource: 'r.membrane-mesh' },
-          evidence: ['ev.membrane-segmented'],
-        }
-      : c,
+  const b = createMesoDocument({
+    title: 'Exosome in plasma',
+    description:
+      'A cellPACKgpu exosome recipe (trimmed) packed inside a membrane segmented from a cryo-electron tomogram, with catalase copies picked in the same tomogram. The tomogram, segmentation and picks are synthetic fixtures.',
+    authors: ['Ludo Autin'],
+    created: '2026-11-08',
+    organism: { name: 'Homo sapiens', taxon: 9606 },
+    keywords: ['exosome', 'extracellular vesicle', 'cellPACK', 'cryo-ET'],
+    units: { length: 'nm' },
+  });
+
+  const fModel = b.frame({
+    id: 'f.model',
+    kind: 'world',
+    units: 'nm',
+    handedness: 'right',
+    convention: 'origin at the vesicle centroid',
+  });
+  const fTomo = b.frame({
+    id: 'f.tomo',
+    kind: 'instrument',
+    units: 'nm',
+    voxelSize: 1,
+    handedness: 'right',
+    convention: "voxel indices, origin at the first voxel's corner",
+  });
+
+  const rRecipe = b.resource({
+    id: 'r.recipe',
+    kind: 'recipe',
+    format: 'cellpack-gpu-serialized',
+    label: 'cellPACKgpu exosome recipe (exo_serialized.json, trimmed)',
+    uri: 'examples/fixtures/exosome.cellpack-gpu.json',
+  });
+  const rTilts = b.resource({
+    id: 'r.tilts',
+    kind: 'tilt-series',
+    format: 'mrc',
+    label: 'tilt series',
+    uri: 'fixture://tilts.mrc',
+    custom: Fixture,
+  });
+  const rTomogram = b.resource({
+    id: 'r.tomogram',
+    kind: 'tomogram',
+    format: 'mrc',
+    label: 'tomogram',
+    frame: fTomo,
+    uri: 'fixture://tomo_01.mrc',
+    custom: Fixture,
+  });
+  const rMembrane = b.resource({
+    id: 'r.membrane-mesh',
+    kind: 'segmentation',
+    format: 'obj',
+    label: 'vesicle membrane, segmented',
+    frame: fTomo,
+    uri: 'fixture://membrane.obj',
+    custom: Fixture,
+  });
+  const rPicks = b.resource({
+    id: 'r.picks',
+    kind: 'placements',
+    format: 'relion-star',
+    label: 'catalase picks',
+    frame: fTomo,
+    uri: 'fixture://catalase_picks.star',
+    custom: Fixture,
+  });
+  const r8cat = b.resource({
+    id: 'r.8cat',
+    kind: 'structure',
+    format: 'pdb-id',
+    accession: { db: 'PDB', id: '8CAT' },
+    label: 'catalase',
+  });
+
+  // the recipe's own nodes go in as they are; the catalase gets its structure, the exosome its segmented boundary
+  // (the segmented membrane, not the recipe's 50 nm sphere)
+  b.add(
+    'entities',
+    imported.entities.map((e) => (e.id === 'e.catalase' ? { ...e, structure: { resource: r8cat, assembly: '1' } } : e)),
   );
-  const observed: Population = {
+  const lipid = b.entity({ id: 'e.lipid', label: 'phospholipid', kind: 'lipid', radius: { value: 4.5, unit: 'A' } });
+  b.add(
+    'compartments',
+    imported.compartments.map((c) =>
+      c.id === 'c.exosome'
+        ? {
+            ...c,
+            label: 'exosome',
+            geometry: { kind: 'mesh' as const, resource: rMembrane },
+            evidence: ['ev.membrane-segmented'],
+          }
+        : c,
+    ),
+  );
+  const catalase = b.get('entity', 'e.catalase');
+  const exosome = b.get('compartment', 'c.exosome');
+  const medium = b.get('compartment', 'medium');
+
+  b.add('populations', imported.populations);
+  const observed = b.population({
     id: 'p.catalase.observed',
-    entity: 'e.catalase',
-    compartment: 'c.exosome',
+    entity: catalase,
+    compartment: exosome,
     location: 'interior',
     abundance: { count: 24 },
-    evidence: ['ev.catalase-picked'],
-  };
-  const lipids: Population = {
+    evidence: [b.get('evidence', 'ev.catalase-picked')],
+  });
+  const lipids = b.population({
     id: 'p.lipids',
-    entity: 'e.lipid',
-    compartment: 'c.exosome',
+    entity: lipid,
+    compartment: exosome,
     location: 'membrane',
     abundance: { density: { value: 1 / 0.65, unit: 'per_nm2' } },
     arrangement: { kind: 'bilayer' },
-    evidence: ['ev.lipid-area'],
-  };
-  return {
-    format: 'meso_view_spec',
-    version: '0.2.0',
-    metadata: {
-      title: 'Exosome in plasma',
-      description:
-        'A cellPACKgpu exosome recipe (trimmed) packed inside a membrane segmented from a cryo-electron tomogram, with catalase copies picked in the same tomogram. The tomogram, segmentation and picks are synthetic fixtures.',
-      authors: ['Ludo Autin'],
-      created: '2026-11-08',
-      organism: { name: 'Homo sapiens', taxon: 9606 },
-      keywords: ['exosome', 'extracellular vesicle', 'cellPACK', 'cryo-ET'],
-    },
-    units: { length: 'nm' },
-    frames: [
-      { id: 'f.model', kind: 'world', units: 'nm', handedness: 'right', convention: 'origin at the vesicle centroid' },
+    evidence: [b.get('evidence', 'ev.lipid-area')],
+  });
+
+  b.relation({
+    id: 'rel.tetraspanins',
+    kind: 'colocalizes',
+    subjects: [b.get('population', 'p.CD9'), b.get('population', 'p.CD63')],
+    note: 'tetraspanin-enriched microdomains',
+    evidence: [b.get('evidence', 'ev.tetraspanin-web')],
+  });
+
+  b.model({
+    id: 'm.picks',
+    label: 'catalase, picked',
+    kind: 'precomputed',
+    method: 'meso.precomputed',
+    populations: [observed],
+    inputs: [rPicks],
+    activity: b.get('activity', 'act.pick'),
+  });
+  const [recipe] = b.add('models', [{ ...imported.models[0], avoid: ['m.picks'], activity: 'act.pack' }]);
+  if (options.relax)
+    b.model({
+      id: 'm.relax',
+      label: 'packing relaxed',
+      kind: 'procedural',
+      method: 'meso.relax',
+      refines: recipe,
+      populations: [],
+      params: { iterations: 400, tolerance: 1 },
+      activity: b.get('activity', 'act.relax'),
+    });
+
+  b.add('evidence', imported.evidence);
+  b.evidence({
+    id: 'ev.membrane-segmented',
+    kind: 'observation',
+    statement: 'The vesicle membrane, segmented in the tomogram',
+    source: { resource: rMembrane },
+    confidence: 'high',
+  });
+  b.evidence({
+    id: 'ev.catalase-picked',
+    kind: 'observation',
+    statement: '24 catalase copies found by template matching (synthetic picks)',
+    source: { resource: rPicks },
+    confidence: 'medium',
+  });
+  b.evidence({
+    id: 'ev.lipid-area',
+    kind: 'assumption',
+    statement: '0.65 nm² per lipid per leaflet, a typical phospholipid area',
+    confidence: 'medium',
+  });
+  b.evidence({
+    id: 'ev.tetraspanin-web',
+    kind: 'assumption',
+    statement:
+      'CD9 and CD63 co-cluster in tetraspanin-enriched microdomains (stated for the example; no citation attached)',
+    confidence: 'low',
+  });
+
+  // the alignment and its activity name each other (a cycle): the alignment is made first, the activity by its id
+  b.alignment({
+    from: fTomo,
+    to: fModel,
+    transform: { translation: [-200, -200, -100] },
+    method: 'centred on the segmentation centroid',
+    activity: b.get('activity', 'act.align'),
+  });
+  const synthetic = { name: 'synthetic fixture' };
+  b.activity({
+    id: 'act.acquire',
+    kind: 'acquisition',
+    label: 'tilt series acquired',
+    generated: [rTilts],
+    software: synthetic,
+  });
+  b.activity({
+    id: 'act.reconstruct',
+    kind: 'reconstruction',
+    label: 'tomogram reconstructed',
+    used: [rTilts],
+    generated: [rTomogram],
+    software: synthetic,
+  });
+  b.activity({
+    id: 'act.segment',
+    kind: 'segmentation',
+    label: 'membrane segmented',
+    used: [rTomogram],
+    generated: [rMembrane],
+    software: synthetic,
+  });
+  b.activity({
+    id: 'act.pick',
+    kind: 'particle-picking',
+    label: 'catalase template matching',
+    used: [rTomogram, r8cat],
+    generated: [rPicks],
+    software: synthetic,
+  });
+  b.activity({
+    id: 'act.align',
+    kind: 'alignment',
+    label: 'tomogram to model frame',
+    used: [rMembrane],
+    generated: [b.get('alignment', 'al.tomo-model')],
+  });
+  if (options.relax)
+    b.activity({
+      id: 'act.relax',
+      kind: 'modeling',
+      label: 'overlap relaxation of the packed recipe',
+      generated: [b.get('model', 'm.relax')],
+      software: { name: 'MesoViewSpec prototype', version: '0.2.0' },
+    });
+  b.activity({
+    id: 'act.pack',
+    kind: 'modeling',
+    label: 'recipe packed in the segmented membrane',
+    used: [rRecipe, rMembrane, rPicks],
+    generated: [recipe],
+    software: { name: 'MesoViewSpec prototype', version: '0.1.0' },
+  });
+
+  const overview = b.view({
+    id: 'v.overview',
+    label: 'Overview',
+    camera: { position: [0, 0, 260], target: [0, 0, 0], up: [0, 1, 0] },
+    looks: [
+      { id: 'l.lipids', select: q.population(lipids), color: '#e8d8b0', transparency: 0.6 },
+      { id: 'l.catalase', select: q.entity(catalase), color: '#d0453a' },
+      { id: 'l.picks', select: q.population(observed), color: '#ffb000' },
+    ],
+    annotations: [
       {
-        id: 'f.tomo',
-        kind: 'instrument',
-        units: 'nm',
-        voxelSize: 1,
-        handedness: 'right',
-        convention: "voxel indices, origin at the first voxel's corner",
+        id: 'an.picks',
+        target: q.population(observed),
+        text: 'Catalase found by template matching (synthetic)',
+        evidence: [b.get('evidence', 'ev.catalase-picked')],
       },
     ],
-    alignments: [
-      {
-        id: 'al.tomo-model',
-        from: 'f.tomo',
-        to: 'f.model',
-        transform: { translation: [-200, -200, -100] },
-        method: 'centred on the segmentation centroid',
-        activity: 'act.align',
-      },
+  });
+  b.view({
+    id: 'v.lumen',
+    label: 'Lumen only',
+    camera: { position: [0, 0, 160], target: [0, 0, 0], up: [0, 1, 0] },
+    looks: [
+      { select: q.in(medium, { nested: false }), visible: false },
+      { select: q.population(lipids), visible: false },
+      { select: q.entity(catalase), color: '#d0453a', representation: 'structure' },
     ],
-    resources: [
+    selection: q.population(observed),
+  });
+  b.view({
+    id: 'v.near-picks',
+    label: 'Near the picked catalase',
+    description:
+      'Everything within 15 nm of a picked copy, picked copies in amber; membrane proteins without the lipids',
+    camera: { position: [0, 0, 160], target: [0, 0, 0], up: [0, 1, 0] },
+    looks: [
+      { select: q.all(), visible: false },
       {
-        id: 'r.recipe',
-        kind: 'recipe',
-        format: 'cellpack-gpu-serialized',
-        label: 'cellPACKgpu exosome recipe (exo_serialized.json, trimmed)',
-        uri: 'examples/fixtures/exosome.cellpack-gpu.json',
+        select: q.within(q.in(exosome), { of: q.population(observed), distance: 15 }),
+        visible: true,
+        color: '#9db4d0',
       },
       {
-        id: 'r.tilts',
-        kind: 'tilt-series',
-        format: 'mrc',
-        label: 'tilt series',
-        uri: 'fixture://tilts.mrc',
-        custom: Fixture,
+        select: q.and(q.in(exosome, { location: 'membrane' }), q.not(q.population(lipids))),
+        visible: true,
+        color: '#3b7dd8',
       },
-      {
-        id: 'r.tomogram',
-        kind: 'tomogram',
-        format: 'mrc',
-        label: 'tomogram',
-        frame: 'f.tomo',
-        uri: 'fixture://tomo_01.mrc',
-        custom: Fixture,
-      },
-      {
-        id: 'r.membrane-mesh',
-        kind: 'segmentation',
-        format: 'obj',
-        label: 'vesicle membrane, segmented',
-        frame: 'f.tomo',
-        uri: 'fixture://membrane.obj',
-        custom: Fixture,
-      },
-      {
-        id: 'r.picks',
-        kind: 'placements',
-        format: 'relion-star',
-        label: 'catalase picks',
-        frame: 'f.tomo',
-        uri: 'fixture://catalase_picks.star',
-        custom: Fixture,
-      },
-      { id: 'r.8cat', kind: 'structure', format: 'pdb-id', accession: { db: 'PDB', id: '8CAT' }, label: 'catalase' },
+      { select: q.population(observed), visible: true, color: '#ffb000' },
     ],
-    entities: [
-      ...imported.entities.map((e) =>
-        e.id === 'e.catalase' ? { ...e, structure: { resource: 'r.8cat', assembly: '1' } } : e,
-      ),
-      { id: 'e.lipid', label: 'phospholipid', kind: 'lipid', radius: { value: 4.5, unit: 'A' } },
-    ],
-    compartments,
-    populations: [...imported.populations, observed, lipids],
-    relations: [
-      {
-        id: 'rel.tetraspanins',
-        kind: 'colocalizes',
-        subjects: ['p.CD9', 'p.CD63'],
-        note: 'tetraspanin-enriched microdomains',
-        evidence: ['ev.tetraspanin-web'],
-      },
-    ],
-    models: [
-      {
-        id: 'm.picks',
-        label: 'catalase, picked',
-        kind: 'precomputed',
-        method: 'meso.precomputed',
-        populations: ['p.catalase.observed'],
-        inputs: ['r.picks'],
-        activity: 'act.pick',
-      },
-      { ...imported.models[0], avoid: ['m.picks'], activity: 'act.pack' },
-      ...(options.relax
-        ? [
-            {
-              id: 'm.relax',
-              label: 'packing relaxed',
-              kind: 'procedural' as const,
-              method: 'meso.relax',
-              refines: 'm.recipe',
-              populations: [],
-              params: { iterations: 400, tolerance: 1 },
-              activity: 'act.relax',
-            },
-          ]
-        : []),
-    ],
-    evidence: [
-      ...imported.evidence,
-      {
-        id: 'ev.membrane-segmented',
-        kind: 'observation',
-        statement: 'The vesicle membrane, segmented in the tomogram',
-        source: { resource: 'r.membrane-mesh' },
-        confidence: 'high',
-      },
-      {
-        id: 'ev.catalase-picked',
-        kind: 'observation',
-        statement: '24 catalase copies found by template matching (synthetic picks)',
-        source: { resource: 'r.picks' },
-        confidence: 'medium',
-      },
-      {
-        id: 'ev.lipid-area',
-        kind: 'assumption',
-        statement: '0.65 nm² per lipid per leaflet, a typical phospholipid area',
-        confidence: 'medium',
-      },
-      {
-        id: 'ev.tetraspanin-web',
-        kind: 'assumption',
-        statement:
-          'CD9 and CD63 co-cluster in tetraspanin-enriched microdomains (stated for the example; no citation attached)',
-        confidence: 'low',
-      },
-    ],
-    activities: [
-      {
-        id: 'act.acquire',
-        kind: 'acquisition',
-        label: 'tilt series acquired',
-        generated: ['r.tilts'],
-        software: { name: 'synthetic fixture' },
-      },
-      {
-        id: 'act.reconstruct',
-        kind: 'reconstruction',
-        label: 'tomogram reconstructed',
-        used: ['r.tilts'],
-        generated: ['r.tomogram'],
-        software: { name: 'synthetic fixture' },
-      },
-      {
-        id: 'act.segment',
-        kind: 'segmentation',
-        label: 'membrane segmented',
-        used: ['r.tomogram'],
-        generated: ['r.membrane-mesh'],
-        software: { name: 'synthetic fixture' },
-      },
-      {
-        id: 'act.pick',
-        kind: 'particle-picking',
-        label: 'catalase template matching',
-        used: ['r.tomogram', 'r.8cat'],
-        generated: ['r.picks'],
-        software: { name: 'synthetic fixture' },
-      },
-      {
-        id: 'act.align',
-        kind: 'alignment',
-        label: 'tomogram to model frame',
-        used: ['r.membrane-mesh'],
-        generated: ['al.tomo-model'],
-      },
-      ...(options.relax
-        ? [
-            {
-              id: 'act.relax',
-              kind: 'modeling' as const,
-              label: 'overlap relaxation of the packed recipe',
-              generated: ['m.relax'],
-              software: { name: 'MesoViewSpec prototype', version: '0.2.0' },
-            },
-          ]
-        : []),
-      {
-        id: 'act.pack',
-        kind: 'modeling',
-        label: 'recipe packed in the segmented membrane',
-        used: ['r.recipe', 'r.membrane-mesh', 'r.picks'],
-        generated: ['m.recipe'],
-        software: { name: 'MesoViewSpec prototype', version: '0.1.0' },
-      },
-    ],
-    views: [
-      {
-        id: 'v.overview',
-        label: 'Overview',
-        camera: { position: [0, 0, 260], target: [0, 0, 0], up: [0, 1, 0] },
-        looks: [
-          { id: 'l.lipids', select: '(population p.lipids)', color: '#e8d8b0', transparency: 0.6 },
-          { id: 'l.catalase', select: '(entity e.catalase)', color: '#d0453a' },
-          { id: 'l.picks', select: '(population p.catalase.observed)', color: '#ffb000' },
-        ],
-        annotations: [
-          {
-            id: 'an.picks',
-            target: '(population p.catalase.observed)',
-            text: 'Catalase found by template matching (synthetic)',
-            evidence: ['ev.catalase-picked'],
-          },
-        ],
-      },
-      {
-        id: 'v.lumen',
-        label: 'Lumen only',
-        camera: { position: [0, 0, 160], target: [0, 0, 0], up: [0, 1, 0] },
-        looks: [
-          { select: '(in medium :nested false)', visible: false },
-          { select: '(population p.lipids)', visible: false },
-          { select: '(entity e.catalase)', color: '#d0453a', representation: 'structure' },
-        ],
-        selection: '(population p.catalase.observed)',
-      },
-      {
-        id: 'v.near-picks',
-        label: 'Near the picked catalase',
-        description:
-          'Everything within 15 nm of a picked copy, picked copies in amber; membrane proteins without the lipids',
-        camera: { position: [0, 0, 160], target: [0, 0, 0], up: [0, 1, 0] },
-        looks: [
-          { select: '(all)', visible: false },
-          {
-            select: '(within (in c.exosome) :of (population p.catalase.observed) :distance 15)',
-            visible: true,
-            color: '#9db4d0',
-          },
-          {
-            select: '(and (in c.exosome :location membrane) (not (population p.lipids)))',
-            visible: true,
-            color: '#3b7dd8',
-          },
-          { select: '(population p.catalase.observed)', visible: true, color: '#ffb000' },
-        ],
-      },
-    ],
-    session: { view: 'v.overview' },
-  };
+  });
+  b.session({ view: overview });
+
+  return b.build().doc;
 }
