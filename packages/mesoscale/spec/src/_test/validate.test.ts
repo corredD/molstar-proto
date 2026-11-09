@@ -251,4 +251,17 @@ describe('validate', () => {
       ['id.duplicate', `/views/${k}/annotations/0/id`],
     ]);
   });
+
+  it("a positioned annotation's evidence is checked too (FN7)", () => {
+    const d = exosomeDoc();
+    const k = d.views!.length;
+    const v = {
+      id: 'v.x',
+      annotations: [{ id: 'an.x', target: { position: [0, 0, 0] }, text: 't', evidence: ['ev.nope'] }],
+    };
+    expect(errors({ ...d, views: [...d.views!, v] } as MesoViewSpecDoc).map((i) => [i.code, i.path])).toEqual([
+      ['ref.missing', `/views/${k}/annotations/0/evidence/0`],
+    ]);
+  });
+
 });

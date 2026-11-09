@@ -537,9 +537,8 @@ export function validate(doc: MesoViewSpecDoc, nested = false): Issue[] {
     });
     address(v.selection, `/views/${i}/selection`, 'selection');
     (v.annotations ?? []).forEach((a, j) => {
-      if (typeof a.target !== 'string') return;
-      address(a.target, `/views/${i}/annotations/${j}/target`, 'selection');
       evidence(a.evidence, `/views/${i}/annotations/${j}/evidence`);
+      if (typeof a.target === 'string') address(a.target, `/views/${i}/annotations/${j}/target`, 'selection');
     });
   });
   ref(doc.session?.view, 'view', '/session/view');
