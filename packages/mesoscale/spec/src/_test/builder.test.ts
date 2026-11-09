@@ -65,13 +65,6 @@ describe('builder: ids', () => {
     b.entity({ id: 'e.a', label: 'B', kind: 'protein' });
     expect(b.build().issues.some((i) => i.code === 'id.duplicate')).toBe(true);
   });
-  it('does not register site ids as document ids', () => {
-    const b = createMesoDocument({ title: 't' });
-    const sites = [{ id: 'entry' }];
-    b.entity({ label: 'A', kind: 'protein', sites });
-    b.entity({ label: 'B', kind: 'protein', sites });
-    expect(b.build().issues.filter((i) => i.code === 'id.duplicate')).toEqual([]);
-  });
 });
 
 describe('builder: the document', () => {
@@ -204,6 +197,11 @@ describe('builder: review fixes', () => {
     taken.has = (id) => (probes++, has(id));
     for (let i = 0; i < 200; i++) registry.make('entity', 'same');
     expect(probes).toBeLessThanOrEqual(2 * 200);
+  });
+  it('site ids are not registered', () => {
+    const b = createMesoDocument({ title: 's' });
+    b.entity({ id: 'e.h', label: 'H', kind: 'protein', sites: [{ id: 'e.x' }] });
+    expect(b.entity({ label: 'x', kind: 'protein' })).toBe('e.x');
   });
 });
 
