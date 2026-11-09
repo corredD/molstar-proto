@@ -4,9 +4,8 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import type { Issue } from '../format/issues.js';
-import { type IR, type IRLook, placementSets } from '../ir/ir.js';
-import type { PlacementSet } from '../ir/placements.js';
+import type { Issue } from '@molstar/meso-spec/format';
+import { type IR, type IRLook, type PlacementSet, placementSets } from '@molstar/meso-spec/ir';
 
 // The renderer adapter contract (_spec/runtime.md): an adapter is told the whole IR each time and works out what changed
 // by keys, never by content. `planCommit` is that diff, the same for every adapter: placement sets by key (a set whose

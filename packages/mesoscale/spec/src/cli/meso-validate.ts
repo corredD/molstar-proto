@@ -5,7 +5,7 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import { validate } from '../format/validate.js';
+import { validate } from '@molstar/meso-spec/format';
 import { type CliIO, command, emit, nodeIO, readDoc, reportIssues, runMain } from './io.js';
 
 // `meso-validate <doc> [--json] [-o file]`: the static check (design.md §12.1); the issue list is the product.

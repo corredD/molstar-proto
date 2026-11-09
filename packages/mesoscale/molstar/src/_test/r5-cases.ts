@@ -6,11 +6,10 @@
 import { writeFileSync } from 'node:fs';
 import v8 from 'node:v8';
 import vm from 'node:vm';
-import { tiledFixture } from '@molstar/meso-spec/examples/streaming';
-import { placementBytes } from '@molstar/meso-spec/ir/placements';
-import { DefaultResolvers } from '@molstar/meso-spec/resolvers/index';
-import { compile, updateView } from '@molstar/meso-spec/runtime/runtime';
-import { streamNode, tileSet, withTiles } from '@molstar/meso-spec/runtime/streaming';
+import { tiledFixture } from '@molstar/meso-spec/examples';
+import { placementBytes } from '@molstar/meso-spec/ir';
+import { DefaultResolvers } from '@molstar/meso-spec/resolvers';
+import { compile, streamNode, tileSet, updateView, withTiles } from '@molstar/meso-spec/runtime';
 import { HeadlessPluginContext } from '@molstar/plugin-headless/context';
 import { createMesoscaleExplorerSpec } from '@molstar/prism-me-app/spec';
 import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';

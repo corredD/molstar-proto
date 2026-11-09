@@ -4,9 +4,8 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import type { Box, MesoViewSpecDoc, TileEntry, TileManifest } from '../format/doc.js';
-import { createRandom, subSeed } from '../runtime/random.js';
-import type { TilePayload, TileProvider } from '../runtime/streaming.js';
+import type { Box, MesoViewSpecDoc, TileEntry, TileManifest } from '@molstar/meso-spec/format';
+import { createRandom, subSeed, type TilePayload, type TileProvider } from '@molstar/meso-spec/runtime';
 
 // The tiled fixture (_spec/streaming.md): a box of tiles, two populations, three instances as landmarks (inside a tile, on
 // the boundary between two, in the last), and a provider that makes every tile's copies from a seed. No file: the

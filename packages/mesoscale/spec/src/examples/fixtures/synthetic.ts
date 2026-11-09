@@ -4,7 +4,7 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import { createRandom } from '../../runtime/random.js';
+import { createRandom } from '@molstar/meso-spec/runtime';
 
 // Synthetic cryo-ET fixtures (labelled as such in every document that uses them): a segmented vesicle membrane as an
 // OBJ mesh and template-matching picks as a RELION STAR file, both in a tomogram's voxel coordinates (1 nm voxels, the

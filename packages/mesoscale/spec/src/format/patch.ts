@@ -20,11 +20,11 @@ export const DocumentId = 'document';
 
 /** A node: any object with an `id`. */
 export type PatchNode = { readonly id: Id; readonly [field: string]: unknown };
-type Anchor = Id | 'first' | 'last';
-type ListKey = 'looks' | 'annotations';
+export type Anchor = Id | 'first' | 'last';
+export type ListKey = 'looks' | 'annotations';
 
 /** Where an op names a list: a section (`parent: 'views'`), or a view's `looks` / `annotations` (`parent: 'v.x', list`). */
-interface At {
+export interface At {
   readonly parent: string;
   readonly list?: ListKey;
   readonly after?: Anchor;

@@ -7,10 +7,10 @@
 import type { Meta, StoryObj } from '@storybook/web-components-vite';
 import { story } from '@molstar/prism-ui/testing/index';
 import { RealViewerStory } from '@molstar/prism-viewer/testing/real-viewer';
-import { tiledFixture } from '@molstar/meso-spec/examples/streaming';
-import type { MesoViewSpecDoc } from '@molstar/meso-spec/format/doc';
-import { DefaultResolvers } from '@molstar/meso-spec/resolvers/index';
-import type { RendererAdapter } from '@molstar/meso-spec/runtime/adapter';
+import { tiledFixture } from '@molstar/meso-spec/examples';
+import type { MesoViewSpecDoc } from '@molstar/meso-spec/format';
+import { DefaultResolvers } from '@molstar/meso-spec/resolvers';
+import type { RendererAdapter } from '@molstar/meso-spec/runtime';
 import { PrismMesoAdapter } from '../prism-adapter.js';
 import { MesoSession } from '../session.js';
 import { h, panel, pre, showHistory, showIssues, Styles } from './ui.js';

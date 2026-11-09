@@ -7,9 +7,15 @@
 import { readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import type { MesoViewSpecDoc } from '../format/doc.js';
-import type { Issue } from '../format/issues.js';
-import { type DataCodec, DocumentCodec, IRCodec, printData, readData } from '../format/sexpr.js';
+import {
+  type DataCodec,
+  DocumentCodec,
+  IRCodec,
+  type Issue,
+  type MesoViewSpecDoc,
+  printData,
+  readData,
+} from '@molstar/meso-spec/format';
 
 // The meso-* commands' shared parts (design.md §12.1): argument parsing, reading JSON or S-expression text, writing a
 // product to stdout or a file, issues to stderr, and resources from files. Each command is `run(argv, io)`, so tests
@@ -168,9 +174,18 @@ export function resourceLoader(io: CliIO, docPath: string, doc: MesoViewSpecDoc,
   };
 }
 
+/** Whether `url` is the script node was started with; false, not a throw, when argv[1] is no path (`node -e`). */
+function isMain(url: string): boolean {
+  try {
+    return !!process.argv[1] && pathToFileURL(realpathSync(process.argv[1])).href === url;
+  } catch {
+    return false;
+  }
+}
+
 /** Runs `run` when this file is the entry point (also through a bin symlink); `exitCode`, so piped output is whole. */
 export function runMain(url: string, run: (argv: readonly string[], io: CliIO) => Promise<number>) {
-  if (process.argv[1] && pathToFileURL(realpathSync(process.argv[1])).href === url)
+  if (isMain(url))
     void run(process.argv.slice(2), nodeIO).then((code) => {
       process.exitCode = code;
     });

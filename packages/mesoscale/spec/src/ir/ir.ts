@@ -4,8 +4,7 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import type { Box, StreamLevel, TileEntry } from '../format/doc.js';
-import type { Issue } from '../format/issues.js';
+import type { Box, Issue, StreamLevel, TileEntry } from '@molstar/meso-spec/format';
 import type { PlacementType } from './placements.js';
 import type { PlacementSet } from './placements.js';
 

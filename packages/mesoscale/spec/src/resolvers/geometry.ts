@@ -4,9 +4,8 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import type { IRShape } from '../ir/ir.js';
-import type { Random } from '../runtime/random.js';
-import type { MeshData } from '../runtime/resolver.js';
+import type { IRShape } from '@molstar/meso-spec/ir';
+import { meshArea, type MeshData, type Random } from '@molstar/meso-spec/runtime';
 
 // Compartment shapes as samplers (_spec/runtime.md): inside tests, interior points kept a margin from the boundary, surface
 // points with their outward normal. Analytic shapes are exact; a mesh samples its triangles by area and tests inside by
@@ -125,37 +124,6 @@ function box(c: readonly number[], s: readonly number[]): ShapeSampler {
       }
     },
   };
-}
-
-export function meshArea(mesh: MeshData): { area: number; volume: number; cumulative: Float64Array } {
-  const { positions: P, indices: I } = mesh;
-  const t = I.length / 3;
-  const cumulative = new Float64Array(t);
-  let area = 0;
-  let volume = 0;
-  for (let i = 0; i < t; i++) {
-    const a = 3 * I[3 * i],
-      b = 3 * I[3 * i + 1],
-      c = 3 * I[3 * i + 2];
-    const ux = P[b] - P[a],
-      uy = P[b + 1] - P[a + 1],
-      uz = P[b + 2] - P[a + 2];
-    const vx = P[c] - P[a],
-      vy = P[c + 1] - P[a + 1],
-      vz = P[c + 2] - P[a + 2];
-    const nx = uy * vz - uz * vy,
-      ny = uz * vx - ux * vz,
-      nz = ux * vy - uy * vx;
-    area += Math.hypot(nx, ny, nz) / 2;
-    cumulative[i] = area;
-    // signed volume of the tetrahedron with the origin
-    volume +=
-      (P[a] * (P[b + 1] * P[c + 2] - P[b + 2] * P[c + 1]) -
-        P[a + 1] * (P[b] * P[c + 2] - P[b + 2] * P[c]) +
-        P[a + 2] * (P[b] * P[c + 1] - P[b + 1] * P[c])) /
-      6;
-  }
-  return { area, volume: Math.abs(volume), cumulative };
 }
 
 /** The inside test's ray: off every axis and every rational direction a mesh's grid-aligned edges would hold. */

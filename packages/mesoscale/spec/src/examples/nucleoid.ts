@@ -4,8 +4,8 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import { createMesoDocument, q } from '../builder/index.js';
-import type { MesoViewSpecDoc } from '../format/doc.js';
+import { createMesoDocument, q } from '@molstar/meso-spec/builder';
+import type { MesoViewSpecDoc } from '@molstar/meso-spec/format';
 
 // Relations as constraints with addresses (_spec/format.md): a stretch of bacterial nucleoid where HU bends DNA. HU's
 // DNA entry and exit sites are the "pointers" the relation attaches by; the fiber resolver places each HU copy with its

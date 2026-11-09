@@ -9,8 +9,9 @@ pluggable resolvers, and a Mol\*/Prism renderer adapter. A prototype to test the
 - [`_spec/renderer-recommendations.md`](_spec/renderer-recommendations.md): what the prototypes showed about the Mol\*
   renderer
 - `examples/`: each example document as authored (`*.mesoviewspec.json`) and the IR made of it (`*.ir.json`)
-- `spec/` (`@molstar/meso-spec`): the format, IR, runtime and resolvers; no Mol\* imports
-- `molstar/` (`@molstar/meso-molstar`): the Prism adapter, the MolViewSpec export, the session, the stories
+- `spec/` (`@molstar/meso-spec`): the format, IR, runtime and resolvers; no Mol\* imports; entries `/format`,
+  `/builder`, `/ir`, `/runtime`, `/resolvers`, `/examples`, `/cli` (`_spec/README.md`, Packages)
+- `molstar/` (`@molstar/meso-molstar`): the Prism adapter, the MolViewSpec export, the session, the stories; one entry
 
 ```sh
 pnpm test:unit packages/mesoscale     # quick: validation, resolvers, IR, edits (no network, no GL)

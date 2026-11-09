@@ -195,3 +195,57 @@ export function rotateVec(out: number[], q: ArrayLike<number>, vx: number, vy: n
   out[2] = vz + qw * tz + (qx * ty - qy * tx);
   return out;
 }
+
+export function mulQuat(out: number[], a: ArrayLike<number>, b: ArrayLike<number>): number[] {
+  const [ax, ay, az, aw] = [a[0], a[1], a[2], a[3]];
+  const [bx, by, bz, bw] = [b[0], b[1], b[2], b[3]];
+  out[0] = aw * bx + ax * bw + ay * bz - az * by;
+  out[1] = aw * by - ax * bz + ay * bw + az * bx;
+  out[2] = aw * bz + ax * by - ay * bx + az * bw;
+  out[3] = aw * bw - ax * bx - ay * by - az * bz;
+  return out;
+}
+
+/** The rotation of a column-major 4×4 similarity, as a quaternion (its scale divided out). */
+export function rotationOf(m: readonly number[]): number[] {
+  const s = Math.hypot(m[0], m[1], m[2]) || 1;
+  const [m00, m01, m02, m10, m11, m12, m20, m21, m22] = [
+    m[0] / s,
+    m[4] / s,
+    m[8] / s,
+    m[1] / s,
+    m[5] / s,
+    m[9] / s,
+    m[2] / s,
+    m[6] / s,
+    m[10] / s,
+  ];
+  const tr = m00 + m11 + m22;
+  let x: number, y: number, z: number, w: number;
+  if (tr > 0) {
+    const S = Math.sqrt(tr + 1) * 2;
+    w = 0.25 * S;
+    x = (m21 - m12) / S;
+    y = (m02 - m20) / S;
+    z = (m10 - m01) / S;
+  } else if (m00 > m11 && m00 > m22) {
+    const S = Math.sqrt(1 + m00 - m11 - m22) * 2;
+    w = (m21 - m12) / S;
+    x = 0.25 * S;
+    y = (m01 + m10) / S;
+    z = (m02 + m20) / S;
+  } else if (m11 > m22) {
+    const S = Math.sqrt(1 + m11 - m00 - m22) * 2;
+    w = (m02 - m20) / S;
+    x = (m01 + m10) / S;
+    y = 0.25 * S;
+    z = (m12 + m21) / S;
+  } else {
+    const S = Math.sqrt(1 + m22 - m00 - m11) * 2;
+    w = (m10 - m01) / S;
+    x = (m02 + m20) / S;
+    y = (m12 + m21) / S;
+    z = 0.25 * S;
+  }
+  return [x, y, z, w];
+}

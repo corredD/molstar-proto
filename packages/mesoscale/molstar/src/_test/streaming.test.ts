@@ -6,11 +6,11 @@
 
 // @module-tag medium
 
-import { tiledFixture } from '@molstar/meso-spec/examples/streaming';
-import type { MesoViewSpecDoc } from '@molstar/meso-spec/format/doc';
-import { type IR, placementSets } from '@molstar/meso-spec/ir/ir';
-import { DefaultResolvers } from '@molstar/meso-spec/resolvers/index';
-import type { CommitReport, RendererAdapter } from '@molstar/meso-spec/runtime/adapter';
+import { tiledFixture } from '@molstar/meso-spec/examples';
+import type { MesoViewSpecDoc } from '@molstar/meso-spec/format';
+import { type IR, placementSets } from '@molstar/meso-spec/ir';
+import { DefaultResolvers } from '@molstar/meso-spec/resolvers';
+import type { CommitReport, RendererAdapter } from '@molstar/meso-spec/runtime';
 import { createMesoscaleExplorerSpec } from '@molstar/prism-me-app/spec';
 import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
 import type { PrismViewer } from '@molstar/prism-viewer/viewer';

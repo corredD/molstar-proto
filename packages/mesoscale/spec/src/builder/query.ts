@@ -4,7 +4,7 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import type { Location, MesoQL } from '../format/doc.js';
+import type { Location, MesoQL } from '@molstar/meso-spec/format';
 import type { EntityRef, InstanceRef, ModelRef, PopulationRef, Ref, Scope } from './refs.js';
 
 // MesoQL addresses built from refs (design.md §3.8, §3.15): one helper per symbol of `MesoQLSymbols`, each taking refs

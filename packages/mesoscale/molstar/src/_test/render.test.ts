@@ -5,9 +5,9 @@
  */
 // @module-tag medium
 
-import { compile, updateView } from '@molstar/meso-spec/runtime/runtime';
-import { DefaultResolvers } from '@molstar/meso-spec/resolvers/index';
-import { exosomeDoc, ExosomeResources } from '@molstar/meso-spec/examples/exosome';
+import { compile, updateView } from '@molstar/meso-spec/runtime';
+import { DefaultResolvers } from '@molstar/meso-spec/resolvers';
+import { exosomeDoc, ExosomeResources } from '@molstar/meso-spec/examples';
 import { HeadlessPluginContext } from '@molstar/plugin-headless/context';
 import { createMesoscaleExplorerSpec } from '@molstar/prism-me-app/spec';
 import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';

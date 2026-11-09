@@ -6,10 +6,10 @@
 // @module-tag heavy
 
 import { writeFileSync } from 'node:fs';
-import { scaleDoc } from '@molstar/meso-spec/examples/scale';
-import { placementSets } from '@molstar/meso-spec/ir/ir';
-import { DefaultResolvers } from '@molstar/meso-spec/resolvers/index';
-import { compile, updateView } from '@molstar/meso-spec/runtime/runtime';
+import { scaleDoc } from '@molstar/meso-spec/examples';
+import { placementSets } from '@molstar/meso-spec/ir';
+import { DefaultResolvers } from '@molstar/meso-spec/resolvers';
+import { compile, updateView } from '@molstar/meso-spec/runtime';
 import { HeadlessPluginContext } from '@molstar/plugin-headless/context';
 import { createMesoscaleExplorerSpec } from '@molstar/prism-me-app/spec';
 import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';

@@ -4,7 +4,7 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import type { Resolver } from '../runtime/resolver.js';
+import type { Resolver } from '@molstar/meso-spec/runtime';
 import { MesoBilayerResolver } from './bilayer.js';
 import { CellpackGpuResolver } from './cellpack-gpu.js';
 import { MesoFiberResolver } from './fiber.js';
@@ -23,3 +23,15 @@ export const DefaultResolvers: readonly Resolver<any>[] = [
   MesoRelaxResolver,
   CellpackGpuResolver,
 ];
+
+export {
+  type CellpackGpuCompartment,
+  type CellpackGpuIngredient,
+  type CellpackGpuRecipe,
+  type CellpackImport,
+  type CellpackImportOptions,
+  cellpackRecipeResource,
+  importCellpackGpuRecipe,
+  parseCellpackGpuRecipe,
+} from './cellpack-gpu.js';
+export { relionQuat } from './precomputed.js';

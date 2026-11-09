@@ -5,8 +5,7 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import { IRCodec } from '../format/sexpr.js';
-import { trace, traceToSexprData } from '../format/trace.js';
+import { IRCodec, trace, traceToSexprData } from '@molstar/meso-spec/format';
 import { type CliIO, command, emit, nodeIO, readDoc, runMain } from './io.js';
 
 // `meso-trace <doc> <id> [--json] [-o file]`: the provenance trace of a node (design.md §3.5) as a tree. Exit 1 when

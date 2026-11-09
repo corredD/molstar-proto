@@ -45,11 +45,11 @@ Scene tree becomes a patch, how Undo spans both, and the app lanes that build it
 
 ### 1.1 The owner
 
-- **`MesoDocumentModel`** (proposed, `packages/mesoscale/molstar/src/document-model.ts`, exported as
-  `@molstar/meso-molstar/document-model`) holds the open document: `doc`, `revision`, the `MesoSession` (runtime cache,
-  IR, issues, counts, edit records), the adapter, the shown view (§4.4). It commits patches (§2.3). It takes the
-  viewer's API, a loader and a scheduler as plain arguments: no DOM, testable on a headless Prism viewer, as the
-  adapter's medium tests are.
+- **`MesoDocumentModel`** (proposed, `packages/mesoscale/molstar/src/document-model.ts`, exported from
+  `@molstar/meso-molstar`) holds the open document: `doc`, `revision`, the `MesoSession` (runtime cache, IR, issues,
+  counts, edit records), the adapter, the shown view (§4.4). It commits patches (§2.3). It takes the viewer's API, a
+  loader and a scheduler as plain arguments: no DOM, testable on a headless Prism viewer, as the adapter's medium tests
+  are.
 - **One document at a time** **(Ludo)**: opening a second asks, then replaces the first (`destructive`, as `load.mvs`).
   Why: the format has one id namespace a document ([format.md](format.md)); two open documents would need ids qualified
   by document in every address, row and patch. Seq\*'s precedent is one structure at a time (sequence.md §3). The

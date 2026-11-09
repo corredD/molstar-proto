@@ -5,7 +5,7 @@
  */
 
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
-import type { PlacementSet } from '@molstar/meso-spec/ir/placements';
+import type { PlacementSet } from '@molstar/meso-spec/ir';
 import { CustomProperties } from '@molstar/model/model/custom-property';
 import type { ParticleList } from '@molstar/model/model/particles/particle-list';
 import { PluginStateObject as SO, PluginStateTransform } from '@molstar/plugin/state/objects';

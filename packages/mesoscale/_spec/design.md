@@ -707,7 +707,8 @@ Fibers mock exposed the adapter's `excludeFibers` bug (§11).
 - **Independence.** The format and runtime have no Mol\* imports. A Python or C++ reader (cellPACK, mesobuild) might
   want them in a repository of their own, as MolViewSpec keeps its Python builder in `molstar/mol-view-spec`.
 - **Enforcement.** "No Mol\* imports" is enforced: a Biome `noRestrictedImports` override for
-  `packages/mesoscale/spec/src/**` (`biome.json`), as the AI package has one.
+  `packages/mesoscale/spec/src/**` (`biome.json`), as the AI package has one; the entries and the folder graph, §12.2
+  and [README.md](README.md#packages).
 
 **Recommendation:**
 
@@ -731,6 +732,10 @@ line (`file#path: severity code: message`). Exit 0: no errors; 1: errors; 2: usa
 
 `pnpm -C packages/mesoscale/spec meso-<cmd>` builds first and runs from `packages/mesoscale`, so example paths are
 relative to it and `--base spec/src` (where the examples' recipe uris resolve) is passed for compile and query.
+
+### 12.2 Entries
+
+The entries, the folder graph and what enforces them are in [README.md](README.md#packages).
 
 ## 13. References
 

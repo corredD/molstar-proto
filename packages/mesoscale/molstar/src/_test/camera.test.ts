@@ -4,13 +4,10 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import { betaCellDoc, BetaCellResources } from '@molstar/meso-spec/examples/betacell';
-import { exosomeDoc, ExosomeResources } from '@molstar/meso-spec/examples/exosome';
-import { placementSets } from '@molstar/meso-spec/ir/ir';
-import { DefaultResolvers } from '@molstar/meso-spec/resolvers/index';
-import { planCommit } from '@molstar/meso-spec/runtime/adapter';
-import { flattenInstances } from '@molstar/meso-spec/runtime/instancing';
-import { compile } from '@molstar/meso-spec/runtime/runtime';
+import { betaCellDoc, BetaCellResources, exosomeDoc, ExosomeResources } from '@molstar/meso-spec/examples';
+import { placementSets } from '@molstar/meso-spec/ir';
+import { DefaultResolvers } from '@molstar/meso-spec/resolvers';
+import { compile, flattenInstances, planCommit } from '@molstar/meso-spec/runtime';
 import { describe, expect, it } from 'vitest';
 import { type CameraCanvas, commitCamera, sceneRadius } from '../prism-adapter.js';
 

@@ -6,12 +6,10 @@
 
 import type { Meta, StoryObj } from '@storybook/web-components-vite';
 import { story } from '@molstar/prism-ui/testing/index';
-import type { MesoViewSpecDoc } from '@molstar/meso-spec/format/doc';
-import { exosomeDoc, ExosomeResources } from '@molstar/meso-spec/examples/exosome';
-import { galleryDoc } from '@molstar/meso-spec/examples/gallery';
-import { yeastDoc } from '@molstar/meso-spec/examples/yeast';
-import { DefaultResolvers } from '@molstar/meso-spec/resolvers/index';
-import { compile } from '@molstar/meso-spec/runtime/runtime';
+import type { MesoViewSpecDoc } from '@molstar/meso-spec/format';
+import { exosomeDoc, ExosomeResources, galleryDoc, yeastDoc } from '@molstar/meso-spec/examples';
+import { DefaultResolvers } from '@molstar/meso-spec/resolvers';
+import { compile } from '@molstar/meso-spec/runtime';
 import { h, onSpellingChange, panel, pre, showIr, showIssues, showJson, Styles, traceBox } from './ui.js';
 
 // The same scene twice (design.md §2, §10): the MesoViewSpec document as authored, the IR the runtime makes of it, the

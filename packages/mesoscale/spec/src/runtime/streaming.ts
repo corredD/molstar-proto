@@ -4,16 +4,14 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import type { Box, Id, TileEntry, TileManifest } from '../format/doc.js';
-import { type Issue, issue } from '../format/issues.js';
-import { type IR, type IRNode } from '../ir/ir.js';
-import type { PlacementSet, PlacementType } from '../ir/placements.js';
+import { type Box, type Id, type Issue, issue, type TileEntry, type TileManifest } from '@molstar/meso-spec/format';
+import type { IR, IRNode, PlacementSet, PlacementType } from '@molstar/meso-spec/ir';
 
 // Streaming (_spec/streaming.md): the viewer shows every tile coarse (level 0, from the manifest) and loads copies (level 1)
 // around the focus within a budget. Outside `compile`: the session splices loaded tiles into the stream node as
 // `placements` children, so `planCommit` and the adapters see ordinary sets. Imports nothing of Mol*.
 
-type StreamNode = Extract<IRNode, { kind: 'stream' }>;
+export type StreamNode = Extract<IRNode, { kind: 'stream' }>;
 
 export interface TileProvider {
   /** The manifest; the provider memoizes it (compile asks on every model edit). Rejects: `stream.manifest`. */

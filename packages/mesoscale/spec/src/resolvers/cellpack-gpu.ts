@@ -4,19 +4,20 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import type {
-  Abundance,
-  Compartment,
-  Entity,
-  Evidence,
-  Id,
-  Location,
-  Model,
-  Population,
-  Resource,
-} from '../format/doc.js';
-import { issue, type Issue } from '../format/issues.js';
-import type { Resolver, ResolveJob } from '../runtime/resolver.js';
+import {
+  type Abundance,
+  type Compartment,
+  type Entity,
+  type Evidence,
+  type Id,
+  issue,
+  type Issue,
+  type Location,
+  type Model,
+  type Population,
+  type Resource,
+} from '@molstar/meso-spec/format';
+import type { ResolveJob, Resolver } from '@molstar/meso-spec/runtime';
 import { DefaultPackParams, pack, type PackInput, packCompartments } from './packing.js';
 
 // The cellPACKgpu adapter (_spec/runtime.md): a recipe kind plugged in without touching the language or the IR. Two

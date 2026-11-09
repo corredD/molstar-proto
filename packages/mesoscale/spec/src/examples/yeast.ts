@@ -4,9 +4,8 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import type { MesoViewSpecDoc } from '../format/doc.js';
-import { createMesoDocument } from '../builder/index.js';
-import type { ResourceRef } from '../builder/index.js';
+import type { MesoViewSpecDoc } from '@molstar/meso-spec/format';
+import { createMesoDocument, type ResourceRef } from '@molstar/meso-spec/builder';
 
 // The whole yeast cell of zoidpuff's yeast_cell_viewer (design.md §13), described in MesoViewSpec. Conceptual: every
 // fact is cited to the model's own description (MODEL.md, by section) and nothing of its data is copied (the repository

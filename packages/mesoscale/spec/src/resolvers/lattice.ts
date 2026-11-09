@@ -4,10 +4,16 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import type { Id } from '../format/doc.js';
-import { PlacementBuilder, type PlacementType, quatFromTo } from '../ir/placements.js';
-import { createRandom, subSeed } from '../runtime/random.js';
-import type { NormalizedArrangement, Resolver, ResolveJob, ResolveOutput } from '../runtime/resolver.js';
+import type { Id } from '@molstar/meso-spec/format';
+import { PlacementBuilder, type PlacementType, quatFromTo } from '@molstar/meso-spec/ir';
+import {
+  createRandom,
+  type NormalizedArrangement,
+  type ResolveJob,
+  type ResolveOutput,
+  type Resolver,
+  subSeed,
+} from '@molstar/meso-spec/runtime';
 import { avoidedHash, type PackCompartment, packCompartments, SpatialHash } from './packing.js';
 
 // `meso.lattice` (_spec/runtime.md): a 2D lattice on a closed membrane. Sites follow a Fibonacci spiral, locally close to

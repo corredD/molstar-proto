@@ -6,11 +6,11 @@
 
 // @module-tag medium
 
-import { compile, type CompileResult, updateView } from '@molstar/meso-spec/runtime/runtime';
-import { DefaultResolvers } from '@molstar/meso-spec/resolvers/index';
-import { exosomeDoc, ExosomeResources } from '@molstar/meso-spec/examples/exosome';
-import { placementSets } from '@molstar/meso-spec/ir/ir';
-import type { MesoViewSpecDoc } from '@molstar/meso-spec/format/doc';
+import { compile, type CompileResult, updateView } from '@molstar/meso-spec/runtime';
+import { DefaultResolvers } from '@molstar/meso-spec/resolvers';
+import { exosomeDoc, ExosomeResources } from '@molstar/meso-spec/examples';
+import { placementSets } from '@molstar/meso-spec/ir';
+import type { MesoViewSpecDoc } from '@molstar/meso-spec/format';
 import { createMesoscaleExplorerSpec } from '@molstar/prism-me-app/spec';
 import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
 import type { PrismViewer } from '@molstar/prism-viewer/viewer';
