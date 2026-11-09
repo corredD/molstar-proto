@@ -194,9 +194,10 @@ export function withTiles(ir: IR, sets: ReadonlyMap<string, PlacementSet>): IR {
 }
 
 // a tile's first global ordinal per type: the counts of the tiles before it in manifest order
-const baseCache = new WeakMap<StreamNode, ReadonlyMap<string, readonly number[]>>();
+// (keyed on `params`, which `withTiles` keeps: the node object is replaced on every splice)
+const baseCache = new WeakMap<StreamNode['params'], ReadonlyMap<string, readonly number[]>>();
 function ordinalBases(node: StreamNode) {
-  let b = baseCache.get(node);
+  let b = baseCache.get(node.params);
   if (!b) {
     const run = node.params.types.map(() => 0);
     const m = new Map<string, readonly number[]>();
@@ -206,7 +207,7 @@ function ordinalBases(node: StreamNode) {
         run[i] += t.counts[ty.population] ?? 0;
       });
     }
-    baseCache.set(node, (b = m));
+    baseCache.set(node.params, (b = m));
   }
   return b;
 }
@@ -229,17 +230,20 @@ export function tileSet(node: StreamNode, tile: TileEntry, p: TilePayload): Plac
   };
 }
 
-const level0Cache = new WeakMap<IRNode, IRNode>();
+// keyed on the stream node's `params`, which `withTiles` keeps: every step over one stream reads one proxy set
+const level0Cache = new WeakMap<StreamNode['params'], IRNode>();
 
 /**
  * The IR as the camera reads it: each stream node's tiles replaced by one proxy set (key `<key>#level0`) with one copy
- * per (population, tile) with a count > 0, population-major, at the envelope's centre, identity rotation, and its own type whose radius
- * is the envelope's half-diagonal (population, entity and compartment as the stream's type).
+ * per (population, tile) with a count > 0 (population-major, so a population is one run), at the envelope's centre,
+ * identity rotation, and its own type whose radius is the envelope's half-diagonal (population, entity and
+ * compartment as the stream's type). The proxy node is built once per stream node (its `params`), whatever tiles are
+ * spliced in.
  */
 export function level0IR(ir: IR): IR {
-  let root = level0Cache.get(ir.root);
-  if (!root) {
-    root = rewrite(ir, (n) => {
+  return rewrite(ir, (n) => {
+    let proxy = level0Cache.get(n.params);
+    if (!proxy) {
       const typeTable: PlacementType[] = [];
       const pos: number[] = [];
       // population by population, so a selection of a population is one run (`byTypes` unions run after run)
@@ -266,14 +270,14 @@ export function level0IR(ir: IR): IR {
         ordinals: Int32Array.from({ length: count }, (_, i) => i),
         typeTable,
       };
-      return {
+      proxy = {
         ...n,
         children: [{ ref: `${n.params.model}/stream/level0`, kind: 'placements', params: { set } }],
       };
-    }).root;
-    level0Cache.set(ir.root, root);
-  }
-  return root === ir.root ? ir : { root, view: ir.view };
+      level0Cache.set(n.params, proxy);
+    }
+    return proxy;
+  });
 }
 
 export interface StreamOptions {

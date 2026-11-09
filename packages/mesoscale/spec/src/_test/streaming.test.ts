@@ -517,6 +517,28 @@ describe('stream sets', () => {
     expect(streamNode((await open(fat)).ir!)!.params.key).not.toBe(a.params.key);
   });
 
+  it('level 0 is built once per stream node: steps with other tiles spliced in read the same proxy set', async () => {
+    const r = await open();
+    const [a, b] = [...(await payloads(['t.0.0.0', 't.1.0.0']))];
+    const node = streamNode(r.ir!)!;
+    const one = withTiles(r.ir!, new Map([[a[0], tileSet(node, node.params.tiles[0], a[1])]]));
+    const two = withTiles(r.ir!, new Map([[b[0], tileSet(node, node.params.tiles[1], b[1])]]));
+    expect(one.root).not.toBe(two.root);
+    const proxy = (ir: IR) => placementSets(level0IR(ir)).filter((x) => x.model === 'm.tiles');
+    expect(proxy(one).length).toBe(1);
+    expect(proxy(one)[0]).toBe(proxy(two)[0]);
+    expect(proxy(r.ir!)[0]).toBe(proxy(one)[0]);
+    // another stream (new params) reads its own
+    const copy = (n: IRNode): IRNode =>
+      ({
+        ...n,
+        ...(n.kind === 'stream' ? { params: { ...n.params } } : {}),
+        ...(n.children ? { children: n.children.map(copy) } : {}),
+      }) as IRNode;
+    const other: IR = { root: copy(r.ir!.root), view: r.ir!.view };
+    expect(proxy(other)[0]).not.toBe(proxy(one)[0]);
+  });
+
   it('withTiles puts the sets in manifest order and keeps every other node object', async () => {
     const r = await open();
     const node = streamNode(r.ir!)!;
