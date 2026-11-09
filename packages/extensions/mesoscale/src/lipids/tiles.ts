@@ -97,6 +97,15 @@ interface Placed {
 const Sqrt3 = Math.sqrt(3);
 
 export function bakeTileSet(leaflet: Leaflet, p: Partial<TileSetParams> = {}): TileSet {
+  const steps = bakeTileSetSteps(leaflet, p);
+  for (;;) {
+    const r = steps.next();
+    if (r.done) return r.value;
+  }
+}
+
+/** `bakeTileSet` a variant at a time: yields after each its count of variants baked, of `variantCount` (a task yields there) */
+export function* bakeTileSetSteps(leaflet: Leaflet, p: Partial<TileSetParams> = {}): Generator<number, TileSet> {
   const params = { ...DefaultTileSetParams, ...p };
   const L = params.edge;
   const delta = params.clearance;
@@ -152,6 +161,7 @@ export function bakeTileSet(leaflet: Leaflet, p: Partial<TileSetParams> = {}): T
     variants.push(
       bakeVariant(leaflet, params, strips, discs, corners, c, e, randomCut(), cornerRadius, bandWidth, rand),
     );
+    yield index + 1;
   }
   return {
     params,

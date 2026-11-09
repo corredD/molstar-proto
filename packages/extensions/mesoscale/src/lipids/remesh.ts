@@ -1124,16 +1124,32 @@ export function weldVertices(mesh: TriMesh, tolerance = 1e-3): TriMesh {
  * Keeps the input's orientation; the output has no unused vertices.
  */
 export function isotropicRemesh(input: TriMesh, targetEdge: number, options?: { iterations?: number }): TriMesh {
+  const steps = isotropicRemeshSteps(input, targetEdge, options);
+  for (;;) {
+    const r = steps.next();
+    if (r.done) return r.value;
+  }
+}
+
+/** `isotropicRemesh` a pass at a time: yields its iteration (of `iterations`) after each pass (a task yields there) */
+export function* isotropicRemeshSteps(
+  input: TriMesh,
+  targetEdge: number,
+  options?: { iterations?: number },
+): Generator<number, TriMesh> {
   const iterations = options?.iterations ?? 5;
   const mesh = weldVertices(input);
   const grid = surfaceGrid(mesh);
   const r = new Remesher(mesh, grid, targetEdge);
+  yield 0;
   for (let it = 0; it < iterations; it++) {
-    for (let pass = 0; pass < 64 && r.splitLong() > 0; pass++);
-    for (let pass = 0; pass < 8 && r.collapseShort() > 0; pass++);
-    for (let pass = 0; pass < 4 && r.equalizeValences() > 0; pass++);
+    for (let pass = 0; pass < 64 && r.splitLong() > 0; pass++) yield it;
+    for (let pass = 0; pass < 8 && r.collapseShort() > 0; pass++) yield it;
+    for (let pass = 0; pass < 4 && r.equalizeValences() > 0; pass++) yield it;
     r.tangentialSmoothing();
+    yield it;
     r.project();
+    yield it;
   }
   return r.toMesh();
 }

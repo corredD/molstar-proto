@@ -228,8 +228,11 @@ on a tree row (its right-click or its ⋯), the same menu, in this order:
   each (Ludo, 2026-11-08: the cutter must be reachable from the UI): **Wrap with lipids** (tiles) and **Wrap with lipids
   (cutter)** (cellPACKgpu's cutter, on the mesh's own triangles by regions of the surface: `method: 'cutter'`); two
   entries rather than a method in the membrane's properties, because a method is chosen before the membrane exists and
-  changing it remakes it. A compartment's group offers the tiles only. Both draw with levels of detail (the membrane's
-  `detail`, balanced by default).
+  changing it remakes it. A compartment's group offers the tiles only. A wrap is a task on the status line (Ludo,
+  2026-11-08: its stage, as Remeshing at 42 Å 2/5, Baking lipid tiles (outer) 12/16, Cutting triangles, Uploading
+  lipids, its percentage and Cancel; a cancel leaves no membrane and no step); it yields to the page between stages, but
+  a single stage (the patch's first read, the GPU count pass's readback, the render objects' merge) runs whole. Both
+  draw with levels of detail (the membrane's `detail`, balanced by default).
 - **Remove** (an object: with its file and labels).
 
 On a clip or a label (its guide in 3D, or its row): **Move**, **Rotate**, (a clip: **Size**, **Flip**; a label: **Edit

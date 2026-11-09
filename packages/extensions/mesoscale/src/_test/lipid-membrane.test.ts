@@ -117,6 +117,37 @@ describe('lipid membrane', () => {
     expect(v.plugin.state.data.cells.get(ref)!.transform.params).toMatchObject({ detail: 'balanced' });
   });
 
+  it('says its stages while it wraps, and a cancel leaves the scene as it was (Ludo, 2026-11-08)', async () => {
+    // "a progress bar so we know computation is happening and is not blocking": a task with readable stages, yielding
+    const base = DefaultPrismViewerSpec();
+    const v = await createPrismViewerHeadless({
+      spec: { ...base, extensions: [...(base.extensions ?? []), MesoscaleExtension] },
+    });
+    viewers.push(v);
+    const tasks = v.plugin.managers.task;
+    const messages: string[] = [];
+    const sub = tasks.events.progress.subscribe((e) => messages.push(e.progress.root.progress.message));
+    // a patch not baked yet: its tiles baked in this wrap
+    registerLipidPatch('progress-patch', syntheticPatchPdb().text);
+    expectOk(await v.api.mesoscale!.wrapMembrane({ radius: 1500, edge: 60, patch: 'progress-patch' }));
+    expect(messages.some((m) => /^Baking lipid tiles \(outer\) \d+\/\d+$/.test(m))).toBe(true);
+    // cancelled while it bakes: no membrane, no step, nothing hidden
+    registerLipidPatch('cancel-patch', syntheticPatchPdb().text);
+    const cells = v.plugin.state.data.cells.size;
+    const abort = tasks.events.progress.subscribe((e) => {
+      if (e.progress.root.progress.message.startsWith('Baking')) tasks.requestAbort(e.progress);
+    });
+    const r = await v.api.mesoscale!.wrapMembrane({ radius: 1500, edge: 60, patch: 'cancel-patch' });
+    abort.unsubscribe();
+    sub.unsubscribe();
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.message).toMatch(/stopped/i);
+    expect(v.plugin.state.data.cells.size).toBe(cells);
+    // the history's last step is the first wrap's: undone, no membrane is left
+    expectOk(await v.api.history.undo({}));
+    expect([...v.plugin.state.data.cells.values()].some((c) => c.transform.transformer === LipidMembrane)).toBe(false);
+  });
+
   it('cuts the mesh’s own triangles with the cutter: no remesh, every part covered', () => {
     const body = thinLimbedBody();
     const data = buildMembrane({ mesh: body }, 'test-patch', 0, 'both', kinds, 'cutter');

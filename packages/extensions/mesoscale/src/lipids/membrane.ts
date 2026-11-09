@@ -5,7 +5,7 @@
  */
 
 import { Subject } from 'rxjs';
-import { Task } from '@molstar/core/task';
+import { type RuntimeContext, Task } from '@molstar/core/task';
 import { Color } from '@molstar/core/util/color';
 import { distinctColors } from '@molstar/core/util/color/distinct';
 import { ValueCell } from '@molstar/core/util/value-cell';
@@ -26,13 +26,13 @@ import { UniformSizeTheme } from '@molstar/graphics/theme/size/uniform';
 import { EmptyLoci } from '@molstar/model/model/loci';
 import type { PluginContext } from '@molstar/plugin/context';
 import { PluginStateObject as SO, PluginStateTransform } from '@molstar/plugin/state/objects';
-import { assignSlots, type TileKinds, type TriangleSlots } from './assign.js';
+import { assignSlots, type TileKinds, type TriangleSlots, variantCount } from './assign.js';
 import { createLipidTileAssigner, type LipidTileAssigner } from './assign-kernel.js';
 import { type LipidPatch, parsePatchPdb } from './patch.js';
 import { type CutterRegions, cutterRegions, type CutterTable, cutterTable } from './cutter.js';
 import { createLipidCutter, type LipidCutter } from './cutter-kernel.js';
-import { farTriangles, icosphere, isotropicRemesh, offsetSurface, type TriMesh } from './remesh.js';
-import { bakeTileSet, type TileSet } from './tiles.js';
+import { farTriangles, icosphere, isotropicRemeshSteps, offsetSurface, type TriMesh } from './remesh.js';
+import { bakeTileSetSteps, type TileSet } from './tiles.js';
 
 // A membrane of lipid tiles (progress/2026-11-08-lipid-tiles.md, Design): a mesh remeshed at the tiles' edge, a surface
 // per leaflet, each triangle a tile of its variant; one spheres object per variant (groups: lipids), merged and culled on
@@ -117,16 +117,67 @@ function getCutterTable(patch: string, leaflet: 'outer' | 'inner') {
   return table;
 }
 
-function getTileSet(patch: string, leaflet: 'outer' | 'inner', edge: number, kinds: TileKinds) {
+function* getTileSet(
+  patch: string,
+  leaflet: 'outer' | 'inner',
+  edge: number,
+  kinds: TileKinds,
+): Generator<MembraneProgress, TileSet | undefined> {
   const key = `${patch}|${leaflet}|${edge}|${kinds.edgeTypes}|${kinds.vertexColors}|${kinds.variants}|${kinds.seed}`;
   let set = tileSets.get(key);
   if (!set) {
     const p = getPatch(patch);
     if (!p) return undefined;
-    set = bakeTileSet(p[leaflet], { edge, ...kinds, slack: SeamSlack });
+    const params = { edge, ...kinds, slack: SeamSlack };
+    const steps = bakeTileSetSteps(p[leaflet], params);
+    const max = variantCount(kinds);
+    for (let r = steps.next(); ; r = steps.next()) {
+      if (r.done) {
+        set = r.value;
+        break;
+      }
+      yield { message: `Baking lipid tiles (${leaflet}) ${r.value}/${max}`, current: r.value, max };
+    }
     tileSets.set(key, set);
   }
   return set;
+}
+
+/** A stage of a membrane's build, for its task's progress (Prism's status pill) */
+export interface MembraneProgress {
+  readonly message: string;
+  readonly current?: number;
+  readonly max?: number;
+}
+
+/**
+ * Runs a membrane's build steps on a task's runtime: a yield to the page whenever a step ends past `YieldMs` since the
+ * last (a cancel stops it there: `update` throws), the stage on the status line (Ludo, 2026-11-08: "a progress bar so
+ * we know computation is happening and is not blocking")
+ */
+export async function runSteps<T>(steps: Generator<MembraneProgress, T>, runtime: RuntimeContext): Promise<T> {
+  const step = stepper(runtime);
+  for (let r = steps.next(); ; r = steps.next()) {
+    if (r.done) return r.value;
+    await step(r.value);
+  }
+}
+
+/** A stage's end on `runtime`: a yield (and the stage said) when `YieldMs` passed since the last */
+function stepper(runtime: RuntimeContext) {
+  let last = performance.now();
+  return async (p: MembraneProgress) => {
+    if (performance.now() - last <= YieldMs) return;
+    await runtime.update({ ...p, isIndeterminate: p.max === undefined, canAbort: true });
+    last = performance.now();
+  };
+}
+
+/** The longest stretch a membrane's build keeps the main thread between yields, aimed at, ms */
+export const YieldMs = 30;
+
+function drain<T>(steps: Generator<MembraneProgress, T>): T {
+  for (let r = steps.next(); ; r = steps.next()) if (r.done) return r.value;
 }
 
 /** One leaflet of a membrane: its tile set, its surface, the triangles' variants and slots */
@@ -186,6 +237,18 @@ export function buildMembrane(
   kinds: TileKinds,
   method: MembraneMethod = 'tiles',
 ): MembraneData | string {
+  return drain(buildMembraneSteps(surface, patch, edge, leaflets, kinds, method));
+}
+
+/** `buildMembrane` a stage at a time (`runSteps` on a task) */
+export function* buildMembraneSteps(
+  surface: { readonly mesh?: TriMesh; readonly center?: Vec3; readonly radius?: number },
+  patch: string,
+  edge: number,
+  leaflets: 'both' | 'outer' | 'inner',
+  kinds: TileKinds,
+  method: MembraneMethod = 'tiles',
+): Generator<MembraneProgress, MembraneData | string> {
   let base: TriMesh;
   const names = leaflets === 'both' ? (['outer', 'inner'] as const) : [leaflets];
   if (method === 'cutter') {
@@ -193,6 +256,7 @@ export function buildMembrane(
     const mesh =
       surface.mesh ?? centered(icosphere(surface.radius ?? 500, edge > 0 ? edge : suitedEdge(surface)), surface.center);
     const cut: CutLeaflet[] = [];
+    yield { message: 'Finding the surface’s regions' };
     const regions = cutterRegions(mesh.positions, mesh.indices, kinds.seed);
     for (const name of names) {
       const table = getCutterTable(patch, name);
@@ -210,18 +274,28 @@ export function buildMembrane(
     }
   }
   if (!(edge > 0)) edge = suitedEdge(surface);
-  if (surface.mesh) base = isotropicRemesh(surface.mesh, edge);
-  else base = centered(icosphere(surface.radius ?? 500, edge), surface.center);
+  if (surface.mesh) {
+    const iterations = 5;
+    const steps = isotropicRemeshSteps(surface.mesh, edge, { iterations });
+    for (let r = steps.next(); ; r = steps.next()) {
+      if (r.done) {
+        base = r.value;
+        break;
+      }
+      yield { message: `Remeshing at ${edge} Å ${r.value + 1}/${iterations}`, current: r.value, max: iterations };
+    }
+  } else base = centered(icosphere(surface.radius ?? 500, edge), surface.center);
   const sphere = boundingSphereOf(base.positions, Sphere3D());
   const out: MembraneLeaflet[] = [];
   // the parts the remesh lost (a cow's legs, thinner than the edge: Ludo's second try, 2026-11-08), cut on their own
   // triangles
+  yield { message: 'Finding the parts the remesh lost' };
   const lost = surface.mesh ? farTriangles(surface.mesh, base, LostDistance) : undefined;
   const cut: CutLeaflet[] = [];
   const lostRegions =
     lost && lost.indices.length > 0 ? cutterRegions(lost.positions, lost.indices, kinds.seed) : undefined;
   for (const name of names) {
-    const tileSet = getTileSet(patch, name, edge, kinds);
+    const tileSet = yield* getTileSet(patch, name, edge, kinds);
     if (!tileSet) return `No lipid patch named ${patch}: open a patch (a PDB of a bilayer) first.`;
     const mesh = offsetSurface(base, tileSet.offset);
     out.push({ name, tileSet, mesh, slots: assignSlots(kinds, mesh.indices) });
@@ -453,7 +527,19 @@ export function LipidMembraneRepresentation(graphics: GraphicsContext | undefine
   /** the data the GPU's cutters and assigners were made for: a new look of the same data reuses them (review S5) */
   let builtFor: MembraneData | undefined;
 
-  async function build(data: MembraneData) {
+  /** builds, or on a cancel (or any error) releases what it made on the GPU, nothing half-built kept */
+  async function build(data: MembraneData, runtime: RuntimeContext) {
+    try {
+      await buildNow(data, stepper(runtime));
+    } catch (e) {
+      release();
+      builtFor = undefined;
+      renderObjects = [];
+      throw e;
+    }
+  }
+
+  async function buildNow(data: MembraneData, step: (p: MembraneProgress) => Promise<void>) {
     cutLipids = 0;
     if (!graphics?.compute || !canCullOnGpu(graphics)) {
       release();
@@ -475,6 +561,8 @@ export function LipidMembraneRepresentation(graphics: GraphicsContext | undefine
       const leaflet = data.cut[c];
       const { table, mesh } = leaflet;
       if (!reuse) {
+        // the count pass and its readback: one wait on the GPU, not a stretch of the main thread
+        await step({ message: `Cutting triangles (${leaflet.name})` });
         cutters.push(
           await createLipidCutter(
             graphics.compute,
@@ -488,9 +576,15 @@ export function LipidMembraneRepresentation(graphics: GraphicsContext | undefine
       }
       const cutter = cutters[c];
       const b = cutBounds(leaflet);
-      table.members.forEach((member, m) => {
+      for (let m = 0; m < table.members.length; ++m) {
+        const member = table.members[m];
         const n = cutter.totals[m];
-        if (n === 0) return;
+        if (n === 0) continue;
+        await step({
+          message: `Uploading lipids (${leaflet.name}) ${m + 1}/${table.members.length}`,
+          current: m,
+          max: table.members.length,
+        });
         cutLipids += n;
         const species = [member.species];
         entries.push({
@@ -506,7 +600,7 @@ export function LipidMembraneRepresentation(graphics: GraphicsContext | undefine
             colorOf,
           ),
         });
-      });
+      }
     }
     for (let k = 0; k < data.leaflets.length; ++k) {
       const { tileSet, mesh, slots } = data.leaflets[k];
@@ -517,9 +611,12 @@ export function LipidMembraneRepresentation(graphics: GraphicsContext | undefine
       }
       const assigner = assigners[k];
       bounds.radius = data.sphere.radius + Math.abs(tileSet.offset) + tileSet.sphere[3];
-      tileSet.variants.forEach((tile, v) => {
+      for (let v = 0; v < tileSet.variants.length; ++v) {
+        const tile = tileSet.variants[v];
         const n = slots.counts[v];
-        if (n === 0 || tile.lipidSpecies.length === 0) return;
+        if (n === 0 || tile.lipidSpecies.length === 0) continue;
+        const max = tileSet.variants.length;
+        await step({ message: `Uploading lipid tiles (${data.leaflets[k].name}) ${v + 1}/${max}`, current: v, max });
         entries.push({
           visual: visual++,
           renderObject: memberObject(
@@ -533,7 +630,7 @@ export function LipidMembraneRepresentation(graphics: GraphicsContext | undefine
             colorOf,
           ),
         });
-      });
+      }
     }
     const out: GraphicsRenderObject[] = [];
     merged = mergeRenderObjectsByType(entries, true, new Map(), out, true, true, graphics);
@@ -559,9 +656,9 @@ export function LipidMembraneRepresentation(graphics: GraphicsContext | undefine
     state,
     theme: { color: undefined as never, size: undefined as never },
     createOrUpdate: (p, data) =>
-      Task.create('Lipid membrane', async () => {
+      Task.create('Lipid membrane', async (runtime) => {
         props = { ...props, ...p };
-        if (data) await build(data);
+        if (data) await build(data, runtime);
         version += 1;
         updated.next(version);
       }),
@@ -682,7 +779,10 @@ export const LipidMembrane = PluginStateTransform.BuiltIn({
       const edge = params.edge > 0 ? params.edge : suitedEdge(surface);
       const variants = params.variants > 0 ? params.variants : suitedVariants(edge);
       const kinds = { edgeTypes: params.edgeTypes, vertexColors: 1, variants, seed: params.seed };
-      const data = buildMembrane(surface, params.patch, edge, params.leaflets, kinds, params.method);
+      const data = await runSteps(
+        buildMembraneSteps(surface, params.patch, edge, params.leaflets, kinds, params.method),
+        runtime,
+      );
       if (typeof data === 'string') throw new Error(data);
       if (!canDrawLipidMembranes(plugin)) {
         plugin.log.warn('Lipid membranes are drawn with WebGPU only: switch the backend to WebGPU to see this one.');
