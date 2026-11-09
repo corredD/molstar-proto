@@ -214,8 +214,11 @@ export class MesoDocumentModel {
     return lookPatch(doc, (looks, next) => {
       const ops: Op[] = [];
       const add: Look[] = [];
-      for (const select of selects) {
-        const had = looks.find((l) => l.id?.startsWith('l.eye.') && l.select === select);
+      // the eye looks by address, once (a drag gives many rows)
+      const eyes = new Map<string, Look>();
+      for (const l of looks) if (l.id?.startsWith('l.eye.')) eyes.set(l.select, l);
+      for (const select of new Set(selects)) {
+        const had = eyes.get(select);
         if (had?.id) {
           if (had.visible !== visible) ops.push({ op: 'set', id: had.id, fields: { visible } });
           ops.push({ op: 'move', id: had.id, after: 'last' });
@@ -255,16 +258,16 @@ export class MesoDocumentModel {
 
   private isInstance(id: string) {
     // the session's document: an open draws its lists before `doc` is set
-    return !!(this.session?.doc ?? this.doc)?.instances?.some((i) => i.id === id);
+    const doc = this.session?.doc ?? this.doc;
+    return !!doc && indexOf(doc).instances.has(id);
   }
 
   /** A type's entity and compartment, by their labels: the hover label's second line (prism.md §4.6). */
   private describe(t: PlacementType): string | undefined {
     const doc = this.session?.doc ?? this.doc;
     if (!doc) return undefined;
-    const entity = findById(doc, 'entities', t.entity)?.label;
-    const compartment = findById(doc, 'compartments', t.compartment)?.label;
-    const parts = [entity, compartment].filter(Boolean);
+    const index = indexOf(doc);
+    const parts = [index.entities.get(t.entity), index.compartments.get(t.compartment)].filter(Boolean);
     return parts.length ? parts.join(' · ') : undefined;
   }
 
@@ -501,13 +504,28 @@ function lookPatch(
 /** The view the first look edit makes when a document has none (prism.md §4.4). */
 export const PrismView = 'v.prism';
 
-/** A node of a document section by id (entities and compartments also inside superstructures). */
-function findById(doc: MesoViewSpecDoc, section: 'entities' | 'compartments', id: string) {
-  const own = (doc[section] as readonly { id: string; label?: string }[]).find((x) => x.id === id);
-  if (own) return own;
-  for (const ss of doc.superstructures ?? [])
-    for (const x of (ss[section] ?? []) as readonly { id: string; label?: string }[]) if (x.id === id) return x;
-  return undefined;
+/** A document's labels by id (entities and compartments, superstructures' too) and its instances: made once a document. */
+const Indexes = new WeakMap<MesoViewSpecDoc, DocumentIndex>();
+interface DocumentIndex {
+  readonly entities: ReadonlyMap<string, string>;
+  readonly compartments: ReadonlyMap<string, string>;
+  readonly instances: ReadonlySet<string>;
+}
+function indexOf(doc: MesoViewSpecDoc): DocumentIndex {
+  let index = Indexes.get(doc);
+  if (index) return index;
+  const entities = new Map<string, string>();
+  const compartments = new Map<string, string>();
+  for (const ss of doc.superstructures ?? []) {
+    for (const e of ss.entities ?? []) entities.set(e.id, e.label);
+    for (const c of ss.compartments) compartments.set(c.id, c.label);
+  }
+  // the document's own win over a superstructure's of the same id
+  for (const e of doc.entities) entities.set(e.id, e.label);
+  for (const c of doc.compartments) compartments.set(c.id, c.label);
+  index = { entities, compartments, instances: new Set((doc.instances ?? []).map((i) => i.id)) };
+  Indexes.set(doc, index);
+  return index;
 }
 
 /** The list a representation draws (its source: decorated or not), else the list's own data. */
