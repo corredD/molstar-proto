@@ -282,7 +282,7 @@ export function commitCamera(
 }
 
 /** A set's box (min, max) and its largest copy radius. */
-type SetBounds = readonly [number, number, number, number, number, number, number];
+export type SetBounds = readonly [number, number, number, number, number, number, number];
 
 /** The radius of the sphere around every copy of the sets (Å): their boxes merged, plus the largest copy radius. */
 export function sceneRadius(sets: readonly PlacementSet[], cache = new Map<string, SetBounds>()): number {
