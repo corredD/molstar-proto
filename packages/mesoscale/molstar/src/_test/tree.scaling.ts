@@ -15,6 +15,7 @@ import {
   quadraticControl,
   scaling,
 } from '../../../../sequences/core/_test/model/scaling.js';
+import { MesoDocumentModel } from '../document-model.js';
 import { documentLooks, documentOutline, OutlineStats } from '../document-tree.js';
 
 // The Scene tree's rows over the open document at n and 4n populations (`test:scaling`; apps/prism-me/AGENTS.md, no
@@ -197,3 +198,26 @@ it('a view edit makes no row again: the same outline, the same row objects, the 
   expect(counted).not.toBe(outline);
   expect(counted.row('p.1')?.achieved).toBe(7);
 }, 60_000);
+
+// review gate (S4): an eye drag over n rows is one patch; each row's eye look found by its address once, not by a scan
+// of the view's looks a row (n rows × n looks)
+const eyeCase: BulkCase<{ model: MesoDocumentModel; selects: string[] }> = {
+  setup: (n) => {
+    const { doc } = synthetic(n);
+    const selects = doc.populations.map((p) => `(population ${p.id})`);
+    const looks = selects.map((select, i) => ({ id: `l.eye.${i + 1}`, select, visible: true }));
+    const model = new MesoDocumentModel({ plugin: {}, extensions: { load: async () => true } } as never);
+    model.doc = { ...doc, views: [{ id: 'v.a', looks }] };
+    return { model, selects };
+  },
+  run: ({ model, selects }) => {
+    model.eyePatch(selects, false);
+  },
+};
+
+it('an eye drag over n rows: its patch made in linear time', () => {
+  let s = scaling(eyeCase, 2000, { reps: 5 });
+  report('eye patch, N rows', s);
+  for (let attempt = 1; attempt < 3 && !isLinear(s, Band); attempt++) s = scaling(eyeCase, 2000, { reps: 5 });
+  expect(isLinear(s, Band), `eye patch, N rows: ${describeScaling(s)}`).toBe(true);
+});
