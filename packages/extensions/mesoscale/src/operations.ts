@@ -659,6 +659,7 @@ export class MesoscaleApi extends ApiArea {
           }
           return {
             hiddenSpecies: names.filter((n) => hidden.has(n)),
+            color: objectColor(old, species.length === names.length, reset ? null : parsed),
             speciesColors: withSpeciesColors(old, species, (s) =>
               reset
                 ? null
@@ -728,6 +729,7 @@ export class MesoscaleApi extends ApiArea {
         const generated = scheme === 'generate' ? generateColors(root, variability, shift) : undefined;
         const index = new Map(species.map((s, i) => [s, i]));
         const changed = await updateMembrane(ctx, membrane, (old) => ({
+          color: objectColor(old, species.length === names.length, scheme === 'theme' ? null : uniform),
           speciesColors: withSpeciesColors(old, species, (s) =>
             scheme === 'theme' ? null : (uniform ?? generated!.get(index.get(s)!)!),
           ),
@@ -918,7 +920,7 @@ export class MesoscaleApi extends ApiArea {
       if (on === undefined && !Object.keys(edges).length) {
         return ApiResult.fail('invalid', 'Nothing to change.', 'Give on, or an edge (entity, chain, atom).');
       }
-      const membrane = membraneCell(ctx, particles.trim());
+      const membrane = membraneCell(ctx, particles);
       if (membrane) {
         // a membrane's: far its colour, then its species' (no chain or atom colours: a lipid is one group)
         const old = (membrane.transform.params as LipidMembraneProps).colorLevels;
@@ -1734,6 +1736,15 @@ async function updateMembrane(
   if (JSON.stringify(next) === JSON.stringify(old)) return false;
   await ctx.plugin.state.data.build().to(cell).update(next).commit({ revertOnError: true });
   return true;
+}
+
+/**
+ * A membrane's own colour (By zoom's far colour) as a list's Look colour on all of it (review S2): one colour given to
+ * every species is its colour too; back to the theme (null) for every species, its default again; else kept
+ */
+function objectColor(old: LipidMembraneProps, all: boolean, color: Color | null | undefined): Color {
+  if (!all || color === undefined) return old.color;
+  return color ?? LipidMembraneReprParams.color.defaultValue;
 }
 
 /** Species colours: those of `species` set to `color` (null: back to their default), the others kept */
