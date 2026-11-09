@@ -452,6 +452,7 @@ await api.run('mesoscale.wrapMembrane', { mesh, method: 'cutter', patch: 'charmm
       return { ok: true, status: 200, text: async () => patch };
     });
     try {
+      // biome-ignore lint/nursery/noImpliedEval: the snippet given to Ludo, run as he pastes it in the console
       const run = new Function(`return (async () => { ${snippet.replace(/\nawait /, '\nreturn await ')} })();`);
       const r = (await run()) as ApiResult<unknown>;
       expectOk(r);
