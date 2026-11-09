@@ -553,3 +553,32 @@ band needs the graphics library: the object dither (`fadeLod`) is off for object
 pixel-mode levels' last range is open (`getLodLevelsValue`: Infinity). A library change, Ludo's call: proposed, not
 built. Test (Dawn): a patch whose rare species stands tallest, a perspective view across the switch (spheresPx just
 under and just over the lipids' size on screen), the mean Oklab of the membrane's pixels within a bound.
+
+## Round 4c, built (2026-11-08)
+
+**Item 7, the switch.** (1) Colour: `2d8aa6e42` failing (Oklab a, b off by 0.050 across the switch, bound 0.02), fix
+`5309e53d6`: the far surface's points are the species on top in a top-view raster of the patch drawn as the switch's
+level draws it (`switchSpheres`: the level Mol*'s levels pick at the switch's size on screen, its atoms in
+`orderLodLevels`' order, its grown radius; `topGrid`), the nearest head where no sphere covers; after: 0.0025. Model ×20
+with the app's look: a, b across the switch (−0.064, 0.079) | (0.043, −0.008) before, (−0.040, 0.060) | (−0.031,
+0.052) after. (2) The step: with the app's look the 20 Å step from the sphere tops down to the surface drew a line along
+the triangles (outline, shadows). `01ed9b2c0` failing, `4b8189177`: the far surface at the switch level's mean top,
+dithered in by distance with Mol*'s object fade (`lod`, `fadeSurface`) from a lipid at twice the switch's px to the
+switch, not drawn nearer; set when the size on screen changes (a resize), not per move; orthographic: drawn or not. (3)
+That opened the gaps between close lipids to the background (`r4c-model-x20-zoom2`, first render): `0bb6814c8` a
+second, coarser surface a cut leaflet (four lipid spacings) at the lowest head, drawn to the selection's hysteresis.
+
+**Item 8, colouring as a particle list.** `003b84626`: `mesoscale.style` (color, visible, reset), `mesoscale.colors`
+(generate, uniform, theme) and `mesoscale.colorLevels` take a membrane as `particles`, its species its entities, one
+writer (`updateMembrane`, `membraneSpecies` too), one step each; colours by zoom on the members and the surfaces (far:
+the membrane's colour; near: its species'; no chain or atom colours: a lipid is one group; off for one colour, as a
+list's). Dawn (`lipid-colors.webgpu.test.ts`): each operation changes the spheres close up and the cutter's far
+surface, both methods; the theme back draws as at first. `fff9bfb79`: right-click › Color… (swatches, Generate colors)
+and the Look (a colour for all, By zoom, Generate colors, Reset). Specs `0c89e7be8`, `50a27f267`; changelog `1656174b0`.
+
+**Not built (Ludo's call).** A dither of the spheres themselves: the object dither is off for objects with levels
+(`uLod.w`) and the pixel-mode levels' last range is open (`getLodLevelsValue`): a graphics library change. The surface
+dithers in over them instead.
+
+**Colour speed.** A colour on all species redraws the membrane (S2 open: every surface rebuilt): cow ×100 60 ms, model
+×20 0.95 s (four 1 M-vertex-capped surfaces). A colour-only update path is the next step if Ludo finds it slow.
