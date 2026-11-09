@@ -887,16 +887,18 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
     get: () => {
       let live = 0;
       let triangles = 0;
+      let inView = 0;
       for (const s of selections) {
         for (const n of s.live) live += n;
         triangles += s.count;
+        inView += s.inView;
       }
-      return { live, triangles, ...selectionStats };
+      return { live, triangles, inView, ...selectionStats };
     },
   });
   return repr as typeof repr & {
     readonly cutLipids: number;
-    readonly pool: { live: number; triangles: number; selects: number; regenerations: number };
+    readonly pool: { live: number; triangles: number; inView: number; selects: number; regenerations: number };
   };
 }
 

@@ -49,6 +49,8 @@ export interface LipidSelection {
   /** the selected triangles, in triangle order, `count` of them */
   readonly selected: Uint32Array;
   readonly count: number;
+  /** the triangles in view at the last selection (taken or not) */
+  readonly inView: number;
   /** per member and selected triangle its first slot: `bases[m * T + i]` */
   readonly bases: Uint32Array;
   /** per member its live lipids */
@@ -146,6 +148,7 @@ export function createLipidSelection(
   const shown = new Uint8Array(M).fill(1);
   let count = 0;
   let version = 0;
+  let visible = 0;
 
   const outside = (frustum: Frustum3D, x: number, y: number, z: number, r: number) => {
     for (let i = 0; i < 6; ++i) {
@@ -167,6 +170,7 @@ export function createLipidSelection(
           : Infinity;
     let n = 0;
     let far = 1;
+    visible = 0;
     for (let g = 0; g < regionCount; ++g) {
       const o = g * 4;
       if (outside(frustum, regionSpheres[o], regionSpheres[o + 1], regionSpheres[o + 2], regionSpheres[o + 3]))
@@ -179,6 +183,7 @@ export function createLipidSelection(
         const z = spheres[q + 2];
         const r = spheres[q + 3];
         if (outside(frustum, x, y, z, r)) continue;
+        visible += 1;
         const d = Math.max(cn[0] * x + cn[1] * y + cn[2] * z + cc - r, 1e-3);
         if (px(d) < p.enterPx * (taken[t] ? p.keep : 1)) continue;
         candidates[n++] = t;
@@ -239,6 +244,9 @@ export function createLipidSelection(
     selected,
     get count() {
       return count;
+    },
+    get inView() {
+      return visible;
     },
     bases,
     live,
