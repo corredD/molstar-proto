@@ -281,3 +281,29 @@ over n and 4n triangles). Images and numbers: Numbers above. Not tried in Chrome
 `styles:check` pass. Quick lane with Dawn (mesoscale, cryoet, stage-tools, prism-me, the culler, `webgpu-gpu-instances`,
 `webgpu-gpu-culling`): 78 files, 543 passed. Medium (mesoscale) passes. Scaling: the selection guard passes.
 `typecheck:storybook` (prism-viewer) fails on `src/api/styles.ts:114`, a file this lane does not touch (a base error).
+
+## Round 4b brief (Ludo, 2026-11-08, on the teddy at 1354: `lipid-tiles-shots/ludo-r4-teddy.png`)
+
+**Asked.** "the bump should be colored like the spheres. And also, the spheres head are above and below the membrane, so
+the texture should be there as well. not below. And I am not sure what is this colored layer between the bump and the
+spheres at the level of the mesh". His settings then: Both, Lipids down to 3.6 px, Lipids at most 457,000, custom
+levels `0 Å ×1 b1 · 4000 Å ×8 b2 · 8000 Å ×64 b2`.
+
+1. **The far surface coloured like the spheres.** Today one mean colour (`meanColor`, a brown). Wanted: a head-scale
+   pattern in the species' own colours, in their proportions, following the species rows (colour, eye) and colorBy.
+   Design at a checkpoint (e.g. the patch's heads, seen from above, baked into a tileable colour + bump texture mapped
+   by each region's cutter plane, so the far look is the near look blurred; or per-vertex colours on a finer surface).
+   Must be invisible-cheap at rest and add no per-frame allocation. A test: the surface's colours are the species'
+   (not one), a hidden species leaves it.
+2. **Two surfaces, at the heads.** One per leaflet, offset along the normal to that leaflet's head plane (outer +,
+   inner −, from the cutter table's offsets), single-sided facing out of its leaflet, not one double-sided surface at
+   the mid-plane. A test: each surface's distance from the mesh equals its leaflet's head offset.
+3. **The coloured layer at the mesh.** Find what it is before changing it (an image close on a silhouette and the
+   draw's objects): the bilayer's tails seen edge-on between the heads and the mid-plane surface, the coarse sphere
+   levels (stride 8/64, grown) poking through, or the hysteresis band. Report the cause; fix if it is a defect
+   (with 2. the surfaces no longer cut through the tails).
+
+**Ludo checks.** The teddy at 1354, Both: from far the surface reads as the same colours as the spheres, the switch
+hardly visible; at a silhouette heads above and below, no stray layer between.
+
+**Size and model.** ~250 production lines; Opus (shader/texture design). Gate on the round's diff.
