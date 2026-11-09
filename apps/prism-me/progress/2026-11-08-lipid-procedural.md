@@ -322,3 +322,22 @@ hardly visible; at a silhouette heads above and below, no stray layer between.
    plane (the mean over its conformers of their outermost atom's z: + outer, − inner), single-sided facing out of its
    leaflet (the inner one's winding flipped).
 3. **The layer at the mesh: diagnosed before a change** (below, with images).
+
+**More from Ludo, same try (2026-11-08):** "membrane and membrane with tiling are different now. And the wrap with lipids
+(the first one) I assumed use the cookie cutter, but its highly regular. the one with tiles, doesnt have the color, and
+the texture approach. And cant use clip on it".
+
+4. **The cutter looks highly regular.** "Wrap with lipids" is the cutter (c692673e6). Find why it reads regular before
+   changing it: regions larger than the 232 Å patch repeat it at its period inside a region; only 4 conformers a
+   species (`cutterTable(…, conformers = 4)`, `i % k` in cutter.ts:74); the same offset or spin across neighbouring
+   regions. Measure (e.g. the autocorrelation of head positions in a big region, or the count of distinct
+   neighbourhoods) and fix so no period or tiling shows at any distance; compare with cellPACKgpu's per-triangle
+   random offset and spin. A test that fails on today's regularity.
+5. **One membrane, two generators.** Whatever the method, a membrane has the same properties and looks: the species
+   rows (eye, colour), colorBy, the far surface (1, 2), Levels. The tiles membrane gets them, or say at the checkpoint
+   what cannot hold for tiles and why.
+6. **Clip on a membrane.** The right-click and properties offer the same clipping as on a particle list or mesh (menu.ts
+   ~475 excludes a membrane from `moveItems`; clipping must not be excluded with it), for both methods, near spheres and
+   far surface alike. A test: a clip applied to a membrane removes what it cuts in both looks.
+
+Size now ~450 production lines; checkpoint if over ~600.
