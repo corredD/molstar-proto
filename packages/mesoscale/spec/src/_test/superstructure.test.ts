@@ -161,6 +161,42 @@ describe('superstructures', () => {
     expect(Math.floor(start / PerGranule)).toBe(12);
   });
 
+  // lane mvs-tree: an eye on a population drawn as parts hid only its (already hidden) instance spheres; its parts, the
+  // expansions, took only the template's looks and stayed shown
+  it('a look hiding a population drawn as parts hides its parts; one instance hidden hides that instance only', async () => {
+    const r = await compile(betaCellDoc(), { resolvers: countingResolvers().resolvers, load });
+    const hide = (select: string) =>
+      flattenInstances(
+        updateView({ ...betaCellDoc(), views: [{ id: 'v', looks: [{ select, visible: false }] }] }, r.ir!),
+      ).ir;
+    /** Whether every type of a drawn set is shown, by its last look (later looks win). */
+    const shown = (ir: ReturnType<typeof hide>, key: string) => {
+      const set = placementSets(ir).find((s) => s.key === key)!;
+      return set.typeTable.every((t) => {
+        const last = ir.view.looks.filter((l) => l.set === key && !l.runs && l.types.includes(t.index)).pop();
+        return last?.visible !== false;
+      });
+    };
+    const expansions = (ir: ReturnType<typeof hide>, of: string) =>
+      placementSets(ir)
+        .map((s) => s.key)
+        .filter((k) => k.startsWith(`${of}|`));
+    const base = r.ir!;
+    const packed = placementSets(base).find((s) => s.typeTable.some((t) => t.population === 'p.granules'))!.key;
+    const named = placementSets(base).find((s) => s.typeTable.some((t) => t.population === 'i.granule-docked'))!.key;
+    const granules = hide('(population p.granules)');
+    expect(expansions(granules, packed).length).toBeGreaterThan(0);
+    for (const k of expansions(granules, packed)) expect(shown(granules, k)).toBe(false);
+    for (const k of expansions(granules, named)) expect(shown(granules, k)).toBe(true);
+    const docked = hide('(instance i.granule-docked)');
+    const [dockedKey, deepKey] = ['0', '1'].map(
+      (t) => expansions(docked, named).find((k) => k.startsWith(`${named}|${t}*`))!,
+    );
+    expect(shown(docked, dockedKey)).toBe(false);
+    expect(shown(docked, deepKey)).toBe(true);
+    for (const k of expansions(docked, packed)) expect(shown(docked, k)).toBe(true);
+  });
+
   it('nests: a superstructure of superstructures, flattened through both levels', async () => {
     const doc = nested;
     expect(validate(doc).filter((i) => i.severity === 'error')).toEqual([]);
