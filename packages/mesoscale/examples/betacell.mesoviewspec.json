@@ -26,7 +26,7 @@
       "kind": "recipe",
       "format": "cellpack-gpu-serialized",
       "label": "cellPACKgpu insulin granule recipe (trimmed)",
-      "uri": "examples/fixtures/isg.cellpack-gpu.json"
+      "uri": "../spec/src/examples/fixtures/isg.cellpack-gpu.json"
     }
   ],
   "entities": [

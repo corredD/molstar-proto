@@ -4,7 +4,8 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { exosomeDoc, ExosomeResources } from '../examples/exosome.js';
 import { syntheticPicksStar, syntheticVesicleObj } from '../examples/fixtures/synthetic.js';
@@ -58,4 +59,25 @@ describe('paired examples', () => {
     check('fixtures/membrane.obj', syntheticVesicleObj());
     check('fixtures/catalase_picks.star', syntheticPicksStar());
   });
+});
+
+// A relative `uri` resolves against the document's own location (format.md, Resources), as the CLIs and prism-me's open
+// read it; `fixture://x` is `fixtures/x` beside the document. The data a reader of the examples is given (recipes,
+// meshes, STAR tables) is a file there; the binary volumes and the yeast pipeline files are named, not shipped.
+describe('the committed examples name their resources from their own folder', () => {
+  const shipped = new Set(['cellpack-gpu-serialized', 'obj', 'relion-star']);
+  for (const file of readdirSync(dir).filter((f) => f.endsWith('.mesoviewspec.json'))) {
+    it(`${file}: every shipped format's relative uri is a file`, () => {
+      const doc = JSON.parse(readFileSync(new URL(file, dir), 'utf8')) as {
+        resources?: { id: string; format?: string; uri?: string }[];
+      };
+      for (const r of doc.resources ?? []) {
+        const remote = /^[a-z][a-z0-9+.-]*:/i.test(r.uri ?? '') && !r.uri?.startsWith('fixture://');
+        if (!r.uri || remote || !shipped.has(r.format ?? '')) continue;
+        const rel = r.uri.startsWith('fixture://') ? `fixtures/${r.uri.slice(10)}` : r.uri;
+        const path = fileURLToPath(new URL(rel, dir));
+        expect(existsSync(path), `${r.id}: ${r.uri} is not at ${path}`).toBe(true);
+      }
+    });
+  }
 });

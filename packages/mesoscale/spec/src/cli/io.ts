@@ -142,11 +142,12 @@ export function reportIssues(io: CliIO, where: string, issues: readonly Issue[])
 }
 
 /**
- * Resource content from files: a relative uri against each `--base`, then the document's directory, then the cwd;
- * `fixture://x` is `fixtures/x` there, `file://` a path; `.json` is parsed. Never the network.
+ * Resource content from files: a relative uri against the document's directory (format.md, Resources; as prism-me's
+ * open reads it), then against each `--base` given as an override; `fixture://x` is `fixtures/x` there, `file://` a
+ * path; `.json` is parsed. Never the network.
  */
 export function resourceLoader(io: CliIO, docPath: string, doc: MesoViewSpecDoc, bases: readonly string[]) {
-  const dirs = [...bases, dirname(docPath), '.'].map((d) => resolve(io.cwd, d));
+  const dirs = [dirname(docPath), ...bases].map((d) => resolve(io.cwd, d));
   return (id: string): unknown => {
     const uri = doc.resources?.find((r) => r.id === id)?.uri;
     if (!uri || /^https?:/.test(uri)) return undefined;

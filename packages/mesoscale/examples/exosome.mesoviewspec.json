@@ -50,7 +50,7 @@
       "kind": "recipe",
       "format": "cellpack-gpu-serialized",
       "label": "cellPACKgpu exosome recipe (exo_serialized.json, trimmed)",
-      "uri": "examples/fixtures/exosome.cellpack-gpu.json"
+      "uri": "../spec/src/examples/fixtures/exosome.cellpack-gpu.json"
     },
     {
       "id": "r.tilts",
