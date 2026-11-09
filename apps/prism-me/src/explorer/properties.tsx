@@ -661,7 +661,7 @@ function resolveOf(model: DocModel, id: string) {
 }
 
 /** Does the issue speak of this population or instance: by its path (id or index), ids, or message */
-function issueMentions(doc: DocData, issue: DocIssue, id: string): boolean {
+export function issueMentions(doc: DocData, issue: DocIssue, id: string): boolean {
   if (issue.ids?.includes(id) || issue.message.includes(id)) return true;
   const path = issue.path;
   if (!path) return false;

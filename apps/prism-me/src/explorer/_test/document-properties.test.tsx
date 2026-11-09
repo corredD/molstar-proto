@@ -21,6 +21,7 @@ import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
 import type { PrismViewer } from '@molstar/prism-viewer/viewer';
 import { afterEach, describe, expect, it } from 'vitest';
 import { documentKey } from '../document.js';
+import { issueMentions } from '../properties.js';
 import { explorerUI, sceneModelOf } from '../ui.js';
 
 // The properties of a MesoViewSpec document's rows (prism.md §4.2, §4.3), over a headless viewer in jsdom with the
@@ -196,5 +197,30 @@ describe('a MesoViewSpec document opened with the panel shown', () => {
     expect(v.plugin.managers.particles.hierarchy.current.lists.length).toBe(0);
     await until(() => !!host.querySelector(`[data-tree-key="${documentKey('')}"]`), 5000);
     expect(host.querySelector(`[data-tree-key="${documentKey('')}"]`)?.textContent).toContain('Exosome in plasma');
+  });
+});
+
+describe('which issues a population or instance owns (Built by)', () => {
+  const doc = {
+    populations: [{ id: 'p.catalase' }, { id: 'p.catalase.observed' }],
+    instances: [{ id: 'i.a' }],
+  } as never;
+  const issue = (message: string, extra: object = {}) => ({ severity: 'warning', message, ...extra }) as never;
+
+  it('does not give p.catalase the issues of p.catalase.observed', () => {
+    const i = issue('p.catalase.observed placed 3 of 10 copies');
+    expect(issueMentions(doc, i, 'p.catalase.observed')).toBe(true);
+    expect(issueMentions(doc, i, 'p.catalase')).toBe(false);
+  });
+
+  it('matches an id in a message on id boundaries only', () => {
+    expect(issueMentions(doc, issue('population "p.catalase" is short'), 'p.catalase')).toBe(true);
+    expect(issueMentions(doc, issue('p.catalase, short'), 'p.catalase')).toBe(true);
+    expect(issueMentions(doc, issue('xp.catalase short'), 'p.catalase')).toBe(false);
+  });
+
+  it('still finds an issue by its path index', () => {
+    expect(issueMentions(doc, issue('short', { path: '/populations/1/count' }), 'p.catalase.observed')).toBe(true);
+    expect(issueMentions(doc, issue('short', { path: '/populations/1/count' }), 'p.catalase')).toBe(false);
   });
 });
