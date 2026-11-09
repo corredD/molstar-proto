@@ -379,6 +379,19 @@ describe('explorer', () => {
     expect(nodeMenuItems(v.api, area, undefined).map((i) => i.id)).toEqual(['reset-camera']);
   });
 
+  it('hides a mesh under its membrane when its Look scaled it first (Ludo’s second try, 2026-11-08)', async () => {
+    const v = await viewer();
+    const area = v.api.explorer!;
+    const mesh = area.objectsState().value.find((o) => o.kind === 'mesh')!;
+    // Look › Scale ×100 (the shape's instance transform), then right-click › Wrap with lipids
+    expectOk(await v.api.run('cryoet.mesh', { mesh: mesh.ref, scale: 100 }));
+    expectOk(await v.api.run('mesoscale.wrapMembrane', { mesh: mesh.ref, method: 'cutter' }));
+    const cell = v.plugin.state.data.cells.get(mesh.ref)!;
+    expect(cell.state.isHidden).toBe(true);
+    // what is drawn, not only the cell's state: the mesh's representation hidden
+    expect((cell.obj!.data as { repr: { state: { visible: boolean } } }).repr.state.visible).toBe(false);
+  });
+
   it('maps a pick on a mesh, in a group or whole, to its row; its menu: color, move, clip, label, remove', async () => {
     const v = await viewer();
     const area = v.api.explorer!;
