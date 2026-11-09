@@ -160,6 +160,38 @@ describe('a membrane made per view: the pool and the selection', () => {
     expect(inner.count).toBeGreaterThan(4);
   });
 
+  it('leaves no hole: every lipid in view is in a cell taken (a close view over a large triangle)', () => {
+    const C = cellSide(table.box);
+    const i = input(2, 40 * C);
+    const selection = createLipidSelection(i, full(i));
+    const eye = Vec3.create(20 * C, 30 * C, 200);
+    const v = view(eye, Vec3.create(21 * C, 31 * C, 0));
+    selection.select(v.plane, v.frustum, v.depthScale, 0, Params);
+    const taken = new Set<string>();
+    for (let k = 0; k < selection.count; ++k) {
+      taken.add(`${selection.units[k * 3]},${selection.units[k * 3 + 1]},${selection.units[k * 3 + 2]}`);
+    }
+    const cut = emptyCut();
+    let inView = 0;
+    let missed = 0;
+    for (let t = 0; t < i.indices.length / 3; ++t) {
+      triangleCut(i.positions, i.indices, t, i.regions, table.box, cut);
+      for (let m = 0; m < i.members; ++m) {
+        eachHit(table, cut, m, (_l, x, y) => {
+          const w = Vec3.create(cut.o[0] + x * cut.e1[0] + y * cut.e2[0], cut.o[1] + x * cut.e1[1] + y * cut.e2[1], 0);
+          if (!Frustum3D.intersectsSphere3D(v.frustum, { center: w, radius: 0 })) return;
+          inView += 1;
+          // its cell: p = off + Rz(θ) q
+          const px = cut.ox + cut.cos * x - cut.sin * y;
+          const py = cut.oy + cut.sin * x + cut.cos * y;
+          if (!taken.has(`${t},${Math.floor(px / C)},${Math.floor(py / C)}`)) missed += 1;
+        });
+      }
+    }
+    expect(inView).toBeGreaterThan(100);
+    expect(missed).toBe(0);
+  });
+
   it('takes small triangles whole, their slots their counts', () => {
     const i = input(16, 50);
     const selection = createLipidSelection(i, full(i));

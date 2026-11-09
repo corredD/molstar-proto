@@ -661,6 +661,9 @@ function fadeSurface(
   ValueCell.update(values.uLod, Vec4.set(u, lod[0], lod[1], lod[2], 0));
 }
 
+/** A cut leaflet's near surface off the bilayer's mid-plane, Å (the two leaflets' apart) */
+const NearLift = 2;
+
 /** The patch table texture's width (`MeshSchema.tPatchTable`: `patchTexel` reads row by row) */
 const PatchTableWidth = 1024;
 
@@ -1205,8 +1208,12 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
         const head = headOffset(table, leaflet.name) - leaflet.offset;
         const top =
           raster.mean === undefined ? head : (leaflet.name === 'outer' ? 1 : -1) * raster.mean - leaflet.offset;
+        // beneath a cut leaflet's lipids: just off the mid-plane (round 5: at the lowest head it stood over the lipids of
+        // the coarser levels, in bands across a close view)
+        const beneath = (leaflet.name === 'outer' ? 1 : -1) * NearLift;
         for (const fade of cut ? (['near', 'far'] as const) : ([undefined] as const)) {
-          const f = patchSurface(leaflet.mesh, leaflet.regions.regionOf, leaflet.name, fade === 'far' ? top : head);
+          const lift = fade === 'far' ? top : fade === 'near' ? beneath : head;
+          const f = patchSurface(leaflet.mesh, leaflet.regions.regionOf, leaflet.name, lift);
           const object = patchObject(f, textures, table, leaflet.regions, size, props, !!fade);
           if (fade) {
             const values = object.values as BaseValues;

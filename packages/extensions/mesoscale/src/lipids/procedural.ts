@@ -576,6 +576,14 @@ export function createLipidSelection(input: SelectionInput, capacity: Uint32Arra
         x1 = Math.max(x1, pxp);
         y1 = Math.max(y1, pyp);
       }
+      // a cell's half sides in world (p's axes through q's to the plane): its box against each plane, not a sphere
+      const hxx = (C / 2) * (ax * cos - vx * sin);
+      const hxy = (C / 2) * (ay * cos - vy * sin);
+      const hxz = (C / 2) * (az * cos - vz * sin);
+      const hyx = (C / 2) * (ax * sin + vx * cos);
+      const hyy = (C / 2) * (ay * sin + vy * cos);
+      const hyz = (C / 2) * (az * sin + vz * cos);
+      const height = p.lipidSize * 4;
       const cx0 = Math.floor((x0 - cellR) / C);
       const cx1 = Math.floor((x1 + cellR) / C);
       const cy0 = Math.floor((y0 - cellR) / C);
@@ -598,9 +606,18 @@ export function createLipidSelection(input: SelectionInput, capacity: Uint32Arra
           const wx = bx + qx * ax + qy * vx;
           const wy = by + qx * ay + qy * vy;
           const wz = bz + qx * az + qy * vz;
-          if (outside(frustum, wx, wy, wz, rw)) continue;
+          let out = false;
+          for (let f = 0; f < 6 && !out; ++f) {
+            const { normal: fn, constant } = frustum[f as 0];
+            const spread =
+              Math.abs(fn[0] * hxx + fn[1] * hxy + fn[2] * hxz) + Math.abs(fn[0] * hyx + fn[1] * hyy + fn[2] * hyz);
+            out = fn[0] * wx + fn[1] * wy + fn[2] * wz + constant + spread + height < 0;
+          }
+          if (out) continue;
           if (facing > 0 && towards(o, wx, wy, wz) < -facing - rw) continue;
-          consider(unitKey(t, cx, cy), Math.max(cn[0] * wx + cn[1] * wy + cn[2] * wz + cc - rw, 1e-3));
+          const spread =
+            Math.abs(cn[0] * hxx + cn[1] * hxy + cn[2] * hxz) + Math.abs(cn[0] * hyx + cn[1] * hyy + cn[2] * hyz);
+          consider(unitKey(t, cx, cy), Math.max(cn[0] * wx + cn[1] * wy + cn[2] * wz + cc - spread - height, 1e-3));
         }
       }
     }
