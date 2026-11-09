@@ -242,6 +242,11 @@ export function ParticleTargetRepresentation(
       visual.setLayers(state);
       if (state.transform !== undefined) visual.setTransform(state.transform);
     }
+    // a merged object follows its members' new transforms at once, not when a renderable syncs it (4af9a48cd: its
+    // bounds and the culler's cells read before that; WebGPU)
+    if (state.transform !== undefined) {
+      for (const ro of renderObjects) (ro as Partial<MergedGraphicsRenderObject>).merged?.sync();
+    }
     // on what is drawn: a merged object moves as one, its members' are not read (`mergeRenderObjectsByType`)
     const preview = state.previewTransform;
     if (preview !== undefined) for (const ro of renderObjects) Visual.setPreviewTransform(ro, preview);
