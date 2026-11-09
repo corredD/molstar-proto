@@ -143,6 +143,21 @@ function* getTileSet(
   return set;
 }
 
+/**
+ * Throws past the device's buffers, before any is made for the draw (Ludo's third try, 2026-11-08: the cutter's 27.7 M
+ * lipids said ok, then lost the WebGPU device): the GPU culler holds each instance's transform once a level region and
+ * once more (`merged-culler.ts`, `AttributeFloats.aTransform`, 48 B; the sphere raster's regions, where the device has
+ * it, doubling the levels') in one storage buffer, its largest
+ */
+export function checkInstances(instances: number, levels: number, maxStorageBufferSize: number, raster: boolean) {
+  const bytes = instances * ((raster ? 2 : 1) * Math.max(1, levels) + 1) * 48;
+  if (bytes <= maxStorageBufferSize) return;
+  const mb = (b: number) => `${Math.ceil(b / 2 ** 20).toLocaleString()} MB`;
+  throw new Error(
+    `This membrane's ${instances.toLocaleString()} instances need ${mb(bytes)} in one buffer, past this GPU’s buffers (${mb(maxStorageBufferSize)}): wrap it with tiles, or a coarser or smaller mesh.`,
+  );
+}
+
 /** A stage of a membrane's build, for its task's progress (Prism's status pill) */
 export interface MembraneProgress {
   readonly message: string;
@@ -461,7 +476,11 @@ function speciesColors(data: MembraneData) {
  * The membrane's representation: a spheres object per (leaflet, variant) with tiles, merged with GPU culling; the
  * transforms from the assignment kernel. No objects where the device cannot cull on the GPU (WebGL2)
  */
-export function LipidMembraneRepresentation(graphics: GraphicsContext | undefined) {
+export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | undefined) {
+  let graphics = initialGraphics;
+  const currentGraphics = () => graphics;
+  /** the data last built, built again on a new context (`setGraphics`) */
+  let lastData: MembraneData | undefined;
   const updated = new Subject<number>();
   let version = 0;
   let renderObjects: GraphicsRenderObject[] = [];
@@ -541,6 +560,8 @@ export function LipidMembraneRepresentation(graphics: GraphicsContext | undefine
 
   async function buildNow(data: MembraneData, step: (p: MembraneProgress) => Promise<void>) {
     cutLipids = 0;
+    // the context of this build (`setGraphics` may replace the representation's while it waits)
+    const graphics = currentGraphics();
     if (!graphics?.compute || !canCullOnGpu(graphics)) {
       release();
       builtFor = undefined;
@@ -557,12 +578,12 @@ export function LipidMembraneRepresentation(graphics: GraphicsContext | undefine
     const bounds = Sphere3D.clone(data.sphere);
     groupCount = 0;
     let visual = 0;
-    for (let c = 0; c < data.cut.length; ++c) {
-      const leaflet = data.cut[c];
-      const { table, mesh } = leaflet;
-      if (!reuse) {
+    // the cuts' counts first (a count pass each, read back), then the whole membrane's instances against the device
+    if (!reuse) {
+      for (const leaflet of data.cut) {
         // the count pass and its readback: one wait on the GPU, not a stretch of the main thread
         await step({ message: `Cutting triangles (${leaflet.name})` });
+        const { table, mesh } = leaflet;
         cutters.push(
           await createLipidCutter(
             graphics.compute,
@@ -574,6 +595,15 @@ export function LipidMembraneRepresentation(graphics: GraphicsContext | undefine
           ),
         );
       }
+    }
+    let instances = 0;
+    for (const c of cutters) for (const n of c.totals) instances += n;
+    for (const l of data.leaflets) instances += l.slots.variant.length;
+    const levels = props.detail === 'off' ? 0 : membraneLevels(props.detail, props.levels).lodLevels.length;
+    checkInstances(instances, levels, graphics.compute.maxStorageBufferSize, !!graphics.capabilities.atomicMinMax64);
+    for (let c = 0; c < data.cut.length; ++c) {
+      const leaflet = data.cut[c];
+      const { table } = leaflet;
       const cutter = cutters[c];
       const b = cutBounds(leaflet);
       for (let m = 0; m < table.members.length; ++m) {
@@ -658,7 +688,8 @@ export function LipidMembraneRepresentation(graphics: GraphicsContext | undefine
     createOrUpdate: (p, data) =>
       Task.create('Lipid membrane', async (runtime) => {
         props = { ...props, ...p };
-        if (data) await build(data, runtime);
+        if (data) lastData = data;
+        if (lastData) await build(lastData, runtime);
         version += 1;
         updated.next(version);
       }),
@@ -667,6 +698,15 @@ export function LipidMembraneRepresentation(graphics: GraphicsContext | undefine
       for (const o of renderObjects) {
         if (s.visible !== undefined) Object.assign(o.state, { visible: s.visible });
       }
+    },
+    // a new context (a fall back to WebGL2, a restore): nothing of the previous one kept, made again by the next
+    // `createOrUpdate` where it can (on WebGL2 nothing: a WebGPU object there uploaded a texture past its range)
+    setGraphics: (g) => {
+      release();
+      builtFor = undefined;
+      renderObjects = [];
+      merged.clear();
+      graphics = g;
     },
     setTheme: () => {},
     getLoci: () => EmptyLoci,

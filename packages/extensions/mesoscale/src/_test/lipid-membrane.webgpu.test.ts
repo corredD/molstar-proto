@@ -139,4 +139,53 @@ describe.skipIf(!webgpu)('lipid membrane on WebGPU (Dawn)', () => {
       plugin.dispose();
     }
   });
+
+  it('fails past the device’s buffers before it draws, and drops its objects on a new context (Ludo, 2026-11-08)', async () => {
+    // the cutter at 27.7 M lipids said ok, then lost the WebGPU device; after the fall back to WebGL2 a texture past its
+    // range was uploaded
+    const plugin = await HeadlessPluginContext.create(
+      { webgpu },
+      DefaultPluginSpec(),
+      { width: Size, height: Size },
+      { backend: 'webgpu' },
+    );
+    try {
+      await plugin.init();
+      registerLipidPatch('dawn-patch', syntheticPatchPdb().text);
+      const graphics = plugin.canvas3d!.graphics;
+      const compute = graphics.compute! as { maxStorageBufferSize: number };
+      const limit = compute.maxStorageBufferSize;
+      const params = {
+        ...PD.getDefaultValues(LipidMembraneParams),
+        method: 'cutter' as const,
+        radius: 300,
+        edge: 80,
+        patch: 'dawn-patch',
+        center: Vec3.zero(),
+      };
+      // a device whose storage buffers hold the count pass but not the culler's instances
+      compute.maxStorageBufferSize = 64 * 1024;
+      await plugin
+        .build()
+        .toRoot()
+        .apply(LipidMembrane, params)
+        .commit()
+        .catch(() => {});
+      const cell = [...plugin.state.data.cells.values()].find((c) => c.transform.transformer === LipidMembrane);
+      expect(cell?.status).toBe('error');
+      expect(cell?.errorText).toMatch(/GPU’s buffers/);
+      compute.maxStorageBufferSize = limit;
+      expect(graphics.takeErrors?.() ?? []).toEqual([]);
+      // within the limits it draws; a new context (a fall back to WebGL2: no compute) drops its objects
+      await plugin.build().delete(cell!.transform.ref).commit();
+      const node = await plugin.build().toRoot().apply(LipidMembrane, params).commit();
+      const repr = plugin.state.data.cells.get(node.ref)!.obj!.data.repr;
+      expect(repr.renderObjects.length).toBe(1);
+      repr.setGraphics!({ ...graphics, compute: undefined } as never);
+      await repr.createOrUpdate().run();
+      expect(repr.renderObjects.length).toBe(0);
+    } finally {
+      plugin.dispose();
+    }
+  });
 });
