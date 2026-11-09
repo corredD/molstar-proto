@@ -209,9 +209,9 @@ runs agree within about 15%.
   sets against about 105 ms up to 100.
 - The looks written (remove + add) come to 4 layers for each of the lists, 4,004 at 1,000 sets, which is what a rewrite
   on the add alone gives (`planCommit` rewrites looks when a set is added). The table sums the two commits; the case now
-  records them apart (`stream_remove_looks_written`, `stream_add_looks_written`). The remove takes 163 ms at 1,000
-  sets. Each commit also walks every kept list (a state cell lookup and a representation check, to repair what Prism's undo stripped), and
-  the delete updates a state tree of 1,000 cells. Which of the two dominates was not profiled.
+  records them apart (`stream_remove_looks_written`, `stream_add_looks_written`). The remove takes 163 ms at 1,000 sets.
+  Each commit also walks every kept list (a state cell lookup and a representation check, to repair what Prism's undo
+  stripped), and the delete updates a state tree of 1,000 cells. Which of the two dominates was not profiled.
 
 **Conclusion.** The hypothesis holds for commit and memory, and for a step only at 1,000 lists:
 

@@ -1118,8 +1118,9 @@ The algorithm:
    `focus.center` to the tile's box (0 inside or on it). For a resident tile, `d'(t) = max(0, d(t) − hysteresis)`;
    otherwise `d' = d`. Failed tiles are left out. A `focus.center` with a non-finite component is read as the bounds'
    centre with radius 0 (a non-finite radius is 0).
-2. **Order.** Sort by (not a focus tile, `d'`, id) ascending, a focus tile being one with `d ≤ focus.radius` (step 4), so
-   hysteresis never lets a resident tile push one out; ids compare by UTF-16 code units (`a < b`), never `localeCompare`.
+2. **Order.** Sort by (not a focus tile, `d'`, id) ascending, a focus tile being one with `d ≤ focus.radius` (step 4),
+   so hysteresis never lets a resident tile push one out; ids compare by UTF-16 code units (`a < b`), never
+   `localeCompare`.
 3. **Walk, nearest first.** Add each tile's copies while the total stays at or under `budget.copies`, and stop at the
    first tile that does not fit. The walk never skips ahead to a smaller tile farther out, so the loaded region stays
    one shell around the focus.
@@ -1370,8 +1371,8 @@ is `spec/src/_test/streaming.scaling.ts`):
   - a stream key change clears the old key's issues; `issues()` keeps the standing ones across steps.
 
 **integration (medium)** (`molstar/src/_test/streaming.test.ts`, headless Prism; the quick lane's session cases are in
-`molstar/src/_test/session.test.ts`): `MesoSession` with the fixture
-provider and the Prism adapter plays `t.stream`, then waits for the in-flight loads to settle.
+`molstar/src/_test/session.test.ts`): `MesoSession` with the fixture provider and the Prism adapter plays `t.stream`,
+then waits for the in-flight loads to settle.
 
 - Every commit's `added` and `removed` are exactly the step's arrivals and evictions.
 - Every kept tile keeps its list object (`listObject(key)` identity).
@@ -1379,10 +1380,10 @@ provider and the Prism adapter plays `t.stream`, then waits for the in-flight lo
 - A model edit that leaves the stream alone (an added instance) keeps every tile list: `removed` holds no tile key.
 - A view edit (a color) adds and removes no tile.
 
-**performance (heavy)** (`molstar/src/_test/r5.perf.test.ts` for 1, 10 and 100 sets, `r5-1000.perf.test.ts` for 1,000, both
-running the cases of `r5-cases.ts`; and the story's probe in the browser) is R5. 1M copies are
-split into 1, 10, 100 and 1,000 placement sets by the fixture (one population, tile counts equal). For each split,
-through the Prism adapter:
+**performance (heavy)** (`molstar/src/_test/r5.perf.test.ts` for 1, 10 and 100 sets, `r5-1000.perf.test.ts` for 1,000,
+both running the cases of `r5-cases.ts`; and the story's probe in the browser) is R5. 1M copies are split into 1, 10,
+100 and 1,000 placement sets by the fixture (one population, tile counts equal). For each split, through the Prism
+adapter:
 
 - commit time of the whole scene;
 - the first frame and a steady frame (mean of 10), when a GL context exists (none in the run below);
