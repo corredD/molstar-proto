@@ -373,9 +373,16 @@ function tri(out: Uint32Array, o: number, a: number, b: number, c: number, side:
 /**
  * A leaflet's patch surface (round 5: the far look as a texture, `MeshSchema.dPatchTexture`): the mesh's own triangles,
  * each with its own three vertices (its region their group: the shader maps the patch by it), lifted by `offset` along
- * the mesh's vertex normals (no crack at a crease), facing `side`'s way. O(triangles), whatever the lipids
+ * the mesh's vertex normals (no crack at a crease), facing `side`'s way. O(triangles), whatever the lipids.
+ *
+ * With each vertex its shift in its region's plane (`shifts`, 2 floats a vertex): a lipid at q stands on its triangle
+ * (`hitAffine`: q lifted along the region's normal), its head up the triangle's normal n; the drawn point S over it is
+ * at a height h = (S − its triangle) · n, so q = P(S) − h P(n), P the region's plane coordinates. The shader reads P(S);
+ * the shift −h P(n) at each vertex, linear over the triangle as h is, makes it the lipid's q (review S2: lifted along
+ * the vertex normal, P(S) alone slid the patch by up to the lift times the crease's angle)
  */
-export function patchSurface(mesh: TriMesh, regionOf: Uint32Array, side: 'outer' | 'inner', offset: number) {
+export function patchSurface(mesh: TriMesh, regions: CutterRegions, side: 'outer' | 'inner', offset: number) {
+  const { regionOf, table: g } = regions;
   const p = mesh.positions;
   const ix = mesh.indices;
   const T = ix.length / 3;
@@ -403,7 +410,28 @@ export function patchSurface(mesh: TriMesh, regionOf: Uint32Array, side: 'outer'
   const normals = new Float32Array(T * 9);
   const groups = new Float32Array(T * 3);
   const indices = new Uint32Array(T * 3);
+  const shifts = new Float32Array(T * 6);
   for (let t = 0; t < T; ++t) {
+    // the triangle's unit normal, and its region's plane coordinates of it
+    const a = ix[t * 3] * 3;
+    const b = ix[t * 3 + 1] * 3;
+    const c = ix[t * 3 + 2] * 3;
+    const ux = p[b] - p[a];
+    const uy = p[b + 1] - p[a + 1];
+    const uz = p[b + 2] - p[a + 2];
+    const wx = p[c] - p[a];
+    const wy = p[c + 1] - p[a + 1];
+    const wz = p[c + 2] - p[a + 2];
+    let nx = uy * wz - uz * wy;
+    let ny = uz * wx - ux * wz;
+    let nz = ux * wy - uy * wx;
+    const nl = Math.hypot(nx, ny, nz) || 1;
+    nx /= nl;
+    ny /= nl;
+    nz /= nl;
+    const r = regionOf[t] * 16;
+    const pn1 = nx * g[r + 4] + ny * g[r + 5] + nz * g[r + 6];
+    const pn2 = nx * g[r + 8] + ny * g[r + 9] + nz * g[r + 10];
     for (let k = 0; k < 3; ++k) {
       const v = ix[t * 3 + k] * 3;
       const l = Math.hypot(vn[v], vn[v + 1], vn[v + 2]) || 1;
@@ -413,12 +441,16 @@ export function patchSurface(mesh: TriMesh, regionOf: Uint32Array, side: 'outer'
         positions[o + j] = p[v + j] + (vn[v + j] / l) * offset;
       }
       groups[t * 3 + k] = regionOf[t];
+      // h at the vertex: its lift along the triangle's normal
+      const h = (offset * (vn[v] * nx + vn[v + 1] * ny + vn[v + 2] * nz)) / l;
+      shifts[(t * 3 + k) * 2] = -h * pn1;
+      shifts[(t * 3 + k) * 2 + 1] = -h * pn2;
     }
     indices[t * 3] = t * 3;
     indices[t * 3 + 1] = side === 'outer' ? t * 3 + 1 : t * 3 + 2;
     indices[t * 3 + 2] = side === 'outer' ? t * 3 + 2 : t * 3 + 1;
   }
-  return { positions, normals, groups, indices };
+  return { positions, normals, groups, indices, shifts };
 }
 
 /** A patch texture's texels a side: a lipid's spacing (~8 Å) about 13 texels on the CHARMM-GUI patch (154 Å) */

@@ -59,7 +59,14 @@ fn patchTurn(c: f32, s: f32, v: vec2<f32>) -> vec2<f32> {
     return vec2<f32>(c * v.x - s * v.y, s * v.x + c * v.y);
 }
 
-fn patchColor(modelPosition: vec3<f32>, fdx: vec3<f32>, fdy: vec3<f32>, region: u32, far: vec3<f32>) -> vec3<f32> {
+// a vertex's shift in its plane, after the 4,096 cells: two vertices a texel (the point drawn off the plane along
+// another direction than its normal reads where it stands over, not where it projects)
+fn patchShift(vertex: u32) -> vec2<f32> {
+    let t = patchTexel(u32(uObject.uPatch.w) + 4096u + vertex / 2u);
+    return select(t.xy, t.zw, (vertex & 1u) == 1u);
+}
+
+fn patchColor(modelPosition: vec3<f32>, fdx: vec3<f32>, fdy: vec3<f32>, region: u32, shift: vec2<f32>, far: vec3<f32>) -> vec3<f32> {
     let box = uObject.uPatch.yz;
     let side = uObject.uPatch.x;
     let g0 = patchTexel(region * 4u);
@@ -68,7 +75,7 @@ fn patchColor(modelPosition: vec3<f32>, fdx: vec3<f32>, fdy: vec3<f32>, region: 
     let g3 = patchTexel(region * 4u + 3u);
     // the plane's point q and the patch's p = offset + Rz(θ) q, with their derivatives on screen
     let w = modelPosition / uGlobal.uModelScale;
-    let q = vec2<f32>(dot(w - g0.xyz, g1.xyz), dot(w - g0.xyz, g2.xyz));
+    let q = vec2<f32>(dot(w - g0.xyz, g1.xyz), dot(w - g0.xyz, g2.xyz)) + shift;
     let p = vec2<f32>(g0.w * box.x, g1.w * box.y) + patchTurn(g2.w, g3.w, q);
     let invView = mat3x3<f32>(uGlobal.uInvView[0].xyz, uGlobal.uInvView[1].xyz, uGlobal.uInvView[2].xyz);
     let mdx = (invView * fdx) / uGlobal.uModelScale;
@@ -110,6 +117,7 @@ ${grid_functions_wgsl}
 ${vertex_output_wgsl(`    @location(9) vNormal: vec3<f32>,
 #if defined(dPatchTexture)
     @location(10) @interpolate(flat) vPatchRegion: f32,
+    @location(11) vPatchShift: vec2<f32>,
 #endif`)}
 ${patch_texture_wgsl}
 ${fragment_output_wgsl(`#if defined(dSolidInterior)
@@ -174,6 +182,7 @@ fn vertexMain(in: VertexInput) -> VertexOutput {
     out.vNormal = normal;
     #if defined(dPatchTexture)
         out.vPatchRegion = group;
+        out.vPatchShift = patchShift(in.vertexIndex);
     #endif
 
     #if defined(dSolidInterior)
@@ -292,7 +301,7 @@ fn fragmentMain(in: VertexOutput, @builtin(front_facing) frontFacing: bool) -> F
 
     ${assign_material_wgsl}
     #if defined(dPatchTexture)
-        material = vec4<f32>(patchColor(modelPosition, fdx, fdy, u32(in.vPatchRegion + 0.5), material.rgb), material.a);
+        material = vec4<f32>(patchColor(modelPosition, fdx, fdy, u32(in.vPatchRegion + 0.5), in.vPatchShift, material.rgb), material.a);
     #endif
     ${check_transparency_wgsl}
 

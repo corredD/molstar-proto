@@ -861,22 +861,23 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
   let retiredTextures: Texture[] = [];
 
   /** a leaflet's patch texture (mipmapped) and its map's table (its regions' frames, then its cells' kinds) */
-  function patchTextures(
-    graphics: GraphicsContext,
-    raster: { array: Uint8Array; width: number; height: number },
-    regions: CutterRegions,
-  ): [Texture, Texture] {
+  function patchTexture(graphics: GraphicsContext, raster: { array: Uint8Array; width: number; height: number }) {
     const patch = graphics.resources.texture('image-uint8', 'rgba', 'ubyte', 'linear');
     patch.load(raster);
     patch.mipmap();
-    const texels = regions.table.length / 4 + regions.cells.length / 4;
+    return patch;
+  }
+  /** a surface's table (`MeshSchema.tPatchTable`): its regions, the cells, its vertices' shifts (review S2) */
+  function patchTable(graphics: GraphicsContext, regions: CutterRegions, shifts: Float32Array) {
+    const texels = regions.table.length / 4 + regions.cells.length / 4 + Math.ceil(shifts.length / 4);
     const rows = Math.ceil(texels / PatchTableWidth);
     const array = new Float32Array(PatchTableWidth * rows * 4);
     array.set(regions.table);
     array.set(regions.cells, regions.table.length);
+    array.set(shifts, regions.table.length + regions.cells.length);
     const table = graphics.resources.texture('image-float32', 'rgba', 'float', 'nearest');
     table.load({ array, width: PatchTableWidth, height: rows });
-    return [patch, table];
+    return table;
   }
 
   /**
@@ -1266,9 +1267,9 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
         // round 5: the patch as a texture on the mesh's own triangles, mapped per fragment as the cutter maps it (its
         // regions and cells), mipmapped: the spheres' look at the switch, their mean far away, at any scale
         const raster = patchRaster(table, shown, leaflet.name, speciesColor, switchSpheres(table, props, enter));
-        const textures = patchTextures(graphics, raster, leaflet.regions);
-        made.push(...textures);
-        nextTextures.push(...textures);
+        const patch = patchTexture(graphics, raster);
+        made.push(patch);
+        nextTextures.push(patch);
         const head = headOffset(table, leaflet.name) - leaflet.offset;
         const top =
           raster.mean === undefined ? head : (leaflet.name === 'outer' ? 1 : -1) * raster.mean - leaflet.offset;
@@ -1277,8 +1278,11 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
         const beneath = (leaflet.name === 'outer' ? 1 : -1) * NearLift;
         for (const fade of cut ? (['near', 'far'] as const) : ([undefined] as const)) {
           const lift = fade === 'far' ? top : fade === 'near' ? beneath : head;
-          const f = patchSurface(leaflet.mesh, leaflet.regions.regionOf, leaflet.name, lift);
-          const object = patchObject(f, textures, table, leaflet.regions, size, props, !!fade);
+          const f = patchSurface(leaflet.mesh, leaflet.regions, leaflet.name, lift);
+          const patchShifts = patchTable(graphics, leaflet.regions, f.shifts);
+          made.push(patchShifts);
+          nextTextures.push(patchShifts);
+          const object = patchObject(f, [patch, patchShifts], table, leaflet.regions, size, props, !!fade);
           if (fade) {
             const values = object.values as BaseValues;
             nextFading.push({ values, size, near: fade === 'near' });

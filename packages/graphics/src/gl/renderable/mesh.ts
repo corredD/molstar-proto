@@ -60,7 +60,10 @@ export const MeshSchema = {
    */
   dPatchTexture: DefineSpec('boolean'),
   tPatch: TextureSpec('texture', 'rgba', 'ubyte', 'linear', undefined, { usedIf: ['dPatchTexture'] }),
-  /** per plane 4 texels (origin and offset x, e1 and offset y, e2 and cos, normal and sin), then the cells' (offset, cos, sin) */
+  /**
+   * per plane 4 texels (origin and offset x, e1 and offset y, e2 and cos, normal and sin), then the 4,096 cells' (offset,
+   * cos, sin), then per vertex its shift in its plane's coordinates, two vertices a texel (xy, zw)
+   */
   tPatchTable: TextureSpec('texture', 'rgba', 'float', 'nearest', undefined, { usedIf: ['dPatchTexture'] }),
   /** the cell's side, the patch's box x and y, the cells' first texel */
   uPatch: UniformSpec('v4'),
