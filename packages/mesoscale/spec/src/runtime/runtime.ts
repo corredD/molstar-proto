@@ -624,8 +624,10 @@ export async function compile(doc: MesoViewSpecDoc, o: RuntimeOptions, depth = 0
 
 /** What an edit touches (design.md §7.2): `view` when only views, tours, session or metadata differ (no resolution). */
 export function classifyEdit(prev: MesoViewSpecDoc, next: MesoViewSpecDoc): 'none' | 'view' | 'model' {
-  const strip = ({ views: _v, tours: _t, session: _s, metadata: _m, ...rest }: MesoViewSpecDoc) => rest;
-  if (contentHash(prev) === contentHash(next)) return 'none';
+  // the revision is the committer's label, not content (format/patch.ts)
+  const strip = ({ views: _v, tours: _t, session: _s, metadata: _m, revision: _r, ...rest }: MesoViewSpecDoc) => rest;
+  const bare = ({ revision: _r, ...rest }: MesoViewSpecDoc) => rest;
+  if (contentHash(bare(prev)) === contentHash(bare(next))) return 'none';
   return contentHash(strip(prev)) === contentHash(strip(next)) ? 'view' : 'model';
 }
 

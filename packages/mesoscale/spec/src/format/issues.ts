@@ -57,6 +57,9 @@ export const IssueCodes = {
   'stream.manifest': 'A stream manifest is unavailable or invalid',
   'stream.tile': 'A tile failed to load or disagreed with its manifest',
   'stream.budget': 'One tile alone exceeds the stream budget',
+  'patch.shape': 'A patch, or one of its ops, is not the shape it should be',
+  'patch.base': "A patch's base is not the document's revision",
+  'patch.target': 'An op names no node a patch can address, or an anchor names no sibling',
   assumption: 'The resolver made a choice the document did not make',
 } as const;
 
