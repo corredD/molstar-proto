@@ -5,7 +5,7 @@
  */
 
 import { it } from 'vitest';
-import { checkLinear, quadraticControl, scaling } from '../../../../sequences/core/_test/model/scaling.js';
+import { checkLinear, quadraticControl, scaling } from '@molstar/test-harness/scaling';
 import { MesoRelaxResolver } from '../resolvers/relax.js';
 import type { ResolveJob } from '../runtime/resolver.js';
 import { job, setOf } from './helpers.js';

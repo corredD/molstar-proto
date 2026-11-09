@@ -5,7 +5,7 @@
  */
 
 import { it } from 'vitest';
-import { checkLinear, quadraticControl, scaling } from '../../../../sequences/core/_test/model/scaling.js';
+import { checkLinear, quadraticControl, scaling } from '@molstar/test-harness/scaling';
 import { tiledFixture } from '../examples/streaming.js';
 import type { MesoViewSpecDoc } from '../format/doc.js';
 import type { IR, IRNode } from '../ir/ir.js';

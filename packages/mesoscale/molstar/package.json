@@ -47,6 +47,7 @@
     "@molstar/plugin-headless": "workspace:*",
     "@molstar/prism-me-app": "workspace:*",
     "@molstar/prism-ui": "workspace:*",
+    "@molstar/test-harness": "workspace:*",
     "@storybook/web-components-vite": "catalog:",
     "@types/gl": "catalog:",
     "@types/node": "catalog:",

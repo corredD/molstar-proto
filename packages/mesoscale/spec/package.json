@@ -75,6 +75,7 @@
     "tslib": "catalog:"
   },
   "devDependencies": {
+    "@molstar/test-harness": "workspace:*",
     "@types/node": "catalog:",
     "@typescript/typescript6": "catalog:",
     "typescript": "catalog:"

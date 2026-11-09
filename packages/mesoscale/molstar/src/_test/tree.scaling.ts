@@ -8,13 +8,7 @@ import type { Compartment, Entity, MesoViewSpecDoc, Population } from '@molstar/
 import { type IR, type IRLook, type IRNode, PlacementBuilder, type PlacementType } from '@molstar/meso-spec/ir';
 import { appendFileSync } from 'node:fs';
 import { expect, it } from 'vitest';
-import {
-  type BulkCase,
-  describeScaling,
-  isLinear,
-  quadraticControl,
-  scaling,
-} from '../../../../sequences/core/_test/model/scaling.js';
+import { type BulkCase, describeScaling, isLinear, quadraticControl, scaling } from '@molstar/test-harness/scaling';
 import { MesoDocumentModel } from '../document-model.js';
 import { documentLooks, documentOutline, OutlineStats } from '../document-tree.js';
 
