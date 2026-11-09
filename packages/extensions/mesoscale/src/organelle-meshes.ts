@@ -47,39 +47,79 @@ export interface OrganelleMesh {
 
 /** The meshes of an `organelle_meshes.bin`, positions times `scale`; or what is wrong with the bytes */
 export function parseOrganelleMeshes(bytes: Uint8Array, scale = OrganelleScale): OrganelleMesh[] | string {
-  const view = dataView(bytes);
-  if (bytes.byteLength < 4) return 'Not organelle meshes: too short.';
-  const count = view.getUint32(0, true);
-  let at = 4 + count * 12;
-  if (count === 0 || count > 1024 || at > bytes.byteLength) return 'Not organelle meshes: a bad header.';
+  const starts = organelleStarts(bytes);
+  if (typeof starts === 'string') return starts;
+  const count = starts.length;
   const out: OrganelleMesh[] = [];
   for (let i = 0; i < count; ++i) {
-    const membrane = view.getUint32(4 + i * 12, true);
-    const nV = view.getUint32(8 + i * 12, true);
-    const nT = view.getUint32(12 + i * 12, true);
-    const end = at + nV * 12 + nT * 12;
-    if (end > bytes.byteLength) return `Not organelle meshes: mesh ${i} runs past the end.`;
-    const positions = new Float32Array(nV * 3);
-    for (let k = 0; k < nV * 3; ++k) positions[k] = view.getFloat32(at + k * 4, true) * scale;
-    at += nV * 12;
-    const indices = new Uint32Array(nT * 3);
-    for (let k = 0; k < nT * 3; ++k) {
-      const v = view.getUint32(at + k * 4, true);
-      if (v >= nV) return `Not organelle meshes: mesh ${i} indexes a vertex past its ${nV}.`;
-      indices[k] = v;
-    }
-    at += nT * 12;
-    out.push({ membrane, name: OrganelleMembraneNames[membrane] ?? `membrane ${membrane}`, positions, indices });
+    const m = organelleMeshAt(bytes, i, scale);
+    if (typeof m === 'string') return m;
+    out.push(m);
   }
-  if (at !== bytes.byteLength) return 'Not organelle meshes: bytes past the last mesh.';
   return out;
+}
+
+/** Per file its meshes' starts (the header read once a file: + Open's transforms read a mesh each) */
+const headers = new WeakMap<Uint8Array, Float64Array | string>();
+
+/** Each mesh's first byte, the header's sizes the file's (no mesh read); or what is wrong */
+function organelleStarts(bytes: Uint8Array): Float64Array | string {
+  const cached = headers.get(bytes);
+  if (cached) return cached;
+  const starts = readStarts(bytes);
+  headers.set(bytes, starts);
+  return starts;
+}
+
+function readStarts(bytes: Uint8Array): Float64Array | string {
+  if (bytes.byteLength < 4) return 'Not organelle meshes: too short.';
+  const view = dataView(bytes);
+  const count = view.getUint32(0, true);
+  if (count === 0 || count > 1024 || 4 + count * 12 > bytes.byteLength) return 'Not organelle meshes: a bad header.';
+  const starts = new Float64Array(count);
+  let size = 4 + count * 12;
+  for (let i = 0; i < count; ++i) {
+    starts[i] = size;
+    size += view.getUint32(8 + i * 12, true) * 12 + view.getUint32(12 + i * 12, true) * 12;
+    if (size > bytes.byteLength) return `Not organelle meshes: mesh ${i} runs past the end.`;
+  }
+  if (size !== bytes.byteLength) return 'Not organelle meshes: bytes past the last mesh.';
+  return starts;
+}
+
+/** The meshes' names, read from the header alone; or what is wrong */
+function organelleNames(bytes: Uint8Array): string[] | string {
+  const starts = organelleStarts(bytes);
+  if (typeof starts === 'string') return starts;
+  const count = starts.length;
+  const view = dataView(bytes);
+  return Array.from({ length: count }, (_, i) => {
+    const id = view.getUint32(4 + i * 12, true);
+    return OrganelleMembraneNames[id] ?? `membrane ${id}`;
+  });
 }
 
 /** Mesh `index` of an `organelle_meshes.bin` (what one opened mesh's transform reads), or what is wrong */
 export function organelleMeshAt(bytes: Uint8Array, index: number, scale = OrganelleScale): OrganelleMesh | string {
-  const meshes = parseOrganelleMeshes(bytes, scale);
-  if (typeof meshes === 'string') return meshes;
-  return meshes[index] ?? `No mesh ${index} (${meshes.length} in the file).`;
+  const starts = organelleStarts(bytes);
+  if (typeof starts === 'string') return starts;
+  const count = starts.length;
+  if (!(index >= 0 && index < count)) return `No mesh ${index} (${count} in the file).`;
+  const view = dataView(bytes);
+  let at = starts[index];
+  const membrane = view.getUint32(4 + index * 12, true);
+  const nV = view.getUint32(8 + index * 12, true);
+  const nT = view.getUint32(12 + index * 12, true);
+  const positions = new Float32Array(nV * 3);
+  for (let k = 0; k < nV * 3; ++k) positions[k] = view.getFloat32(at + k * 4, true) * scale;
+  at += nV * 12;
+  const indices = new Uint32Array(nT * 3);
+  for (let k = 0; k < nT * 3; ++k) {
+    const v = view.getUint32(at + k * 4, true);
+    if (v >= nV) return `Not organelle meshes: mesh ${index} indexes a vertex past its ${nV}.`;
+    indices[k] = v;
+  }
+  return { membrane, name: OrganelleMembraneNames[membrane] ?? `membrane ${membrane}`, positions, indices };
 }
 
 /** A mesh as an OBJ's (`ShapeFromObj` makes its shape, as an opened OBJ's) */
@@ -127,20 +167,20 @@ export const OrganelleMeshesProvider = DataFormatProvider({
   sniffsResponse: true,
   isApplicable: (_info, data) => {
     const bytes = ArrayBuffer.isView(data) ? (data as Uint8Array) : (data as { heldBytes?: Uint8Array }).heldBytes;
-    return !!bytes && typeof parseOrganelleHeader(bytes) === 'number';
+    return !!bytes && typeof organelleStarts(bytes) !== 'string';
   },
   parse: async (plugin: PluginContext, data: StateObjectRef<SO.Data.Binary | SO.Data.Response>) => {
     const obj = StateObjectRef.resolve(plugin.state.data, data)?.obj;
     const bytes = obj ? SO.Data.readBytes(obj as SO.Data.Binary | SO.Data.Response) : undefined;
-    const meshes = bytes ? parseOrganelleMeshes(bytes) : 'No data.';
-    if (typeof meshes === 'string') throw new Error(meshes);
+    const names = bytes ? organelleNames(bytes) : 'No data.';
+    if (typeof names === 'string') throw new Error(names);
     const b = plugin.state.data.build();
-    const shapes = meshes.map(
-      (m, index) =>
+    const shapes = names.map(
+      (name, index) =>
         b
           .to(data)
           .apply(OrganelleMeshFromBinary, { index }, { state: { isGhost: true } })
-          .apply(ShapeFromObj, { label: m.name }).selector,
+          .apply(ShapeFromObj, { label: name }).selector,
     );
     await b.commit();
     return { shapes };
@@ -151,18 +191,6 @@ export const OrganelleMeshesProvider = DataFormatProvider({
     await b.commit();
   },
 });
-
-/** The header's mesh count where the bytes' size fits it exactly, else undefined (a sniff: no mesh read) */
-function parseOrganelleHeader(bytes: Uint8Array) {
-  if (bytes.byteLength < 16) return undefined;
-  const view = dataView(bytes);
-  const count = view.getUint32(0, true);
-  if (count === 0 || count > 1024 || 4 + count * 12 > bytes.byteLength) return undefined;
-  let size = 4 + count * 12;
-  for (let i = 0; i < count; ++i)
-    size += view.getUint32(8 + i * 12, true) * 12 + view.getUint32(12 + i * 12, true) * 12;
-  return size === bytes.byteLength ? count : undefined;
-}
 
 /** A view of bytes (copied where their buffer is another realm's, a page's file in a test's DOM) */
 function dataView(bytes: Uint8Array) {
