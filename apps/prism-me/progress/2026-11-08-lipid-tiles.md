@@ -385,10 +385,10 @@ use strides 1, 8, 64 at bias 2 (a sheet's area). A 512 stride drew half a small 
 
 **The cutter** (`lipids/cutter.ts` reference, `cutter-kernel.ts` WGSL). On the original triangles: each flattened in its
 frame, a random spin and offset in the periodic patch (images where the triangle overhangs the box), lipids taken by
-headgroup, per leaflet along the face normal. A lipid is an instance of a conformer of its species (4 a species: 26
-members a leaflet for CHARMM-GUI's 14 species; a member per patch lipid would be ~700 render objects a leaflet). Count
-pass (per member, per triangle) on the GPU, read back once, summed on the CPU (the merged layout needs each member's
-count), write pass per member into the culler's buffers. Dawn test: counts and every hit's affine equal the reference.
+headgroup, per leaflet along the face normal. A lipid is an instance of a conformer of its species (up to 4 a species; a
+member per patch lipid would be ~700 render objects a leaflet). Count pass (per member, per triangle) on the GPU, read
+back once, summed on the CPU (the merged layout needs each member's count), write pass per member into the culler's
+buffers. Dawn test: counts and every hit's affine equal the reference.
 
 **Comparison (cow ×100, CHARMM-GUI patch, both leaflets, Dawn on the M1, 900×600; images
 `~/prism-me-lanes/lipid-tiles-shots/compare-<method>[-nolod]-<whole|flank|seam>.png`, looked at).**
@@ -403,11 +403,12 @@ count), write pass per member into the culler's buffers. Dawn test: counts and e
 | Frame whole / flank / seam, levels             | 33 / 32 / 116 ms                          | 38 / 36 / 134 ms                    |
 | Same, no levels                                | 247 / 201 / 105 ms                        | 243 / 225 / 121 ms                  |
 
-Bytes a lipid on the GPU, past the shared textures: tiles about 70 B in all (the merged instances are a tile's), the
-cutter about 520 B (its per-(member, triangle) counts and bases dominate on a mesh this size; the instances 80 B a lipid
-as the culler's). The pairs across triangles are mostly the cut lipids meeting the tiles on the tiles side (the lost
-triangles within 10–20 Å of the remesh) and, in the cutter, every seam (no clash removal, as cellPACKgpu). cellPACKgpu's
-numbers from its code: 48 B a lipid, no levels, the same disc cut on every triangle (its spin and offset unused).
+Bytes a lipid on the GPU, past the shared textures: tiles about 125 B (3.5 MB of storage over 28 k lipids: the instances
+are a tile's), the cutter about 520 B (its per-(member, triangle) counts and bases dominate on a mesh this size; the
+instances 80 B a lipid as the culler's). The pairs across triangles are mostly the cut lipids meeting the tiles on the
+tiles side (the lost triangles within 10–20 Å of the remesh) and, in the cutter, every seam (no clash removal, as
+cellPACKgpu). cellPACKgpu's numbers from its code: 48 B a lipid, no levels, the same disc cut on every triangle (its
+spin and offset unused).
 
 **Which looks better, which is faster.** Close up the tiles look better: fewer within-triangle clashes, no white holes
 (the cutter leaves visible holes on the flank where small triangles take no headgroup), and the patch's own lipids in
