@@ -5,6 +5,7 @@
  */
 
 import { betaCellDoc, BetaCellResources } from '@molstar/meso-spec/examples/betacell';
+import { exosomeDoc, ExosomeResources } from '@molstar/meso-spec/examples/exosome';
 import { placementSets } from '@molstar/meso-spec/ir/ir';
 import { DefaultResolvers } from '@molstar/meso-spec/resolvers/index';
 import { planCommit } from '@molstar/meso-spec/runtime/adapter';
@@ -67,5 +68,28 @@ describe('the Prism adapter camera', () => {
         const d = Math.hypot(s.positions[3 * i] - c[0], s.positions[3 * i + 1] - c[1], s.positions[3 * i + 2] - c[2]);
         expect(d + s.typeTable[s.types[i]].radius).toBeLessThanOrEqual(r + 1e-6);
       }
+  });
+
+  // gate A9: any added set re-applied the IR camera (or reset it), so a model edit lost the user's orbit
+  it('a model edit that adds a set with the camera unchanged leaves the camera alone', async () => {
+    const options = { resolvers: DefaultResolvers, load: (id: string) => ExosomeResources[id]?.(), cache: new Map() };
+    const prev = (await compile(exosomeDoc(), options)).ir!;
+    const doc = {
+      ...exosomeDoc(),
+      populations: exosomeDoc().populations.map((p) =>
+        p.id === 'p.miRNA' ? { ...p, abundance: { concentration: { value: 0.0008, unit: 'M' as const } } } : p,
+      ),
+    };
+    const next = (await compile(doc, options)).ir!;
+    const plan = planCommit(prev, next);
+    expect(plan.add.length).toBe(1);
+    expect(plan.cameraChanged).toBe(false);
+    const { canvas, calls } = recordingCanvas();
+    expect(commitCamera(canvas, next, plan, () => 1000)).toBe(false);
+    expect(calls).toEqual([]);
+    // a view without a camera: no reset either
+    const bare = { ...next, view: { ...next.view, camera: undefined } };
+    expect(commitCamera(canvas, bare, planCommit({ ...prev, view: bare.view }, bare), () => 1000)).toBe(false);
+    expect(calls).toEqual([]);
   });
 });

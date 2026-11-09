@@ -244,16 +244,17 @@ export type CameraCanvas = Pick<
 >;
 
 /**
- * The IR's camera into the canvas, when it changed or sets were added; a view without one resets the camera. Returns
- * whether the camera was set.
+ * The IR's camera into the canvas when it changed, or on a new scene (no set kept: a first commit); a view without one
+ * then resets the camera. A model edit that adds sets leaves the user's camera alone (Canvas3D raises `radiusMax` when
+ * the scene grows). Returns whether the camera was set.
  */
 export function commitCamera(
   canvas: CameraCanvas,
   ir: IR,
-  plan: Pick<CommitPlan, 'cameraChanged' | 'add'>,
+  plan: Pick<CommitPlan, 'cameraChanged' | 'keep'>,
   sceneRadius: () => number,
 ): boolean {
-  if (!plan.cameraChanged && !plan.add.length) return false;
+  if (!plan.cameraChanged && plan.keep.length) return false;
   const cam = ir.view.camera;
   if (!cam) {
     canvas.requestCameraReset();
