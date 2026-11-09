@@ -264,4 +264,15 @@ describe('validate', () => {
     ]);
   });
 
+  it('a unit is a unit, not a property every object has (F10)', () => {
+    const d = galleryDoc();
+    const p = d.populations[1];
+    const with_ = (abundance: object) =>
+      errors({ ...d, populations: [d.populations[0], { ...p, abundance } as never, ...d.populations.slice(2)] }).map(
+        (i) => i.code,
+      );
+    expect(with_({ concentration: { value: 1, unit: 'toString' } })).toEqual(['unit.unknown']);
+    expect(with_({ density: { value: 1, unit: 'constructor' } })).toEqual(['unit.unknown']);
+    expect(errors({ ...d, units: { length: 'toString' as 'nm' } }).map((i) => i.code)).toContain('unit.unknown');
+  });
 });

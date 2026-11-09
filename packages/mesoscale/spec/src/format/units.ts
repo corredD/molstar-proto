@@ -19,8 +19,13 @@ export const Avogadro = 6.02214076e23;
 /** Litres per Å³. */
 export const LitrePerA3 = 1e-27;
 
+/** A key of a unit table, not a property every object has (`toString`). */
+export function isUnitOf<U extends string>(table: Readonly<Record<U, number>>, u: unknown): u is U {
+  return typeof u === 'string' && Object.prototype.hasOwnProperty.call(table, u);
+}
+
 export function isLengthUnit(u: unknown): u is LengthUnit {
-  return typeof u === 'string' && u in LengthToAngstrom;
+  return isUnitOf(LengthToAngstrom, u);
 }
 
 /** A length in Å; `docUnit` is the document's default. Undefined for an unknown unit. */

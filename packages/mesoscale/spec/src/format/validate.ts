@@ -17,7 +17,7 @@ import {
 } from './doc.js';
 import { type Issue, type IssueCode, issue } from './issues.js';
 import { parseMesoQL, type QType } from './mesoql.js';
-import { ConcentrationToMolar, DensityToPerA2, isLengthUnit } from './units.js';
+import { ConcentrationToMolar, DensityToPerA2, isLengthUnit, isUnitOf } from './units.js';
 
 // Static validation (design.md §7.4, phase `static`): the document alone, no resource loaded, no resolver run. Every
 // problem is an issue with a JSON pointer; nothing throws. A document with errors is not resolved; warnings are
@@ -392,12 +392,12 @@ export function validate(doc: MesoViewSpecDoc, nested = false): Issue[] {
     if ('count' in a) {
       if (!(a.count >= 0)) err('value.range', 'count is not negative', `${path}/count`);
     } else if ('concentration' in a) {
-      if (!(a.concentration?.unit in ConcentrationToMolar))
+      if (!isUnitOf(ConcentrationToMolar, a.concentration?.unit))
         err('unit.unknown', `concentration unit ${a.concentration?.unit}`, `${path}/concentration/unit`);
       if (!(a.concentration?.value >= 0))
         err('value.range', 'concentration is not negative', `${path}/concentration/value`);
     } else if ('density' in a) {
-      if (!(a.density?.unit in DensityToPerA2))
+      if (!isUnitOf(DensityToPerA2, a.density?.unit))
         err('unit.unknown', `density unit ${a.density?.unit}`, `${path}/density/unit`);
       if (!(a.density?.value >= 0)) err('value.range', 'density is not negative', `${path}/density/value`);
     } else if ('volumeFraction' in a) {
