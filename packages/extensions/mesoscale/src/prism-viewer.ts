@@ -8,6 +8,7 @@ import { operationCommand } from '@molstar/prism-viewer/commands/operations';
 import type { ViewerExtension, ViewerSkill } from '@molstar/prism-viewer/spec';
 import { LipidMembrane } from './lipids/membrane.js';
 import { MesoscaleApi } from './operations.js';
+import { OrganelleMeshesProvider, OrganelleMeshFromBinary } from './organelle-meshes.js';
 
 declare module '@molstar/prism-viewer/api' {
   // The `mesoscale` area: the Mesoscale Explorer's entity controls on particle lists.
@@ -118,8 +119,9 @@ export const MesoscaleExtension: ViewerExtension = {
   id: 'mesoscale',
   title: 'Mesoscale',
   api: { mesoscale: (ctx) => new MesoscaleApi(ctx) },
-  // the lipid membrane's transform, in saved states and history (`lipids/membrane.ts`)
-  plugin: { registry: [{ actions: [LipidMembrane] }] },
+  // the lipid membrane's transform, in saved states and history (`lipids/membrane.ts`); the yeast cell viewer's organelle
+  // meshes through + Open (`organelle-meshes.ts`)
+  plugin: { registry: [{ actions: [LipidMembrane, OrganelleMeshFromBinary], formats: [OrganelleMeshesProvider] }] },
   commands: (api) => {
     const m = api.mesoscale;
     if (!m) return [];
