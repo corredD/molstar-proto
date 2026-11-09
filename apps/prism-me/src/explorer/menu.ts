@@ -472,8 +472,9 @@ export function nodeMenuItems(
     items.push({ id: 'focus', label: `Focus on ${info?.text ?? label}`, icon: 'scan', run: () => area.focus(node) });
   } else {
     items.push({ id: 'focus', label: `Focus on ${picked.label}`, icon: 'scan', run: () => area.focus(node) });
-    // a lipid membrane has no shape of its own to move, color or clip (`mesoscale.wrapMembrane`): focus, label, remove;
-    // its full build exported (lipid-procedural: a cut one, built only then)
+    // a lipid membrane has no shape of its own to move or color (`mesoscale.wrapMembrane`): focus, label, clip (round 4b
+    // item 6: its spheres and far surfaces cut alike), remove; its full build exported (lipid-procedural: a cut one,
+    // built only then)
     if (!isMembrane(area, picked)) items.push(...moveItems(api, area, picked));
     else if (
       api.describe('mesoscale.exportMembrane') &&
@@ -512,7 +513,7 @@ export function nodeMenuItems(
     icon: 'type',
     run: () => void addLabel(api, area, picked, actions.reveal, actions.at, actions.loci),
   });
-  if (open && !membrane && clippable(kind, node)) {
+  if (open && clippable(kind, node)) {
     items.push({ id: 'clip', label: 'Add clip…', icon: 'scissors', run: () => open(clipItems(api, area, picked)) });
   }
   items.push(...showOnlyItems(api, picked, actions.groupBy));

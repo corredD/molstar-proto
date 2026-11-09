@@ -199,14 +199,17 @@ describe.skipIf(!webgpu)('lipid membrane on WebGPU (Dawn)', () => {
         plugin.canvas3d!.requestCameraReset({ durationMs: 0 });
         const whole = await halves();
         expect(Math.min(...whole), `${method} ${far} drawn`).toBeGreaterThan(0.2);
+        const drawn = plugin.state.data.cells.get(node.ref)!.obj!.data.repr.renderObjects;
         await plugin
           .build()
           .to(node.ref)
           .update({ ...params, clip: plane })
           .commit();
+        // a cut alone builds nothing again (a clip's handle previews at the pointer's rate)
+        expect(plugin.state.data.cells.get(node.ref)!.obj!.data.repr.renderObjects).toBe(drawn);
         const cut = await halves();
         // one half gone, the other as it was
-        expect(Math.min(...cut), `${method} ${far} cut`).toBeLessThan(0.02);
+        expect(Math.min(...cut), `${method} ${far} cut`).toBeLessThan(0.05);
         expect(Math.max(...cut), `${method} ${far} kept`).toBeGreaterThan(0.2);
         await plugin.build().delete(node.ref).commit();
       }

@@ -16,6 +16,9 @@ import { StateTransformer } from '@molstar/core/state';
 import { Spheres } from '@molstar/graphics/geo/geometry/spheres/spheres';
 import { createIdentityTransform, createTransform } from '@molstar/graphics/geo/geometry/transform-data';
 import { Mesh } from '@molstar/graphics/geo/geometry/mesh/mesh';
+import { BaseGeometry } from '@molstar/graphics/geo/geometry/base';
+import type { BaseValues } from '@molstar/graphics/gl/renderable/schema';
+import type { Clip } from '@molstar/core/util/clip';
 import type { GraphicsContext } from '@molstar/graphics/gl/context';
 import { createRenderObject, type GraphicsRenderObject } from '@molstar/graphics/gl/render-object';
 import { canCullOnGpu } from '@molstar/graphics/gl/renderable/merged';
@@ -503,6 +506,9 @@ export const LipidMembraneReprParams = {
   // (`mesoscale.membraneSpecies`); a hidden species is not generated (the cutter's), the far surface without it
   hiddenSpecies: PD.Value<readonly string[]>([], { isHidden: true }),
   speciesColors: PD.Value<Readonly<Record<string, number>>>({}, { isHidden: true }),
+  // Prism's clipping (round 4b item 6): a cut on the spheres and the far surfaces alike, the culler dropping the
+  // instances it cuts away; a cut alone changes the drawn objects' clip values, nothing built again
+  clip: BaseGeometry.Params.clip,
 };
 export type LipidMembraneReprProps = PD.Values<typeof LipidMembraneReprParams>;
 
@@ -554,7 +560,7 @@ function lipidSize(table: CutterTable) {
  * A leaflet's far surface (lipid-procedural round 4b, `far-surface.ts`): at its heads, single-sided, each vertex a group
  * coloured as its species (the patch's head where the cutter maps it), Mol*'s material bump at a lipid's spacing
  */
-function surfaceObject(f: FarSurface, colorOf: (species: number) => Color, size: number) {
+function surfaceObject(f: FarSurface, colorOf: (species: number) => Color, size: number, clip: Clip.Props) {
   const n = f.positions.length / 3;
   const groups = new Float32Array(n);
   for (let v = 0; v < n; ++v) groups[v] = v;
@@ -566,6 +572,7 @@ function surfaceObject(f: FarSurface, colorOf: (species: number) => Color, size:
     bumpFrequency: 1.5 / size,
     bumpAmplitude: 1,
     material: { ...defaults.material, bumpiness: 1 },
+    clip,
   };
   const transform = createIdentityTransform();
   const locationIterator = LocationIterator(
@@ -587,7 +594,27 @@ function surfaceObject(f: FarSurface, colorOf: (species: number) => Color, size:
     { color, size: UniformSizeTheme({}, { value: 1 }) },
     props,
   );
-  return createRenderObject('mesh', values, Mesh.Utils.createRenderableState(props), -1);
+  const object = createRenderObject('mesh', values, Mesh.Utils.createRenderableState(props), -1);
+  clipped.set(object.values as never, props);
+  return object;
+}
+
+/** Whether `b` differs from `a` by its clip alone */
+function onlyClip(a: LipidMembraneReprProps, b: LipidMembraneReprProps) {
+  if (a.clip === b.clip) return false;
+  for (const k of Object.keys(b) as (keyof LipidMembraneReprProps)[]) {
+    if (k !== 'clip' && a[k] !== b[k] && JSON.stringify(a[k]) !== JSON.stringify(b[k])) return false;
+  }
+  return true;
+}
+
+/** The props an object's values were made with (`setClip`: a cut alone updates its values with them) */
+const clipped = new WeakMap<BaseValues, PD.Values<BaseGeometry.Params>>();
+
+/** The clip on an object's values, as it was made otherwise (a define where the cut count goes from or to none) */
+function setClip(values: BaseValues, clip: Clip.Props) {
+  const made = clipped.get(values);
+  if (made) BaseGeometry.updateValues(values, { ...made, clip });
 }
 
 /** A membrane's species' default colors, by name (`speciesColors`) */
@@ -627,6 +654,9 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
   let props = PD.getDefaultValues(LipidMembraneReprParams);
   const state = Representation.createState();
   let groupCount = 0;
+  /** the merged objects' members' values (a cut alone updates them: `setClip`), and the build's */
+  let members: BaseValues[] = [];
+  let building: BaseValues[] = [];
 
   function release() {
     for (const a of assigners) a.destroy();
@@ -673,8 +703,10 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
     // each lipid or tile at its own level by its size on screen (the culler's per-instance levels)
     const lod =
       props.detail === 'off' ? { lodLevels: [], lodPixelSize: 0 } : membraneLevels(props.detail, props.levels);
-    const p = { ...PD.getDefaultValues(Spheres.Params), ...lod, gpuCulling: true as const };
+    const p = { ...PD.getDefaultValues(Spheres.Params), ...lod, gpuCulling: true as const, clip: props.clip };
     const values = Spheres.Utils.createValues(spheres, transform, locationIterator, theme, p);
+    clipped.set(values, p);
+    building.push(values);
     ValueCell.update(values.boundingSphere, Sphere3D.clone(bounds));
     Object.assign(values, { gpuInstances: ValueCell.create(writer) });
     groupCount += lipids * n;
@@ -812,6 +844,7 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
     const entries: { visual: number; renderObject: GraphicsRenderObject }[] = [];
     const bounds = Sphere3D.clone(data.sphere);
     groupCount = 0;
+    building = [];
     let visual = 0;
     // the cuts' counts first (a count pass each, read back), then the whole membrane's instances against the device
     if (!reuse) {
@@ -960,10 +993,11 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
         );
         const speciesColor = (sp: number) =>
           props.colorBy === 'uniform' || sp < 0 ? props.color : colorOf(table.species[sp]);
-        out.push(surfaceObject(f, speciesColor, size));
+        out.push(surfaceObject(f, speciesColor, size, props.clip));
       }
     }
     renderObjects = out;
+    members = building;
   }
 
   const repr: Representation<MembraneData, typeof LipidMembraneReprParams> = {
@@ -986,9 +1020,14 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
     theme: { color: undefined as never, size: undefined as never },
     createOrUpdate: (p, data) =>
       Task.create('Lipid membrane', async (runtime) => {
+        const before = props;
         props = { ...props, ...p };
         if (data) lastData = data;
-        if (lastData) await build(lastData, runtime);
+        // a cut alone (a clip's handle as it goes, its release): the drawn objects' clip values, nothing built again
+        if (lastData && builtFor === lastData && onlyClip(before, props)) {
+          for (const v of members) setClip(v, props.clip);
+          for (const o of renderObjects) setClip(o.values as never, props.clip);
+        } else if (lastData) await build(lastData, runtime);
         version += 1;
         updated.next(version);
       }),

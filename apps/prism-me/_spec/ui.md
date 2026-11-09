@@ -242,17 +242,18 @@ on a tree row (its right-click or its ⋯), the same menu, in this order:
   once, never a new cut. Its species are a particle system's entities: in its Look an eye and a colour a species
   (`mesoscale.membraneSpecies`; a hidden species is not generated, the surface's colour without it), its Object
   graphics' Quality the levels' preset (no Motion). Its right-click: **Export lipids (full build)**
-  (`mesoscale.exportMembrane`: every lipid of every triangle, a RELION STAR particle list, built only then). Not yet: a
-  row per species in the tree (the Look holds them), picking a lipid. **One membrane, two generators** (Ludo,
-  2026-11-08, round 4b): a tiles membrane has the same Look: its species (an eye and a colour; a hidden one's lipids
-  taken out of every tile, a tile mixing species), colorBy, Levels, and Far as Both or Spheres (its surfaces at the
-  heads, coloured as the cutter would cut the patch there: the species' proportions and grain, not each tile's lipids).
-  Not for tiles: Texture and the pool's switches (tiles are built whole, no lipid dropped by its size on screen), Export
-  (the cutter's full build). A wrap is a task on the status line (Ludo, 2026-11-08: its stage, as Remeshing at 42 Å 2/5,
-  Baking lipid tiles (outer) 12/16, Cutting triangles, Uploading lipids, its percentage and Cancel; a cancel leaves no
-  membrane and no step); it yields to the page between stages, but a single stage (the patch's first read, the GPU count
-  pass's readback, the render objects' merge) runs whole. Both draw with levels of detail (the membrane's `detail`,
-  balanced by default).
+  (`mesoscale.exportMembrane`: every lipid of every triangle, a RELION STAR particle list, built only then), and **Add
+  clip…** as on any object (round 4b item 6, both methods: a cut removes the spheres and the far surfaces alike; a
+  handle's drag changes only the drawn objects' clip values). Not yet: a row per species in the tree (the Look holds
+  them), picking a lipid. **One membrane, two generators** (Ludo, 2026-11-08, round 4b): a tiles membrane has the same
+  Look: its species (an eye and a colour; a hidden one's lipids taken out of every tile, a tile mixing species),
+  colorBy, Levels, and Far as Both or Spheres (its surfaces at the heads, coloured as the cutter would cut the patch
+  there: the species' proportions and grain, not each tile's lipids). Not for tiles: Texture and the pool's switches
+  (tiles are built whole, no lipid dropped by its size on screen), Export (the cutter's full build). A wrap is a task on
+  the status line (Ludo, 2026-11-08: its stage, as Remeshing at 42 Å 2/5, Baking lipid tiles (outer) 12/16, Cutting
+  triangles, Uploading lipids, its percentage and Cancel; a cancel leaves no membrane and no step); it yields to the
+  page between stages, but a single stage (the patch's first read, the GPU count pass's readback, the render objects'
+  merge) runs whole. Both draw with levels of detail (the membrane's `detail`, balanced by default).
 - **Remove** (an object: with its file and labels).
 
 On a clip or a label (its guide in 3D, or its row): **Move**, **Rotate**, (a clip: **Size**, **Flip**; a label: **Edit
