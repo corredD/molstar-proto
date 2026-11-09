@@ -29,8 +29,6 @@ export const OutlineParams = {
   threshold: PD.Numeric(0.33, { min: 0.01, max: 1, step: 0.01 }),
   color: PD.Color(Color(0x000000)),
   includeTransparent: PD.Boolean(true, { description: 'Whether to show outline for transparent objects' }),
-  /** Of transparent objects' outlines; null: `color` */
-  transparentColor: PD.Value<Color | null>(null, { isHidden: true }),
 };
 
 export type OutlineProps = PD.Values<typeof OutlineParams>;

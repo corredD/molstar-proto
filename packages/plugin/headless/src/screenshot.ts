@@ -6,7 +6,6 @@
  * @author Sebastian Bittrich <sebastian.bittrich@rcsb.org>
  * @author Ke Ma <mark.ma@rcsb.org>
  * @author Adam Midlik <midlik@gmail.com>
- * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import fs from 'fs';
@@ -446,7 +445,6 @@ export const STYLIZED_POSTPROCESSING: Partial<PostprocessingProps> = {
       threshold: 0.95,
       color: ColorNames.black,
       includeTransparent: true,
-      transparentColor: null,
     },
   },
 };
