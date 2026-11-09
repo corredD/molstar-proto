@@ -31,6 +31,8 @@ import { createLipidTileAssigner, type LipidTileAssigner } from './assign-kernel
 import { type LipidPatch, parsePatchPdb } from './patch.js';
 import { type CutterRegions, cutterRegions, type CutterTable, cutterTable } from './cutter.js';
 import { createLipidCutter, type LipidCutter } from './cutter-kernel.js';
+import { createLipidSelection, enterPx, type LipidSelection, type MembraneFar, poolCapacities } from './procedural.js';
+import type { GpuInstanceView, GpuInstanceWriter } from '@molstar/graphics/gl/renderable/merged-culler';
 import { farTriangles, icosphere, isotropicRemeshSteps, offsetSurface, type TriMesh } from './remesh.js';
 import { bakeTileSetSteps, type TileSet } from './tiles.js';
 
@@ -471,8 +473,27 @@ export const LipidMembraneReprParams = {
   ]),
   // with `detail: custom` (`membraneLevels`)
   levels: PD.Value<readonly MembraneLevel[]>(DefaultCustomLevels, { isHidden: true }),
+  // made per view (lipid-procedural; Ludo, 2026-11-08: both far looks, to compare): the cutter's lipids where large
+  // enough on screen, the textured surface beneath (`texture`, `both`)
+  far: PD.Select<MembraneFar>('both', [
+    ['both', 'Spheres, then texture'],
+    ['spheres', 'Spheres'],
+    ['texture', 'Texture'],
+  ]),
+  atomsPx: PD.Numeric(2, { min: 0.25, max: 16, step: 0.25 }, { description: 'Texture: lipids from this size, px' }),
+  spheresPx: PD.Numeric(
+    0.5,
+    { min: 0.05, max: 8, step: 0.05 },
+    { description: 'Spheres: lipids down to this size, px' },
+  ),
+  budget: PD.Numeric(2_000_000, { min: 10_000, max: 8_000_000, step: 10_000 }, { description: 'Lipids at most' }),
 };
 export type LipidMembraneReprProps = PD.Values<typeof LipidMembraneReprParams>;
+
+/** A lipid's size in the patch, Å: the side of the area a lipid takes (the selection's size on screen) */
+function lipidSize(table: CutterTable) {
+  return Math.sqrt((table.box[0] * table.box[1]) / Math.max(1, table.lipids.length / 4));
+}
 
 /** A species' color: distinct colors by species index across both leaflets (residue names as the tile sets have them) */
 function speciesColors(data: MembraneData) {
@@ -499,6 +520,10 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
   let assigners: LipidTileAssigner[] = [];
   let cutters: LipidCutter[] = [];
   let cutLipids = 0;
+  /** per cut leaflet its selection of a view (`procedural.ts`) */
+  let selections: LipidSelection[] = [];
+  /** the selections' views (`selectFor`) */
+  const selectionStats = { selects: 0, regenerations: 0 };
   let props = PD.getDefaultValues(LipidMembraneReprParams);
   const state = Representation.createState();
   let groupCount = 0;
@@ -508,6 +533,8 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
     for (const c of cutters) c.destroy();
     assigners = [];
     cutters = [];
+    selections = [];
+    selectedViews.clear();
   }
 
   /** a member's spheres values: its atoms (groups: lipids), `n` instances written by `writer`, colored by species */
@@ -553,6 +580,59 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
     groupCount += lipids * n;
     return createRenderObject('spheres', values, Spheres.Utils.createRenderableState(p), -1);
   }
+
+  /**
+   * Member `m`'s writer of a leaflet's pool: its hits on the triangles `selection` holds for the frame's view (its view
+   * hook, called by the culler where the view changed), its live count returned; nothing written where the selection
+   * stayed (a still camera, the pyramid's rounds)
+   */
+  function poolWriter(cutter: LipidCutter, m: number, selection: LipidSelection, size: number): GpuInstanceWriter {
+    const write = cutter.writer(m, selection);
+    let written = -1;
+    const writer = ((compute, target) => {
+      written = selection.version;
+      return write(compute, target);
+    }) as GpuInstanceWriter;
+    writer.view = (compute, target, view) => {
+      selectFor(selection, view, size);
+      if (written === selection.version) return undefined;
+      written = selection.version;
+      selectionStats.regenerations += 1;
+      return write(compute, target) as number;
+    };
+    return writer;
+  }
+
+  /** the view each selection selected for last: its planes and scales (32 numbers) */
+  const selectedViews = new Map<LipidSelection, Float64Array>();
+  /** `selection` for `view`, once a view (its members' hooks share it) */
+  function selectFor(selection: LipidSelection, view: GpuInstanceView, size: number) {
+    let key = selectedViews.get(selection);
+    if (!key) {
+      key = new Float64Array(32).fill(NaN);
+      selectedViews.set(selection, key);
+    }
+    let same = key[28] === view.lod.depthScale && key[29] === view.lod.pixelSize;
+    for (let i = 0; i < 7; ++i) {
+      const { normal, constant } = i < 6 ? view.frustum[i as 0] : view.cameraPlane;
+      const o = i * 4;
+      if (key[o] !== normal[0] || key[o + 1] !== normal[1] || key[o + 2] !== normal[2] || key[o + 3] !== constant) {
+        same = false;
+        key[o] = normal[0];
+        key[o + 1] = normal[1];
+        key[o + 2] = normal[2];
+        key[o + 3] = constant;
+      }
+    }
+    if (same) return;
+    key[28] = view.lod.depthScale;
+    key[29] = view.lod.pixelSize;
+    selectionStats.selects += 1;
+    selectionParams.lipidSize = size;
+    selectionParams.enterPx = enterPx(props.far, props.atomsPx, props.spheresPx);
+    selection.select(view.cameraPlane, view.frustum, view.lod.depthScale, view.lod.pixelSize, selectionParams);
+  }
+  const selectionParams = { lipidSize: 8, enterPx: 2, keep: 0.8 };
 
   /** the data the GPU's cutters and assigners were made for: a new look of the same data reuses them (review S5) */
   let builtFor: MembraneData | undefined;
@@ -646,8 +726,23 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
         cuts.push(cutter);
       }
     }
+    // a pool a member, its capacity a share of the budget (`poolCapacities`), a selection a leaflet
+    const capacities = poolCapacities(
+      cuts.map((c) => c.totals),
+      props.budget,
+    );
+    const pools = data.cut.map((leaflet, c) =>
+      createLipidSelection(
+        leaflet.mesh.positions,
+        leaflet.mesh.indices,
+        leaflet.regions.regionOf,
+        leaflet.regions.count,
+        cuts[c].counts,
+        capacities[c],
+      ),
+    );
     let instances = 0;
-    for (const c of cuts) for (const n of c.totals) instances += n;
+    for (const c of capacities) for (const n of c) instances += n;
     for (const l of data.leaflets) instances += l.slots.variant.length;
     const levels = props.detail === 'off' ? 0 : membraneLevels(props.detail, props.levels).lodLevels.length;
     checkInstances(instances, levels, graphics.compute.maxStorageBufferSize, !!graphics.capabilities.atomicMinMax64);
@@ -658,14 +753,14 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
       const b = cutBounds(leaflet);
       for (let m = 0; m < table.members.length; ++m) {
         const member = table.members[m];
-        const n = cutter.totals[m];
+        const n = capacities[c][m];
         if (n === 0) continue;
         await step({
           message: `Uploading lipids (${leaflet.name}) ${m + 1}/${table.members.length}`,
           current: m,
           max: table.members.length,
         });
-        cutLipids += n;
+        cutLipids += cutter.totals[m];
         const species = [member.species];
         entries.push({
           visual: visual++,
@@ -676,7 +771,7 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
             table.species,
             n,
             b,
-            cutter.writer(m),
+            poolWriter(cutter, m, pools[c], lipidSize(table)),
             colorOf,
           ),
         });
@@ -724,6 +819,7 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
     // kept: what the next build of the same data reuses (review S1: set only by a build that finished)
     builtFor = data;
     cutters = cuts;
+    selections = pools;
     assigners = assigns;
     merged = mergeRenderObjectsByType(entries, true, new Map(), out, true, true, graphics);
     renderObjects = out;
@@ -785,8 +881,22 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
   };
   // the cutter's lipids, counted on the GPU (the tiles' are `membraneCounts`)
   // a getter (`Object.assign` would copy its value of now)
-  return Object.defineProperty(repr, 'cutLipids', { get: () => cutLipids }) as typeof repr & {
+  Object.defineProperty(repr, 'cutLipids', { get: () => cutLipids });
+  // the pool: its live lipids, its views selected for and regenerations (lipid-procedural's camera path)
+  Object.defineProperty(repr, 'pool', {
+    get: () => {
+      let live = 0;
+      let triangles = 0;
+      for (const s of selections) {
+        for (const n of s.live) live += n;
+        triangles += s.count;
+      }
+      return { live, triangles, ...selectionStats };
+    },
+  });
+  return repr as typeof repr & {
     readonly cutLipids: number;
+    readonly pool: { live: number; triangles: number; selects: number; regenerations: number };
   };
 }
 

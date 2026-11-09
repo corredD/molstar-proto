@@ -17,6 +17,7 @@ import { UniformSpec } from '@molstar/graphics/gl/renderable/schema';
 import type { GpuInstanceTarget, GpuInstanceWriter } from '@molstar/graphics/gl/renderable/merged-culler';
 import { InstanceDataVec4s } from '@molstar/graphics/gl/renderable/merged';
 import { cutterBases, type CutterRegions, type CutterTable } from './cutter.js';
+import type { LipidSelection } from './procedural.js';
 
 // The cutter on the GPU (`cutter.ts`, its TypeScript reference): one thread a triangle (its region's plane, spin and
 // offset read from the CPU's region table), two passes. The count pass
@@ -172,17 +173,19 @@ ${common}
 
 @compute @workgroup_size(WorkgroupSizeX)
 fn main(@builtin(global_invocation_id) id: vec3<u32>, @builtin(num_workgroups) groups: vec3<u32>) {
-    let t = triangleIndex(id, groups);
-    let T = u32(uParams.uTriangles);
-    if (t >= T) {
+    // the selected triangles of a view (\`procedural.ts\`): the i-th, its first slot the member's base of it
+    let i = triangleIndex(id, groups);
+    if (i >= u32(uParams.uSelected)) {
         return;
     }
+    let t = selected[i];
+    let T = u32(uParams.uTriangles);
     let k = triangleCut(t);
     if (!k.ok) {
         return;
     }
     let m = u32(uParams.uMember);
-    var slot = bases[m * T + t];
+    var slot = bases[m * T + i];
     let end = u32(uParams.uCount);
     for (var l = memberStart[m]; l < memberStart[m + 1u]; l++) {
         let h = lipids[l].xy;
@@ -242,25 +245,32 @@ export const LipidCutWriteSchema = {
   ...Uniforms,
   uMember: UniformSpec('i'),
   uCount: UniformSpec('i'),
+  uSelected: UniformSpec('i'),
   uInstanceBase: UniformSpec('i'),
   uIdentityBase: UniformSpec('i'),
   ...Inputs,
   bases: StorageBufferSpec('u32', 'read'),
+  selected: StorageBufferSpec('u32', 'read'),
   instanceData: StorageBufferSpec('vec4<f32>', 'read-write'),
   transforms: StorageBufferSpec('vec4<f32>', 'read-write'),
 };
 
-/** A leaflet cut on the GPU: each member's instance count (read back once), a writer a member */
+/** A leaflet cut on the GPU: its counts per (member, triangle) (`m * T + t`, read back once), a writer a member */
 export interface LipidCutter {
+  readonly counts: Uint32Array;
   readonly totals: Uint32Array;
-  writer: (m: number) => GpuInstanceWriter;
+  /**
+   * member `m`'s writer: the hits of the triangles `selection` holds (a view's, `procedural.ts`; all without one), its
+   * live count returned, the slots past it zeros in the identity region (views culled on the CPU draw nothing of them)
+   */
+  writer: (m: number, selection?: LipidSelection) => GpuInstanceWriter;
   destroy: () => void;
 }
 
 /**
- * The mesh and the table uploaded, the count pass run and read back, the bases uploaded: then a writer per member. Byte
- * cost: 12 B a vertex and a triangle, 4 B a triangle (its region), 64 B a region, 16 B a patch lipid, 4 B a (member, triangle) (its first instance; its count, 4 B
- * more, only until read back)
+ * The mesh and the table uploaded, the count pass run and read back: then a writer per member. Byte cost: 12 B a vertex
+ * and a triangle, 4 B a triangle (its region; its selection), 64 B a region, 16 B a patch lipid, 4 B a (member,
+ * triangle) on the GPU (a selected one's first instance) and on the CPU (its count)
  */
 export async function createLipidCutter(
   compute: ComputeContext,
@@ -321,36 +331,69 @@ export async function createLipidCutter(
     countKernel.destroy();
     countBuffer.destroy();
   }
-  const { bases, totals } = cutterBases(counts, M);
+  const { bases: allBases, totals } = cutterBases(counts, M);
+  const all = new Uint32Array(T);
+  for (let t = 0; t < T; ++t) all[t] = t;
   const values = {
     ...uniforms,
     uMember: ValueCell.create(0),
     uCount: ValueCell.create(0),
+    uSelected: ValueCell.create(0),
     uInstanceBase: ValueCell.create(0),
     uIdentityBase: ValueCell.create(0),
     ...inputs,
-    bases: ValueCell.create(buffer(bases, 'lipid cut: bases')),
+    bases: ValueCell.create(buffer(allBases, 'lipid cut: bases')),
+    selected: ValueCell.create(buffer(all, 'lipid cut: selected triangles')),
     instanceData: ValueCell.create(inputs.positions.ref.value),
     transforms: ValueCell.create(inputs.positions.ref.value),
   };
+  /** what `bases` and `selected` hold: all triangles (-1) or a selection's version */
+  let uploaded: { selection: LipidSelection | undefined; version: number } = { selection: undefined, version: -1 };
+  const upload = (selection: LipidSelection | undefined) => {
+    const version = selection?.version ?? -1;
+    if (uploaded.selection === selection && uploaded.version === version) return;
+    uploaded = { selection, version };
+    if (!selection) {
+      values.bases.ref.value.write(allBases);
+      values.selected.ref.value.write(all);
+      return;
+    }
+    const n = selection.count;
+    if (n === 0) return;
+    values.selected.ref.value.write(selection.selected.subarray(0, n));
+    for (let m = 0; m < M; ++m) values.bases.ref.value.write(selection.bases.subarray(m * T, m * T + n), m * T * 4);
+  };
   let kernel: ComputeKernel | undefined;
-  const write = (m: number, target: GpuInstanceTarget) => {
-    const count = Math.min(target.count, totals[m]);
-    if (count === 0) return;
+  const write = (m: number, target: GpuInstanceTarget, selection: LipidSelection | undefined) => {
+    upload(selection);
+    const count = Math.min(target.count, selection ? selection.live[m] : totals[m]);
+    const transformBytes = 3 * 16;
+    // the slots past the live ones: zeros where views culled on the CPU read them
+    if (count < target.count) {
+      target.transforms.clear(
+        (target.identityBase + target.instanceBase + count) * transformBytes,
+        (target.count - count) * transformBytes,
+      );
+    }
+    if (count === 0) return 0;
+    const n = selection ? selection.count : T;
     ValueCell.update(values.uMember, m);
     ValueCell.update(values.uCount, count);
+    ValueCell.update(values.uSelected, n);
     ValueCell.update(values.uInstanceBase, target.instanceBase);
     ValueCell.update(values.uIdentityBase, target.identityBase);
     ValueCell.updateIfChanged(values.instanceData, target.instanceData);
     ValueCell.updateIfChanged(values.transforms, target.transforms);
     kernel ??= compute.createKernel(LipidCutWriteKernel, LipidCutWriteSchema, values);
     compute.beginComputePass({ label: 'lipid cut: write' });
-    kernel.dispatch(...workgroupRows(T, 64, compute.maxWorkgroupsPerDimension));
+    kernel.dispatch(...workgroupRows(n, 64, compute.maxWorkgroupsPerDimension));
     compute.endComputePass();
+    return count;
   };
   return {
+    counts,
     totals,
-    writer: (m) => (_compute, target) => write(m, target),
+    writer: (m, selection) => (_compute, target) => write(m, target, selection),
     destroy: () => {
       kernel?.destroy();
       for (const b of buffers) b.destroy();
