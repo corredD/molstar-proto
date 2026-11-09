@@ -86,7 +86,8 @@ export class MesoSession {
       const r = await compile(next, { ...this.options, cache: this.cache });
       const commit = r.ir ? await this.adapter?.commit(r.ir) : undefined;
       this.counts = r.counts;
-      if (r.ir) this.ir = r.ir;
+      // a document that does not compile has no IR (its errors are the issues); the viewer keeps the last one drawn
+      this.ir = r.ir;
       this.issues = [...r.issues, ...(commit?.issues ?? [])];
       record = {
         label,

@@ -54,4 +54,24 @@ describe('MesoSession', () => {
     adapter.fail = false;
     expect((await s.edit(edit, 'y')).label).toBe('y');
   });
+
+  // gate A5: a model edit that does not compile kept the previous IR beside the new (invalid) doc, so the IR panel
+  // showed a stale IR and the next view edit ran MesoQL over an IR built from another doc
+  it('a model edit that does not compile leaves no IR; the next edit compiles again', async () => {
+    const adapter = new FakeAdapter();
+    const s = new MesoSession(exosomeDoc(), options, adapter);
+    await s.start();
+    const bad = withConcentration(exosomeDoc(), -1);
+    await s.edit(bad, 'bad');
+    expect(s.issues.some((i) => i.severity === 'error')).toBe(true);
+    expect(s.doc).toBe(bad);
+    expect(s.ir).toBeUndefined();
+    expect(adapter.commits.length).toBe(1);
+    const view = await s.edit((d) => ({ ...d, session: { view: 'v.lumen' } }), 'view');
+    expect(view.compileMs).toBeDefined();
+    expect(s.ir).toBeUndefined();
+    await s.edit((d) => withConcentration(d, 0.0008), 'good');
+    expect(s.ir).toBeDefined();
+    expect(adapter.commits.length).toBe(2);
+  });
 });
