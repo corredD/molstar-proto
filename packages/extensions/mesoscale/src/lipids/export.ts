@@ -47,7 +47,8 @@ export function relionAngles(m: ArrayLike<number>, o: number, out: { rot: number
     out.rot = Math.atan2(b(1, 2), b(0, 2)) * deg;
     out.psi = Math.atan2(b(2, 1), -b(2, 0)) * deg;
   } else {
-    out.rot = Math.atan2(b(1, 0), b(0, 0)) * deg;
+    // tilt 0: B = Rz(rot + psi); tilt 180: B = Rz(rot) diag(-1, 1, -1) Rz(psi), so rot - psi from -b00, -b10
+    out.rot = (c > 0 ? Math.atan2(b(1, 0), b(0, 0)) : Math.atan2(-b(1, 0), -b(0, 0))) * deg;
     out.psi = 0;
   }
   out.tilt = tilt * deg;
