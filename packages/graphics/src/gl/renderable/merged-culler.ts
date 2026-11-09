@@ -113,6 +113,13 @@ export interface GpuInstanceTarget {
   readonly count: number;
 }
 
+/**
+ * The translation of a pool's dead slot in the identity region (`GpuInstanceWriter`): zero rows would draw its spheres
+ * at the origin at full size (a sphere's radius is not its transform's), so its rows are zero but this translation, past
+ * any far plane (review M1)
+ */
+export const DeadInstanceTranslation = 1e30;
+
 /** The view a frame is culled for, as `MergedCuller.dispatch` has it */
 export interface GpuInstanceView {
   readonly cameraPlane: Plane3D;
@@ -127,7 +134,8 @@ export interface GpuInstanceView {
  * instance count, and its grid is empty (one cell: its bounding sphere), so nothing on the CPU reads its transforms.
  *
  * A pool of instances made per view (lipid-procedural): the member's instance count is its capacity and the writer
- * returns how many are live (the first ones; `instance-copy` skips the rest), all without a return. `view`, where given,
+ * returns how many are live (the first ones; `instance-copy` skips the rest), all without a return; it writes the dead
+ * ones' rows in the identity region (views culled on the CPU draw every slot) as `DeadInstanceTranslation` says. `view`, where given,
  * is called in `dispatch` where the view changed, once per frame for its first view, before the culling: it writes the
  * member's instances for that view and returns their live count, or nothing where they stay as they are
  */

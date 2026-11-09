@@ -17,7 +17,7 @@ import { Renderer } from '@molstar/graphics/gl/renderer';
 import { createFrame } from '@molstar/graphics/gl/renderable';
 import { packAffineRows } from '@molstar/graphics/gl/affine-rows';
 import { createMergedRenderObject, createRenderObject } from '@molstar/graphics/gl/render-object';
-import type { GpuInstanceWriter } from '@molstar/graphics/gl/renderable/merged-culler';
+import { DeadInstanceTranslation, type GpuInstanceWriter } from '@molstar/graphics/gl/renderable/merged-culler';
 import { InstanceDataVec4s } from '@molstar/graphics/gl/renderable/merged';
 import { Scene } from '@molstar/graphics/gl/scene';
 import { Camera } from '@molstar/graphics/canvas3d/camera';
@@ -80,7 +80,9 @@ function createMember(offset: Vec3, color: number, gpu: boolean, count = Copies 
     if (pool) {
       // a pool made per view: the live ones its rows, the rest zeros in the identity region (views culled on the CPU)
       const write = (target: Parameters<GpuInstanceWriter>[1], live: number) => {
+        // dead: zero rows but a translation past any far plane (`DeadInstanceTranslation`)
         const zeros = new Float32Array((target.count - live) * 12);
+        for (let i = 3; i < zeros.length; i += 4) zeros[i] = DeadInstanceTranslation;
         target.transforms.write(rows.subarray(0, live * 12), (target.identityBase + target.instanceBase) * 3 * 16);
         target.transforms.write(zeros, (target.identityBase + target.instanceBase + live) * 3 * 16);
       };
