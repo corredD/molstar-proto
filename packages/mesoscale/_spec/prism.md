@@ -6,7 +6,8 @@ Scene tree becomes a patch, how Undo spans both, and the app lanes that build it
 [design.md](design.md)'s; the renderer findings are [renderer-recommendations.md](renderer-recommendations.md)'s.
 
 - **Status:** a design (lane `mvs-prism-design`, 2026-11-08); §12 is the build. Built: §1.1's owner, §3, §5.3's open,
-  close, get, edit and save, §7.1 and §7.3 (lane `mvs-open`, 2026-11-09; what differs is said where it does).
+  close, get, edit and save, §7.1 and §7.3 (lane `mvs-open`, 2026-11-09); §4.1-§4.3, §4.5, §4.6, and §5.2's eye and Show
+  only on a document's rows (lane `mvs-tree`, 2026-11-09). What differs is said where it does.
 - **Who decides:** each decision is tagged **(Ludo)** when it is the app's or the base's, **(David)** when it changes
   the format, **(proposed)** when it follows from the code and the specs. §11 lists what waits for a word.
 - **Reading of the brief:** "features.md rows 13-39" is read as the whole _Mesoscale_ section of
@@ -205,6 +206,14 @@ drawn. Under it, its parts, made from the document and the IR, not from the list
   populations whose counts changed. A part's rows are made when first opened (ui.md §3: thousands of entities cost
   nothing until looked at).
 
+- **As built (`mvs-tree`):** rows by id (a document id; a part `<outer>/<inner>`; a group `@model:<id>`,
+  `@kind:<kind>`), kept while the document's sections, the counts, the IR's tree and the grouping are the same objects
+  (`document-tree.ts`); a model edit rebuilds the outline (the tree keeps the DOM of each row that is the same). A
+  compartment's and a group's count include its parts through every instance. Two populations of one entity are told
+  apart by id (`catalase (catalse) · p.catalase`). A part row has no eye (read-only in 3D, §11 question 12); its
+  superstructure's envelope is the outer row itself, its inner compartments rows. The Particles category's eye sets the
+  document's `(all)` eye look.
+
 ### 4.2 Group by
 
 A document's Group by (properties, above the sections, view state as today) offers **Compartment** (the default: the
@@ -285,6 +294,12 @@ For a document row, the sections of ui.md §4 that apply, and three of its own:
   (the row's ⋯) sets the shown view's `selection` to the row's address (a patch). The alternative, mirroring into
   Mol\*'s selection manager, waits for particle selection in Prism.
 
+- **As built (`mvs-tree`):** a row's hover and pick light its copies (`mesoviewspec.lociOf`: the address over the source
+  IR, mapped onto the drawn lists by the adapter, an instanced type to its whole instances, a template's copies to every
+  instance, a `part` to its instance's block); `mesoviewspec.highlight` is the same for ⌘K and the agent. The hover
+  label is Mol*'s one label, from the lists: the copy's id (`getParticleLabel`), then its type's description (entity ·
+  compartment); no second provider. A copy of an expanded instance picks its part row.
+
 ## 5. Operations → patches
 
 The extension's operations from the inventory of `packages/extensions/mesoscale/src` (`operations.ts`,
@@ -343,6 +358,9 @@ The `mesoviewspec` area (proposed ids; flags as operations.md):
 | `mesoviewspec.highlight`               | view                | light an address's copies (§4.6)                                                             |
 | `mesoviewspec.save`                    | view; no undo       | the document as `.mesoviewspec.json` or `.mesoviewspec`, with every patch committed          |
 
+- **As built (`mvs-tree`):** the eye and Show only are `mesoviewspec.eye { select (one a line), visible }` and
+  `mesoviewspec.showOnly { select? }` (none: Show all again), patches on `session.view ?? views[0]` (no view: `v.prism`
+  inserted); `.look` (the style looks) waits for lane `mvs-drive`.
 - **Which look an edit updates.** A look's `id` says which edit wrote it: `l.style.<n>` (`mesoscale.style`, colors,
   imports), `l.eye.<n>` (an eye), `l.only.<n>` (Show only); other ids are the author's. An edit matches only looks of
   its own kind and `select`, so a Show all again never removes an eye's look or an authored one.

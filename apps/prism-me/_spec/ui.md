@@ -60,6 +60,14 @@ nothing until looked at). Under Clips, every clip of the scene (§4, Clip).
 An entity row with a description (its file's text, §4 Properties) shows it as its tooltip, over its name, as text (a
 link's text): `ITG: Integrin alpha-5, …` (Ludo, 2026-11-04).
 
+A MesoViewSpec document (lane `mvs-tree`, [prism.md](../../../packages/mesoscale/_spec/prism.md) §4) is one item of
+Particles, its title and the copies drawn; under it its compartments, populations ("354 of 506" in the warning tone when
+short of the target) and instances, a superstructure population's parts when opened (no eye: read-only in 3D); its lists
+are not rows. Its Group by (its row's properties): Compartment, Model or Kind. A row's eye and Show only are look
+patches saved in the document (one step each); its double click frames its copies; a click in 3D on a document copy
+picks its row; its ⋯: Focus, Show only this, Show all again; the document's also Save and Close. No Move, no Add clip,
+no Color… on a document row (lane `mvs-drive`).
+
 A model's groups follow its Group by (§4), a model's own choice: compartments (the dotted names' tree) by default when
 it has some, else functions; switching remakes that model's rows only. A group row stands for its entities (their ids),
 so its eye, Look, Clips and picks are the same under both groupings. A label made at a group the model's grouping does
