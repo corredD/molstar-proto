@@ -49,7 +49,10 @@ is not built is [../TODO.md](../TODO.md).
     is ready"). Procedural, view-dependent membranes (the region cutter as generator, lipids only where ≥ 2 px), far
     look spheres and bump texture both, switchable; the membrane as a particle system. Built and gated at bbe875df3
     (option A: fixed pool, 2 M budget; library culler ~95 lines; 5 must + 6 should fixed, S2/S4 open in TODO; ~1,100
-    lines vs ~950). Waits on Ludo's try on 1354; library commits need their own lane from master.
+    lines vs ~950). Round 4b (Ludo's teddy notes) built and gated at 1859f56ea: far surfaces per leaflet at the heads,
+    coloured by species; cutter cells ~108 Å with own spin/offset (the 154 Å patch repeated); tiles get species rows
+    and far surfaces; Clip on a membrane. Open for Ludo: M2 seams at cell borders. Round 4c (smooth switch, colouring
+    as a particle list) started after it. Library commits need their own lane from master.
   - `paint` (`me/paint`, port 1352, [brief](2026-11-08-paint.md) on its branch): Paint v1, approved 2026-11-08 (the
     mesoscale extension, random orientation, no collisions in v1). On hold until the lipids (Ludo, 2026-11-08).
 
