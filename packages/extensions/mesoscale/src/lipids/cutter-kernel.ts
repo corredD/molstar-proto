@@ -14,7 +14,11 @@ import {
 } from '@molstar/graphics/gl/compute';
 import { workgroupRows } from '@molstar/graphics/gl/compute/cell-cull';
 import { UniformSpec } from '@molstar/graphics/gl/renderable/schema';
-import type { GpuInstanceTarget, GpuInstanceWriter } from '@molstar/graphics/gl/renderable/merged-culler';
+import {
+  DeadInstanceTranslation,
+  type GpuInstanceTarget,
+  type GpuInstanceWriter,
+} from '@molstar/graphics/gl/renderable/merged-culler';
 import { InstanceDataVec4s } from '@molstar/graphics/gl/renderable/merged';
 import { cutterBases, type CutterRegions, type CutterTable } from './cutter.js';
 import type { LipidSelection } from './procedural.js';
@@ -223,7 +227,31 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>, @builtin(num_workgroups) g
 }
 `;
 
+// a pool's dead slots in the identity region: zero rows but a translation past any far plane (`DeadInstanceTranslation`)
+const deadWgsl = /* wgsl */ `
+@compute @workgroup_size(WorkgroupSizeX)
+fn main(@builtin(global_invocation_id) id: vec3<u32>, @builtin(num_workgroups) groups: vec3<u32>) {
+    let i = id.x + id.y * groups.x * WorkgroupSizeX;
+    if (i >= u32(uParams.uDeadCount)) {
+        return;
+    }
+    let w = (u32(uParams.uIdentityBase) + u32(uParams.uInstanceBase) + u32(uParams.uDeadStart) + i) * 3u;
+    let r = vec4<f32>(0.0, 0.0, 0.0, ${DeadInstanceTranslation.toExponential().replace('+', '')});
+    transforms[w] = r;
+    transforms[w + 1u] = r;
+    transforms[w + 2u] = r;
+}
+`;
+
 export const LipidCutCountKernel = KernelCode('lipid-cut-count', [64], { wgsl: countWgsl });
+export const LipidDeadKernel = KernelCode('lipid-dead-slots', [64], { wgsl: deadWgsl });
+export const LipidDeadSchema = {
+  uDeadStart: UniformSpec('i'),
+  uDeadCount: UniformSpec('i'),
+  uInstanceBase: UniformSpec('i'),
+  uIdentityBase: UniformSpec('i'),
+  transforms: StorageBufferSpec('vec4<f32>', 'read-write'),
+};
 export const LipidCutWriteKernel = KernelCode('lipid-cut-write', [64], { wgsl: writeWgsl });
 
 const Uniforms = {
@@ -364,22 +392,34 @@ export async function createLipidCutter(
     for (let m = 0; m < M; ++m) values.bases.ref.value.write(selection.bases.subarray(m * T, m * T + n), m * T * 4);
   };
   let kernel: ComputeKernel | undefined;
-  /** per member what its identity region holds: its buffer, base and live slots (the rest zeros) */
+  const dead = {
+    uDeadStart: ValueCell.create(0),
+    uDeadCount: ValueCell.create(0),
+    uInstanceBase: ValueCell.create(0),
+    uIdentityBase: ValueCell.create(0),
+    transforms: ValueCell.create(inputs.positions.ref.value),
+  };
+  let deadKernel: ComputeKernel | undefined;
+  /** per member what its identity region holds: its buffer, base and live slots (the rest dead rows) */
   const cleared = Array.from({ length: M }, () => ({ buffer: -1, base: -1, live: 0 }));
   const write = (m: number, target: GpuInstanceTarget, selection: LipidSelection | undefined) => {
     upload(selection);
     const count = Math.min(target.count, selection ? selection.live[m] : totals[m]);
-    const transformBytes = 3 * 16;
     // the slots past the live ones: zeros where views culled on the CPU read them; only those live before (review S3:
     // the whole rest a frame), all of them in a new buffer or place
     const last = cleared[m];
     const fresh = last.buffer !== target.transforms.id || last.base !== target.identityBase + target.instanceBase;
     const end = fresh ? target.count : Math.min(target.count, last.live);
     if (count < end) {
-      target.transforms.clear(
-        (target.identityBase + target.instanceBase + count) * transformBytes,
-        (end - count) * transformBytes,
-      );
+      ValueCell.update(dead.uDeadStart, count);
+      ValueCell.update(dead.uDeadCount, end - count);
+      ValueCell.update(dead.uInstanceBase, target.instanceBase);
+      ValueCell.update(dead.uIdentityBase, target.identityBase);
+      ValueCell.updateIfChanged(dead.transforms, target.transforms);
+      deadKernel ??= compute.createKernel(LipidDeadKernel, LipidDeadSchema, dead);
+      compute.beginComputePass({ label: 'lipid cut: dead slots' });
+      deadKernel.dispatch(...workgroupRows(end - count, 64, compute.maxWorkgroupsPerDimension));
+      compute.endComputePass();
     }
     last.buffer = target.transforms.id;
     last.base = target.identityBase + target.instanceBase;
@@ -405,6 +445,7 @@ export async function createLipidCutter(
     writer: (m, selection) => (_compute, target) => write(m, target, selection),
     destroy: () => {
       kernel?.destroy();
+      deadKernel?.destroy();
       for (const b of buffers) b.destroy();
     },
   };

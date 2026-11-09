@@ -11,6 +11,7 @@ import { createWebGPUContext, requestWebGPUDevice } from '@molstar/graphics/gl/w
 import { InstanceDataVec4s } from '@molstar/graphics/gl/renderable/merged';
 import { cutterBases, cutterCounts, cutterReference, cutterRegions, cutterTable } from '../lipids/cutter.js';
 import { createLipidCutter } from '../lipids/cutter-kernel.js';
+import { createLipidSelection } from '../lipids/procedural.js';
 import { parsePatchPdb } from '../lipids/patch.js';
 import { icosphere } from '../lipids/remesh.js';
 import { syntheticPatchPdb } from './lipid-fixtures.js';
@@ -93,6 +94,31 @@ describe.skipIf(!webgpu)('the lipid cutter on the GPU (Dawn)', () => {
       }
       // f32 on the GPU, f64 in the reference, positions of 300 Å
       expect(maxError).toBeLessThan(2e-3);
+      // a view with none of member 0 (a pool): its slots dead, past any far plane, not zero rows (review M1)
+      const none = createLipidSelection(
+        mesh.positions,
+        mesh.indices,
+        regions.regionOf,
+        regions.count,
+        cutter.counts,
+        cutter.totals,
+      );
+      const live = cutter.writer(0, none)(compute, {
+        instanceData,
+        transforms,
+        instanceBase: bases[0],
+        identityBase,
+        count: cutter.totals[0],
+      });
+      expect(live).toBe(0);
+      graphics.flush();
+      const dead = new Float32Array(await transforms.readAsync());
+      for (const s of [0, cutter.totals[0] - 1]) {
+        const o = (identityBase + bases[0] + s) * 12;
+        expect(Array.from(dead.subarray(o, o + 12))).toEqual(
+          [0, 0, 0, 1e30, 0, 0, 0, 1e30, 0, 0, 0, 1e30].map(Math.fround),
+        );
+      }
       expect(graphics.takeErrors?.() ?? []).toEqual([]);
       cutter.destroy();
     } finally {
