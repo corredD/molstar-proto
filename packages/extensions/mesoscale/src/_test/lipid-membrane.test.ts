@@ -12,6 +12,7 @@ import type { PrismViewer } from '@molstar/prism-viewer/viewer';
 import { PluginStateObject as SO } from '@molstar/plugin/state/objects';
 import {
   buildMembrane,
+  cutBounds,
   LipidMembrane,
   membraneCounts,
   registerLipidPatch,
@@ -59,6 +60,15 @@ describe('lipid membrane', () => {
     // the legs (radius 15 Å under a 42 Å edge) are cut on their own triangles, the body tiled
     expect(data.cut.length).toBe(2);
     expect(coveredFraction(body, membraneAtoms(data))).toBeGreaterThan(0.97);
+    // the cut lipids' bounds hold every lost triangle (the remesh's sphere left the legs out: review M1)
+    for (const l of data.cut) {
+      const b = cutBounds(l);
+      const p = l.mesh.positions;
+      for (const v of l.mesh.indices) {
+        const d = Math.hypot(p[v * 3] - b.center[0], p[v * 3 + 1] - b.center[1], p[v * 3 + 2] - b.center[2]);
+        expect(d).toBeLessThanOrEqual(b.radius);
+      }
+    }
   });
 
   it('cuts the mesh’s own triangles with the cutter: no remesh, every part covered', () => {

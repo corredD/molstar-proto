@@ -277,6 +277,16 @@ function boundsDiagonal(p: Float32Array) {
   return p.length ? Math.hypot(hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]) : 0;
 }
 
+/**
+ * The bounds of a cut leaflet's members (their one cell for the GPU culler): its own mesh's sphere, not the membrane's
+ * (the tiles' remesh, without the parts it lost: a leg's lipids were culled, review M1), grown by a lipid's length
+ */
+export function cutBounds(leaflet: CutLeaflet) {
+  const b = boundingSphereOf(leaflet.mesh.positions, Sphere3D());
+  b.radius += 40;
+  return b;
+}
+
 function boundingSphereOf(p: Float32Array, out: Sphere3D) {
   const c = Vec3.zero();
   const n = p.length / 3;
@@ -426,9 +436,7 @@ export function LipidMembraneRepresentation(graphics: GraphicsContext | undefine
         data.kinds.seed,
       );
       cutters.push(cutter);
-      // the lipids reach their length past the mesh along the normal: the sphere grown by a lipid's
-      const b = Sphere3D.clone(data.sphere);
-      b.radius += 40;
+      const b = cutBounds(leaflet);
       table.members.forEach((member, m) => {
         const n = cutter.totals[m];
         if (n === 0) return;
