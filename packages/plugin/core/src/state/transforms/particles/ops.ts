@@ -610,7 +610,10 @@ export function offsetParticles(
     }
     Quat.toArray(q, rotations, i * 4);
   }
-  return { ...list, coordinates, rotations, _propertyData: Object.create(null) };
+  // moved particle by particle, not as a whole: no `movedFrom` (a decorated list's would give an identity move,
+  // `Particle.getMove`, and its target visuals would draw the old positions)
+  const { movedFrom: _, ...rest } = list;
+  return { ...rest, coordinates, rotations, _propertyData: Object.create(null) };
 }
 
 /** The particles' positions scaled by `scale` about the origin, then moved and turned by `m` (orientations turned) */
@@ -635,7 +638,8 @@ function transformParticles(list: ParticleList, m: Mat4, scale = 1): ParticleLis
     Quat.multiply(q, turn, q);
     Quat.toArray(q, rotations, i * 4);
   }
-  // its simulation box, if any, no longer bounds it
-  const { cell: _, ...rest } = list;
+  // its simulation box, if any, no longer bounds it; no `movedFrom` (the input's would give an identity move,
+  // `Particle.getMove`: a decorated list's target visuals would keep the old positions)
+  const { cell: _, movedFrom: __, ...rest } = list;
   return { ...rest, coordinates, rotations, _propertyData: Object.create(null) };
 }
