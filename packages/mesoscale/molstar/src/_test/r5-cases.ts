@@ -89,14 +89,18 @@ export function defineR5(splits: readonly number[]) {
             const without = new Map(loaded);
             without.delete(node.params.tiles[0].id);
             const out1 = await adapter.commit(ir(without));
-            const in1 = await adapter.commit(ir(loaded));
+            // the add brings the tile back as a set built afresh (a load's arrival), not the object that left
+            const back = new Map(without);
+            const first = node.params.tiles[0];
+            back.set(first.id, tileSet(node, first, await provider.load(first.id, 1, signal)));
+            const in1 = await adapter.commit(ir(back));
             const recolored = {
               ...doc,
               views: doc.views!.map((x) =>
                 x.id === doc.session!.view ? { ...x, looks: [{ select: '(population p.a)', color: '#d0453a' }] } : x,
               ),
             };
-            const look = await adapter.commit(ir(loaded, recolored));
+            const look = await adapter.commit(ir(back, recolored));
             const round = (x: number | undefined, d = 1) => (x === undefined ? undefined : +x.toFixed(d));
             record(`r5_${sets}_sets`, {
               sets,
@@ -111,7 +115,8 @@ export function defineR5(splits: readonly number[]) {
               heap_delta_MB: hasGc ? round((h1 - h0) / 2 ** 20) : 'not measured (no --expose-gc)',
               stream_remove_ms: round(out1.ms.total),
               stream_add_ms: round(in1.ms.total),
-              stream_looks_written: out1.looksWritten + in1.looksWritten,
+              stream_remove_looks_written: out1.looksWritten,
+              stream_add_looks_written: in1.looksWritten,
               color_commit_ms: round(look.ms.total),
             });
             expect(copies).toBe(total);
