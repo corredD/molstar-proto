@@ -6,6 +6,7 @@
 
 import { OrderedSet } from '@molstar/core/data/int';
 import { Sphere3D } from '@molstar/core/math/geometry';
+import { BoundaryHelper } from '@molstar/core/math/geometry/boundary-helper';
 import { Mat4, Vec3 } from '@molstar/core/math/linear-algebra';
 import { StateTransformer } from '@molstar/core/state';
 import { type RuntimeContext, Task } from '@molstar/core/task';
@@ -19,7 +20,12 @@ import { DihedralParams, DihedralRepresentation } from '@molstar/graphics/repr/s
 import { DistanceParams, DistanceRepresentation, type DistanceData } from '@molstar/graphics/repr/shape/loci/distance';
 import { Loci } from '@molstar/model/model/loci';
 import { Shape, ShapeGroup } from '@molstar/model/model/shape';
-import { Particle, type ParticleList } from '@molstar/model/model/particles/particle-list';
+import {
+  Particle,
+  type ParticleList,
+  type ParticleSites,
+  type ParticleTarget,
+} from '@molstar/model/model/particles/particle-list';
 import { type Structure, StructureElement } from '@molstar/model/model/structure';
 import { Grid, Volume } from '@molstar/model/model/volume';
 import type { PluginContext } from '@molstar/plugin/context';
@@ -164,14 +170,57 @@ export function meshShapeOf(plugin: PluginContext, ref: string): Shape<Mesh> | u
   return undefined;
 }
 
-/** A particle's size: its own radius, else what decorates it (its structure's, volume's, shape's), else a few Å */
+/** A particle's size: its own radius, else what decorates it (its structure's, sites', volume's, shape's), else a few Å */
 export function particleRadius(list: ParticleList, i: number): number {
   const own = list.radii?.[i];
   if (own) return own;
-  const target = list.targetMapping?.get(list.targets[i]);
-  if (target?.kind === 'structure') return target.structure.boundary.sphere.radius;
-  if (target?.kind === 'volume') return Grid.getBoundingSphere(target.volume.grid).radius;
-  return (target?.shape.geometry as { boundingSphere?: Sphere3D } | undefined)?.boundingSphere?.radius || 5;
+  return targetSphere(list.targetMapping?.get(list.targets[i]))?.radius || 5;
+}
+
+/**
+ * The sphere around what decorates a particle (its target), in the target's own coordinates: a structure's boundary,
+ * sites' positions and radii, a volume's box, a shape's geometry; none for no target
+ */
+export function targetSphere(target: ParticleTarget | undefined): Sphere3D | undefined {
+  switch (target?.kind) {
+    case 'structure':
+      return target.structure.boundary.sphere;
+    case 'sites':
+      return sitesSphere(target.sites);
+    case 'volume':
+      return Grid.getBoundingSphere(target.volume.grid);
+    case 'shape':
+      return (target.shape.geometry as { boundingSphere?: Sphere3D }).boundingSphere;
+    default:
+      return undefined;
+  }
+}
+
+const sitesSpheres = new WeakMap<ParticleSites, Sphere3D>();
+const sitesBoundary = new BoundaryHelper('98');
+const sitePosition = Vec3();
+
+/** The sphere around sites, with their radii: computed once a sites (a target's may be millions; asked per particle) */
+function sitesSphere(sites: ParticleSites): Sphere3D {
+  let sphere = sitesSpheres.get(sites);
+  if (sphere) return sphere;
+  const { count, positions: p, radii } = sites;
+  if (count === 0) {
+    sphere = Sphere3D.zero();
+  } else {
+    const h = sitesBoundary;
+    h.reset();
+    for (let i = 0, o = 0; i < count; ++i, o += 3) {
+      h.includePositionRadius(Vec3.set(sitePosition, p[o], p[o + 1], p[o + 2]), radii[i]);
+    }
+    h.finishedIncludeStep();
+    for (let i = 0, o = 0; i < count; ++i, o += 3) {
+      h.radiusPositionRadius(Vec3.set(sitePosition, p[o], p[o + 1], p[o + 2]), radii[i]);
+    }
+    sphere = h.getSphere();
+  }
+  sitesSpheres.set(sites, sphere);
+  return sphere;
 }
 
 /** The distance between two points' centers (Å), as Mol* measures it: the centers of the spheres around them */

@@ -137,7 +137,7 @@ fn fragmentMain(in: VertexOutput) -> @location(0) vec4<f32> {
                     let finalOutlineAlpha = clamp(outline.alpha * 2.0, 0.0, 1.0);
                     let outlineFogFactor = outlineFog(outline.transparentDepth);
                     let finalAlpha = max(transparentColor.a, finalOutlineAlpha * (1.0 - outlineFogFactor));
-                    transparentColor = vec4<f32>(uObject.uTransparentOutlineColor * finalAlpha, finalAlpha);
+                    transparentColor = vec4<f32>(uObject.uOutlineColor * finalAlpha, finalAlpha);
                 }
             }
         #endif

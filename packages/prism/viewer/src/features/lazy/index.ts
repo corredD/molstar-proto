@@ -4,6 +4,7 @@
  * Developed in collaboration with Anyfold <https://anyfold.ai/>
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Alexander Rose <alexander.rose@weirdbyte.de>
  */
 
 import { getFileNameInfo } from '@molstar/core/util/file-info';
@@ -167,6 +168,7 @@ const ParticleTransformers = [
   'particle-list-targets-from-attribute',
   'particle-list-transform',
   'particle-list-offsets',
+  'transform-particle-list',
   'particles-representation-3d',
   'particle-list-unitcell-3d',
 ].map((name) => `ms-plugin.${name}`);
@@ -186,6 +188,8 @@ export const LazyParticles: LazyViewerExtension = {
       { id: 'particles.look', title: 'Set how some particles look' },
       { id: 'particles.focus', title: 'Focus the particles', history: false },
       { id: 'particles.unit-cell', title: 'Show the particle unit cell' },
+      { id: 'particles.transform', title: 'Move or rotate particles' },
+      { id: 'particles.transform-reset', title: 'Reset the particles’ transform' },
       { id: 'particles.source', title: 'Set how particles are read' },
       { id: 'particles.frame', title: 'Show a particle frame', history: false },
       { id: 'particles.play', title: 'Play the particle frames', history: false, modules: ['canvas'] },
@@ -204,6 +208,13 @@ export const LazyParticles: LazyViewerExtension = {
       { id: 'particles.color', title: 'Color particles by…', category: 'Particles', icon: 'palette' },
       { id: 'particles.focus', title: 'Focus the particles', category: 'Particles', icon: 'focus' },
       { id: 'particles.unit-cell', title: 'Show the particle unit cell', category: 'Particles', icon: 'box' },
+      { id: 'particles.transform', title: 'Move or rotate particles', category: 'Particles', icon: 'move-3d' },
+      {
+        id: 'particles.transform-reset',
+        title: 'Reset the particles’ transform',
+        category: 'Particles',
+        icon: 'rotate-ccw',
+      },
       { id: 'particles.targets', title: 'Set what the particles stand for…', category: 'Particles', icon: 'shapes' },
       { id: 'particles.frame', title: 'Show a particle frame…', category: 'Particles', icon: 'trajectory' },
       { id: 'particles.play', title: 'Play the particle frames', category: 'Particles', icon: 'play' },

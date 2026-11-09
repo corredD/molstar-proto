@@ -1,53 +1,81 @@
 /**
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
- * @author Ludovic Autin <autin@scripps.edu>
+ * @author Alexander Rose <alexander.rose@weirdbyte.de>
  */
 
 import { describe, expect, it } from 'vitest';
+import { ValueCell } from '@molstar/core/util';
 import { createDataArray } from '@molstar/graphics/gl/renderable/util';
-import { setPositionGroup } from '../center-group.js';
+import { orderPositionGroup, PositionGroupStride } from '../center-group.js';
 
-/** Items on a 16 x 16 x 16 grid in a scrambled order, their group their index */
-function scrambled() {
-  const count = 4096;
-  const centers = new Float32Array(count * 3);
-  const groups = new Float32Array(count);
-  for (let i = 0; i < count; ++i) {
-    const k = (i * 2654435761) % count;
-    centers.set([k % 16, Math.floor(k / 16) % 16, Math.floor(k / 256)], i * 3);
-    groups[i] = i;
+/** the items in the order of the levels of `strides`, as a pass over the items per level (coarsest first) */
+function reference(count: number, strides: readonly number[]) {
+  const level = (j: number) => {
+    let k = 0;
+    while (k < strides.length && j % strides[k] !== 0) ++k;
+    return k;
+  };
+  const order: number[] = [];
+  const offsets = [0];
+  for (let i = 0; i <= strides.length; ++i) {
+    for (let j = 0; j < count; ++j) if (level(j) === i) order.push(j);
+    if (i < strides.length) offsets.push(order.length * 6);
   }
-  return { centers, groups, count };
+  return { order, offsets: strides.length ? offsets : undefined };
 }
 
-describe('positions by level of detail', () => {
-  // rework: space order (Morton) within each level of detail (e8fac2583), dropped in the merge of master: #2061 moved the
-  // levels' order to `lod-levels.ts` (879496397 orders the per-vertex colors and sizes by it); `setPositionGroup` no
-  // longer orders by level
-  it.skip('each level the same items, in space order within it (items near in the list near in space)', () => {
-    const { centers, groups, count } = scrambled();
-    const out = createDataArray(count, 4, Float32Array);
-    // strides as the levels take them: coarsest first
-    // @ts-expect-error rework: the signature of before the merge of master
-    const offsets: number[] = setPositionGroup(out, centers, groups, count, [64, 8, 1])!;
-    expect(offsets).toEqual([0, 64 * 6, 512 * 6, 4096 * 6]);
-    for (let b = 0; b < 3; ++b) {
-      const [begin, end] = [offsets[b] / 6, offsets[b + 1] / 6];
-      // the band's items: those of its stride not in a coarser one
-      const items = Array.from(out.array.subarray(begin * 4, end * 4)).filter((_, i) => i % 4 === 3);
-      const expected: number[] = [];
-      for (let j = 0; j < count; ++j) {
-        if ([64, 8, 1].findIndex((s) => j % s === 0) === b) expected.push(j);
-      }
-      expect(items.slice().sort((x, y) => x - y)).toEqual(expected);
-      // consecutive items of a band are close: the mean step well below the scrambled order's
-      let step = 0;
-      for (let i = begin + 1; i < end; ++i) {
-        const d = [0, 1, 2].map((k) => out.array[i * 4 + k] - out.array[(i - 1) * 4 + k]);
-        step += Math.hypot(d[0], d[1], d[2]);
-      }
-      if (end - begin > 64) expect(step / (end - begin - 1)).toBeLessThan(3);
+/** `count` items, the group of item j being j (the center j, 2j, 3j) */
+function createItems(count: number) {
+  const array = new Float32Array(count * PositionGroupStride);
+  for (let j = 0; j < count; ++j) array.set([j, 2 * j, 3 * j, j], j * PositionGroupStride);
+  return ValueCell.create(createDataArray(count, PositionGroupStride, Float32Array, array));
+}
+
+/** the groups in the cell's order, each item checked to be whole (its center moved with its group) */
+function groups(cell: ReturnType<typeof createItems>, count: number) {
+  const { array } = cell.ref.value;
+  const out: number[] = [];
+  for (let p = 0; p < count; ++p) {
+    const g = array[p * PositionGroupStride + 3];
+    expect([array[p * 4], array[p * 4 + 1], array[p * 4 + 2]]).toEqual([g, 2 * g, 3 * g]);
+    out.push(g);
+  }
+  return out;
+}
+
+describe('orderPositionGroup', () => {
+  const count = 1003;
+
+  it('orders the items into the levels of the strides, as a pass per level', () => {
+    for (const strides of [[16, 4, 1], [8, 2], [3], [1], [7, 5, 3]]) {
+      const cell = createItems(count);
+      const offsets = orderPositionGroup(cell, count, strides);
+      const expected = reference(count, strides);
+      expect(groups(cell, count)).toEqual(expected.order);
+      expect(offsets).toEqual(expected.offsets);
+    }
+  });
+
+  it('orders again from the order of the strides applied before, and back without strides', () => {
+    const cell = createItems(count);
+    orderPositionGroup(cell, count, [16, 4, 1]);
+    const offsets = orderPositionGroup(cell, count, [8, 2]);
+    expect(groups(cell, count)).toEqual(reference(count, [8, 2]).order);
+    expect(offsets).toEqual(reference(count, [8, 2]).offsets);
+    expect(orderPositionGroup(cell, count, [])).toBeUndefined();
+    expect(groups(cell, count)).toEqual(reference(count, []).order);
+  });
+
+  it('takes strides that are no positive integers as before', () => {
+    for (const strides of [
+      [2.5, 1],
+      [0, 3],
+    ]) {
+      const cell = createItems(count);
+      const offsets = orderPositionGroup(cell, count, strides);
+      expect(groups(cell, count)).toEqual(reference(count, strides).order);
+      expect(offsets).toEqual(reference(count, strides).offsets);
     }
   });
 });

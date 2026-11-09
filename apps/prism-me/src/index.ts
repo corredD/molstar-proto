@@ -11,7 +11,6 @@ import { LoadUrlParameters, parseSearch, runUrlLoads } from '@molstar/prism-view
 import { createPrismViewer } from '@molstar/prism-viewer/page';
 import { modesFromUrl, unknownUrlParameters } from '@molstar/prism-viewer-app/url';
 import { SceneTab } from './explorer/ui.js';
-import { applyMesoscaleHandleLook } from './look.js';
 import { createMesoscaleExplorerSpec } from './spec.js';
 import {
   EmpiarUrlParameters,
@@ -39,8 +38,6 @@ async function main() {
   // The explorer's panel open at start (_spec/ui.md §1); an extension's tab registers after the shell starts, so the
   // spec's `ui.layout.start` cannot name it
   void viewer.api.view.open({ tab: SceneTab });
-  // The handles on top at start (look.ts)
-  applyMesoscaleHandleLook(viewer.api).catch((e: unknown) => console.error(e));
 
   const unknown = unknownUrlParameters(location.search, [
     ...LoadUrlParameters,
