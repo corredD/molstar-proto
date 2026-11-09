@@ -27,6 +27,7 @@ import type {
   Site,
   Superstructure,
   Tour,
+  Vec3,
   View,
 } from '../format/doc.js';
 
@@ -130,6 +131,12 @@ export type CompartmentInput<S extends Scope = 'doc'> = In<
   Compartment,
   Ev & { parent?: CompartmentRef<S>; geometry: GeometryInput; membrane?: MembraneInput }
 >;
+type FiberArrangement = Extract<Arrangement, { readonly kind: 'fiber' }>;
+type ArrangementInput =
+  | Exclude<Arrangement, { readonly kind: 'fiber' }>
+  | (Omit<FiberArrangement, 'path'> & {
+      readonly path?: { readonly resource?: ResourceRef; readonly points?: readonly Vec3[] };
+    });
 type ConstraintInput<S extends Scope> =
   | { readonly kind: 'placed-fraction'; readonly min: number }
   | {
@@ -143,7 +150,7 @@ export type PopulationInput<S extends Scope = 'doc'> = In<
     entity: EntityOf<S>;
     compartment: CompartmentRef<S>;
     abundance: Abundance;
-    arrangement?: Arrangement;
+    arrangement?: ArrangementInput;
     constraints?: readonly ConstraintInput<S>[];
   }
 >;

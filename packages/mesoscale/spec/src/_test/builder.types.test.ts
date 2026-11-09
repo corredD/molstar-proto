@@ -49,6 +49,22 @@ function types() {
   // @ts-expect-error a superstructure takes no instance
   ss.instance({});
 
+  // @ts-expect-error a fiber's path resource is a resource ref, not a string
+  b.population({
+    entity: e,
+    compartment: c,
+    location: 'interior',
+    abundance: { count: 1 },
+    arrangement: { kind: 'fiber', rise: 1, path: { resource: 'r.x' } },
+  });
+  b.population({
+    entity: e,
+    compartment: c,
+    location: 'interior',
+    abundance: { count: 1 },
+    arrangement: { kind: 'fiber', rise: 1, path: { resource: b.resource({ kind: 'mesh', format: 'obj' }) } },
+  });
+
   // addresses take refs of the kind of the symbol
   q.population(p, ip);
   q.copies(p, 12);
