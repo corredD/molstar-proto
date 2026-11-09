@@ -37,19 +37,8 @@ A model realizes streamed populations through a `stream` source. Its tiles are a
 `meso-tiles`. The host supplies the provider that reads that resource (`RuntimeOptions.tiles`), as it supplies `load`
 for other resources.
 
-```ts
-// format/doc.ts
-export interface Model {
-  // … as today
-  /** Streamed copies (design.md §6.8): the tiles of a `meso-tiles` resource, loaded by the host's provider. */
-  readonly stream?: StreamSource;
-}
-
-export interface StreamSource {
-  /** A resource of kind `placements`, format `meso-tiles`; its frame is the world frame (or none). */
-  readonly resource: Id;
-}
-```
+A `Model` has an optional `stream` field, a `StreamSource` whose `resource` names the manifest resource, in the world
+frame (or none); the types are in [reference/format.md](reference/format.md#streamsource). The S-expression spelling:
 
 ```lisp
 (model m.tiles :kind precomputed :method meso.stream
@@ -72,46 +61,17 @@ export interface StreamSource {
   - at most one model in the document has `stream` (`stream.unsupported`);
   - its populations count as realized: `model.overlap` applies, `model.unrealized` does not, and no default resolver
     takes them.
-- **New issue codes:** `stream.unsupported`, `stream.manifest` (the manifest is unavailable or invalid), `stream.tile`
-  (a tile failed to load or disagreed with its manifest), `stream.budget` (one tile alone exceeds the budget).
+- **Issue codes:** the `stream.*` codes are in [reference/issues.md](reference/issues.md#codes).
 
 ### Manifest (`format/doc.ts`, the `meso-tiles` format)
 
 The manifest is the format of the tile resource, so its types sit beside the document's. Coordinates are world Å. Tiles
 are axis-aligned boxes; this version refuses a stream in a rotated frame rather than transform boxes (above).
 
-```ts
-// format/doc.ts
-/** An axis-aligned box, Å, world frame; `min[k] < max[k]` on every axis. */
-export interface Box {
-  readonly min: readonly [number, number, number];
-  readonly max: readonly [number, number, number];
-}
-
-export type StreamLevel = 0 | 1 | 2;
-
-export interface TileManifest {
-  readonly format: 'meso-tiles';
-  /** Must hold 0 and 1, ascending, no repeats; 2 is declared only (an `info` issue: not loaded yet). */
-  readonly levels: readonly StreamLevel[];
-  /** The box every tile lies in. */
-  readonly bounds: Box;
-  /** The populations the tiles hold, by document id: exactly the stream model's `populations`, in type order. */
-  readonly populations: readonly Id[];
-  /** In a fixed order: global copy ordinals follow it (below). */
-  readonly tiles: readonly TileEntry[];
-}
-
-export interface TileEntry {
-  /** Unique in the manifest; matches `IdPattern` (`t.3.0.7`). */
-  readonly id: string;
-  readonly box: Box;
-  /** Level 0: copies per population (non-negative integers); a population absent from the record has none here. */
-  readonly counts: Readonly<Record<Id, number>>;
-  /** Level 0: where a population's copies are in the tile; default the tile's box. Inside `box`. */
-  readonly envelopes?: Readonly<Record<Id, Box>>;
-}
-```
+The types (`TileManifest`, `TileEntry`, `Box`, `StreamLevel`) are in
+[reference/format.md](reference/format.md#tilemanifest). In words: `levels` must hold 0 and 1; `bounds` is the box every
+tile lies in; `populations` are exactly the stream model's, in type order; `tiles` come in a fixed order, which the
+global ordinals follow (below); a tile has an `id`, a `box`, level-0 `counts` per population and optional `envelopes`.
 
 - **Validation** (`validateManifest(m, model, doc): Issue[]` in `validate.ts`, phase `load`, code `stream.manifest`,
   path `/models/<i>/stream`). It is synchronous and pure, and is called by `compile` once the provider returns the

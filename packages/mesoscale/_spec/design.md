@@ -6,6 +6,8 @@ For David's review. Renderer findings are in a separate document,
 
 - **Status:** a prototype on branch `me/mesoviewspec` (worktree `~/prism-me-lanes/mesoviewspec`, off `prism-me`). It is
   not pushed. Nothing in Mol\* itself was changed.
+- **The spec** is [README.md](README.md) and its topic files; this document is its design record: why, the numbers and
+  the decisions. Each section moved to a topic file leaves its heading here, linked.
 - **Code:** `packages/mesoscale/spec` (`@molstar/meso-spec`: the format, IR, runtime and resolvers; no Mol\* imports)
   and `packages/mesoscale/molstar` (`@molstar/meso-molstar`: the Prism adapter, the MolViewSpec export and the stories).
 - **Paired examples:** each scene as a document and as the IR the runtime makes of it, in `packages/mesoscale/examples/`
