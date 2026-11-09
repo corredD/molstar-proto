@@ -510,6 +510,14 @@ Sonnet subagents, one at a time).**
 5. **Scale numbers on this mesh** (27.7 M lipids): wrap time, GPU bytes, frame time whole / middle / close, with levels,
    both methods if the cutter fits (stopped past ~60 s or ~8 GB).
 
+6. **The cutter loses the GPU at this size (must-fix, Ludo, 2026-11-08, added to the brief mid-round).** In Chrome,
+   `wrapMembrane { mesh, method: 'cutter', patch: 'charmm-gui', patchUrl }` on this mesh ×100 said ok, then 6× "A valid
+   external Instance reference no longer exists", the fallback to WebGL2, and "texImage2D: texture data size exceeds the
+   supported range". The wrap checks its buffers against the device's limits before it dispatches and fails cleanly
+   (nothing allocated) or splits the work, never ok then a lost device; the same for the tiles; after a fallback to
+   WebGL2 no membrane texture past its limit (find which overflowed). A test that fails first: a fake device with small
+   limits. The size where the cutter starts to fail headless, recorded.
+
 **Proof.** Images of this mesh ×100, looked at, before and after:
 `~/prism-me-lanes/lipid-tiles-shots/r3-<before|after>-<close|middle|whole>.png`, and the coverage numbers.
 
