@@ -72,6 +72,13 @@ export type ReadonlyState<T> = ReturnType<typeof watchedState<T>>;
 
 const MaxIssuesListed = 5;
 
+/** The same issues, in order (the owner makes a new list at each step): the tree's Issues need not render again. */
+function sameIssues(a: readonly Issue[], b: readonly Issue[]) {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i].code !== b[i].code || a[i].message !== b[i].message) return false;
+  return true;
+}
+
 const SelectParam = () =>
   PD.Text('', { description: 'A MesoQL address: (population p.catalase), (in c.exosome), (instance i.x), (all)' });
 
@@ -178,7 +185,7 @@ export class MesoViewSpecApi extends ApiArea {
             a.outline === b.outline &&
             a.looks === b.looks &&
             a.showsOnly === b.showsOnly &&
-            a.issues.length === b.issues.length),
+            sameIssues(a.issues, b.issues)),
       },
     );
   }
