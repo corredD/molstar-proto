@@ -16,8 +16,10 @@ is not built is [../TODO.md](../TODO.md).
     `~/prism-me-lanes/mesoviewspec-streaming`, Storybook port 6008, [brief](2026-11-08-mesoviewspec-streaming.md) on its
     branch): David's "streaming concepts": manifest of tiles and levels, provider, budget, camera-driven coarse-first;
     R5 measured. Sonnet lane, design step on Opus.
-  - `mvs-prism-design` (`me/mvs-prism-design` from `me/mesoviewspec`, [brief](2026-11-08-mvs-prism-design.md) on its
-    branch): Prism over MesoViewSpec, the design (`packages/mesoscale/_spec/prism.md`) and the app lanes' briefs. Opus.
+  - `mvs-prism-design`: done, merged into `me/mesoviewspec` (c49e6a236): `packages/mesoscale/_spec/prism.md`, the app
+    lanes 0-8 (~3,500 lines) and the questions for Ludo and David (its §11).
+  - `mvs-patch` (`me/mvs-patch` from `me/mesoviewspec`, port 6009, [brief](2026-11-08-mvs-patch.md) on its branch):
+    prism.md lane 1, patches over a document. Sonnet. Rebases on streaming before its gate.
   - `mvs-skill-cli` (`me/mvs-skill-cli` from `me/mesoviewspec`, [brief](2026-11-08-mvs-skill-cli.md) on its branch): the
     MesoQL skill (generated) and the `meso-*` CLIs. Sonnet, the CLI surface on Opus.
 
