@@ -11,8 +11,10 @@ import type { Leaflet } from './patch.js';
 // improved: on the mesh's own triangles (no remesh), by regions of the surface (`CutterRegions`): a region's plane turned
 // by a random spin and moved to a random place of the periodic patch (cellPACKgpu computes both per triangle and never
 // uses them: every triangle cut the same disc), each triangle taking the patch's lipids whose headgroup projects inside
-// it, per leaflet (its atoms' z from the bilayer's center along the normal). No clash removal at region borders (as
-// cellPACKgpu at every edge). A pure function of the triangle, its region and the patch: the TypeScript reference of
+// it, per leaflet (its atoms' z from the bilayer's center along the normal). Inside a region the patch is cut by cells
+// (`cellSide`, under the box): each cell its own spin and offset, so no part of the patch repeats at its period on a
+// region or a triangle larger than the box (Ludo, 2026-11-08: the teddy's 168 Å triangles on a 154 Å box read "highly
+// regular", 30 % of the lipids a copy). No clash removal at region or cell borders (as cellPACKgpu at every edge). A pure function of the triangle, its region and the patch: the TypeScript reference of
 // `cutter-kernel.ts`, the order of its hits the kernel's.
 //
 // A lipid is an instance of a conformer of its species (a member of the merged object): up to `conformers` of the
@@ -98,8 +100,9 @@ export function cutterTable(leaflet: Leaflet, conformers = 4): CutterTable {
  * under about 16°, the lipids' density on a triangle the patch's times its cosine). A region cuts the patch once: one
  * plane (its triangles' area-weighted mean), one spin and offset (a hash of the region's key and the seed); each of its
  * triangles keeps the lipids whose headgroup projects inside it, so the patch's packing goes on across its triangles'
- * edges and seams lie only at region borders. Made on the CPU once a mesh, read by the reference and the kernel alike
- * (the same Float32 table: no region decided twice in two precisions).
+ * edges and seams lie only at region borders and its cells' (`cellSide`: a region or a triangle larger than the box
+ * would repeat the patch at its period; round 4b, this session's choice for Ludo to confirm). Made on the CPU once a
+ * mesh, read by the reference and the kernel alike (the same Float32 table: no region decided twice in two precisions).
  */
 export interface CutterRegions {
   /** per triangle its region */
@@ -107,6 +110,27 @@ export interface CutterRegions {
   /** per region 16 floats: origin and spin's offset x (fraction of the box), e1 and offset y, e2 and cos, normal and sin */
   readonly table: Float32Array;
   readonly count: number;
+  /** `CellKinds` cells' spins and offsets, 4 floats each: offset x and y (fractions of the box), cos, sin */
+  readonly cells: Float32Array;
+}
+
+/**
+ * The cells' kinds a region's cell draws from (`cellEntry`), a power of two: two cells of a region alike (the same spin:
+ * the patch again, shifted) about once in 8,000 pairs
+ */
+export const CellKinds = 4096;
+
+/**
+ * A cell's side in the patch's plane, Å (as the kernel's f32 uniform): a cell turned by any spin spans under the box
+ * along either of the patch's axes (side × √2), so it holds at most one image of a patch lipid
+ */
+export function cellSide(box: readonly [number, number]) {
+  return Math.fround((0.99 * Math.min(box[0], box[1])) / Math.SQRT2);
+}
+
+/** Region `r`'s cell (`cx`, `cy`)'s kind, `CellKinds` of them (the kernel's `cellEntry`, in u32 arithmetic) */
+export function cellEntry(r: number, cx: number, cy: number) {
+  return hashU32((r ^ hashU32((cx >>> 0) ^ hashU32(cy >>> 0))) >>> 0) & (CellKinds - 1);
 }
 
 /** A region's cell, Å: about two patch boxes, a few hundred lipids a leaflet (round 4's procedural unit) */
@@ -242,13 +266,23 @@ export function cutterRegions(
     table[t + 14] = nz;
     table[t + 15] = Math.sin(theta);
   }
-  return { regionOf, table, count: n };
+  const cells = new Float32Array(CellKinds * 4);
+  for (let k = 0; k < CellKinds; ++k) {
+    // past the regions' draws (h * 3 + 0..2 for a 32-bit h): a counter of their own
+    const phi = 2 * Math.PI * random01(seed ^ 0x2545f491, k * 3);
+    cells[k * 4] = random01(seed ^ 0x2545f491, k * 3 + 1);
+    cells[k * 4 + 1] = random01(seed ^ 0x2545f491, k * 3 + 2);
+    cells[k * 4 + 2] = Math.cos(phi);
+    cells[k * 4 + 3] = Math.sin(phi);
+  }
+  return { regionOf, table, count: n, cells };
 }
 
 /**
  * A triangle's cut in its region's plane: its corners projected (and their vertex ids, for whose a lipid on a shared
  * edge is), the triangle's own plane (a lipid's head lifted onto it along the region's normal), the region's spin and
- * offset in the patch, the patch point its projected centroid falls on
+ * offset into the patch's plane, the corners' bounds there (the cells it meets), and while `eachHit` calls back, the
+ * cell's turn (the region's and the cell's spins)
  */
 export interface TriangleCut {
   /** the region: origin, e1, e2, normal */
@@ -266,10 +300,14 @@ export interface TriangleCut {
   corners: [number, number, number, number, number, number];
   ids: [number, number, number];
   orient: number;
-  /** the projected centroid's patch point and the corners' farthest distance from it */
-  px: number;
-  py: number;
-  radius: number;
+  /** the region's index; the corners' bounds in the patch's plane (unwrapped: p = offset + Rz(θ) q) */
+  region: number;
+  cells: Float32Array;
+  pmin: [number, number];
+  pmax: [number, number];
+  /** the cell's turn of its hits (`eachHit`): cos and sin of the region's spin plus the cell's */
+  turnCos: number;
+  turnSin: number;
   cos: number;
   sin: number;
   ox: number;
@@ -286,7 +324,9 @@ export function triangleCut(
   out: TriangleCut,
 ) {
   const g = regions.table;
-  const r = regions.regionOf[t] * 16;
+  out.region = regions.regionOf[t];
+  out.cells = regions.cells;
+  const r = out.region * 16;
   for (let k = 0; k < 3; ++k) {
     out.o[k] = g[r + k];
     out.e1[k] = g[r + 4 + k];
@@ -337,8 +377,6 @@ export function triangleCut(
   out.t2 = [ny * tz - nz * ty, nz * tx - nx * tz, nx * ty - ny * tx];
   // corners in the region's frame: each vertex by the same expression in every triangle that has it
   const ids = [ia, ib, ic];
-  let qx = 0;
-  let qy = 0;
   for (let k = 0; k < 3; ++k) {
     const i = ids[k] * 3;
     const dx = p[i] - out.o[0];
@@ -349,21 +387,26 @@ export function triangleCut(
     out.corners[k * 2] = x;
     out.corners[k * 2 + 1] = y;
     out.ids[k] = ids[k];
-    qx += x / 3;
-    qy += y / 3;
   }
   const [x0, y0, x1, y1, x2, y2] = out.corners;
   const area2 = (x1 - x0) * (y2 - y0) - (y1 - y0) * (x2 - x0);
   if (area2 === 0) return false;
   out.orient = area2 > 0 ? 1 : -1;
-  let radius = 0;
+  // region → patch's plane: p = o + Rz(θ) q
+  out.pmin[0] = Infinity;
+  out.pmin[1] = Infinity;
+  out.pmax[0] = -Infinity;
+  out.pmax[1] = -Infinity;
   for (let k = 0; k < 3; ++k) {
-    radius = Math.max(radius, Math.hypot(out.corners[k * 2] - qx, out.corners[k * 2 + 1] - qy));
+    const x = out.corners[k * 2];
+    const y = out.corners[k * 2 + 1];
+    const px = out.ox + out.cos * x - out.sin * y;
+    const py = out.oy + out.sin * x + out.cos * y;
+    out.pmin[0] = Math.min(out.pmin[0], px);
+    out.pmin[1] = Math.min(out.pmin[1], py);
+    out.pmax[0] = Math.max(out.pmax[0], px);
+    out.pmax[1] = Math.max(out.pmax[1], py);
   }
-  out.radius = radius;
-  // region → patch: p = o + Rz(θ) q
-  out.px = out.ox + out.cos * qx - out.sin * qy;
-  out.py = out.oy + out.sin * qx + out.cos * qy;
   return true;
 }
 
@@ -381,9 +424,12 @@ export function emptyCut(): TriangleCut {
     corners: [0, 0, 0, 0, 0, 0],
     ids: [0, 0, 0],
     orient: 1,
-    px: 0,
-    py: 0,
-    radius: 0,
+    region: 0,
+    cells: new Float32Array(4),
+    pmin: [0, 0],
+    pmax: [0, 0],
+    turnCos: 1,
+    turnSin: 0,
     cos: 1,
     sin: 0,
     ox: 0,
@@ -412,8 +458,10 @@ function owns(cut: TriangleCut, qx: number, qy: number) {
 }
 
 /**
- * Each hit of member `m`'s lipids in a triangle's cut, in the kernel's order (lipids, then images by x, then y): `hit`
- * gets the lipid (by member) and its point in the region's frame
+ * Each hit of member `m`'s lipids in a triangle's cut, in the kernel's order (the cells it meets by x, then y; lipids;
+ * images by x, then y): `hit` gets the lipid (by member) and its point in the region's frame, `cut.turnCos` and
+ * `turnSin` its cell's turn. A cell (`cx`, `cy`) of side C in the patch's plane takes its point p from the patch at
+ * s = e + Rz(φ)(p − c), its kind's offset e and spin φ, c its center
  */
 export function eachHit(
   table: CutterTable,
@@ -422,22 +470,52 @@ export function eachHit(
   hit: (lipid: number, x: number, y: number) => void,
 ) {
   const [bx, by] = table.box;
-  const r = cut.radius;
-  for (let l = table.memberStart[m]; l < table.memberStart[m + 1]; ++l) {
-    const hx = table.lipids[l * 4];
-    const hy = table.lipids[l * 4 + 1];
-    const i0 = Math.ceil((cut.px - r - hx) / bx);
-    const i1 = Math.floor((cut.px + r - hx) / bx);
-    const j0 = Math.ceil((cut.py - r - hy) / by);
-    const j1 = Math.floor((cut.py + r - hy) / by);
-    for (let i = i0; i <= i1; ++i) {
-      for (let j = j0; j <= j1; ++j) {
-        // patch → region: q = Rz(−θ)(p − o)
-        const px = hx + i * bx - cut.ox;
-        const py = hy + j * by - cut.oy;
-        const qx = cut.cos * px + cut.sin * py;
-        const qy = -cut.sin * px + cut.cos * py;
-        if (owns(cut, qx, qy)) hit(l, qx, qy);
+  const C = cellSide(table.box);
+  const cells = cut.cells;
+  for (let cx = Math.floor(cut.pmin[0] / C), cx1 = Math.floor(cut.pmax[0] / C); cx <= cx1; ++cx) {
+    for (let cy = Math.floor(cut.pmin[1] / C), cy1 = Math.floor(cut.pmax[1] / C); cy <= cy1; ++cy) {
+      const e = cellEntry(cut.region, cx, cy) * 4;
+      const ex = cells[e] * bx;
+      const ey = cells[e + 1] * by;
+      const ec = cells[e + 2];
+      const es = cells[e + 3];
+      const ccx = (cx + 0.5) * C;
+      const ccy = (cy + 0.5) * C;
+      // the cell's part of the triangle's bounds, its center in the patch and its half diagonal
+      const x0 = Math.max(cx * C, cut.pmin[0]);
+      const x1 = Math.min((cx + 1) * C, cut.pmax[0]);
+      const y0 = Math.max(cy * C, cut.pmin[1]);
+      const y1 = Math.min((cy + 1) * C, cut.pmax[1]);
+      const rx = (x0 + x1) / 2 - ccx;
+      const ry = (y0 + y1) / 2 - ccy;
+      const sx = ex + ec * rx - es * ry;
+      const sy = ey + es * rx + ec * ry;
+      const r = Math.hypot(x1 - x0, y1 - y0) / 2;
+      cut.turnCos = cut.cos * ec - cut.sin * es;
+      cut.turnSin = cut.sin * ec + cut.cos * es;
+      for (let l = table.memberStart[m]; l < table.memberStart[m + 1]; ++l) {
+        const hx = table.lipids[l * 4];
+        const hy = table.lipids[l * 4 + 1];
+        const i0 = Math.ceil((sx - r - hx) / bx);
+        const i1 = Math.floor((sx + r - hx) / bx);
+        const j0 = Math.ceil((sy - r - hy) / by);
+        const j1 = Math.floor((sy + r - hy) / by);
+        for (let i = i0; i <= i1; ++i) {
+          for (let j = j0; j <= j1; ++j) {
+            // patch → the cell's point: p = c + Rz(−φ)(s − e), kept if in the cell
+            const dx = hx + i * bx - ex;
+            const dy = hy + j * by - ey;
+            const px = ccx + ec * dx + es * dy;
+            const py = ccy - es * dx + ec * dy;
+            if (Math.floor(px / C) !== cx || Math.floor(py / C) !== cy) continue;
+            // → region: q = Rz(−θ)(p − o)
+            const ux = px - cut.ox;
+            const uy = py - cut.oy;
+            const qx = cut.cos * ux + cut.sin * uy;
+            const qy = -cut.sin * ux + cut.cos * uy;
+            if (owns(cut, qx, qy)) hit(l, qx, qy);
+          }
+        }
       }
     }
   }
@@ -456,11 +534,11 @@ export function hitAffine(
   out: Float32Array,
   o: number,
 ) {
-  // the turn: Rz(Δ − θ)
+  // the turn: Rz(Δ − θ − φ), its cell's (`eachHit`)
   const dc = table.lipids[lipid * 4 + 2];
   const ds = table.lipids[lipid * 4 + 3];
-  const c = dc * cut.cos + ds * cut.sin;
-  const s = ds * cut.cos - dc * cut.sin;
+  const c = dc * cut.turnCos + ds * cut.turnSin;
+  const s = ds * cut.turnCos - dc * cut.turnSin;
   const { t1, t2, n, rn, e1, e2 } = cut;
   // the point on the region's plane, then along the region's normal onto the triangle's plane
   const x = cut.o[0] + qx * e1[0] + qy * e2[0];

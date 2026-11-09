@@ -226,9 +226,11 @@ on a tree row (its right-click or its ⋯), the same menu, in this order:
   thirtieth of its size, 40–200 Å); a mesh under 160 Å across is refused with "scale it first", and the parts its remesh
   loses (a limb thinner than the edge) are cut on their own triangles. A mesh's right-click has both methods, an entry
   each (Ludo, 2026-11-08: the cutter must be reachable from the UI): **Wrap with lipids** (cellPACKgpu's cutter, on the
-  mesh's own triangles by regions of the surface, made per view: the default since lane `lipid-procedural`) and **Wrap
-  with lipids (tiles)**; two entries rather than a method in the membrane's properties, because a method is chosen
-  before the membrane exists and changing it remakes it. A compartment's group offers the cutter.
+  mesh's own triangles by regions of the surface, each region cut by cells under the patch's box with a spin and offset
+  each, so no part of the patch repeats at its period on a large triangle; made per view: the default since lane
+  `lipid-procedural`) and **Wrap with lipids (tiles)**; two entries rather than a method in the membrane's properties,
+  because a method is chosen before the membrane exists and changing it remakes it. A compartment's group offers the
+  cutter.
 - **A membrane made per view** (Ludo, 2026-11-08; lane `lipid-procedural`): the cutter's lipids only on the triangles in
   view whose lipids are large enough on screen, nearest first within a pool (`budget`, 2 M lipids by default), made
   again in the renderer's frame where the view changed and never at rest; far away the mesh itself with a bump of about

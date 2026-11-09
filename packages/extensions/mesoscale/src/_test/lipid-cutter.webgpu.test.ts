@@ -9,7 +9,16 @@ import { pathToFileURL } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { createWebGPUContext, requestWebGPUDevice } from '@molstar/graphics/gl/webgpu/context';
 import { InstanceDataVec4s } from '@molstar/graphics/gl/renderable/merged';
-import { cutterBases, cutterCounts, cutterReference, cutterRegions, cutterTable } from '../lipids/cutter.js';
+import {
+  cellSide,
+  cutterBases,
+  cutterCounts,
+  cutterReference,
+  cutterRegions,
+  cutterTable,
+  emptyCut,
+  triangleCut,
+} from '../lipids/cutter.js';
 import { createLipidCutter } from '../lipids/cutter-kernel.js';
 import { createLipidSelection } from '../lipids/procedural.js';
 import { parsePatchPdb } from '../lipids/patch.js';
@@ -45,6 +54,15 @@ describe.skipIf(!webgpu)('the lipid cutter on the GPU (Dawn)', () => {
       // several regions (seams between them), several triangles a region (shared edges inside)
       expect(regions.count).toBeGreaterThan(10);
       expect(regions.count).toBeLessThan(mesh.indices.length / 3 / 2);
+      // triangles over several cells (round 4b item 4: a cell's spin and offset in both)
+      const cut = emptyCut();
+      const side = cellSide(table.box);
+      let over = 0;
+      for (let t = 0; t < mesh.indices.length / 3; ++t) {
+        if (!triangleCut(mesh.positions, mesh.indices, t, regions, table.box, cut)) continue;
+        if (Math.floor(cut.pmin[0] / side) !== Math.floor(cut.pmax[0] / side)) over += 1;
+      }
+      expect(over).toBeGreaterThan(100);
       const reference = cutterBases(cutterCounts(table, mesh.positions, mesh.indices, regions), table.members.length);
       const cutter = await createLipidCutter(
         compute,

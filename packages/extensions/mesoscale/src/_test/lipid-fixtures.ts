@@ -7,7 +7,16 @@
 import { type TileKinds, triangleAffine } from '../lipids/assign.js';
 import { random01 } from '../lipids/assign.js';
 import type { Tile } from '../lipids/tiles.js';
-import { type CutterTable, cutterBases, cutterCounts, cutterReference, cutterRegions } from '../lipids/cutter.js';
+import {
+  type CutterTable,
+  cutterBases,
+  cutterCounts,
+  cutterReference,
+  cutterRegions,
+  eachHit,
+  emptyCut,
+  triangleCut,
+} from '../lipids/cutter.js';
 import { icosphere } from '../lipids/remesh.js';
 
 /** A PDB ATOM line (columns as the format has them) */
@@ -145,20 +154,38 @@ export function closePairs(atoms: Float32Array, atomLipid: number[], atomTile: n
   return { across, within, minAcross: min };
 }
 
-/** Every lipid the cutter puts on a leaflet's triangles (the CPU reference, `cutter.ts`): atoms in world space, each atom's lipid */
+/**
+ * Every lipid the cutter puts on a leaflet's triangles (the CPU reference, `cutter.ts`): atoms in world space, each atom's
+ * lipid and its cut's cell (a region's cell, by its turn)
+ */
 export function placeCut(table: CutterTable, mesh: { positions: Float32Array; indices: Uint32Array }, seed: number) {
   const regions = cutterRegions(mesh.positions, mesh.indices, seed);
   const { totals } = cutterBases(cutterCounts(table, mesh.positions, mesh.indices, regions), table.members.length);
   const atoms: number[] = [];
   const atomLipid: number[] = [];
+  const atomCell: number[] = [];
+  const cellIds = new Map<string, number>();
+  const cut = emptyCut();
   let lipids = 0;
   table.members.forEach((member, m) => {
     const affines = cutterReference(table, mesh.positions, mesh.indices, regions, m, totals[m]);
+    // each hit's cell, in the reference's order
+    const hitCell: number[] = [];
+    for (let t = 0; t < mesh.indices.length / 3; ++t) {
+      if (!triangleCut(mesh.positions, mesh.indices, t, regions, table.box, cut)) continue;
+      eachHit(table, cut, m, () => {
+        const key = `${cut.region} ${cut.turnCos.toFixed(6)} ${cut.turnSin.toFixed(6)}`;
+        let id = cellIds.get(key);
+        if (id === undefined) cellIds.set(key, (id = cellIds.size));
+        hitCell.push(id);
+      });
+    }
     const p = member.positions;
     for (let i = 0; i < totals[m]; ++i) {
       const o = i * 16;
       for (let a = 0; a < p.length; a += 3) {
         atomLipid.push(lipids + i);
+        atomCell.push(hitCell[i]);
         for (let k = 0; k < 3; ++k) {
           atoms.push(
             affines[o + k] * p[a] + affines[o + 4 + k] * p[a + 1] + affines[o + 8 + k] * p[a + 2] + affines[o + 12 + k],
@@ -168,7 +195,7 @@ export function placeCut(table: CutterTable, mesh: { positions: Float32Array; in
     }
     lipids += totals[m];
   });
-  return { atoms: Float32Array.from(atoms), atomLipid, lipids };
+  return { atoms: Float32Array.from(atoms), atomLipid, atomCell, cells: cellIds.size, lipids };
 }
 
 /**

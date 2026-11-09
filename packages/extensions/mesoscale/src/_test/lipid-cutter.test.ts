@@ -13,20 +13,22 @@ import { icosphere } from '../lipids/remesh.js';
 import { closePairs, coveredFraction, flatMesh, placeCut, syntheticPatchPdb } from './lipid-fixtures.js';
 
 describe('the lipid cutter', () => {
-  it('cuts a flat plane of triangles smaller than a lipid as the patch itself: no seams inside a region (Ludo, 2026-11-08)', () => {
+  it('cuts a flat plane of triangles smaller than a lipid as the patch itself: no seams inside a cell (Ludo, 2026-11-08)', () => {
     // each triangle its own random offset made every lipid an island: star-shaped holes and clashes on the cow's small
-    // triangles; one offset and frame a region of the surface keeps the patch's packing across its triangles' edges
+    // triangles; one offset and frame a region of the surface keeps the patch's packing across its triangles' edges, and
+    // inside a region each cell (`cellSide`, under the box: round 4b item 4) its own, its seams at the cells' borders
     const { text, box } = syntheticPatchPdb();
     const leaflet = parsePatchPdb(text, { box }).outer;
     const table = cutterTable(leaflet, 2);
-    // 10 Å triangles (43 Å², under a lipid's 55 Å²), a rhombus of 120 Å a side: one region
+    // 10 Å triangles (43 Å², under a lipid's 55 Å²), a rhombus of 120 Å a side: one region, a few cells
     const mesh = flatMesh(10, 12);
-    const { atoms, atomLipid, lipids } = placeCut(table, mesh, 1);
+    const { atoms, atomLipid, atomCell, cells, lipids } = placeCut(table, mesh, 1);
+    expect(cells).toBeGreaterThan(1);
     const area = 12 * 12 * 100 * 0.8660254037844386;
     const perLipid = (box[0] * box[1]) / leaflet.lipidSpecies.length;
     expect(Math.abs(lipids - area / perLipid)).toBeLessThan(0.05 * (area / perLipid));
-    // no two lipids closer than the patch's own (8 Å apart: no atom pair under 2 Å)
-    expect(closePairs(atoms, atomLipid, atomLipid, 2).across).toBe(0);
+    // inside a cell no two lipids closer than the patch's own (8 Å apart: no atom pair under 2 Å) across triangles
+    expect(closePairs(atoms, atomLipid, atomCell, 2).within).toBe(0);
     // the inner part (away from the plane's border, where lipids reach out of it) covered as the patch
     const inner = flatMesh(10, 12);
     for (let i = 0; i < inner.positions.length; i += 3) {

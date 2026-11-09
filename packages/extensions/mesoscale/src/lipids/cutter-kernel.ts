@@ -20,16 +20,18 @@ import {
   type GpuInstanceWriter,
 } from '@molstar/graphics/gl/renderable/merged-culler';
 import { InstanceDataVec4s } from '@molstar/graphics/gl/renderable/merged';
-import { cutterBases, type CutterRegions, type CutterTable } from './cutter.js';
+import { CellKinds, cellSide, cutterBases, type CutterRegions, type CutterTable } from './cutter.js';
 import type { LipidSelection } from './procedural.js';
 
 // The cutter on the GPU (`cutter.ts`, its TypeScript reference): one thread a triangle (its region's plane, spin and
-// offset read from the CPU's region table), two passes. The count pass
+// offset read from the CPU's region table; its cells' from the cells' table by the same hash), two passes. The count pass
 // writes each (member, triangle)'s hits; the CPU reads them back once, sums them (the merged layout needs each member's
 // instance count before any draw: `gpuInstances`) and uploads each (member, triangle)'s first instance; each member's
 // writer then runs the write pass, its hits' affine rows into the merged culler's buffers. Deterministic (no atomics).
 
 const common = /* wgsl */ `
+const CellKinds = ${CellKinds}u;
+
 fn position(i: u32) -> vec3<f32> {
     return vec3<f32>(positions[i * 3u], positions[i * 3u + 1u], positions[i * 3u + 2u]);
 }
@@ -49,8 +51,9 @@ struct Cut {
     c2: vec2<f32>,
     ids: vec3<u32>,
     orient: f32,
-    p: vec2<f32>,
-    radius: f32,
+    region: u32,
+    pmin: vec2<f32>,
+    pmax: vec2<f32>,
     rot: vec2<f32>,
     off: vec2<f32>,
     ok: bool,
@@ -64,7 +67,8 @@ fn project(k: Cut, i: u32) -> vec2<f32> {
 
 fn triangleCut(t: u32) -> Cut {
     var k: Cut;
-    let r = regionOf[t] * 4u;
+    k.region = regionOf[t];
+    let r = k.region * 4u;
     let g0 = regions[r];
     let g1 = regions[r + 1u];
     let g2 = regions[r + 2u];
@@ -100,10 +104,67 @@ fn triangleCut(t: u32) -> Cut {
     let area2 = (k.c1.x - k.c0.x) * (k.c2.y - k.c0.y) - (k.c1.y - k.c0.y) * (k.c2.x - k.c0.x);
     k.ok = area2 != 0.0;
     k.orient = select(-1.0, 1.0, area2 > 0.0);
-    let q = (k.c0 + k.c1 + k.c2) / 3.0;
-    k.radius = max(length(k.c0 - q), max(length(k.c1 - q), length(k.c2 - q)));
-    k.p = k.off + vec2<f32>(k.rot.x * q.x - k.rot.y * q.y, k.rot.y * q.x + k.rot.x * q.y);
+    // the corners' bounds in the patch's plane: p = off + Rz(θ) q
+    let p0 = toPatch(k, k.c0);
+    let p1 = toPatch(k, k.c1);
+    let p2 = toPatch(k, k.c2);
+    k.pmin = min(p0, min(p1, p2));
+    k.pmax = max(p0, max(p1, p2));
     return k;
+}
+
+fn toPatch(k: Cut, q: vec2<f32>) -> vec2<f32> {
+    return k.off + vec2<f32>(k.rot.x * q.x - k.rot.y * q.y, k.rot.y * q.x + k.rot.x * q.y);
+}
+
+fn hashU32(x0: u32) -> u32 {
+    var x = x0 ^ (x0 >> 16u);
+    x = x * 0x7feb352du;
+    x = x ^ (x >> 15u);
+    x = x * 0x846ca68bu;
+    return x ^ (x >> 16u);
+}
+
+/** a region's cell, its kind's spin and offset (\`eachHit\`): s = e + Rz(φ)(p − c) */
+struct Cell {
+    id: vec2<i32>,
+    c: vec2<f32>,
+    e: vec2<f32>,
+    rot: vec2<f32>,
+    /** the cell's part of the triangle's bounds: its center in the patch, its half diagonal */
+    s: vec2<f32>,
+    radius: f32,
+    /** its hits' turn: the region's spin plus the cell's */
+    turn: vec2<f32>,
+}
+
+fn cellAt(k: Cut, cx: i32, cy: i32) -> Cell {
+    var c: Cell;
+    let side = uParams.uCell;
+    c.id = vec2<i32>(cx, cy);
+    let kind = hashU32(k.region ^ hashU32(bitcast<u32>(cx) ^ hashU32(bitcast<u32>(cy)))) & (CellKinds - 1u);
+    let g = regions[u32(uParams.uCells) + kind];
+    c.e = vec2<f32>(g.x * uParams.uBoxX, g.y * uParams.uBoxY);
+    c.rot = g.zw;
+    c.c = (vec2<f32>(f32(cx), f32(cy)) + 0.5) * side;
+    let lo = max(vec2<f32>(f32(cx), f32(cy)) * side, k.pmin);
+    let hi = min(vec2<f32>(f32(cx + 1), f32(cy + 1)) * side, k.pmax);
+    let r = (lo + hi) / 2.0 - c.c;
+    c.s = c.e + vec2<f32>(c.rot.x * r.x - c.rot.y * r.y, c.rot.y * r.x + c.rot.x * r.y);
+    c.radius = length(hi - lo) / 2.0;
+    c.turn = vec2<f32>(k.rot.x * c.rot.x - k.rot.y * c.rot.y, k.rot.y * c.rot.x + k.rot.x * c.rot.y);
+    return c;
+}
+
+/** the cells a cut meets: x from .x to .y, y from .z to .w */
+fn cellRange(k: Cut) -> vec4<i32> {
+    let side = uParams.uCell;
+    return vec4<i32>(
+        i32(floor(k.pmin.x / side)),
+        i32(floor(k.pmax.x / side)),
+        i32(floor(k.pmin.y / side)),
+        i32(floor(k.pmax.y / side)),
+    );
 }
 
 /** edge from the lower vertex id to the higher, its sign the triangle's (\`owns\`) */
@@ -117,20 +178,27 @@ fn edgeSide(k: Cut, a: vec2<f32>, ia: u32, b: vec2<f32>, ib: u32, q: vec2<f32>) 
     return !(v < 0.0 || (v == 0.0 && sign < 0.0));
 }
 
-/** the images of a lipid's head that may fall in cut k */
-fn imageRange(k: Cut, h: vec2<f32>) -> vec4<i32> {
+/** the images of a lipid's head that may fall in cell c of cut k */
+fn imageRange(c: Cell, h: vec2<f32>) -> vec4<i32> {
     let bx = uParams.uBoxX;
     let by = uParams.uBoxY;
     return vec4<i32>(
-        i32(ceil((k.p.x - k.radius - h.x) / bx)),
-        i32(floor((k.p.x + k.radius - h.x) / bx)),
-        i32(ceil((k.p.y - k.radius - h.y) / by)),
-        i32(floor((k.p.y + k.radius - h.y) / by)),
+        i32(ceil((c.s.x - c.radius - h.x) / bx)),
+        i32(floor((c.s.x + c.radius - h.x) / bx)),
+        i32(ceil((c.s.y - c.radius - h.y) / by)),
+        i32(floor((c.s.y + c.radius - h.y) / by)),
     );
 }
 
-fn inside(k: Cut, h: vec2<f32>, i: i32, j: i32) -> vec3<f32> {
-    let p = vec2<f32>(h.x + f32(i) * uParams.uBoxX - k.off.x, h.y + f32(j) * uParams.uBoxY - k.off.y);
+fn inside(k: Cut, c: Cell, h: vec2<f32>, i: i32, j: i32) -> vec3<f32> {
+    // patch → the cell's point p = c + Rz(−φ)(s − e), kept if in the cell; → region q = Rz(−θ)(p − off)
+    let d = vec2<f32>(h.x + f32(i) * uParams.uBoxX - c.e.x, h.y + f32(j) * uParams.uBoxY - c.e.y);
+    let pc = c.c + vec2<f32>(c.rot.x * d.x + c.rot.y * d.y, -c.rot.y * d.x + c.rot.x * d.y);
+    let side = uParams.uCell;
+    if (i32(floor(pc.x / side)) != c.id.x || i32(floor(pc.y / side)) != c.id.y) {
+        return vec3<f32>(0.0);
+    }
+    let p = pc - k.off;
     let q = vec2<f32>(k.rot.x * p.x + k.rot.y * p.y, -k.rot.y * p.x + k.rot.x * p.y);
     let hit = edgeSide(k, k.c0, k.ids.x, k.c1, k.ids.y, q)
         && edgeSide(k, k.c1, k.ids.y, k.c2, k.ids.z, q)
@@ -157,12 +225,18 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>, @builtin(num_workgroups) g
     for (var m = 0u; m < u32(uParams.uMembers); m++) {
         var n = 0u;
         if (k.ok) {
-            for (var l = memberStart[m]; l < memberStart[m + 1u]; l++) {
-                let h = lipids[l].xy;
-                let r = imageRange(k, h);
-                for (var i = r.x; i <= r.y; i++) {
-                    for (var j = r.z; j <= r.w; j++) {
-                        n += u32(inside(k, h, i, j).z);
+            let cr = cellRange(k);
+            for (var cx = cr.x; cx <= cr.y; cx++) {
+                for (var cy = cr.z; cy <= cr.w; cy++) {
+                    let c = cellAt(k, cx, cy);
+                    for (var l = memberStart[m]; l < memberStart[m + 1u]; l++) {
+                        let h = lipids[l].xy;
+                        let r = imageRange(c, h);
+                        for (var i = r.x; i <= r.y; i++) {
+                            for (var j = r.z; j <= r.w; j++) {
+                                n += u32(inside(k, c, h, i, j).z);
+                            }
+                        }
                     }
                 }
             }
@@ -191,36 +265,42 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>, @builtin(num_workgroups) g
     let m = u32(uParams.uMember);
     var slot = bases[m * T + i];
     let end = u32(uParams.uCount);
-    for (var l = memberStart[m]; l < memberStart[m + 1u]; l++) {
-        let h = lipids[l].xy;
-        let r = imageRange(k, h);
-        for (var i = r.x; i <= r.y; i++) {
-            for (var j = r.z; j <= r.w; j++) {
-                let q = inside(k, h, i, j);
-                if (q.z == 0.0 || slot >= end) {
-                    continue;
+    let cr = cellRange(k);
+    for (var cx = cr.x; cx <= cr.y; cx++) {
+        for (var cy = cr.z; cy <= cr.w; cy++) {
+            let cell = cellAt(k, cx, cy);
+            for (var l = memberStart[m]; l < memberStart[m + 1u]; l++) {
+                let h = lipids[l].xy;
+                let r = imageRange(cell, h);
+                for (var i = r.x; i <= r.y; i++) {
+                    for (var j = r.z; j <= r.w; j++) {
+                        let q = inside(k, cell, h, i, j);
+                        if (q.z == 0.0 || slot >= end) {
+                            continue;
+                        }
+                        // Rz(Δ − θ − φ) in the triangle's plane, the head lifted onto it along the region's normal (\`hitAffine\`)
+                        let dc = lipids[l].z;
+                        let ds = lipids[l].w;
+                        let c = dc * cell.turn.x + ds * cell.turn.y;
+                        let s = ds * cell.turn.x - dc * cell.turn.y;
+                        let x = c * k.t1 + s * k.t2;
+                        let y = -s * k.t1 + c * k.t2;
+                        let w0 = k.o + q.x * k.e1 + q.y * k.e2;
+                        let p = w0 + (dot(k.a - w0, k.n) / k.dn) * k.rn;
+                        let r0 = vec4<f32>(x.x, y.x, k.n.x, p.x);
+                        let r1 = vec4<f32>(x.y, y.y, k.n.y, p.y);
+                        let r2 = vec4<f32>(x.z, y.z, k.n.z, p.z);
+                        let o = (u32(uParams.uInstanceBase) + slot) * ${InstanceDataVec4s}u;
+                        instanceData[o] = r0;
+                        instanceData[o + 1u] = r1;
+                        instanceData[o + 2u] = r2;
+                        let w = (u32(uParams.uIdentityBase) + u32(uParams.uInstanceBase) + slot) * 3u;
+                        transforms[w] = r0;
+                        transforms[w + 1u] = r1;
+                        transforms[w + 2u] = r2;
+                        slot += 1u;
+                    }
                 }
-                // Rz(Δ − θ) in the triangle's plane, the head lifted onto it along the region's normal (\`hitAffine\`)
-                let dc = lipids[l].z;
-                let ds = lipids[l].w;
-                let c = dc * k.rot.x + ds * k.rot.y;
-                let s = ds * k.rot.x - dc * k.rot.y;
-                let x = c * k.t1 + s * k.t2;
-                let y = -s * k.t1 + c * k.t2;
-                let w0 = k.o + q.x * k.e1 + q.y * k.e2;
-                let p = w0 + (dot(k.a - w0, k.n) / k.dn) * k.rn;
-                let r0 = vec4<f32>(x.x, y.x, k.n.x, p.x);
-                let r1 = vec4<f32>(x.y, y.y, k.n.y, p.y);
-                let r2 = vec4<f32>(x.z, y.z, k.n.z, p.z);
-                let o = (u32(uParams.uInstanceBase) + slot) * ${InstanceDataVec4s}u;
-                instanceData[o] = r0;
-                instanceData[o + 1u] = r1;
-                instanceData[o + 2u] = r2;
-                let w = (u32(uParams.uIdentityBase) + u32(uParams.uInstanceBase) + slot) * 3u;
-                transforms[w] = r0;
-                transforms[w + 1u] = r1;
-                transforms[w + 2u] = r2;
-                slot += 1u;
             }
         }
     }
@@ -257,6 +337,8 @@ export const LipidCutWriteKernel = KernelCode('lipid-cut-write', [64], { wgsl: w
 const Uniforms = {
   uBoxX: UniformSpec('f'),
   uBoxY: UniformSpec('f'),
+  uCell: UniformSpec('f'),
+  uCells: UniformSpec('i'),
   uTriangles: UniformSpec('i'),
   uMembers: UniformSpec('i'),
 };
@@ -283,6 +365,13 @@ export const LipidCutWriteSchema = {
   transforms: StorageBufferSpec('vec4<f32>', 'read-write'),
 };
 
+function regionsAndCells(regions: CutterRegions) {
+  const all = new Float32Array(regions.table.length + regions.cells.length);
+  all.set(regions.table);
+  all.set(regions.cells, regions.table.length);
+  return all;
+}
+
 /** A leaflet cut on the GPU: its counts per (member, triangle) (`m * T + t`, read back once), a writer a member */
 export interface LipidCutter {
   readonly counts: Uint32Array;
@@ -297,7 +386,7 @@ export interface LipidCutter {
 
 /**
  * The mesh and the table uploaded, the count pass run and read back: then a writer per member. Byte cost: 12 B a vertex
- * and a triangle, 4 B a triangle (its region; its selection), 64 B a region, 16 B a patch lipid, 4 B a (member,
+ * and a triangle, 4 B a triangle (its region; its selection), 64 B a region, 64 KB the cells' kinds, 16 B a patch lipid, 4 B a (member,
  * triangle) on the GPU (a selected one's first instance) and on the CPU (its count)
  */
 export async function createLipidCutter(
@@ -327,6 +416,8 @@ export async function createLipidCutter(
   const uniforms = {
     uBoxX: ValueCell.create(table.box[0]),
     uBoxY: ValueCell.create(table.box[1]),
+    uCell: ValueCell.create(cellSide(table.box)),
+    uCells: ValueCell.create(regions.count * 4),
     uTriangles: ValueCell.create(T),
     uMembers: ValueCell.create(M),
   };
@@ -334,7 +425,8 @@ export async function createLipidCutter(
     positions: ValueCell.create(buffer(positions, 'lipid cut: positions')),
     indices: ValueCell.create(buffer(indices, 'lipid cut: indices')),
     regionOf: ValueCell.create(buffer(regions.regionOf, 'lipid cut: region of each triangle')),
-    regions: ValueCell.create(buffer(regions.table, 'lipid cut: regions')),
+    // the cells' kinds after the regions, one buffer (the write pass is at the stage's 10 storage buffers)
+    regions: ValueCell.create(buffer(regionsAndCells(regions), 'lipid cut: regions and cells')),
     memberStart: ValueCell.create(buffer(table.memberStart, 'lipid cut: members')),
     lipids: ValueCell.create(buffer(table.lipids, 'lipid cut: lipids')),
   };
