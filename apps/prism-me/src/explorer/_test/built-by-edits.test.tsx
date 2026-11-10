@@ -113,6 +113,8 @@ describe('Built by: the model edits (prism.md §4.3)', () => {
     await until(() => textOf(m).includes('0 or more'));
     expect(m.steps()).toBe(s0);
     expect(countOf(m)).toBe(506);
+    // the field shows the document's count again, not the value refused
+    expect(field(m, 'Copies asked for')!.value).toBe('506');
 
     await enter(field(m, 'Copies asked for')!, '300');
     await until(() => countOf(m) === 300);
@@ -139,6 +141,7 @@ describe('Built by: the model edits (prism.md §4.3)', () => {
     await enter(field(m, 'Seed')!, '2.5');
     await until(() => textOf(m).includes('whole number'));
     expect(m.steps()).toBe(s0 + 1);
+    await until(() => field(m, 'Seed')!.value === '7');
   });
 
   it('Add relax stage: the stage is a model, the copies reach what was asked; it is offered once', {
@@ -176,12 +179,21 @@ describe('Built by: the model edits (prism.md §4.3)', () => {
     await enter(field(m, 'Copies asked for')!, '300');
     await until(() => !!cancel(), 5000);
     await until(() => /Resolving m\.recipe \(\d of \d\)/.test(textOf(m)), 5000);
+    // while it runs, the fields and Add relax stage are disabled; a value entered anyway is dropped, the field reset
+    expect(field(m, 'Copies asked for')!.disabled).toBe(true);
+    expect(field(m, 'Seed')!.disabled).toBe(true);
+    expect(buttons(m).find((b) => b.textContent?.includes('Add relax stage'))!.disabled).toBe(true);
+    await enter(field(m, 'Seed')!, '9');
+    await until(() => field(m, 'Seed')!.value === '1');
     cancel()!.click();
     await until(() => textOf(m).includes('Stopped'));
     await until(() => !cancel());
     expect(m.steps()).toBe(s0);
     expect(m.owner.model.doc).toBe(doc);
     expect(countOf(m)).toBe(506);
+    // the stopped value is not kept: the field shows the document's count, and is enabled again
+    expect(field(m, 'Copies asked for')!.value).toBe('506');
+    expect(field(m, 'Copies asked for')!.disabled).toBe(false);
 
     // and the same edit goes through after
     m.gate.release();
