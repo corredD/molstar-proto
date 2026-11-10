@@ -672,7 +672,11 @@ Fibers mock exposed the adapter's `excludeFibers` bug (§11).
 10. **(v0.2) MesoQL storage.** The canonical S-expression string (now) or a JSON tree with full names (SeqQL)?
 11. **(v0.2) Authoring by agents and by hand.** Painting (cellPAINT-style strokes) and agent edits as `activities` with
     an `agent`, their result a precomputed model: is that enough to keep hand-made placements inspectable and
-    replayable?
+    replayable? **(v0.5) Proposed:** a stroke is a `meso.paint` model inserted by a patch, resolved alone through the
+    cache, with its activity's agent the person
+    ([runtime.md](runtime.md#drawing-strokes-as-models-proposed-v05-for-david-and-ludo)); a pick written down is
+    `locationToAddress`'s text, a copy pinned by its model's key
+    ([mesoql.md](mesoql.md#static-pointers-a-location-written-down-proposed-v05-for-david-and-ludo)).
 12. **(v0.3) Organization at the top, populations as one way to state copies.** David: "a population is just how we do
     things now because we can't represent every atom individually". v0.3 adds instances beside populations and
     superstructures (§3.13) without moving anything. The larger change is to put the organization (the copies, however

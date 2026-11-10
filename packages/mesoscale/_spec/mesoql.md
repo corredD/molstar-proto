@@ -93,3 +93,38 @@ interface MesoLoci {
 3. `point` replaces `Annotation.target`'s `{position}`.
 
 **Still open:** what `within` gives between a region and copies (distance to the region's surface, or to its centre).
+
+### Static pointers: a location written down (proposed, v0.5; for David and Ludo)
+
+David (2026-11-10): "can't recall seeing MesoSchemaItem … basically a serializable version of the meso location (with a
+function in MesoQL to read it) … to allow for static pointers".
+
+**What exists.** An address is the schematized form, Mol\*'s `SchemaItem`; it is stored as its S-expression and
+evaluated to MesoLoci. `(copies p.catalase 12)` names one copy, but it is "valid for one resolution": rerun the model
+(another seed, another count) and copy 12 is another copy. Nothing turns a pick (a MesoLocation) back into text.
+
+**Proposed:**
+
+- **`locationToAddress(location, ir)`**, the inverse of `evaluateMesoQL` for one location, beside `lociToIds`. It writes
+  one address per kind:
+  - `copy` → `(copies p.catalase 12 :key <model key>)`
+  - `label` → `(label r.seg 3)`
+  - `voxel` → `(voxels r.tomo :box [i j k i j k])`
+  - `face` → `(faces r.mesh 120)`
+  - `point` → `(point f.cell [x y z])`
+  - `arc` → `(arc p.actin 4 :s 1200)`
+
+  For loci, `lociToAddress` writes `(or …)` of runs. These are the "MesoSchemaItem": a location as text that MesoQL
+  reads back, saved in a document, a view's selection, an annotation's target or an agent's message.
+
+- **A copy pointer pins its resolution.** `:key` is the cache key of the model that placed the copy. Evaluated against
+  an IR whose model has another key, the address picks nothing and warns `mesoql.stale` (the copy it named is gone),
+  rather than silently pointing at another copy. Without `:key`, `copies` keeps today's meaning.
+- **The other kinds are static by nature.** A label, a voxel, a face, a point and an arc name data or space, not a
+  resolver's output, so they need no key. A pointer that must survive repacking is better written as a region or a point
+  than as a copy.
+- **A copy as an instance.** A copy someone points at often (the docked granule) is better promoted to an `instance` (it
+  has an id of its own and is placed by the document); `(instance i.granule-3)` is static without a key.
+
+**Open:** whether a precomputed model's copies (a saved placement set) need `:key` at all: its key changes only when its
+resource does.

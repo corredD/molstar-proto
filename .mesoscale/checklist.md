@@ -51,6 +51,8 @@ Each lane: brief committed · steps · checks green · gate (reviewer, skeptic, 
 - [x] semantic levels (views.md) and MesoLocation as a union (mesoql.md) drafted, gated, merged
 - [x] the draft's open questions answered by Ludo, written into the spec (`f48bea732`); still open: `within` between a
       region and copies
+- [x] David's 2026-11-10 comments proposed: drawing as `meso.paint` models (runtime.md), static pointers as
+      `locationToAddress` and `:key` (mesoql.md); design.md decision 11 points to both
 - [ ] David's review
 - [ ] prism.md §5.1 (representation and LOD viewer-only) reconciled, after lane 4
 
@@ -104,10 +106,18 @@ Each lane: brief committed · steps · checks green · gate (reviewer, skeptic, 
 - [x] merged with 4–5 in its worktree (`df2a671e8`; medium 115 pass, unit base failures only), then into
       `me/mesoviewspec` (`1bf3bd49e`)
 
-### 7. `mvs-agent` (after 4, 5 and `mvs-skill-cli`)
+Lanes 7 and 8 run in parallel (Ludo, 2026-11-10): their files do not meet (7: `prism-viewer.ts`, evals; 8:
+`document-model.ts`, tile cells, Settings).
 
-- [ ] brief · steps · checks · gate · Ludo's check · merged
+### 7. `mvs-agent` ([progress](../apps/prism-me/progress/2026-11-10-mvs-agent.md)), port 1370
 
-### 8. `mvs-streaming-app`
+- [x] brief committed (`4ef33fb74`)
+- [ ] steps 1–2 (Sonnet), running
+- [ ] step 3, evals (Opus writes, Sonnet runs)
+- [ ] checks green · checked in the app with a real model · gate · Ludo's check · merged
 
-- [ ] brief · steps · checks · gate · Ludo's check · merged
+### 8. `mvs-streaming-app` ([progress](../apps/prism-me/progress/2026-11-10-mvs-streaming-app.md)), port 1371
+
+- [x] brief committed (`a99bdec2c`)
+- [ ] steps 1–2 (Opus: camera feed, budget, history rule), running
+- [ ] checks green · checked in the app · gate · Ludo's check · merged

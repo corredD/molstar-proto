@@ -192,6 +192,49 @@ same high-level constraints"; "Ivan's rigid body could feed into a simulation pr
   with the exact inside test (`sdfGrid` in `resolvers/geometry.ts`, which also answers the O(triangles) mesh gap).
   Membrane copies and avoided models stay fixed.
 
+## Drawing: strokes as models (proposed, v0.5; for David and Ludo)
+
+David (2026-11-10): "the format is missing the ability to represent the drawing … the drawing would modify the view spec
+and trigger a new reconciliation. Which also suggests we need some caching at the runtime layer, diffing, etc."
+
+**The caching and the diffing are built.** A model's inputs are `project`ed into a key and cached in the session; only a
+model whose key changed resolves again (a recolored 1M scene compiles in 0.4 ms with no resolver run, measured in
+design.md). `planCommit` diffs IRs by key, so the adapter replaces only the changed sets. Patches (prism.md §2) are the
+edit. What is missing is a place in the document for the drawing itself. Design decision 11 asked it and nothing
+answered.
+
+**Proposed: a stroke is a model, and drawing is a patch.**
+
+```ts
+// a model the meso.paint resolver realizes
+{ id: 'm.stroke-7', resolver: 'meso.paint', populations: ['p.ribosomes'], avoid: ['m.recipe', 'm.stroke-6'],
+  params: { path: { frame: 'f.cell', points: [[x, y, z], ...] }, radius: 120, density: 0.002, seed: 7 },
+  activity: 'act.paint-7' } // agent: the person; when and with what tool
+```
+
+- **The edit:** a stroke inserts one model (a patch `insert`), so Undo is the patch's inverse and History records one
+  step a stroke. An eraser stroke is a model too (`meso.erase`: a path and a radius whose output removes copies of the
+  models it names), not a delete of copies, so the document stays a recipe and not a list of coordinates.
+- **The reconciliation:** the compile resolves only the new stroke. Every earlier stroke and the packing are cache hits;
+  the commit adds one placement set. A stroke `avoid`s the models drawn before it, so it packs around them.
+- **The view:** a stroke changes the biology, so it is a model in the document, not a part of a view. A view can show or
+  hide strokes through looks, as any model's copies.
+- **Provenance:** each stroke's `activity` has the person as its `agent` (decision 11): hand-made placements stay
+  inspectable and replay from the document.
+- **Baking:** a long session of strokes can be saved as one precomputed model (a placement set resource) with the
+  strokes as its activities, the cache-as-precomputed rule of §"Procedural and precomputed models together".
+
+**Open:**
+
+1. A stroke that pushes or erases copies of an earlier model changes that model's output: either the erase is a refine
+   stage of the models it touches (they keep their keys, the eraser reruns), or the touched models rerun (correct, and
+   costly on a large recipe). Proposed: the refine stage.
+2. A stroke drawn on a membrane (a surface path, not a volume) needs `path` in a surface frame; the same model with a
+   `location: membrane`.
+3. Is "the drawing" also drawn regions (a compartment or a selection painted by hand)? Those would be a `voxel` or
+   `face` MesoLocation region ([mesoql.md](mesoql.md#mesolocation-as-a-union-proposed-v05-for-david-and-ludo)), not a
+   model.
+
 ## Reproducibility
 
 - **Deterministic resolution.** The same document, resolver versions and seed give the same placements, bit for bit
