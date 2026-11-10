@@ -224,10 +224,9 @@ const FarChoices: { id: MembraneFar; label: string }[] = [
   { id: 'texture', label: 'Texture' },
 ];
 
-/** A cut membrane's middle distance (round 8; Ludo compares them live and picks the default) */
+/** A cut membrane's middle distance (round 8; Ludo compares them live and picks the default; shells not built yet) */
 const MiddleChoices: { id: MembraneMiddle; label: string }[] = [
   { id: 'coarse', label: 'Coarse' },
-  { id: 'shells', label: 'Shells' },
   { id: 'parallax', label: 'Parallax' },
 ];
 
@@ -321,9 +320,6 @@ export function MembraneDetailControls(props: { area: MesoscaleApi; membrane: st
                   />
                   <Show when={mapState(middle, (m) => m !== 'coarse')}>
                     {() => viewRow('Atoms down to', 'middlePx', 2, 32, 'px')}
-                  </Show>
-                  <Show when={mapState(middle, (m) => m === 'shells')}>
-                    {() => viewRow('Shells', 'shells', 4, 12, undefined, true)}
                   </Show>
                 </div>
               )}

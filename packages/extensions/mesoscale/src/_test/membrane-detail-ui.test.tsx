@@ -132,7 +132,7 @@ describe('a membrane’s levels in its properties', () => {
     expect((await area.exportMembrane({ membrane: tm } as never)).ok).toBe(false);
     forgetLipidPatch('ui-patch-far');
   });
-  it('switches a cut membrane’s middle look in one step, its atoms’ px and shells with it (round 8)', async () => {
+  it('switches a cut membrane’s middle look in one step, its atoms’ px with it, no shells yet (round 8)', async () => {
     registerLipidPatch('ui-patch-middle', syntheticPatchPdb().text);
     const base = DefaultPrismViewerSpec();
     const v = await createPrismViewerHeadless({
@@ -166,17 +166,15 @@ describe('a membrane’s levels in its properties', () => {
     await until(() => !!host.querySelector('[aria-label="Atoms down to"]'));
     expect(params()).toMatchObject({ middle: 'parallax', middlePx: 11 });
     expect(host.querySelector('[aria-label="Lipids down to"]')).toBeNull();
-    expect(host.querySelector('[aria-label="Shells"]')).toBeNull();
-    button('Shells').click();
-    await until(() => !!host.querySelector('[aria-label="Shells"]'));
-    expect(params()).toMatchObject({ middle: 'shells', shells: 8 });
+    // shells are not built this round (round 8: the band object open): not offered, refused
+    expect(button('Shells')).toBeUndefined();
+    expect((await area.membraneDetail({ membrane, middle: 'shells' } as never)).ok).toBe(false);
     // the operation checks its switches; a valid one is one step
     expect((await area.membraneDetail({ membrane, middlePx: 100 } as never)).ok).toBe(false);
-    expect((await area.membraneDetail({ membrane, shells: 2 } as never)).ok).toBe(false);
     expect((await area.membraneDetail({ membrane, middlePx: 14 } as never)).ok).toBe(true);
-    expect(area.membraneDetailState(membrane).value).toMatchObject({ middle: 'shells', middlePx: 14, shells: 8 });
+    expect(area.membraneDetailState(membrane).value).toMatchObject({ middle: 'parallax', middlePx: 14 });
     expect((await v.api.history.undo({})).ok).toBe(true);
-    expect(params()).toMatchObject({ middle: 'shells', middlePx: 11 });
+    expect(params()).toMatchObject({ middle: 'parallax', middlePx: 11 });
     // Far: Spheres has no middle look
     button('Spheres').click();
     await until(() => !host.querySelector('[aria-label="Atoms down to"]') && !button('Parallax'));

@@ -791,9 +791,12 @@ export function shownLipids(tile: Tile, species: readonly string[], hidden: Read
  * `middlePx` (round 8: the atoms to there, the middle look below)
  */
 function lipidsPx(props: LipidMembraneReprProps) {
-  return props.middle !== 'coarse' && props.far !== 'spheres'
-    ? props.middlePx
-    : enterPx(props.far, props.atomsPx, props.spheresPx);
+  return middleOn(props) ? props.middlePx : enterPx(props.far, props.atomsPx, props.spheresPx);
+}
+
+/** Whether a middle look is drawn: parallax, past the spheres (round 8: shells, their band not built, draw as coarse) */
+function middleOn(props: LipidMembraneReprProps) {
+  return props.middle === 'parallax' && props.far !== 'spheres';
 }
 
 /** A lipid's size in the patch, Å: the side of the area a lipid takes (the selection's size on screen) */
@@ -1232,9 +1235,7 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
     // each lipid or tile at its own level by its size on screen (the culler's per-instance levels)
     // round 8: with a middle look a cut lipid is its atoms down to it (the selection keeps a triangle's lipids a little
     // below `middlePx`, measured: no coarse level shows over the relief)
-    const atomsOnly =
-      props.detail === 'off' ||
-      (lipidAtomStart === undefined && lipidsPx(props) !== enterPx(props.far, props.atomsPx, props.spheresPx));
+    const atomsOnly = props.detail === 'off' || (lipidAtomStart === undefined && middleOn(props));
     const lod = atomsOnly ? { lodLevels: [], lodPixelSize: 0 } : membraneLevels(props.detail, props.levels);
     // markers by lipid; by atom (a cut member's, a tile's): by group and instance, 40 a lipid past a texture's size
     const p = {
@@ -1572,7 +1573,7 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
       const levels = levelsOn(props);
       const enter = lipidsPx(props);
       // round 8: the middle look over a cut leaflet's far surface, its texture flat (the look lights the relief)
-      const middle = data.method === 'cutter' ? props.middle : 'coarse';
+      const middle = data.method === 'cutter' && middleOn(props) ? props.middle : 'coarse';
       for (const leaflet of surfaces) {
         const { table } = leaflet;
         const size = lipidSize(table);

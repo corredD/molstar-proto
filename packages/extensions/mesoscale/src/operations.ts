@@ -452,6 +452,10 @@ export class MesoscaleApi extends ApiArea {
           return ApiResult.fail('invalid', `${k}: from ${min} to ${max}.`);
         }
       }
+      // round 8: the shells' band object is not built yet (its param kept: no schema change when it is)
+      if (view.middle === 'shells') {
+        return ApiResult.fail('invalid', 'middle: coarse or parallax (shells are not built yet).');
+      }
       const cell = ctx.plugin.state.data.cells.get(membrane);
       if (cell?.transform.transformer !== LipidMembrane) {
         return ApiResult.fail('not-found', `No lipid membrane ${membrane} in the scene.`);
