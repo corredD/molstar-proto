@@ -406,4 +406,46 @@ describe('the GPU culler of a merged object', () => {
     culler.sync();
     expect(calls).toEqual([1, 1]);
   });
+
+  it("keeps a GPU-written member's CPU writes where another member's rows are written", () => {
+    const builder = SpheresBuilder.create(2, 1);
+    builder.add(0, 0, 0, 0);
+    builder.add(1, 0, 0, 1);
+    const geometry = builder.getSpheres();
+    const props = PD.getDefaultValues(Spheres.Params);
+    const seen: number[] = [];
+    const writer = Object.assign(() => 3, {
+      view: (_c: unknown, target: { cpuWrites: number }) => {
+        seen.push(target.cpuWrites);
+        return 3;
+      },
+    });
+    const objects = [false, true].map((gpu) => {
+      const transform = createTransform(new Float32Array(8 * 16), 8, undefined, 0, 0);
+      const values = Spheres.Utils.createValuesSimple(geometry, props, ColorNames.orange, 1, transform);
+      if (gpu) Object.assign(values, { gpuInstances: { ref: { value: writer, version: 0 } } });
+      return createRenderObject('spheres', values, Spheres.Utils.createRenderableState(props), -1);
+    });
+    const ro = createMergedRenderObject(objects, { gpuCulling: true });
+    ro.merged.sync();
+    const fake = fakeCompute(65535);
+    const culler = createMergedCuller(
+      fake.compute,
+      fake.resources,
+      ro.merged,
+      objects.map((o) => o.values as MergeableValues),
+      false,
+    );
+    const plane = Plane3D.create(Vec3.create(0, 0, -1), 0);
+    const lod = LodView();
+    culler.dispatch(plane, Frustum3D(), lod);
+    // the other member's transforms written (\`writeMemberData\` of it alone)
+    createTransform(new Float32Array(8 * 16), 8, undefined, 0, 0, objects[0].values as unknown as TransformData);
+    ro.merged.sync();
+    culler.sync();
+    lod.depthScale = 2;
+    culler.dispatch(plane, Frustum3D(), lod);
+    expect(seen.length).toBe(2);
+    expect(seen[1]).toBe(seen[0]);
+  });
 });
