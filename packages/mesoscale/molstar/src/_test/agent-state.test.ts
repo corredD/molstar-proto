@@ -46,7 +46,7 @@ describe('the document state of an agent turn', () => {
 
 describe('the state’s room', () => {
   // the cap of a state line and of the whole state (agent-state.ts)
-  const LineChars = 240;
+  const LineChars = 800;
   const StateChars = 4000;
 
   it('says at most 24 lines with 30 compartments, the “more” line in them', () => {

@@ -517,6 +517,9 @@ describe('what the agent sees of the document each turn (prism.md §8, agent.md 
     expect(sent).toMatch(/MesoViewSpec document/);
     expect(sent).toMatch(/compartment c\.exosome/);
     expect(sent).toMatch(/p\.lipids \(e\.\w+\) \d+/);
+    // the exosome's line is whole within its cap: the brief's populations are all named
+    expect(sent).toMatch(/p\.catalase \(e\.catalase\) \d+/);
+    expect(sent).not.toMatch(/more populations/);
     expect(sent).toMatch(/shown view v\.overview/);
     expect(sent).toMatch(/issues \d+/i);
     agent.dispose();

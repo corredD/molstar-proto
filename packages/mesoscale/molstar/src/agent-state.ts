@@ -32,43 +32,119 @@ export interface DocumentStateInput {
   readonly issues: readonly Issue[];
 }
 
+/**
+ * Characters a state line says at most (a compartment's line names all its populations: the exosome's 13 with their
+ * counts are ~600), and the whole state.
+ */
+export const MaxStateLineChars = 800;
+export const MaxStateChars = 4000;
+/** Nesting said by indentation, at most (deeper compartments are said at this depth). */
+const MaxDepthShown = 8;
+
+const capped = (line: string) =>
+  line.length > MaxStateLineChars ? `${line.slice(0, MaxStateLineChars - 1)}…` : line;
+
+/**
+ * `head` and `count` items after it (`first` before the first, `, ` between) while the line has room; the rest counted
+ * (`… 480 more populations`). Items are made only as they fit.
+ */
+function listLine(head: string, first: string, count: number, item: (i: number) => string, rest: string): string {
+  let line = head;
+  let i = 0;
+  for (; i < count; i++) {
+    const next = `${i ? ', ' : first}${item(i)}`;
+    // the room of the count of the rest
+    if (line.length + next.length > MaxStateLineChars - 40) break;
+    line += next;
+  }
+  if (i < count) line += `${i ? ', ' : first}… ${count - i} more ${rest}`;
+  return capped(line);
+}
+
+type Compartment = MesoViewSpecDoc['compartments'][number];
+type Population = MesoViewSpecDoc['populations'][number];
+type Instance = NonNullable<MesoViewSpecDoc['instances']>[number];
+
+function groupBy<T>(items: readonly T[], key: (x: T) => unknown): Map<unknown, T[]> {
+  const out = new Map<unknown, T[]>();
+  for (const x of items) {
+    const k = key(x);
+    const list = out.get(k);
+    if (list) list.push(x);
+    else out.set(k, [x]);
+  }
+  return out;
+}
+
 export function documentState({ doc, counts, shown, issues }: DocumentStateInput, max = MaxStateLines): string {
   const copies = Object.values(counts).reduce((n, c) => n + c.achieved, 0);
-  const lines = [`MesoViewSpec document ${quoted(doc.metadata?.title || 'Untitled')}: ${copies} copies drawn.`];
-  const compartments: string[] = [];
-  const walk = (parent: string | undefined, depth: number) => {
-    for (const c of doc.compartments.filter((x) => x.parent === parent)) {
-      const parts = [
-        ...doc.populations
-          .filter((p) => p.compartment === c.id)
-          .map((p) => {
-            const n = counts[p.id];
-            return `${idText(p.id)} (${idText(p.entity)}) ${n ? `${n.achieved}${n.requested !== undefined ? ` of ${n.requested}` : ''}` : 'not placed'}`;
-          }),
-        ...(doc.instances ?? []).filter((i) => i.compartment === c.id).map((i) => `${idText(i.id)} (${idText(i.entity)}) instance`),
-      ];
-      compartments.push(
-        `${'  '.repeat(depth)}- compartment ${idText(c.id)} ${quoted(c.label)}${parts.length ? `: ${parts.join(', ')}` : ''}`,
-      );
+  const head = capped(`MesoViewSpec document ${quoted(doc.metadata?.title || 'Untitled')}: ${copies} copies drawn.`);
+  const views = doc.views ?? [];
+  const view = views.find((v) => v.id === shown) ?? views[0];
+  const tail = [
+    view
+      ? listLine(
+          `- shown view ${idText(view.id)}${view.label ? ` ${quoted(view.label)}` : ''}; views`,
+          ' ',
+          views.length,
+          (i) => idText(views[i].id),
+          'views',
+        )
+      : '- shown view: none (the document has no views)',
+    `- issues ${issues.length}`,
+  ];
+
+  // indexed once by compartment; the compartments in tree order (each once, whatever their parents say)
+  const children = groupBy(doc.compartments, (c) => c.parent);
+  const populations = groupBy(doc.populations, (p) => p.compartment);
+  const instances = groupBy(doc.instances ?? [], (i) => i.compartment);
+  const order: { readonly c: Compartment; readonly depth: number }[] = [];
+  const seen = new Set<Compartment>();
+  const walk = (parent: unknown, depth: number) => {
+    for (const c of children.get(parent) ?? []) {
+      if (seen.has(c)) continue;
+      seen.add(c);
+      order.push({ c, depth });
       walk(c.id, depth + 1);
     }
   };
   walk(undefined, 0);
-  // The two lines that follow the compartments are kept.
-  const room = Math.max(1, max - lines.length - 2);
-  lines.push(...compartments.slice(0, room));
-  if (compartments.length > room) {
-    lines.push(`… ${compartments.length - room} more compartments (get_mesoviewspec gives all of it).`);
+
+  const compartmentLine = ({ c, depth }: (typeof order)[number]) => {
+    const pops: readonly Population[] = populations.get(c.id) ?? [];
+    const insts: readonly Instance[] = instances.get(c.id) ?? [];
+    const item = (i: number) => {
+      if (i >= pops.length) {
+        const x = insts[i - pops.length];
+        return `${idText(x.id)} (${idText(x.entity)}) instance`;
+      }
+      const p = pops[i];
+      const n = counts[p.id];
+      return `${idText(p.id)} (${idText(p.entity)}) ${n ? `${n.achieved}${n.requested !== undefined ? ` of ${n.requested}` : ''}` : 'not placed'}`;
+    };
+    return listLine(
+      `${'  '.repeat(Math.min(depth, MaxDepthShown))}- compartment ${idText(c.id)} ${quoted(c.label)}`,
+      ': ',
+      pops.length + insts.length,
+      item,
+      'populations or instances',
+    );
+  };
+
+  // the lines of the compartments: those that fit, then the count of the rest (its line in the room)
+  const more = (n: number) => `… ${n} more compartments (get_mesoviewspec gives all of it).`;
+  const room = Math.max(1, max - 1 - tail.length);
+  const fits = order.length <= room ? order.length : room - 1;
+  let chars = head.length + tail.reduce((n, l) => n + l.length + 1, 0) + more(order.length).length + 1;
+  const body: string[] = [];
+  for (let i = 0; i < fits; i++) {
+    const line = compartmentLine(order[i]);
+    if (chars + line.length + 1 > MaxStateChars) break;
+    body.push(line);
+    chars += line.length + 1;
   }
-  const views = doc.views ?? [];
-  const view = views.find((v) => v.id === shown) ?? views[0];
-  lines.push(
-    view
-      ? `- shown view ${idText(view.id)}${view.label ? ` ${quoted(view.label)}` : ''}; views ${views.map((v) => idText(v.id)).join(', ')}`
-      : '- shown view: none (the document has no views)',
-    `- issues ${issues.length}`,
-  );
-  return lines.join('\n');
+  if (body.length < order.length) body.push(more(order.length - body.length));
+  return [head, ...body, ...tail].join('\n');
 }
 
 const MaxIssuesListed = 5;
