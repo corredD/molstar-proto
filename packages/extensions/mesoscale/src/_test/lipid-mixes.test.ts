@@ -85,4 +85,41 @@ describe('lipid mixes per membrane', () => {
     expect(Array.from(mixTable(own, other, fractions, 8).lipids)).not.toEqual(Array.from(t.lipids));
     expect(() => mixTable(own, undefined, { DOPA: 1 }, 7)).toThrow(/DOPA/);
   });
+
+  it("leaves the tables it reads as they were, and levels a borrowed species' coarse slots to the leaflet's height (review M1, S1)", () => {
+    // 16 atoms a member: atom i at z = side × (top − i), its element 65 + i; the levels' slots atoms 0 and 8
+    const member = (species: number, top: number, side: number) => {
+      const positions = new Float32Array(48);
+      const elements = new Uint8Array(16);
+      for (let i = 0; i < 16; ++i) {
+        positions[i * 3] = i;
+        positions[i * 3 + 2] = side * (top - i);
+        elements[i] = 65 + i;
+      }
+      return { species, positions, elements };
+    };
+    const table = (species: string[], members: ReturnType<typeof member>[], n: number): CutterTable => {
+      const memberStart = new Uint32Array(members.length + 1);
+      for (let m = 0; m < members.length; ++m) memberStart[m + 1] = Math.round(((m + 1) * n) / members.length);
+      return { species, members, memberStart, lipids: new Float32Array(n * 4).fill(1), box: [100, 100] };
+    };
+    const own = table(['POPC'], [member(0, 20, 1)], 100);
+    // the other leaflet: two species of different heights (its levels swap atoms)
+    const other = table(['CHL1', 'SSM'], [member(0, 15, -1), member(1, 25, -1)], 10);
+    const before = JSON.stringify(other.members.map((m) => [Array.from(m.positions), Array.from(m.elements)]));
+    const ownBefore = JSON.stringify(Array.from(own.members[0].positions));
+    const a = mixTable(own, other, { POPC: 0.5, SSM: 0.5 }, 1);
+    const b = mixTable(own, other, { POPC: 0.5, SSM: 0.5 }, 1);
+    expect(JSON.stringify(other.members.map((m) => [Array.from(m.positions), Array.from(m.elements)]))).toBe(before);
+    expect(JSON.stringify(Array.from(own.members[0].positions))).toBe(ownBefore);
+    for (const m of [...a.members, ...b.members]) {
+      // each atom still its element (atom i: element 65 + i, x = i)
+      for (let i = 0; i < 16; ++i) expect(m.elements[i]).toBe(65 + m.positions[i * 3]);
+      // the coarse slot at the leaflet's common height (the own top, 20), the mirrored species' too
+      expect(m.positions[2]).toBeCloseTo(20, 4);
+    }
+    expect(JSON.stringify(a.members.map((m) => Array.from(m.positions)))).toBe(
+      JSON.stringify(b.members.map((m) => Array.from(m.positions))),
+    );
+  });
 });
