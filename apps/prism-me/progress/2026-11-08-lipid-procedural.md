@@ -1868,3 +1868,22 @@ lines (stop ~600), extension ~270. No GLSL twin (WebGPU only; add the names to `
 
 **Risks.** Mid-mip H may speckle the outline (bias +1 mip near mergePx if tests show it); the extra lift worsens the
 cow's thin-part folding (round 7 option D, open); the band is triangle-granular.
+
+## Round 8: built (2026-11-10, builder; in progress)
+
+Steps done so far (commits on me/lipid-procedural):
+
+1. Height channel, `a50f94daf`. Test 1 (`lipid-patch-texture.test.ts`, alpha = brute-force top normalised within
+   1/255): failed (A was 255, no lo/hi), passes. `patchRaster(..., shade)`, `HeightSpan` 12 Å.
+2. Graphics, `03625d096` (+ `6cb4e25b8`, the profile normal at every px). `patchAt`/`patchFrame`/`patchRead` split out
+   of `patchColor`; `dPatchMiddle` off | shells | beneath | parallax (a define: coarse compiles as before), `uPatchShells`
+   (N, lo, hi, mean), `uPatchMiddle` (mergePx, end px). Test 2 (`webgpu-patch-shells.test.ts`): failed (no
+   `uPatchShells`), passes: colour, pick and depth per column; parallax and beneath draw with no error. Parity lists
+   `uPatchShells`, `uPatchMiddle`, `uCameraPosition`, `uCameraDir` (the last two on texture-mesh too: one source).
+3. Parallax, `9acb54a54`. Params `middle` (coarse default), `middlePx` 11 (measured: Balanced stride 1 from 8.83 px a
+   7.44 Å lipid; ÷ Keep), `shells` 8, `mergePx` 2 hidden; operation and UI (Far › Middle: Coarse / Shells / Parallax,
+   Atoms down to, Shells). Test 3 (zoom 16 → 0.8 px, parallax): failed (no parallax surface), then 0.043 at 6.3 px
+   (the selection keeps lipids below middlePx·Keep, at the stride-8 level), fixed by drawing a cut leaflet's lipids as
+   atoms with a middle look (deviation: the design relied on middlePx alone), now 0.007. UI test failed on HEAD
+   (timed out), passes. Tests 5 (cut: coverage and Oklab vs coarse; parallax 0.709 vs 0.661, dE 0.028) and 6 (at rest)
+   per look pass, but would pass on HEAD too (guards, not failing-first).
