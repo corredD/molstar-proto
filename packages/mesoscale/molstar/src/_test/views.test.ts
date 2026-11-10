@@ -17,6 +17,9 @@ import { PluginStateObject as SO } from '@molstar/plugin/state/objects';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createMesoViewSpecExtension, type MesoViewSpecApi, type SavedDocument } from '../extension.js';
 import { MesoPlacements } from '../particle-list.js';
+import { stubCanvasForLabels } from './canvas.js';
+
+stubCanvasForLabels();
 
 // The document's views (prism.md §4.4, §7.4) on a headless Prism viewer: showing one is no step (`undoable: false`, as
 // `snapshot.apply`), look edits go to the view shown, a checkpoint notes the view shown with it and Undo shows it again
@@ -91,11 +94,15 @@ async function open() {
   const person = v.api.as({ kind: 'person' });
   const runs: string[] = [];
   v.api.events.started.subscribe((r) => runs.push(r.operation));
+  const errors: string[] = [];
+  v.plugin.events.log.subscribe((e) => {
+    if (e.type === 'error') errors.push(String(e.message));
+  });
   const run = (id: string, values: Record<string, unknown> = {}) => person.run(id, values);
   const d = doc();
   const r = await run('mesoviewspec.open', { data: JSON.stringify(d), files: files(d) });
   expect(r.ok, JSON.stringify(r)).toBe(true);
-  const h = { v, api, model: api.model, run, runs, steps: () => v.managers.history.steps.value };
+  const h = { v, api, model: api.model, run, runs, errors, steps: () => v.managers.history.steps.value };
   return h;
 }
 type Harness = Awaited<ReturnType<typeof open>>;
@@ -122,8 +129,10 @@ function ribosomes(h: Harness) {
 const viewOf = (d: MesoViewSpecDoc | undefined, id: string) => d?.views?.find((v) => v.id === id);
 const shownId = (h: Harness) => h.model.session?.ir?.view.id;
 
+/** No step made unsafe (a change outside the API), no error logged. */
 function noUnsafe(h: Harness) {
   expect(h.steps().filter((s) => s.unsafe !== undefined)).toEqual([]);
+  expect(h.errors).toEqual([]);
 }
 
 async function saved(h: Harness): Promise<MesoViewSpecDoc> {
