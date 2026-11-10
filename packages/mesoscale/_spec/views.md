@@ -128,27 +128,34 @@ not `levels`, a name streaming already uses for `TileManifest.levels`); a view m
 
 - **`select`** is a MesoQL address, so a rule can name a population, an entity, a compartment's contents or one
   instance.
-- **`size`** is the range of scale over which the rule holds, measured as the projected diameter of one copy in pixels.
-  The renderer has that measure every frame, it does not depend on the camera's units, and it is what R4 needs. Open: a
-  camera distance in the document's length unit instead or as well; named levels (`cell`, `organelle`, `molecule`) that
-  a view picks.
+- **`size`** is the range of scale over which the rule holds, measured as the projected diameter of one copy in CSS
+  pixels (device pixels divided by the pixel ratio, so a 4K screen and a laptop agree). The renderer has that measure
+  every frame, it does not depend on the camera's units, and it is what R4 needs. A switch has hysteresis: a rule starts
+  to hold past its threshold and stops only some margin back (the margin is the viewer's, not the document's), so a copy
+  at a threshold does not flicker. A rule decides per target (a population), not per copy, until the renderer can choose
+  per copy (R7, R8). (Ludo, 2026-11-09.)
 - **`show`** reuses the vocabulary above:
-  - `representation`: a hint, as on looks, falling back to spheres with a `render` issue. Open: an `envelope` hint (the
-    population's level-0 envelope, a membrane as one surface) and a fallback chain (decision 4, SeqViewSpec's).
+  - `representation`: a hint, as on looks, or a fallback chain tried in order, such as `[structure surface spheres]`;
+    the adapter draws the first it can and reports a `render` issue when that is not the first. Hints gain `envelope`:
+    the population drawn as its level-0 envelope (a membrane as one surface). This answers decision 4; a look's
+    `representation` takes a chain too. (Ludo, 2026-11-09.)
   - `detail`: `parts` or `entity`, so a granule is one body from afar and its contents close up. This answers decision 8
     per scale rather than per view.
-  - `source`: a different realization over that range: a model id (another recipe or resolver) or a resource (another
-    structure, such as a coarse model far and the atomic one near). Absent, the copy's own entity and model.
-- **Copies no rule matches** keep today's behaviour: their look's representation and their population's `detail`. A copy
-  a rule matches takes the rule's `representation` over its look's (open question 5).
+  - `source`: another structure for the same copies over that range, a resource (a coarse model far, the atomic one
+    near). It replaces the entity's structure only, never the copies: copy ids (`<population>#<ordinal>`), picks,
+    selections and patches mean the same at every scale. A different recipe per scale (other copies) is not a scale
+    rule. Absent, the entity's own structure. (Ludo, 2026-11-09.)
+- **Copies no rule matches** keep today's behaviour: their look's representation and their population's `detail`.
+- **A view's look wins over a scale rule.** A rule is a default; a view's `Look.representation` on the same copies is
+  the more specific statement and is drawn. (Ludo, 2026-11-09.)
 
 ### What it changes
 
 - **The runtime.** A rule with a `source` or a `detail` needs the other realization too, resolved up front or on demand
   as the camera crosses the threshold (decision 8's open point). Looks and the camera live in `IRView`, not the tree
-  ([ir.md](ir.md)); proposed, the rules do too, and the alternatives they need are resolved as models, keyed and cached,
-  for every view's rules at compile, so switching views still reruns no resolver (above). A view whose rules add an
-  alternative is then a document edit, not a view edit (open question 6).
+  ([ir.md](ir.md)); the rules do too. The alternatives come from the document's rules only and are resolved at compile,
+  keyed and cached: a view's rules choose among them (other ranges, other order) but never add one, so switching views
+  still reruns no resolver (above). (Ludo, 2026-11-09.)
 - **Streaming.** Semantic levels say _what_ to show; streaming levels say _what is loaded_. A rule that asks for
   `structure` close up is what makes level 2 worth loading; a rule that shows an envelope far away is level 0 drawn.
   Decision 12's "the document's sections do not move" still holds: `scales` is a new section, not a restructuring.
@@ -162,17 +169,11 @@ not `levels`, a name streaming already uses for `TileManifest.levels`); a view m
 - **Patches.** A scale rule has an `id`, as a look does, so the viewer can propose edits to it ([prism.md](prism.md)
   §2).
 
-### Open for David and Ludo
+### Decided (Ludo, 2026-11-09), for David's review
 
-1. Is `size` measured in projected pixels, as a camera distance, as named levels, or more than one? Pixels depend on the
-   viewport and its pixel ratio (a thumbnail and a 4K render of one view would differ), and a copy at a threshold needs
-   hysteresis so it does not flicker. A rule decides per target (a population), not per copy, until the renderer can
-   choose per copy (R7, R8).
-2. Rules at the document level with view overrides (proposed), or in views only?
-3. Does `source` replace only the entity's structure, or the whole realization (a different model, other copies)? The
-   second lets a far view use a statistical recipe and a near one a packed recipe for the same population, but then copy
-   ids (`<population>#<ordinal>`), picks, selections and patches name copies of one level only.
-4. Is `envelope` a representation hint, and does the document state a fallback chain?
-5. Does a rule override a view's own `Look.representation` (proposed), or a look override a document rule?
-6. May a view's rules add alternatives (a `source`, a `detail`), at the cost of a resolve when that view is first shown,
-   or only choose among the document's?
+1. `size` in projected CSS pixels, with hysteresis; per target until the renderer can choose per copy.
+2. Rules in the document (`scales[]`) with view overrides that come after.
+3. `source` replaces the entity's structure only; copy identity holds at every scale.
+4. `envelope` is a hint, and a representation may be a fallback chain.
+5. A view's look wins over a scale rule.
+6. A view's rules choose among the document's alternatives; they never add one.
