@@ -270,6 +270,81 @@ describe('showing a view (prism.md §4.4)', () => {
   });
 });
 
+describe('New view from here, Update camera, Open with this view (prism.md §4.4)', () => {
+  // the camera in Å, the world frame (the canvas's: a headless viewer has none, so the tests give it)
+  const here = { position: [100, 200, 3000], target: [100, 200, 0], up: [0, 1, 0] };
+
+  it('New view from here is one step: the camera here in the document’s unit, the shown view’s looks with new ids, shown', {
+    tags: ['medium'],
+  }, async () => {
+    const h = await open();
+    await h.run('mesoviewspec.view', { view: 'v.red' });
+    const steps = h.steps().length;
+    const r = await h.run('mesoviewspec.newView', { camera: here });
+    expect(r.ok, JSON.stringify(r)).toBe(true);
+    expect(h.steps().length).toBe(steps + 1);
+    const views = h.model.doc!.views!;
+    const made = views.at(-1)!;
+    expect(made.id).toBe('v.view.1');
+    expect(made.label).toBe('View 1');
+    // nm: Å / 10
+    expect(made.camera).toEqual({ position: [10, 20, 300], target: [10, 20, 0], up: [0, 1, 0] });
+    const red = viewOf(h.model.doc, 'v.red')!;
+    expect(made.looks?.map(({ id: _, ...l }) => l)).toEqual(red.looks?.map(({ id: _, ...l }) => l));
+    const ids = views.flatMap((v) => (v.looks ?? []).flatMap((l) => (l.id ? [l.id] : [])));
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(made.looks?.every((l) => l.id)).toBe(true);
+    expect(shownId(h)).toBe('v.view.1');
+    expect(ribosomes(h)?.color).toBe(Red);
+
+    await h.v.managers.history.undo();
+    expect(viewOf(h.model.doc, 'v.view.1')).toBeUndefined();
+    expect(shownId(h)).toBe('v.red');
+    noUnsafe(h);
+  });
+
+  it('Update camera sets the shown view’s camera, one step; Undo puts the old one back', { tags: ['medium'] }, async () => {
+    const h = await open();
+    await h.run('mesoviewspec.view', { view: 'v.cell' });
+    const was = viewOf(h.model.doc, 'v.cell')!.camera;
+    const steps = h.steps().length;
+    const r = await h.run('mesoviewspec.updateCamera', { camera: here });
+    expect(r.ok, JSON.stringify(r)).toBe(true);
+    expect(h.steps().length).toBe(steps + 1);
+    expect(viewOf(h.model.doc, 'v.cell')!.camera).toEqual({
+      position: [10, 20, 300],
+      target: [10, 20, 0],
+      up: [0, 1, 0],
+    });
+    expect(h.model.session?.ir?.view.camera?.position).toEqual([100, 200, 3000]);
+    expect(viewOf(h.model.doc, 'v.granules')!.camera).toEqual(viewOf(doc(), 'v.granules')!.camera);
+    await h.v.managers.history.undo();
+    expect(viewOf(h.model.doc, 'v.cell')!.camera).toEqual(was);
+  });
+
+  it('Open with this view sets session.view, one step: the saved document opens on it', { tags: ['medium'] }, async () => {
+    const h = await open();
+    const steps = h.steps().length;
+    const r = await h.run('mesoviewspec.openWith', { view: 'v.red' });
+    expect(r.ok, JSON.stringify(r)).toBe(true);
+    expect(h.steps().length).toBe(steps + 1);
+    expect(h.model.doc!.session?.view).toBe('v.red');
+    expect(h.api.treeState().value!.views.opensWith).toBe('v.red');
+    expect((await h.run('mesoviewspec.openWith', { view: 'v.red' })) as { unchanged?: boolean }).toMatchObject({
+      unchanged: true,
+    });
+    const file = await saved(h);
+    expect(file.session?.view).toBe('v.red');
+
+    const again = await open();
+    await again.run('mesoviewspec.close', {});
+    const o = await again.run('mesoviewspec.open', { data: JSON.stringify(file), files: files(file) });
+    expect(o.ok, JSON.stringify(o)).toBe(true);
+    expect(shownId(again)).toBe('v.red');
+    expect(ribosomes(again)?.color).toBe(Red);
+  });
+});
+
 describe('a tour (prism.md §4.4)', () => {
   it('plays each step as a view shown, records no step, and leaves the last view shown', {
     tags: ['medium'],
