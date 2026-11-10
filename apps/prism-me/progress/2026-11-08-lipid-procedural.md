@@ -1579,3 +1579,48 @@ once): one heavy job at a time, wait while load > 12, abort past 8 GB RSS.
 **Size and model.** ~600 production lines (graphics: instanced shells, the height channel, parallax ~350; extension:
 bake, levels, the Look's switch ~250); Opus. The graphics part is a library change: its own lane from master later, on
 Ludo's word.
+
+## Round 7, item 6: architect's design (2026-11-09, read-only, at 481102c20)
+
+**Correction to the brief.** The three levels already exist for the cutter (round 5, e1b427405): `memberObject`
+(membrane.ts:1018) makes a cut member's atoms its groups (`byAtom` :1034, `instanceGranularity` :1068);
+`membraneColorLevels` (:873) writes `elementColor` (:862) per atom into `tColorNear`, the species in `tColor`, the
+membrane's or part's colour in `tColorFar` (chain offset 0: chain = species). The far surfaces go far → species
+(`patchObject` :812–858, `uPatchLevels`, mesh.wgsl.ts:96–101); they never need atoms (lipids cover them first).
+`lipid-colors.webgpu.test.ts:129` reads the three levels by moving the edges, not the camera. Stale comments
+(membrane.ts:669–670, operations.ts:1016) say otherwise. So item 6 is: tiles' atom level, an element scheme, a
+far-only colour, an edges fast path, the UI, and parity gaps.
+
+1. **Tiles' close level.** Pass `tile.elements` (tiles.ts:61) to the tiles' `memberObject` (:1385), atoms as groups,
+   an `atomSpecies: Uint16Array` per variant from `lipidAtomStart`; `tColorNear` O(atoms of a variant). Per-lipid
+   markers lost (unused: `getLoci` is `EmptyLoci` :1535). Fix the stale comments.
+2. **Controls (each one `updateMembrane` commit, operations.ts:1852).**
+   - Far-only colour: `far?: PD.Text` on `mesoscale.colorLevels` (:997), membrane only, writes `props.color` alone.
+     `style {particles, color}` keeps its semantics (every species and the far colour, review S2).
+   - Part colour: exists (far-only). Species colour: exists (`membraneSpecies` :481); a species' right-click Color…
+     only if cheap.
+   - Element scheme: repr param `atomColors: 'element' | 'carbon-species'` (carbons take the species' colour,
+     heteroatoms their element's: the classic lipid look), via `colorLevels {atoms}`; `elementColor(code, scheme,
+     speciesColor)` in `membraneColorLevels`' `colorOf`.
+   - Edges fast path: `onlyColorEdges(before, props)` when only the levels' params move: `ColorLevels.setProps` on
+     members and render objects (as `setClip` :1503–1504), `uPatchLevels` rewritten on every patch object (keep their
+     `{values, size}`), no rebuild (today ~1 s on model ×20). On/off still rebuilds.
+   - Palettes/Generate: check by a test first whether `mesoscale.theme` (rows.ts:505–524; operations.ts :1204–1300, no
+     membrane branch) handles a membrane; if not, a membrane plan (uniform/object, generate, zoom).
+   - UI: `MembraneLook` gains a Far `ColorField` (By zoom on) and an Atoms `Select`; `ZoomColors`
+     (controls.tsx:116–160) gains `membrane?: boolean`: Chain hidden, edges labelled Species and Atoms; the operation
+     clamps `chain` to the geometric mean of entity and atom so `entity < chain < atom` (:1020) holds.
+3. **Tests (Dawn, `syntheticPatchPdb`, perspective, 128², `lipid-colors.webgpu.test.ts`), failing on HEAD.**
+   Three camera distances with fixed default edges, far blue via `{far}`, species green: far blue > 0.6, middle green
+   > 0.6, close P/O > 0.1 and carbon grey > 0.3, both methods. Each control changes only its level (`changed(a, b)`):
+   far, a species, `atoms: carbon-species`, a part (extend `lipid-parts.webgpu.test.ts:56`). Edges without a rebuild
+   (same render objects, image changed). One history step each (undo restores). TS quick: `elementColor` per scheme,
+   the clamp, the theme on a membrane. A close view with a clip plane keeps the element share.
+4. **Size.** ~170 production lines, no `packages/graphics` change. Optional library lanes (Ludo's word): `atomColors`
+   for particle lists (~60), a uniform far colour instead of per-instance `tColorFar` (~30, saves up to 8 MB at 2 M).
+5. **Risks.** Nothing per frame; every colour buffer bounded by budget or patch, never by lipids; colour changes other
+   than edges still rebuild (~1 s on model ×20; the colour-only path stays TODO N5); `onlyColorEdges` and `onlyClip`
+   exclusive; colours applied before the clip.
+
+**Defaults taken by the coordinator (Ludo may change):** tiles get the atom level (not left at species); the element
+scheme offers `carbon-species`; `style`'s one colour keeps setting the far colour too.
