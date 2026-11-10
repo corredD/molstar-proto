@@ -9,7 +9,18 @@ drives it is [loop.md](loop.md).
 
 Questions that stop the loop. One line each; move it to Decided with the answer.
 
-- (none)
+- Lane 7 added a library hook, `ViewerExtension.agentState` in `packages/prism/viewer` (`14c430588`), so the agent's
+  turn sees the document's outline (its rows are explorer UI, not scene-tree nodes). AGENTS.md makes a library change
+  its own lane: keep it in lane 7, or split it out?
+- Lane 7: showing a document's view (`mesoviewspec.view`) is `undoable: false`, so an agent that answers "show me the
+  lumen only" by showing `v.lumen` passes every outcome but not "Undo turn puts it back" (the brief). Make showing a
+  view an undoable step, steer the skill away from it, or keep that route a fail?
+- Lane 7: the real-model evals need a key (`ANTHROPIC_API_KEY` or `GEMINI_API_KEY`); none in the lane's worktree. Run
+  them, or give one for the worktree?
+- Lane 7 gate, S1: `get_mesoviewspec` with `detail: 'document'` prints the whole document uncapped (prism.md §8 says
+  "the rest on request" with no cap or paging defined). A cap, paging, or leave it?
+- Lane 7 gate (predates the lane, prism.md §3): an agent `open {url}` on a known service (zenodo.org, public uploads)
+  goes unasked, then fetches any resource host the document names. Ask per resource host, or accept as §3 says?
 
 ## Decided
 
@@ -112,12 +123,23 @@ Lanes 7 and 8 run in parallel (Ludo, 2026-11-10): their files do not meet (7: `p
 ### 7. `mvs-agent` ([progress](../apps/prism-me/progress/2026-11-10-mvs-agent.md)), port 1370
 
 - [x] brief committed (`4ef33fb74`)
-- [ ] steps 1–2 (Sonnet), running
-- [ ] step 3, evals (Opus writes, Sonnet runs)
+- [x] steps 1–2 (Sonnet; `6ad6aca11`..`5a451548a`): the skill and 10 tools (`show_only_meso` added), the outline, focus
+      and highlight no longer ask; checks green (base failures only; medium 128 pass)
+- [x] step 3, evals (Opus; `68e410db1`..`c10dc5ca7`): three tasks on outcomes (document, layers, camera, Undo turn),
+      near misses rejected; scripted 23/23, medium 151 pass; real model not run (no key)
+- [ ] gate: reviewer and skeptic done (M1 edit fetches any host unasked, M2 open-data URL scan bypass, M3 raw ids in the
+      turn state, all confirmed; S2, S3, S4, S6, S7 to fix; S1, S5, S8 and nits Open); fixes (Opus) running
 - [ ] checks green · checked in the app with a real model · gate · Ludo's check · merged
 
 ### 8. `mvs-streaming-app` ([progress](../apps/prism-me/progress/2026-11-10-mvs-streaming-app.md)), port 1371
 
 - [x] brief committed (`a99bdec2c`)
-- [ ] steps 1–2 (Opus: camera feed, budget, history rule), running
-- [ ] checks green · checked in the app · gate · Ludo's check · merged
+- [x] steps 1–2 (Opus; `42ff9af0b`..`582887974`, ~600 lines vs ~300): camera feed, budget (Settings › Behaviors, default
+      3000), tile lists behavior-owned and out of History; checks green (base failures only; medium 122 pass)
+- [x] checked in the app through the API (Claude, port 1371): open = one step, 7/32 tiles at 3000; budget 800 evicts to
+      2, one step; a far focus streams with no step; an eye edit while streaming is one step, its Undo restores the
+      looks; Undo of the budget gives 3000 and 7 tiles. Not verifiable: the feed from the real canvas (hidden pane)
+- [x] gate: reviewer, skeptic; fixed (`384e322be`..`45b3692d8`, tests `040e68960`): M1 Close/Undo-of-open wait for the
+      stream commit in flight, S4 a restored session streams where the camera was fed, S2 a stream commit never sets the
+      camera, S5 tests; open: S3 and nits. Rechecked live: Close and Undo of the open mid-stream leave no list
+- [ ] Ludo's check · merged
