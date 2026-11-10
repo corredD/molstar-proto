@@ -24,13 +24,24 @@ export const documentKey = (id: string) => `${DocumentKey}${id}`;
 
 /** What a document row stands for: its id in the outline and its address. */
 export interface DocumentRef {
-  /** The row's id (`p.lipids`, `p.granules/p.Vamp2`, `@model:m.recipe`); the document's own: '' */
+  /** The row's id (`p.lipids`, `p.granules/p.Vamp2`, `@model:m.recipe`); the document's own: ''; the Views row's `#…` */
   readonly id: string;
   readonly select: string;
+  /** A view's row: the view's id (a click shows it, prism.md §4.4) */
+  readonly view?: string;
+  /** A tour's row: the tour's id (its ⋯ plays it) */
+  readonly tour?: string;
 }
 
+/** The Views row's id, and its views' and tours' (prism.md §4.4): not the outline's, which has no `#`. */
+export const ViewsId = '#views';
+const viewId = (id: string) => `#view:${id}`;
+const tourId = (id: string) => `#tour:${id}`;
+/** Whether a document row's id is the Views row's or one of its rows'. */
+export const isViewsRow = (id: string) => id.startsWith('#');
+
 /** The kinds of the document's rows, as the tree and the properties name them */
-export const DocumentRowKinds: Readonly<Record<DocumentRowKind | 'document', string>> = {
+export const DocumentRowKinds: Readonly<Record<DocumentRowKind | 'document' | 'views' | 'view' | 'tour', string>> = {
   document: 'mesoviewspec document',
   compartment: 'compartment',
   population: 'population',
@@ -38,6 +49,9 @@ export const DocumentRowKinds: Readonly<Record<DocumentRowKind | 'document', str
   part: 'part',
   model: 'model group',
   kind: 'kind group',
+  views: 'views',
+  view: 'view',
+  tour: 'tour',
 };
 
 /** Prism's Group by for a document (prism.md §4.2: Kind stands in for Function) */
@@ -59,6 +73,8 @@ export interface DocumentRowDraft {
   readonly visible?: boolean;
   readonly hasChildren: boolean;
   readonly icon?: 'file-code';
+  /** Muted under its name: a view's description, a playing tour's caption */
+  readonly tip?: string;
   readonly doc: DocumentRef;
 }
 
@@ -79,7 +95,7 @@ export function documentRootRow(tree: DocumentTree, depth: number): DocumentRowD
     kind: DocumentRowKinds.document,
     count: `${tree.outline.copies.toLocaleString('en')} copies`,
     visible: tree.visible,
-    hasChildren: tree.outline.roots.length > 0,
+    hasChildren: tree.outline.roots.length > 0 || tree.views.views.length > 0 || tree.views.tours.length > 0,
     icon: 'file-code',
     doc: { id: '', select: '(all)' },
   };
@@ -114,19 +130,76 @@ export function pushDocumentRows(
   const walk = (ids: readonly DocumentRow[], d: number) => {
     for (const r of ids) push(documentRowOf(tree, r, d), () => walk(tree.outline.children(r.id), d + 1));
   };
-  push(documentRootRow(tree, depth), () =>
+  push(documentRootRow(tree, depth), () => {
     walk(
       tree.outline.roots.map((id) => tree.outline.row(id)!),
       depth + 1,
-    ),
-  );
+    );
+    const views = viewsRow(tree, depth + 1);
+    if (views) push(views, () => viewsChildren(tree, depth + 2).forEach((r) => push(r, () => {})));
+  });
+}
+
+/** The Views row (prism.md §4.1, §4.4), last under the document: none when it has no view and no tour */
+function viewsRow(tree: DocumentTree, depth: number): DocumentRowDraft | undefined {
+  const { views, tours } = tree.views;
+  if (!views.length && !tours.length) return undefined;
+  return {
+    key: documentKey(ViewsId),
+    depth,
+    label: 'Views',
+    kind: DocumentRowKinds.views,
+    hasChildren: true,
+    doc: { id: ViewsId, select: '' },
+  };
+}
+
+/**
+ * The Views row's rows: each view (the one shown and the one the saved document opens with said so; its description
+ * muted), then each tour (its views, or where it is while it plays, its caption muted).
+ */
+function viewsChildren(tree: DocumentTree, depth: number): DocumentRowDraft[] {
+  const { views, tours, shown, opensWith, playing } = tree.views;
+  const rows: DocumentRowDraft[] = [];
+  for (const v of views) {
+    const says = [v.id === shown ? 'shown' : '', v.id === opensWith ? 'opens with' : ''].filter(Boolean).join(', ');
+    rows.push({
+      key: documentKey(viewId(v.id)),
+      depth,
+      label: v.label,
+      kind: DocumentRowKinds.view,
+      ...(says ? { count: says } : {}),
+      ...(v.description ? { tip: v.description } : {}),
+      hasChildren: false,
+      doc: { id: viewId(v.id), select: '', view: v.id },
+    });
+  }
+  for (const t of tours) {
+    const p = playing?.tour === t.id ? playing : undefined;
+    rows.push({
+      key: documentKey(tourId(t.id)),
+      depth,
+      label: t.label,
+      kind: DocumentRowKinds.tour,
+      count: p ? `${p.step} of ${p.of}` : `${t.steps} ${t.steps === 1 ? 'view' : 'views'}`,
+      ...(p?.caption ? { tip: p.caption } : {}),
+      hasChildren: false,
+      doc: { id: tourId(t.id), select: '', tour: t.id },
+    });
+  }
+  return rows;
 }
 
 /** The keys above a document row (its groups, the document's, the category's), nearest first; none if absent */
 export function documentAncestorKeys(tree: DocumentTree | undefined, key: string): string[] | undefined {
   if (!tree || !key.startsWith(DocumentKey)) return undefined;
   if (key === DocumentKey) return ['c:particles'];
-  const up = tree.outline.ancestors(key.slice(DocumentKey.length));
+  const id = key.slice(DocumentKey.length);
+  if (isViewsRow(id)) {
+    if (!documentRowByKey(tree, key)) return undefined;
+    return id === ViewsId ? [DocumentKey, 'c:particles'] : [documentKey(ViewsId), DocumentKey, 'c:particles'];
+  }
+  const up = tree.outline.ancestors(id);
   return up && [...up.map(documentKey), DocumentKey, 'c:particles'];
 }
 
@@ -135,6 +208,8 @@ export function documentRowByKey(tree: DocumentTree | undefined, key: string): D
   if (!tree || !key.startsWith(DocumentKey)) return undefined;
   if (key === DocumentKey) return documentRootRow(tree, 1);
   const id = key.slice(DocumentKey.length);
+  if (id === ViewsId) return viewsRow(tree, 2);
+  if (isViewsRow(id)) return viewsChildren(tree, 3).find((r) => r.key === key);
   const row = tree.outline.row(id);
   const depth = (tree.outline.ancestors(id)?.length ?? 0) + 2;
   return row && documentRowOf(tree, row, depth);
@@ -160,6 +235,43 @@ export function documentLoci(api: ViewerApi, ref: DocumentRef): readonly Loci[] 
 }
 
 /**
+ * What a click or a double click on a Views row does (prism.md §4.4): a view's shows it (no step), a tour's plays it;
+ * none for the Views row itself. Undefined when the row is no view's or tour's.
+ */
+export function activateViewsRow(api: ViewerApi, doc: DocumentRef): Promise<unknown> | undefined {
+  if (doc.view) return api.run('mesoviewspec.view', { view: doc.view });
+  if (doc.tour) return api.run('mesoviewspec.tour.play', { tour: doc.tour });
+  return undefined;
+}
+
+/** The Views row's ⋯ (prism.md §4.4): a view's Show this view; a tour's Play, or Stop while it plays. */
+function viewsMenuItems(api: ViewerApi, tree: DocumentTree | undefined, doc: DocumentRef): ContextMenuItem[] {
+  const items: ContextMenuItem[] = [];
+  const views = tree?.views;
+  if (doc.view && views?.shown !== doc.view) {
+    items.push({
+      id: 'show-view',
+      label: 'Show this view',
+      icon: 'eye',
+      run: () => void api.run('mesoviewspec.view', { view: doc.view }),
+    });
+  }
+  if (doc.tour) {
+    items.push(
+      views?.playing?.tour === doc.tour
+        ? { id: 'stop-tour', label: 'Stop the tour', icon: 'square', run: () => void api.run('mesoviewspec.tour.stop', {}) }
+        : {
+            id: 'play-tour',
+            label: 'Play the tour',
+            icon: 'play',
+            run: () => void api.run('mesoviewspec.tour.play', { tour: doc.tour }),
+          },
+    );
+  }
+  return items;
+}
+
+/**
  * A document row's ⋯ and right-click (prism.md §5.2, §6): Focus; Color… (a look patch, given a way to `open` its
  * swatches); Show only this, Show all again (look patches, one step); the document's: Save, Close. A part's: Focus only
  * (read-only in 3D). No Move: a document places its copies.
@@ -171,6 +283,7 @@ export function documentMenuItems(
   open?: (items: ContextMenuItem[]) => void,
 ): ContextMenuItem[] {
   const { doc, label } = picked;
+  if (isViewsRow(doc.id)) return viewsMenuItems(api, tree, doc);
   const items: ContextMenuItem[] = [];
   if (doc.select) {
     items.push({
