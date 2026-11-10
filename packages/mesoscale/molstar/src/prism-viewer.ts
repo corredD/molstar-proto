@@ -128,6 +128,9 @@ export const MesoViewSpecLazyExtension: LazyViewerExtension = {
   title: 'MesoViewSpec',
   stub: {
     skills: [MesoViewSpecSkill],
+    // the document's outline joins the scene's in each turn (prism.md §8); nothing before the chunk is loaded
+    agentState: (api) =>
+      (api as unknown as { mesoviewspec?: { agentState(): string | undefined } }).mesoviewspec?.agentState(),
     parts: [],
     operations: [
       {

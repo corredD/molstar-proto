@@ -4,6 +4,7 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
+import { documentState } from './agent-state.js';
 import { Asset } from '@molstar/core/util/assets';
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
 import {
@@ -28,12 +29,7 @@ import { registerParticleListOwner } from '@molstar/mesoscale-extension/owner';
 import { Color } from '@molstar/core/util/color';
 import { type CompileProgress, isAbort } from '@molstar/meso-spec/runtime';
 import { Task } from '@molstar/core/task';
-import {
-  type CameraHere,
-  type DocumentViews,
-  MesoDocumentModel,
-  type MesoDocumentOptions,
-} from './document-model.js';
+import { type CameraHere, type DocumentViews, MesoDocumentModel, type MesoDocumentOptions } from './document-model.js';
 import { editAsTask } from './edit-task.js';
 import { blockedResult, DocumentListOwner } from './list-owner.js';
 import { documentVisible, type DocumentGroupBy, type DocumentLooks, type DocumentOutline } from './document-tree.js';
@@ -685,6 +681,13 @@ export class MesoViewSpecApi extends ApiArea {
       return ApiResult.ok('Closed the document: its lists are gone.');
     },
   });
+
+  /** What the agent is told of the open document each turn (agent-state.ts); undefined with none open. */
+  agentState(): string | undefined {
+    const { doc, session } = this.model;
+    if (!doc) return undefined;
+    return documentState({ doc, counts: session?.counts ?? {}, shown: this.model.shownId, issues: this.model.issues });
+  }
 
   readonly get = this.operation({
     id: 'mesoviewspec.get',
