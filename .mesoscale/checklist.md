@@ -9,14 +9,14 @@ drives it is [loop.md](loop.md).
 
 Questions that stop the loop. One line each; move it to Decided with the answer.
 
-- Lane 4, M1: a theme, By entity or Reset that would clear a color look reaching beyond the selection (e.g.
-  `(in c.exosome)` under one list's theme) is refused with no step and names the look. Keep, or clear it anyway?
 - Lane 4: your check in the app on port 1358.
 
 ## Decided
 
 - 2026-11-09: default colors, option A. Today's per-population palette stays; the IR tells stated colors from defaults,
   and defaults are dropped only where the person chose a theme (lane 4).
+- 2026-11-09: lane 4, M1: a theme, By entity or Reset that would clear a color look reaching beyond the selection is
+  refused with no step, naming the look (kept as built).
 - 2026-11-09: the semantic levels and MesoLocation draft merged into `me/mesoviewspec` before David's review.
 
 ## Lanes
