@@ -560,9 +560,14 @@ export function setEyes(api: ViewerApi, area: ExplorerApi, rows: readonly EyeRow
     }
     // a membrane's own row among them set all its parts already (one write, not two)
     for (const row of rows) if (row.kind === 'mesh' && row.node) membraneParts.delete(row.node.ref);
+    // the objects indexed once (review N4: not a scan a membrane)
+    const hiddenObjects =
+      visible && membraneParts.size
+        ? new Set(area.objectsState().value.flatMap((o) => (o.visible ? [] : [o.ref])))
+        : undefined;
     for (const [ref, parts] of membraneParts) {
       // a part shown: its membrane drawn (its other parts as they are)
-      if (visible && area.objectsState().value.some((o) => o.ref === ref && !o.visible)) {
+      if (hiddenObjects?.has(ref)) {
         const r = await g.run('state.visibility', { node: `#${ref}`, visible });
         if (!r.ok) return r;
       }
@@ -611,9 +616,11 @@ async function setEye(api: ViewerApi, area: ExplorerApi, row: EyeRow, visible: b
   if (row.kind === 'category' && row.objects?.length) {
     const r = await api.run('state.visibility', { node: row.objects.map((r) => `#${r}`).join(', '), visible });
     if (!r.ok) return r;
-    const kinds = new Map(area.objectsState().value.map((o) => [o.ref, ObjectRowKinds[o.kind]] as const));
+    // the objects indexed once (review N4: not a scan an object)
+    const byRef = new Map(area.objectsState().value.map((o) => [o.ref, o] as const));
     for (const ref of row.objects) {
-      const p = await setParts(api, area, kinds.get(ref), ref, visible);
+      const o = byRef.get(ref);
+      const p = await setParts(api, area, o && ObjectRowKinds[o.kind], ref, visible, o);
       if (p && !p.ok) return p;
     }
     return r;
@@ -664,10 +671,18 @@ async function setEye(api: ViewerApi, area: ExplorerApi, row: EyeRow, visible: b
  * its rows' eyes), where it is drawn (its looks are its representations'); a volume's representations follow it already
  * (Mol*'s subtree), a structure has no part eyes
  */
-async function setParts(api: ViewerApi, area: ExplorerApi, kind: string | undefined, ref: string, visible: boolean) {
+async function setParts(
+  api: ViewerApi,
+  area: ExplorerApi,
+  kind: string | undefined,
+  ref: string,
+  visible: boolean,
+  /** the object, where the caller indexed them (a category's) */
+  object?: SceneObject,
+) {
   if (kind === 'mesh') {
     // a cell membrane's parts (round 7; review M2, N3: the Meshes category's eye too), where one is not so already
-    const o = area.objectsState().value.find((x) => x.ref === ref);
+    const o = object ?? area.objectsState().value.find((x) => x.ref === ref);
     if (!o?.parts?.some((p) => p.visible !== visible)) return;
     return api.run('mesoscale.style', { particles: ref, parts: '', visible });
   }
