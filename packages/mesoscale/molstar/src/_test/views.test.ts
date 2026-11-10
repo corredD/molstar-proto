@@ -517,6 +517,21 @@ describe('a tour (prism.md §4.4)', () => {
     expect(h.model.playing).toBeUndefined();
   });
 
+  it('a close stops the tour at once, not after its step’s hold', { tags: ['medium'] }, async () => {
+    const h = await open();
+    await h.run('mesoviewspec.tour.play', { tour: 't.slow' });
+    await until(h, () => shownId(h) === 'v.cell' && h.model.playing?.step === 1);
+    // t.slow's first step holds 60 s
+    const close = await h.run('mesoviewspec.close', {});
+    expect(close.ok, JSON.stringify(close)).toBe(true);
+    const ended = await Promise.race([
+      h.api.tourEnded().then(() => true),
+      new Promise<boolean>((r) => setTimeout(() => r(false), 1000)),
+    ]);
+    expect(ended).toBe(true);
+    expect(h.model.playing).toBeUndefined();
+  });
+
   it('an unknown tour is refused; none named plays the first', { tags: ['medium'] }, async () => {
     const h = await open();
     expect((await h.run('mesoviewspec.tour.play', { tour: 't.nowhere' })).ok).toBe(false);
