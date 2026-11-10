@@ -1003,30 +1003,56 @@ export class MesoscaleApi extends ApiArea {
       atom: OptionalParam(ColorLevels.Params.atom),
       band: OptionalParam(ColorLevels.Params.band),
       chainHue: OptionalParam(ColorLevels.Params.chainHue),
+      // a lipid membrane's (round 7 item 6): its far colour alone, its species' and atoms' kept (`mesoscale.style`'s
+      // one colour sets them all)
+      far: OptionalParam(PD.Text('', { description: 'A lipid membrane’s far colour alone (a CSS color)' })),
       particles: PD.Text('', { description: 'A particle list (a model) by label or state ref; empty: every one' }),
     },
     async run(values, ctx) {
-      const { on, particles, ...given } = values as { on?: boolean; particles: string } & Partial<ColorLevels.Props>;
+      const { on, particles, far, ...given } = values as {
+        on?: boolean;
+        particles: string;
+        far?: string;
+      } & Partial<ColorLevels.Props>;
       const edges = Object.fromEntries(Object.entries(given).filter(([, x]) => x !== undefined));
-      if (on === undefined && !Object.keys(edges).length) {
+      if (on === undefined && !Object.keys(edges).length && far === undefined) {
         return ApiResult.fail('invalid', 'Nothing to change.', 'Give on, or an edge (entity, chain, atom).');
       }
       const membrane = membraneCell(ctx, particles.trim());
+      if (far !== undefined && !membrane) {
+        return ApiResult.fail('invalid', 'A far colour alone is a lipid membrane’s: name the membrane.');
+      }
       if (membrane) {
         // a membrane's: far its colour, then its species' (its chain's the same), close its atoms' by element
+        const farColor = far === undefined ? undefined : cssColor(far);
+        if (far !== undefined && farColor === undefined) {
+          return ApiResult.fail(
+            'invalid',
+            `'${far}' is not a color.`,
+            'Give a color name (tomato), #rrggbb, rgb() or hsl().',
+          );
+        }
         const old = (membrane.transform.params as LipidMembraneProps).colorLevels;
+        // the levels as they are where only a colour is given
+        const levelsGiven = on !== undefined || Object.keys(edges).length > 0;
         const was = old.name === 'on' ? (old.params as ColorLevels.Props) : ColorLevels.defaults;
         const levels = { ...was, ...edges } as ColorLevels.Props;
-        if (levels.entity >= levels.chain || levels.chain >= levels.atom) {
+        if (levelsGiven && (levels.entity >= levels.chain || levels.chain >= levels.atom)) {
           return ApiResult.fail('invalid', 'The edges go entity < chain < atom.', 'Nothing was changed.');
         }
         const colorLevels =
           on === false ? { name: 'off' as const, params: {} } : { name: 'on' as const, params: levels };
-        const changed = await updateMembrane(ctx, membrane, () => ({ colorLevels }));
+        const changed = await updateMembrane(ctx, membrane, () => ({
+          ...(levelsGiven ? { colorLevels } : {}),
+          ...(farColor !== undefined ? { color: farColor } : {}),
+        }));
         if (!changed) return ApiResult.already('The colors already follow the zoom so.');
-        return ApiResult.ok(on === false ? 'Colors no longer follow the zoom.' : 'Colors follow the zoom.', {
-          nodes: [membrane.transform.ref],
-        });
+        const said = !levelsGiven
+          ? 'The far colour set.'
+          : on === false
+            ? 'Colors no longer follow the zoom.'
+            : 'Colors follow the zoom.';
+        return ApiResult.ok(said, { nodes: [membrane.transform.ref] });
       }
       const one = particles.trim() ? oneList(ctx, particles) : undefined;
       if (isFailure(one)) return one;
