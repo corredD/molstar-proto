@@ -291,7 +291,8 @@ export class MesoViewSpecApi extends ApiArea {
   #here(given: CameraHere | undefined): CameraHere | undefined {
     if (given) return given;
     const s = this.ctx.plugin.canvas3d?.camera.getSnapshot();
-    return s && { position: [...s.position], target: [...s.target], up: [...s.up] };
+    // the canvas's fov is radians, the format's degrees
+    return s && { position: [...s.position], target: [...s.target], up: [...s.up], fov: (s.fov * 180) / Math.PI };
   }
 
   /**
@@ -329,10 +330,18 @@ export class MesoViewSpecApi extends ApiArea {
       if (!here) return ApiResult.fail('not-found', 'There is no camera here (no canvas).');
       const id = this.model.shownId;
       if (!id) return ApiResult.fail('not-found', 'The document has no view.', 'Make one with New view from here.');
+      const was = this.model.doc.views?.find((v) => v.id === id)?.camera;
+      const semantic = (['focus', 'from', 'framing'] as const).filter((k) => was?.[k] !== undefined);
       const patch = this.model.updateCameraPatch(here);
       if (!patch) return ApiResult.fail('invalid', `The frame of ${id} cannot be inverted: its camera is left.`);
       const r = await this.applyLooks(patch, ctx.api, 'camera');
-      return r.ok && !r.unchanged ? ApiResult.ok(`Set the camera of ${id} to this one.`) : r;
+      if (!r.ok || r.unchanged) return r;
+      // a semantic camera becomes numeric (Ludo, 2026-11-09): what it said is gone, and the result says so
+      return ApiResult.ok(
+        semantic.length
+          ? `Set the camera of ${id} to this one: its ${semantic.join(', ')} ${semantic.length === 1 ? 'is' : 'are'} replaced by a fixed position.`
+          : `Set the camera of ${id} to this one.`,
+      );
     },
   });
 

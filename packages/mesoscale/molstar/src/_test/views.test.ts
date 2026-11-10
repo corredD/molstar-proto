@@ -348,7 +348,7 @@ describe('New view from here, Update camera, Open with this view (prism.md §4.4
       fov: 30,
       transition: 1200,
     });
-    expect((r as { message: string }).message).toMatch(/focus.*replaced/);
+    expect((r as { did: string }).did).toMatch(/focus.*replaced/);
     expect(h.model.session?.ir?.view.camera?.position).toEqual([100, 200, 3000]);
     expect(viewOf(h.model.doc, 'v.granules')!.camera).toEqual(viewOf(doc(), 'v.granules')!.camera);
     await h.v.managers.history.undo();

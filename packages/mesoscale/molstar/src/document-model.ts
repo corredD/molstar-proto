@@ -540,14 +540,23 @@ export class MesoDocumentModel {
 
   /**
    * Update camera (prism.md §4.4): the view shown's camera set to `here` (Å, the world frame), numeric, in its frame
-   * (a view with a frame: through the frame's inverse) or the document's unit. Undefined without a view shown.
+   * (a view with a frame: through the frame's inverse) or the document's unit. The whole camera is replaced (Ludo,
+   * 2026-11-09): a semantic one's `focus`, `from`, `framing` go; the fov is `here`'s (the view's when `here` has none)
+   * and the view's `transition` is kept. Undefined without a view shown.
    */
   updateCameraPatch(here: CameraHere): Patch | undefined {
     const doc = this.doc;
     const view = doc && shownViewOf(doc, this.shown);
     if (!doc || !view) return undefined;
-    const camera = cameraIn(doc, view, here);
-    if (!camera) return undefined;
+    const at = cameraIn(doc, view, here);
+    if (!at) return undefined;
+    const was = view.camera;
+    const fov = at.fov ?? was?.fov;
+    const camera = {
+      ...at,
+      ...(fov !== undefined ? { fov } : {}),
+      ...(was?.transition !== undefined ? { transition: was.transition } : {}),
+    };
     return { format: PatchFormat, ops: [{ op: 'set', id: view.id, fields: { camera } }] };
   }
 
@@ -830,14 +839,28 @@ export interface CameraHere {
   readonly position: readonly number[];
   readonly target: readonly number[];
   readonly up: readonly number[];
+  /** The vertical field of view (degrees, as the format's `fov`). */
+  readonly fov?: number;
 }
 
 /**
- * `here` as a view's numeric camera (format.md: read in its view's frame, else the document's unit): a frame's matrix
- * inverted (its points and directions), else Å into the unit. Rounded to a thousandth; the up made unit. Undefined
- * when the frame's matrix cannot be inverted.
+ * `here` as a view's numeric camera (format.md: read in its view's frame, else the document's unit), its fov with it
+ * when known. Undefined when the frame's matrix cannot be inverted.
  */
 function cameraIn(
+  doc: MesoViewSpecDoc,
+  view: { readonly frame?: string } | undefined,
+  here: CameraHere,
+): { position: number[]; target: number[]; up: number[]; fov?: number } | undefined {
+  const at = placeCamera(doc, view, here);
+  return at && here.fov !== undefined ? { ...at, fov: Math.round(here.fov * 100) / 100 } : at;
+}
+
+/**
+ * `here`'s position, target and up in a view's frame: a frame's matrix inverted (its points and directions), else Å
+ * into the document's unit. Rounded to a thousandth; the up made unit. Undefined when the matrix cannot be inverted.
+ */
+function placeCamera(
   doc: MesoViewSpecDoc,
   view: { readonly frame?: string } | undefined,
   here: CameraHere,
