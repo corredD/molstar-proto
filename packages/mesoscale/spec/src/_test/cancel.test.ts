@@ -107,7 +107,7 @@ describe('drive gives the event loop back without a timer', () => {
   });
 
   it('a generator that crosses slices resolves with no timer firing', async () => {
-    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setImmediate', 'clearImmediate'] });
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     function* steps(): Generator<void, number, void> {
       for (let slice = 0; slice < 3; slice++) {
         const t0 = performance.now();

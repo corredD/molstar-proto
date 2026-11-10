@@ -34,6 +34,37 @@ export function throwIfAborted(signal: AbortSignal | undefined): void {
   throw isAbort(reason) ? reason : abortError();
 }
 
+// The yield between slices. Never a timer where there is anything else: `setTimeout(0)` is clamped to 4 ms once nested
+// and to a second or more in a background tab, so a long resolution would crawl. In a browser, `scheduler.yield` (the
+// task queue, its priority kept), else a message on a channel. In Node, `setImmediate`: there a channel's messages
+// posted from its own handler are delivered in the same turn, and the timers (an abort set by one) would never run.
+let channel: { port: MessagePort; waiting: (() => void)[] } | undefined;
+function viaChannel(): Promise<void> {
+  if (!channel) {
+    const c = new MessageChannel();
+    const waiting: (() => void)[] = [];
+    c.port1.onmessage = () => waiting.shift()?.();
+    channel = { port: c.port2, waiting };
+  }
+  const { port, waiting } = channel;
+  return new Promise<void>((resolve) => {
+    waiting.push(resolve);
+    port.postMessage(undefined);
+  });
+}
+
+/** Gives the event loop back once (between two slices of a packer). */
+export function yieldToEventLoop(): Promise<void> {
+  const g = globalThis as {
+    scheduler?: { yield?: () => Promise<void> };
+    setImmediate?: (f: () => void) => unknown;
+  };
+  if (typeof g.scheduler?.yield === 'function') return g.scheduler.yield();
+  if (typeof g.setImmediate === 'function') return new Promise<void>((resolve) => g.setImmediate!(resolve));
+  if (typeof MessageChannel !== 'undefined') return viaChannel();
+  return new Promise<void>((resolve) => setTimeout(resolve, 0));
+}
+
 /**
  * Runs a resolver written as a generator. No signal: to its end, now, returning what it returns. A signal: a promise
  * of it, the event loop given back every `SliceMs` (at the generator's next `yield`), the abort thrown there.
@@ -54,7 +85,7 @@ export function drive<T>(job: { readonly signal?: AbortSignal }, steps: Generato
         const r = steps.next();
         if (r.done) return r.value;
         if (now() - since >= SliceMs) {
-          await new Promise<void>((resolve) => setTimeout(resolve, 0));
+          await yieldToEventLoop();
           since = now();
         }
       }
