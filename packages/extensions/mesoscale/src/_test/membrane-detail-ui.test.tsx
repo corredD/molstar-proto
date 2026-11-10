@@ -166,6 +166,15 @@ describe('a membrane’s levels in its properties', () => {
     await until(() => !!host.querySelector('[aria-label="Atoms down to"]'));
     expect(params()).toMatchObject({ middle: 'parallax', middlePx: 11 });
     expect(host.querySelector('[aria-label="Lipids down to"]')).toBeNull();
+    // the coarse rule's px sets the cut band (gate M1, S5): one slider for it, by Far's (Both: spheresPx, Texture:
+    // atomsPx), never a switch that does nothing
+    expect(host.querySelector('[aria-label="Cut lipids down to"]')).not.toBeNull();
+    button('Texture').click();
+    await until(() => params().far === 'texture');
+    expect(host.querySelector('[aria-label="Lipids from"]')).toBeNull();
+    expect(host.querySelector('[aria-label="Cut lipids down to"]')).not.toBeNull();
+    button('Both').click();
+    await until(() => params().far === 'both');
     // shells are not built this round (round 8: the band object open): not offered, refused
     expect(button('Shells')).toBeUndefined();
     expect((await area.membraneDetail({ membrane, middle: 'shells' } as never)).ok).toBe(false);

@@ -307,7 +307,7 @@ export function MembraneDetailControls(props: { area: MesoscaleApi; membrane: st
         {() => (
           <div class={classes.tight}>
             <Choices label="Far" choices={FarChoices} active={far} onPick={(id) => run({ far: id as MembraneFar })} />
-            <Show when={mapState(far, (f) => f === 'texture')}>
+            <Show when={mapState(state, (s) => s?.far === 'texture' && s?.middle !== 'parallax')}>
               {() => viewRow('Lipids from', 'atomsPx', 0.25, 16, 'px')}
             </Show>
             <Show when={mapState(far, (f) => f !== 'spheres')}>
@@ -321,6 +321,13 @@ export function MembraneDetailControls(props: { area: MesoscaleApi; membrane: st
                   />
                   <Show when={mapState(middle, (m) => m !== 'coarse')}>
                     {() => viewRow('Atoms down to', 'middlePx', MiddlePxMin, 32, 'px')}
+                  </Show>
+                  {/* the gate's M1, S5: a middle look takes the lipids at a cut by the far look's switch (the cut band) */}
+                  <Show when={mapState(state, (s) => s?.middle === 'parallax' && s?.far === 'texture')}>
+                    {() => viewRow('Cut lipids down to', 'atomsPx', 0.25, 16, 'px')}
+                  </Show>
+                  <Show when={mapState(state, (s) => s?.middle === 'parallax' && s?.far === 'both')}>
+                    {() => viewRow('Cut lipids down to', 'spheresPx', 0.05, 8, 'px')}
                   </Show>
                 </div>
               )}
