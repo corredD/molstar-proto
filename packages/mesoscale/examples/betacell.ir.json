@@ -430,12 +430,14 @@
         "set": "default:meso.instances@c89e35ad71969096#0",
         "types": [0],
         "color": 6927827,
+        "colorDefault": true,
         "visible": true
       },
       {
         "set": "default:meso.instances@c89e35ad71969096#0",
         "types": [1],
         "color": 6924243,
+        "colorDefault": true,
         "visible": true
       },
       {

@@ -1133,6 +1133,7 @@ export function deriveView(doc: MesoViewSpecDoc, root: IRNode): IRView {
         set: s.key,
         types: [t.index],
         color: defaultColor(t.population),
+        colorDefault: true,
         visible: true,
       });
   const partial: IRLook[] = [];
@@ -1153,7 +1154,11 @@ export function deriveView(doc: MesoViewSpecDoc, root: IRNode): IRView {
         const inter = intersectRuns(tr[t.index], runs);
         if (!inter.length) continue;
         const key = `${s.key}#${t.index}`;
-        if (runsSize(inter) === runsSize(tr[t.index])) whole.set(key, { ...whole.get(key)!, ...props });
+        if (runsSize(inter) === runsSize(tr[t.index])) {
+          const { colorDefault, ...was } = whole.get(key)!;
+          // a stated color is no longer the default (prism.md §5.3)
+          whole.set(key, props.color !== undefined ? { ...was, ...props } : { ...was, colorDefault, ...props });
+        }
         else partial.push({ set: s.key, types: [t.index], runs: inter, ...props });
       }
     }
