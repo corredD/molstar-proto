@@ -303,15 +303,16 @@ what a population is drawn as over a range of scale, with a different representa
 David: "it needs to be part of both Mol\* and the document format".
 
 **Today.** The particle representation's `lodLevels` are one set per representation, chosen by pixels, and change how
-well a sphere is drawn, not what is drawn. A list has one representation type. A remade list takes the params of the one
-it replaces, its LOD among them ([prism.md](prism.md) §5), so LOD is a viewer setting, never the document's.
+well a sphere is drawn, not what is drawn. A list has one representation type. LOD is a viewer setting, never the
+document's: [prism.md](prism.md) §5.1 keeps it viewer-only and proposes that a remade list take the params of the one it
+replaces, its LOD among them.
 
 **Recommendation.** A level selector on the particle representation, per target (or per layer, as R8's): a size range in
 projected pixels and what to draw over it (a representation type, or another list standing for the same copies, such as
 a superstructure's contents or a coarse model). Pixel LOD (R4) stays inside each choice.
 
 **Until then.** The adapter can draw each rule's alternatives as separate lists and switch their visibility from the
-camera, at R5's cost per list, or report the rule (`levels.unsupported`) and draw the default.
+camera, at R5's cost per list, or report the rule (`scales.unsupported`) and draw the default.
 
 **What it enables.** One document that reads from the cell to the molecule without per-scene tuning, the same rules in
 every viewer that honours them.

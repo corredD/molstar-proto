@@ -617,7 +617,7 @@ Fibers mock exposed the adapter's `excludeFibers` bug (§11).
 | Distributions for arrangement parameters (MesoCraft's uniform, Gaussian)    | language             | numbers only today                                                                                             |
 | Skeletons that are not compartments; paths between two addresses            | language             | MesoCraft's skeletons and Connection rule (§3.12)                                                              |
 | `branches` and `contacts` relations                                         | resolver             | reported as not reconciled; no resolver grows branches or simulates beads                                      |
-| Superstructure detail per view (LOD)                                        | language / adapter   | (v0.5) proposed as semantic level rules ([views.md](views.md#semantic-levels-proposed-v05-for-david-and-ludo)) |
+| Superstructure detail per view (LOD)                                        | language / adapter   | (v0.5) proposed as semantic scale rules ([views.md](views.md#semantic-levels-proposed-v05-for-david-and-ludo)) |
 | Partial looks (copy runs)                                                   | adapter              | Prism layers select whole targets (renderer R8)                                                                |
 | Nested instancing                                                           | renderer             | the adapter expands instances × template (renderer R7)                                                         |
 | Membrane proteins overlap lipids (up to 28 Å on the exosome)                | resolver             | the bilayer is drawn without the proteins' footprints; no resolver packs lipids around them                    |
@@ -662,8 +662,8 @@ Fibers mock exposed the adapter's `excludeFibers` bug (§11).
 7. **Schema.** JSON Schema or OpenAPI published (as MolViewSpec), or reference tables generated from the types (as
    SeqViewSpec)?
 8. **(v0.2) Detail per view.** Is `parts` vs `entity` a population's property (now) or a view's (David's "depending on
-   context")? A view-level choice needs both levels resolved, or resolution on demand. **(v0.5) Proposed:** neither;
-   `detail` chosen per scale by a level rule, in the document with view overrides
+   context")? A view-level choice needs both levels resolved, or resolution on demand. **(v0.5) Proposed:** both, per
+   scale: a population's `detail` stays the default, and a scale rule in the document or a view chooses per scale
    ([views.md](views.md#semantic-levels-proposed-v05-for-david-and-ludo)).
 9. **(v0.2) Derived products.** Should a document declare derived products (a simulated tilt series of the model, for
    training data, Ludo's twin) as activities whose outputs are resources, so the model and its synthetic data share one
@@ -683,8 +683,8 @@ Fibers mock exposed the adapter's `excludeFibers` bug (§11).
     runtime concept:** a stream's manifest declares them; level 0 (counts and envelopes per tile and population) is
     always in the IR and is what the camera reads; level 1 is loaded within a copy budget; level 2 is declared and
     refused (§6.8). The document's sections do not move. **(v0.5) Reopened in part** (David: "we want to be able to
-    define 'semantic LOD' at the document level"): which level _shows_ what becomes authored, as level rules in a new
-    `levels` section ([views.md](views.md#semantic-levels-proposed-v05-for-david-and-ludo)); which level is _loaded_
+    define 'semantic LOD' at the document level"): which level _shows_ what becomes authored, as scale rules in a new
+    `scales` section ([views.md](views.md#semantic-levels-proposed-v05-for-david-and-ludo)); which level is _loaded_
     stays the runtime's. **Still open:** whether to restructure the top level around the organization; level 2 (atoms
     close up); whether a population or an instance could itself be a stream's level 0 (today only a stream model's
     manifest is). In prism-me the tree is the document's compartments, populations and instances ([prism.md](prism.md)
