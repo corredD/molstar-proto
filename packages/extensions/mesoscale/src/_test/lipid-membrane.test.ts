@@ -6,6 +6,7 @@
 
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
 import { Task } from '@molstar/core/task';
+import { Color } from '@molstar/core/util/color';
 import type { ApiResult } from '@molstar/prism-viewer/api/area';
 import { DefaultPrismViewerSpec } from '@molstar/prism-viewer/default-spec';
 import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
@@ -20,6 +21,7 @@ import {
   type LipidMembraneProps,
   membraneCounts,
   membraneLevels,
+  elementColor,
   registerLipidPatch,
   shownLipids,
   suitedVariants,
@@ -233,6 +235,15 @@ describe('lipid membrane', () => {
     expect(params().atomColors).toBe('element');
     // a particle list takes neither: a membrane's alone
     expect((await v.api.run('mesoscale.colorLevels', { far: 'blue' })).ok).toBe(false);
+  });
+
+  it('colours an atom close up by its element, or a carbon by its species (round 7 item 6)', () => {
+    const lime = Color(0x00ff00);
+    const [C, P, O] = ['C', 'P', 'O'].map((e) => e.charCodeAt(0));
+    expect(elementColor(C)).toBe(elementColor(C, 'element', lime));
+    expect(elementColor(C, 'element', lime)).not.toBe(lime);
+    expect(elementColor(C, 'carbon-species', lime)).toBe(lime);
+    for (const e of [P, O]) expect(elementColor(e, 'carbon-species', lime)).toBe(elementColor(e));
   });
 
   it('keeps its chain edge between its species and atoms edges, not shown for a membrane (round 7 item 6)', async () => {

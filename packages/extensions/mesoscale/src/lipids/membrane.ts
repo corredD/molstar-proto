@@ -627,6 +627,9 @@ export const DefaultCustomLevels: readonly MembraneLevel[] = [
   { distance: 8000, stride: 64, bias: 2 },
 ];
 
+/** A membrane's atoms close up by zoom: by element, or its carbons its species' colour (`elementColor`) */
+export type MembraneAtomColors = 'element' | 'carbon-species';
+
 export const LipidMembraneReprParams = {
   colorBy: PD.Select('residue-name', [
     ['residue-name', 'Residue name'],
@@ -670,6 +673,12 @@ export const LipidMembraneReprParams = {
   // its species' (its entities'; its chain's the same), close each atom's by its element (`membraneColorLevels`; the
   // tiles' too, round 7 item 6)
   colorLevels: PD.MappedStatic('off', { off: PD.EmptyGroup(), on: PD.Group(ColorLevels.Params, { isFlat: true }) }),
+  // its atoms' colours close up by zoom (round 7 item 6): each by its element, or its carbons its species' (its other
+  // atoms by element: the classic lipid look)
+  atomColors: PD.Select<MembraneAtomColors>('element', [
+    ['element', 'By element'],
+    ['carbon-species', 'Carbons by species'],
+  ]),
   // Prism's clipping (round 4b item 6): a cut on the spheres and the far surfaces alike, the culler dropping the
   // instances it cuts away; a cut alone changes the drawn objects' clip values, nothing built again
   clip: BaseGeometry.Params.clip,
@@ -859,8 +868,15 @@ function patchObject(
   return object;
 }
 
-/** An atom's colour by its element (the first letter's char code), Mol*'s element colours */
-function elementColor(code: number) {
+/** The char code of carbon's element (`Tile.elements`: an atom's element by its first letter) */
+const Carbon = 67;
+
+/**
+ * An atom's colour by its element (the first letter's char code), Mol*'s element colours; with `carbon-species` a
+ * carbon takes its species' colour (round 7 item 6)
+ */
+export function elementColor(code: number, scheme: MembraneAtomColors = 'element', species?: Color) {
+  if (scheme === 'carbon-species' && code === Carbon && species !== undefined) return species;
   return elementSymbolColor(ElementSymbolColors, String.fromCharCode(code) as ElementSymbol);
 }
 
@@ -1090,7 +1106,10 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
       props,
       n,
       lipids,
-      (g) => (byAtom ? elementColor(elements![g]) : colorOf(names[speciesOf[g]])),
+      (g) =>
+        byAtom
+          ? elementColor(elements![g], props.atomColors, colorOf(names[speciesOf[g]]))
+          : colorOf(names[speciesOf[g]]),
       one,
     );
     clipped.set(values, p);

@@ -38,6 +38,7 @@ import {
   LipidMembraneReprParams,
   hasLipidPatch,
   registerLipidPatch,
+  type MembraneAtomColors,
   type MembraneData,
   type MembraneDetail,
   type MembraneLevel,
@@ -86,6 +87,9 @@ export interface GraphicsInfo {
   readonly tumble?: number;
   /** A particle list's colors that follow the zoom (`mesoscale.colorLevels`): their edges, null off, none mixed */
   readonly colorLevels?: ColorLevels.Props | null;
+  /** A lipid membrane's far colour by zoom (its own colour) and its atoms' colours close up (round 7 item 6) */
+  readonly far?: Color;
+  readonly atomColors?: MembraneAtomColors;
 }
 
 /** What a graphics mode sets on each kind of object (apps/prism-me/_spec/ui.md §4, Graphics & Motion) */
@@ -197,8 +201,13 @@ export class MesoscaleApi extends ApiArea {
         // a lipid membrane: its colours by zoom (round 4c item 8; its levels are `membraneDetailState`'s)
         const membrane = object ? membraneCell({ plugin }, object) : undefined;
         if (membrane) {
-          const levels = (membrane.transform.params as LipidMembraneProps).colorLevels;
-          return { colorLevels: levels.name === 'on' ? (levels.params as ColorLevels.Props) : null };
+          const p = membrane.transform.params as LipidMembraneProps;
+          const levels = p.colorLevels;
+          return {
+            colorLevels: levels.name === 'on' ? (levels.params as ColorLevels.Props) : null,
+            far: p.color,
+            atomColors: p.atomColors,
+          };
         }
         const all = graphicsObjects({ plugin });
         const o = object
@@ -1006,21 +1015,26 @@ export class MesoscaleApi extends ApiArea {
       // a lipid membrane's (round 7 item 6): its far colour alone, its species' and atoms' kept (`mesoscale.style`'s
       // one colour sets them all)
       far: OptionalParam(PD.Text('', { description: 'A lipid membrane’s far colour alone (a CSS color)' })),
+      atoms: OptionalParam(LipidMembraneReprParams.atomColors),
       particles: PD.Text('', { description: 'A particle list (a model) by label or state ref; empty: every one' }),
     },
     async run(values, ctx) {
-      const { on, particles, far, ...given } = values as {
+      const { on, particles, far, atoms, ...given } = values as {
         on?: boolean;
         particles: string;
         far?: string;
+        atoms?: MembraneAtomColors;
       } & Partial<ColorLevels.Props>;
       const edges = Object.fromEntries(Object.entries(given).filter(([, x]) => x !== undefined));
-      if (on === undefined && !Object.keys(edges).length && far === undefined) {
+      if (on === undefined && !Object.keys(edges).length && far === undefined && atoms === undefined) {
         return ApiResult.fail('invalid', 'Nothing to change.', 'Give on, or an edge (entity, chain, atom).');
       }
       const membrane = membraneCell(ctx, particles.trim());
-      if (far !== undefined && !membrane) {
-        return ApiResult.fail('invalid', 'A far colour alone is a lipid membrane’s: name the membrane.');
+      if ((far !== undefined || atoms !== undefined) && !membrane) {
+        return ApiResult.fail(
+          'invalid',
+          'A far colour alone and the atoms’ colours are a lipid membrane’s: name the membrane.',
+        );
       }
       if (membrane) {
         // a membrane's: far its colour, then its species' (its chain's the same), close its atoms' by element
@@ -1045,10 +1059,11 @@ export class MesoscaleApi extends ApiArea {
         const changed = await updateMembrane(ctx, membrane, () => ({
           ...(levelsGiven ? { colorLevels } : {}),
           ...(farColor !== undefined ? { color: farColor } : {}),
+          ...(atoms !== undefined ? { atomColors: atoms } : {}),
         }));
         if (!changed) return ApiResult.already('The colors already follow the zoom so.');
         const said = !levelsGiven
-          ? 'The far colour set.'
+          ? 'Its colours by zoom set.'
           : on === false
             ? 'Colors no longer follow the zoom.'
             : 'Colors follow the zoom.';
