@@ -240,9 +240,13 @@ export function colorItems(
   groupBy?: (model: string) => MesoGroupBy | undefined,
 ): ContextMenuItem[] {
   const { node, kind } = picked;
-  // a lipid membrane coloured as a particle list, all its species (round 4c item 8)
+  // a lipid membrane coloured as a particle list, all its species (round 4c item 8); a part of a cell's (round 7)
   const membrane = isMembrane(area, picked);
+  const membranePart = 'membranePart' in node ? node.membranePart : undefined;
   const paint = (color: string) => {
+    if (membranePart !== undefined) {
+      return api.run('mesoscale.style', { particles: node.ref, parts: membranePart, color });
+    }
     if (membrane) return api.run('mesoscale.style', { particles: node.ref, color });
     if (kind === 'mesh') return api.run('cryoet.mesh', { mesh: node.ref, color });
     const part = partOf(node);
@@ -257,7 +261,15 @@ export function colorItems(
     icon: 'palette',
     run: () => void paint(color),
   }));
-  if (membrane) {
+  if (membranePart !== undefined) {
+    // a hue each of the membrane's parts
+    items.unshift({
+      id: 'generate',
+      label: 'Generate colors (every part)',
+      icon: 'sparkles',
+      run: () => void api.run('mesoscale.colors', { scheme: 'generate', particles: node.ref, parts: '' }),
+    });
+  } else if (membrane) {
     items.unshift({
       id: 'generate',
       label: 'Generate colors',

@@ -10,7 +10,8 @@ import type { DistanceInfo, LabelInfo } from '@molstar/stage-tools-extension/ope
 import { describe, expect, it } from 'vitest';
 import type { ExplorerApi, NodeRef, SceneObject } from '../operations.js';
 import { keepRows } from '@molstar/prism-ui';
-import { allItCuts, type Row, rowsOf, sameRow, whatItCuts } from '../rows.js';
+import { allItCuts, type Row, rowsOf, sameRow, setEyes, whatItCuts } from '../rows.js';
+import type { ViewerApi } from '@molstar/prism-viewer/api';
 
 // A model's rows (_spec/ui.md §3) from its info, grouped by compartment or by function: lipids (function "membrane")
 // in root.membrane, CA in root.capsid.
@@ -181,5 +182,43 @@ describe('the last thing a clip cuts (review S1)', () => {
     expect(allItCuts([membrane], membrane.node)).toBe(true);
     expect(allItCuts([membrane, capsid], membrane.node)).toBe(false);
     expect(allItCuts([use('o:m', { ref: 'm' })], membrane.node)).toBe(false);
+  });
+});
+
+describe("a cell membrane's part rows (lipid-procedural round 7)", () => {
+  const cellMembrane: SceneObject = {
+    ref: 'lm',
+    category: 'meshes',
+    kind: 'mesh',
+    label: 'Lipid membrane',
+    visible: true,
+    membrane: true,
+    parts: [
+      { name: 'PM', visible: true, color: 0xd9b99b },
+      { name: 'MITO_IM', visible: false, color: 0xff6347 },
+    ],
+  };
+
+  it('are a row a part under the membrane, each its eye and colour; the membrane’s eye open only with all shown', () => {
+    const rows = rowsOf([cellMembrane], new Map(), AllOpen, '');
+    const parts = rows.filter((r) => r.kind === 'membrane part');
+    expect(parts.map((r) => [r.depth, r.key, r.label, r.visible, r.color])).toEqual([
+      [2, 'mp:lm:PM', 'PM', true, 0xd9b99b],
+      [2, 'mp:lm:MITO_IM', 'MITO_IM', false, 0xff6347],
+    ]);
+    expect(parts[1].node).toEqual({ ref: 'lm', membranePart: 'MITO_IM' });
+    const membrane = rows.find((r) => r.key === 'o:lm')!;
+    expect(membrane.hasChildren).toBe(true);
+    expect(membrane.visible).toBe(false);
+  });
+
+  it('set their eyes in one write a membrane (a drag over every part draws it once)', async () => {
+    const runs: [string, Record<string, unknown>][] = [];
+    const g = { run: async (id: string, p: Record<string, unknown>) => (runs.push([id, p]), { ok: true }) };
+    const api = { group: (_: string, f: (g: unknown) => unknown) => f(g) } as unknown as ViewerApi;
+    const area = { objectsState: () => ({ value: [cellMembrane] }) } as unknown as ExplorerApi;
+    const rows = rowsOf([cellMembrane], new Map(), AllOpen, '').filter((r) => r.kind === 'membrane part');
+    await setEyes(api, area, rows, false);
+    expect(runs).toEqual([['mesoscale.style', { particles: 'lm', parts: 'PM,MITO_IM', visible: false }]]);
   });
 });

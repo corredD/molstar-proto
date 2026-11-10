@@ -232,8 +232,13 @@ on a tree row (its right-click or its ⋯), the same menu, in this order:
   because a method is chosen before the membrane exists and changing it remakes it. A compartment's group offers the
   cutter. With two meshes or more in the scene a mesh's right-click also has **Wrap all N meshes with lipids (one
   membrane)** (Ludo, 2026-11-09; round 6, the yeast cell's nine membranes): one membrane over every mesh not wrapped, a
-  part each, one step, because one membrane has one pool and one budget (nearest first across the cell's membranes) and
-  can hide a part enclosed by another while the eye is outside it; the cost is one Look for all of them.
+  part each, one step, because one membrane can hide a part enclosed by another while the eye is outside it. Each part
+  is a row under the membrane in the tree (round 7, Ludo 2026-11-09): its eye and its colour dot (`mesoscale.style` and
+  `mesoscale.colors` with `parts`, one step each; never cut again); the eyes a drag passes are one write a membrane; the
+  membrane's eye is open only when every part is shown, and opening it shows them all. A part's colour is its far colour
+  by zoom (its species and atoms still close up), all of it when By zoom is off. Each part has its own lipid mix (the
+  yeast membranes': `mixes.ts`, the LD a monolayer) and its own pools, the budget water-filled across them (a small
+  membrane whole, the large ones alike).
 - **Organelle meshes** (round 6): + Open reads the yeast cell viewer's `organelle_meshes.bin` (or `.bin.gz`): a mesh row
   a membrane, named (PM, ER, NE…), in Å.
 - **A membrane made per view** (Ludo, 2026-11-08; lane `lipid-procedural`): the cutter's lipids only on the triangles in

@@ -60,6 +60,11 @@ export interface SceneObject {
   readonly membrane?: true;
   /** a lipid membrane's meshes (their rows' refs): not wrapped again by Wrap all */
   readonly wraps?: readonly string[];
+  /**
+   * a lipid membrane wrapping a cell's meshes: its parts (its membranes, lipid-procedural round 7), each shown or not and
+   * the colour it is drawn in (its own, else the membrane's)
+   */
+  readonly parts?: readonly MembranePart[];
   readonly visible: boolean;
   /** A structure's entities, with their chains */
   readonly entities?: readonly StructureEntity[];
@@ -71,6 +76,13 @@ export interface SceneObject {
     readonly type: string;
     readonly visible: boolean;
   }[];
+}
+
+/** A cell membrane's part, as its row shows it */
+export interface MembranePart {
+  readonly name: string;
+  readonly visible: boolean;
+  readonly color: number;
 }
 
 export interface StructureEntity {
@@ -121,6 +133,8 @@ export interface PickedNode {
 /** A node of the tree as the 3D side needs it: its object, and which part of it */
 export type NodeRef =
   | { readonly ref: string }
+  /** a lipid membrane's part (a cell's membrane, by its name): the membrane in 3D */
+  | { readonly ref: string; readonly membranePart: string }
   | { readonly ref: string; readonly entity: string; readonly chain?: string }
   | {
       readonly ref: string;
@@ -777,6 +791,27 @@ function wrappedMeshes(params: { mesh?: string; meshes?: readonly string[] } | u
   return params?.mesh ? [params.mesh] : [];
 }
 
+/** A lipid membrane's look as its parts' rows read it (`LipidMembraneParams`, by name) */
+interface MembraneLook {
+  readonly color: number;
+  readonly hiddenParts?: readonly string[];
+  readonly partColors?: Readonly<Record<string, number>>;
+}
+
+/** A lipid membrane's parts (its data's, round 6), each shown or not and its colour (round 7); none for one surface */
+function membraneParts(look: MembraneLook, data: unknown): { parts?: MembranePart[] } {
+  const names = (data as { sourceData?: { parts?: readonly { name: string }[] } }).sourceData?.parts;
+  if (!names || names.length < 2) return {};
+  const hidden = new Set(look.hiddenParts ?? []);
+  return {
+    parts: names.map(({ name }) => ({
+      name,
+      visible: !hidden.has(name),
+      color: look.partColors?.[name] ?? look.color,
+    })),
+  };
+}
+
 /**
  * The shape representations of meshes loaded from files (not the shapes the viewer makes itself), and the lipid
  * membranes
@@ -797,6 +832,7 @@ function meshes(plugin: PluginContext): SceneObject[] {
         visible: !cell.state.isHidden,
         membrane: true,
         wraps: wrappedMeshes(cell.transform.params as { mesh?: string; meshes?: readonly string[] }),
+        ...membraneParts(cell.transform.params as MembraneLook, cell.obj.data),
       });
       continue;
     }

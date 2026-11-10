@@ -271,6 +271,11 @@ export function objectOpen(o: SceneObject, part: MesoscaleInfo | DecorationsInfo
   return true;
 }
 
+/** A lipid membrane's eye: open when it is shown and each of its parts (a cell's membranes) too */
+function membraneOpen(o: SceneObject): boolean {
+  return o.visible && (o.parts ?? []).every((p) => p.visible);
+}
+
 function objectRows(o: SceneObject, part: MesoscaleInfo | DecorationsInfo | undefined, push: Push) {
   const base = {
     depth: 1,
@@ -403,6 +408,28 @@ function objectRows(o: SceneObject, part: MesoscaleInfo | DecorationsInfo | unde
     });
     return;
   }
+  if (o.parts) {
+    // a lipid membrane over a cell's meshes: a row a part (its membrane), its eye and colour (lipid-procedural round 7)
+    const parts = o.parts;
+    push({ ...base, visible: membraneOpen(o), key: `o:${o.ref}`, kind: 'mesh', hasChildren: true }, () => {
+      for (const p of parts) {
+        push(
+          {
+            key: `mp:${o.ref}:${p.name}`,
+            depth: 2,
+            label: p.name,
+            kind: 'membrane part',
+            visible: p.visible,
+            color: p.color,
+            hasChildren: false,
+            node: { ref: o.ref, membranePart: p.name },
+          },
+          () => {},
+        );
+      }
+    });
+    return;
+  }
   push({ ...base, key: `o:${o.ref}`, kind: 'mesh', hasChildren: false }, () => {});
 }
 
@@ -449,6 +476,7 @@ function rowKeysOf(objects: readonly SceneObject[], parts: Parts, groups: Readon
       if (e.chains.length > 1) for (const ch of e.chains) keys.add(`ch:${o.ref}:${e.id}:${ch}`);
     }
     for (const r of o.representations ?? []) keys.add(`r:${r.ref}`);
+    for (const p of o.parts ?? []) keys.add(`mp:${o.ref}:${p.name}`);
     if (o.category !== 'particles') continue;
     const part = parts.get(o.ref);
     if (!part) unread.push(o.ref);
@@ -507,8 +535,16 @@ export function setEyes(api: ViewerApi, area: ExplorerApi, rows: readonly EyeRow
   return api.group(visible ? 'Show' : 'Hide', async (g) => {
     const entities = new Map<string, number[]>();
     const targets = new Map<string, number[]>();
+    // a membrane's parts (round 7): gathered by membrane, one write each (a drag over nine rows draws it once)
+    const membraneParts = new Map<string, string[]>();
     for (const row of rows) {
       const node = row.node;
+      if (node && 'membranePart' in node && row.kind === 'membrane part') {
+        let list = membraneParts.get(node.ref);
+        if (!list) membraneParts.set(node.ref, (list = []));
+        list.push(node.membranePart);
+        continue;
+      }
       if (node && 'particles' in node && PartKinds.has(row.kind)) {
         const [by, ids] =
           row.kind === 'target' ? [targets, node.particles.targets] : [entities, node.particles.entities];
@@ -519,6 +555,15 @@ export function setEyes(api: ViewerApi, area: ExplorerApi, rows: readonly EyeRow
       }
       const r = await setEye(g, area, row, visible);
       if (r && !r.ok) return r;
+    }
+    for (const [ref, parts] of membraneParts) {
+      // a part shown: its membrane drawn (its other parts as they are)
+      if (visible && area.objectsState().value.some((o) => o.ref === ref && !o.visible)) {
+        const r = await g.run('state.visibility', { node: `#${ref}`, visible });
+        if (!r.ok) return r;
+      }
+      const r = await g.run('mesoscale.style', { particles: ref, parts: parts.join(','), visible });
+      if (!r.ok) return r;
     }
     for (const ref of new Set([...entities.keys(), ...targets.keys()])) {
       if (!area.representationsState(ref).value.length) continue;
@@ -597,8 +642,12 @@ async function setEye(api: ViewerApi, area: ExplorerApi, row: EyeRow, visible: b
       return api.run('volume.visibility', { node: row.representation!, visible });
     case 'mesh':
       // a lipid membrane is not a mesh file's (`cryoet.mesh` does not know it): its cell
-      if (area.objectsState().value.some((o) => o.ref === node.ref && o.membrane)) {
-        return api.run('state.visibility', { node: `#${node.ref}`, visible });
+      const membrane = area.objectsState().value.find((o) => o.ref === node.ref && o.membrane);
+      if (membrane) {
+        const r = await api.run('state.visibility', { node: `#${node.ref}`, visible });
+        // shown: every part of it too (its eye is open only then: `membraneOpen`)
+        if (!r.ok || !visible || !membrane.parts?.some((p) => !p.visible)) return r;
+        return api.run('mesoscale.style', { particles: node.ref, parts: '', visible: true });
       }
       return api.run('cryoet.mesh', { mesh: node.ref, visible });
     case 'label':
