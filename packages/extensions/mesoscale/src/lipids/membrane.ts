@@ -13,7 +13,7 @@ import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
 import { Vec3 } from '@molstar/core/math/linear-algebra/3d/vec3';
 import { Vec4 } from '@molstar/core/math/linear-algebra/3d/vec4';
 import { Sphere3D } from '@molstar/core/math/geometry/primitives/sphere3d';
-import { type State, type StateObjectCell, StateTransformer } from '@molstar/core/state';
+import { type State, type StateObjectCell, StateTransform, StateTransformer } from '@molstar/core/state';
 import { Spheres } from '@molstar/graphics/geo/geometry/spheres/spheres';
 import { createIdentityTransform, createTransform } from '@molstar/graphics/geo/geometry/transform-data';
 import { Mesh } from '@molstar/graphics/geo/geometry/mesh/mesh';
@@ -2148,7 +2148,10 @@ export const LipidMembraneParams = {
 };
 export type LipidMembraneProps = PD.Values<typeof LipidMembraneParams>;
 
-/** Meshes as one, each a part (its triangles' range), named */
+/**
+ * Meshes as one, each a part (its triangles' range), named; names kept apart (review S3: a part is styled, hidden and
+ * coloured by name): a name taken again is `name 2`, `name 3`…, one Set over the parts
+ */
 export function concatMeshes(meshes: readonly TriMesh[], names: readonly string[]) {
   let V = 0;
   let I = 0;
@@ -2159,12 +2162,16 @@ export function concatMeshes(meshes: readonly TriMesh[], names: readonly string[
   const positions = new Float32Array(V);
   const indices = new Uint32Array(I);
   const parts: TrianglePart[] = [];
+  const taken = new Set<string>();
   let v = 0;
   let i = 0;
   meshes.forEach((m, k) => {
     positions.set(m.positions, v);
     for (let j = 0; j < m.indices.length; ++j) indices[i + j] = m.indices[j] + v / 3;
-    parts.push({ start: i / 3, end: (i + m.indices.length) / 3, name: names[k] });
+    let name = names[k];
+    for (let n = 2; taken.has(name); ++n) name = `${names[k]} ${n}`;
+    taken.add(name);
+    parts.push({ start: i / 3, end: (i + m.indices.length) / 3, name });
     v += m.positions.length;
     i += m.indices.length;
   });
@@ -2204,13 +2211,22 @@ async function shapeMesh(
 }
 
 /**
- * A mesh's name, a part's: its shape's label (a representation given, as the explorer's rows are, is labelled by its
- * provider's data, `Mesh` for every OBJ-made shape: round 9 found the yeast cell's parts all named so in the app)
+ * A mesh's name, a part's, as the explorer names its row: its shape's own `label` param (a file of many meshes, the
+ * yeast cell's PM, VAC…), else its file's (the data at its root: `pm.obj`). Never its objects' labels: a representation
+ * is `Mesh` for every OBJ-made shape (round 9), a shape `Shape` or `VTP Shape` for every opened one (review S3)
  */
 function meshName(state: State, ref: string) {
   const cell = state.cells.get(ref);
   const shape = cell?.transform.transformer === ShapeRepresentation3D ? state.cells.get(cell.transform.parent) : cell;
-  return shape?.obj?.label ?? cell?.obj?.label ?? ref;
+  const own = (shape?.transform.params as { label?: string } | undefined)?.label;
+  if (own) return own;
+  let root = shape?.transform.ref;
+  for (;;) {
+    const parent = root === undefined ? undefined : state.tree.transforms.get(root)?.parent;
+    if (!parent || parent === StateTransform.RootRef) break;
+    root = parent;
+  }
+  return (root !== undefined ? state.cells.get(root)?.obj?.label : undefined) ?? shape?.obj?.label ?? ref;
 }
 
 /** Whether lipid membranes can be drawn here: WebGPU with GPU culling (not WebGL2) */

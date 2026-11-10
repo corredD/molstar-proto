@@ -741,10 +741,11 @@ export class MesoscaleApi extends ApiArea {
           // round 9: with its meshes' colours a part's colour is its mesh's, written there (one step with its eye)
           const meshes = !reset && parsed !== undefined ? await partMeshes(ctx, membrane) : undefined;
           if (meshes) {
+            const at = partIndex(membrane);
             const r = await paintPartMeshes(
               ctx,
               membrane,
-              chosen.map((p) => [meshes.get(p)!, parsed!]),
+              chosen.map((p) => [meshes[at.get(p)!], parsed!]),
               visible === undefined
                 ? undefined
                 : (old) => {
@@ -878,10 +879,11 @@ export class MesoscaleApi extends ApiArea {
         // round 9: with its meshes' colours each part's colour is its mesh's, written there in one step
         const meshes = scheme !== 'theme' ? await partMeshes(ctx, membrane) : undefined;
         if (meshes) {
+          const at = partIndex(membrane);
           const r = await paintPartMeshes(
             ctx,
             membrane,
-            chosen.map((p) => [meshes.get(p)!, uniform ?? generated!.get(index.get(p)!)!]),
+            chosen.map((p) => [meshes[at.get(p)!], uniform ?? generated!.get(index.get(p)!)!]),
           );
           if (isFailure(r)) return r;
           if (!r.length) return ApiResult.already('They are already colored so.');
@@ -2054,23 +2056,28 @@ function withPartColors(old: LipidMembraneProps, parts: readonly string[], color
 }
 
 /**
- * A cell membrane's parts' meshes by part name (round 9), each its colour cell (`meshColorCell`), where its colours come
- * from them (its switch on, a mesh a part) and `cryoet.mesh` colours them (every one a mesh cryoet lists); else none:
- * round 7's part colours. Indexed once (a Set of cryoet's meshes)
+ * A cell membrane's parts' meshes (round 9), by part index (review S3: part `k` is mesh `k`, never looked up by name),
+ * each its colour cell (`meshColorCell`), where its colours come from them (its switch on, a mesh a part) and
+ * `cryoet.mesh` colours them (every one a mesh cryoet lists); else none: round 7's part colours. Indexed once (a Set
+ * of cryoet's meshes)
  */
-async function partMeshes(ctx: ApiContext, cell: StateObjectCell): Promise<ReadonlyMap<string, string> | undefined> {
+async function partMeshes(ctx: ApiContext, cell: StateObjectCell): Promise<readonly string[] | undefined> {
   const p = cell.transform.params as LipidMembraneProps;
   if (!p.meshColors || p.meshes.length === 0) return undefined;
-  const names = membranePartNames(cell);
-  if (names.length !== p.meshes.length) return undefined;
+  if (membranePartNames(cell).length !== p.meshes.length) return undefined;
   const known = await meshesOf(ctx);
-  const out = new Map<string, string>();
-  for (let k = 0; k < names.length; ++k) {
+  const out: string[] = new Array(p.meshes.length);
+  for (let k = 0; k < p.meshes.length; ++k) {
     const ref = meshColorCell(ctx.plugin.state.data, p.meshes[k])?.transform.ref;
     if (!ref || !known.has(ref)) return undefined;
-    out.set(names[k], ref);
+    out[k] = ref;
   }
   return out;
+}
+
+/** A membrane's parts' indices by name (unique: `concatMeshes`), indexed once */
+function partIndex(cell: StateObjectCell): ReadonlyMap<string, number> {
+  return new Map(membranePartNames(cell).map((n, k) => [n, k]));
 }
 
 /**

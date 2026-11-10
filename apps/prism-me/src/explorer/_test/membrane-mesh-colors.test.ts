@@ -75,6 +75,40 @@ async function wrapped() {
   return { v, area, meshes, membrane, meshColor, params, tints, dots, steps };
 }
 
+/** a tetrahedron of half-size `s` as an OBJ file (its shape labelled `Shape` by the provider, its row by the file) */
+function objFile(name: string, s: number) {
+  const p = [s, s, s, s, -s, -s, -s, s, -s, -s, -s, s];
+  const faces = [0, 1, 2, 0, 3, 1, 0, 2, 3, 1, 3, 2];
+  let text = '';
+  for (let i = 0; i < 4; i++) text += `v ${p[3 * i]} ${p[3 * i + 1]} ${p[3 * i + 2]}\n`;
+  for (let i = 0; i < 4; i++) text += `f ${faces[3 * i] + 1} ${faces[3 * i + 1] + 1} ${faces[3 * i + 2] + 1}\n`;
+  return new File([text], name);
+}
+
+/** meshes opened from `files`, wrapped all: the membrane, the meshes' rows, its parts' names and its meshes' colours */
+async function wrappedFiles(files: File[]) {
+  const base = DefaultPrismViewerSpec();
+  const v = await createPrismViewerHeadless({
+    spec: { ...base, extensions: [...(base.extensions ?? []), ...MesoscaleExplorerExtensions] },
+  });
+  viewers.push(v);
+  expectOk(await v.api.load.files({ files }));
+  const area = v.api.explorer!;
+  const meshes = area.objectsState().value.filter((o) => o.kind === 'mesh');
+  const r = await v.api.run('mesoscale.wrapMembrane', { meshes: meshes.map((m) => m.ref).join(',') });
+  expectOk(r);
+  const membrane = r.changed!.nodes![0];
+  const cells = v.plugin.state.data.cells;
+  const meshColor = (k: number) =>
+    (cells.get(meshes[k].ref)!.transform.params as { coloring?: { params: { color: number } } }).coloring?.params.color;
+  const parts = () =>
+    area
+      .objectsState()
+      .value.find((o) => o.ref === membrane)!
+      .parts!.map((p) => p.name);
+  return { v, meshes, membrane, meshColor, parts };
+}
+
 describe('a membrane’s parts coloured from their meshes (round 9)', () => {
   it('a part’s dot colours its mesh in one step, the dot and the tint follow; undo restores', async () => {
     const { v, area, meshes, membrane, meshColor, params, tints, dots, steps } = await wrapped();
@@ -159,5 +193,29 @@ describe('a membrane’s parts coloured from their meshes (round 9)', () => {
     expect(meshColor(1)).toBe(0x008080);
     expect(params().color).toBe(old.color);
     expect(tints()).toEqual([meshTint(Color(0x008080)), meshTint(Color(0x008080))]);
+  });
+
+  // review S3 + X1: an OBJ's or VTP's shape is labelled by its provider (`Shape`, `VTP Shape`), every one alike, so a
+  // part named so painted the last mesh of that name; parts are named as their rows and kept apart, meshes by index
+  it('parts of opened meshes are named as their rows, kept apart; a part paints its own mesh', async () => {
+    const { v, meshes, membrane, meshColor, parts } = await wrappedFiles([
+      objFile('pm.obj', 100),
+      objFile('vac.obj', 20),
+    ]);
+    expect(parts()).toEqual(meshes.map((m) => m.label));
+    expect(parts()).toEqual(['pm.obj', 'vac.obj']);
+    const other = meshColor(1);
+    expectOk(await v.api.run('mesoscale.style', { particles: membrane, parts: parts()[0], color: 'tomato' }));
+    expect(meshColor(0)).toBe(0xff6347);
+    expect(meshColor(1)).toBe(other);
+  });
+
+  it('two meshes of one name are two parts (`name`, `name 2`), each painting its own mesh', async () => {
+    const { v, membrane, meshColor, parts } = await wrappedFiles([objFile('pm.obj', 100), objFile('pm.obj', 20)]);
+    expect(parts()).toEqual(['pm.obj', 'pm.obj 2']);
+    const first = meshColor(0);
+    expectOk(await v.api.run('mesoscale.style', { particles: membrane, parts: 'pm.obj 2', color: 'tomato' }));
+    expect(meshColor(1)).toBe(0xff6347);
+    expect(meshColor(0)).toBe(first);
   });
 });
