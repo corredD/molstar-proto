@@ -17,16 +17,21 @@ import {
   buildMembraneSteps,
   concatMeshes,
   forgetLipidPatch,
+  LipidMembrane,
   LipidMembraneParams,
   LipidMembraneRepresentation,
   type MembraneData,
   type MeshTints,
+  meshTint,
   registerLipidPatch,
   runSteps,
   tint,
 } from '../lipids/membrane.js';
 import { icosphere, type TriMesh } from '../lipids/remesh.js';
+import { PluginStateObject as SO } from '@molstar/plugin/state/objects';
+import { OrganelleMeshesProvider } from '../organelle-meshes.js';
 import { syntheticPatchPdb } from './lipid-fixtures.js';
+import { organelleBuffer, tetra } from './organelle-fixtures.js';
 
 // A colour multiplier per compartment, its mesh's colour (lipid-procedural round 9), on Dawn, read from the colour data
 // the GPU draws (the merged spheres' and the surfaces'), no image: a mito IM and an LD, each its mesh's tint.
@@ -309,6 +314,81 @@ describe.skipIf(!webgpu)('a colour multiplier per compartment, its mesh’s colo
       repr.destroy();
     } finally {
       forgetLipidPatch('dawn-apart');
+      plugin.dispose();
+    }
+  });
+
+  // review S5: through the plugin's state, as the app changes it: a mesh's colour (its representation's `coloring`)
+  // reaches the membrane that depends on it, recoloured in place in that step, and an undo restores it
+  it('a mesh recoloured through the state recolours its membrane in place, one step, undone', {
+    timeout: 180_000,
+  }, async () => {
+    const plugin = await HeadlessPluginContext.create(
+      { webgpu },
+      DefaultPluginSpec(),
+      { width: Size, height: Size },
+      { backend: 'webgpu' },
+    );
+    registerLipidPatch('dawn-state', syntheticPatchPdb(12, 14).text);
+    try {
+      await plugin.init();
+      const bytes = organelleBuffer([
+        { membrane: 0, ...tetra([0, 0, 0], 100) },
+        { membrane: 3, ...tetra([10, 0, 0], 20) },
+      ]);
+      const raw = await plugin.builders.data.rawData({ data: bytes, label: 'organelle_meshes.bin' });
+      await OrganelleMeshesProvider.visuals!(
+        plugin as never,
+        await OrganelleMeshesProvider.parse(plugin as never, raw),
+      );
+      const reps = plugin.state.data.selectQ((q) => q.ofType(SO.Shape.Representation3D)).map((c) => c.transform.ref);
+      expect(reps.length).toBe(2);
+      const b = plugin.state.data.build();
+      const node = b
+        .toRoot()
+        .apply(
+          LipidMembrane,
+          { ...PD.getDefaultValues(LipidMembraneParams), meshes: reps, patch: 'dawn-state', method: 'cutter' },
+          { dependsOn: reps },
+        );
+      await b.commit();
+      const cell = () => plugin.state.data.cells.get(node.ref)!;
+      expect(cell().status).toBe('ok');
+      type Repr = ReturnType<typeof LipidMembraneRepresentation>;
+      const repr = () => (cell().obj!.data as unknown as { repr: Repr }).repr;
+      await plugin.getImageRaw({ width: Size, height: Size });
+      const first = repr();
+      const objects = first.renderObjects;
+      expect(first.meshTints).toEqual([undefined, undefined]);
+      const plain = colors(first);
+      const coloring = () => (plugin.state.data.cells.get(reps[1])!.transform.params as { coloring: unknown }).coloring;
+      const old = coloring();
+
+      const u = plugin.state.data.build();
+      u.to(reps[1]).update((p: Record<string, unknown>) => ({
+        ...p,
+        coloring: { name: 'uniform', params: { color: 0x800000 } },
+      }));
+      await u.commit({ canUndo: 'Mesh colour' });
+      await plugin.getImageRaw({ width: Size, height: Size });
+      expect(repr()).toBe(first);
+      expect(repr().renderObjects).toBe(objects);
+      expect(repr().meshTints).toEqual([undefined, meshTint(Color(0x800000))]);
+      const red = colors(repr());
+      expect(red.synced).toBeGreaterThan(plain.synced);
+      expect(red.group).not.toEqual(plain.group);
+      expect(plugin.state.data.latestUndoLabel).toBe('Mesh colour');
+
+      await plugin.state.data.undo().run();
+      await plugin.getImageRaw({ width: Size, height: Size });
+      expect(coloring()).toEqual(old);
+      expect(repr().renderObjects).toBe(objects);
+      expect(repr().meshTints).toEqual([undefined, undefined]);
+      expect(colors(repr()).group).toEqual(plain.group);
+      expect(plugin.state.data.canUndo).toBe(false);
+      expect(plugin.canvas3d!.graphics.takeErrors?.() ?? []).toEqual([]);
+    } finally {
+      forgetLipidPatch('dawn-state');
       plugin.dispose();
     }
   });
