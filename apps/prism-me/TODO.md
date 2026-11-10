@@ -127,9 +127,12 @@ maintainer first (2026-10-25). All are v6 (master); the MRC reader and the parti
   - Round 5's gate, open (progress file, round 5 gate table): `farSurface` and `cutterBases` are test-only since the
     patch texture (N4: remove them with their tests, or keep them as the references); a failed build destroys textures
     the last build's objects may still draw (X4); the texture's v stretched under 0.6 Å (X5); the reviewer's N1-N9.
-  - A view's selection allocates about 80 bytes (`lipid-selection.quick.ts`): core's `sortArrayRange` makes its
-    partition pair a call (a module-level pair would make it 0: a core change, its own lane), and the upload makes a
-    view of each array a changed selection (a storage buffer's `write` takes no length: a graphics change).
+  - A view's selection measures 15.6 B (`lipid-selection.quick.ts`; round 7 sorts its keys by `sortKeys`, a heap sort,
+    not core's `sortArrayRange`, whose partition pair a call a module-level pair would remove: a core change, its own
+    lane, then `sortKeys` could go; the heap sort's time against a quicksort not measured). The upload makes a view of
+    each array a changed selection (a storage buffer's `write` takes no length: a graphics change), and the culler's
+    `setLiveCount` and `writeSegmentRow` a typed-array view each where a pool's live count moves (round 7 review S2: one
+    `Uint32Array` over the segment copy and a preallocated row would make them 0).
   - The cutter refuses meshes past 2^21 triangles (a unit's key in a double): decimate first; a wider key if a mesh
     needs it.
 

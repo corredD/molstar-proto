@@ -127,7 +127,7 @@ culled on the GPU as a merged object of one member (`mergeRenderObjectsByType`).
   returns how many are live (the first ones; the segment row's word 6, `instance-copy` skips a local index past it, the
   ghost's region too) and may carry a `view` hook, called in `dispatch` where the view changed (the planes, the range,
   the `LodView`'s scales), before the culling (encoded before a `CullBatch`'s clears and dispatches), once per frame for
-  its first view: it writes the instances of that view and returns the live count (16 B written), or nothing. No layout
+  its first view: it writes the instances of that view and returns the live count (16 B written), or nothing. A writer reads `cpuWrites` (per segment, an epoch): where it changed the CPU wrote the member's placeholder rows over its own, and every slot (the dead ones too) is to be written again. No layout
   and no CPU write per view; the counts per segment stay the CPU's.
 - **When**: before the passes (`Renderer.prepareCull`, called by the draw pass after its `update`; passes update the
   renderer with their render pass open, a compute pass would end it), once per frame for its first view.

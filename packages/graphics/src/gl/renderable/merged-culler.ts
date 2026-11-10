@@ -1058,7 +1058,7 @@ export function createMergedCuller(
     let key = getFixedKey();
     for (let s = 0; s < members.length; ++s) {
       const m = members[s];
-      // a GPU writer replaced: its member written again (\`syncMembers\`)
+      // a GPU writer replaced: its member written again (`syncMembers`)
       key += `,${m.instanceGrid.ref.version},${m.aTransform.ref.version},${m.boundingSphere.ref.version},${writerVersion(s)}`;
     }
     return key;
