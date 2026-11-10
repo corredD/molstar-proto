@@ -29,3 +29,45 @@ form and a materialized one, as Mol\* has `SchemaItem` and `Location`/`Loci`.
   ([design.md](design.md) §12.1) print what it says a query reports.
 - **Stored as** its canonical S-expression string in JSON. SeqQL stores a JSON tree with full names; which to keep is
   [open decision 10](design.md#11-what-held-what-the-prototypes-exposed-what-is-open).
+
+### MesoLocation as a union (proposed, v0.5; for David and Ludo)
+
+David (2026-11-09): "`MesoLocation` should likely be a discriminated union to support pointers to tomograms,
+segmentations, etc too".
+
+**Not built.** Today a MesoLocation is a copy and nothing else (`ir/loci.ts`), and MesoLoci are copy runs keyed by
+placement set. A document already points into other data: a compartment's geometry can be "a `segmentation` resource +
+label", an instance's pose can be read in a tomogram's voxels, and resources include `tomogram` and `segmentation`. An
+address cannot name those things yet, and a pick on a tomogram cannot be a location. As Mol\*'s `Location` is a union (a
+structure element, a volume cell, a shape group), so should these be:
+
+```ts
+type MesoLocation =
+  | { kind: 'copy'; set: string; index: number } // today's, stable id `<population>#<ordinal>`
+  | { kind: 'label'; resource: Id; label: number | string } // a segmentation's label, as a compartment's geometry
+  | { kind: 'voxel'; resource: Id; ijk: Vec3 } // a tomogram's or map's voxel, in its frame
+  | { kind: 'point'; frame: Id; position: Vec3 }; // a place with nothing at it (an annotation's anchor)
+
+interface MesoLoci {
+  copies: ReadonlyMap<string, readonly number[]>; // set key → runs, as today
+  labels?: ReadonlyMap<Id, readonly (number | string)[]>; // segmentation → labels
+  voxels?: ReadonlyMap<Id, readonly Box[]>; // volume → boxes, in voxels
+}
+```
+
+- **Copies stay runs.** The `copies` part is today's MesoLoci, so every set operation, `lociSphere` and the adapter's
+  looks keep working on it unchanged; the other parts are empty for every address the examples use.
+- **Mixed addresses.** `(and (in c.nucleus) (label r.seg 3))` or `within` across kinds needs a meeting point: a label or
+  a voxel box is a region, so a copy is in it if its centre is. Proposed: copies are filtered by regions; regions are
+  never filtered by copies.
+- **New symbols**, if agreed: `(label <resource> <label>)`, `(voxels <resource> <box>)`. They would be generated into
+  [reference/mesoql.md](reference/mesoql.md) like the others.
+- **Only `copy` would be built at first.** The type change touches `ir/loci.ts` (the type, `evaluateMesoQL`, the run
+  operations' callers), its export in `ir/index.ts`, and the users of a copy location in
+  `packages/mesoscale/molstar/src/document-model.ts` (`rowOfCopy`, `lociOf`; prism.md §4.6's pick). A small lane after
+  lane 4 (`mvs-drive`), which edits the same pick-to-row mapping.
+
+**Open for David and Ludo:**
+
+1. Are `label`, `voxel` and `point` the right first kinds, or is a mesh's face, or a filament's arc length, needed too?
+2. Do regions filter copies only (proposed), or can a copy select a region (the label a copy sits in)?
