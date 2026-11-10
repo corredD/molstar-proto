@@ -666,6 +666,9 @@ export const DefaultCustomLevels: readonly MembraneLevel[] = [
   { distance: 8000, stride: 64, bias: 2 },
 ];
 
+/** A middle look's atoms down to this px at least (the gate's S1): the stride-1 level's lower edge, 8.8 px, and a bit */
+export const MiddlePxMin = 9;
+
 /** A cut leaflet's middle distance (round 8): the coarse sphere levels, the heads as shells, or by parallax */
 export type MembraneMiddle = 'coarse' | 'shells' | 'parallax';
 
@@ -711,10 +714,11 @@ export const LipidMembraneReprParams = {
     ['parallax', 'Parallax'],
   ]),
   // the stride 1 → 8 boundary (Balanced: 8.8 px a lipid of 7.4 Å, measured) over the selection's keep (0.8): the atoms
-  // to there, no coarse level drawn
+  // to there, no coarse level drawn. Not under it (the gate's S1): the atoms there are what the levels draw as spheres,
+  // up to the budget (2 px: 38 ms against 8 at 11, a floor); its sphere levels back would pop (dE 0.043, round 8)
   middlePx: PD.Numeric(
     11,
-    { min: 2, max: 32, step: 0.5 },
+    { min: MiddlePxMin, max: 32, step: 0.5 },
     { description: 'Shells, parallax: atoms down to this size, px' },
   ),
   shells: PD.Numeric(8, { min: 4, max: 12, step: 1 }, { description: 'Shells: the heads’ layers' }),

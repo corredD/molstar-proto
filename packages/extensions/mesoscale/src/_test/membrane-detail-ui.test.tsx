@@ -171,6 +171,11 @@ describe('a membrane’s levels in its properties', () => {
     expect((await area.membraneDetail({ membrane, middle: 'shells' } as never)).ok).toBe(false);
     // the operation checks its switches; a valid one is one step
     expect((await area.membraneDetail({ membrane, middlePx: 100 } as never)).ok).toBe(false);
+    // atoms only down to the stride-1 px (8.8 a lipid): lower would draw atoms the levels draw as spheres (gate S1)
+    expect((await area.membraneDetail({ membrane, middle: 'parallax', middlePx: 2 } as never)).ok).toBe(false);
+    expect((await area.membraneDetail({ membrane, middlePx: 8.5 } as never)).ok).toBe(false);
+    const knob = host.querySelector('input[type="range"][aria-label="Atoms down to"]');
+    expect(Number(knob?.getAttribute('min'))).toBeCloseTo(Math.log10(9), 3);
     expect((await area.membraneDetail({ membrane, middlePx: 14 } as never)).ok).toBe(true);
     expect(area.membraneDetailState(membrane).value).toMatchObject({ middle: 'parallax', middlePx: 14 });
     expect((await v.api.history.undo({})).ok).toBe(true);

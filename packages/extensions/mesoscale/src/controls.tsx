@@ -17,6 +17,7 @@ import {
   type MembraneDetail,
   type MembraneLevel,
   type MembraneMiddle,
+  MiddlePxMin,
 } from './lipids/membrane.js';
 import type { MembraneFar } from './lipids/procedural.js';
 import type { GraphicsInfo, GraphicsMode, MesoscaleApi } from './operations.js';
@@ -319,7 +320,7 @@ export function MembraneDetailControls(props: { area: MesoscaleApi; membrane: st
                     onPick={(id) => run({ middle: id as MembraneMiddle })}
                   />
                   <Show when={mapState(middle, (m) => m !== 'coarse')}>
-                    {() => viewRow('Atoms down to', 'middlePx', 2, 32, 'px')}
+                    {() => viewRow('Atoms down to', 'middlePx', MiddlePxMin, 32, 'px')}
                   </Show>
                 </div>
               )}

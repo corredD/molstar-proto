@@ -43,6 +43,7 @@ import {
   type MembraneDetail,
   type MembraneLevel,
   type MembraneMiddle,
+  MiddlePxMin,
   membraneSpecies,
   membraneSpeciesColors,
 } from './lipids/membrane.js';
@@ -422,7 +423,7 @@ export class MesoscaleApi extends ApiArea {
       // round 8: the middle distance's look (the cutter's far surface), to compare and pick
       middle: OptionalParam(PD.Select<MembraneMiddle>('coarse', LipidMembraneReprParams.middle.options)),
       middlePx: OptionalParam(
-        PD.Numeric(11, { min: 2, max: 32 }, { description: 'Shells, parallax: atoms down to this size, px' }),
+        PD.Numeric(11, { min: MiddlePxMin, max: 32 }, { description: 'Parallax: atoms down to this size, px' }),
       ),
       shells: OptionalParam(PD.Numeric(8, { min: 4, max: 12 }, { description: 'Shells: the heads’ layers' })),
     },
@@ -443,7 +444,7 @@ export class MesoscaleApi extends ApiArea {
         atomsPx: [0.25, 16],
         spheresPx: [0.05, 8],
         budget: [10_000, 8_000_000],
-        middlePx: [2, 32],
+        middlePx: [MiddlePxMin, 32],
         shells: [4, 12],
       } as const;
       for (const [k, [min, max]] of Object.entries(ranges)) {
