@@ -113,6 +113,19 @@ describe('a cell’s membranes as one (round 6)', () => {
     expect(Array.from(c.visibility.shown)).toEqual([1, 1]);
   });
 
+  it('shows what a hidden encloser holds: the outer one hidden, the inner one seen from outside (review M1)', () => {
+    const c = cell([icosphere(2000, 200), icosphere(1600, 200)]);
+    const out = view(Vec3.create(0, 0, 2400), Vec3.create(0, 0, 0));
+    c.visibility.setHidden((q) => q === 0);
+    c.selections[1].select(out.plane, out.frustum, out.depthScale, 0, Params);
+    expect(Array.from(c.visibility.shown)).toEqual([1, 1]);
+    expect(c.selections[1].count).toBeGreaterThan(0);
+    // shown again: the inner one hidden again from outside (the same view: the hidden set re-decides it)
+    c.visibility.setHidden(() => false);
+    c.selections[1].select(out.plane, out.frustum, out.depthScale, 0, Params);
+    expect(Array.from(c.visibility.shown)).toEqual([1, 0]);
+  });
+
   it('shares the budget a pool a part and leaflet, water-filled: a small membrane whole, the large ones alike (round 7)', () => {
     // a peroxisome's leaflet, a vacuole's, a PM's (lipids a member): the budget holds a fifth of them
     const totals = [Uint32Array.of(100, 100), Uint32Array.of(5000, 5000), Uint32Array.of(20000, 20000)];
