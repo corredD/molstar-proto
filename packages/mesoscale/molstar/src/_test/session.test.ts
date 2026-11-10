@@ -98,6 +98,12 @@ describe('MesoSession, streamed', () => {
     return { s, settle };
   };
   const tilesOf = (ir: IR | undefined) => (ir ? placementSets(ir).filter((x) => x.model === 'm.tiles').length : 0);
+  const tileIds = (ir: IR | undefined) =>
+    ir
+      ? placementSets(ir)
+          .filter((x) => x.model === 'm.tiles')
+          .map((x) => x.key.split('#')[1])
+      : [];
 
   it('a model edit keeps the failed-tile warning, once', async () => {
     const { s, settle } = open(new FakeAdapter(), ['t.0.0.0']);
@@ -153,6 +159,35 @@ describe('MesoSession, streamed', () => {
     expect(s.issues.filter((i) => i.phase === 'render')).toEqual([]);
     expect(tilesOf(s.ir)).toBe(2);
     expect(s.streamer!.stats()).toMatchObject({ resident: 2, copies: 60 });
+  });
+
+  it('a focus fed by the viewer (its canvas camera) is streamed around; a view shown plans from its camera again', async () => {
+    const { s, settle } = open(new FakeAdapter());
+    await s.start();
+    await settle();
+    expect(tileIds(s.ir)).toEqual(['t.0.0.0', 't.0.1.0']);
+    const record = await s.setFocus({ center: [5000, 5000, 1000], radius: 0 });
+    expect(record?.kind).toBe('stream');
+    await settle();
+    expect(tileIds(s.ir)).toEqual(['t.1.2.0', 't.2.2.0']);
+    // the same focus again is no step
+    expect(await s.setFocus({ center: [5000, 5000, 1000], radius: 0 })).toBeUndefined();
+    // a view shown moves the camera to its own: planned from it until the viewer feeds the camera again
+    await s.show('v.corner');
+    await settle();
+    expect(tileIds(s.ir)).toEqual(['t.0.0.0', 't.0.1.0']);
+  });
+
+  it('a restore keeps the resident tiles in the IR it adopts (the viewer keeps their lists)', async () => {
+    const { s, settle } = open(new FakeAdapter());
+    await s.start();
+    await settle();
+    const before = placementSets(s.ir!).filter((x) => x.model === 'm.tiles');
+    expect(before.length).toBe(2);
+    await s.restore(s.doc, 'v.corner');
+    const after = placementSets(s.ir!).filter((x) => x.model === 'm.tiles');
+    expect(after.length).toBe(2);
+    after.forEach((x, i) => expect(x).toBe(before[i]));
   });
 
   it('a view edit whose commit throws leaves the streamer holding what the viewer still shows', async () => {
