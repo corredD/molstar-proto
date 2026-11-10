@@ -89,6 +89,11 @@ export interface ResolveJob {
   readonly upstream?: ResolveOutput;
   /** The relations among its populations, their sites materialized (Å, the subject entity's frame). */
   readonly relations: readonly NormalizedRelation[];
+  /**
+   * Fires when the resolution is cancelled (`RuntimeOptions.signal`). A resolver that runs long gives the event loop
+   * back now and then (`drive`) so it can see it; never part of what `project` returns (a key does not depend on it).
+   */
+  readonly signal?: AbortSignal;
 }
 
 export interface MaterializedSite {

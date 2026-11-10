@@ -14,6 +14,7 @@ import {
 } from '@molstar/meso-spec/ir';
 import {
   createRandom,
+  drive,
   type NormalizedCompartment,
   type Random,
   type ResolveJob,
@@ -184,7 +185,25 @@ export function randomQuat(r: Random, out: number[]): number[] {
   return out;
 }
 
-export function pack(input: PackInput, job: ResolveJob, model: string, key: string): ResolveOutput {
+/**
+ * Packs the items. With a `job.signal` it gives the event loop back every slice and a cancelled job rejects with an
+ * `AbortError` (runtime/cancel.ts); with none it is synchronous, as it always was.
+ */
+export function pack(
+  input: PackInput,
+  job: ResolveJob,
+  model: string,
+  key: string,
+): ResolveOutput | Promise<ResolveOutput> {
+  return drive(job, packSteps(input, job, model, key));
+}
+
+function* packSteps(
+  input: PackInput,
+  job: ResolveJob,
+  model: string,
+  key: string,
+): Generator<void, ResolveOutput, void> {
   const samplers = new Map<Id, ShapeSampler>();
   for (const [id, c] of Object.entries(input.compartments)) {
     const s = shapeSampler(c.shape, job.compartments.get(id)?.mesh);
@@ -297,7 +316,10 @@ export function pack(input: PackInput, job: ResolveJob, model: string, key: stri
         }
       }
     };
+    let tick = 0;
     while (placed < it.requested && failures < input.giveUp) {
+      // a place where a stop is seen, every so many tries (a try is microseconds: a yield each would be most of them)
+      if ((++tick & 63) === 0) yield;
       let ok = false;
       for (let a = 0; a < input.attempts && !ok; a++) {
         if (!tryOnce()) break;
