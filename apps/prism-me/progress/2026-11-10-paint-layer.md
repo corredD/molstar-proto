@@ -183,8 +183,8 @@ list.
 
 ### Round 2: size
 
-~520 production lines (tests apart) against ~350: the structure's own copy (source, loader, cache) and the gate's leave-
-out took the room.
+651 production lines added and 168 removed (tests apart), about 150 of each the spelling pass: ~500 new against ~350.
+The structure's own copy (its source, loader and cache) and the gate's leave-out took the room.
 
 ### Round 2: review
 
