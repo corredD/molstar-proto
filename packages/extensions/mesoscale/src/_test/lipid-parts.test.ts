@@ -5,7 +5,7 @@
  */
 
 import { afterAll, describe, expect, it } from 'vitest';
-import type { CutterTable } from '../lipids/cutter.js';
+import { type CutterRegions, type CutterTable, cutterRegions } from '../lipids/cutter.js';
 import { membraneStar } from '../lipids/export.js';
 import {
   buildMembraneSteps,
@@ -92,6 +92,35 @@ describe('a cell’s membranes, a cut leaflet a part (round 7)', () => {
     const a = rows(whole);
     expect(a.length).toBeGreaterThan(1000);
     expect(rows(split)).toEqual(a);
+  });
+
+  it('holds a part’s own regions only, renumbered, each keyed by its index in the whole mesh (round 7 review X1)', () => {
+    const meshes = [icosphere(600, 120), shifted(icosphere(300, 90), 1200)];
+    const { mesh, parts } = concatMeshes(meshes, ['a', 'b']);
+    const regions = cutterRegions(mesh.positions, mesh.indices, Kinds.seed);
+    const split = build({ mesh, parts }, 'parts-plain');
+    for (const l of split.cut) {
+      const part = parts[l.part!];
+      // its keys (`CutterRegions.keys`) read untyped: the test before the field (review X1)
+      const own = l.regions as CutterRegions & { keys?: Uint32Array };
+      // its table its regions' rows alone (no copy of the whole mesh's a part and leaflet)
+      expect(own.count).toBeLessThan(regions.count);
+      expect(own.table.length).toBe(own.count * 16);
+      expect(own.keys?.length).toBe(own.count);
+      for (let t = 0; t < own.regionOf.length; ++t) {
+        const r = own.regionOf[t];
+        const whole = regions.regionOf[part.start + t];
+        expect(r).toBeLessThan(own.count);
+        // the cells' hash keyed as in the whole mesh: the same lipids a triangle
+        expect(own.keys?.[r] ?? r).toBe(whole);
+        expect(Array.from(own.table.subarray(r * 16, r * 16 + 16))).toEqual(
+          Array.from(regions.table.subarray(whole * 16, whole * 16 + 16)),
+        );
+      }
+    }
+    // the second part's regions renumbered from 0: its keys are not its indices (every reader must hash the key)
+    const second = split.cut.find((l) => l.part === 1)!.regions as CutterRegions & { keys?: Uint32Array };
+    expect(second.keys?.[0]).toBeGreaterThan(0);
   });
 
   it('gives each membrane its mix: the mito IM cardiolipin’s stand-in, the LD one leaflet, the ER its own', () => {

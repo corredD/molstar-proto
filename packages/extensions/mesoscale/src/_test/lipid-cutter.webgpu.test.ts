@@ -24,6 +24,7 @@ import {
   triangleCut,
 } from '../lipids/cutter.js';
 import { createLipidCutter } from '../lipids/cutter-kernel.js';
+import { concatMeshes, partMesh } from '../lipids/membrane.js';
 import { createLipidSelection, unitSlots, WholeTriangle, wholeTriangles } from '../lipids/procedural.js';
 import { parsePatchPdb } from '../lipids/patch.js';
 import { icosphere } from '../lipids/remesh.js';
@@ -53,14 +54,19 @@ describe.skipIf(!webgpu)('the lipid cutter on the GPU (Dawn)', () => {
       const { text, box } = syntheticPatchPdb();
       const table = cutterTable(parsePatchPdb(text, { box }).outer, 2);
       const M = table.members.length;
-      // small triangles (cut whole) and large ones (cut by cells: round 5)
-      for (const [radius, edge, whole] of [
-        [300, 70, true],
-        [2500, 1500, false],
+      // small triangles (cut whole) and large ones (cut by cells: round 5); and a cell's second part on its own
+      // triangles, its regions renumbered and keyed by the whole mesh's (round 7 review X1: the kernel hashes the key)
+      const cell = concatMeshes([icosphere(600, 300), icosphere(300, 70)], ['a', 'b']);
+      const cellRegions = cutterRegions(cell.mesh.positions, cell.mesh.indices, 0xdeadbeef);
+      const second = partMesh(cell.mesh, cellRegions, cell.parts[1]);
+      for (const [radius, edge, whole, part] of [
+        [300, 70, true, undefined],
+        [2500, 1500, false, undefined],
+        [300, 70, true, second],
       ] as const) {
-        const mesh = icosphere(radius, edge);
+        const mesh = part?.mesh ?? icosphere(radius, edge);
         const T = mesh.indices.length / 3;
-        const regions = cutterRegions(mesh.positions, mesh.indices, 0xdeadbeef);
+        const regions = part?.regions ?? cutterRegions(mesh.positions, mesh.indices, 0xdeadbeef);
         const { wholeOf, count: W } = wholeTriangles(mesh.positions, mesh.indices, regions, table.box);
         expect(W).toBe(whole ? T : 0);
         const list = new Uint32Array(W);
