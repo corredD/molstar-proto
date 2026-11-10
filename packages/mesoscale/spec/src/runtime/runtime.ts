@@ -35,6 +35,8 @@ import {
   type IRNode,
   type IRShape,
   type IRView,
+  EmptyLoci,
+  lociOfCopies,
   lociSphere,
   type MesoLoci,
   placementSets,
@@ -1147,7 +1149,7 @@ export function deriveView(doc: MesoViewSpecDoc, root: IRNode): IRView {
       ...(l.representation !== undefined ? { representation: l.representation } : {}),
     };
     for (const s of sets) {
-      const runs = loci.get(s.key);
+      const runs = loci.copies.get(s.key);
       if (!runs) continue;
       const tr = typeRuns(s);
       for (const t of s.typeTable) {
@@ -1163,7 +1165,7 @@ export function deriveView(doc: MesoViewSpecDoc, root: IRNode): IRView {
     }
     // copies inside particular superstructure instances (`part`): virtual sets `<instance set>@<i>><template>`, kept as
     // partial looks for the instancing step to place (runtime/instancing.ts)
-    for (const [k, runs] of loci) {
+    for (const [k, runs] of loci.copies) {
       if (!/@\d+>/.test(k)) continue;
       const tpl = sets.find((x) => x.key === k.slice(k.lastIndexOf('>') + 1));
       // every type the runs cover (one run can span two populations written one after the other)
@@ -1175,7 +1177,7 @@ export function deriveView(doc: MesoViewSpecDoc, root: IRNode): IRView {
   }
   const looks = [...whole.values()].sort((a, b) => (a.set < b.set ? -1 : a.set > b.set ? 1 : a.types[0] - b.types[0]));
   const selection = view?.selection
-    ? [...materialize(view.selection)].map(([set, runs]) => ({ set, runs }))
+    ? [...materialize(view.selection).copies].map(([set, runs]) => ({ set, runs }))
     : undefined;
   // the camera reads level 0 of a stream, never the loaded tiles (_spec/streaming.md), through its own loci cache: the
   // addresses are the same strings, the loci are not (they name the proxy set)
@@ -1192,7 +1194,7 @@ export function deriveView(doc: MesoViewSpecDoc, root: IRNode): IRView {
       text: a.text,
       position: typeof a.target === 'string' ? lociSphere(materialize(a.target), ir)?.center : place(a.target.position),
     })),
-    ...(view?.cutaway ? { cutaway: [...materialize(view.cutaway)].map(([set, runs]) => ({ set, runs })) } : {}),
+    ...(view?.cutaway ? { cutaway: [...materialize(view.cutaway).copies].map(([set, runs]) => ({ set, runs })) } : {}),
     ...(issues.length ? { issues } : {}),
   };
 }
@@ -1205,7 +1207,7 @@ function materializer(doc: MesoViewSpecDoc, ir: IR, issues: Issue[], parseIssues
     if (l) return l;
     const p = parseMesoQL(q);
     if (parseIssues) issues.push(...p.issues);
-    if (!p.expr) l = new Map();
+    if (!p.expr) l = EmptyLoci;
     else {
       const e = evaluateMesoQL(p.expr, { doc, ir });
       issues.push(...e.issues);
@@ -1255,10 +1257,12 @@ function deriveCamera(
       if (cam.from === 'outside') {
         // from beyond the scene's centre, through the focus
         const all = lociSphere(
-          new Map(
-            placementSets(ir)
-              .filter((x) => !isUnderSuperstructure(ir, x.key))
-              .map((x) => [x.key, [0, x.count]]),
+          lociOfCopies(
+            new Map(
+              placementSets(ir)
+                .filter((x) => !isUnderSuperstructure(ir, x.key))
+                .map((x) => [x.key, [0, x.count]]),
+            ),
           ),
           ir,
         );

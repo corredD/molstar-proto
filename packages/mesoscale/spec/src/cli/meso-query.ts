@@ -66,7 +66,7 @@ export const run = (argv: readonly string[], io: CliIO = nodeIO) =>
       const { loci, issues: found } = evaluateMesoQL(expr, { doc, ir: r.ir });
       const byKey = new Map(placementSets(r.ir).map((s) => [s.key, s]));
       const populations: Record<string, number> = {};
-      for (const [key, runs] of loci) {
+      for (const [key, runs] of loci.copies) {
         const set = byKey.get(/^.*@\d+>(.*)$/.exec(key)?.[1] ?? key);
         if (!set) continue;
         for (let j = 0; j < runs.length; j += 2)

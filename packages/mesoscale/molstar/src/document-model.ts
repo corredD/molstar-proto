@@ -327,7 +327,7 @@ export class MesoDocumentModel {
       if (!selects.length) return undefined;
       const all = new Map<string, number[]>();
       for (const s of selects)
-        for (const [set, runs] of this.mesoLoci(s) ?? []) all.set(set, unionRuns(all.get(set) ?? [], runs));
+        for (const [set, runs] of this.mesoLoci(s)?.copies ?? []) all.set(set, unionRuns(all.get(set) ?? [], runs));
       return all;
     };
     const resets = cleared((c) => !!c.reset);
@@ -341,7 +341,7 @@ export class MesoDocumentModel {
         if (!loci) return 'none' as const;
         let some = false;
         let beyond = false;
-        for (const [set, runs] of loci) {
+        for (const [set, runs] of loci.copies) {
           const within = by.get(set) ?? [];
           if (intersectRuns(runs, within).length) some = true;
           if (subtractRuns(runs, within).length) beyond = true;

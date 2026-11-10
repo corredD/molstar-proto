@@ -65,7 +65,7 @@ describe('MesoQL', () => {
     const r = await compileExosome(exosomeDoc());
     const ctx = { doc: exosomeDoc(), ir: r.ir! };
     const lip = evaluateMesoQL(q('(population p.lipids)'), ctx).loci;
-    expect([...lip.values()]).toEqual([[0, 88666]]);
+    expect([...lip.copies.values()]).toEqual([[0, 88666]]);
     expect(lociSize(evaluateMesoQL(q('(in c.exosome :location membrane)'), ctx).loci)).toBe(
       88666 +
         r.counts['p.CD63'].achieved +

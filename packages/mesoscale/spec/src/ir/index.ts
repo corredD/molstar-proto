@@ -31,7 +31,11 @@ export {
 export {
   type MesoLocation,
   type MesoLoci,
+  type CopyRuns,
+  type VoxelBox,
   EmptyLoci,
+  lociOfCopies,
+  lociToLocations,
   unionRuns,
   intersectRuns,
   subtractRuns,
