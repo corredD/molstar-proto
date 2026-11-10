@@ -45,3 +45,7 @@
   (`element`, or `carbon-species`: carbons the species' colour); its Look shows the Species and Atoms edges (no
   Chain), Far and Atoms, one step each; an edge moved redraws nothing (no rebuild). `mesoscale.theme` (a category's
   color theme) colours a membrane: by object, one colour, by entity, generated, By zoom.
+- A theme whose membrane redraw fails (past the device's buffers, a cancel) fails cleanly: nothing changed, no undo
+  step. A membrane's Reset and a category's theme leave its parts' colours and eyes. A cell's membranes upload each
+  part's own regions only (about 6× less GPU memory on a cell of nine membranes) and show and fade their surfaces once
+  a view, not once a part and leaflet.

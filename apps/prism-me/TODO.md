@@ -90,13 +90,22 @@ maintainer first (2026-10-25). All are v6 (master); the MRC reader and the parti
 
 - **Lipid membranes made per view, left from lane `lipid-procedural`** (2026-11-08;
   progress/2026-11-08-lipid-procedural.md):
-  - Round 6, a cell's membranes as one (Wrap all): one Look and far colour for all of them (a membrane's own colour,
-    hiding one membrane's lipids: a part's params); one patch for all (a membrane's own composition, yeast PM, mito IM's
-    cardiolipin, LD's monolayer, needs a cutter a part and leaflet and its own pools); the wrap of the yeast cell takes
-    about 7-10 s (cutters, pools, four patch surfaces over 1.08 M triangles: a range a part rather than whole then
-    sliced); under a clip every part's surfaces draw (~45 ms at the whole cell); a part's enclosure is one bit for all
-    its components (the eye in one mitochondrion shows every IM). The 11-07 slab's alignment with these meshes is not
-    checked (its file not found).
+  - Round 6, a cell's membranes as one (Wrap all): the wrap of the yeast cell took about 7-10 s in round 6 (cutters,
+    pools, four patch surfaces over 1.08 M triangles), not measured again since round 7's pools a part and leaflet (wrap
+    time and RSS); under a clip every part's surfaces draw (~45 ms at the whole cell); a part's enclosure is one bit for
+    all its components (the eye in one mitochondrion shows every IM).
+  - **The budget's ceiling (Ludo, 2026-11-09: keep fixed shares; round 7 review S2).** The budget is water-filled over
+    every leaflet of the membrane at the wrap (`poolCapacities`), not over those in view: a leaflet's pool is about 1.1
+    × budget / L whatever the view. The skeptic's table, the PM's outer leaflet at 2 M: 122 k lipids with P = 9 parts
+    (yeast), 37 k at 30, 11 k at 100, 1.1 k at 1,000. A close view takes about 73 k a leaflet (round 6), so about 15
+    membranes (L ≤ 30) is the ceiling for a close view; a middle view of the PM wants about 2 M (round 5), so it is
+    already about 15× short at yeast (far parts empty). About 1,700 member objects on yeast (a pool a member a leaflet
+    and part) against 200 before. A share by the leaflets in view (re-sized per view) is the lever, Ludo's call.
+  - A part row picked shows empty properties (round 7 review N5): its Look (eye, colour) is in its row only.
+  - `mesoscale.theme` over particles and a membrane at once, the membrane's redraw failing: rolled back as one (round 7
+    review S4), tested on a membrane alone.
+  - A part's cut copies the cells' table (64 KB) three times a leaflet (cutter, near and far patch tables; review X1
+    removed the regions' copies: 688 → 105 MB on a synthetic cell of nine membranes).
   - A row per species in the tree (eye and colour): the membrane's Look holds them this round.
   - Picking a lipid: a pick's slot maps to (triangle, lipid) through the selection (its units and bases; `lipidAt` went
     with round 5's cells), but the membrane's `getLoci` is still empty; per-lipid layers stay per species (a slot is not
