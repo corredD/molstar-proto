@@ -550,7 +550,8 @@ export class MesoscaleApi extends ApiArea {
       await ctx.plugin.runTask(
         Task.create('Exporting lipids', async (runtime) => {
           let k = 0;
-          for (const chunk of membraneStar(data, hidden)) {
+          const hiddenParts = new Set((cell.transform.params as LipidMembraneProps).hiddenParts);
+          for (const chunk of membraneStar(data, hidden, 256, hiddenParts)) {
             parts.push(new Blob([chunk]));
             if (k++ > 0) rows += chunk.split('\n').length - 1;
             if (runtime.shouldUpdate) await runtime.update({ message: `${rows.toLocaleString()} lipids written` });
@@ -634,17 +635,27 @@ export class MesoscaleApi extends ApiArea {
       ),
       emissive: OptionalParam(PD.Numeric(0, { min: 0, max: 1, step: 0.01 }, { description: 'Glow, 0 to 1' })),
       reset: PD.Boolean(false, { description: 'Back to their default look (shown, the color theme)' }),
+      parts: OptionalParam(
+        PD.Text('', {
+          description:
+            'A lipid membrane wrapping a cell’s meshes: its parts (membranes) by name, comma-separated (PM, MITO_IM); empty: every one. Instead of entities',
+        }),
+      ),
       particles: ListParam(),
     },
     async run(values, ctx) {
-      const { visible, color, transparency, emissive, reset, particles, groupBy } = values as typeof values & {
+      const { visible, color, transparency, emissive, reset, particles, groupBy, parts } = values as typeof values & {
         groupBy?: MesoGroupBy;
         visible?: boolean;
         color?: string;
         transparency?: number;
         emissive?: number;
+        parts?: string;
       };
       const membrane = membraneCell(ctx, particles.trim());
+      if (parts !== undefined && !membrane) {
+        return ApiResult.fail('invalid', 'Parts are a lipid membrane’s (a cell’s membranes): name the membrane.');
+      }
       // a list's groups: a membrane has none (review N3: ignored, all its species were styled)
       if (membrane && values.group)
         return ApiResult.fail('invalid', 'A lipid membrane has no groups: name its species.');
@@ -669,6 +680,35 @@ export class MesoscaleApi extends ApiArea {
         // a membrane's species: shown or not, their colour (no opacity or glow: its spheres are merged by species)
         if (transparency !== undefined || emissive !== undefined) {
           return ApiResult.fail('invalid', 'A lipid membrane takes a color, visible or reset, not opacity or glow.');
+        }
+        if (parts !== undefined) {
+          // a cell's membranes (round 7 item 2): each part shown or not (its lipids and surfaces), its colour; one step
+          const chosen = membranePartsOf(membrane, parts);
+          if (isFailure(chosen)) return chosen;
+          const all = membranePartNames(membrane);
+          const changed = await updateMembrane(ctx, membrane, (old) => {
+            const hidden = new Set(old.hiddenParts);
+            for (const p of chosen) {
+              if (reset || visible === true) hidden.delete(p);
+              else if (visible === false) hidden.add(p);
+            }
+            return {
+              hiddenParts: all.filter((n) => hidden.has(n)),
+              partColors: withPartColors(old, chosen, (p) =>
+                reset
+                  ? null
+                  : parsed !== undefined
+                    ? parsed
+                    : old.partColors[p] !== undefined
+                      ? Color(old.partColors[p])
+                      : null,
+              ),
+            };
+          });
+          if (!changed) return ApiResult.already('They already look so.');
+          return ApiResult.ok(`${reset ? 'Reset' : 'Styled'} ${chosen.join(', ')} of the membrane.`, {
+            nodes: [membrane.transform.ref],
+          });
         }
         const names = membraneSpecies((membrane.obj!.data as { sourceData: MembraneData }).sourceData);
         const species = membraneEntities(names, values.entities);
@@ -730,9 +770,17 @@ export class MesoscaleApi extends ApiArea {
       shift: PD.Numeric(0, { min: 0, max: 100, step: 1 }, { description: 'Rotates the generated colors' }),
       color: PD.Text('white', { description: 'The uniform color' }),
       ...SelectionParams,
+      parts: OptionalParam(
+        PD.Text('', {
+          description:
+            'A lipid membrane wrapping a cell’s meshes: its parts (membranes) by name, comma-separated; empty: every one. Instead of entities',
+        }),
+      ),
       particles: ListParam(),
     },
-    async run({ scheme, groupBy, variability, shift, color, entities, group, particles }, ctx) {
+    async run(values, ctx) {
+      const { scheme, groupBy, variability, shift, color, entities, group, particles } = values;
+      const { parts } = values as { parts?: string };
       const uniform = scheme === 'uniform' ? cssColor(color) : undefined;
       if (scheme === 'uniform' && uniform === undefined) {
         return ApiResult.fail(
@@ -743,6 +791,26 @@ export class MesoscaleApi extends ApiArea {
       }
       const membrane = membraneCell(ctx, particles.trim());
       if (membrane && group) return ApiResult.fail('invalid', 'A lipid membrane has no groups: name its species.');
+      if (parts !== undefined && !membrane) {
+        return ApiResult.fail('invalid', 'Parts are a lipid membrane’s (a cell’s membranes): name the membrane.');
+      }
+      if (membrane && parts !== undefined) {
+        // a cell's membranes (round 7 item 2): a colour a part, generated (a hue each), one, or the membrane's again
+        const chosen = membranePartsOf(membrane, parts);
+        if (isFailure(chosen)) return chosen;
+        const root = { path: '', label: '', groups: [], entities: chosen.map((_, i) => i) };
+        const generated = scheme === 'generate' ? generateColors(root, variability, shift) : undefined;
+        const index = new Map(chosen.map((p, i) => [p, i]));
+        const changed = await updateMembrane(ctx, membrane, (old) => ({
+          partColors: withPartColors(old, chosen, (p) =>
+            scheme === 'theme' ? null : (uniform ?? generated!.get(index.get(p)!)!),
+          ),
+        }));
+        if (!changed) return ApiResult.already('They are already colored so.');
+        return ApiResult.ok(`Colored ${chosen.join(', ')} of the membrane (${scheme}).`, {
+          nodes: [membrane.transform.ref],
+        });
+      }
       if (membrane) {
         // a membrane's species: one colour, generated around a hue (one group), or their default (the theme's)
         const names = membraneSpecies((membrane.obj!.data as { sourceData: MembraneData }).sourceData);
@@ -1727,7 +1795,12 @@ function membraneCell(ctx: Pick<ApiContext, 'plugin'>, ref: string) {
 }
 
 /** A membrane's species named in `entities` (comma-separated; empty: every one), or a failure naming the unknown */
-function membraneEntities(names: readonly string[], entities: string): readonly string[] | ApiFailure {
+function membraneEntities(
+  names: readonly string[],
+  entities: string,
+  what = 'species',
+  plural = 'species',
+): readonly string[] | ApiFailure {
   const asked = entities
     .split(',')
     .map((e) => e.trim())
@@ -1738,11 +1811,38 @@ function membraneEntities(names: readonly string[], entities: string): readonly 
   if (unknown.length) {
     return ApiResult.fail(
       'not-found',
-      `The membrane has no species ${unknown.join(', ')}.`,
-      `Its species: ${names.join(', ')}.`,
+      `The membrane has no ${what} ${unknown.join(', ')}.`,
+      `Its ${plural}: ${names.join(', ')}.`,
     );
   }
   return asked;
+}
+
+/** A cell membrane's parts (its membranes, round 6) by name; none for one surface */
+function membranePartNames(cell: StateObjectCell) {
+  const data = (cell.obj!.data as { sourceData: MembraneData }).sourceData;
+  return data.parts?.map((p) => p.name) ?? [];
+}
+
+/**
+ * A cell membrane's parts named in `parts` (comma-separated; empty: every one; round 7 item 2), or a failure: no parts,
+ * an unknown name
+ */
+function membranePartsOf(cell: StateObjectCell, parts: string): readonly string[] | ApiFailure {
+  const names = membranePartNames(cell);
+  if (!names.length) return ApiResult.fail('invalid', 'The membrane is one surface: it has no parts.');
+  return membraneEntities(names, parts, 'part', 'parts');
+}
+
+/** Part colours: those of `parts` set to `color` (null: back to the membrane's), the others kept */
+function withPartColors(old: LipidMembraneProps, parts: readonly string[], color: (p: string) => Color | null) {
+  const colors: Record<string, number> = { ...old.partColors };
+  for (const p of parts) {
+    const c = color(p);
+    if (c === null) delete colors[p];
+    else colors[p] = c;
+  }
+  return colors;
 }
 
 /**

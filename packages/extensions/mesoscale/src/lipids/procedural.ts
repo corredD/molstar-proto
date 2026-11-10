@@ -41,14 +41,36 @@ export function enterPx(far: MembraneFar, atomsPx: number, spheresPx: number) {
 }
 
 /**
- * Each member's capacity: its full total where the whole membrane fits `budget`, else its share of the budget (+10 %)
- * at most its total; per leaflet, per member
+ * Each member's capacity (round 7, a pool a part and leaflet: a share per pool, nearest first within it): every leaflet
+ * whole where the membrane fits `budget`, else the budget water-filled across leaflets (a leaflet under the level whole,
+ * the others the level each: a small membrane, a peroxisome or a droplet, is never starved by a large one's area), each
+ * member of a capped leaflet its share of the level (+10 %) at most its total
  */
 export function poolCapacities(totals: readonly Uint32Array[], budget: number) {
+  const sums = totals.map((t) => {
+    let s = 0;
+    for (const n of t) s += n;
+    return s;
+  });
   let sum = 0;
-  for (const t of totals) for (const n of t) sum += n;
-  const share = sum <= budget ? 1 : (budget / sum) * 1.1;
-  return totals.map((t) => Uint32Array.from(t, (n) => (share >= 1 ? n : Math.min(n, Math.ceil(n * share - 1e-6)))));
+  for (const s of sums) sum += s;
+  if (sum <= budget) return totals.map((t) => Uint32Array.from(t));
+  // the level: the leaflets under it whole, the rest of the budget shared equally by the others
+  const ascending = sums.slice().sort((a, b) => a - b);
+  let left = budget;
+  let level = 0;
+  for (let i = 0; i < ascending.length; ++i) {
+    const share = left / (ascending.length - i);
+    if (ascending[i] > share) {
+      level = share;
+      break;
+    }
+    left -= ascending[i];
+  }
+  return totals.map((t, i) => {
+    const share = sums[i] <= level ? 1 : (level / sums[i]) * 1.1;
+    return Uint32Array.from(t, (n) => (share >= 1 ? n : Math.min(n, Math.ceil(n * share - 1e-6))));
+  });
 }
 
 /** Buckets of the nearest-first order: by depth, log-spaced (a counting sort; nothing allocated) */
@@ -103,10 +125,72 @@ export interface SelectionInput {
   readonly wholeCounts: Uint32Array;
   /** the leaflet's side of its triangles: outer +1 (along their normal), inner -1 */
   readonly side: number;
-  /** the mesh's parts (a cell's membranes, round 6), the whole mesh one part where none */
-  readonly parts?: readonly TrianglePart[];
-  /** per part the parts enclosing it (`enclosures`): hidden while the eye is outside one of them and nothing clips */
-  readonly enclosedBy?: readonly Int32Array[];
+  /**
+   * A cell's membranes (round 7: a selection a part and leaflet): which parts a view shows (`createPartVisibility`, one
+   * for all of the cell's selections), and this leaflet's part among them; none: always shown
+   */
+  readonly visibility?: PartVisibility;
+  readonly part?: number;
+}
+
+/**
+ * Which parts of a cell's membranes a view shows (round 6; round 7: once a view for every part's selection): an enclosed
+ * part only with the viewer inside each of its enclosers, every part where nothing hides the far side (a clip:
+ * `facing` off). Over the whole mesh's tree; keyed by the frustum's planes, nothing allocated a view
+ */
+export interface PartVisibility {
+  /** per part, 1 where the last view shows it */
+  readonly shown: Uint8Array;
+  update: (frustum: Frustum3D, facing: boolean) => void;
+}
+
+export function createPartVisibility(
+  positions: ArrayLike<number>,
+  indices: ArrayLike<number>,
+  parts: readonly TrianglePart[],
+  enclosedBy: readonly Int32Array[],
+): PartVisibility {
+  const tree = triangleTree(positions, indices, parts);
+  const P = parts.length;
+  const shown = new Uint8Array(P).fill(1);
+  const eyeInside = new Uint8Array(P);
+  const near = new Float64Array(3);
+  const stack = new Int32Array(256);
+  // the view last seen: its 6 planes, then facing (NaN: none yet)
+  const key = new Float64Array(25).fill(Number.NaN);
+  function update(frustum: Frustum3D, facing: boolean) {
+    let same = key[24] === (facing ? 1 : 0);
+    for (let i = 0; i < 6; ++i) {
+      const { normal, constant } = frustum[i as 0];
+      const o = i * 4;
+      if (key[o] !== normal[0] || key[o + 1] !== normal[1] || key[o + 2] !== normal[2] || key[o + 3] !== constant) {
+        same = false;
+        key[o] = normal[0];
+        key[o + 1] = normal[1];
+        key[o + 2] = normal[2];
+        key[o + 3] = constant;
+      }
+    }
+    if (same) return;
+    key[24] = facing ? 1 : 0;
+    shown.fill(1);
+    if (!facing) return;
+    // the viewer: the near plane's center (an orthographic camera has no apex)
+    const viewer = nearCenter(frustum, near);
+    eyeInside.fill(2);
+    for (let q = 0; q < P; ++q) {
+      const e: Int32Array = enclosedBy[q];
+      for (let i = 0; i < e.length && shown[q]; ++i) {
+        const outer = e[i];
+        if (eyeInside[outer] === 2) {
+          eyeInside[outer] =
+            viewer && insidePart(tree, positions, indices, outer, near[0], near[1], near[2], stack) ? 1 : 0;
+        }
+        if (eyeInside[outer] === 0) shown[q] = 0;
+      }
+    }
+  }
+  return { shown, update };
 }
 
 /** A leaflet's selection: its units in view, nearest first within each member's capacity */
@@ -124,8 +208,6 @@ export interface LipidSelection {
   readonly live: Uint32Array;
   /** per member whether it is shown (hidden: none generated) */
   readonly shown: Uint8Array;
-  /** per part whether the last view shows it (an enclosed part with the eye outside its encloser: 0) */
-  readonly partShown: Uint8Array;
   /** advances where the selection changed */
   readonly version: number;
   /** selects for a view; whether the selection changed */
@@ -425,13 +507,10 @@ export function createLipidSelection(input: SelectionInput, capacity: Uint32Arra
   const side = input.side;
   // the camera's position (the apex of a perspective frustum's side planes), or none (orthographic: its direction)
   const eye = new Float64Array(3);
-  // round 6: the triangles by a sphere tree a part, a view descending it (what is out of view or reach pruned whole)
-  const tree = triangleTree(positions, indices, input.parts);
-  const P = tree.parts.length;
-  const enclosedBy = input.enclosedBy;
-  const partShown = new Uint8Array(P).fill(1);
-  const eyeInside = new Uint8Array(P);
-  const near = new Float64Array(3);
+  // round 6: the triangles by a sphere tree, a view descending it (what is out of view or reach pruned whole); round 7:
+  // a selection a part, which parts are shown the cell's (`input.visibility`)
+  const tree = triangleTree(positions, indices);
+  const { visibility, part: ownPart = 0 } = input;
   const stack = new Int32Array(256);
   const { spheres, a: childA, b: childB, leaf, order: treeOrder, roots } = tree;
 
@@ -488,29 +567,14 @@ export function createLipidSelection(input: SelectionInput, capacity: Uint32Arra
     const facing = p.facing ?? 0;
     const perspective = facing > 0 && apex(frustum, eye);
     const reach = depthScale > 0 ? keepDepth : Infinity;
-    // the parts shown: an enclosed one only with the viewer inside each of its enclosers (no clip: `facing`); the viewer
-    // the near plane's center (an orthographic camera has no apex)
-    partShown.fill(1);
-    if (enclosedBy && facing > 0) {
-      const viewer = nearCenter(frustum, near);
-      eyeInside.fill(2);
-      for (let q = 0; q < P; ++q) {
-        const e: Int32Array = enclosedBy[q];
-        for (let i = 0; i < e.length && partShown[q]; ++i) {
-          const outer = e[i];
-          if (eyeInside[outer] === 2) {
-            eyeInside[outer] =
-              viewer && insidePart(tree, positions, indices, outer, near[0], near[1], near[2], stack) ? 1 : 0;
-          }
-          if (eyeInside[outer] === 0) partShown[q] = 0;
-        }
-      }
-    }
-    // the triangles in view, nearest first: each shown part's tree descended, a node out of view or reach pruned
+    // the part shown (an enclosed one only with the viewer inside each of its enclosers; no clip: `facing`)
+    visibility?.update(frustum, facing > 0);
+    const partShown = !visibility || visibility.shown[ownPart] === 1;
+    // the triangles in view, nearest first: the tree descended, a node out of view or reach pruned
     let nt = 0;
     let far = 1;
-    for (let part = 0; part < P; ++part) {
-      if (!partShown[part] || roots[part] < 0) continue;
+    for (let part = 0; part < roots.length; ++part) {
+      if (!partShown || roots[part] < 0) continue;
       let top = 0;
       stack[top++] = roots[part];
       while (top > 0) {
@@ -851,7 +915,6 @@ export function createLipidSelection(input: SelectionInput, capacity: Uint32Arra
     bases,
     live,
     shown,
-    partShown,
     get version() {
       return version;
     },

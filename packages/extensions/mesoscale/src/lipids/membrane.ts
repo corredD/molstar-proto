@@ -46,16 +46,19 @@ import { headOffset, patchRaster, patchSurface, type SwitchSpheres } from './far
 import type { Texture } from '@molstar/graphics/gl/texture';
 import {
   createLipidSelection,
+  createPartVisibility,
   enterPx,
   estimateLipids,
   type LipidSelection,
   type MembraneFar,
+  type PartVisibility,
   poolCapacities,
   type SelectionInput,
   slotTotals,
   wholeTriangles,
 } from './procedural.js';
 import { enclosures, type TrianglePart, triangleTree } from './triangle-tree.js';
+import { mixOf, mixTable, standIns } from './mixes.js';
 import type { GpuInstanceView, GpuInstanceWriter } from '@molstar/graphics/gl/renderable/merged-culler';
 import { farTriangles, icosphere, isotropicRemeshSteps, offsetSurface, type TriMesh } from './remesh.js';
 import { bakeTileSetSteps, type Tile, type TileSet } from './tiles.js';
@@ -264,6 +267,11 @@ export interface CutLeaflet {
   readonly mesh: TriMesh;
   /** the mesh's regions (`cutter.ts`), shared by its leaflets */
   readonly regions: CutterRegions;
+  /**
+   * A cell's membrane (round 7: a cut leaflet a part and leaflet, on the part's own triangles, its table the part's mix):
+   * its index in `MembraneData.parts`; none: the whole mesh
+   */
+  readonly part?: number;
 }
 
 /** How a membrane is made: matched-edge tiles on a remesh, or cellPACKgpu's cutter on the mesh's own triangles */
@@ -280,6 +288,10 @@ export interface MembraneData {
   /** the cutter's mesh's parts (meshes wrapped as one, round 6), and per part the parts enclosing it */
   readonly parts?: readonly TrianglePart[];
   readonly enclosedBy?: readonly Int32Array[];
+  /** the parts' whole mesh (which part encloses the eye: `createPartVisibility`) */
+  readonly whole?: TriMesh;
+  /** the parts whose mix the patch could not make (a species it lacks): cut from the patch as it is (round 7) */
+  readonly unmixed?: readonly string[];
 }
 
 /** Counts of a membrane: tiles and lipids per leaflet */
@@ -335,19 +347,44 @@ export function* buildMembraneSteps(
     const cut: CutLeaflet[] = [];
     yield { message: 'Finding the surface’s regions' };
     const regions = cutterRegions(mesh.positions, mesh.indices, kinds.seed);
-    for (const name of names) {
-      const table = getCutterTable(patch, name);
-      if (!table) return `No lipid patch named ${patch}: open a patch (a PDB of a bilayer) first.`;
-      cut.push({ name, table, mesh, regions });
-    }
+    const plain = { outer: getCutterTable(patch, 'outer'), inner: getCutterTable(patch, 'inner') };
+    for (const name of names)
+      if (!plain[name]) return `No lipid patch named ${patch}: open a patch (a PDB of a bilayer) first.`;
     const sphere = boundingSphereOf(mesh.positions, Sphere3D());
     // round 6: meshes wrapped as one, a part each; which encloses which (a part inside a closed one is hidden while the
     // eye is outside it)
     const parts = surface.parts && surface.parts.length > 1 ? surface.parts : undefined;
-    if (!parts) return { method, leaflets: [], cut, kinds, edge, sphere };
+    if (!parts) {
+      for (const name of names) cut.push({ name, table: plain[name]!, mesh, regions });
+      return { method, leaflets: [], cut, kinds, edge, sphere };
+    }
     yield { message: 'Finding the enclosed membranes' };
     const enclosedBy = enclosures(triangleTree(mesh.positions, mesh.indices, parts), mesh.positions, mesh.indices);
-    return { method, leaflets: [], cut, kinds, edge, sphere, parts, enclosedBy };
+    // round 7: a cut leaflet a part and leaflet, on the part's triangles (the whole mesh's regions: the same seams), its
+    // table the part's lipid mix (`mixes.ts`; the LD a monolayer: its outer leaflet alone), the patch as it is where the
+    // part has none or the patch lacks a species of it (said)
+    yield { message: 'Mixing each membrane’s lipids' };
+    const unmixed: string[] = [];
+    for (let p = 0; p < parts.length; ++p) {
+      const own = partMesh(mesh, regions, parts[p]);
+      const mix = mixOf(parts[p].name);
+      let failed = false;
+      for (const name of names) {
+        if (mix && name === 'inner' && !mix.inner) continue;
+        let table = plain[name]!;
+        if (mix && !failed) {
+          try {
+            const other = plain[name === 'outer' ? 'inner' : 'outer'];
+            table = mixTable(table, other, standIns(mix[name] ?? mix.outer, mix.plasma), mixSeed(kinds.seed, p, name));
+          } catch {
+            failed = true;
+            unmixed.push(parts[p].name);
+          }
+        }
+        cut.push({ name, table, mesh: own.mesh, regions: own.regions, part: p });
+      }
+    }
+    return { method, leaflets: [], cut, kinds, edge, sphere, parts, enclosedBy, whole: mesh, unmixed };
   }
   // tiles build every lipid at once: refused past `MaxTileLipids` (round 5: a billion at x600), the cutter named
   const table = getCutterTable(patch, names[0]);
@@ -403,6 +440,33 @@ export function* buildMembraneSteps(
     if (lost && lostRegions) cut.push({ name, table: getCutterTable(patch, name)!, mesh: lost, regions: lostRegions });
   }
   return { method, leaflets: out, cut, kinds, edge, sphere };
+}
+
+/**
+ * A part of a mesh as a mesh of its own (round 7): its vertices (a range: `concatMeshes` appends each part's) copied, its
+ * triangles' indices rebased, its triangles' regions (the whole mesh's: their frames and cells shared)
+ */
+export function partMesh(mesh: TriMesh, regions: CutterRegions, part: TrianglePart) {
+  const ix = mesh.indices.subarray(part.start * 3, part.end * 3);
+  let lo = Infinity;
+  let hi = -1;
+  for (let i = 0; i < ix.length; ++i) {
+    if (ix[i] < lo) lo = ix[i];
+    if (ix[i] > hi) hi = ix[i];
+  }
+  if (hi < 0) lo = 0;
+  const indices = new Uint32Array(ix.length);
+  for (let i = 0; i < ix.length; ++i) indices[i] = ix[i] - lo;
+  const positions = mesh.positions.slice(lo * 3, (hi + 1) * 3);
+  return {
+    mesh: { positions, indices } as TriMesh,
+    regions: { ...regions, regionOf: regions.regionOf.slice(part.start, part.end) },
+  };
+}
+
+/** A part and leaflet's seed of its mix's shuffle */
+function mixSeed(seed: number, part: number, leaflet: 'outer' | 'inner') {
+  return (Math.imul(seed + 1, 0x9e3779b1) ^ (part * 2 + (leaflet === 'inner' ? 1 : 0))) >>> 0;
 }
 
 /** The lipids tiles may build (all at once: memory and a wait), about the cutter's budget × 25 */
@@ -589,6 +653,11 @@ export const LipidMembraneReprParams = {
   // (`mesoscale.membraneSpecies`); a hidden species is not generated (the cutter's), the far surface without it
   hiddenSpecies: PD.Value<readonly string[]>([], { isHidden: true }),
   speciesColors: PD.Value<Readonly<Record<string, number>>>({}, { isHidden: true }),
+  // a cell's membranes (round 7 item 2): each part hidden or not (its lipids and surfaces) and its colour (`mesoscale.style`
+  // with `parts`), by the part's name; a part's colour its far colour by zoom (its species' and atoms' kept close: review
+  // D1), all of it without colours by zoom
+  hiddenParts: PD.Value<readonly string[]>([], { isHidden: true }),
+  partColors: PD.Value<Readonly<Record<string, number>>>({}, { isHidden: true }),
   // colours by zoom, as a particle list's (round 4c item 8; `color-levels.md`): far the membrane's colour (`color`), then
   // its species' (its entities'); a lipid is one group, so no chain or atom colours past them (`membraneColorLevels`)
   colorLevels: PD.MappedStatic('off', { off: PD.EmptyGroup(), on: PD.Group(ColorLevels.Params, { isFlat: true }) }),
@@ -716,22 +785,6 @@ function fadeSurface(
   ValueCell.update(values.uLod, Vec4.set(u, lod[0], lod[1], lod[2], 0));
 }
 
-/** Triangles `[start, end)` of a patch surface (unindexed: a vertex a corner, its index its own; shifts 2 a vertex), copied */
-function partOfSurface(
-  f: ReturnType<typeof patchSurface>,
-  start: number,
-  end: number,
-): ReturnType<typeof patchSurface> {
-  return {
-    ...f,
-    positions: f.positions.slice(start * 9, end * 9),
-    normals: f.normals.slice(start * 9, end * 9),
-    groups: f.groups.slice(start * 3, end * 3),
-    indices: f.indices.slice(0, (end - start) * 3),
-    shifts: f.shifts.slice(start * 6, end * 6),
-  };
-}
-
 /** A cut leaflet's near surface off the bilayer's mid-plane, Å (the two leaflets' apart) */
 const NearLift = 2;
 
@@ -751,6 +804,8 @@ function patchObject(
   size: number,
   reprProps: LipidMembraneReprProps,
   fade: boolean,
+  /** its part's colour (round 7): the surface's far colour, the membrane's otherwise */
+  far: Color,
 ) {
   const n = f.positions.length / 3;
   const m = Mesh.create(f.positions, f.indices, f.normals, f.groups, n, f.indices.length / 3);
@@ -767,7 +822,7 @@ function patchObject(
   const locationIterator = LocationIterator(Math.max(1, regions.count), 1, 1, () => ({ kind: 'membrane' }) as never);
   const color = {
     granularity: 'uniform',
-    color: () => reprProps.color,
+    color: () => far,
     props: {},
     description: 'Membrane',
   } as unknown as ColorTheme<any>;
@@ -813,6 +868,7 @@ function membraneColorLevels(
   instances: number,
   groups: number,
   colorOf: (group: number) => Color,
+  farColor: Color,
 ) {
   const on = props.colorLevels.name === 'on' && props.colorBy !== 'uniform';
   ColorLevels.setProps(values, on ? (props.colorLevels.params as ColorLevels.Props) : ColorLevels.defaults, on);
@@ -824,7 +880,7 @@ function membraneColorLevels(
   }
   ValueCell.update(values.tColorNear, { array: near, count: groups });
   const far = new Uint8Array(Math.max(1, instances) * 4);
-  for (let i = 0; i < instances; ++i) Color.toArray(props.color, far, i * 4);
+  for (let i = 0; i < instances; ++i) Color.toArray(farColor, far, i * 4);
   ValueCell.update(values.tColorFar, { array: far, count: instances });
 }
 
@@ -892,12 +948,12 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
   let fading: { values: BaseValues; size: number; near: boolean }[] = [];
   /** the far surfaces of a membrane's parts (round 6): shown while their part is (`showParts`) */
   let partSurfaces: { object: GraphicsRenderObject; part: number }[] = [];
-  /** the parts the last view showed */
-  let partsShown: Uint8Array | undefined;
+  /** which parts of a cell's membranes the last view showed (round 7: one for all its selections), kept with the cutters */
+  let visibility: PartVisibility | undefined;
   /** each part surface visible where the membrane is and its part is shown */
   function showParts() {
     for (const { object, part } of partSurfaces) {
-      const visible = state.visible && (!partsShown || partsShown[part] === 1);
+      const visible = state.visible && (!visibility || visibility.shown[part] === 1);
       if (object.state.visible !== visible) Object.assign(object.state, { visible });
     }
   }
@@ -944,6 +1000,7 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
     for (const c of cutters) c.destroy();
     assigners = [];
     cutters = [];
+    visibility = undefined;
     selections = [];
     selectedViews = new WeakMap();
     fading = [];
@@ -960,6 +1017,8 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
     writer: unknown,
     colorOf: (name: string) => Color,
     elements?: Uint8Array,
+    /** its part's colour (round 7): far by zoom (the species' and atoms' kept close: review D1), all of it otherwise */
+    partColor?: Color,
   ) {
     const atoms = positions.length / 3;
     // a cut member (one lipid, `elements` given): its atoms its groups, each coloured close up by its element (colours
@@ -978,11 +1037,13 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
       1,
       (g: number) => ({ kind: 'lipid', species: lipidSpecies[byAtom ? 0 : g] }) as never,
     );
-    const uniform = props.colorBy === 'uniform';
+    const levels = props.colorLevels.name === 'on' && props.colorBy !== 'uniform';
+    const one = partColor ?? props.color;
+    const uniform = props.colorBy === 'uniform' || (partColor !== undefined && !levels);
     const color = {
       granularity: uniform ? 'uniform' : 'group',
       color: (location: { species?: number }) =>
-        uniform || location.species === undefined ? props.color : colorOf(names[location.species]),
+        uniform || location.species === undefined ? one : colorOf(names[location.species]),
       props: {},
       description: 'Lipid species',
     } as unknown as ColorTheme<any>;
@@ -999,8 +1060,13 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
       instanceGranularity: byAtom,
     };
     const values = Spheres.Utils.createValues(spheres, transform, locationIterator, theme, p);
-    membraneColorLevels(values, props, n, lipids, (g) =>
-      byAtom ? elementColor(elements![g]) : colorOf(names[lipidSpecies[g]]),
+    membraneColorLevels(
+      values,
+      props,
+      n,
+      lipids,
+      (g) => (byAtom ? elementColor(elements![g]) : colorOf(names[lipidSpecies[g]])),
+      one,
     );
     clipped.set(values, p);
     building.push(values);
@@ -1073,7 +1139,6 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
     selectionParams.facing = props.clip.objects.length > 0 ? 0 : FacingMargin;
     const t0 = performance.now();
     selection.select(view.cameraPlane, view.frustum, view.lod.depthScale, view.lod.pixelSize, selectionParams);
-    partsShown = selection.partShown;
     showParts();
     // timed here, not in the selection: its view step allocates nothing (review S3)
     selectTimes.set(selection, performance.now() - t0);
@@ -1159,6 +1224,18 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
       return c === undefined ? byDefault(name) : Color(c);
     };
     const hidden = new Set(props.hiddenSpecies);
+    // a cell's membranes (round 7 item 2): a hidden part's leaflets take no budget, no member and no surface
+    const hiddenParts = new Set(props.hiddenParts);
+    const partName = (l: CutLeaflet) => (l.part === undefined ? undefined : data.parts?.[l.part]?.name);
+    const partHidden = (l: CutLeaflet) => {
+      const name = partName(l);
+      return name !== undefined && hiddenParts.has(name);
+    };
+    const partColor = (l: CutLeaflet) => {
+      const name = partName(l);
+      const c = name === undefined ? undefined : props.partColors[name];
+      return c === undefined ? undefined : Color(c);
+    };
     const entries: { visual: number; renderObject: GraphicsRenderObject }[] = [];
     const bounds = Sphere3D.clone(data.sphere);
     groupCount = 0;
@@ -1166,6 +1243,11 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
     let visual = 0;
     // the cuts' counts first (a count pass each, read back), then the whole membrane's instances against the device
     if (!reuse) {
+      const { parts, enclosedBy, whole } = data;
+      visibility =
+        parts && enclosedBy && whole
+          ? createPartVisibility(whole.positions, whole.indices, parts, enclosedBy)
+          : undefined;
       for (const leaflet of data.cut) {
         // the count pass and its readback: one wait on the GPU, not a stretch of the main thread
         await step({ message: `Cutting triangles (${leaflet.name})` });
@@ -1194,21 +1276,21 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
           wholeOf,
           wholeCounts: cutter.counts,
           side: leaflet.name === 'inner' ? -1 : 1,
-          parts: data.parts,
-          enclosedBy: data.enclosedBy,
+          ...(leaflet.part !== undefined && visibility ? { visibility, part: leaflet.part } : {}),
         });
         made.push(cutter);
         current();
         cuts.push(cutter);
       }
     }
-    // a pool a member, its capacity a share of the budget (`poolCapacities`), a selection a leaflet
+    // a pool a member, its capacity a share of the budget (`poolCapacities`: water-filled across the leaflets, round 7),
+    // a selection a leaflet (a part and leaflet of a cell's membranes); a hidden part's none
     // tiles: their lost parts cut whole, no far look (the cutter's alone; review S6)
     const cutter = data.method === 'cutter';
     const budget = cutter ? props.budget : Infinity;
     const inputs = cuts.map((c) => cutInputs.get(c)!);
     const capacities = poolCapacities(
-      inputs.map((input) => slotTotals(input, budget)),
+      inputs.map((input, c) => (partHidden(data.cut[c]) ? new Uint32Array(input.members) : slotTotals(input, budget))),
       budget,
     );
     const pools = inputs.map((input, c) => createLipidSelection(input, capacities[c]));
@@ -1252,6 +1334,7 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
             poolWriter(cutter, m, pools[c], lipidSize(table)),
             colorOf,
             member.elements,
+            partColor(leaflet),
           ),
         });
       }
@@ -1310,16 +1393,19 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
     const nextTextures: Texture[] = [];
     if (props.far !== 'spheres') {
       const surfaces = [
-        ...data.cut.map((l) => ({ ...l, offset: 0 })),
-        ...data.leaflets.map((l) => ({ ...l, offset: l.tileSet.offset })),
+        ...data.cut.filter((l) => !partHidden(l)).map((l) => ({ ...l, offset: 0, far: partColor(l) })),
+        ...data.leaflets.map((l) => ({ ...l, offset: l.tileSet.offset, part: undefined, far: undefined })),
       ];
+      const levels = props.colorLevels.name === 'on' && props.colorBy !== 'uniform';
       const enter = enterPx(props.far, props.atomsPx, props.spheresPx);
       for (const leaflet of surfaces) {
         const { table } = leaflet;
         const size = lipidSize(table);
         const shown = (sp: number) => !hidden.has(table.species[sp]);
-        const speciesColor = (sp: number) =>
-          props.colorBy === 'uniform' || sp < 0 ? props.color : colorOf(table.species[sp]);
+        // a part's colour: the surface's far colour by zoom, all of its texture without (round 7 item 2)
+        const one = leaflet.far ?? props.color;
+        const flat = props.colorBy === 'uniform' || (leaflet.far !== undefined && !levels);
+        const speciesColor = (sp: number) => (flat || sp < 0 ? one : colorOf(table.species[sp]));
         // a cut leaflet's two (round 4c item 7): beneath its lipids at the lowest head, coarser, where they are drawn
         // (the gaps between them, no gap at any distance), and where its spheres stop the one that takes over, coloured
         // as they show the patch, at their tops; a tiles leaflet's beneath its tiles, always
@@ -1338,25 +1424,20 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
         const beneath = (leaflet.name === 'outer' ? 1 : -1) * NearLift;
         for (const fade of cut ? (['near', 'far'] as const) : ([undefined] as const)) {
           const lift = fade === 'far' ? top : fade === 'near' ? beneath : head;
-          const whole = patchSurface(leaflet.mesh, leaflet.regions, leaflet.name, lift);
-          // round 6: a surface a part (a cell's membrane), hidden with its lipids where it is enclosed (`partShown`);
-          // the surface is a vertex a triangle's corner, so a part's is a range of it
-          const parts = cut && data.parts ? data.parts : [undefined];
-          for (let part = 0; part < parts.length; ++part) {
-            const range = parts[part];
-            const f = range ? partOfSurface(whole, range.start, range.end) : whole;
-            const patchShifts = patchTable(graphics, leaflet.regions, f.shifts);
-            made.push(patchShifts);
-            nextTextures.push(patchShifts);
-            const object = patchObject(f, [patch, patchShifts], table, leaflet.regions, size, props, !!fade);
-            if (fade) {
-              const values = object.values as BaseValues;
-              nextFading.push({ values, size, near: fade === 'near' });
-              fadeSurface(values, size, enter, fade === 'near', lastLod.depthScale, lastLod.pixelSize);
-            }
-            if (range) nextPartSurfaces.push({ object, part });
-            out.push(object);
+          // round 6: a surface a part (a cell's membrane), hidden with its lipids where it is enclosed (`showParts`);
+          // round 7: a cut leaflet a part, its surface its own
+          const f = patchSurface(leaflet.mesh, leaflet.regions, leaflet.name, lift);
+          const patchShifts = patchTable(graphics, leaflet.regions, f.shifts);
+          made.push(patchShifts);
+          nextTextures.push(patchShifts);
+          const object = patchObject(f, [patch, patchShifts], table, leaflet.regions, size, props, !!fade, one);
+          if (fade) {
+            const values = object.values as BaseValues;
+            nextFading.push({ values, size, near: fade === 'near' });
+            fadeSurface(values, size, enter, fade === 'near', lastLod.depthScale, lastLod.pixelSize);
           }
+          if (cut && leaflet.part !== undefined) nextPartSurfaces.push({ object, part: leaflet.part });
+          out.push(object);
         }
       }
     }
@@ -1627,6 +1708,11 @@ export const LipidMembrane = PluginStateTransform.BuiltIn({
         runtime,
       );
       if (typeof data === 'string') throw new Error(data);
+      if (data.unmixed?.length) {
+        plugin.log.warn(
+          `The lipid patch lacks a species of the mix of ${data.unmixed.join(', ')}: cut from the patch as it is.`,
+        );
+      }
       if (!canDrawLipidMembranes(plugin)) {
         plugin.log.warn('Lipid membranes are drawn with WebGPU only: switch the backend to WebGPU to see this one.');
       }

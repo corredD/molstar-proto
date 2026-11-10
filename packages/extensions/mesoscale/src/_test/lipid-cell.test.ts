@@ -7,14 +7,21 @@
 import { describe, expect, it } from 'vitest';
 import { Vec3 } from '@molstar/core/math/linear-algebra/3d/vec3';
 import { CellKinds, cutterRegions } from '../lipids/cutter.js';
-import { concatMeshes } from '../lipids/membrane.js';
-import { createLipidSelection, poolCapacities, type SelectionInput, wholeTriangles } from '../lipids/procedural.js';
+import { concatMeshes, partMesh } from '../lipids/membrane.js';
+import {
+  createLipidSelection,
+  createPartVisibility,
+  poolCapacities,
+  type SelectionInput,
+  wholeTriangles,
+} from '../lipids/procedural.js';
 import { icosphere, type TriMesh } from '../lipids/remesh.js';
 import { enclosures, insidePart, triangleTree } from '../lipids/triangle-tree.js';
 import { view } from './lipid-selection-cases.js';
 
-// A cell's membranes wrapped as one (lipid-procedural round 6): parts of one mesh, one budget nearest first across them,
-// an enclosed part hidden while the eye is outside its encloser.
+// A cell's membranes wrapped as one (lipid-procedural round 6): parts of one mesh, an enclosed part hidden while the eye
+// is outside its encloser; round 7: a selection a part and leaflet, the budget water-filled across them (no longer one
+// budget nearest first across parts: a part's colour needs its own objects, so its own pools).
 
 const box = [154, 154] as const;
 const Params = { lipidSize: 8, enterPx: 2, keep: 0.8, facing: 60 };
@@ -24,41 +31,37 @@ function shifted(m: TriMesh, x: number): TriMesh {
   return { positions, indices: m.indices };
 }
 
-/** parts as a selection's input, every triangle a whole unit of 3 lipids a member */
-function cell(meshes: TriMesh[], capacity: number) {
+/**
+ * parts as selections (round 7: a selection a part, which parts are shown the cell's), every triangle a whole unit of 3
+ * lipids a member
+ */
+function cell(meshes: TriMesh[]) {
   const { mesh, parts } = concatMeshes(
     meshes,
     meshes.map((_, i) => `part ${i}`),
   );
-  const { positions, indices } = mesh;
-  const regions = cutterRegions(positions, indices, 7);
-  const { wholeOf, count } = wholeTriangles(positions, indices, regions, box);
-  const enclosedBy = enclosures(triangleTree(positions, indices, parts), positions, indices);
-  const input: SelectionInput = {
-    positions,
-    indices,
-    regions,
-    box,
-    members: 2,
-    kinds: new Uint32Array(2 * CellKinds).fill(3),
-    wholeOf,
-    wholeCounts: new Uint32Array(2 * count).fill(3),
-    side: 1,
-    parts,
-    enclosedBy,
-  };
-  const [cap] = poolCapacities([Uint32Array.of(1e9, 1e9)], capacity);
-  return { input, parts, enclosedBy, selection: createLipidSelection(input, cap), cap };
-}
-
-/** per part the units the selection took */
-function unitsByPart(c: ReturnType<typeof cell>) {
-  const out = c.parts.map(() => 0);
-  for (let i = 0; i < c.selection.count; ++i) {
-    const t = c.selection.units[i * 3];
-    out[c.parts.findIndex((p) => t >= p.start && t < p.end)] += 1;
-  }
-  return out;
+  const regions = cutterRegions(mesh.positions, mesh.indices, 7);
+  const enclosedBy = enclosures(triangleTree(mesh.positions, mesh.indices, parts), mesh.positions, mesh.indices);
+  const visibility = createPartVisibility(mesh.positions, mesh.indices, parts, enclosedBy);
+  const selections = parts.map((part, p) => {
+    const own = partMesh(mesh, regions, part);
+    const { wholeOf, count } = wholeTriangles(own.mesh.positions, own.mesh.indices, own.regions, box);
+    const input: SelectionInput = {
+      positions: own.mesh.positions,
+      indices: own.mesh.indices,
+      regions: own.regions,
+      box,
+      members: 2,
+      kinds: new Uint32Array(2 * CellKinds).fill(3),
+      wholeOf,
+      wholeCounts: new Uint32Array(2 * count).fill(3),
+      side: 1,
+      visibility,
+      part: p,
+    };
+    return createLipidSelection(input, Uint32Array.of(1e7, 1e7));
+  });
+  return { parts, enclosedBy, visibility, selections };
 }
 
 describe('a cell’s membranes as one (round 6)', () => {
@@ -90,40 +93,41 @@ describe('a cell’s membranes as one (round 6)', () => {
   });
 
   it('hides an enclosed part while the eye is outside its encloser, shows it inside and under a clip', () => {
-    const c = cell([icosphere(2000, 200), icosphere(1600, 200)], 1e7);
-    // outside, close over the outer one: only it
+    const c = cell([icosphere(2000, 200), icosphere(1600, 200)]);
+    const select = (v: ReturnType<typeof view>, p = Params) => {
+      for (const s of c.selections) s.select(v.plane, v.frustum, v.depthScale, 0, p);
+      return c.selections.map((s) => s.count);
+    };
+    // outside, close over the outer one: only it (the inner one's selection takes nothing)
     const out = view(Vec3.create(0, 0, 2400), Vec3.create(0, 0, 0));
-    c.selection.select(out.plane, out.frustum, out.depthScale, 0, Params);
-    expect(Array.from(c.selection.partShown)).toEqual([1, 0]);
-    const [o, i] = unitsByPart(c);
+    const [o, i] = select(out);
+    expect(Array.from(c.visibility.shown)).toEqual([1, 0]);
     expect(o).toBeGreaterThan(0);
     expect(i).toBe(0);
     // inside the outer one, looking at the inner: both
     const inside = view(Vec3.create(0, 0, 1850), Vec3.create(0, 0, 0));
-    c.selection.select(inside.plane, inside.frustum, inside.depthScale, 0, Params);
-    expect(Array.from(c.selection.partShown)).toEqual([1, 1]);
-    expect(unitsByPart(c)[1]).toBeGreaterThan(0);
+    expect(select(inside)[1]).toBeGreaterThan(0);
+    expect(Array.from(c.visibility.shown)).toEqual([1, 1]);
     // a clip (no facing): every part
-    c.selection.select(out.plane, out.frustum, out.depthScale, 0, { ...Params, facing: 0 });
-    expect(Array.from(c.selection.partShown)).toEqual([1, 1]);
+    select(out, { ...Params, facing: 0 });
+    expect(Array.from(c.visibility.shown)).toEqual([1, 1]);
   });
 
-  it('shares one budget across parts, nearest first', () => {
-    // two spheres side by side, the eye nearer the first: a budget that holds part of what is in reach
-    const near = icosphere(1000, 150);
-    const far = shifted(icosphere(1000, 150), 2600);
-    const c = cell([near, far], 6000);
-    const v = view(Vec3.create(-1500, 0, 1800), Vec3.create(1300, 0, 0));
-    c.selection.select(v.plane, v.frustum, v.depthScale, 0, { ...Params, facing: 0 });
-    let live = 0;
-    for (const n of c.selection.live) live += n;
-    let room = 0;
-    for (const n of c.cap) room += n;
-    expect(live).toBeGreaterThan(0);
-    expect(live).toBeLessThanOrEqual(room);
-    const [a, b] = unitsByPart(c);
-    // the budget binds (not everything in reach taken) and the near part fills first
-    expect(c.selection.inView).toBeGreaterThan(c.selection.count);
-    expect(a).toBeGreaterThan(b);
+  it('shares the budget a pool a part and leaflet, water-filled: a small membrane whole, the large ones alike (round 7)', () => {
+    // a peroxisome's leaflet, a vacuole's, a PM's (lipids a member): the budget holds a fifth of them
+    const totals = [Uint32Array.of(100, 100), Uint32Array.of(5000, 5000), Uint32Array.of(20000, 20000)];
+    const budget = 10_200;
+    const caps = poolCapacities(totals, budget);
+    const sum = (a: Uint32Array) => a.reduce((x, y) => x + y, 0);
+    // the small one whole (a share by area gave it 23 a member: a close view of it a few lipids wide)
+    expect(Array.from(caps[0])).toEqual([100, 100]);
+    // the others the level each (+10 %), their share of the rest
+    expect(sum(caps[1])).toBe(sum(caps[2]));
+    expect(sum(caps[1])).toBeCloseTo(((budget - 200) / 2) * 1.1, -1);
+    let all = 0;
+    for (const c of caps) all += sum(c);
+    expect(all).toBeLessThanOrEqual(budget * 1.1);
+    // all of it where it fits
+    expect(poolCapacities(totals, 1e6).map((c) => Array.from(c))).toEqual(totals.map((t) => Array.from(t)));
   });
 });

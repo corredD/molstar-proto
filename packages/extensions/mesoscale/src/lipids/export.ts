@@ -55,8 +55,16 @@ export function relionAngles(m: ArrayLike<number>, o: number, out: { rot: number
   return out;
 }
 
-/** The STAR file of `data`'s cut leaflets, a chunk of `chunk` triangles a string; species in `hidden` left out */
-export function* membraneStar(data: MembraneData, hidden: ReadonlySet<string> = new Set(), chunk = 256) {
+/**
+ * The STAR file of `data`'s cut leaflets, a chunk of `chunk` triangles a string; species in `hidden` left out, and the
+ * parts (a cell's membranes) in `hiddenParts` (round 7; a triangle numbered within its part)
+ */
+export function* membraneStar(
+  data: MembraneData,
+  hidden: ReadonlySet<string> = new Set(),
+  chunk = 256,
+  hiddenParts: ReadonlySet<string> = new Set(),
+) {
   yield Header;
   const cut = emptyCut();
   const affine = new Float32Array(16);
@@ -64,6 +72,7 @@ export function* membraneStar(data: MembraneData, hidden: ReadonlySet<string> = 
   const lines: string[] = [];
   const f = (x: number) => x.toFixed(2);
   for (const leaflet of data.cut) {
+    if (leaflet.part !== undefined && hiddenParts.has(data.parts?.[leaflet.part]?.name ?? '')) continue;
     const { table, mesh, regions } = leaflet;
     const T = mesh.indices.length / 3;
     for (let t0 = 0; t0 < T; t0 += chunk) {

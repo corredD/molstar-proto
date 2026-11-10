@@ -30,12 +30,16 @@ function atomLine(serial: number, name: string, resName: string, resSeq: number,
 
 /**
  * A periodic bilayer as CHARMM-GUI writes one (no CRYST1): lipids on a triangular lattice of spacing 8 Å (`columns` ×
- * `rows`), a head `P` (or `O3` for CHL1) and two chains of 1.5 Å steps 3.5 Å apart, wiggling ≤ 0.6 Å; three species by
- * a hash; the outer leaflet's heads at z 20, the inner's at −20, or per species at `heads` (a lipid moved along z whole)
+ * `rows`), a head `P` (or `O3` for CHL1) and two chains of 1.5 Å steps 3.5 Å apart, wiggling ≤ 0.6 Å; `species` (three
+ * by default) by a hash; the outer leaflet's heads at z 20, the inner's at −20, or per species at `heads` (a lipid moved along z whole)
  */
-export function syntheticPatchPdb(columns = 12, rows = 14, heads: Readonly<Record<string, number>> = {}) {
+export function syntheticPatchPdb(
+  columns = 12,
+  rows = 14,
+  heads: Readonly<Record<string, number>> = {},
+  species: readonly string[] = ['POPC', 'POPE', 'CHL1'],
+) {
   const lines: string[] = [];
-  const species = ['POPC', 'POPE', 'CHL1'];
   let serial = 1;
   let res = 1;
   const spacing = 8;
@@ -43,7 +47,7 @@ export function syntheticPatchPdb(columns = 12, rows = 14, heads: Readonly<Recor
     for (let r = 0; r < rows; ++r) {
       for (let c = 0; c < columns; ++c) {
         const id = res;
-        const name = species[Math.floor(random01(7, id) * 3)];
+        const name = species[Math.floor(random01(7, id) * species.length)];
         const x = (c + (r % 2) * 0.5) * spacing + (side < 0 ? 2 : 0);
         const y = r * spacing * 0.866;
         const head = heads[name] ?? 20;

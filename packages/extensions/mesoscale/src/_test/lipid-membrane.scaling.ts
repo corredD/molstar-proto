@@ -5,12 +5,7 @@
  */
 
 import { expect, it } from 'vitest';
-import {
-  checkLinear,
-  describeScaling,
-  quadraticControl,
-  scaling,
-} from '@molstar/test-harness/scaling';
+import { checkLinear, describeScaling, quadraticControl, scaling } from '@molstar/test-harness/scaling';
 import { assignReference, assignSlots } from '../lipids/assign.js';
 import {
   CellKinds,
@@ -30,6 +25,7 @@ import { farSurface, patchRaster, patchSurface } from '../lipids/far-surface.js'
 import { farTriangles, icosphere, isotropicRemesh, type TriMesh } from '../lipids/remesh.js';
 import {
   createLipidSelection,
+  createPartVisibility,
   estimateLipids,
   poolCapacities,
   slotTotals,
@@ -364,12 +360,18 @@ it('a close view over a mesh of N triangles costs what is in reach, not N (round
             wholeOf,
             wholeCounts: new Uint32Array(2 * count).fill(3),
             side: 1,
-            // two parts, the second called enclosed by the first: the viewer's parity test runs every view (review S6)
-            parts: [
-              { start: 0, end: T / 2, name: 'a' },
-              { start: T / 2, end: T, name: 'b' },
-            ],
-            enclosedBy: [new Int32Array(0), Int32Array.of(0)],
+            // two parts, the second called enclosed by the first: the viewer's parity test runs every view (review S6;
+            // round 7: the cell's visibility, once a view, this selection the first part's)
+            visibility: createPartVisibility(
+              positions,
+              indices,
+              [
+                { start: 0, end: T / 2, name: 'a' },
+                { start: T / 2, end: T, name: 'b' },
+              ],
+              [new Int32Array(0), Int32Array.of(0)],
+            ),
+            part: 0,
           },
           Uint32Array.of(1_000_000, 1_000_000),
         );

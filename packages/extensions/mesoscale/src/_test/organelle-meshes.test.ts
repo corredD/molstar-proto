@@ -92,4 +92,48 @@ describe('organelle meshes (the yeast cell viewer’s organelle_meshes.bin)', ()
     // the meshes hidden under it, as one mesh's
     for (const ref of refs) expect(plugin.state.data.cells.get(ref)!.state.isHidden).toBe(true);
   });
+
+  it('shows, hides and colours each part with a particle list’s operations: one step each, the cut kept (round 7)', async () => {
+    const base = DefaultPrismViewerSpec();
+    const v = await createPrismViewerHeadless({
+      spec: { ...base, extensions: [...(base.extensions ?? []), MesoscaleExtension] },
+    });
+    viewers.push(v);
+    const plugin = v.plugin;
+    const data = await plugin.builders.data.rawData({ data: two(), label: 'organelle_meshes.bin' });
+    await OrganelleMeshesProvider.visuals!(plugin, await OrganelleMeshesProvider.parse(plugin, data));
+    const refs = plugin.state.data.selectQ((q) => q.ofType(SO.Shape.Provider)).map((c) => c.transform.ref);
+    const r = await v.api.mesoscale!.wrapMembrane({ meshes: refs.join(','), patch: 'organelle-patch' });
+    if (!r.ok) expect.fail(r.error.message);
+    const membrane = r.changed!.nodes![0];
+    const cell = () => plugin.state.data.cells.get(membrane)!;
+    const params = () => cell().transform.params as { hiddenParts: string[]; partColors: Record<string, number> };
+    const source = (cell().obj!.data as { sourceData: unknown }).sourceData;
+    const steps = () => v.api.history.steps.value.length;
+    const run = async (id: string, p: Record<string, unknown>) => {
+      const before = steps();
+      const out = await v.api.run(id, { particles: membrane, ...p });
+      expect(out.ok, `${id} ${out.message}`).toBe(true);
+      expect(steps(), id).toBe(before + 1);
+    };
+    await run('mesoscale.style', { parts: 'VAC', visible: false });
+    expect(params().hiddenParts).toEqual(['VAC']);
+    await run('mesoscale.style', { parts: 'PM', color: 'tomato' });
+    expect(params().partColors).toEqual({ PM: 0xff6347 });
+    await run('mesoscale.colors', { parts: '', scheme: 'generate' });
+    expect(Object.keys(params().partColors).sort()).toEqual(['PM', 'VAC']);
+    await run('mesoscale.colors', { parts: 'PM,VAC', scheme: 'theme' });
+    expect(params().partColors).toEqual({});
+    // drawn again, never cut again: the same data
+    expect((cell().obj!.data as { sourceData: unknown }).sourceData).toBe(source);
+    // one undo, one step back: the colours generated again
+    expect((await v.api.history.undo({})).ok).toBe(true);
+    expect(Object.keys(params().partColors).sort()).toEqual(['PM', 'VAC']);
+    // an unknown part is named; a list's options refused
+    const unknown = await v.api.run('mesoscale.style', { particles: membrane, parts: 'NOPE', visible: false });
+    expect(unknown.ok).toBe(false);
+    expect(unknown.message).toContain('NOPE');
+    const glow = await v.api.run('mesoscale.style', { particles: membrane, parts: 'PM', emissive: 0.5 });
+    expect(glow.ok).toBe(false);
+  });
 });
