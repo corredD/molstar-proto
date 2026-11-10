@@ -1074,18 +1074,22 @@ function cutAtomsOnly(props: LipidMembraneReprProps) {
 }
 
 /**
- * Whether `b` differs from `a` by its middle look alone (the gate's S2): its look or its atoms' px, the cut lipids'
- * levels the same (`cutAtomsOnly`): a raster, uniforms and a selection anew, nothing built again
+ * Whether `b` differs from `a` by its middle look alone (the gate's S2): its look or its atoms' px (under a middle look,
+ * the cut band's px too), the cut lipids' levels the same (`cutAtomsOnly`): a raster, uniforms and a selection anew,
+ * nothing built again
  */
 function onlyMiddle(a: LipidMembraneReprProps, b: LipidMembraneReprProps) {
-  if (a.middle === b.middle && a.middlePx === b.middlePx) return false;
-  if (cutAtomsOnly(a) !== cutAtomsOnly(b)) return false;
+  // under a middle look on both sides the far look's switches set the cut band's px alone (the gate's S5)
+  const band = middleOn(a) && middleOn(b);
+  const keys = (k: keyof LipidMembraneReprProps) =>
+    k === 'middle' || k === 'middlePx' || (band && (k === 'spheresPx' || k === 'atomsPx'));
+  let changed = false;
   for (const k of Object.keys(b) as (keyof LipidMembraneReprProps)[]) {
-    if (k !== 'middle' && k !== 'middlePx' && a[k] !== b[k] && JSON.stringify(a[k]) !== JSON.stringify(b[k])) {
-      return false;
-    }
+    if (a[k] === b[k] || JSON.stringify(a[k]) === JSON.stringify(b[k])) continue;
+    if (!keys(k)) return false;
+    changed = true;
   }
-  return true;
+  return changed && cutAtomsOnly(a) === cutAtomsOnly(b);
 }
 
 /** Whether `b` differs from `a` by its clip alone */
