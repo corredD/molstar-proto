@@ -26,7 +26,15 @@ import type { Loci } from '@molstar/model/model/loci';
 import { cssColor } from '@molstar/mesoscale-extension/color-file';
 import { registerParticleListOwner } from '@molstar/mesoscale-extension/owner';
 import { Color } from '@molstar/core/util/color';
-import { type CameraHere, type DocumentViews, MesoDocumentModel } from './document-model.js';
+import { type CompileProgress, isAbort } from '@molstar/meso-spec/runtime';
+import { Task } from '@molstar/core/task';
+import {
+  type CameraHere,
+  type DocumentViews,
+  MesoDocumentModel,
+  type MesoDocumentOptions,
+} from './document-model.js';
+import { editAsTask } from './edit-task.js';
 import { blockedResult, DocumentListOwner } from './list-owner.js';
 import { documentVisible, type DocumentGroupBy, type DocumentLooks, type DocumentOutline } from './document-tree.js';
 import { openAddresses } from './prism-viewer.js';
@@ -45,6 +53,8 @@ declare module '@molstar/prism-viewer/api' {
 export interface MesoViewSpecOptions {
   /** A resource's text by absolute address; default: the viewer's asset manager. */
   readonly fetchText?: (url: string) => Promise<string | undefined>;
+  /** The resolvers a document's models are resolved by; default: the runtime's (`DefaultResolvers`). */
+  readonly resolvers?: MesoDocumentOptions['resolvers'];
 }
 
 /** What `mesoviewspec.save` gives. */
@@ -159,7 +169,10 @@ export class MesoViewSpecApi extends ApiArea {
           },
         },
       },
-      { fetchText: options.fetchText ?? ((url) => fetchWithAssets(ctx, url)) },
+      {
+        fetchText: options.fetchText ?? ((url) => fetchWithAssets(ctx, url)),
+        ...(options.resolvers ? { resolvers: options.resolvers } : {}),
+      },
     );
     this.#unregister = this.model.register();
     this.owner = new DocumentListOwner(this.model);
@@ -205,6 +218,16 @@ export class MesoViewSpecApi extends ApiArea {
             a.views === b.views &&
             sameIssues(a.issues, b.issues)),
       },
+    );
+  }
+
+  /** The model the edit in flight is resolving, and how far it is (models done of the total); nothing between edits. */
+  progressState(): ReadonlyState<CompileProgress | undefined> {
+    const model = this.model;
+    return watchedState(
+      () => model.progress,
+      () => model.resolving,
+      { compare: (a, b) => a?.model === b?.model && a?.done === b?.done && a?.total === b?.total },
     );
   }
 
@@ -689,8 +712,12 @@ export class MesoViewSpecApi extends ApiArea {
       if ('ok' in read) return read;
       let step: Awaited<ReturnType<MesoDocumentModel['edit']>>;
       try {
-        step = await this.model.edit(read.patch, ctx.api, 'edit');
+        // a Mol* task in the status pill, with its progress and Cancel; the pill's Cancel or the run's signal stops
+        // the resolution: the step is rolled back, nothing is half-drawn (prism.md §7.2)
+        step = await editAsTask(ctx.plugin, ctx.signal, (run) => this.model.edit(read.patch, ctx.api, 'edit', run));
       } catch (e) {
+        // a stop is the run's abort (Prism rolls the step back), not a patch that could not be applied
+        if (isAbort(e) || Task.isAbort(e)) throw e;
         return ApiResult.fail('failed', `Could not apply the patch: ${(e as Error).message}`);
       }
       if (step.unchanged) return ApiResult.already('It is already so.');

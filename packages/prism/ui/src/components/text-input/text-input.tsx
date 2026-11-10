@@ -22,6 +22,8 @@ export interface TextInputProps {
   /** A search or filter field: Escape empties it (then, empty, lets Escape through to close what it is in). */
   search?: boolean;
   size?: 'sm' | 'md';
+  /** Not editable now (e.g. while what it sets is being applied). */
+  disabled?: MaybeReactive<boolean | undefined>;
   class?: string;
   'aria-label'?: string;
 }
@@ -35,6 +37,7 @@ export function TextInput(props: TextInputProps) {
       data-size={props.size ?? 'md'}
       value={props.value}
       placeholder={props.placeholder}
+      disabled={props.disabled}
       aria-label={props['aria-label']}
       onInput={(e) => props.onInput?.((e.currentTarget as HTMLInputElement).value)}
       onKeyDown={(e) => {

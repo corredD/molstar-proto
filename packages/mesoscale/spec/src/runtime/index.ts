@@ -28,6 +28,7 @@ export {
   createRandom,
   subSeed,
 } from './random.js';
+export { abortError, drive, isAbort, SliceMs, throwIfAborted } from './cancel.js';
 export {
   type StreamNode,
   type TileProvider,
@@ -48,6 +49,7 @@ export {
 export {
   type RuntimeOptions,
   type CompileStats,
+  type CompileProgress,
   type CompileResult,
   compile,
   classifyEdit,

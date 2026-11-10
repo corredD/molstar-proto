@@ -45,6 +45,7 @@ import {
   runsSize,
   typeRuns,
 } from '@molstar/meso-spec/ir';
+import { isAbort, throwIfAborted } from './cancel.js';
 import { DefaultReaders, meshArea, readerFor } from './readers.js';
 import { level0IR, type TileProvider } from './streaming.js';
 import type {
@@ -76,6 +77,20 @@ export interface RuntimeOptions {
   readonly cache?: Map<string, ResolveOutput>;
   /** The view shown (a person's pick, prism.md §4.4); absent or unknown: `session.view`, else the first. */
   readonly view?: Id;
+  /**
+   * Stops the compile (prism.md §7.2): checked between models and, through `ResolveJob.signal`, in the packers' loops.
+   * A stopped compile rejects with an `AbortError` and keeps no partial result: what finished is the cache's.
+   */
+  readonly signal?: AbortSignal;
+  /** Told before each model that has to resolve (a cache hit is not told): which, and how many are done of how many. */
+  readonly onProgress?: (progress: CompileProgress) => void;
+}
+
+/** A model about to resolve, and how far the compile is (models done of the total, cache hits counted). */
+export interface CompileProgress {
+  readonly model: Id;
+  readonly done: number;
+  readonly total: number;
 }
 
 export interface CompileStats {
@@ -396,7 +411,8 @@ export async function compile(doc: MesoViewSpecDoc, o: RuntimeOptions, depth = 0
     return out;
   };
   const realizes = (m: Model): readonly Id[] => chainOf(m).at(-1)!.populations;
-  for (const m of order) {
+  for (const [at, m] of order.entries()) {
+    throwIfAborted(o.signal);
     const resolver = resolvers.get(m.method);
     const popsOf = realizes(m)
       .map((id) => pops.get(id)!)
@@ -461,6 +477,7 @@ export async function compile(doc: MesoViewSpecDoc, o: RuntimeOptions, depth = 0
       seed: m.seed ?? 1,
       relations: relations.filter((x) => [...x.subjects, ...x.objects].some((id) => realizes(m).includes(id))),
       upstream: upstream?.out,
+      ...(o.signal ? { signal: o.signal } : {}),
     };
     const tr = now();
     let input: unknown;
@@ -484,6 +501,8 @@ export async function compile(doc: MesoViewSpecDoc, o: RuntimeOptions, depth = 0
     const cached = !!out;
     if (out) hits++;
     else {
+      o.onProgress?.({ model: m.id, done: at, total: order.length });
+      throwIfAborted(o.signal);
       try {
         const raw = await resolver.resolve(input, job);
         // the key is the runtime's: sets are stamped with it so an adapter can tell them apart
@@ -491,6 +510,10 @@ export async function compile(doc: MesoViewSpecDoc, o: RuntimeOptions, depth = 0
         runs++;
         cache.set(key, out);
       } catch (e) {
+        // a stop is not a failure of the model: the compile ends with it, nothing half-resolved (whatever the
+        // resolver threw once the signal fired, and whatever the signal's reason)
+        throwIfAborted(o.signal);
+        if (isAbort(e)) throw e;
         issues.push(
           issue('resolver.failed', 'error', 'resolve', `${m.id}: ${resolver.id} threw (${(e as Error).message})`, {
             ids: [m.id],
@@ -505,6 +528,8 @@ export async function compile(doc: MesoViewSpecDoc, o: RuntimeOptions, depth = 0
     for (const i of out.issues ?? []) issues.push(i);
     placed.set(m.id, job.populations);
   }
+  // a stop during the last model (its resolver finished anyway): no IR stands; what finished is the cache's
+  throwIfAborted(o.signal);
   // counts and constraints on the result that stands: a refined model's are checked at its refiner, unless the
   // refiner failed and the refined result is what is drawn
   for (const m of order) {

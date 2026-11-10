@@ -66,7 +66,11 @@ short of the target) and instances, a superstructure population's parts when ope
 are not rows. Its Group by (its row's properties): Compartment, Model or Kind. A row's eye and Show only are look
 patches saved in the document (one step each); its double click frames its copies; a click in 3D on a document copy
 picks its row; its ⋯: Focus, Show only this, Show all again; the document's also Save and Close. No Move, no Add clip,
-no Color… on a document row (lane `mvs-drive`).
+no Color… on a document row (lane `mvs-drive`). A population's Built by changes the biology (lane `mvs-model-edits`):
+its count of copies and its model's seed (type, Enter), Add relax stage; while the copies are placed the status names
+the model and Cancel stops it (one step, rolled back), and the edit is a task in the status pill with its own Cancel,
+there whatever row is picked; a value the document would refuse is said under the field, which shows the document's
+value again.
 
 Last under the document, its **Views** row (lane `mvs-views`, prism.md §4.4) lists its views, then its tours. The view
 shown says "shown", the one the saved file opens with "opens with"; a view's description is its tooltip. A click on a

@@ -26,7 +26,7 @@ export {
   type SavedMesoViewSpec,
   type TourPlaying,
 } from './document-model.js';
-export { type EditRecord, MesoSession, type SessionOptions } from './session.js';
+export { type EditRecord, type EditRun, MesoSession, type SessionOptions } from './session.js';
 export {
   type Counts,
   type DocumentGroupBy,
@@ -40,3 +40,4 @@ export {
   documentVisible,
 } from './document-tree.js';
 export type { DocumentTree, MesoViewSpecApi, MesoViewSpecOptions, ReadonlyState } from './extension.js';
+export { countPatch, type ModelEdit, relaxPatch, seedPatch } from './model-edits.js';

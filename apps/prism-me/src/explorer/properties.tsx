@@ -6,7 +6,16 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import type { DocumentGroupBy, DocumentRow, DocumentTree, MesoViewSpecApi } from '@molstar/meso-molstar';
+import {
+  countPatch,
+  type DocumentGroupBy,
+  type DocumentRow,
+  type DocumentTree,
+  type MesoViewSpecApi,
+  type ModelEdit,
+  relaxPatch,
+  seedPatch,
+} from '@molstar/meso-molstar';
 import { DocumentGroupings, type DocumentRef } from './document.js';
 import { Mat4, Quat, Vec3 } from '@molstar/core/math/linear-algebra';
 import { Color } from '@molstar/core/util/color';
@@ -440,7 +449,7 @@ export const Sections: readonly Section[] = [
     id: 'built-by',
     title: 'Built by',
     when: (s) => !!s.document && ['population', 'instance'].includes(s.picked.kind) && !!s.picked.doc,
-    render: (s) => <DocumentBlocks blocks={documentBlocks(s, builtByBlocks)} none="No model placed it." />,
+    render: (s) => <BuiltBy s={s} />,
   },
   {
     // the session's issues, by phase, on the document's own row (prism.md §4.3)
@@ -730,6 +739,144 @@ function builtByBlocks(model: DocModel, tree: DocumentTree, row: DocumentRow | u
   return out;
 }
 
+/**
+ * Built by: the model that placed the population or instance, and, for a population, the edits its document allows
+ * (prism.md §4.3, §7.2): its count of copies, its model's seed, Add relax stage. Each is a patch through
+ * `mesoviewspec.edit`, one step, the copies drawn again by the models that changed only; what the document would refuse
+ * is said under the fields and nothing is sent.
+ */
+function BuiltBy(props: { s: Subject }) {
+  const { s } = props;
+  return (
+    <div class={classes.stack}>
+      <DocumentBlocks blocks={documentBlocks(s, builtByBlocks)} none="No model placed it." />
+      <Show when={mapState(s.document!, () => s.picked.kind === 'population')}>{() => <ModelEdits s={s} />}</Show>
+    </div>
+  );
+}
+
+/** The population's count, its model's seed and Add relax stage, over the document as it is now */
+function ModelEdits(props: { s: Subject }) {
+  const { s } = props;
+  const id = s.picked.doc!.id;
+  const model = s.api.mesoviewspec!.model;
+  // the document as the tree has it: a field follows an edit (an Undo, another patch)
+  const now = mapState(
+    s.document!,
+    (tree) => {
+      const doc = model.doc;
+      const row = tree?.outline.row(id);
+      const pop = doc?.populations.find((p) => p.id === id);
+      const abundance = pop?.abundance as { count?: number } | undefined;
+      const m = row?.model ? doc?.models?.find((x) => x.id === row.model) : undefined;
+      const relax = doc && m ? relaxPatch(doc, m.id) : undefined;
+      return {
+        count: abundance?.count,
+        model: m?.id,
+        seed: m ? (m.seed ?? 1) : undefined,
+        relax: !!relax?.patch,
+      };
+    },
+    (a, b) => a.count === b.count && a.model === b.model && a.seed === b.seed && a.relax === b.relax,
+  );
+  const said = observableState('');
+  // what the fields show: the document's values, written again when an edit does not go through (refused, stopped,
+  // failed, or dropped while another runs) so a field never keeps a value the document does not have; told on every
+  // set, even an equal one, since the field's own text may differ
+  const always = { compare: () => false };
+  const countText = observableState('', always);
+  const seedText = observableState('', always);
+  const reset = () => {
+    countText.set(String(now.value.count ?? ''));
+    seedText.set(String(now.value.seed ?? ''));
+  };
+  effect(now, reset);
+  // the edit in flight: Cancel stops its resolution (the step is rolled back: nothing is half-drawn); the status
+  // pill's task has its Cancel too, whatever row is picked
+  const running = observableState<AbortController | undefined>(undefined);
+  const busy = mapState(running.asReadonly, (c) => !!c);
+  const progress = s.api.mesoviewspec!.progressState();
+  const send = async (make: (doc: DocData) => ModelEdit) => {
+    const doc = model.doc;
+    if (!doc) return;
+    // one edit at a time: the fields are disabled while one runs, and a value that comes anyway is dropped
+    if (running.value) return reset();
+    const edit = make(doc);
+    said.set(edit.refused ?? '');
+    if (!edit.patch) return reset();
+    const ctl = new AbortController();
+    running.set(ctl);
+    try {
+      const r = await s.api.run('mesoviewspec.edit', { patch: JSON.stringify(edit.patch) }, { signal: ctl.signal });
+      if (!r.ok) {
+        said.set(r.code === 'aborted' ? 'Stopped: nothing changed.' : r.message);
+        reset();
+      }
+    } finally {
+      running.set(undefined);
+    }
+  };
+  const number = (text: string) => (text.trim() === '' ? Number.NaN : Number(text));
+  return (
+    <div class={classes.tight}>
+      <Show when={mapState(now, (n) => n.count !== undefined)}>
+        {() => (
+          <Line label="Copies asked for">
+            <TextInput
+              size="sm"
+              aria-label="Copies asked for"
+              value={countText.asReadonly}
+              disabled={busy}
+              onSubmit={(v) => void send((doc) => countPatch(doc, id, number(v)))}
+            />
+          </Line>
+        )}
+      </Show>
+      <Show when={mapState(now, (n) => n.seed !== undefined)}>
+        {() => (
+          <Line label="Seed">
+            <TextInput
+              size="sm"
+              aria-label="Seed"
+              value={seedText.asReadonly}
+              disabled={busy}
+              onSubmit={(v) => void send((doc) => seedPatch(doc, now.value.model ?? '', number(v)))}
+            />
+          </Line>
+        )}
+      </Show>
+      <Show when={mapState(now, (n) => n.relax)}>
+        {() => (
+          <Line>
+            <Button
+              size="sm"
+              variant="ghost"
+              class={classes.fit}
+              icon={<Icon name="plus" />}
+              disabled={busy}
+              onClick={() => void send((doc) => relaxPatch(doc, now.value.model ?? ''))}
+            >
+              Add relax stage
+            </Button>
+          </Line>
+        )}
+      </Show>
+      <Show when={busy}>
+        {() => (
+          <Line label="Status">
+            <span>
+              {mapState(progress, (p) => (p ? `Resolving ${p.model} (${p.done + 1} of ${p.total})…` : 'Resolving…'))}
+            </span>
+            <Button size="sm" variant="ghost" class={classes.fit} onClick={() => running.value?.abort()}>
+              Cancel
+            </Button>
+          </Line>
+        )}
+      </Show>
+      <Show when={mapState(said.asReadonly, (m) => m !== '')}>{() => <Hint>{said.asReadonly}</Hint>}</Show>
+    </div>
+  );
+}
 const IssuePhases = [
   ['static', 'Static'],
   ['load', 'Load'],

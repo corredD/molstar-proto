@@ -37,6 +37,8 @@ export interface EditRecord {
   readonly resolverRuns: number;
   readonly cacheHits: number;
   readonly compileMs?: CompileResult['stats']['ms'];
+  /** A model edit: each model, whether it was the cache's (so which resolved again), its key and its time. */
+  readonly models?: CompileResult['stats']['models'];
   readonly commit?: CommitReport;
   readonly totalMs: number;
   /** The streamer's counters after the step, and what its plan asked for (a stream session only). */
@@ -47,6 +49,9 @@ export interface EditRecord {
 
 /** An issue a step carries over: not the adapter's (it reports again) and not the streamer's (it lists all it holds). */
 const kept = (i: Issue) => i.phase !== 'render' && i.code !== 'stream.tile' && i.code !== 'stream.budget';
+
+/** What one edit can be given beyond the document: a signal that stops its resolution, and who to tell as it goes. */
+export type EditRun = Pick<RuntimeOptions, 'signal' | 'onProgress'>;
 
 export type SessionOptions = Omit<RuntimeOptions, 'cache'> & {
   /** With `tiles`: the budget and the loads in flight of the stream (design.md §6.8.5). */
@@ -105,10 +110,14 @@ export class MesoSession {
   }
 
   /** An edit: the next document, or a function of the current one (built when the edit's turn comes). */
-  edit(next: MesoViewSpecDoc | ((doc: MesoViewSpecDoc) => MesoViewSpecDoc), label: string): Promise<EditRecord> {
+  edit(
+    next: MesoViewSpecDoc | ((doc: MesoViewSpecDoc) => MesoViewSpecDoc),
+    label: string,
+    run?: EditRun,
+  ): Promise<EditRecord> {
     return this.queue(() => {
       const doc = typeof next === 'function' ? next(this.doc) : next;
-      return this.run(classifyEdit(this.doc, doc), doc, label);
+      return this.run(classifyEdit(this.doc, doc), doc, label, run);
     });
   }
 
@@ -267,7 +276,12 @@ export class MesoSession {
 
   // The session's state (ir, doc, issues, counts, history) changes only once the commit has succeeded: an edit that
   // fails leaves the session as it was, consistent with what the viewer last drew.
-  private async run(kind: EditRecord['kind'], next: MesoViewSpecDoc, label: string): Promise<EditRecord> {
+  private async run(
+    kind: EditRecord['kind'],
+    next: MesoViewSpecDoc,
+    label: string,
+    run?: EditRun,
+  ): Promise<EditRecord> {
     const t0 = performance.now();
     let record: EditRecord;
     if (kind === 'none') record = { label, kind, resolverRuns: 0, cacheHits: 0, totalMs: 0 };
@@ -278,7 +292,7 @@ export class MesoSession {
       this.issues = [...this.issues.filter(kept), ...issues, ...(commit?.issues ?? [])];
       record = { label, kind, resolverRuns: 0, cacheHits: 0, commit, totalMs: performance.now() - t0, stream };
     } else {
-      const r = await compile(next, { ...this.options, cache: this.cache, view: this.view });
+      const r = await compile(next, { ...this.options, ...run, cache: this.cache, view: this.view });
       const streamed = r.ir ? this.stream(next, r.ir) : undefined;
       const ir = streamed?.ir;
       const commit = ir ? await this.draw(ir) : undefined;
@@ -293,6 +307,7 @@ export class MesoSession {
         resolverRuns: r.stats.resolverRuns,
         cacheHits: r.stats.cacheHits,
         compileMs: r.stats.ms,
+        models: r.stats.models,
         commit,
         totalMs: performance.now() - t0,
         stream: streamed?.stream,

@@ -421,7 +421,7 @@ export const CellpackGpuResolver: Resolver<PackInput & { readonly recipe: string
           ),
         );
     const out = pack(input, job, job.model.id, '');
-    return { ...out, issues };
+    return out instanceof Promise ? out.then((o) => ({ ...o, issues })) : { ...out, issues };
   },
 };
 
