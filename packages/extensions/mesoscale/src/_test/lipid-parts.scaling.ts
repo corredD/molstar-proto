@@ -74,6 +74,7 @@ function cell(P: number) {
       for (let i = 0; i < faded.length; ++i) faded[i] = depthScale * pixelSize + i;
     },
     showParts: () => showPartSurfaces(surfaces, true, visibility),
+    partsVersion: () => visibility.version,
     params: () => params,
   });
   // two views to alternate, the eye far back over the row: every part in view

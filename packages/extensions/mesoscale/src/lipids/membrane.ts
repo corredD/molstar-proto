@@ -1189,6 +1189,7 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
       for (const f of fading) fadeSurface(f.values, f.size, enter, f.near, depthScale, pixelSize);
     },
     showParts,
+    partsVersion: () => visibility?.version,
     params: (size) => {
       selectionParams.lipidSize = size;
       selectionParams.enterPx = builtFor?.method === 'cutter' ? enterPx(props.far, props.atomsPx, props.spheresPx) : 0;

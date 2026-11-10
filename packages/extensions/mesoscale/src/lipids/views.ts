@@ -21,6 +21,8 @@ export interface MembraneViewHost {
   fade: (depthScale: number, pixelSize: number) => void;
   /** the parts' surfaces shown as the cell's visibility says */
   showParts: () => void;
+  /** the cell's visibility's version (`PartVisibility.version`; none: undefined) */
+  partsVersion: () => number | undefined;
   /** the selections' params for the next view (written in place) */
   params: (size: number) => SelectionParams;
 }
@@ -36,6 +38,9 @@ export function createMembraneViews(host: MembraneViewHost) {
   /** each selection's last view's CPU time, ms (`pool`) */
   const times = new WeakMap<LipidSelection, number>();
   const stats = { selects: 0 };
+  /** the size on screen the surfaces were last faded for, and the parts' version last shown (review S1: once a view) */
+  const fadedFor = new Float64Array(2).fill(Number.NaN);
+  let shownVersion: number | undefined;
 
   /** `selection` for `view`, once a view */
   function selectFor(selection: LipidSelection, view: SelectionView, size: number) {
@@ -44,9 +49,15 @@ export function createMembraneViews(host: MembraneViewHost) {
       key = new Float64Array(32).fill(Number.NaN);
       keys.set(selection, key);
     }
-    let same = key[28] === view.lod.depthScale && key[29] === view.lod.pixelSize;
-    // the surfaces' fade follows the size on screen only (a resize, a camera's projection), not every move
-    if (!same) host.fade(view.lod.depthScale, view.lod.pixelSize);
+    const { depthScale, pixelSize } = view.lod;
+    let same = key[28] === depthScale && key[29] === pixelSize;
+    // the surfaces' fade follows the size on screen only (a resize, a camera's projection), not every move, once for
+    // all the selections (review S1)
+    if (fadedFor[0] !== depthScale || fadedFor[1] !== pixelSize) {
+      fadedFor[0] = depthScale;
+      fadedFor[1] = pixelSize;
+      host.fade(depthScale, pixelSize);
+    }
     for (let i = 0; i < 7; ++i) {
       const { normal, constant } = i < 6 ? view.frustum[i as 0] : view.cameraPlane;
       const o = i * 4;
@@ -59,13 +70,18 @@ export function createMembraneViews(host: MembraneViewHost) {
       }
     }
     if (same) return;
-    key[28] = view.lod.depthScale;
-    key[29] = view.lod.pixelSize;
+    key[28] = depthScale;
+    key[29] = pixelSize;
     stats.selects += 1;
     const params = host.params(size);
     const t0 = performance.now();
-    selection.select(view.cameraPlane, view.frustum, view.lod.depthScale, view.lod.pixelSize, params);
-    host.showParts();
+    selection.select(view.cameraPlane, view.frustum, depthScale, pixelSize, params);
+    // the selection decided the cell's visibility for this view (the first of its selections): shown once (review S1)
+    const version = host.partsVersion();
+    if (version !== shownVersion) {
+      shownVersion = version;
+      host.showParts();
+    }
     // timed here, not in the selection: its view step allocates nothing (review S3)
     times.set(selection, performance.now() - t0);
   }

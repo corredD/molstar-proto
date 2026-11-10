@@ -141,6 +141,11 @@ export interface SelectionInput {
 export interface PartVisibility {
   /** per part, 1 where the last view shows it */
   readonly shown: Uint8Array;
+  /**
+   * advances where `shown` may have changed (a new view decided, the hidden parts set): unique across visibilities, so
+   * a view shows the parts' surfaces once, not once a selection (round 7 review S1)
+   */
+  readonly version: number;
   update: (frustum: Frustum3D, facing: boolean) => void;
   /**
    * The parts hidden by the user (round 7 review M1): a hidden encloser hides nothing inside it (one hides the PM to see
@@ -179,6 +184,7 @@ export function createPartVisibility(
     }
     if (same) return;
     key[24] = facing ? 1 : 0;
+    out.version = ++visibilityVersions;
     shown.fill(1);
     if (!facing) return;
     // the viewer: the near plane's center (an orthographic camera has no apex)
@@ -199,9 +205,14 @@ export function createPartVisibility(
   function setHidden(hidden: (part: number) => boolean) {
     for (let q = 0; q < P; ++q) hiddenPart[q] = hidden(q) ? 1 : 0;
     key.fill(Number.NaN);
+    out.version = ++visibilityVersions;
   }
-  return { shown, update, setHidden };
+  const out = { shown, version: ++visibilityVersions, update, setHidden };
+  return out;
 }
+
+/** every visibility's versions from one counter (`PartVisibility.version`) */
+let visibilityVersions = 0;
 
 /** A leaflet's selection: its units in view, nearest first within each member's capacity */
 export interface LipidSelection {
