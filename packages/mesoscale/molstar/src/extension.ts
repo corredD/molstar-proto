@@ -34,6 +34,7 @@ import { blockedResult, DocumentListOwner } from './list-owner.js';
 import { documentVisible, type DocumentGroupBy, type DocumentLooks, type DocumentOutline } from './document-tree.js';
 import { openAddresses } from './prism-viewer.js';
 import { registerBehaviorOwned } from '@molstar/prism-viewer/sources/checkpoint';
+import { feedCanvasCamera } from './camera-feed.js';
 import { MesoTilePlacements } from './particle-list.js';
 
 declare module '@molstar/prism-viewer/api' {
@@ -181,12 +182,18 @@ export class MesoViewSpecApi extends ApiArea {
     this.owner = new DocumentListOwner(this.model);
     this.#unregisterOwner = registerParticleListOwner(ctx.plugin, this.owner);
     // streamed tiles are the owner's behavior's cells (prism.md §9): no step, no change outside the API, left out of
-    // checkpoints, kept by a restore
+    // checkpoints, kept by a restore; they load where the canvas camera looks (its target, once it rests)
     this.#unregisterTiles = registerBehaviorOwned(ctx.plugin, [MesoTilePlacements]);
+    this.#unfeed = feedCanvasCamera(
+      ctx.plugin,
+      (x, y, z) => void this.model.setFocus({ center: [x, y, z], radius: 0 }),
+    );
   }
   readonly #unregisterTiles: () => void;
+  readonly #unfeed: () => void;
 
   override dispose(): void {
+    this.#unfeed();
     this.#unregisterTiles();
     this.#stopTour();
     this.#unregisterOwner();

@@ -19,6 +19,7 @@ import {
   type StreamOptions,
   type StreamPlan,
   type StreamStats,
+  streamNode,
   TileStreamer,
   updateView,
 } from '@molstar/meso-spec/runtime';
@@ -116,6 +117,8 @@ export class MesoSession {
    */
   setFocus(focus: StreamFocus | undefined): Promise<EditRecord | undefined> {
     this.focus = focus;
+    // a document with no stream: nothing to plan (no view derived again at each camera rest)
+    if (!this.streamer || (this.ir && !streamNode(this.ir))) return Promise.resolve(undefined);
     return this.queue(() => this.runStream());
   }
   private focus: StreamFocus | undefined;
