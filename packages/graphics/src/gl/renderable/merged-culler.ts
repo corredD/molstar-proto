@@ -540,8 +540,12 @@ export function createMergedCuller(
   let segmentScales = new Float32Array(0);
   /** per segment its live instances (`GpuInstanceWriter`): its count but where its writer says fewer */
   let liveCounts = new Uint32Array(0);
-  /** advanced by each CPU write of instances' rows (`GpuInstanceTarget.cpuWrites`) */
-  let cpuWrites = 0;
+  /**
+   * per segment the last CPU write of its instances' rows (`GpuInstanceTarget.cpuWrites`), from one count across
+   * layouts (`writeEpoch`: a value never seen again)
+   */
+  let cpuWrites = new Float64Array(0);
+  let writeEpoch = 0;
   let rasterDispatched = false;
   let secondPending = false;
   let secondDispatched = false;
@@ -695,6 +699,7 @@ export function createMergedCuller(
     }
     if (cellOf.length !== instanceCount * 2) cellOf = new Uint32Array(instanceCount * 2);
     if (liveCounts.length !== segmentCount) liveCounts = new Uint32Array(segmentCount);
+    if (cpuWrites.length !== segmentCount) cpuWrites = new Float64Array(segmentCount);
     for (let s = 0; s < segmentCount; ++s) liveCounts[s] = segments.instanceCounts[s];
     let slots = 0;
     for (let s = 0; s < segmentCount; ++s) {
@@ -822,7 +827,7 @@ export function createMergedCuller(
     if (n === 0) return;
     if (memberRows.length < n * 12) memberRows = new Float32Array(n * 12);
     const rows = memberRows.subarray(0, n * 12);
-    cpuWrites += 1;
+    cpuWrites[s] = ++writeEpoch;
     packAffineRows((members[s].aTransform.ref.value as Float32Array).subarray(0, n * 16), n, rows);
     data.ref.value.write(rows, first * 48);
     const instance = (values.aInstance.ref.value as Float32Array).subarray(first, first + n);
@@ -963,7 +968,7 @@ export function createMergedCuller(
     target.data = data.ref.value;
     target.instanceBase = segments.instanceBases[s];
     target.count = segments.instanceCounts[s];
-    target.cpuWrites = cpuWrites;
+    target.cpuWrites = cpuWrites[s];
     return target;
   };
   /** segment `s`'s live count `live` (at most its count) into its row, written where it changed; whether it changed */
@@ -1019,7 +1024,8 @@ export function createMergedCuller(
       scalesSplit = false;
     }
     writeCulledData(data.ref.value, values, segments, instanceCount);
-    cpuWrites += 1;
+    writeEpoch += 1;
+    cpuWrites.fill(writeEpoch);
     for (let s = 0; s < segmentCount; ++s) writeGpuInstances(s);
   }
 
