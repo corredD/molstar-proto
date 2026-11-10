@@ -234,14 +234,14 @@ export class PrismMesoAdapter implements RendererAdapter {
     if (known) return known;
     const x = this.expansion(key);
     if (!x) {
-      const own = [...(loci.get(key) ?? [])];
+      const own = [...(loci.copies.get(key) ?? [])];
       memo.set(key, own);
       return own;
     }
     const pieces: number[] = [];
     const n = x.size;
     // whole instances picked: the instance set's copies of the type
-    const outer = loci.get(x.outer.key);
+    const outer = loci.copies.get(x.outer.key);
     if (outer)
       for (let j = 0; j < outer.length; j += 2)
         for (let i = outer[j]; i < outer[j + 1]; i++) {
@@ -255,7 +255,7 @@ export class PrismMesoAdapter implements RendererAdapter {
     // one instance's copies (a `part`)
     const prefix = `${x.outer.key}@`;
     const suffix = `>${x.template}`;
-    for (const [k, runs] of loci) {
+    for (const [k, runs] of loci.copies) {
       if (!k.startsWith(prefix) || !k.endsWith(suffix)) continue;
       const i = Number(k.slice(prefix.length, k.length - suffix.length));
       const rank = Number.isInteger(i) && i >= 0 && i < x.rank.length ? x.rank[i] : -1;

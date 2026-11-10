@@ -8,21 +8,57 @@ import { type Issue, issue, LengthToAngstrom, type MesoViewSpecDoc, type QExpr }
 import { type IR, placementSets } from './ir.js';
 import type { PlacementSet } from './placements.js';
 
-// MesoLocation and MesoLoci (_spec/mesoql.md): what a MesoQL address materializes to, as Mol*'s Location and Loci
-// materialize a MolQL selection. A MesoLocation is one copy, `{set, index}` (its stable id `<population>#<ordinal>`).
-// MesoLoci are many: per placement set, sorted disjoint runs `[start, end)` of copy indices. Runs, not one entry per
-// copy: every resolver writes a population's copies contiguously, so "the copies of p.lipids" is one run however many
-// lipids there are (renderer-recommendations.md R1 asks the renderer for the same).
+// MesoLocation and MesoLoci (_spec/mesoql.md "MesoLocation as a union"): what a MesoQL address materializes to, as
+// Mol*'s Location and Loci materialize a MolQL selection. A MesoLocation is one place, a discriminated union; only
+// `copy` is produced, `{set, index}` (its stable id `<population>#<ordinal>`). MesoLoci are many: `copies` holds, per
+// placement set, sorted disjoint runs `[start, end)` of copy indices. Runs, not one entry per copy: every resolver
+// writes a population's copies contiguously, so "the copies of p.lipids" is one run however many lipids there are
+// (renderer-recommendations.md R1 asks the renderer for the same).
 
-export interface MesoLocation {
-  readonly set: string;
-  readonly index: number;
+type Id = string;
+type Vec3 = readonly [number, number, number];
+
+/** A box of voxels in a volume's own grid, `[min, max)` per axis (not doc.ts's `Box`: Å, world). */
+export interface VoxelBox {
+  readonly min: Vec3;
+  readonly max: Vec3;
 }
 
-/** Set key → runs `[s0, e0, s1, e1, …]`, sorted, disjoint, half-open. */
-export type MesoLoci = ReadonlyMap<string, readonly number[]>;
+/**
+ * One place, by kind. Only `copy` is produced today; the other kinds are declared for the region and point work
+ * (tomograms, segmentations, meshes, fibers) and no address or pick yields them yet.
+ */
+export type MesoLocation =
+  /** A copy of a placement set, as today. */
+  | { readonly kind: 'copy'; readonly set: string; readonly index: number }
+  /** Not produced: a segmentation's label, as a compartment's geometry. */
+  | { readonly kind: 'label'; readonly resource: Id; readonly label: number | string }
+  /** Not produced: a tomogram's or map's voxel, in its frame. */
+  | { readonly kind: 'voxel'; readonly resource: Id; readonly ijk: Vec3 }
+  /** Not produced: a place with nothing at it (a pick on empty space, an annotation's anchor). */
+  | { readonly kind: 'point'; readonly frame: Id; readonly position: Vec3 }
+  /** Not produced: a mesh resource's face (a compartment's surface). */
+  | { readonly kind: 'face'; readonly resource: Id; readonly face: number }
+  /** Not produced: a place along one fiber, at arc length `s`. */
+  | { readonly kind: 'arc'; readonly set: string; readonly fiber: number; readonly s: number };
 
-export const EmptyLoci: MesoLoci = new Map();
+/** Set key → runs `[s0, e0, s1, e1, …]`, sorted, disjoint, half-open. */
+export type CopyRuns = ReadonlyMap<string, readonly number[]>;
+
+/** Only `copies` is filled today; the region parts are declared, never produced. */
+export interface MesoLoci {
+  readonly copies: CopyRuns;
+  readonly labels?: ReadonlyMap<Id, readonly (number | string)[]>;
+  readonly voxels?: ReadonlyMap<Id, readonly VoxelBox[]>;
+  readonly faces?: ReadonlyMap<Id, readonly number[]>;
+}
+
+const EmptyCopies: CopyRuns = new Map();
+
+export const EmptyLoci: MesoLoci = { copies: EmptyCopies };
+
+/** The MesoLoci of these copy runs. */
+export const lociOfCopies = (copies: CopyRuns): MesoLoci => ({ copies });
 
 // ---- runs ----
 
@@ -79,16 +115,16 @@ export const runsSize = (r: readonly number[]) => {
 
 export function lociSize(l: MesoLoci): number {
   let n = 0;
-  for (const r of l.values()) n += runsSize(r);
+  for (const r of l.copies.values()) n += runsSize(r);
   return n;
 }
 
 function combine(
-  a: MesoLoci,
-  b: MesoLoci,
+  a: CopyRuns,
+  b: CopyRuns,
   op: (x: readonly number[], y: readonly number[]) => number[],
   keepA: boolean,
-): MesoLoci {
+): CopyRuns {
   const out = new Map<string, number[]>();
   const keys = new Set([...a.keys(), ...(keepA ? [] : b.keys())]);
   for (const k of keys) {
@@ -138,7 +174,7 @@ export function evaluateMesoQL(e: QExpr, ctx: LociContext): { loci: MesoLoci; is
   for (const ss of ctx.doc.superstructures ?? []) for (const p of ss.populations ?? []) pops.set(p.id, p);
   const children = new Map<string, string[]>();
   for (const c of ctx.doc.compartments) if (c.parent) children.set(c.parent, [...(children.get(c.parent) ?? []), c.id]);
-  const byTypes = (test: (t: PlacementSet['typeTable'][number]) => boolean): MesoLoci => {
+  const byTypes = (test: (t: PlacementSet['typeTable'][number]) => boolean): CopyRuns => {
     const out = new Map<string, number[]>();
     for (const s of sets) {
       const tr = typeRuns(s);
@@ -148,7 +184,7 @@ export function evaluateMesoQL(e: QExpr, ctx: LociContext): { loci: MesoLoci; is
     }
     return out;
   };
-  const ev = (x: QExpr): MesoLoci => {
+  const ev = (x: QExpr): CopyRuns => {
     const ids = x.args.filter((a): a is string => typeof a === 'string');
     switch (x.symbol.name) {
       case 'all':
@@ -209,7 +245,7 @@ export function evaluateMesoQL(e: QExpr, ctx: LociContext): { loci: MesoLoci; is
         return combine(universe, ev(x.args[0] as QExpr), subtractRuns, true);
       }
       case 'within': {
-        const of = x.keywords.of ? ev(x.keywords.of as QExpr) : EmptyLoci;
+        const of = x.keywords.of ? ev(x.keywords.of as QExpr) : EmptyCopies;
         const d = Number(x.keywords.distance ?? 0) * unit;
         const w = worldOfIR(ctx.ir);
         return within(w, perInstance(w, ev(x.args[0] as QExpr), issues), of, d);
@@ -243,10 +279,10 @@ export function evaluateMesoQL(e: QExpr, ctx: LociContext): { loci: MesoLoci; is
       }
       default:
         issues.push(issue('mesoql.type', 'error', 'resolve', `(${x.symbol.name} …) is not a selection`));
-        return EmptyLoci;
+        return EmptyCopies;
     }
   };
-  return { loci: ev(e), issues };
+  return { loci: lociOfCopies(ev(e)), issues };
 }
 
 /** The instances nodes under a set: which of its types stand for which template sets. */
@@ -374,7 +410,7 @@ function worldOf(w: World, key: string): { set: PlacementSet; poses: Pose[] } | 
  * spatial operation picks inside one instance is not given to all of them. Only for instances in the world: deeper
  * nesting is left out, with an issue.
  */
-function perInstance(w: World, l: MesoLoci, issues: Issue[]): MesoLoci {
+function perInstance(w: World, l: CopyRuns, issues: Issue[]): CopyRuns {
   const out = new Map<string, number[]>();
   for (const [k, r] of l) {
     if (!w.under.has(k)) {
@@ -418,7 +454,7 @@ function forEachInWorld(
 }
 
 /** Copies of `a` whose centre is within `d` Å of a copy of `b`, both in the world: a hash grid over `b`, O(|a| + |b|). */
-function within(world: World, a: MesoLoci, b: MesoLoci, d: number): MesoLoci {
+function within(world: World, a: CopyRuns, b: CopyRuns, d: number): CopyRuns {
   const cell = Math.max(d, 1);
   const grid = new Map<string, number[]>();
   for (const [k, r] of b) {
@@ -468,7 +504,7 @@ export function lociToIds(l: MesoLoci, ir: IR, limit = 50): string[] {
   const byKey = new Map(placementSets(ir).map((s) => [s.key, s]));
   const out: string[] = [];
   const idOf = (s: PlacementSet, i: number) => `${s.typeTable[s.types[i]].population}#${s.ordinals[i]}`;
-  for (const [k, r] of l) {
+  for (const [k, r] of l.copies) {
     // a virtual set of a part: `<instance set>@<index>><template set>` → `<instance id>/<copy id>`
     const m = /^(.*)@(\d+)>(.*)$/.exec(k);
     const s = byKey.get(m ? m[3] : k);
@@ -495,7 +531,7 @@ export function lociSphere(l: MesoLoci, ir: IR): { center: [number, number, numb
   // balls: centre, radius, weight (copies)
   const balls: number[] = [];
   const v = [0, 0, 0];
-  for (const [k, r] of l) {
+  for (const [k, r] of l.copies) {
     const w = worldOf(world, k);
     if (!w) continue;
     const radiusOf = (i: number) => w.set.typeTable[w.set.types[i]].radius;

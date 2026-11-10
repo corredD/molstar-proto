@@ -87,8 +87,8 @@ export function evalLoci(text: string, scene: MesoQLEvalScene): MesoLoci | undef
   const e = evaluateMesoQL(p.expr, { doc: scene.doc, ir: scene.ir });
   if (e.issues.some((i) => i.severity === 'error')) return undefined;
   const out = new Map<string, readonly number[]>();
-  for (const [k, r] of e.loci) if (r.length) out.set(k, unionRuns(r, []));
-  return out;
+  for (const [k, r] of e.loci.copies) if (r.length) out.set(k, unionRuns(r, []));
+  return { copies: out };
 }
 
 /**
@@ -100,9 +100,9 @@ export function answerMatches(answer: string, expect: string, scene: MesoQLEvalS
   if (blocks.length > 1) return false;
   const a = evalLoci(blocks.length ? blocks[0][1] : answer, scene);
   const b = evalLoci(expect, scene);
-  if (!a || !b || a.size !== b.size) return false;
-  for (const [k, r] of b) {
-    const x = a.get(k);
+  if (!a || !b || a.copies.size !== b.copies.size) return false;
+  for (const [k, r] of b.copies) {
+    const x = a.copies.get(k);
     if (!x || x.length !== r.length || x.some((v, i) => v !== r[i])) return false;
   }
   return true;

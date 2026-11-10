@@ -322,15 +322,15 @@ describe('superstructures', () => {
     const ev = (q: string) => evaluateMesoQL(parseMesoQL(q, { kinds }).expr!, { doc, ir: r.ir! });
     const sets = placementSets(r.ir!);
     // brute force: the docked granule's Vamp2, moved by its pose; the ribosomes as they are
-    const [[instKey, [i0]]] = [...ev('(instance i.granule-docked)').loci];
+    const [[instKey, [i0]]] = [...ev('(instance i.granule-docked)').loci.copies];
     const inst = sets.find((s) => s.key === instKey)!;
     const part = ev('(part (instance i.granule-docked) p.Vamp2)').loci;
-    const [[virtual, vRuns]] = [...part];
+    const [[virtual, vRuns]] = [...part.copies];
     const tpl = sets.find((s) => s.key === virtual.slice(virtual.lastIndexOf('>') + 1))!;
     const vamp2 = runsOf(vRuns).map((i) =>
       rotate(inst, i0, [tpl.positions[3 * i], tpl.positions[3 * i + 1], tpl.positions[3 * i + 2]]),
     );
-    const ribo = [...ev('(population p.ribosomes)').loci].flatMap(([k, runs]) => {
+    const ribo = [...ev('(population p.ribosomes)').loci.copies].flatMap(([k, runs]) => {
       const s = sets.find((x) => x.key === k)!;
       return runsOf(runs).map((i) => [s.positions[3 * i], s.positions[3 * i + 1], s.positions[3 * i + 2]]);
     });
@@ -342,7 +342,7 @@ describe('superstructures', () => {
     const a = ev('(within (population p.ribosomes) :of (part (instance i.granule-docked) p.Vamp2) :distance 50)');
     expect(lociSize(a.loci)).toBe(riboNear);
     const b = ev('(within (part (instance i.granule-docked) p.Vamp2) :of (population p.ribosomes) :distance 50)');
-    expect([...b.loci.keys()]).toEqual([virtual]);
+    expect([...b.loci.copies.keys()]).toEqual([virtual]);
     expect(lociSize(b.loci)).toBe(near(vamp2, ribo));
     // and through a view (a cutaway), without throwing
     const v = {

@@ -35,10 +35,11 @@ form and a materialized one, as Mol\* has `SchemaItem` and `Location`/`Loci`.
 David (2026-11-09): "`MesoLocation` should likely be a discriminated union to support pointers to tomograms,
 segmentations, etc too".
 
-**Not built.** Today a MesoLocation is a copy and nothing else (`ir/loci.ts`), and MesoLoci are copy runs keyed by
-placement set. A document already points into other data: a compartment's geometry can be "a `segmentation` resource +
-label", an instance's pose can be read in a tomogram's voxels, and resources include `tomogram` and `segmentation`. An
-address cannot name those things yet, and a pick on a tomogram cannot be a location. As Mol\*'s `Location` is a union (a
+**Built: `copy` only** (lane `mvs-location`; the types are in `ir/loci.ts`, the other kinds declared and never
+produced). Before it a MesoLocation was a copy and nothing else, and MesoLoci were copy runs keyed by placement set. A
+document already points into other data: a compartment's geometry can be "a `segmentation` resource + label", an
+instance's pose can be read in a tomogram's voxels, and resources include `tomogram` and `segmentation`. An address
+cannot name those things yet, and a pick on a tomogram cannot be a location. As Mol\*'s `Location` is a union (a
 structure element, a volume cell, a shape group), so should these be:
 
 ```ts
@@ -78,11 +79,11 @@ interface MesoLoci {
 - **New symbols:** `(label <resource> <label>)`, `(voxels <resource> <box>)`, `(faces <resource> <runs>)`,
   `(region-of <copies> <resource>)`. They would be generated into [reference/mesoql.md](reference/mesoql.md) like the
   others.
-- **Only `copy` would be built at first.** Adding `kind` to `MesoLocation` breaks nothing: only `ir/index.ts` re-exports
-  it, and no code takes one (`rowOfCopy` takes a set and an index). The work is MesoLoci's new shape: `ir/loci.ts`
+- **Only `copy` is built (done).** Adding `kind` to `MesoLocation` breaks nothing: only `ir/index.ts` re-exports it, and
+  no code takes one (`rowOfCopy` takes a set and an index). The work is MesoLoci's new shape: `ir/loci.ts`
   (`evaluateMesoQL`, `perInstance`, `within`, `lociSize`, `lociToIds`, `lociSphere`), `runtime/runtime.ts`
   (`materialize`), `molstar/src/prism-adapter.ts` (`drawnRuns`, `runsOn`) and `molstar/src/document-model.ts`
-  (`mesoLoci`). A small lane after lane 4 (`mvs-drive`), which also edits `document-model.ts`.
+  (`mesoLoci`). Built in lane `mvs-location`, after lane 4 (`mvs-drive`).
 
 **Decided (Ludo, 2026-11-09), for David's review:**
 

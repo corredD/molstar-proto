@@ -10,7 +10,15 @@ import { nucleoidDoc } from '../examples/nucleoid.js';
 import { mesoQLReference, parseMesoQL, printMesoQL } from '../format/mesoql.js';
 import { indexDoc, validate } from '../format/validate.js';
 import { placementSets } from '../ir/ir.js';
-import { evaluateMesoQL, intersectRuns, lociSize, lociToIds, subtractRuns, typeRuns, unionRuns } from '../ir/loci.js';
+import {
+  evaluateMesoQL,
+  intersectRuns,
+  lociSize,
+  lociToIds,
+  subtractRuns,
+  typeRuns,
+  unionRuns,
+} from '../ir/loci.js';
 import { updateView } from '../runtime/runtime.js';
 import { compileExosome } from './helpers.js';
 
@@ -56,7 +64,7 @@ describe('MesoQL', () => {
     const r = await compileExosome(exosomeDoc());
     const ctx = { doc: exosomeDoc(), ir: r.ir! };
     const lip = evaluateMesoQL(q('(population p.lipids)'), ctx).loci;
-    expect([...lip.values()]).toEqual([[0, 88666]]);
+    expect([...lip.copies.values()]).toEqual([[0, 88666]]);
     expect(lociSize(evaluateMesoQL(q('(in c.exosome :location membrane)'), ctx).loci)).toBe(
       88666 +
         r.counts['p.CD63'].achieved +
@@ -88,6 +96,18 @@ describe('MesoQL', () => {
     const near = n('(within (population p.catalase) :of (population p.catalase.observed) :distance 15)');
     expect(near).toBeGreaterThan(0);
     expect(near).toBeLessThan(r.counts['p.catalase'].achieved);
+  });
+
+  it('MesoLoci from an address has only copies', async () => {
+    const r = await compileExosome(exosomeDoc());
+    const ctx = { doc: exosomeDoc(), ir: r.ir! };
+    for (const t of ['(population p.lipids)', '(not (population p.lipids))', '(within (all) :of (all) :distance 1)']) {
+      const loci = evaluateMesoQL(q(t), ctx).loci;
+      expect(loci.copies).toBeInstanceOf(Map);
+      expect(loci.labels).toBeUndefined();
+      expect(loci.voxels).toBeUndefined();
+      expect(loci.faces).toBeUndefined();
+    }
   });
 
   it('a view from addresses: whole-type looks, partial looks with runs, an annotation at its copies', async () => {
