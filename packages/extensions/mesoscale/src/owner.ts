@@ -47,6 +47,8 @@ export interface OwnedListInfo {
   readonly groups: MesoGroup;
   readonly groupBy: MesoGroupBy;
   readonly hasCompartments: boolean;
+  /** Other names an entity is found by, after its own (a document's population ids) */
+  readonly aliases?: ReadonlyMap<string, number>;
 }
 
 export interface ParticleListOwner {

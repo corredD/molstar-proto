@@ -53,6 +53,10 @@ function fakeOwner(v: PrismViewer, owned: string) {
             groups: OwnerGroups,
             groupBy: 'compartment',
             hasCompartments: true,
+            aliases: new Map([
+              ['p.two', 2],
+              ['pop1', 3],
+            ]),
           }
         : undefined,
     async propose(edit: OwnedEdit, api: ViewerApi) {
@@ -147,6 +151,22 @@ describe('an owned list (prism.md §1.1)', () => {
       [[3], Color(0x0000ff)],
     ]);
     expect((r.value as { unmatched: string[] }).unmatched).toEqual(['nothing']);
+  });
+
+  it('names: an entity is found by its name, then by the owner’s other name for it (a population id)', async () => {
+    const { v, owned, proposed } = await viewer();
+    const r = await v.api.run('mesoscale.importColors', {
+      particles: owned,
+      json: JSON.stringify({ 'p.two': '#ff00ff', pop1: '#00ffff' }),
+    });
+    expectOk(r);
+    // the name wins over another entity's alias of the same text
+    expect(proposed[0].lists[0].looks.map((l) => [l.entities, l.change.color])).toEqual([
+      [[1], Color(0x00ffff)],
+      [[2], Color(0xff00ff)],
+    ]);
+    expectOk(await v.api.run('mesoscale.style', { particles: owned, entities: 'p.two', visible: false }));
+    expect(proposed[1].lists[0].looks[0].entities).toEqual([2]);
   });
 
   it('theme over an owned list and a plain one: one step, one undo; the owner proposes, the plain list takes the theme', async () => {
