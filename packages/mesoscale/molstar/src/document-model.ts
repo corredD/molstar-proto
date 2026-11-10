@@ -207,8 +207,15 @@ export class MesoDocumentModel {
    * step (no History step). Undefined: around the document's camera.
    */
   setFocus(focus: StreamFocus | undefined): Promise<EditRecord | undefined> {
+    this.focus = focus;
     return this.session?.setFocus(focus) ?? Promise.resolve(undefined);
   }
+  /**
+   * The last focus fed, with or without a session: a session a restore makes (an Undo of Close) streams there, as the
+   * canvas has not moved and the feed does not fire again. An open plans from its document's camera (the canvas goes
+   * there).
+   */
+  private focus: StreamFocus | undefined;
 
   // --- the Scene tree (prism.md §4) -----------------------------------------------------------------------------------
 
@@ -720,7 +727,7 @@ export class MesoDocumentModel {
     this.tiles = this.tilesOf.get(saved.doc);
     this.url = saved.url;
     this.shown = saved.shown;
-    this.session ??= this.newSession(saved.doc);
+    this.session ??= this.newSession(saved.doc, this.focus);
     // the view noted with the checkpoint shown again (prism.md §7.4): the restored tree already draws its looks; the
     // camera is view state, which no checkpoint holds, and stays where it is. The restored lists are adopted in the
     // session's turn: a stream step settling between would commit against the IR drawn before the restore.
@@ -756,10 +763,11 @@ export class MesoDocumentModel {
     this.ev.dispose();
   }
 
-  private newSession(doc: MesoViewSpecDoc) {
+  private newSession(doc: MesoViewSpecDoc, focus?: StreamFocus) {
     return new MesoSession(
       doc,
       {
+        ...(focus ? { focus } : {}),
         resolvers: this.options.resolvers ?? DefaultResolvers,
         load: (id) => this.load(id),
         cache: this.cache,

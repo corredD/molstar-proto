@@ -66,6 +66,8 @@ export type SessionOptions = Omit<RuntimeOptions, 'cache'> & {
    * opens it again from them) and lets them go itself (prism.md §7.3, point 3). Absent: the session's own.
    */
   readonly cache?: Map<string, ResolveOutput>;
+  /** Where the viewer's camera looks when the session starts (`setFocus`): a session a restore made streams there. */
+  readonly focus?: StreamFocus;
 };
 
 export class MesoSession {
@@ -94,9 +96,10 @@ export class MesoSession {
     private readonly adapter?: RendererAdapter,
   ) {
     this.doc = doc;
-    const { stream, cache, ...rest } = options;
+    const { stream, cache, focus, ...rest } = options;
     this.options = rest;
     this.cache = cache ?? new Map();
+    this.focus = focus;
     if (stream && options.tiles) this.streamer = new TileStreamer(options.tiles, stream, () => this.onSettled());
   }
 
