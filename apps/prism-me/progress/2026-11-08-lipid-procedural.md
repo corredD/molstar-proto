@@ -1998,9 +1998,10 @@ then falling, the machine's load at 50-155 (other processes); as in round 8's bu
 **After the advisor's read.** S5 follow-up: `onlyMiddle` takes spheresPx and atomsPx under a middle look (`c2a8eb939`
 failing, `e59faf9ce`). The stride-8 pop with a clip, measured (above, open). The S3 claims reworded as measured.
 
-**Next (for the coordinator).** Rerun `color-levels.scaling.ts` alone on a quiet machine. Ludo on 1354: a cut through
-the yeast cell and x600 under Parallax (Add clip…, then a drag), and Middle / Atoms down to switched with and without a
-clip; then the default middle look is his pick.
+**Next (for the coordinator).** `color-levels.scaling.ts` killed a third time, alone, started at load 6 (the OS's
+SIGKILL, no worker past 8 GB seen): likely memory, not load; not touched by round 8, killed in round 8's build too; to
+bisect (it passed in round 7's checks). Ludo on 1354: a cut through the yeast cell and x600 under Parallax (Add clip…,
+then a drag), and Middle / Atoms down to switched with and without a clip; then the default middle look is his pick.
 
 ## PR body (draft; rounds 4 to 8)
 
