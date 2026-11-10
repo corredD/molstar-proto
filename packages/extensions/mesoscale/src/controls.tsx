@@ -12,7 +12,12 @@ import { observableState } from '@molstar/prism-ui/reactive/observable-state';
 import { mapState } from '@molstar/prism-ui/reactive/map-state';
 import type { ReadonlyState } from '@molstar/prism-ui/reactive/readonly-state';
 import { classes } from './_generated/controls.module.css.js';
-import { DefaultCustomLevels, type MembraneDetail, type MembraneLevel } from './lipids/membrane.js';
+import {
+  DefaultCustomLevels,
+  type MembraneDetail,
+  type MembraneLevel,
+  type MembraneMiddle,
+} from './lipids/membrane.js';
 import type { MembraneFar } from './lipids/procedural.js';
 import type { GraphicsInfo, GraphicsMode, MesoscaleApi } from './operations.js';
 
@@ -219,6 +224,13 @@ const FarChoices: { id: MembraneFar; label: string }[] = [
   { id: 'texture', label: 'Texture' },
 ];
 
+/** A cut membrane's middle distance (round 8; Ludo compares them live and picks the default) */
+const MiddleChoices: { id: MembraneMiddle; label: string }[] = [
+  { id: 'coarse', label: 'Coarse' },
+  { id: 'shells', label: 'Shells' },
+  { id: 'parallax', label: 'Parallax' },
+];
+
 const DetailChoices: { id: MembraneDetail; label: string }[] = [
   { id: 'off', label: 'Atoms' },
   { id: 'quality', label: 'Quality' },
@@ -242,9 +254,19 @@ export function MembraneDetailControls(props: { area: MesoscaleApi; membrane: st
     atomsPx?: number;
     spheresPx?: number;
     budget?: number;
+    middle?: MembraneMiddle;
+    middlePx?: number;
+    shells?: number;
   }) => void props.area.membraneDetail({ membrane: props.membrane, ...patch } as never);
   /** a switch of the far look (lipid-procedural): a slider committing once */
-  const viewRow = (label: string, key: 'atomsPx' | 'spheresPx' | 'budget', min: number, max: number, unit?: string) => (
+  const viewRow = (
+    label: string,
+    key: 'atomsPx' | 'spheresPx' | 'budget' | 'middlePx' | 'shells',
+    min: number,
+    max: number,
+    unit?: string,
+    linear?: boolean,
+  ) => (
     <div class={classes.line}>
       <div class={classes.label}>{label}</div>
       <Slider
@@ -252,15 +274,16 @@ export function MembraneDetailControls(props: { area: MesoscaleApi; membrane: st
         value={mapState(state, (s) => s?.[key] ?? 0)}
         min={min}
         max={max}
-        scale="log"
+        {...(linear ? {} : { scale: 'log' as const })}
         {...(unit ? { unit } : {})}
-        onCommit={(v) => run({ [key]: v })}
+        onCommit={(v) => run({ [key]: key === 'shells' ? Math.round(v) : v })}
       />
     </div>
   );
   const cutter = mapState(state, (s) => s?.method === 'cutter');
   const tiles = mapState(state, (s) => !!s && s.method !== 'cutter');
   const far = mapState(state, (s) => s?.far ?? 'both');
+  const middle = mapState(state, (s) => s?.middle ?? 'coarse');
   const setLevel = (j: number, key: keyof MembraneLevel, v: number) =>
     run({ levels: levels.value.map((l, k) => (k === j ? { ...l, [key]: key === 'stride' ? Math.round(v) : v } : l)) });
   const row = (j: number, label: string, key: keyof MembraneLevel, min: number, max: number, unit?: string) => (
@@ -287,7 +310,27 @@ export function MembraneDetailControls(props: { area: MesoscaleApi; membrane: st
             <Show when={mapState(far, (f) => f === 'texture')}>
               {() => viewRow('Lipids from', 'atomsPx', 0.25, 16, 'px')}
             </Show>
-            <Show when={mapState(far, (f) => f !== 'texture')}>
+            <Show when={mapState(far, (f) => f !== 'spheres')}>
+              {() => (
+                <div class={classes.tight}>
+                  <Choices
+                    label="Middle"
+                    choices={MiddleChoices}
+                    active={middle}
+                    onPick={(id) => run({ middle: id as MembraneMiddle })}
+                  />
+                  <Show when={mapState(middle, (m) => m !== 'coarse')}>
+                    {() => viewRow('Atoms down to', 'middlePx', 2, 32, 'px')}
+                  </Show>
+                  <Show when={mapState(middle, (m) => m === 'shells')}>
+                    {() => viewRow('Shells', 'shells', 4, 12, undefined, true)}
+                  </Show>
+                </div>
+              )}
+            </Show>
+            <Show
+              when={mapState(state, (s) => s?.far !== 'texture' && (s?.far === 'spheres' || s?.middle === 'coarse'))}
+            >
               {() => viewRow('Lipids down to', 'spheresPx', 0.05, 8, 'px')}
             </Show>
             {viewRow('Lipids at most', 'budget', 10_000, 8_000_000)}

@@ -211,4 +211,81 @@ describe.skipIf(!webgpu)('the switch between a membrane’s spheres and its far 
       plugin.dispose();
     }
   });
+  // round 8 (Ludo, 2026-11-09: "to compare and pick"): each middle look zoomed from a lipid at 16 px (its atoms) to 0.8
+  // px (the flat texture) with no pop, outside the leaflet: the largest step's Oklab under 0.03, as round 7's coarse
+  for (const middle of ['parallax'] as const) {
+    it(`zooms across the ${middle} middle look with no pop (16 to 0.8 px, the largest step's Oklab under 0.03)`, {
+      timeout: 240_000,
+    }, async () => {
+      const plugin = await HeadlessPluginContext.create(
+        { webgpu },
+        DefaultPluginSpec(),
+        { width: Size, height: Size },
+        { backend: 'webgpu' },
+      );
+      try {
+        await plugin.init();
+        const canvas = plugin.canvas3d!;
+        canvas.setProps({ camera: { ...canvas.props.camera, mode: 'perspective' } });
+        registerLipidPatch('dawn-middle', syntheticPatchPdb(12, 14, { POPC: 27, CHL1: 17 }).text);
+        const params = {
+          ...PD.getDefaultValues(LipidMembraneParams),
+          method: 'cutter' as const,
+          radius: Radius,
+          edge: 100,
+          leaflets: 'outer' as const,
+          patch: 'dawn-middle',
+          center: Vec3.zero(),
+          middle,
+        };
+        const node = await plugin.build().toRoot().apply(LipidMembrane, params).commit();
+        // the look is drawn: a far surface (parallax) or a band (shells) with its define
+        const objects = (
+          node.obj as unknown as {
+            data: { repr: { renderObjects: { values: Record<string, { ref: { value: unknown } }> }[] } };
+          }
+        ).data.repr.renderObjects;
+        const define = middle === 'parallax' ? 'parallax' : 'beneath';
+        expect(objects.some((o) => o.values.dPatchMiddle?.ref.value === define)).toBe(true);
+        const camera = canvas.camera;
+        canvas.requestCameraReset({ durationMs: 0 });
+        await plugin.getImageRaw({ width: Size, height: Size });
+        const top = Radius + 20;
+        const lipid = Math.sqrt((12 * 8 * (14 * 8 * 0.866)) / (12 * 14));
+        const steps: { px: number; L: number; a: number; b: number }[] = [];
+        for (let px = 16; px > 0.8; px /= 1.06) {
+          const depth = (lipid * Size * camera.projection[5]) / (2 * px);
+          camera.setState(
+            {
+              ...camera.getSnapshot(),
+              target: Vec3.create(0, 0, top),
+              position: Vec3.create(0, 0, top + depth),
+              up: Vec3.create(0, 1, 0),
+            },
+            0,
+          );
+          await plugin.getImageRaw({ width: Size, height: Size });
+          const image = (await plugin.getImageRaw({ width: Size, height: Size })).data;
+          if (process.env.LIPID_SHOTS) {
+            await writePng(`${process.env.LIPID_SHOTS}/r8-${middle}-${px.toFixed(2)}.png`, Size, Size, image);
+          }
+          steps.push({ px, ...meanOklab(image) });
+        }
+        let largest = 0;
+        let at = 0;
+        for (let i = 1; i < steps.length; ++i) {
+          const [p, q] = [steps[i - 1], steps[i]];
+          const d = Math.hypot(q.L - p.L, q.a - p.a, q.b - p.b);
+          if (d > largest) [largest, at] = [d, q.px];
+        }
+        if (process.env.LIPID_NUMBERS) console.log(JSON.stringify({ middle, largest, at, steps }));
+        expect(largest, `at ${at.toFixed(2)} px`).toBeLessThan(0.03);
+        await plugin.build().delete(node.ref).commit();
+        expect(canvas.graphics.takeErrors?.() ?? []).toEqual([]);
+      } finally {
+        forgetLipidPatch('dawn-middle');
+        plugin.dispose();
+      }
+    });
+  }
 });

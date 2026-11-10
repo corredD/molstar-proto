@@ -42,6 +42,7 @@ import {
   type MembraneData,
   type MembraneDetail,
   type MembraneLevel,
+  type MembraneMiddle,
   membraneSpecies,
   membraneSpeciesColors,
 } from './lipids/membrane.js';
@@ -373,6 +374,9 @@ export class MesoscaleApi extends ApiArea {
         atomsPx: number;
         spheresPx: number;
         budget: number;
+        middle: MembraneMiddle;
+        middlePx: number;
+        shells: number;
       }
     | undefined
   > {
@@ -381,8 +385,9 @@ export class MesoscaleApi extends ApiArea {
       () => {
         const cell = plugin.state.data.cells.get(membrane);
         if (cell?.transform.transformer !== LipidMembrane) return undefined;
-        const { detail, levels, method, far, atomsPx, spheresPx, budget } = cell.transform.params as LipidMembraneProps;
-        return { detail, levels, method, far, atomsPx, spheresPx, budget };
+        const { detail, levels, method, far, atomsPx, spheresPx, budget, middle, middlePx, shells } = cell.transform
+          .params as LipidMembraneProps;
+        return { detail, levels, method, far, atomsPx, spheresPx, budget, middle, middlePx, shells };
       },
       () => plugin.state.data.events.changed,
       { compare: (a, b) => JSON.stringify(a) === JSON.stringify(b) },
@@ -414,6 +419,12 @@ export class MesoscaleApi extends ApiArea {
         PD.Numeric(0.5, { min: 0.05, max: 8 }, { description: 'Spheres: lipids down to this size, px' }),
       ),
       budget: OptionalParam(PD.Numeric(2_000_000, { min: 10_000, max: 8_000_000 }, { description: 'Lipids at most' })),
+      // round 8: the middle distance's look (the cutter's far surface), to compare and pick
+      middle: OptionalParam(PD.Select<MembraneMiddle>('coarse', LipidMembraneReprParams.middle.options)),
+      middlePx: OptionalParam(
+        PD.Numeric(11, { min: 2, max: 32 }, { description: 'Shells, parallax: atoms down to this size, px' }),
+      ),
+      shells: OptionalParam(PD.Numeric(8, { min: 4, max: 12 }, { description: 'Shells: the heads’ layers' })),
     },
     async run(values, ctx) {
       const { membrane, detail, levels, ...view } = values as {
@@ -424,8 +435,17 @@ export class MesoscaleApi extends ApiArea {
         atomsPx?: number;
         spheresPx?: number;
         budget?: number;
+        middle?: MembraneMiddle;
+        middlePx?: number;
+        shells?: number;
       };
-      const ranges = { atomsPx: [0.25, 16], spheresPx: [0.05, 8], budget: [10_000, 8_000_000] } as const;
+      const ranges = {
+        atomsPx: [0.25, 16],
+        spheresPx: [0.05, 8],
+        budget: [10_000, 8_000_000],
+        middlePx: [2, 32],
+        shells: [4, 12],
+      } as const;
       for (const [k, [min, max]] of Object.entries(ranges)) {
         const v = view[k as keyof typeof ranges];
         if (v !== undefined && !(v >= min && v <= max)) {

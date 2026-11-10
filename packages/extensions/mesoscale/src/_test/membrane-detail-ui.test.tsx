@@ -132,6 +132,56 @@ describe('a membrane’s levels in its properties', () => {
     expect((await area.exportMembrane({ membrane: tm } as never)).ok).toBe(false);
     forgetLipidPatch('ui-patch-far');
   });
+  it('switches a cut membrane’s middle look in one step, its atoms’ px and shells with it (round 8)', async () => {
+    registerLipidPatch('ui-patch-middle', syntheticPatchPdb().text);
+    const base = DefaultPrismViewerSpec();
+    const v = await createPrismViewerHeadless({
+      spec: { ...base, extensions: [...(base.extensions ?? []), MesoscaleExtension] },
+    });
+    viewers.push(v);
+    const r = await v.api.mesoscale!.wrapMembrane({
+      radius: 300,
+      edge: 80,
+      patch: 'ui-patch-middle',
+      method: 'cutter',
+    });
+    if (!r.ok) throw new Error(r.message);
+    const membrane = r.changed!.nodes![0];
+    const host = document.createElement('div');
+    document.body.append(host);
+    const area = v.api.as({ kind: 'person' }).mesoscale!;
+    domView(() => <MembraneDetailControls area={area} membrane={membrane} />).mount(
+      host,
+      { shell: new ShellModel() } as never,
+      undefined as never,
+    );
+    const button = (label: string) =>
+      [...host.querySelectorAll('button')].find((b) => b.textContent?.trim() === label) as HTMLButtonElement;
+    const params = () => v.plugin.state.data.cells.get(membrane)!.transform.params;
+    // coarse by default (until Ludo picks): the spheres' switch, no middle slider
+    await until(() => button('Coarse')?.getAttribute('aria-pressed') === 'true');
+    expect(host.querySelector('[aria-label="Lipids down to"]')).not.toBeNull();
+    expect(host.querySelector('[aria-label="Atoms down to"]')).toBeNull();
+    button('Parallax').click();
+    await until(() => !!host.querySelector('[aria-label="Atoms down to"]'));
+    expect(params()).toMatchObject({ middle: 'parallax', middlePx: 11 });
+    expect(host.querySelector('[aria-label="Lipids down to"]')).toBeNull();
+    expect(host.querySelector('[aria-label="Shells"]')).toBeNull();
+    button('Shells').click();
+    await until(() => !!host.querySelector('[aria-label="Shells"]'));
+    expect(params()).toMatchObject({ middle: 'shells', shells: 8 });
+    // the operation checks its switches; a valid one is one step
+    expect((await area.membraneDetail({ membrane, middlePx: 100 } as never)).ok).toBe(false);
+    expect((await area.membraneDetail({ membrane, shells: 2 } as never)).ok).toBe(false);
+    expect((await area.membraneDetail({ membrane, middlePx: 14 } as never)).ok).toBe(true);
+    expect(area.membraneDetailState(membrane).value).toMatchObject({ middle: 'shells', middlePx: 14, shells: 8 });
+    expect((await v.api.history.undo({})).ok).toBe(true);
+    expect(params()).toMatchObject({ middle: 'shells', middlePx: 11 });
+    // Far: Spheres has no middle look
+    button('Spheres').click();
+    await until(() => !host.querySelector('[aria-label="Atoms down to"]') && !button('Parallax'));
+    forgetLipidPatch('ui-patch-middle');
+  });
   it('shows, hides and colors a membrane’s species, and sets its graphics mode, one step each', async () => {
     registerLipidPatch('ui-patch-species', syntheticPatchPdb().text);
     const base = DefaultPrismViewerSpec();

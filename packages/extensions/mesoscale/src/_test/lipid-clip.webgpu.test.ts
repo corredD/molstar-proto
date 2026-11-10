@@ -7,6 +7,9 @@
 import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { Vec3 } from '@molstar/core/math/linear-algebra/3d/vec3';
+import { Color } from '@molstar/core/util/color';
+import { ColorLevels } from '@molstar/graphics/geo/geometry/color-levels';
 import { HeadlessPluginContext } from '@molstar/plugin-headless/context';
 import { HeadlessScreenshotHelper } from '@molstar/plugin-headless/screenshot';
 import { DefaultPrismViewerSpec } from '@molstar/prism-viewer/default-spec';
@@ -72,6 +75,72 @@ describe.skipIf(!webgpu)('a lipid membrane clipped by Prism (Dawn)', () => {
       expect(plugin.canvas3d!.graphics.takeErrors?.() ?? []).toEqual([]);
     } finally {
       forgetLipidPatch('dawn-clip');
+      v.dispose?.();
+    }
+  });
+  // round 8 (Ludo: "looking great at the same time with and without cut"): a clip through a membrane seen at the middle
+  // distance, each middle look against the coarse spheres: as much drawn, about the same colour (test 5)
+  it('cuts each middle look as the coarse one: its coverage and mean colour (round 8)', {
+    timeout: 120_000,
+  }, async () => {
+    const options = { backend: 'webgpu' as const };
+    const renderer = await HeadlessScreenshotHelper.create({ webgpu }, { width: Size, height: Size }, options);
+    const base = DefaultPrismViewerSpec();
+    const v = await createPrismViewerHeadless({
+      spec: { ...base, extensions: [...(base.extensions ?? []), MesoscaleExtension] },
+      plugin: (spec) => new HeadlessPluginContext({ webgpu }, spec, { width: Size, height: Size }, options, renderer),
+    });
+    registerLipidPatch('dawn-clip-middle', syntheticPatchPdb().text);
+    try {
+      const plugin = v.plugin as HeadlessPluginContext;
+      const looks: Record<string, { coverage: number; L: number; a: number; b: number }> = {};
+      for (const middle of ['coarse', 'parallax'] as const) {
+        const r = await v.api.mesoscale!.wrapMembrane({
+          radius: 300,
+          edge: 80,
+          patch: 'dawn-clip-middle',
+          method: 'cutter',
+        } as never);
+        if (!r.ok) throw new Error(r.message);
+        const membrane = r.changed!.nodes![0];
+        expect((await v.api.mesoscale!.membraneDetail({ membrane, middle } as never)).ok || middle === 'coarse').toBe(
+          true,
+        );
+        const canvas = plugin.canvas3d!;
+        canvas.requestCameraReset({ durationMs: 0 });
+        await plugin.getImageRaw({ width: Size, height: Size });
+        // the middle distance: the near side's lipids 5 px (a lipid 7.4 Å)
+        const depth = (7.4 * Size * canvas.camera.projection[5]) / (2 * 5);
+        canvas.camera.setState(
+          { ...canvas.camera.getSnapshot(), target: Vec3.create(0, 0, 0), position: Vec3.create(0, 0, 300 + depth) },
+          0,
+        );
+        expect((await v.api.run('clipping.add', { shape: 'plane', node: `#${membrane}` })).ok).toBe(true);
+        await plugin.getImageRaw({ width: Size, height: Size });
+        const image = (await plugin.getImageRaw({ width: Size, height: Size })).data;
+        const bg = [image[0], image[1], image[2]];
+        const lab = Vec3();
+        const sum = [0, 0, 0];
+        let n = 0;
+        for (let o = 0; o < image.length; o += 4) {
+          if (image[o] === bg[0] && image[o + 1] === bg[1] && image[o + 2] === bg[2]) continue;
+          ColorLevels.toOklab(lab, Color.fromRgb(image[o], image[o + 1], image[o + 2]));
+          for (let k = 0; k < 3; ++k) sum[k] += lab[k];
+          n += 1;
+        }
+        looks[middle] = { coverage: n / (image.length / 4), L: sum[0] / n, a: sum[1] / n, b: sum[2] / n };
+        expect((await v.api.run('state.remove', { node: membrane })).ok).toBe(true);
+      }
+      if (process.env.LIPID_NUMBERS) console.log(JSON.stringify(looks));
+      const coarse = looks.coarse;
+      expect(coarse.coverage).toBeGreaterThan(0.2);
+      for (const [middle, look] of Object.entries(looks)) {
+        expect(look.coverage, middle).toBeGreaterThanOrEqual(coarse.coverage - 0.05);
+        expect(Math.hypot(look.L - coarse.L, look.a - coarse.a, look.b - coarse.b), middle).toBeLessThan(0.05);
+      }
+      expect(plugin.canvas3d!.graphics.takeErrors?.() ?? []).toEqual([]);
+    } finally {
+      forgetLipidPatch('dawn-clip-middle');
       v.dispose?.();
     }
   });

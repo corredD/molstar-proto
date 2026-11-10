@@ -665,6 +665,9 @@ export const DefaultCustomLevels: readonly MembraneLevel[] = [
   { distance: 8000, stride: 64, bias: 2 },
 ];
 
+/** A cut leaflet's middle distance (round 8): the coarse sphere levels, the heads as shells, or by parallax */
+export type MembraneMiddle = 'coarse' | 'shells' | 'parallax';
+
 /** A membrane's atoms close up by zoom: by element, or its carbons its species' colour (`elementColor`) */
 export type MembraneAtomColors = 'element' | 'carbon-species';
 
@@ -698,6 +701,27 @@ export const LipidMembraneReprParams = {
   // it a frame draws lipids by the hundred thousand for a few px each (x600, M1, Dawn: 140-240 ms at 0.5, 11 at 2)
   spheresPx: PD.Numeric(2, { min: 0.05, max: 8, step: 0.05 }, { description: 'Spheres: lipids down to this size, px' }),
   budget: PD.Numeric(2_000_000, { min: 10_000, max: 8_000_000, step: 10_000 }, { description: 'Lipids at most' }),
+  // round 8 (Ludo, 2026-11-09: "to compare and pick"): a cut leaflet's middle distance, between its atoms and the flat
+  // texture: the coarse sphere levels, or the heads' relief over the patch's height channel (`patchRaster`'s alpha),
+  // drawn as shells or by parallax
+  middle: PD.Select<MembraneMiddle>('coarse', [
+    ['coarse', 'Coarse spheres'],
+    ['shells', 'Shells'],
+    ['parallax', 'Parallax'],
+  ]),
+  // the stride 1 → 8 boundary (Balanced: 8.8 px a lipid of 7.4 Å, measured) over the selection's keep (0.8): the atoms
+  // to there, no coarse level drawn
+  middlePx: PD.Numeric(
+    11,
+    { min: 2, max: 32, step: 0.5 },
+    { description: 'Shells, parallax: atoms down to this size, px' },
+  ),
+  shells: PD.Numeric(8, { min: 4, max: 12, step: 1 }, { description: 'Shells: the heads’ layers' }),
+  mergePx: PD.Numeric(
+    2,
+    { min: 0.5, max: 8, step: 0.5 },
+    { isHidden: true, description: 'Shells, parallax: flat below, px' },
+  ),
   // a membrane as a particle system (Ludo, 2026-11-08): its species as entities, each shown or not and its colour
   // (`mesoscale.membraneSpecies`); a hidden species is not generated (the cutter's), the far surface without it
   hiddenSpecies: PD.Value<readonly string[]>([], { isHidden: true }),
@@ -760,6 +784,16 @@ export function shownLipids(tile: Tile, species: readonly string[], hidden: Read
     lipidAtomStart[++k] = a;
   }
   return { ...tile, positions, elements, lipidAtomStart, lipidSpecies };
+}
+
+/**
+ * The px a cut leaflet's lipids are drawn down to: the far look's switch (`enterPx`), or with a middle look its
+ * `middlePx` (round 8: the atoms to there, the middle look below)
+ */
+function lipidsPx(props: LipidMembraneReprProps) {
+  return props.middle !== 'coarse' && props.far !== 'spheres'
+    ? props.middlePx
+    : enterPx(props.far, props.atomsPx, props.spheresPx);
 }
 
 /** A lipid's size in the patch, Å: the side of the area a lipid takes (the selection's size on screen) */
@@ -915,6 +949,26 @@ function patchObject(
   const object = createRenderObject('mesh', values, Mesh.Utils.createRenderableState(props), -1);
   clipped.set(object.values as never, props);
   return object;
+}
+
+/**
+ * A cut leaflet's far surface's middle look (round 8, `MeshSchema.dPatchMiddle`): parallax marched from `mergePx` up
+ * (the surface drawn to twice the lipids' px, `fadeSurface`), or beneath a shell band (discarded where it draws); the
+ * heads' heights the raster's (lo, hi, the surface at the mean)
+ */
+function setMiddle(
+  values: object,
+  middle: MembraneMiddle,
+  props: LipidMembraneReprProps,
+  raster: { lo: number; hi: number; mean?: number },
+) {
+  const v = values as { dPatchMiddle: ValueCell<string>; uPatchShells: ValueCell<Vec4>; uPatchMiddle: ValueCell<Vec4> };
+  ValueCell.update(v.dPatchMiddle, middle === 'parallax' ? 'parallax' : 'beneath');
+  ValueCell.update(v.uPatchShells, Vec4.create(props.shells, raster.lo, raster.hi, raster.mean ?? raster.hi));
+  ValueCell.update(
+    v.uPatchMiddle,
+    Vec4.create(props.mergePx, middle === 'parallax' ? NoFade : 2 * props.middlePx, 0, 0),
+  );
 }
 
 /** Whether a membrane's colours follow the zoom: on, and not one colour (as a list's uniform theme) */
@@ -1176,8 +1230,12 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
     } as unknown as ColorTheme<any>;
     const theme = { color, size: UniformSizeTheme({}, { value: props.sizeFactor }) };
     // each lipid or tile at its own level by its size on screen (the culler's per-instance levels)
-    const lod =
-      props.detail === 'off' ? { lodLevels: [], lodPixelSize: 0 } : membraneLevels(props.detail, props.levels);
+    // round 8: with a middle look a cut lipid is its atoms down to it (the selection keeps a triangle's lipids a little
+    // below `middlePx`, measured: no coarse level shows over the relief)
+    const atomsOnly =
+      props.detail === 'off' ||
+      (lipidAtomStart === undefined && lipidsPx(props) !== enterPx(props.far, props.atomsPx, props.spheresPx));
+    const lod = atomsOnly ? { lodLevels: [], lodPixelSize: 0 } : membraneLevels(props.detail, props.levels);
     // markers by lipid; by atom (a cut member's, a tile's): by group and instance, 40 a lipid past a texture's size
     const p = {
       ...PD.getDefaultValues(Spheres.Params),
@@ -1233,14 +1291,14 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
     fade: (depthScale, pixelSize) => {
       lastLod.depthScale = depthScale;
       lastLod.pixelSize = pixelSize;
-      const enter = enterPx(props.far, props.atomsPx, props.spheresPx);
+      const enter = lipidsPx(props);
       for (const f of fading) fadeSurface(f.values, f.size, enter, f.near, depthScale, pixelSize);
     },
     showParts,
     partsVersion: () => visibility?.version,
     params: (size) => {
       selectionParams.lipidSize = size;
-      selectionParams.enterPx = builtFor?.method === 'cutter' ? enterPx(props.far, props.atomsPx, props.spheresPx) : 0;
+      selectionParams.enterPx = builtFor?.method === 'cutter' ? lipidsPx(props) : 0;
       // a clip shows the leaflet behind and the far side: every unit then
       selectionParams.facing = props.clip.objects.length > 0 ? 0 : FacingMargin;
       return selectionParams;
@@ -1512,7 +1570,9 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
         ...data.leaflets.map((l) => ({ ...l, offset: l.tileSet.offset, part: undefined, far: undefined })),
       ];
       const levels = levelsOn(props);
-      const enter = enterPx(props.far, props.atomsPx, props.spheresPx);
+      const enter = lipidsPx(props);
+      // round 8: the middle look over a cut leaflet's far surface, its texture flat (the look lights the relief)
+      const middle = data.method === 'cutter' ? props.middle : 'coarse';
       for (const leaflet of surfaces) {
         const { table } = leaflet;
         const size = lipidSize(table);
@@ -1527,7 +1587,15 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
         const cut = leaflet.offset === 0 && data.method === 'cutter';
         // round 5: the patch as a texture on the mesh's own triangles, mapped per fragment as the cutter maps it (its
         // regions and cells), mipmapped: the spheres' look at the switch, their mean far away, at any scale
-        const raster = patchRaster(table, shown, leaflet.name, speciesColor, switchSpheres(table, props, enter));
+        const relief = cut && middle !== 'coarse';
+        const raster = patchRaster(
+          table,
+          shown,
+          leaflet.name,
+          speciesColor,
+          switchSpheres(table, props, enter),
+          !relief,
+        );
         const patch = patchTexture(graphics, raster);
         made.push(patch);
         nextTextures.push(patch);
@@ -1546,6 +1614,7 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
           made.push(patchShifts);
           nextTextures.push(patchShifts);
           const object = patchObject(f, [patch, patchShifts], table, leaflet.regions, size, props, !!fade, one);
+          if (relief && fade === 'far') setMiddle(object.values, middle, props, raster);
           nextPatches.push({ values: object.values as BaseValues, size });
           if (fade) {
             const values = object.values as BaseValues;
