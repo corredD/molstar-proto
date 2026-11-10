@@ -39,6 +39,20 @@ export function openAddresses(v: { readonly url?: string; readonly data?: string
 }
 
 /**
+ * An address no domain rule allows (not https): a call that names it asks every time. What the stub says for what it
+ * cannot read without the format's parser (the chunk's definitions say the addresses themselves).
+ */
+export const UnreadAddress = 'mesoviewspec:unread-address';
+
+/**
+ * What an edit reaches, before the chunk loads (it has the patch parser, `patchAddresses`): a patch that may write a
+ * uri (or escapes what it writes) asks.
+ */
+export function editAddresses(v: { readonly patch?: string }): string[] {
+  return typeof v.patch === 'string' && /uri|\\u/i.test(v.patch) ? [UnreadAddress] : [];
+}
+
+/**
  * The agent's skill (prism.md §8): thin tools over §5.3's operations, and the MesoQL skill of lane `mvs-skill-cli`
  * (generated from the symbol table) as the words for addresses. It is in the stub, so the catalog has it before the
  * chunk loads.
@@ -141,7 +155,12 @@ export const MesoViewSpecLazyExtension: LazyViewerExtension = {
       },
       { id: 'mesoviewspec.close', title: 'Close the MesoViewSpec document', approval: 'destructive' },
       { id: 'mesoviewspec.get', title: 'Describe the MesoViewSpec document', read: true },
-      { id: 'mesoviewspec.edit', title: 'Edit the MesoViewSpec document' },
+      {
+        id: 'mesoviewspec.edit',
+        title: 'Edit the MesoViewSpec document',
+        approval: 'network',
+        addresses: editAddresses,
+      },
       { id: 'mesoviewspec.save', title: 'Save the MesoViewSpec document', history: false, undoable: false },
       {
         id: 'mesoviewspec.focus',

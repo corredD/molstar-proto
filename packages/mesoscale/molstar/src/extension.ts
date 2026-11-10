@@ -708,6 +708,9 @@ export class MesoViewSpecApi extends ApiArea {
     id: 'mesoviewspec.edit',
     title: 'Edit the MesoViewSpec document',
     params: EditParams,
+    // a patch that writes a resource's uri makes the document fetch it: the agent asks for a host it does not know
+    approval: 'network',
+    addresses: ({ patch }) => patchAddresses(patch, this.model.url),
     run: async ({ patch }, ctx) => {
       if (!this.model.doc) return ApiResult.fail('not-found', 'No document is open.');
       const read = parsePatch(patch);
@@ -802,6 +805,52 @@ function parsePatch(text: string): { patch: Patch } | ApiFailure {
   }
   const r = readPatch(text);
   return r.patch ? { patch: r.patch } : ApiResult.fail('invalid', `The patch is not readable: ${r.error?.message}`);
+}
+
+/**
+ * What an edit reaches (agent.md §4): every resource `uri` the patch writes (a `set`'s fields, an `insert`'s node),
+ * resolved as the owner loads it (`fixture://x` is `fixtures/x` beside the document; the base is the document's
+ * address), those of the document's own origin left out. A patch that does not read reaches nothing: the run refuses it.
+ */
+export function patchAddresses(text: unknown, documentUrl: string | undefined): string[] {
+  const read = typeof text === 'string' ? parsePatch(text) : undefined;
+  if (!read || 'ok' in read || !Array.isArray(read.patch.ops)) return [];
+  const uris: string[] = [];
+  const collect = (x: unknown, depth: number) => {
+    if (!x || typeof x !== 'object' || depth > 8) return;
+    for (const [k, v] of Object.entries(x)) {
+      if (k === 'uri' && typeof v === 'string') uris.push(v);
+      else collect(v, depth + 1);
+    }
+  };
+  for (const op of read.patch.ops as readonly Partial<Record<string, unknown>>[]) {
+    if (op?.op === 'set') collect(op.fields, 0);
+    else if (op?.op === 'insert') collect(op.node, 0);
+  }
+  return foreignAddresses(uris, documentUrl);
+}
+
+/** Resource uris as the owner fetches them (`MesoDocumentModel.load`), those of the document's origin left out. */
+function foreignAddresses(uris: readonly string[], base: string | undefined): string[] {
+  let origin: string | undefined;
+  try {
+    origin = base ? new URL(base).origin : undefined;
+  } catch {
+    origin = undefined;
+  }
+  const out = new Set<string>();
+  for (const uri of uris) {
+    const path = uri.startsWith('fixture://') ? `fixtures/${uri.slice('fixture://'.length)}` : uri;
+    let href: URL;
+    try {
+      href = new URL(path, base);
+    } catch {
+      continue; // relative, and the document has no address: not fetched
+    }
+    if (origin !== undefined && origin !== 'null' && href.origin === origin) continue;
+    out.add(href.href);
+  }
+  return [...out];
 }
 
 const issueLines = (issues: readonly Issue[]) => {
