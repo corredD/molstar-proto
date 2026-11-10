@@ -787,9 +787,15 @@ export class MesoDocumentModel {
     return out;
   }
 
+  /**
+   * The lists cleared in the session's turn, after the stream commit in flight (else it lands after the clear: a tile
+   * list orphaned, the adapter's state stale). The session is disposed first, so the stream steps queued do nothing.
+   */
   private async closeLists(api: ViewerApi) {
-    await this.adapter.bound(api, () => this.adapter.clear());
-    this.session?.dispose();
+    const session = this.session;
+    session?.dispose();
+    const clear = () => this.adapter.bound(api, () => this.adapter.clear());
+    await (session ? session.exclusive(clear) : clear());
     this.session = undefined;
     this.doc = undefined;
     this.restoreIssues = [];
@@ -797,10 +803,12 @@ export class MesoDocumentModel {
 
   /**
    * The document is gone from the restored state: the owner's too, with no write but the tiles' lists the restore kept
-   * (behavior-owned, prism.md §9), which the adapter deletes.
+   * (behavior-owned, prism.md §9), which the adapter deletes, in the session's turn (after the stream commit in flight,
+   * as `closeLists`).
    */
   private async forget() {
-    this.session?.dispose();
+    const session = this.session;
+    session?.dispose();
     this.session = undefined;
     this.doc = undefined;
     this.url = undefined;
@@ -808,7 +816,8 @@ export class MesoDocumentModel {
     this.shown = undefined;
     this.saved = undefined;
     this.restoreIssues = [];
-    await this.adapter.forget();
+    const forget = () => this.adapter.forget();
+    await (session ? session.exclusive(forget) : forget());
     this.changed.next();
   }
 
