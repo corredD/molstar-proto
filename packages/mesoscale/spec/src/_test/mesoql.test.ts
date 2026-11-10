@@ -10,7 +10,16 @@ import { nucleoidDoc } from '../examples/nucleoid.js';
 import { mesoQLReference, parseMesoQL, printMesoQL } from '../format/mesoql.js';
 import { indexDoc, validate } from '../format/validate.js';
 import { placementSets } from '../ir/ir.js';
-import { evaluateMesoQL, intersectRuns, lociSize, lociToIds, subtractRuns, typeRuns, unionRuns } from '../ir/loci.js';
+import {
+  evaluateMesoQL,
+  intersectRuns,
+  lociSize,
+  lociToIds,
+  lociToLocations,
+  subtractRuns,
+  typeRuns,
+  unionRuns,
+} from '../ir/loci.js';
 import { updateView } from '../runtime/runtime.js';
 import { compileExosome } from './helpers.js';
 
@@ -88,6 +97,28 @@ describe('MesoQL', () => {
     const near = n('(within (population p.catalase) :of (population p.catalase.observed) :distance 15)');
     expect(near).toBeGreaterThan(0);
     expect(near).toBeLessThan(r.counts['p.catalase'].achieved);
+  });
+
+  it('MesoLocation is a union: every location an address yields is a copy', async () => {
+    const r = await compileExosome(exosomeDoc());
+    const ctx = { doc: exosomeDoc(), ir: r.ir! };
+    const loci = evaluateMesoQL(q('(copies p.catalase 12 3)'), ctx).loci;
+    const locations = lociToLocations(loci, 10);
+    expect(locations.length).toBe(3);
+    for (const l of locations) expect(l.kind).toBe('copy');
+  });
+
+  it('MesoLoci from an address has only copies', async () => {
+    const r = await compileExosome(exosomeDoc());
+    const ctx = { doc: exosomeDoc(), ir: r.ir! };
+    for (const t of ['(population p.lipids)', '(not (population p.lipids))', '(within (all) :of (all) :distance 1)']) {
+      const loci = evaluateMesoQL(q(t), ctx).loci;
+      expect(Object.keys(loci)).toEqual(['copies']);
+      expect(loci.copies).toBeInstanceOf(Map);
+      expect(loci.labels).toBeUndefined();
+      expect(loci.voxels).toBeUndefined();
+      expect(loci.faces).toBeUndefined();
+    }
   });
 
   it('a view from addresses: whole-type looks, partial looks with runs, an annotation at its copies', async () => {
