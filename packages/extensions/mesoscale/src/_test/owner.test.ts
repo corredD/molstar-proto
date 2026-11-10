@@ -183,7 +183,10 @@ describe('an owned list (prism.md §1.1)', () => {
     expect(themeName()).toBe('uniform');
     expect(proposed).toHaveLength(1);
     expect(proposed[0].label).toBe('theme');
-    expect(proposed[0].lists[0].looks).toEqual([{ entities: [0, 1, 2, 3], change: { color: Color(0x808080) } }]);
+    // one color for all the owner draws (prism.md §5.1: "one document, one color")
+    expect(proposed[0].lists[0].looks).toEqual([
+      { entities: [0, 1, 2, 3], whole: true, change: { color: Color(0x808080) } },
+    ]);
     expect(layers(v, owned)).toHaveLength(1);
     expectOk(await v.api.run('history.undo', {}));
     expect(themeName()).toBe(before);

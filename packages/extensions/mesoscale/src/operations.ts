@@ -706,6 +706,7 @@ export class MesoscaleApi extends ApiArea {
       const plans: ThemePlan[] = [];
       const fallbacks: string[] = [];
       let meshRefs: ReadonlySet<string> | undefined;
+      const ownerColors = new Map<ParticleListOwner, Color>();
       for (let i = 0; i < refs.length; i++) {
         const o = byRef.get(refs[i]);
         const mine = one ?? palette[i];
@@ -740,11 +741,15 @@ export class MesoscaleApi extends ApiArea {
               theme === 'generate'
                 ? generateColors(owner.info(ref, groupBy[ref] ?? owned.groupBy)?.groups ?? owned.groups)
                 : undefined;
+            // By object and Uniform: one color for all the owner draws, its first list's
+            if (theme !== 'entity' && !ownerColors.has(owner)) ownerColors.set(owner, mine);
             const looks: OwnedLookEdit[] = generated
               ? ids.map((id) => ({ entities: [id], change: { color: generated.get(id) ?? null } }))
               : [
                   // By entity: the colors back to the default (the owner clears its looks within these entities)
-                  { entities: ids, change: { color: theme === 'entity' ? null : mine } },
+                  theme === 'entity'
+                    ? { entities: ids, change: { color: null } }
+                    : { entities: ids, whole: true, change: { color: ownerColors.get(owner)! } },
                 ];
             plans.push({ kind: 'owned', o, owner, looks });
             continue;

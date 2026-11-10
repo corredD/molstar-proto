@@ -30,6 +30,11 @@ export interface OwnedLookEdit {
   readonly entities: readonly number[];
   /** The group the entities are, when the person picked a group: the owner may address the group itself */
   readonly group?: string;
+  /**
+   * The whole of what the owner draws (a theme By object or Uniform: "one document, one color", prism.md §5.1): the
+   * owner addresses all of it, beyond this list, once however many of its lists ask
+   */
+  readonly whole?: boolean;
   readonly change: OwnedLookChange;
 }
 

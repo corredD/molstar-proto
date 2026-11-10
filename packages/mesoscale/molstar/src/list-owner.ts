@@ -42,7 +42,8 @@ export class DocumentListOwner implements ParticleListOwner {
       const set = key !== undefined ? this.model.adapter.setOf(key) : undefined;
       if (!set) return ApiResult.fail('not-found', 'That list is not the document’s any more.');
       for (const look of looks) {
-        const select = this.selectOf(list, set, look.entities, look.group);
+        // the whole document (a theme By object, Uniform): one look (all), however many lists ask
+        const select = look.whole ? '(all)' : this.selectOf(list, set, look.entities, look.group);
         if (select) styles.push({ select, change: lookChange(look.change) });
       }
     }
