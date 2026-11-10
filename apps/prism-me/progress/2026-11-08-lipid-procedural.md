@@ -2096,3 +2096,6 @@ multiplier take it."
   parts, recolour without rebuild and one step, opacity no rebuild, switch off = round 7, sphere unchanged, tiles
   tinted), the explorer's part dot, a scaling guard; perf baseline unchanged. ~300 lines.
 - Risks: saturated multiplies go black; the theme's double write; `recolor` missing a member.
+
+Ludo, 2026-11-10, at the checkpoint: normalised multiply; the part dot recolours its mesh; atoms by element not tinted;
+the switch on by default. All as the design recommends.
