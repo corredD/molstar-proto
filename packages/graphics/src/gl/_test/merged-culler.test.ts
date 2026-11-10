@@ -335,4 +335,44 @@ describe('the GPU culler of a merged object', () => {
     expect(views).toEqual([2, 0.5]);
     expect(liveOf(1)).toBe(5);
   });
+
+  it("tells a GPU-written member's writer when the CPU wrote over its rows, so a pool writes its dead slots again", () => {
+    // the CPU writes the member's placeholder rows (zeros: drawn at the origin by the identity region) on a member
+    // update (`writeMemberData`) and on a full write (`writeCulledData`); a pool skips dead slots it wrote before
+    const builder = SpheresBuilder.create(2, 1);
+    builder.add(0, 0, 0, 0);
+    builder.add(1, 0, 0, 1);
+    const geometry = builder.getSpheres();
+    const props = PD.getDefaultValues(Spheres.Params);
+    const seen: number[] = [];
+    const writer = (_c: unknown, target: { cpuWrites?: number }) => {
+      seen.push(target.cpuWrites ?? -1);
+      return 3;
+    };
+    const objects = [false, true].map((gpu) => {
+      const transform = createTransform(new Float32Array(8 * 16), 8, undefined, 0, 0);
+      const values = Spheres.Utils.createValuesSimple(geometry, props, ColorNames.orange, 1, transform);
+      if (gpu) Object.assign(values, { gpuInstances: { ref: { value: writer, version: 0 } } });
+      return createRenderObject('spheres', values, Spheres.Utils.createRenderableState(props), -1);
+    });
+    const ro = createMergedRenderObject(objects, { gpuCulling: true });
+    ro.merged.sync();
+    const fake = fakeCompute(65535);
+    const culler = createMergedCuller(
+      fake.compute,
+      fake.resources,
+      ro.merged,
+      objects.map((o) => o.values as MergeableValues),
+      false,
+    );
+    expect(seen.length).toBe(1);
+    // the member's placeholders written again (an update of its transforms)
+    const values = objects[1].values as unknown as TransformData;
+    createTransform(new Float32Array(8 * 16), 8, undefined, 0, 0, values);
+    ro.merged.sync();
+    culler.sync();
+    expect(seen.length).toBe(2);
+    expect(seen[1]).toBeGreaterThanOrEqual(0);
+    expect(seen[1]).not.toBe(seen[0]);
+  });
 });
