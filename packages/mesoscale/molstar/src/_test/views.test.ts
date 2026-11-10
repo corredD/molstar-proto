@@ -185,6 +185,35 @@ describe('showing a view (prism.md §4.4)', () => {
     noUnsafe(h);
   });
 
+  it('a show that fails mid-draw draws the view shown before again (Ludo, 2026-11-09)', {
+    tags: ['medium'],
+  }, async () => {
+    const h = await open();
+    const steps = h.steps().length;
+    const savedOf = () => (h.model as unknown as { saved: unknown }).saved;
+    const savedBefore = savedOf();
+    // the looks of v.red written, then the draw fails before it ends
+    const adapter = h.model.adapter as unknown as { writeLooks(...a: unknown[]): Promise<number> };
+    const write = adapter.writeLooks.bind(adapter);
+    vi.spyOn(adapter, 'writeLooks').mockImplementationOnce(async (...a: unknown[]) => {
+      await write(...a);
+      throw new Error('the draw failed');
+    });
+    const r = await h.run('mesoviewspec.view', { view: 'v.red' });
+    expect(r.ok).toBe(false);
+    // the screen, the adapter, the session and the saved value agree: v.granules
+    expect(ribosomes(h)?.color).not.toBe(Red);
+    expect(h.model.shown).toBeUndefined();
+    expect(h.model.shownId).toBe('v.granules');
+    expect(shownId(h)).toBe('v.granules');
+    expect(savedOf()).toBe(savedBefore);
+    expect(h.steps().length).toBe(steps);
+    expect(h.steps().filter((s) => s.unsafe !== undefined)).toEqual([]);
+    // and the next show works
+    expect((await h.run('mesoviewspec.view', { view: 'v.red' })).ok).toBe(true);
+    expect(ribosomes(h)?.color).toBe(Red);
+  });
+
   it('look edits go to the view shown; switching back shows them', { tags: ['medium'] }, async () => {
     const h = await open();
     await h.run('mesoviewspec.view', { view: 'v.red' });
