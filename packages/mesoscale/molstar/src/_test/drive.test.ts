@@ -157,6 +157,29 @@ describe('mesoscale.style on a document list (prism.md §5.1)', () => {
 });
 
 describe('the other operations on a document list (prism.md §5.1)', () => {
+  it('entities: each entity’s visibility and color as drawn (an eye, a style, a look on several types)', {
+    tags: ['medium'],
+  }, async () => {
+    const h = await open();
+    expect((await h.run('mesoviewspec.eye', { select: '(population p.lipids)', visible: false })).ok).toBe(true);
+    const cat = listOf(h, 'p.catalase');
+    expect(
+      (await h.run('mesoscale.style', { particles: cat.ref, entities: String(cat.type), color: '#ff0000' })).ok,
+    ).toBe(true);
+    type Info = { value: { entities: { id: number; visible: boolean; color?: number }[] } };
+    const entity = async (population: string) => {
+      const { ref, type } = listOf(h, population);
+      const r = await h.run('mesoscale.entities', { particles: ref });
+      expect(r.ok).toBe(true);
+      return (r as Info).value.entities.find((e) => e.id === type)!;
+    };
+    expect((await entity('p.lipids')).visible).toBe(false);
+    expect(await entity('p.catalase')).toMatchObject({ visible: true, color: 0xff0000 });
+    // one look over every type of the document: Show only something else hides catalase too
+    expect((await h.run('mesoviewspec.showOnly', { select: '(population p.lipids)' })).ok).toBe(true);
+    expect((await entity('p.catalase')).visible).toBe(false);
+  });
+
   it('entities: read through the owner: the document’s compartments, the populations by label', {
     tags: ['medium'],
   }, async () => {
