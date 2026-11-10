@@ -170,10 +170,10 @@ function partOf(node: NodeRef): { particles: string; entities: string } | undefi
   return { particles: node.ref, entities: ids.join(',') };
 }
 
-/** Whether a node can be colored for all of it (a structure, its parts; a model, its parts; a target; a mesh) */
+/** Whether a node can be colored for all of it (a structure, its parts; a model, its parts; a target; a mesh; a membrane part) */
 export function colorable(kind: string, node: NodeRef | undefined): boolean {
   if (!node) return false;
-  return ['structure', 'entity', 'chain', 'mesoscale model', 'group', 'target', 'mesh'].includes(kind);
+  return ['structure', 'entity', 'chain', 'mesoscale model', 'group', 'target', 'mesh', 'membrane part'].includes(kind);
 }
 
 /**

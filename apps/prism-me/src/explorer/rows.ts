@@ -265,6 +265,8 @@ type Push = (r: Draft, children: () => void) => void;
  * leave it open)
  */
 export function objectOpen(o: SceneObject, part: MesoscaleInfo | DecorationsInfo | undefined): boolean {
+  // a cell membrane: its parts too (review M2: the Meshes category's eye was open with a part hidden)
+  if (o.parts) return membraneOpen(o);
   if (!o.visible || !part) return o.visible;
   if (o.kind === 'model') return (part as MesoscaleInfo).entities.every((e) => e.visible);
   if (o.kind === 'list') return (part as DecorationsInfo).targets.every((t) => t.visible !== false);
@@ -556,6 +558,8 @@ export function setEyes(api: ViewerApi, area: ExplorerApi, rows: readonly EyeRow
       const r = await setEye(g, area, row, visible);
       if (r && !r.ok) return r;
     }
+    // a membrane's own row among them set all its parts already (one write, not two)
+    for (const row of rows) if (row.kind === 'mesh' && row.node) membraneParts.delete(row.node.ref);
     for (const [ref, parts] of membraneParts) {
       // a part shown: its membrane drawn (its other parts as they are)
       if (visible && area.objectsState().value.some((o) => o.ref === ref && !o.visible)) {
@@ -642,12 +646,10 @@ async function setEye(api: ViewerApi, area: ExplorerApi, row: EyeRow, visible: b
       return api.run('volume.visibility', { node: row.representation!, visible });
     case 'mesh':
       // a lipid membrane is not a mesh file's (`cryoet.mesh` does not know it): its cell
-      const membrane = area.objectsState().value.find((o) => o.ref === node.ref && o.membrane);
-      if (membrane) {
+      if (area.objectsState().value.some((o) => o.ref === node.ref && o.membrane)) {
         const r = await api.run('state.visibility', { node: `#${node.ref}`, visible });
-        // shown: every part of it too (its eye is open only then: `membraneOpen`)
-        if (!r.ok || !visible || !membrane.parts?.some((p) => !p.visible)) return r;
-        return api.run('mesoscale.style', { particles: node.ref, parts: '', visible: true });
+        // every part of it too, as a model's entities (review S5: hide it, then show one part alone)
+        return r.ok ? ((await setParts(api, area, 'mesh', node.ref, visible)) ?? r) : r;
       }
       return api.run('cryoet.mesh', { mesh: node.ref, visible });
     case 'label':
@@ -663,6 +665,12 @@ async function setEye(api: ViewerApi, area: ExplorerApi, row: EyeRow, visible: b
  * (Mol*'s subtree), a structure has no part eyes
  */
 async function setParts(api: ViewerApi, area: ExplorerApi, kind: string | undefined, ref: string, visible: boolean) {
+  if (kind === 'mesh') {
+    // a cell membrane's parts (round 7; review M2, N3: the Meshes category's eye too), where one is not so already
+    const o = area.objectsState().value.find((x) => x.ref === ref);
+    if (!o?.parts?.some((p) => p.visible !== visible)) return;
+    return api.run('mesoscale.style', { particles: ref, parts: '', visible });
+  }
   if (kind !== 'mesoscale model' && kind !== 'particle list') return;
   if (!area.representationsState(ref).value.length) return;
   if (kind === 'mesoscale model') return api.run('mesoscale.style', { particles: ref, visible });
