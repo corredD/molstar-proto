@@ -127,7 +127,7 @@ function addressStory(doc: MesoViewSpecDoc, load: (id: string) => unknown, examp
       const runs = [...e.loci.copies.values()].reduce((n, r) => n + r.length / 2, 0);
       result.textContent = [
         `canonical: ${printMesoQL(p.expr)}`,
-        `${lociSize(e.loci).toLocaleString('en-US')} copies in ${e.loci.size} placement set${e.loci.size === 1 ? '' : 's'}, ${runs} run${runs === 1 ? '' : 's'} (${ms.toFixed(1)} ms)`,
+        `${lociSize(e.loci).toLocaleString('en-US')} copies in ${e.loci.copies.size} placement set${e.loci.copies.size === 1 ? '' : 's'}, ${runs} run${runs === 1 ? '' : 's'} (${ms.toFixed(1)} ms)`,
         ...e.issues.map((i) => `${i.code}: ${i.message}`),
         '',
         ...lociToIds(e.loci, ir, 40),
