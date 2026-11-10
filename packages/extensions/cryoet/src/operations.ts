@@ -1295,10 +1295,25 @@ export function particleListData(ctx: Pick<ApiContext, 'plugin'>, ref: string): 
 
 /** The list as the representations get it: with its decorations */
 
+/**
+ * The particles the list's offsets apply to: its deepest decorator's but its offsets' (its targets, their names and
+ * objects, and its particles: a decorator that adds particles, mesoscale's painted copies, adds them here too, so an
+ * instance or a kind of them is offset as the file's are; paint-layer, 2026-11-10)
+ */
 function dataOf(ctx: Pick<ApiContext, 'plugin'>, l: ParticleListRef): ParticleList | undefined {
-  const deepest =
-    decoratorCell(ctx, l, ParticleListWithTargets) ?? decoratorCell(ctx, l, ParticleListTargetsFromAttribute);
-  return (deepest?.obj?.data as ParticleList | undefined) ?? l.cell.obj?.data;
+  const { tree, cells } = ctx.plugin.state.data;
+  let data = l.cell.obj?.data as ParticleList | undefined;
+  for (let ref: StateTransform.Ref = l.cell.transform.ref; ; ) {
+    const decorator = tree.children
+      .get(ref)
+      .toArray()
+      .map((c) => tree.transforms.get(c))
+      .find((t) => t?.transformer.definition.isDecorator);
+    if (!decorator) return data;
+    if (decorator.transformer !== ParticleListOffsets)
+      data = (cells.get(decorator.ref)?.obj?.data as ParticleList) ?? data;
+    ref = decorator.ref;
+  }
 }
 
 function describe(ctx: Pick<ApiContext, 'plugin'>, l: ParticleListRef): DecorationsInfo {
