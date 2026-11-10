@@ -2160,7 +2160,7 @@ export type LipidMembraneProps = PD.Values<typeof LipidMembraneParams>;
 
 /**
  * Meshes as one, each a part (its triangles' range), named; names kept apart (review S3: a part is styled, hidden and
- * coloured by name): a name taken again is `name 2`, `name 3`…, one Set over the parts
+ * coloured by name): a name taken again is `name 2`, `name 3`…, a Set and each name's next suffix over the parts
  */
 export function concatMeshes(meshes: readonly TriMesh[], names: readonly string[]) {
   let V = 0;
@@ -2173,13 +2173,17 @@ export function concatMeshes(meshes: readonly TriMesh[], names: readonly string[
   const indices = new Uint32Array(I);
   const parts: TrianglePart[] = [];
   const taken = new Set<string>();
+  const next = new Map<string, number>();
   let v = 0;
   let i = 0;
   meshes.forEach((m, k) => {
     positions.set(m.positions, v);
     for (let j = 0; j < m.indices.length; ++j) indices[i + j] = m.indices[j] + v / 3;
+    // the next suffix a name tries kept by name: linear in the parts, however many share a name
     let name = names[k];
-    for (let n = 2; taken.has(name); ++n) name = `${names[k]} ${n}`;
+    let n = next.get(names[k]) ?? 2;
+    while (taken.has(name)) name = `${names[k]} ${n++}`;
+    next.set(names[k], n);
     taken.add(name);
     parts.push({ start: i / 3, end: (i + m.indices.length) / 3, name });
     v += m.positions.length;

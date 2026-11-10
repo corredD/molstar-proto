@@ -76,6 +76,12 @@ function rows(data: MembraneData) {
 }
 
 describe('a cell’s membranes, a cut leaflet a part (round 7)', () => {
+  it('names its parts apart: a name taken again `name 2`, a suffix taken skipped (round 9 review S3)', () => {
+    const one = icosphere(100, 20);
+    const { parts } = concatMeshes([one, one, one, one], ['a', 'a', 'a 2', 'a']);
+    expect(parts.map((p) => p.name)).toEqual(['a', 'a 2', 'a 2 2', 'a 3']);
+  });
+
   it('cuts each part on its own triangles as the whole mesh cuts them: the same lipids where no part has a mix', () => {
     const meshes = [icosphere(600, 120), shifted(icosphere(300, 90), 1200)];
     const { mesh, parts } = concatMeshes(meshes, ['a', 'b']);
