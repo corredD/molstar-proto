@@ -11,6 +11,7 @@ import { Particle } from '@molstar/model/model/particles/particle-list';
 import type { ContextMenuItem } from '@molstar/prism-ui';
 import type { ViewerApi } from '@molstar/prism-viewer/api';
 import { downloadBlob } from '@molstar/prism-viewer/ui/download';
+import { Swatches } from './menu.js';
 
 // The open MesoViewSpec document in the Scene tree (prism.md §4): one item of Particles, its compartments, populations,
 // instances and parts under it, each row its MesoQL address. Its rows are the owner's (`api.mesoviewspec.treeState`,
@@ -159,13 +160,15 @@ export function documentLoci(api: ViewerApi, ref: DocumentRef): readonly Loci[] 
 }
 
 /**
- * A document row's ⋯ and right-click (prism.md §5.2, §6): Focus; Show only this, Show all again (look patches, one
- * step); the document's: Save, Close. A part's: Focus only (read-only in 3D). No Move: a document places its copies.
+ * A document row's ⋯ and right-click (prism.md §5.2, §6): Focus; Color… (a look patch, given a way to `open` its
+ * swatches); Show only this, Show all again (look patches, one step); the document's: Save, Close. A part's: Focus only
+ * (read-only in 3D). No Move: a document places its copies.
  */
 export function documentMenuItems(
   api: ViewerApi,
   tree: DocumentTree | undefined,
   picked: { readonly label: string; readonly doc: DocumentRef },
+  open?: (items: ContextMenuItem[]) => void,
 ): ContextMenuItem[] {
   const { doc, label } = picked;
   const items: ContextMenuItem[] = [];
@@ -178,6 +181,26 @@ export function documentMenuItems(
     });
   }
   const part = doc.id.includes('/');
+  if (open && doc.select && !part) {
+    const look = (values: Record<string, unknown>) => api.run('mesoviewspec.look', { select: doc.select, ...values });
+    const swatches: ContextMenuItem[] = [
+      ...Swatches.map(
+        ([color, name]): ContextMenuItem => ({
+          id: `color-${color}`,
+          label: name,
+          icon: 'palette',
+          run: () => void look({ color }),
+        }),
+      ),
+      {
+        id: 'color-default',
+        label: 'Default color',
+        icon: 'palette' as const,
+        run: () => void look({ defaultColor: true }),
+      },
+    ];
+    items.push({ id: 'color', label: 'Color…', icon: 'palette', run: () => open(swatches) });
+  }
   if (doc.select && doc.id && !part) {
     items.push({
       id: 'show-only',
