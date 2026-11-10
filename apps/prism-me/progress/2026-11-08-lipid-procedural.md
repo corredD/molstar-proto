@@ -1384,9 +1384,12 @@ lacks takes the other leaflet's conformers mirrored through the centre). **Confl
   mitochondrion's capacities against round 6's live counts (73 k PM close, 145 k inside a mito).
 - **Far surfaces:** each cut leaflet's own (`partOfSurface` per part already), its texture from its mix table.
 - **Item 2 on it:** repr params `hiddenParts: string[]`, `partColors: Record<string, number>` (hidden, auto-update); a
-  hidden part's selections take nothing and its objects are hidden; a part's colour its members' `uniform` colour and
-  its surfaces'. Operations: `mesoscale.style { particles: membrane, parts: 'PM,ER', visible?, color? }` (one
-  `updateMembrane`), the explorer's rows `mp:${ref}:${name}` (kind `part`, under the membrane's mesh row, rows.ts
-  `objectRows`, `rowKeysOf`; a membrane's parts state `api.mesoscale.membranePartsState(ref)` beside
-  `membraneSpeciesState`); the eye through `setEyes` (one `api.group`), the colour through `colorItems`' part case.
-  Tests as `tree-eyes.test.tsx` (an eye one step, one undo; the colour dot) and `lipid-membrane.test.ts`.
+  hidden part's selections take nothing and its objects are hidden; a part's colour its surfaces' and its members' far
+  level (review D1: `colorBy: 'uniform'` turns By zoom off for the whole representation, `membrane.ts` ~781 and ~817; a
+  part's colour must keep By zoom's species and atom colours close, so it tints the far level and the surfaces only, a
+  per-member `colorLevels` far colour). Operations:
+  `mesoscale.style { particles: membrane, parts: 'PM,ER', visible?, color? }` (one `updateMembrane`), the explorer's
+  rows `mp:${ref}:${name}` (kind `part`, under the membrane's mesh row, rows.ts `objectRows`, `rowKeysOf`; a membrane's
+  parts state `api.mesoscale.membranePartsState(ref)` beside `membraneSpeciesState`); the eye through `setEyes` (one
+  `api.group`), the colour through `colorItems`' part case. Tests as `tree-eyes.test.tsx` (an eye one step, one undo;
+  the colour dot) and `lipid-membrane.test.ts`.
