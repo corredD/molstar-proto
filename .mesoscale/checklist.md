@@ -9,10 +9,7 @@ drives it is [loop.md](loop.md).
 
 Questions that stop the loop. One line each; move it to Decided with the answer.
 
-- Lane 4: your check in the app on port 1358. Run by Claude through the API on 2026-11-09: eye, Color…, Generate, Show
-  only, the refusal, Save and Undo pass on the exosome; a cellPACK HIV list behaves as before and leaves the document
-  alone. **Bug:** Import colors on a document list matches population ids only (`p.catalase`); entity names (`ALB`,
-  `catalase`) and labels (`Serum albumin`) are refused, though its own hint lists them. Not yet fixed.
+- (none)
 
 ## Decided
 
@@ -63,12 +60,14 @@ Each lane: brief committed · steps · checks green · gate (reviewer, skeptic, 
 - [x] 3. §5.2's calls (Sonnet)
 - [x] checks: tsc, format, styles green; `pnpm lint` (2 errors) and `check:workspace` (unbuilt assets) fail on the base
       too; 14 Windows-only path-separator test failures also on the base
-- [ ] 4. checked in the app (Sonnet)
+- [x] 4. checked in the app, through the API (Claude, 2026-11-09; Ludo was remote): all pass but Import colors by name;
+      fixed (`bca543522` test, `030841c48`): entity ids and unambiguous bare ids (`ALB`) now match, a bare description
+      (`Serum albumin`) still does not
 - [x] 5. the gate (Opus reviewer, Opus skeptic, a failing test then a fix per confirmed finding): M1, S1–S4 and the §5.2
       eyes fixed (`b36de7a26`..`ed7fc4ce0`); open: refusing `particles.remove`/`visibility` on a document list through
       the API (needs a Prism hook), a Representation-form theme change, nits N1–N3, N5
-- [ ] Ludo's check: exosome eyes, color, Generate colors, Show only, Import colors, Save, Undo; a cellPACK `.bcif`
-- [ ] merged into `me/mesoviewspec`
+- [ ] Ludo's check by hand (the gestures clicked in the tree and menus; Claude's check called the operations)
+- [x] merged into `me/mesoviewspec` (`4b9d4cd1c`), on Ludo's go-ahead after the Import colors fix
 
 ### Small lane: MesoLocation `kind` (after lane 4)
 
