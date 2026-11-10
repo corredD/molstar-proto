@@ -59,5 +59,8 @@
   species' colours and patch times its mesh's colour, normalised (the meshes' grey is no tint), atoms by element not.
   A mesh recoloured (its row, Color…, a theme, an undo) recolours its part in the same step, in place: nothing cut or
   built again; a mesh's opacity draws nothing again. A part's dot, Color… and Generate colour its mesh. Look › Colours
-  from meshes (`mesoscale.colorLevels { meshColors }`, on by default) turns it off. A membrane wrapping the explorer's
-  mesh rows names its parts by their shapes (PM, VAC), no longer all `Mesh`.
+  from meshes (`mesoscale.colorLevels { meshColors }`, on by default) turns it off. A membrane's parts are named as
+  the explorer's mesh rows (PM, VAC; an opened file's name, `pm.obj`, a name taken again `pm.obj 2`), no longer all
+  `Mesh` or `Shape`; a session saved before with those names loses its parts' eyes and colours, and a part's lipid mix
+  follows its new name (the yeast parts get their mixes). A part whose mesh has no tint (grey, a VTP's) keeps its own
+  colour, as a session saved before keeps its part colours; parts coloured apart stay apart where their spheres merge.

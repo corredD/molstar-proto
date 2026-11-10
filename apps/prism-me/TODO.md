@@ -121,6 +121,14 @@ maintainer first (2026-10-25). All are v6 (master); the MRC reader and the parti
     species colour goes dark (a red mesh on a green species: black); the recoloured patch raster is checked by count
     (only the changed leaflets'), not by its texels (no readback of the texture on Dawn yet); `tint` is local (Mol*'s
     `Color` has no multiply): a candidate for `@molstar/core/util/color`.
+  - Round 9 gate, left open: a recolour paints every member and surface again, not only the parts whose tint changed
+    (N1); a partial theme multiplies the membrane's own colour by the tint (N2); a membrane depends on a shape's first
+    representation only (N3); two tests named "mesh representation" (the explorer's and `meshColorCell`'s, N4); the
+    "lacks a species" warning not checked on the explorer's fixture (N7); one round-7 part colour left 48 spheres
+    unmerged (X2: may be gone with S1's group colours, not measured); a session's Wrap all made before round 9 lacks the
+    representations in `dependsOn` (a mesh recoloured does not reach it until wrapped again, S4c); a session saved with
+    the `Mesh` or `Shape` part names (rounds 6 to 8) loses its parts' eyes and colours on reload, and its parts take the
+    mixes of their new names (S4b, recorded in the changelog).
   - Spheres far look past the budget: far parts empty. Thinning lipids at generation needs each sphere grown by its
     instance's scale (the spheres shader takes the model scale only): a library change.
   - The far texture is flat colour (the heads' heights shaded into it), no normal from the head bumps; it switches from

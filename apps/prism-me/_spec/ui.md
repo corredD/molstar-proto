@@ -252,11 +252,16 @@ on a tree row (its right-click or its ⋯), the same menu, in this order:
   the mesh's representation, its `coloring`), its colours written in place, never cut or built again; a mesh's opacity
   draws nothing again. So a part's dot shows its mesh's colour, and the dot, Color… and Generate colour the mesh
   (`cryoet.mesh`, in the one step of `mesoscale.style`/`mesoscale.colors` with `parts`, with the part's eye; without
-  cryoet, round 7's part colours); a part's Reset and the theme scheme clear round 7's part colours only (TODO). The
-  Look's Colours from meshes (`mesoscale.colorLevels { meshColors }`, on by default) turns it off: round 7's colours
-  exactly. A membrane with no mesh (a sphere) has no tint and no switch. Each part has its own lipid mix (the yeast
-  membranes': `mixes.ts`, the LD a monolayer) and its own pools, the budget water-filled across them (a small membrane
-  whole, the large ones alike).
+  cryoet, round 7's part colours); a part's Reset and the theme scheme clear round 7's part colours only (TODO). Parts
+  map to meshes by position, and are named as the meshes' rows (a shape's own label, PM, VAC…, else its file's,
+  `pm.obj`), a name taken again `name 2` (round 9 gate, S3). A part whose mesh's tint is neutral (grey, white, black, a
+  VTP's colour theme, which `cryoet.mesh` does not write) keeps its own colour (`partColors`, round 7's): its dot and
+  Color… write that, and its dot shows it; painting a part's mesh clears its own colour (round 9 gate S2, S4a: the
+  coordinator's decision, for Ludo). A membrane of several parts draws a member of one colour by group, never uniform,
+  so the parts' merged spheres keep each its colour (S1). The Look's Colours from meshes
+  (`mesoscale.colorLevels { meshColors }`, on by default) turns it off: round 7's colours exactly. A membrane with no
+  mesh (a sphere) has no tint and no switch. Each part has its own lipid mix (the yeast membranes': `mixes.ts`, the LD a
+  monolayer) and its own pools, the budget water-filled across them (a small membrane whole, the large ones alike).
 - **Organelle meshes** (round 6): + Open reads the yeast cell viewer's `organelle_meshes.bin` (or `.bin.gz`): a mesh row
   a membrane, named (PM, ER, NE…), in Å.
 - **A membrane made per view** (Ludo, 2026-11-08; lane `lipid-procedural`): the cutter's lipids only on the triangles in
