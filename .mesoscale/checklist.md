@@ -9,8 +9,7 @@ drives it is [loop.md](loop.md).
 
 Questions that stop the loop. One line each; move it to Decided with the answer.
 
-- Lane 7 gate (predates the lane, prism.md §3): an agent `open {url}` on a known service (zenodo.org, public uploads)
-  goes unasked, then fetches any resource host the document names. Ask per resource host, or accept as §3 says?
+- (none)
 
 ## Decided
 
@@ -21,6 +20,8 @@ Questions that stop the loop. One line each; move it to Decided with the answer.
 - 2026-11-09: lane 6: a model edit runs as a Mol\* task in the status pill with Cancel (prism.md), not only in Built by.
 - 2026-11-09: lane 5: Undo keeps the camera still; clicking the shown view re-applies its camera; Update camera on a
   semantic view writes a numeric camera (with fov, transition); a failed show redraws the previous view.
+- 2026-11-10: an agent's open asks per resource host: a document opened by URL (a known service included) asks before
+  fetching a resource on an unknown host, as an edit does; prism.md §3 to change with it (lane 7).
 - 2026-11-10: lane 7 gate S1: `get_mesoviewspec` `detail: 'document'` stays uncapped (asked for on request).
 - 2026-11-10: Ludo runs lane 7's real-model evals, after the gate fixes.
 - 2026-11-10: lane 7's library hook `ViewerExtension.agentState` (`14c430588`) stays in lane 7.
