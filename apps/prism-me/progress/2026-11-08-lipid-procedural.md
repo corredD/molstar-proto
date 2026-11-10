@@ -2154,3 +2154,10 @@ the room went to the live colour closures and raster records `recolor` needs, th
 
 Open (TODO.md): a part's Reset and `scheme: theme` in mesh mode; without cryoet the dot's part colours are left out by
 the switch; saturated multiplies go dark; the raster's texels not read back; `tint` a candidate for core.
+
+For Ludo (round 9, the builder's questions): without cryoet in a spec the brief's fallback (the dot writes `partColors`)
+conflicts with the mesh as the one source: with the switch on (the default) those part colours are left out, so the dot
+changes nothing there. prism-me always has cryoet; a candidate: honour a part's colour where its mesh's tint is neutral.
+And a session saved with round 6-8's `Mesh` part names (a Wrap all from the explorer) loses its parts' eyes and colours
+on reload, the names now PM, VAC… A membrane saved before round 9 reads `meshColors` on (the state fills the default;
+guarded).
