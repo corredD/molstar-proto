@@ -67,10 +67,19 @@ export interface ColorFileMatch {
   readonly overridden: readonly string[];
 }
 
-/** The colors of the file on `entities`: the names indexed once, each key looked up (bulk operations are one change) */
-export function matchColors(entities: readonly MesoEntity[], file: Readonly<Record<string, unknown>>): ColorFileMatch {
+/**
+ * The colors of the file on `entities`: the names indexed once, each key looked up (bulk operations are one change); a
+ * key no name matches is looked up in `aliases` (an owner's other names: a document's population ids), then by its
+ * last dotted part (the Mesoscale Explorer's paths)
+ */
+export function matchColors(
+  entities: readonly MesoEntity[],
+  file: Readonly<Record<string, unknown>>,
+  aliases?: ReadonlyMap<string, number>,
+): ColorFileMatch {
   const byName = new Map<string, number>();
   for (const e of entities) byName.set(e.name, e.id);
+  for (const [name, id] of aliases ?? []) if (!byName.has(name)) byName.set(name, id);
   const colors = new Map<number, Color>();
   const unmatched: string[] = [];
   const invalid: string[] = [];

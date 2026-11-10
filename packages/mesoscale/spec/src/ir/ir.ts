@@ -110,6 +110,11 @@ export interface IRLook {
   readonly set: string;
   readonly types: readonly number[];
   readonly color?: number;
+  /**
+   * `color` is the runtime's default (`defaultColor`), not one a look states (prism.md §5.3): an adapter may leave it
+   * out where the person chose a color theme, so the theme shows.
+   */
+  readonly colorDefault?: true;
   readonly visible?: boolean;
   /**
    * Which of the view's looks decided `visible` (its index; none: the default): the instancing step merges an instance

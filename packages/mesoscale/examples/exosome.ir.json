@@ -585,72 +585,84 @@
         "set": "m.recipe@8a050467de2c042a#0",
         "types": [0],
         "color": 9202131,
+        "colorDefault": true,
         "visible": true
       },
       {
         "set": "m.recipe@8a050467de2c042a#0",
         "types": [1],
         "color": 7956947,
+        "colorDefault": true,
         "visible": true
       },
       {
         "set": "m.recipe@8a050467de2c042a#0",
         "types": [2],
         "color": 10512851,
+        "colorDefault": true,
         "visible": true
       },
       {
         "set": "m.recipe@8a050467de2c042a#0",
         "types": [3],
         "color": 13855168,
+        "colorDefault": true,
         "visible": true
       },
       {
         "set": "m.recipe@8a050467de2c042a#0",
         "types": [4],
         "color": 13881961,
+        "colorDefault": true,
         "visible": true
       },
       {
         "set": "m.recipe@8a050467de2c042a#0",
         "types": [5],
         "color": 13199827,
+        "colorDefault": true,
         "visible": true
       },
       {
         "set": "m.recipe@8a050467de2c042a#0",
         "types": [6],
         "color": 13856361,
+        "colorDefault": true,
         "visible": true
       },
       {
         "set": "m.recipe@8a050467de2c042a#0",
         "types": [7],
         "color": 10670953,
+        "colorDefault": true,
         "visible": true
       },
       {
         "set": "m.recipe@8a050467de2c042a#0",
         "types": [8],
         "color": 6917075,
+        "colorDefault": true,
         "visible": true
       },
       {
         "set": "m.recipe@8a050467de2c042a#0",
         "types": [9],
         "color": 6934739,
+        "colorDefault": true,
         "visible": true
       },
       {
         "set": "m.recipe@8a050467de2c042a#0",
         "types": [10],
         "color": 12964713,
+        "colorDefault": true,
         "visible": true
       },
       {
         "set": "m.recipe@8a050467de2c042a#0",
         "types": [11],
         "color": 13866345,
+        "colorDefault": true,
         "visible": true
       },
       {

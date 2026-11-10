@@ -695,12 +695,14 @@
         "set": "default:meso.pack@be00753e041b4935#0",
         "types": [1],
         "color": 6935452,
+        "colorDefault": true,
         "visible": true
       },
       {
         "set": "default:meso.pack@be00753e041b4935#0",
         "types": [2],
         "color": 6921427,
+        "colorDefault": true,
         "visible": true
       }
     ]

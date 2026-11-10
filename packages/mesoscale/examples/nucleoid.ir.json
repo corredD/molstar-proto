@@ -198,6 +198,7 @@
         "set": "default:meso.fiber@6d460248c4d97633#0",
         "types": [2],
         "color": 13855159,
+        "colorDefault": true,
         "visible": true
       }
     ]

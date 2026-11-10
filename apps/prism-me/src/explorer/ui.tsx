@@ -163,7 +163,13 @@ export function explorerUI(ctx: ViewerUIContext): ViewerExtensionUI {
       if (picked) model.reveal(picked);
       // a document's copy: the document row's menu (no Move: a document places its copies, prism.md §5.2)
       if (picked && 'doc' in picked) {
-        close = openContextMenu(root, at, documentMenuItems(ctx.api, model.documentTree(), picked));
+        close = openContextMenu(
+          root,
+          at,
+          documentMenuItems(ctx.api, model.documentTree(), picked, (items) => {
+            close = openContextMenu(root, at, items);
+          }),
+        );
         return;
       }
       const p = picked;
@@ -511,7 +517,14 @@ function ScenePanel(props: { ctx: ViewerUIContext; area: ExplorerApi; model: Sce
     }
     if (row.doc) {
       pick(row);
-      openContextMenu(r, at, documentMenuItems(api, document.value, { label: row.label, doc: row.doc }), onClose);
+      openContextMenu(
+        r,
+        at,
+        documentMenuItems(api, document.value, { label: row.label, doc: row.doc }, (items) =>
+          openContextMenu(r, at, items, onClose),
+        ),
+        onClose,
+      );
       return;
     }
     if (row.kind === 'clip' && row.clip) {

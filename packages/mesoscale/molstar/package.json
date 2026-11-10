@@ -37,6 +37,7 @@
   "dependencies": {
     "@molstar/core": "workspace:*",
     "@molstar/meso-spec": "workspace:*",
+    "@molstar/mesoscale-extension": "workspace:*",
     "@molstar/model": "workspace:*",
     "@molstar/mvs-builder": "workspace:*",
     "@molstar/plugin": "workspace:*",

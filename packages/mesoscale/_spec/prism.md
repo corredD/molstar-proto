@@ -364,17 +364,27 @@ The `mesoviewspec` area (proposed ids; flags as operations.md):
 
 - **As built (`mvs-tree`):** the eye and Show only are `mesoviewspec.eye { select (one a line), visible }` and
   `mesoviewspec.showOnly { select? }` (none: Show all again), patches on `session.view ?? views[0]` (no view: `v.prism`
-  inserted); `.look` (the style looks) waits for lane `mvs-drive`.
+  inserted). **As built (`mvs-drive`):**
+  `mesoviewspec.look { select, color? (CSS), defaultColor?, visible?, transparency?, emissive? }` writes one style look
+  (a row's Color…). The mesoscale operations reach the document through the owner port
+  (`@molstar/mesoscale-extension/owner`: `registerParticleListOwner`, the owner `DocumentListOwner` in `list-owner.ts`),
+  with `themeChanged(lists)` beside `owns`, `info` and `propose` for a theme the person changes (By zoom). A style look
+  of the same `select` is set and moved last; one left saying nothing (its color back to the default and nothing else)
+  is removed.
 - **Which look an edit updates.** A look's `id` says which edit wrote it: `l.style.<n>` (`mesoscale.style`, colors,
   imports), `l.eye.<n>` (an eye), `l.only.<n>` (Show only); other ids are the author's. An edit matches only looks of
   its own kind and `select`, so a Show all again never removes an eye's look or an authored one.
 - **Open while a document is open.** An approval is one value an operation (`api/area.ts`), so `open` cannot be
   destructive only sometimes. It is `network`; with a document open, the person's Open asks first (the UI), and the
   agent's `open_mesoviewspec` is refused, saying to close first (`close` is destructive and asks).
-- **Defaults when a look has no color.** Today `deriveView` gives every type a color (`defaultColor`) and the adapter
-  writes a color layer for each, so a theme (By zoom) never shows through. A look with no stated color must write no
-  color layer, so the list's theme shows; the IR keeps the stated color apart from the default one (proposed, lane
-  `mvs-drive`).
+- **Defaults when a look has no color** **(Ludo, 2026-11-09: option A)**. `deriveView` gives every type a color
+  (`defaultColor`, a deterministic palette by population) and marks it `IRLook.colorDefault`; a look that states a color
+  drops the mark. The adapter writes the default colors as before, so a document opens in its palette, unless the person
+  chose the list's color theme (By zoom on, or a theme other than its representation's default): then it writes stated
+  colors only, so the theme shows. Why not leave defaults out always (option B): spacefill's default theme is a color
+  per copy (`particle-index`), so every document would open in confetti instead of its palette. A theme changed by
+  `mesoscale.theme` or `mesoscale.colorLevels` asks the owner to draw the list's looks again (`themeChanged`); one
+  changed by the Representation form alone shows after the next look edit (open).
 
 ## 6. What a person does → what it becomes
 

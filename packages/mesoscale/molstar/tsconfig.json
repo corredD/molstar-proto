@@ -12,6 +12,7 @@
     { "path": "../spec" },
     { "path": "../../core" },
     { "path": "../../model" },
+    { "path": "../../extensions/mesoscale" },
     { "path": "../../mvs/builder" },
     { "path": "../../plugin/core" },
     { "path": "../../prism/viewer" }
