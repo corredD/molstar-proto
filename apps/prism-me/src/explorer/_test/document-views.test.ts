@@ -112,6 +112,18 @@ describe('the Views row', () => {
     expect(h.run).toHaveBeenLastCalledWith('mesoviewspec.newView', {});
   });
 
+  it('Add label on a document row is mesoviewspec.label with its address, named after it', async () => {
+    const h = harness();
+    const row = { label: 'catalase', doc: { id: 'p.catalase', select: '(population p.catalase)' } };
+    const add = documentMenuItems(h.api, treeOf(), row).find((i) => i.id === 'label')!;
+    expect(add.label).toBe('Add label');
+    await add.run!();
+    expect(h.run).toHaveBeenLastCalledWith('mesoviewspec.label', { select: '(population p.catalase)', text: 'catalase' });
+    // the document's own row has none (its address is everything)
+    const root = { label: 'β-cell', doc: { id: '', select: '(all)' } };
+    expect(documentMenuItems(h.api, treeOf(), root).some((i) => i.id === 'label')).toBe(false);
+  });
+
   it('a click on a view shows it; a tour is played from its ⋯, stopped while it plays', async () => {
     const h = harness();
     const tree = treeOf();
