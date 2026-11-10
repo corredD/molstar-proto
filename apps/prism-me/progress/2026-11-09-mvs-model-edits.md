@@ -109,11 +109,11 @@ The gate's findings on the lane's diff; each fixed one has a test that failed fi
 | S1 `cancel.ts`: the slice yield is `setTimeout(0)` (4 ms clamp, ≥1 s in a background tab)     | should-fix | confirmed                  | 29ed90a04 (test), 9cdbd6378 |
 | S2 Built by: a refused, aborted or dropped value stays in its field; `send` drops silently    | should-fix | confirmed                  | d717b54f7 (test), e369f53ac |
 | S3a `built-by-edits.test.tsx`: the Cancel test races the packer                               | should-fix | confirmed                  | 9b37633ca                   |
-| S3b                                                                                           | should-fix | not taken up here          | open (below)                |
-| S4                                                                                            | should-fix | not taken up here          | open (below)                |
+| S3b `cancel.test.ts`: `PlacementBuilder(5_000_000)` allocates ~180 MB before the first yield  | low        | confirmed (skeptic)        | open (below)                |
+| S4 no test aborts mid-packer through `MesoDocumentModel.edit` (only before the resolver)      | low-med    | confirmed (skeptic)        | open (below)                |
 | N1 `runtime.ts`: a non-`AbortError` reason, or a stop in the last model, commits a partial IR | nit        | confirmed                  | 072286300 (test), 9409ba0a9 |
-| N2                                                                                            | nit        | not taken up here          | open (below)                |
-| N3                                                                                            | nit        | not taken up here          | open (below)                |
+| N2 `document-model.ts` `dispose()` does not stop an in-flight compile                         | low        | confirmed (skeptic)        | open (below)                |
+| N3 Built by's `number()` takes `Number(text)`: "1e3", "0x10" accepted                         | nit        | confirmed (skeptic)        | open (below)                |
 
 ## Size
 
@@ -124,9 +124,9 @@ runtime plumbing about 130. The gate's fixes add about 120 more: `edit-task.ts` 
 
 ## Open
 
-- Step 3, the app check (Ludo: 506 to 300, a seed, Add relax stage 506 of 506, Undo each, Cancel a long one, from Built
-  by and from the status pill with another row picked). Step 4, the gate: run; its S1, S2, S3a, N1 and the Cancel
-  decision fixed (Review).
+- Step 3, the app check: run by the coordinator through the API before the gate's fixes (2026-11-09: 506 to 300, a seed,
+  relax 506 of 506, a refused count, Cancel after 150 ms, Undo each, all pass); the status pill and Built by by hand are
+  Ludo's check. Step 4, the gate: run; its S1, S2, S3a, N1 and the Cancel decision fixed (Review).
 - The gate's S3b, S4, N2 and N3, left open by the coordinator (2026-11-09).
 - N1 for a label-only edit that keeps the set objects; N2, N3, N5 of lane 4's table.
 - Lattice, fiber and bilayer between models only (above).
