@@ -335,14 +335,20 @@ describe('New view from here, Update camera, Open with this view (prism.md §4.4
     await h.run('mesoviewspec.view', { view: 'v.cell' });
     const was = viewOf(h.model.doc, 'v.cell')!.camera;
     const steps = h.steps().length;
-    const r = await h.run('mesoviewspec.updateCamera', { camera: here });
+    // the canvas's field of view (degrees) given with it
+    const r = await h.run('mesoviewspec.updateCamera', { camera: { ...here, fov: 30 } });
     expect(r.ok, JSON.stringify(r)).toBe(true);
     expect(h.steps().length).toBe(steps + 1);
+    // v.cell's camera was semantic (focus, fit, from +z): numeric now, with the fov and the view's transition (Ludo,
+    // 2026-11-09), and the result says what was replaced
     expect(viewOf(h.model.doc, 'v.cell')!.camera).toEqual({
       position: [10, 20, 300],
       target: [10, 20, 0],
       up: [0, 1, 0],
+      fov: 30,
+      transition: 1200,
     });
+    expect((r as { message: string }).message).toMatch(/focus.*replaced/);
     expect(h.model.session?.ir?.view.camera?.position).toEqual([100, 200, 3000]);
     expect(viewOf(h.model.doc, 'v.granules')!.camera).toEqual(viewOf(doc(), 'v.granules')!.camera);
     await h.v.managers.history.undo();
