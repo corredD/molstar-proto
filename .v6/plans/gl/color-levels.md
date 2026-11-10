@@ -53,6 +53,13 @@
 - **Merged items**: `tColorFar` an instance texture, `tColorNear` a group texture (`BaseTexSpecs`); `dColorLevels` in the
   merge key as every define.
 - **The TS rule** (`ColorLevels.blend`) is what the shaders run, for the tests and for the story's swatches.
+- **A lipid membrane's levels** (mesoscale's `membraneColorLevels`, lane `lipid-procedural` round 7 item 6): far its
+  colour (`tColorFar`: the membrane's, or its part's), then its species' (`tColor`; its chain offset 0, so the chain
+  level is the species'), close each atom's by element (`tColorNear`; the cut members' and the tiles' atoms are their
+  groups), or its carbons the species' (`atomColors: carbon-species`). No chain edge in its Look: the operation keeps
+  `chain` between `entity` and `atom` (their geometric mean) where an edge passes it. Its far surfaces go far → species
+  per fragment (`uPatchLevels`, the lipid's px at the entity edge); they never need atoms. An edge alone moves the
+  uniforms (`ColorLevels.setProps`, `uPatchLevels`) on every drawn object, nothing built again.
 
 ## Steps
 

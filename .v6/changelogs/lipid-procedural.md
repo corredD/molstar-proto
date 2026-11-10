@@ -40,3 +40,8 @@
   budget water-filled across them (a small membrane whole, the large ones alike; no longer nearest first across the
   cell). The export numbers a class by the membrane's species and a triangle by the whole mesh. The slab
   (`yeast_slab_z600nm.bcif`) and the organelle meshes share one frame: opened together they line up.
+- A lipid membrane's colours by zoom on three levels in both methods: far its colour, then its species', close each
+  atom's by element (the tiles' too). `mesoscale.colorLevels` takes `far` (the membrane's far colour alone) and `atoms`
+  (`element`, or `carbon-species`: carbons the species' colour); its Look shows the Species and Atoms edges (no
+  Chain), Far and Atoms, one step each; an edge moved redraws nothing (no rebuild). `mesoscale.theme` (a category's
+  color theme) colours a membrane: by object, one colour, by entity, generated, By zoom.
