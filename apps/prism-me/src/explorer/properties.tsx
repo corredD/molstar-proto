@@ -780,20 +780,38 @@ function ModelEdits(props: { s: Subject }) {
     (a, b) => a.count === b.count && a.model === b.model && a.seed === b.seed && a.relax === b.relax,
   );
   const said = observableState('');
-  // the edit in flight: Cancel stops its resolution (the step is rolled back: nothing is half-drawn)
+  // what the fields show: the document's values, written again when an edit does not go through (refused, stopped,
+  // failed, or dropped while another runs) so a field never keeps a value the document does not have; told on every
+  // set, even an equal one, since the field's own text may differ
+  const always = { compare: () => false };
+  const countText = observableState('', always);
+  const seedText = observableState('', always);
+  const reset = () => {
+    countText.set(String(now.value.count ?? ''));
+    seedText.set(String(now.value.seed ?? ''));
+  };
+  effect(now, reset);
+  // the edit in flight: Cancel stops its resolution (the step is rolled back: nothing is half-drawn); the status
+  // pill's task has its Cancel too, whatever row is picked
   const running = observableState<AbortController | undefined>(undefined);
+  const busy = mapState(running.asReadonly, (c) => !!c);
   const progress = s.api.mesoviewspec!.progressState();
   const send = async (make: (doc: DocData) => ModelEdit) => {
     const doc = model.doc;
-    if (!doc || running.value) return;
+    if (!doc) return;
+    // one edit at a time: the fields are disabled while one runs, and a value that comes anyway is dropped
+    if (running.value) return reset();
     const edit = make(doc);
     said.set(edit.refused ?? '');
-    if (!edit.patch) return;
+    if (!edit.patch) return reset();
     const ctl = new AbortController();
     running.set(ctl);
     try {
       const r = await s.api.run('mesoviewspec.edit', { patch: JSON.stringify(edit.patch) }, { signal: ctl.signal });
-      if (!r.ok) said.set(r.code === 'aborted' ? 'Stopped: nothing changed.' : r.message);
+      if (!r.ok) {
+        said.set(r.code === 'aborted' ? 'Stopped: nothing changed.' : r.message);
+        reset();
+      }
     } finally {
       running.set(undefined);
     }
@@ -807,7 +825,8 @@ function ModelEdits(props: { s: Subject }) {
             <TextInput
               size="sm"
               aria-label="Copies asked for"
-              value={mapState(now, (n) => String(n.count ?? ''))}
+              value={countText.asReadonly}
+              disabled={busy}
               onSubmit={(v) => void send((doc) => countPatch(doc, id, number(v)))}
             />
           </Line>
@@ -819,7 +838,8 @@ function ModelEdits(props: { s: Subject }) {
             <TextInput
               size="sm"
               aria-label="Seed"
-              value={mapState(now, (n) => String(n.seed ?? ''))}
+              value={seedText.asReadonly}
+              disabled={busy}
               onSubmit={(v) => void send((doc) => seedPatch(doc, now.value.model ?? '', number(v)))}
             />
           </Line>
@@ -833,6 +853,7 @@ function ModelEdits(props: { s: Subject }) {
               variant="ghost"
               class={classes.fit}
               icon={<Icon name="plus" />}
+              disabled={busy}
               onClick={() => void send((doc) => relaxPatch(doc, now.value.model ?? ''))}
             >
               Add relax stage
@@ -840,7 +861,7 @@ function ModelEdits(props: { s: Subject }) {
           </Line>
         )}
       </Show>
-      <Show when={mapState(running.asReadonly, (c) => !!c)}>
+      <Show when={busy}>
         {() => (
           <Line label="Status">
             <span>
