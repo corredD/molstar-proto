@@ -2161,3 +2161,37 @@ changes nothing there. prism-me always has cryoet; a candidate: honour a part's 
 And a session saved with round 6-8's `Mesh` part names (a Wrap all from the explorer) loses its parts' eyes and colours
 on reload, the names now PM, VAC… A membrane saved before round 9 reads `meshColors` on (the state fills the default;
 guarded).
+
+## Round 9, the gate (2026-11-10; on `5db7277e0..16de82f1c`, review and skeptic in `gate/r9-review.md`)
+
+Must-fix 1 (S3 + X1, raised from should-fix by the skeptic), should-fix 4, nits 7. Each fix with a test that failed
+first, a commit each.
+
+| Finding                                                                  | Verdict              | Commit or open                                                                                                                              |
+| ------------------------------------------------------------------------ | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| S3 + X1 parts named alike (`Shape`, `VTP Shape`), a part painted by name | confirmed, must-fix  | `f377ee2d8` (named as the rows: a shape's own label, else its file's; `name 2`; `partMeshes` by index), `c8ee15904` (the names in one pass) |
+| S2 VTP meshes: the dot and a theme do nothing                            | confirmed            | `75f728ac7`                                                                                                                                 |
+| S4a a session's part colours dropped with the switch on                  | confirmed            | `75f728ac7`                                                                                                                                 |
+| S1 colorBy uniform: parts apart drawn one colour                         | confirmed            | `33639ea08` (several parts: a member's one colour by group, never uniform)                                                                  |
+| S5 no Dawn test through the state                                        | gap, path works      | `69f038cb0` (the test; passes on the code before: no fix)                                                                                   |
+| N6 `colorLevels { meshColors }` on a sphere's membrane                   | confirmed            | `476eea1eb` (fails, nothing changed)                                                                                                        |
+| N5 the swatch built, not run; no eye + colour test                       | confirmed            | `19e824fa8`                                                                                                                                 |
+| S4b the names' change unrecorded                                         | partly refuted (nit) | `1f62c8df5` (changelog, TODO)                                                                                                               |
+| N1 recolour repaints every member                                        | confirmed (nit)      | open (TODO.md): not small and safe, the design's named risk ("recolor missing a member")                                                    |
+| N2 N3 N4 N7 X2 S4c                                                       | nits                 | open (TODO.md)                                                                                                                              |
+
+**For Ludo (the coordinator's decision, S2 + S4a):** a part's own colour (`partColors`, round 7's) applies where its
+mesh's tint is neutral (grey, white, black, a VTP's colour theme, a mesh in its own colours), as round 7 did; its dot
+shows it. `partMeshes` and `tintedBy` treat a mesh with no `coloring` (a VTP's) as not paintable, so its part's dot,
+Color… and Generate write `partColors` (one step with the meshes painted) and a theme over it colours the membrane. A
+part whose mesh is painted has its own colour cleared (the mesh the one source again). Alternative: make `cryoet.mesh`
+write a VTP's colour theme (a cryoet change).
+
+Also: part names are now the rows' (`pm.obj`, PM…), so a session's Wrap all from rounds 6 to 8 (`Mesh`, `Shape`) loses
+its parts' eyes and colours, and its parts take their new names' mixes (the yeast cell's get theirs). S1's group colours
+cost one colour texture per member of a several-part membrane where one colour was uniform; no rebuild on a recolour
+(the granularity no longer depends on the colours).
+
+Checks: quick lane mesoscale + prism-me 57 files, 395 passed; Dawn `lipid-*.webgpu` 9 files, 37 passed (3 new cases in
+`lipid-compartments`); `test:perf` mesoscale at the baseline (15.62, 15.98, -0.02 B; not raised); `tsc` (app,
+mesoscale), biome, prettier pass. Not checked in the app.
