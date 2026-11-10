@@ -481,6 +481,13 @@ export class MesoscaleApi extends ApiArea {
       ) {
         return ApiResult.fail('invalid', 'Texture needs a membrane made per view (the cutter): tiles are built whole.');
       }
+      // nor a middle look (the gate's X1): the cutter's far surface; refused, not a step that draws the same
+      if (
+        (view.middle !== undefined || view.middlePx !== undefined) &&
+        (cell.transform.params as LipidMembraneProps).method !== 'cutter'
+      ) {
+        return ApiResult.fail('invalid', 'Middle needs a membrane made per view (the cutter): tiles are built whole.');
+      }
       const old = cell.transform.params as LipidMembraneProps;
       const defined = Object.fromEntries(Object.entries(view).filter(([, v]) => v !== undefined));
       const next = { ...old, ...(detail ? { detail } : {}), ...(levels ? { levels } : {}), ...defined };

@@ -125,6 +125,9 @@ describe('a membrane’s levels in its properties', () => {
     expect(tiles.querySelector('[aria-label="Lipids at most"]')).toBeNull();
     const tm = t.changed!.nodes![0];
     expect((await area.membraneDetail({ membrane: tm, far: 'texture' } as never)).ok).toBe(false);
+    // nor a middle look: the cutter's far surface (gate X1)
+    expect((await area.membraneDetail({ membrane: tm, middle: 'parallax' } as never)).ok).toBe(false);
+    expect((await area.membraneDetail({ membrane: tm, middlePx: 14 } as never)).ok).toBe(false);
     expect((await area.membraneDetail({ membrane: tm, far: 'spheres' } as never)).ok).toBe(true);
     // its species shown and hidden (a per-lipid mask: a tile mixes species), but no export: tiles are built whole
     const tilesSpecies = area.membraneSpeciesState(tm).value?.[0]?.name ?? 'X';
