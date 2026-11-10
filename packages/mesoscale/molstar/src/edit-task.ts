@@ -60,7 +60,12 @@ export function editAsTask<T>(
         try {
           await ctx.update(
             progress
-              ? { message: resolvingLine(progress), current: progress.done, max: progress.total, isIndeterminate: false }
+              ? {
+                  message: resolvingLine(progress),
+                  current: progress.done,
+                  max: progress.total,
+                  isIndeterminate: false,
+                }
               : resolvingLine(undefined),
           );
         } catch (e) {

@@ -37,7 +37,9 @@ async function open(doc: MesoViewSpecDoc = exosomeDoc()) {
   });
   viewers.push(v);
   const gate = resolverGate();
-  await v.extensions.mount(createMesoViewSpecExtension({ fetchText: async () => undefined, resolvers: gate.resolvers }));
+  await v.extensions.mount(
+    createMesoViewSpecExtension({ fetchText: async () => undefined, resolvers: gate.resolvers }),
+  );
   const api = (v.api as unknown as { mesoviewspec: MesoViewSpecApi }).mesoviewspec;
   const person = v.api.as({ kind: 'person' });
   const r = await person.run('mesoviewspec.open', { data: JSON.stringify(doc), files: exosomeFiles() });
