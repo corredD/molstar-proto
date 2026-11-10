@@ -112,15 +112,16 @@ maintainer first (2026-10-25). All are v6 (master); the MRC reader and the parti
     a lipid).
   - Ghosts, outlines, transparency and glow per species: not mapped onto the membrane yet (colours by zoom are, round
     4c: far its colour, then its species'; round 5: then its atoms by element). A colour change writes the colours in
-    place since round 9 (`recolor`), but a change of a member's granularity (one colour or by species: `colorBy`, a part
-    colour with By zoom off) still builds. A dither of the spheres themselves at the switch: a graphics library change
-    (the object fade is off with levels), Ludo's call.
+    place since round 9 (`recolor`), but a change of a member's granularity (one colour or by species: `colorBy` on a
+    one-mesh membrane; a membrane of several parts is by group always, round 9 gate S1) still builds. A dither of the
+    spheres themselves at the switch: a graphics library change (the object fade is off with levels), Ludo's call.
   - Round 9, colours from meshes: a part's Reset and `mesoscale.colors { scheme: theme }` on parts clear round 7's part
     colours only, the mesh's colour left (its default grey again? Ludo's call); without cryoet in a spec the dot writes
-    part colours that the switch on leaves out (prism-me always has cryoet); a saturated mesh colour times a saturated
-    species colour goes dark (a red mesh on a green species: black); the recoloured patch raster is checked by count
-    (only the changed leaflets'), not by its texels (no readback of the texture on Dawn yet); `tint` is local (Mol*'s
-    `Color` has no multiply): a candidate for `@molstar/core/util/color`.
+    part colours that the switch on leaves out where the part's mesh is coloured (honoured where its tint is neutral,
+    grey by default: round 9 gate S2; prism-me always has cryoet); a saturated mesh colour times a saturated species
+    colour goes dark (a red mesh on a green species: black); the recoloured patch raster is checked by count (only the
+    changed leaflets'), not by its texels (no readback of the texture on Dawn yet); `tint` is local (Mol*'s `Color` has
+    no multiply): a candidate for `@molstar/core/util/color`.
   - Round 9 gate, left open: a recolour paints every member and surface again, not only the parts whose tint changed
     (N1); a partial theme multiplies the membrane's own colour by the tint (N2); a membrane depends on a shape's first
     representation only (N3); two tests named "mesh representation" (the explorer's and `meshColorCell`'s, N4); the
