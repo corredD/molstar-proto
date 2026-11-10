@@ -61,3 +61,49 @@ export function documentState({ doc, counts, shown, issues }: DocumentStateInput
   );
   return lines.join('\n');
 }
+
+const MaxIssuesListed = 5;
+
+/** The issues' messages, the first few (an open's or an edit's warnings, `get`'s Issues). */
+export const issueLines = (issues: readonly Issue[]) => {
+  const lines = issues.slice(0, MaxIssuesListed).map((i) => i.message);
+  if (issues.length > MaxIssuesListed) lines.push(`and ${issues.length - MaxIssuesListed} more`);
+  return lines;
+};
+
+/** `get_mesoviewspec`'s summary, and with `outline` the compartments' tree. */
+export function describeDocument(
+  doc: MesoViewSpecDoc,
+  counts: Counts,
+  issues: readonly Issue[],
+  detail: 'summary' | 'outline',
+): string {
+  const lines = [`${quoted(doc.metadata?.title || 'Untitled')} (${doc.format} ${doc.version})`];
+  if (detail === 'outline') {
+    const walk = (parent: string | undefined, depth: number) => {
+      for (const c of doc.compartments.filter((c) => c.parent === parent)) {
+        lines.push(`${'  '.repeat(depth + 1)}${c.id}: ${quoted(c.label)} (${c.kind})`);
+        for (const p of doc.populations.filter((p) => p.compartment === c.id))
+          lines.push(populationLine(p, counts, depth + 2));
+        walk(c.id, depth + 1);
+      }
+    };
+    lines.push('Compartments:');
+    walk(undefined, 0);
+  } else {
+    lines.push('Populations:');
+    for (const p of doc.populations) lines.push(populationLine(p, counts, 1));
+  }
+  lines.push(
+    `Models: ${doc.models?.length ?? 0}`,
+    `Views: ${doc.views?.length ?? 0}`,
+    `Issues: ${issues.length}${issues.length ? ` (${issueLines(issues).join('; ')})` : ''}`,
+  );
+  return lines.join('\n');
+}
+
+function populationLine(p: MesoViewSpecDoc['populations'][number], counts: Counts, depth: number): string {
+  const c = counts[p.id];
+  const n = c ? `${c.achieved}${c.requested !== undefined ? ` of ${c.requested}` : ''}` : 'not placed';
+  return `${'  '.repeat(depth)}${p.id} (${p.entity}): ${n}`;
+}

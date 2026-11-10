@@ -4,8 +4,7 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import { documentState } from './agent-state.js';
-import { quoted } from '@molstar/prism-viewer/agent/account';
+import { describeDocument, documentState, issueLines } from './agent-state.js';
 import { Asset } from '@molstar/core/util/assets';
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
 import {
@@ -85,8 +84,6 @@ const TourStepMs = 2000;
 
 /** A state a view reads (Prism's `ReadonlyState`, as `watchedState` gives it). */
 export type ReadonlyState<T> = ReturnType<typeof watchedState<T>>;
-
-const MaxIssuesListed = 5;
 
 /** The same issues, in order (the owner makes a new list at each step): the tree's Issues need not render again. */
 function sameIssues(a: readonly Issue[], b: readonly Issue[]) {
@@ -862,53 +859,6 @@ function foreignAddresses(uris: readonly string[], base: string | undefined): st
     out.add(href.href);
   }
   return [...out];
-}
-
-const issueLines = (issues: readonly Issue[]) => {
-  const lines = issues.slice(0, MaxIssuesListed).map((i) => i.message);
-  if (issues.length > MaxIssuesListed) lines.push(`and ${issues.length - MaxIssuesListed} more`);
-  return lines;
-};
-
-/** The summary, and with `outline` the compartments' tree. */
-function describeDocument(
-  doc: MesoViewSpecDoc,
-  counts: DocumentInfo['counts'],
-  issues: readonly Issue[],
-  detail: 'summary' | 'outline',
-): string {
-  const lines = [`${quoted(doc.metadata?.title || 'Untitled')} (${doc.format} ${doc.version})`];
-  if (detail === 'outline') {
-    const walk = (parent: string | undefined, depth: number) => {
-      for (const c of doc.compartments.filter((c) => c.parent === parent)) {
-        lines.push(`${'  '.repeat(depth + 1)}${c.id}: ${quoted(c.label)} (${c.kind})`);
-        for (const p of doc.populations.filter((p) => p.compartment === c.id))
-          lines.push(populationLine(p, counts, depth + 2));
-        walk(c.id, depth + 1);
-      }
-    };
-    lines.push('Compartments:');
-    walk(undefined, 0);
-  } else {
-    lines.push('Populations:');
-    for (const p of doc.populations) lines.push(populationLine(p, counts, 1));
-  }
-  lines.push(
-    `Models: ${doc.models?.length ?? 0}`,
-    `Views: ${doc.views?.length ?? 0}`,
-    `Issues: ${issues.length}${issues.length ? ` (${issueLines(issues).join('; ')})` : ''}`,
-  );
-  return lines.join('\n');
-}
-
-function populationLine(
-  p: MesoViewSpecDoc['populations'][number],
-  counts: DocumentInfo['counts'],
-  depth: number,
-): string {
-  const c = counts[p.id];
-  const n = c ? `${c.achieved}${c.requested !== undefined ? ` of ${c.requested}` : ''}` : 'not placed';
-  return `${'  '.repeat(depth)}${p.id} (${p.entity}): ${n}`;
 }
 
 /** A resource's text through the viewer's asset manager; undefined when it cannot be read. */
