@@ -391,6 +391,8 @@ describe.skipIf(!webgpu)('a lipid membrane made per view (Dawn)', () => {
           edge: (R * 1.2) / 12,
           patch: 'dawn-x600',
           center: Vec3.zero(),
+          // round 8: LIPID_MIDDLE=parallax measures the middle look (test 4's numbers)
+          middle: (process.env.LIPID_MIDDLE as 'coarse' | 'parallax' | undefined) ?? 'coarse',
         })
         .commit();
       const wrapMs = performance.now() - t0;
@@ -438,7 +440,11 @@ describe.skipIf(!webgpu)('a lipid membrane made per view (Dawn)', () => {
       const c = await at('close', above(300));
       const d = await at('whole again', whole);
       const e = await at('close again', above(300));
-      if (process.env.LIPID_NUMBERS) console.log(JSON.stringify(numbers));
+      // round 8: the middle look's range (a lipid about 2 to 11 px), with the numbers only
+      if (process.env.LIPID_NUMBERS) {
+        for (const h of [3000, 1500, 800]) await at(`mid ${h}`, above(h));
+        console.log(JSON.stringify(numbers));
+      }
       // whole and middle: the texture alone; close: cells of the leaflet facing the camera, a few hundred thousand lipids
       expect(a.pool.live).toBe(0);
       expect(b.pool.live).toBe(0);
