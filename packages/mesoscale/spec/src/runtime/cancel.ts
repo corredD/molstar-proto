@@ -35,9 +35,12 @@ export function throwIfAborted(signal: AbortSignal | undefined): void {
 }
 
 // The yield between slices. Never a timer where there is anything else: `setTimeout(0)` is clamped to 4 ms once nested
-// and to a second or more in a background tab, so a long resolution would crawl. In a browser, `scheduler.yield` (the
-// task queue, its priority kept), else a message on a channel. In Node, `setImmediate`: there a channel's messages
-// posted from its own handler are delivered in the same turn, and the timers (an abort set by one) would never run.
+// and to a second or more in a background tab, so a long resolution would crawl. Whatever it is, the timers must run
+// between two slices: an abort may come from one (the agent's, a script's, the Mol* task's report beat that carries the
+// status pill's Cancel). So never `scheduler.yield`: in Chromium its continuation runs ahead of the timers, and a 60 ms
+// timer did not fire during 900 ms of slices (measured in the app). In a browser, a message on a channel (a 60 ms timer
+// fired at 90 ms). In Node, `setImmediate`: there a channel's messages posted from its own handler are delivered in the
+// same turn, and the timers would never run.
 let channel: { port: MessagePort; waiting: (() => void)[] } | undefined;
 function viaChannel(): Promise<void> {
   if (!channel) {
@@ -55,11 +58,7 @@ function viaChannel(): Promise<void> {
 
 /** Gives the event loop back once (between two slices of a packer). */
 export function yieldToEventLoop(): Promise<void> {
-  const g = globalThis as {
-    scheduler?: { yield?: () => Promise<void> };
-    setImmediate?: (f: () => void) => unknown;
-  };
-  if (typeof g.scheduler?.yield === 'function') return g.scheduler.yield();
+  const g = globalThis as { setImmediate?: (f: () => void) => unknown };
   if (typeof g.setImmediate === 'function') return new Promise<void>((resolve) => g.setImmediate!(resolve));
   if (typeof MessageChannel !== 'undefined') return viaChannel();
   return new Promise<void>((resolve) => setTimeout(resolve, 0));
