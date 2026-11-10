@@ -361,7 +361,9 @@ export class MesoDocumentModel {
       const c = reaches(colors);
       if (c === 'beyond') blocked.push(select);
       if (c !== 'within') continue;
-      const left = LookFields.filter((k) => k !== 'color' && (look as unknown as Record<string, unknown>)[k] !== undefined);
+      const left = LookFields.filter(
+        (k) => k !== 'color' && (look as unknown as Record<string, unknown>)[k] !== undefined,
+      );
       ops.push(left.length ? { op: 'set', id: look.id, fields: { color: null } } : { op: 'remove', id: look.id });
     }
   }

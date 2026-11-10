@@ -349,7 +349,9 @@ describe('colors back to the default over looks at other addresses (prism.md §5
     expect(styleLooks(await saved(h))).toEqual(styleLooks(a));
   });
 
-  it('a look that reaches beyond the entities is not cleared from one list: said, no step', { tags: ['medium'] }, async () => {
+  it('a look that reaches beyond the entities is not cleared from one list: said, no step', {
+    tags: ['medium'],
+  }, async () => {
     const h = await open();
     expect((await h.run('mesoviewspec.look', { select: '(in c.exosome)', color: '#ff0000' })).ok).toBe(true);
     const { ref, type } = listOf(h, 'p.catalase');
