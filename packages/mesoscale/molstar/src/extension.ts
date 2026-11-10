@@ -5,6 +5,7 @@
  */
 
 import { documentState } from './agent-state.js';
+import { quoted } from '@molstar/prism-viewer/agent/account';
 import { Asset } from '@molstar/core/util/assets';
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
 import {
@@ -816,11 +817,11 @@ function describeDocument(
   issues: readonly Issue[],
   detail: 'summary' | 'outline',
 ): string {
-  const lines = [`${doc.metadata?.title || 'Untitled'} (${doc.format} ${doc.version})`];
+  const lines = [`${quoted(doc.metadata?.title || 'Untitled')} (${doc.format} ${doc.version})`];
   if (detail === 'outline') {
     const walk = (parent: string | undefined, depth: number) => {
       for (const c of doc.compartments.filter((c) => c.parent === parent)) {
-        lines.push(`${'  '.repeat(depth + 1)}${c.id}: ${c.label} (${c.kind})`);
+        lines.push(`${'  '.repeat(depth + 1)}${c.id}: ${quoted(c.label)} (${c.kind})`);
         for (const p of doc.populations.filter((p) => p.compartment === c.id))
           lines.push(populationLine(p, counts, depth + 2));
         walk(c.id, depth + 1);
