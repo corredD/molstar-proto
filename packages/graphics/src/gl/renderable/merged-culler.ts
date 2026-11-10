@@ -38,13 +38,7 @@ import {
   type LodLevelsValue,
   LodView,
 } from '../renderable.js';
-import {
-  type CulledValues,
-  drawnLodLevels,
-  type Merged,
-  type MergeableValues,
-  type MergedSegments,
-} from './merged.js';
+import { type CulledValues, drawnLodLevels, type Merged, type MergeableValues, type MergedSegments } from './merged.js';
 import { packAffineRows } from '../affine-rows.js';
 import { SegmentedArray } from '../segmented-array.js';
 import { CulledData } from '../culled-data.js';
