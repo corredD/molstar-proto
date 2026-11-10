@@ -17,10 +17,14 @@ import type { ParticleList } from '@molstar/model/model/particles/particle-list'
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createMesoViewSpecExtension, type MesoViewSpecApi } from '../extension.js';
 import { isMissingList, MesoPlacements, placementStore } from '../particle-list.js';
+import { stubCanvasForLabels } from './canvas.js';
 
 // Undo, Redo and the rollback of a failed step over a MesoViewSpec document in the real Prism viewer (prism.md §7.3):
 // the document's lists stay in the data tree and in checkpoints, a restore writes nothing through the API and resolves
 // nothing, a session opened on a fresh page fills its lists. Resources come from a fake, never the network.
+
+// the exosome's first view has an annotation, drawn as a label
+stubCanvasForLabels();
 
 const viewers: PrismViewer[] = [];
 afterEach(async () => {

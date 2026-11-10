@@ -45,6 +45,7 @@
     "tslib": "catalog:"
   },
   "devDependencies": {
+    "@molstar/graphics": "workspace:*",
     "@molstar/plugin-headless": "workspace:*",
     "@molstar/prism-me-app": "workspace:*",
     "@molstar/prism-ui": "workspace:*",

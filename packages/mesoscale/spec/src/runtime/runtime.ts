@@ -74,6 +74,8 @@ export interface RuntimeOptions {
   readonly tiles?: (resource: Id) => TileProvider | undefined;
   /** Kept across compiles by the caller: the session's results by key. */
   readonly cache?: Map<string, ResolveOutput>;
+  /** The view shown (a person's pick, prism.md §4.4); absent or unknown: `session.view`, else the first. */
+  readonly view?: Id;
 }
 
 export interface CompileStats {
@@ -250,7 +252,7 @@ export async function compile(doc: MesoViewSpecDoc, o: RuntimeOptions, depth = 0
       );
       continue;
     }
-    const result = await compile(superstructureDoc(doc, ss), o, depth + 1);
+    const result = await compile(superstructureDoc(doc, ss), { ...o, view: undefined }, depth + 1);
     // its static warnings the outer validation reported; a static error (a refused template) is never dropped
     for (const i of result.issues)
       if (i.phase !== 'static' || i.severity === 'error')
@@ -625,7 +627,7 @@ export async function compile(doc: MesoViewSpecDoc, o: RuntimeOptions, depth = 0
 
   // ---- assemble ----
   const root = assemble(doc, comps, frameToWorld, outputs, models, templates, ents, streams);
-  const view = deriveView(doc, root);
+  const view = deriveView(doc, root, o.view);
   const t4 = now();
   return {
     ir: { root, view },
@@ -650,15 +652,28 @@ export function classifyEdit(prev: MesoViewSpecDoc, next: MesoViewSpecDoc): 'non
   return contentHash(strip(prev)) === contentHash(strip(next)) ? 'view' : 'model';
 }
 
-/** A view-only edit: the same IR tree, a new view (O(types), no resolver, no placement touched). */
-export function updateView(doc: MesoViewSpecDoc, ir: IR): IR {
+/**
+ * A view-only edit: the same IR tree, a new view (O(types), no resolver, no placement touched). `view` is the one shown
+ * (a person's pick, prism.md §4.4); without it, or when the document lacks it, the document's own (`shownViewOf`).
+ */
+export function updateView(doc: MesoViewSpecDoc, ir: IR, view?: Id): IR {
   // the title is the document's metadata: a new root object only when it changed (the tree below is the same)
   const p = ir.root.params as { title?: string };
   const root =
     ir.root.kind === 'scene' && p.title !== doc.metadata.title
       ? ({ ...ir.root, params: { ...p, title: doc.metadata.title } } as IRNode)
       : ir.root;
-  return { root, view: deriveView(doc, root) };
+  return { root, view: deriveView(doc, root, view) };
+}
+
+/**
+ * The view shown (prism.md §4.4): `picked` when the document has it, else `session.view`, else the first, else none
+ * (the runtime's default looks). A picked view the document lost (an edit removed it) falls back the same way.
+ */
+export function shownViewOf(doc: MesoViewSpecDoc, picked?: Id): View | undefined {
+  const views = doc.views ?? [];
+  const find = (id: Id | undefined) => (id !== undefined ? views.find((v) => v.id === id) : undefined);
+  return find(picked) ?? find(doc.session?.view) ?? views[0];
 }
 
 // ---- normalization ----
@@ -1120,8 +1135,8 @@ function hsl(h: number, s: number, l: number) {
   return [f(0), f(8), f(4)];
 }
 
-export function deriveView(doc: MesoViewSpecDoc, root: IRNode): IRView {
-  const view: View | undefined = (doc.views ?? []).find((v) => v.id === doc.session?.view) ?? doc.views?.[0];
+export function deriveView(doc: MesoViewSpecDoc, root: IRNode, shown?: Id): IRView {
+  const view = shownViewOf(doc, shown);
   const ir = { root, view: { id: '', looks: [] } } as IR;
   const issues: Issue[] = [];
   const materialize = materializer(doc, ir, issues);
@@ -1179,10 +1194,12 @@ export function deriveView(doc: MesoViewSpecDoc, root: IRNode): IRView {
   const selection = view?.selection
     ? [...materialize(view.selection).copies].map(([set, runs]) => ({ set, runs }))
     : undefined;
-  // the camera reads level 0 of a stream, never the loaded tiles (_spec/streaming.md), through its own loci cache: the
-  // addresses are the same strings, the loci are not (they name the proxy set)
+  // the camera and the annotations read level 0 of a stream, never the loaded tiles (_spec/streaming.md), through their
+  // own loci cache: the addresses are the same strings, the loci are not (they name the proxy set). A tile arriving
+  // then moves neither the camera nor a label.
   const l0 = level0IR(ir);
-  const camera = deriveCamera(doc, view, l0, l0 === ir ? materialize : materializer(doc, l0, issues, false));
+  const at = l0 === ir ? materialize : materializer(doc, l0, issues, false);
+  const camera = deriveCamera(doc, view, l0, at);
   const place = viewFrame(doc, view).place;
   return {
     id: view?.id ?? 'default',
@@ -1192,7 +1209,7 @@ export function deriveView(doc: MesoViewSpecDoc, root: IRNode): IRView {
     annotations: view?.annotations?.map((a) => ({
       id: a.id,
       text: a.text,
-      position: typeof a.target === 'string' ? lociSphere(materialize(a.target), ir)?.center : place(a.target.position),
+      position: typeof a.target === 'string' ? lociSphere(at(a.target), l0)?.center : place(a.target.position),
     })),
     ...(view?.cutaway ? { cutaway: [...materialize(view.cutaway).copies].map(([set, runs]) => ({ set, runs })) } : {}),
     ...(issues.length ? { issues } : {}),

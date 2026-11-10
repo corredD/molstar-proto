@@ -37,7 +37,14 @@ import type { ViewerExtensionUI, ViewerUIContext } from '@molstar/prism-viewer/s
 import type { Subscription } from 'rxjs';
 import type { DistanceInfo, LabelInfo } from '@molstar/stage-tools-extension/operations';
 import type { DocumentGroupBy, DocumentTree } from '@molstar/meso-molstar';
-import { documentLoci, documentMenuItems, documentPicked } from './document.js';
+import {
+  activateViewsRow,
+  documentLoci,
+  documentMenuItems,
+  documentPicked,
+  documentRowByKey,
+  isViewsRow,
+} from './document.js';
 import { editInline } from './inline-edit.js';
 import { distancePicker, selectionModeHint } from './measure.js';
 import { colorItems, nodeMenuItems, showClipHandles, useItems } from './menu.js';
@@ -407,7 +414,11 @@ function ScenePanel(props: { ctx: ViewerUIContext; area: ExplorerApi; model: Sce
       (p.representation && !area.exists(p.representation)) ||
       (p.clip && !cuts.value.some((c) => c.object.tag === p.clip));
     // a document row gone (the document closed, the row's population removed)
-    const docGone = p.doc && (!document.value || (p.doc.id !== '' && !document.value.outline.row(p.doc.id)));
+    const docGone =
+      p.doc &&
+      (!document.value ||
+        (p.doc.id !== '' &&
+          (isViewsRow(p.doc.id) ? !documentRowByKey(document.value, p.key) : !document.value.outline.row(p.doc.id))));
     if (gone || docGone) picked.set(undefined);
   });
   const pickedKey = derive(picked.asReadonly, (p) => p?.key);
@@ -614,9 +625,12 @@ function ScenePanel(props: { ctx: ViewerUIContext; area: ExplorerApi; model: Sce
             onEyes={setShown}
             onMenu={menu}
             onColor={colors}
+            onClick={(row) => row.doc?.view && void activateViewsRow(api, row.doc)}
             onDblClick={(row) =>
               row.doc
-                ? void api.run('mesoviewspec.focus', { select: row.doc.select })
+                ? row.doc.select
+                  ? void api.run('mesoviewspec.focus', { select: row.doc.select })
+                  : void activateViewsRow(api, row.doc)
                 : row.node && area.focus(row.node)
             }
             onHover={hover}

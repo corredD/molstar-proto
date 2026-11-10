@@ -26,7 +26,7 @@ import type { Loci } from '@molstar/model/model/loci';
 import { cssColor } from '@molstar/mesoscale-extension/color-file';
 import { registerParticleListOwner } from '@molstar/mesoscale-extension/owner';
 import { Color } from '@molstar/core/util/color';
-import { MesoDocumentModel } from './document-model.js';
+import { type CameraHere, type DocumentViews, MesoDocumentModel } from './document-model.js';
 import { blockedResult, DocumentListOwner } from './list-owner.js';
 import { documentVisible, type DocumentGroupBy, type DocumentLooks, type DocumentOutline } from './document-tree.js';
 import { openAddresses } from './prism-viewer.js';
@@ -69,7 +69,12 @@ export interface DocumentTree {
   readonly showsOnly: boolean;
   /** The session's issues (the document row's Issues). */
   readonly issues: readonly Issue[];
+  /** The Views row (prism.md §4.4): views, tours, the view shown, the tour playing. */
+  readonly views: DocumentViews;
 }
+
+/** How long a tour's step holds when it does not say (ms; the semantic camera story's). */
+const TourStepMs = 2000;
 
 /** A state a view reads (Prism's `ReadonlyState`, as `watchedState` gives it). */
 export type ReadonlyState<T> = ReturnType<typeof watchedState<T>>;
@@ -162,6 +167,7 @@ export class MesoViewSpecApi extends ApiArea {
   }
 
   override dispose(): void {
+    this.#stopTour();
     this.#unregisterOwner();
     this.#unregister();
     this.model.dispose();
@@ -184,6 +190,7 @@ export class MesoViewSpecApi extends ApiArea {
           visible: documentVisible(outline, looks),
           showsOnly: model.showsOnly,
           issues: model.issues,
+          views: model.views()!,
         };
       },
       () => (groupBy ? [model.changed, groupBy] : model.changed),
@@ -195,6 +202,7 @@ export class MesoViewSpecApi extends ApiArea {
             a.outline === b.outline &&
             a.looks === b.looks &&
             a.showsOnly === b.showsOnly &&
+            a.views === b.views &&
             sameIssues(a.issues, b.issues)),
       },
     );
@@ -242,6 +250,248 @@ export class MesoViewSpecApi extends ApiArea {
         : ApiResult.fail('not-found', `${select} picks no copy here.`);
     },
   });
+
+  /**
+   * Shows a view (prism.md §4.4): no step (`undoable: false`, as `snapshot.apply`), in order with the steps and with a
+   * history context, so the looks it writes are part of its run and never steps of their own. The next step's
+   * checkpoint notes the view shown, and Undo shows it again with the scene it restores (§7.4).
+   */
+  readonly view = this.operation({
+    id: 'mesoviewspec.view',
+    title: 'Show a view of the MesoViewSpec document',
+    params: { view: PD.Text('', { description: 'The id of one of the document’s views (v.cell)' }) },
+    undoable: false,
+    quiet: true,
+    run: async ({ view }, ctx) => {
+      if (!this.model.doc) return ApiResult.fail('not-found', 'No document is open.');
+      const id = view.trim();
+      if (!this.model.doc.views?.some((v) => v.id === id)) {
+        const ids = (this.model.doc.views ?? []).map((v) => v.id);
+        return ApiResult.fail(
+          'not-found',
+          `The document has no view '${id}'.`,
+          ids.length ? `Its views: ${ids.join(', ')}.` : 'It has no views.',
+        );
+      }
+      let step: Awaited<ReturnType<MesoDocumentModel['show']>>;
+      try {
+        step = await this.model.show(id, ctx.api);
+      } catch (e) {
+        return ApiResult.fail('failed', `Could not show ${id}: ${(e as Error).message}`);
+      }
+      const label = this.model.doc.views.find((v) => v.id === id)?.label;
+      const name = label ? `${label} (${id})` : id;
+      if (step.again) return ApiResult.ok(`${name} is shown: its camera is set again.`, { view: true });
+      if (!step.record) return ApiResult.fail('invalid', issueLines(step.issues).join('; ') || `Could not show ${id}.`);
+      return ApiResult.ok(`Showing ${name}.`, { view: true });
+    },
+  });
+
+  /** Where the person stands: `given` (Å, the world frame), else the canvas's camera; none headless without one. */
+  #here(given: CameraHere | undefined): CameraHere | undefined {
+    if (given) return given;
+    const s = this.ctx.plugin.canvas3d?.camera.getSnapshot();
+    // the canvas's fov is radians, the format's degrees
+    return s && { position: [...s.position], target: [...s.target], up: [...s.up], fov: (s.fov * 180) / Math.PI };
+  }
+
+  /**
+   * New view from here (prism.md §4.4, the Views row's ⋯): a patch, one step, inserting a view with the camera here and
+   * the view shown's looks (new ids); the new view is then the one shown, in the same step.
+   */
+  readonly newView = this.operation({
+    id: 'mesoviewspec.newView',
+    title: 'New view of the MesoViewSpec document from here',
+    params: {
+      label: OptionalParam(PD.Text('', { description: 'Its name; none: View <n>' })),
+      camera: OptionalParam(PD.Value<CameraHere | undefined>(undefined, { isHidden: true })),
+    },
+    run: async ({ label, camera }, ctx) => {
+      if (!this.model.doc) return ApiResult.fail('not-found', 'No document is open.');
+      const here = this.#here(camera);
+      if (!here) return ApiResult.fail('not-found', 'There is no camera here (no canvas).');
+      const made = this.model.newViewPatch(here, label);
+      if (!made) return ApiResult.fail('not-found', 'No document is open.');
+      const r = await this.applyLooks(made.patch, ctx.api, 'new view');
+      if (!r.ok || r.unchanged) return r;
+      await this.model.show(made.id, ctx.api);
+      return ApiResult.ok(`Made the view ${made.id} from here; it is shown.`, {}, { value: { id: made.id } });
+    },
+  });
+
+  /** Update camera (prism.md §4.4, the shown view's ⋯): the view shown's camera set to the one here; a patch, one step. */
+  readonly updateCamera = this.operation({
+    id: 'mesoviewspec.updateCamera',
+    title: "Set the shown view's camera to this one",
+    params: { camera: OptionalParam(PD.Value<CameraHere | undefined>(undefined, { isHidden: true })) },
+    run: async ({ camera }, ctx) => {
+      if (!this.model.doc) return ApiResult.fail('not-found', 'No document is open.');
+      const here = this.#here(camera);
+      if (!here) return ApiResult.fail('not-found', 'There is no camera here (no canvas).');
+      const id = this.model.shownId;
+      if (!id) return ApiResult.fail('not-found', 'The document has no view.', 'Make one with New view from here.');
+      const was = this.model.doc.views?.find((v) => v.id === id)?.camera;
+      const semantic = (['focus', 'from', 'framing'] as const).filter((k) => was?.[k] !== undefined);
+      const patch = this.model.updateCameraPatch(here);
+      if (!patch) return ApiResult.fail('invalid', `The frame of ${id} cannot be inverted: its camera is left.`);
+      const r = await this.applyLooks(patch, ctx.api, 'camera');
+      if (!r.ok || r.unchanged) return r;
+      // a semantic camera becomes numeric (Ludo, 2026-11-09): what it said is gone, and the result says so
+      return ApiResult.ok(
+        semantic.length
+          ? `Set the camera of ${id} to this one: its ${semantic.join(', ')} ${semantic.length === 1 ? 'is' : 'are'} replaced by a fixed position.`
+          : `Set the camera of ${id} to this one.`,
+      );
+    },
+  });
+
+  /** Open with this view (prism.md §4.4, a view's ⋯): `session.view`, a patch, one step; the view shown stays. */
+  readonly openWith = this.operation({
+    id: 'mesoviewspec.openWith',
+    title: 'Open the MesoViewSpec document with this view',
+    params: {
+      view: OptionalParam(
+        PD.Text('', { description: 'The id of one of the document’s views (v.cell); none: the view shown' }),
+      ),
+    },
+    run: async ({ view }, ctx) => {
+      const doc = this.model.doc;
+      if (!doc) return ApiResult.fail('not-found', 'No document is open.');
+      // no view named: the view shown
+      const id = view?.trim() || this.model.shownId;
+      if (!id) return ApiResult.fail('not-found', 'The document has no view.', 'Make one with New view from here.');
+      if (!doc.views?.some((v) => v.id === id)) return ApiResult.fail('not-found', `The document has no view '${id}'.`);
+      const patch = this.model.openWithPatch(id);
+      if (!patch) return ApiResult.already(`The document opens with ${id}.`);
+      // the view shown stays the one shown: an edit of session.view would show its view where none was picked
+      this.model.pin();
+      const r = await this.applyLooks(patch, ctx.api, 'open with');
+      return r.ok && !r.unchanged ? ApiResult.ok(`The document opens with ${id}.`) : r;
+    },
+  });
+
+  /**
+   * Add label on a document row (prism.md §5.2): an annotation of the view shown, its target the row's address; a
+   * patch, one step, saved in the document; the adapter draws it as Prism's label while its view is shown.
+   */
+  readonly label = this.operation({
+    id: 'mesoviewspec.label',
+    title: 'Label part of the MesoViewSpec document',
+    params: {
+      select: SelectParam(),
+      text: PD.Text('', { description: 'What it says; none: Label' }),
+    },
+    run: async ({ select, text }, ctx) => {
+      if (!this.model.doc) return ApiResult.fail('not-found', 'No document is open.');
+      const address = select.trim();
+      if (!address) return ApiResult.fail('invalid', 'Label what? Give an address.');
+      if (!this.model.sphereOf(address)) return ApiResult.fail('not-found', `${address} picks no copy here.`);
+      const said = text.trim() || 'Label';
+      const r = await this.applyLooks(this.model.annotationPatch(address, said), ctx.api, 'label');
+      return r.ok && !r.unchanged ? ApiResult.ok(`Added the label "${said}" on ${address}.`) : r;
+    },
+  });
+
+  /** The tour playing: stopped by Stop, another tour, Undo or Redo, a close or an open. */
+  #tour: { readonly stop: AbortController; readonly ended: Promise<void> } | undefined;
+
+  /** Resolves when no tour plays (for tests and the app: after a Stop, the tour's end). */
+  async tourEnded(): Promise<void> {
+    while (this.#tour) await this.#tour.ended;
+  }
+
+  /** Stops the tour playing, if one is: the view it showed last stays shown (prism.md §4.4). */
+  #stopTour(): boolean {
+    const t = this.#tour;
+    if (!t) return false;
+    t.stop.abort();
+    return true;
+  }
+
+  /**
+   * Plays a tour (prism.md §4.4, as `snapshot.play`): no step; each of its steps runs as `mesoviewspec.view` with the
+   * caller's origin (no step either: in order with the steps, its looks part of its run), holds for its duration, its
+   * caption the Views row's. The agent asks once for the whole tour (`undoable: false`, agent.md §4); its views are not
+   * asked again. Returns once it plays.
+   */
+  readonly tourPlay = this.operation({
+    id: 'mesoviewspec.tour.play',
+    title: 'Play a tour of the MesoViewSpec document',
+    params: {
+      tour: OptionalParam(
+        PD.Text('', { description: "A tour's id (t.granule); none: the document's own, else its first" }),
+      ),
+    },
+    history: false,
+    undoable: false,
+    run: async ({ tour }, ctx) => {
+      const doc = this.model.doc;
+      if (!doc) return ApiResult.fail('not-found', 'No document is open.');
+      const tours = doc.tours ?? [];
+      const id = tour?.trim() || doc.session?.tour || tours[0]?.id;
+      const t = tours.find((x) => x.id === id);
+      if (!t) {
+        return ApiResult.fail(
+          'not-found',
+          id ? `The document has no tour '${id}'.` : 'The document has no tour.',
+          tours.length ? `Its tours: ${tours.map((x) => x.id).join(', ')}.` : undefined,
+        );
+      }
+      if (!t.steps.length) return ApiResult.fail('invalid', `The tour ${t.id} has no steps.`);
+      this.#stopTour();
+      const stop = new AbortController();
+      const entry = { stop, ended: Promise.resolve() };
+      entry.ended = this.#play(t, stop.signal, ctx.api).finally(() => {
+        if (this.#tour === entry) this.#tour = undefined;
+      });
+      this.#tour = entry;
+      return ApiResult.ok(`Playing ${t.label ?? t.id} (${t.steps.length} views).`, { view: true });
+    },
+  });
+
+  readonly tourStop = this.operation({
+    id: 'mesoviewspec.tour.stop',
+    title: 'Stop the tour playing',
+    params: {},
+    history: false,
+    run: async () => {
+      if (!this.#stopTour()) return ApiResult.already('No tour is playing.');
+      await this.tourEnded();
+      return ApiResult.ok(`Stopped the tour: ${this.model.shownId ?? 'its last view'} is shown.`, { view: true });
+    },
+  });
+
+  async #play(
+    t: NonNullable<MesoViewSpecDoc['tours']>[number],
+    signal: AbortSignal,
+    api: ApiAreaContextApi,
+  ): Promise<void> {
+    const session = this.model.session;
+    // Undo and Redo bring back another scene: the tour stops (as an animation does on a restore)
+    const history = this.ctx.managers.history;
+    const subs = [history.undone, history.redone].map((e) => e.subscribe(() => this.#stopTour()));
+    try {
+      for (let i = 0; i < t.steps.length && !signal.aborted; i++) {
+        // closed, or another document opened: the tour is the last one's
+        if (this.model.session !== session || !this.model.doc) break;
+        const step = t.steps[i];
+        // a view the document no longer has (an edit while it plays): skipped
+        if (!this.model.doc.views?.some((v) => v.id === step.view)) continue;
+        this.model.playing = {
+          tour: t.id,
+          step: i + 1,
+          of: t.steps.length,
+          ...(step.caption ? { caption: step.caption } : {}),
+        };
+        const r = await api.run('mesoviewspec.view', { view: step.view });
+        if (!r.ok || signal.aborted) break;
+        await holdFor(step.duration ?? TourStepMs, signal);
+      }
+    } finally {
+      for (const s of subs) s.unsubscribe();
+      this.model.playing = undefined;
+    }
+  }
 
   readonly eye = this.operation({
     id: 'mesoviewspec.eye',
@@ -372,6 +622,8 @@ export class MesoViewSpecApi extends ApiArea {
       const files = new Map<string, string | Uint8Array>();
       for (const f of values.files ?? []) files.set(f.name, new Uint8Array(await f.arrayBuffer()));
       let step: Awaited<ReturnType<MesoDocumentModel['open']>>;
+      // a tour of the document open stops now, not after its step's hold (not awaited: its next view may queue behind)
+      this.#stopTour();
       try {
         step = await this.model.open(read.doc, { ...(url ? { url } : {}), files }, ctx.api);
       } catch (e) {
@@ -406,6 +658,8 @@ export class MesoViewSpecApi extends ApiArea {
     params: {},
     run: async (_values, ctx) => {
       if (!this.model.doc) return ApiResult.already('No document is open.');
+      // the tour playing stops now, not after its step's hold
+      this.#stopTour();
       await this.model.close(ctx.api);
       return ApiResult.ok('Closed the document: its lists are gone.');
     },
@@ -470,6 +724,20 @@ export class MesoViewSpecApi extends ApiArea {
         { value: { blob, filename: saved.filename } as SavedDocument },
       );
     },
+  });
+}
+
+/** Waits `ms`, or less when `signal` aborts. */
+function holdFor(ms: number, signal: AbortSignal): Promise<void> {
+  if (signal.aborted) return Promise.resolve();
+  return new Promise((resolve) => {
+    const done = () => {
+      clearTimeout(timer);
+      signal.removeEventListener('abort', done);
+      resolve();
+    };
+    const timer = setTimeout(done, ms);
+    signal.addEventListener('abort', done);
   });
 }
 

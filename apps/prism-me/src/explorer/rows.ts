@@ -104,6 +104,7 @@ export function sameRow(a: Row, b: Row): boolean {
     a.representation === b.representation &&
     a.clip === b.clip &&
     a.short === b.short &&
+    a.tip === b.tip &&
     a.doc?.select === b.doc?.select &&
     a.document === b.document &&
     sameRefs(a.objects, b.objects) &&
