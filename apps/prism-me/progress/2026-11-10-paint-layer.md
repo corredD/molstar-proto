@@ -155,3 +155,52 @@ list.
   measurements kept.
 - **Size:** ~350 production lines.
 - **Lane model:** Opus (the structure targets and the Painting list are design).
+
+### Round 2: built
+
+- `ParticleListPainted` back under the list's root (round 1 reverted forward); `structures` of `PaintStructure` (name,
+  target and entity ids kept from the first stroke, its source: the structure's `download` or `read-file`), loaded by
+  the decorator itself (`loadParticleTarget`, cached by source): no dependency on the scene's cell.
+- `MesoscalePaintingList` (no particle of its own) with the decorator and a move under it;
+  `mesoscale.paint { structure, particles }` (`paintInto`); the target representation and the spheres' leave-out by
+  `particles. representation` and `particles.look` in the stroke's step (`drawStructure`); Mol*'s particles loaded first
+  (`ensureFor`).
+- cryoet's `dataOf`: the deepest decorator's particles but its offsets' (a copy offset alone or with its kind).
+- UI: Paint with on a structure's right-click and Paint section, Paint into (each list or Painting, reset at each
+  start), the structure's copy under the pointer; a list's row counts its painted copies.
+- Fiber spelling in paint's UI, messages, tests and docs.
+- Measured: an empty scene, 24 copies of 1CRN in one stroke, 46–78 ms (browser, the lane's server). A stroke into
+  cellpack-mg is as on `me/paint` (~1.3 s): the fast-path lanes' work.
+
+### Round 2: learned
+
+- Mol* has no optional dependency: a missing one fails the cell before `apply` (and its subtree, the list's
+  representations): a list that paints with a structure keeps its own copy, loaded from the structure's source.
+- An operation can run others through `ctx.api` in its one history step (several commits, one undo), as cryoet's
+  decorate does: the stroke's target representation and leave-out are `particles.representation` and `particles.look`.
+- Mol*'s particles are opt-in (`ParticlesRegistry`, lazy): an operation that makes a list in a scene without one loads
+  them with `ctx.extensions.ensureFor({ transformers: [...] })`.
+
+### Round 2: size
+
+~520 production lines (tests apart) against ~350: the structure's own copy (source, loader, cache) and the gate's leave-
+out took the room.
+
+### Round 2: review
+
+| Finding                                                                                                         | Severity   | Verdict   | Commit / open                                                              |
+| --------------------------------------------------------------------------------------------------------------- | ---------- | --------- | -------------------------------------------------------------------------- |
+| M1 a decoration after a structure stroke moves its target id (copies drawn as another object, a phantom target) | must-fix   | confirmed | 1653a2e58                                                                  |
+| M2 removing the painted structure fails the decorator: the list's own particles go                              | must-fix   | confirmed | 1653a2e58                                                                  |
+| M3 the Painting list has no move under the decorator: copies left behind, strokes off                           | must-fix   | confirmed | 1653a2e58                                                                  |
+| S1 a structure's entity offered Paint with, every stroke refused                                                | should-fix | confirmed | 1653a2e58                                                                  |
+| S2 a structure's copies drawn twice on a list of spheres                                                        | should-fix | confirmed | 1653a2e58                                                                  |
+| S3 Paint into stale across brushes and a deleted list                                                           | should-fix | confirmed | 1653a2e58, then the next commit                                            |
+| Tests: entity added to a model, decorated list, move, delete, undo of the added representation                  | should-fix | confirmed | 1653a2e58 and after; open: the Paint into UI, a reload into a fresh viewer |
+| N1 ids scanned a structure at a time; same-name entities                                                        | nit        | confirmed | 1653a2e58 (ids once; one entity a source)                                  |
+| N2 Painting known by its label                                                                                  | nit        | confirmed | 1653a2e58                                                                  |
+| N3 the 'fibre' command alias dropped                                                                            | nit        | confirmed | 1653a2e58                                                                  |
+| N4 the target representation's params from the list's own data                                                  | nit        | refuted   | —                                                                          |
+
+Open: a structure loaded by PDB id (a download) is not tested (no network in the tests); TODO.md's older entries still
+say "fibre"; the model's stroke speed (the fast-path lanes).
