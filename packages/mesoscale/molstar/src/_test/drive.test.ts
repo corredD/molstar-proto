@@ -219,7 +219,9 @@ describe('the other operations on a document list (prism.md §5.1)', () => {
     expect(styleLooks(await saved(h))).toEqual(styleLooks(a));
   });
 
-  it('importColors: by the entity id and by the bare name (ALB, catalase), as the hint lists them', { tags: ['medium'] }, async () => {
+  it('importColors: by the entity id and by the bare name (ALB, catalase), as the hint lists them', {
+    tags: ['medium'],
+  }, async () => {
     const h = await open();
     const { ref } = listOf(h, 'p.catalase');
     const r = await h.run('mesoscale.importColors', {
