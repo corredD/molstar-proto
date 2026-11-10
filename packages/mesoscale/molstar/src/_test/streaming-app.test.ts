@@ -17,6 +17,7 @@ import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
 import type { PrismViewer } from '@molstar/prism-viewer/viewer';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { MesoViewSpecApi } from '../extension.js';
+import { RestMs } from '../camera-feed.js';
 import { MesoPlacements, MesoTilePlacements, placementStore } from '../particle-list.js';
 import { StreamingBudgetKey } from '../streaming-settings.js';
 import { stubCanvasForLabels } from './canvas.js';
@@ -192,6 +193,10 @@ describe('a streamed document in prism-me (headless)', () => {
     await h.settle();
     expect(h.resident()!.evicted).toBeGreaterThan(0);
     expect(h.resident()!.copies).toBeLessThanOrEqual(h.resident()!.budget);
+    // an evicted tile's placements went with its list: the store holds the document's sets and the resident tiles only
+    const adapter = h.area().model.adapter;
+    const held = new Set([...adapter.keys(), ...adapter.tileKeys()]);
+    expect([...placementStore(h.v.plugin).keys()].filter((k) => !held.has(k))).toEqual([]);
     expect(h.runs.slice(before)).toEqual([]);
     expect(h.steps().length).toBe(1);
     expect(h.unsafe()).toEqual([]);
@@ -299,6 +304,52 @@ describe('a streamed document in prism-me (headless)', () => {
     expectNothingDrawn(h);
     await openTiled(h);
     expectNewScene(h);
+    expect(h.errors).toEqual([]);
+  });
+
+  // gate S5: the extension's feed wiring (`feedCanvasCamera` to `setFocus`) was tested over a fake canvas alone
+  it('the canvas camera, once it rests, is where the open document streams', { tags: ['medium'] }, async () => {
+    const h = await setup();
+    const plugin = h.v.plugin as unknown as { canvas3d: unknown };
+    // a canvas the feed reads (its draws and its camera's target), there only while the feed attaches and fires: the
+    // representations' sync would draw into it
+    const draws = new Set<() => void>();
+    const target = [0, 0, 0];
+    const canvas = {
+      camera: { target },
+      didDraw: {
+        subscribe(f: () => void) {
+          draws.add(f);
+          return { unsubscribe: () => draws.delete(f) };
+        },
+      },
+    };
+    plugin.canvas3d = canvas;
+    // the first call loads the chunk: the area attaches its feed to the canvas there
+    expect((await h.person.run('mesoviewspec.close', {})).ok).toBe(true);
+    plugin.canvas3d = undefined;
+    expect(draws.size).toBe(1);
+    await openTiled(h);
+    const model = h.area().model;
+    const session = model.session!;
+    const fed: unknown[] = [];
+    const setFocus = model.setFocus.bind(model);
+    model.setFocus = (focus) => {
+      fed.push(focus);
+      plugin.canvas3d = undefined;
+      return setFocus(focus);
+    };
+    plugin.canvas3d = canvas;
+    target.splice(0, 3, ...Far.center);
+    for (const f of draws) f();
+    await sleep(RestMs + 100);
+    plugin.canvas3d = undefined;
+    expect(fed).toEqual([Far]);
+    expect((session as unknown as { focus: unknown }).focus).toEqual(Far);
+    await h.settle();
+    const resident = placementSets(session.ir!).filter((s) => s.model === 'm.tiles');
+    expect(resident.some((s) => s.key.endsWith('#t.3.3.1'))).toBe(true);
+    expect(resident.some((s) => s.key.endsWith('#t.0.0.0'))).toBe(false);
     expect(h.errors).toEqual([]);
   });
 
