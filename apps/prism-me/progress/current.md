@@ -68,7 +68,11 @@ is not built is [../TODO.md](../TODO.md).
     outside the repo). Built and gated at eeb50bc65: one membrane over all meshes, a sphere tree per part, enclosed
     parts skipped, the .bin reader; wrap 9.6 s, whole 35 ms, close 104–224 ms (M5). Waits on Ludo’s try on 1354. Round 7
     started 2026-11-09 (brief da59ff832): bilayer far look (mesh per leaflet), colour, hide and lipid mix per membrane,
-    the slab’s frame, the perf baseline back. Ludo: no lighter close level.
+    the slab’s frame, the perf baseline back. Ludo: no lighter close level. Merged with origin/prism-me (master #62) at
+    b0f6c2e64; items 1–5 built (82209c184, pushed). Ludo 2026-11-09: goal "best lipid wrapper capable of scaling up to
+    human cell size, looking great with and without cut"; item 6 (by zoom to atoms, colour control) added; each step its
+    own agent (architect → builder → reviewer → skeptic); no images. Then round 8 (shells/parallax to compare live,
+    brief 481102c20). Item 6 architect running.
   - `merge-master` (`me/merge-master` from `origin/prism-me`, port 1355, [brief](2026-11-09-merge-master.md) on its
     branch): started 2026-11-09 (Ludo: merge master, conflicts favoring master). origin/master dabbf29f9, 59 commits,
     474 files, mostly graphics. Merged at 46aa8cae3 (63 files conflicted, master favoured, prism-me features kept and
