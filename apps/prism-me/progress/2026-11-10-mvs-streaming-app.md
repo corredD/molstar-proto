@@ -114,7 +114,8 @@ coordinator's.
 
 ## Review
 
-The gate (reviewer and skeptic, Opus) and its fixes. Each fix's test is its own commit, red, before the fix. The rows to\nrecord as Open came without a verdict or severity (-); S1 was not handed to the fix.
+The gate (reviewer and skeptic, Opus) and its fixes. Each fix's test is its own commit, red, before the fix. The rows to
+record as Open came without a verdict or severity (`-`); S1 was not handed to the fix.
 
 | Finding                                                                                                                                     | Severity    | Verdict    | Fixed by / Open                                                                                                                      |
 | ------------------------------------------------------------------------------------------------------------------------------------------- | ----------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------ |
