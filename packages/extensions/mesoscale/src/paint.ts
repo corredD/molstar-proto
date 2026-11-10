@@ -26,8 +26,9 @@ import { PluginStateObject as SO, PluginStateTransform } from '@molstar/plugin/s
 import { isMembranePath } from './pick-surface.js';
 
 // Paint v1 (apps/prism-me/_spec/features.md, "Paint"; progress/2026-11-08-paint.md, Design 1): copies of an existing
-// target painted onto a surface. A decorator appends each stroke's particles to the list it takes, so a session keeps
-// them and an undo removes a stroke. A painted copy reuses a target (its object): `targetMapping` is kept.
+// target painted onto a surface. The list's paint layer (`ParticleListPaintLayer`, progress/2026-11-10-paint-layer.md)
+// keeps the strokes, so a session keeps them and an undo removes a stroke, and draws their copies as a list of their
+// own: the list itself is not drawn again. A painted copy reuses a target (its object): `targetMapping` is kept.
 
 /** One stroke: copies of one target, their positions (Å) and orientations (unit quaternions x, y, z, w) */
 export interface PaintStroke {
@@ -567,10 +568,7 @@ function readMove(root: ParticleList, moved: ParticleList): ListMove | undefined
   const turnOf = (l: ParticleList, i: number) =>
     l.rotations ? Quat.fromArray(Quat(), l.rotations, i * 4) : Quat.identity();
   // the turn: one particle's orientation after over before
-  const turn = Quat.normalize(
-    Quat(),
-    Quat.multiply(Quat(), turnOf(moved, 0), Quat.conjugate(Quat(), turnOf(root, 0))),
-  );
+  const turn = Quat.normalize(Quat(), Quat.multiply(Quat(), turnOf(moved, 0), Quat.conjugate(Quat(), turnOf(root, 0))));
   // the scale: the particle farthest from the first among a few, its distance after over before (1 for a list of
   // one particle, or of particles at one point: no distance to read it from)
   const p0 = at(root, 0);
