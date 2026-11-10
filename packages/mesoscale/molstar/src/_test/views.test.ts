@@ -416,10 +416,18 @@ describe('New view from here, Update camera, Open with this view (prism.md §4.4
     const framed: MesoViewSpecDoc = {
       ...d,
       // a tomogram's frame: 2 nm voxels, turned a quarter about z and moved
-      frames: [...(d.frames ?? []), { id: 'f.tomo', kind: 'instrument', units: 'nm', handedness: 'right', voxelSize: 2 }],
+      frames: [
+        ...(d.frames ?? []),
+        { id: 'f.tomo', kind: 'instrument', units: 'nm', handedness: 'right', voxelSize: 2 },
+      ],
       alignments: [
         ...(d.alignments ?? []),
-        { id: 'a.tomo', from: 'f.tomo', to: 'f.cell', transform: { rotation: [0, 0, s, s], translation: [100, -50, 20] } },
+        {
+          id: 'a.tomo',
+          from: 'f.tomo',
+          to: 'f.cell',
+          transform: { rotation: [0, 0, s, s], translation: [100, -50, 20] },
+        },
       ],
       views: [
         ...d.views!,
@@ -447,7 +455,9 @@ describe('New view from here, Update camera, Open with this view (prism.md §4.4
       // a tour and a look holding the ids New view and Add label would take first
       tours: [...(d.tours ?? []), { id: 'v.view.1', steps: [{ view: 'v.cell' }] }],
       views: d.views!.map((v) =>
-        v.id === 'v.cell' ? { ...v, looks: [...(v.looks ?? []), { id: 'an.1', select: '(population p.ribosomes)' }] } : v,
+        v.id === 'v.cell'
+          ? { ...v, looks: [...(v.looks ?? []), { id: 'an.1', select: '(population p.ribosomes)' }] }
+          : v,
       ),
     };
     const h = await open(taken);
