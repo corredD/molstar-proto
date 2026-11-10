@@ -10,7 +10,10 @@
 import { expect, it } from 'vitest';
 import { Vec3 } from '@molstar/core/math/linear-algebra/3d/vec3';
 import { quickCase } from '@molstar/test-harness/quick';
-import { createLipidSelection } from '../lipids/procedural.js';
+import { concatMeshes } from '../lipids/membrane.js';
+import { createLipidSelection, createPartVisibility } from '../lipids/procedural.js';
+import { icosphere } from '../lipids/remesh.js';
+import { enclosures, triangleTree } from '../lipids/triangle-tree.js';
 import { full, input, Params, view } from './lipid-selection-cases.js';
 
 it('a select between two views (cells and whole triangles)', ({ task }) => {
@@ -25,4 +28,23 @@ it('a select between two views (cells and whole triangles)', ({ task }) => {
   });
   expect(changed).toBeGreaterThan(10);
   expect(selection.count).toBeGreaterThan(0);
+});
+
+it('a cell’s parts shown between two views (round 7: once a view for every part’s selection; review S3)', ({
+  task,
+}) => {
+  // a cell around an organelle: the eye outside, then inside the cell, so the enclosure test runs each step
+  const { mesh, parts } = concatMeshes([icosphere(2000, 200), icosphere(1600, 200)], ['cell', 'organelle']);
+  const enclosedBy = enclosures(triangleTree(mesh.positions, mesh.indices, parts), mesh.positions, mesh.indices);
+  const visibility = createPartVisibility(mesh.positions, mesh.indices, parts, enclosedBy);
+  const views = [
+    view(Vec3.create(0, 0, 2400), Vec3.create(0, 0, 0)),
+    view(Vec3.create(0, 0, 1850), Vec3.create(0, 0, 0)),
+  ];
+  let shown = 0;
+  quickCase(task, 'lipid selection: a cell’s parts shown between two views', (i) => {
+    visibility.update(views[i & 1].frustum, true);
+    shown += visibility.shown[1];
+  });
+  expect(shown).toBeGreaterThan(10);
 });
