@@ -56,6 +56,24 @@ Plan: [../plans/2026-11-10-bucket-and-relax.md](../plans/2026-11-10-bucket-and-r
 
 ## Built
 
+- `ParticleListPaintLayer` (paint.ts): the strokes and the brushes' fibre settings, a child of the list's last decorator
+  (`decoratedTail`), `dependsOn` the list's root. Its output: `paintedCopies(root, …)` (the copies `paintParticles`
+  appends, alone: the same keys after the root's largest, scanned once a list; targets, labels, fibres of their own),
+  moved by `listMove(root, input)`. `paintParticles` kept (the same builder, `painting(…, append)`).
+- `listMove`: ParticleListTransform records no `movedFrom`, so the move is read from the two lists (the same particles
+  in the same order): the turn from particle 0's orientations, the scale from the particle farthest from it among 64,
+  the translation from particle 0; checked on 16 particles (`exact`); kept per moved list. `mesoscale.paint` refuses a
+  list whose move is not exact (offsets), as it refuses a list of class targets.
+- `updatePainted` (operations.ts): the layer made on first use with a representation per representation of the list (its
+  transformer, params, hidden state and children: the looks' layers), in the stroke's one commit.
+- The hierarchy's `isTypeRoot` takes the layer's representations as the list's: `particles.look` (style, colours,
+  transparency, glow), colours by zoom and the other writes over `l.representations` reach the copies unchanged.
+- stage-tools `drawsList`: a particle drag's preview skips representations under a child that is not a decorator (it
+  gave the layer's the list's particles: made again from the offset list, or framed by the list's indices).
+- Measured (cellpack-mg, 2.1 M particles, 848 targets; scratch `cl/prof-layer.cjs`): a stroke 1.3–1.7 s → 4–8 ms to
+  commit, 12–15 ms to its drawn frame (the first stroke 36 ms: the layer and its representations made); 21 copies drawn
+  as 21 instances under the layer, the model's 2,124,844 instances unchanged.
+
 ## Decided
 
 - Ludo, 2026-11-10: the design as briefed (a layer of its own, not an append-aware representation); the decorator
@@ -63,9 +81,77 @@ Plan: [../plans/2026-11-10-bucket-and-relax.md](../plans/2026-11-10-bucket-and-r
 
 ## Learned
 
+- The particle hierarchy collects any representation under a nested list into the outer list's `representations`: the
+  looks come free, but every loop over them that indexes by the list's particles must skip the nested list's (the drag
+  preview did). Loci are matched by the list object (`loci.particles !== particles`), so highlight and selection of
+  model particles never mark a copy.
+- `spine.getRootOfType` returns nothing while the cell being applied has no object yet (its first apply): the layer
+  takes its root from `dependsOn` instead.
+- A fresh worktree's `check:workspace` needs the packages' assets (`node scripts/workspace/assets.mjs`, part of
+  `build:lib`): plugin-ui's css and the backgrounds' images.
+
 ## Size
+
+263 production lines added, 60 removed (tests and docs apart), against ~450: the hierarchy gave the looks for free (no
+mirroring of each operation's writes), and the move read from the data needed no change to the Transform.
 
 ## Review
 
-| Finding | Severity | Verdict | Commit / open |
-| ------- | -------- | ------- | ------------- |
+| Finding                                                                                        | Severity          | Verdict               | Commit / open                                        |
+| ---------------------------------------------------------------------------------------------- | ----------------- | --------------------- | ---------------------------------------------------- |
+| M1 a later offset (`cryoet.instance`) moves every copy (the move read from offset particles)   | must-fix          | confirmed             | round 2: the layer removed                           |
+| M2 a pick on a copy resolves to the model's particle of the same index                         | must-fix          | confirmed             | round 2                                              |
+| S3 a decoration after a stroke hides the copies (their targets the root's)                     | must-fix (raised) | confirmed             | round 2                                              |
+| S1 representations mirrored once: added or removed later, not                                  | should-fix        | confirmed             | round 2                                              |
+| S2 the inspector lists each representation twice                                               | should-fix        | confirmed             | round 2                                              |
+| S4 the scaling guard checks linearity, not flatness; the config cannot run (predates the lane) | should-fix        | confirmed             | round 2 (guard removed with the layer); config: TODO |
+| S5 tests of the brief missing (clip, transparency, after-stroke edits, picks)                  | should-fix        | partly                | round 2's tests                                      |
+| X1 `exact` misses offsets on unsampled particles                                               | should-fix        | confirmed             | round 2: removed                                     |
+| N1–N4 tolerance, coincident samples, dead append branch, focus leaves out copies               | nit               | confirmed / plausible | round 2: removed                                     |
+| N5 progress file empty                                                                         | nit               | refuted               | —                                                    |
+
+Ludo, 2026-11-10, after the gate: a copy must behave as its list's particles (edited alone and with its kind, new
+representations at once); the layer's design cannot give that by construction: round 2 restores the copies in their
+list.
+
+## Round 2: the copies in their list again, painting into a list (brief, 2026-11-10)
+
+- **Asked** (Ludo, 2026-11-10, after the gate): a copy behaves as any particle of its list: "all of the same kind
+  continue to be able to all move. Same behaviour. a painted copy can be edited, and can edit all of the same type"; new
+  representations reach the copies "Immediately"; "yes restore the in list copy. so it will also work for empty scene,
+  or just painting a given PDB id. The target of the paint is a particle list parent." Answers: one "Painting" list for
+  an empty scene; a structure painted while a model is loaded: **Paint into** asked each time (the model or the Painting
+  list); the brush is a structure in the scene, offered by its right-click and its row's ⋯ (**Paint with**), after
+  loading a PDB id or a file. Spelling: Fiber, not fibre.
+- **Check:** (1) cellpack-mg: paint, then move one instance with the handle, "Offset all like it" from a copy, decorate,
+  add a representation: the copies follow as the model's particles do. (2) An empty scene: load 1CRN, right-click it ›
+  Paint with 1CRN, click and drag in empty space: copies at the pointer's depth, in a list named Painting, one undo step
+  a stroke. (3) HIV loaded, load 1CRN, Paint with it: asked Paint into HIV or Painting; HIV gains an entity 1CRN.
+- **Design:**
+  1. The layer goes: `ParticleListPainted` (the decorator right under the list's root, above every later decorator) is
+     back, so the copies are the list's particles: moves, offsets of a kind, decorations, picks, representations and
+     focus work on them as on the others by construction. The lane's `ParticleListPaintLayer`, `listMove`, the offsets
+     refusal and stage-tools' `drawsList` are removed (nothing nested to guard against).
+  2. **Structure brushes:** the decorator gains `structures`: a structure of the scene by state ref (`dependsOn`, so a
+     session reloads it), added to the list as a target and an entity of its name (ids after the list's largest), its
+     compartment none. A brush is a list's entity, or a structure.
+  3. **The Painting list:** painting with no list to paint into makes one (`mesoscale-painting-list`, a root list of no
+     particle, labelled Painting) with the decorator and a target representation, in the stroke's commit; later
+     structure brushes add to it. Without a surface the copies go at the paint depth (Place: Depth, as now).
+  4. **Paint into:** a structure brush with a particle list in the scene asks, in the Paint section, Paint into: each
+     list or Painting; `mesoscale.paint { structure, particles }` takes it.
+  5. **Paint with** on a structure: the structure's right-click and its row's ⋯ (menu.ts, beside the entity's).
+  6. Fiber spelling in UI strings, messages and docs of paint.
+- **Speed:** a stroke into a model is as on `me/paint` (cellpack-mg ~1.3 s); into the Painting list it is small. The
+  model's stroke speed is the next lanes', from master, one step of the profile each (fiber tubes, each target's
+  transforms, the culler's sync, signatures, groups, entities, the hierarchy index: this lane's Brief, Measured).
+- **Tests (failing first):** a copy moved by `cryoet.instance` on its own index and by an offset of its kind; a
+  decorated list's copies decorated; a representation added after a stroke draws the copies; a pick of a copy is its
+  list's particle; a structure brush into a model (one step: an entity added, copies of it); into an empty scene (the
+  Painting list made, one step; undo leaves nothing); a session with a structure brush reloaded; the Paint into choice.
+- **Touches:** mesoscale (paint.ts, operations.ts, paint-host.ts, paint-mode.ts, controls.tsx), apps/prism-me (menu.ts,
+  properties.tsx), the specs. **Stays off** packages/graphics, packages/plugin, stage-tools.
+- **Branch:** the lane is local only; its round-1 commits are reverted forward (`git revert`), the brief and the
+  measurements kept.
+- **Size:** ~350 production lines.
+- **Lane model:** Opus (the structure targets and the Painting list are design).
