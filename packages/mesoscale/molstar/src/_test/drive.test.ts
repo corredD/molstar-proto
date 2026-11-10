@@ -249,12 +249,21 @@ describe('the other operations on a document list (prism.md §5.1)', () => {
     expect(r.ok, JSON.stringify(r)).toBe(true);
     expect(h.steps()).toBe(s0 + 1);
     const a = await saved(h);
-    expect(styleLooks(a)).toHaveLength(refs.length);
-    for (const l of styleLooks(a)) expect(l.color).toBe('#808080');
+    // one document, one color: one look (all) (prism.md §5.1), not one a list
+    expect(styleLooks(a)).toEqual([{ id: 'l.style.1', select: '(all)', color: '#808080' }]);
     const { ref, type } = listOf(h, 'p.catalase');
     expect(layerOf(h, ref, type)?.color).toBe(0x808080);
     expect((await h.v.managers.history.undo()).ok).toBe(true);
     expect(styleLooks(await saved(h))).toEqual([]);
+  });
+
+  it('theme by object over the document’s lists: one look (all), one color', { tags: ['medium'] }, async () => {
+    const h = await open();
+    const r = await h.run('mesoscale.theme', { objects: listRefs(h), theme: 'object' });
+    expect(r.ok, JSON.stringify(r)).toBe(true);
+    const looks = styleLooks(await saved(h));
+    expect(looks).toHaveLength(1);
+    expect(looks[0]).toMatchObject({ select: '(all)', color: expect.stringMatching(/^#[0-9a-f]{6}$/) });
   });
 });
 
