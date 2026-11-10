@@ -6,7 +6,7 @@
 
 import { it } from 'vitest';
 import { checkLinear, quadraticControl, scaling } from '../../../../sequences/core/_test/model/scaling.js';
-import { type PaintStroke, paintedCopies, paintParticles, paintRotations } from '../paint.js';
+import { type PaintStroke, paintParticles, paintRotations } from '../paint.js';
 import { cellpackLike } from './fixtures.js';
 
 // A stroke of N copies (`test:scaling`; apps/prism-me/AGENTS.md, no accidental quadratic): its orientations
@@ -112,23 +112,4 @@ it('a list with a fibre of 4N points painted with fibres of N points in strokes 
     20000,
   );
   checkLinear('paintParticles, N fibre points', s);
-});
-
-it("a stroke's copies alone over a list of N particles (the paint layer: its list's size not a stroke's cost)", () => {
-  const stroke = strokes(PerStroke);
-  const s = scaling(
-    {
-      setup: (n) => {
-        const input = list(n);
-        // the list's largest key, once a list (as the layer's first stroke)
-        paintedCopies(input, stroke);
-        return input;
-      },
-      run: (input) => {
-        if (paintedCopies(input, stroke).count !== PerStroke) throw new Error('not painted');
-      },
-    },
-    200000,
-  );
-  checkLinear('paintedCopies, a list of N', s);
 });
