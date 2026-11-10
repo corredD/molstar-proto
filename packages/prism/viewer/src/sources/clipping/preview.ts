@@ -6,6 +6,7 @@
 
 import type { PluginContext } from '@molstar/plugin/context';
 import { RepresentationClip } from '@molstar/plugin/state/helpers/representation-clip';
+import { EMPTY } from 'rxjs';
 import type { CutObject } from './cuts.js';
 import { ClipBinding } from './gizmo/binding.js';
 
@@ -33,7 +34,8 @@ export class CutPreview {
     /** What the representations show of the cut now (its gizmo follows); undefined: the state's again */
     private readonly onShown?: (object: CutObject | undefined) => void,
   ) {
-    this.#binding = new ClipBinding(plugin, () => []);
+    // no items of its own: it previews a cut a view names
+    this.#binding = new ClipBinding(plugin, EMPTY);
     // previews touch the representations, never the state: a change of it is someone else's
     plugin.state.data.events.changed.subscribe(() => {
       if (!this.#from) return;

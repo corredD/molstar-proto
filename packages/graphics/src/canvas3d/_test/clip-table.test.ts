@@ -10,6 +10,7 @@ import { Interval } from '@molstar/core/data/int';
 import { Mat4, Vec3 } from '@molstar/core/math/linear-algebra';
 import { DefaultAssetManager } from '@molstar/core/util/assets';
 import { Color } from '@molstar/core/util/color';
+import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
 import { EveryLoci } from '@molstar/model/model/loci';
 import { Shape } from '@molstar/model/model/shape';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -21,7 +22,7 @@ import { createContext } from '../../gl/webgl/context.js';
 import { ShapeRepresentation } from '../../repr/shape/representation.js';
 import { Visual } from '../../repr/visual.js';
 import { Clipping } from '../../theme/clipping.js';
-import { Canvas3D, Canvas3DContext } from '../canvas3d.js';
+import { Canvas3D, Canvas3DContext, Canvas3DParams } from '../canvas3d.js';
 
 // The clipping table on the gl shim (no pixels: what is uploaded, not what is drawn; the browser check is the app's):
 // a representation's rows and table are data, written when the clipping changes, never by a frame or a camera move,
@@ -70,7 +71,12 @@ function setup() {
       return f(...a);
     };
   }
-  return { canvas: Canvas3D.create(ctx), uploads };
+  // no scale line: its label's font atlas needs a 2d canvas
+  const { camera } = PD.getDefaultValues(Canvas3DParams);
+  const canvas = Canvas3D.create(ctx, {
+    camera: { ...camera, helper: { ...camera.helper, scale: { name: 'off', params: {} } } },
+  });
+  return { canvas, uploads };
 }
 
 function draw(canvas: Canvas3D) {

@@ -9,7 +9,7 @@ import { Sphere3D } from '@molstar/core/math/geometry';
 import { ButtonsType } from '@molstar/core/util/input/input-observer';
 import { type Observable, Subject } from 'rxjs';
 import { EmptyLoci, Loci } from '@molstar/model/model/loci';
-import { isStageDistanceData } from '@molstar/stage-tools-extension/distance';
+import { isStageDistanceData, targetSphere } from '@molstar/stage-tools-extension/distance';
 import { drawnObject, stagePicked, type StagePicked } from '@molstar/stage-tools-extension/operations';
 import { Particle, type ParticleList, type ParticleTarget } from '@molstar/model/model/particles/particle-list';
 import { Structure, StructureElement, StructureSelection } from '@molstar/model/model/structure';
@@ -744,12 +744,9 @@ function typeOf(params: unknown): string {
   return (params as { type?: { name?: string } } | undefined)?.type?.name ?? '';
 }
 
-/** The radius of what decorates a target (its structure's, volume's, shape's), 0 for none */
+/** The radius of what decorates a target (its structure's, sites', volume's, shape's), 0 for none */
 function decorationRadius(target: ParticleTarget | undefined): number {
-  if (!target) return 0;
-  if (target.kind === 'structure') return target.structure.boundary.sphere.radius;
-  if (target.kind === 'volume') return Grid.getBoundingSphere(target.volume.grid).radius;
-  return (target.shape.geometry as { boundingSphere?: { radius: number } }).boundingSphere?.radius ?? 0;
+  return targetSphere(target)?.radius ?? 0;
 }
 
 /** The name of the file or entry an object came from: its root data's label */

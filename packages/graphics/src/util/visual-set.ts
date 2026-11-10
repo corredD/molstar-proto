@@ -2,6 +2,7 @@
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Alexander Rose <alexander.rose@weirdbyte.de>
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
@@ -19,7 +20,7 @@ import { Theme, type ThemeDataContext, type ThemeRegistryContext } from '@molsta
 type AnyRepresentation = Representation<any, any, any>;
 
 /** What a visual set needs of the canvas: its public scene API (no Canvas3D internals) */
-export type VisualSetCanvas = Pick<Canvas3D, 'graphics' | 'add' | 'remove' | 'update' | 'requestDraw' | 'setOnTop'>;
+export type VisualSetCanvas = Pick<Canvas3D, 'graphics' | 'add' | 'remove' | 'update' | 'requestDraw'>;
 
 export interface VisualSetProviderOptions<P extends PD.Params> {
   /** The theme registries (a plugin's `representation.structure.themes`) */
@@ -45,15 +46,14 @@ interface Entry {
  * set adds them to the canvas, tells its own from others' (`has`, `owns` for an interaction event's loci) and removes
  * and destroys them, one or all at once.
  *
- * They stay in the canvas's scene as any representation (picked, marked, in its bounds) and are re-created by the
- * canvas when its graphics backend changes. They are auto-synced: an update (`update`, or the representation's own)
- * reaches the canvas without a commit of the state. They can be drawn on top of the scene (`setOnTop`), all of them:
- * picked and marked there too, out of the scene's bounds.
+ * They stay in the canvas as any representation (picked, marked) and are re-created by the canvas when its graphics
+ * backend changes. The layer of their state (`Representation.State.layer`, given to `add`, `create`, `addShape`)
+ * decides where: `scene` (in the scene's bounds) or `overlay` (above the scene, out of its bounds: gizmos). They are auto-synced: an update (`update`, or the representation's own)
+ * reaches the canvas without a commit of the state.
  */
 export class VisualSet {
   private readonly entries = new Map<AnyRepresentation, Entry>();
   private disposed = false;
-  private _onTop = false;
 
   constructor(private readonly canvas: VisualSetCanvas) {}
 
@@ -67,23 +67,6 @@ export class VisualSet {
 
   get representations(): readonly AnyRepresentation[] {
     return [...this.entries.keys()];
-  }
-
-  /** Whether the set's representations are drawn on top of the scene (`setOnTop`) */
-  get onTop() {
-    return this._onTop;
-  }
-
-  /**
-   * The set's representations drawn on top of the scene (shown and picked through what is in front of them,
-   * `Canvas3D.setOnTop`), or in it; those added later too. Moved, not built again
-   */
-  setOnTop(onTop: boolean) {
-    if (this._onTop === onTop) return;
-    this._onTop = onTop;
-    if (this.entries.size === 0) return;
-    for (const repr of this.entries.keys()) this.canvas.setOnTop(repr, onTop);
-    this.canvas.requestDraw();
   }
 
   has(repr: AnyRepresentation | undefined): boolean {
@@ -172,7 +155,13 @@ export class VisualSet {
   /** Updates one of the set's representations; the canvas follows (auto-sync) */
   async update<R extends AnyRepresentation>(repr: R, props?: Partial<PD.Values<R['params']>>, data?: unknown) {
     if (!this.has(repr)) return;
-    await repr.createOrUpdate(props, data).run();
+    try {
+      await repr.createOrUpdate(props, data).run();
+    } catch (e) {
+      // removed (and destroyed) while it ran: nothing left to update (a gizmo part hidden during its update)
+      if (!this.has(repr)) return;
+      throw e;
+    }
     this.canvas.requestDraw();
   }
 
@@ -243,8 +232,6 @@ export class VisualSet {
     // auto-synced by the canvas (`Canvas3D.add` follows `repr.updated`): no state commit adds it
     repr.setState({ ...state, syncManually: false });
     this.entries.set(repr, entry);
-    // in its layer as it is added (not moved there after)
-    if (this._onTop) this.canvas.setOnTop(repr, true);
     this.canvas.add(repr);
     this.canvas.requestDraw();
     return repr;

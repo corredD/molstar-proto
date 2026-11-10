@@ -141,7 +141,7 @@ void main(void) {
                     float fogFactor = outlineFog(outlineTransparentDepth);
                     float finalAlpha = max(transparentColor.a, finalOutlineAlpha * (1.0 - fogFactor));
                     transparentColor.a = finalAlpha;
-                    transparentColor.rgb = uTransparentOutlineColor * finalAlpha;
+                    transparentColor.rgb = uOutlineColor * finalAlpha;
                 }
             }
         #endif

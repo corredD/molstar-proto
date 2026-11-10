@@ -67,7 +67,8 @@ export class ObliqueHandles {
     private readonly api: ViewerApi,
   ) {
     this.#handles = new GizmoHandles(plugin, {
-      ...frameHandles({ rotate: [0, 1] }),
+      // a plane tilts about its own X and Y only: no turn about its normal, no roll about the view, no free turn
+      ...frameHandles({ rings: [0, 1], roll: false, free: false }),
       items: () => this.#items(),
       preview: async (_key, _from, next) => {
         const plane = this.#plane(next.frame);

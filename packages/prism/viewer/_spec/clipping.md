@@ -7,6 +7,12 @@ code is in `src/sources/clipping` (the viewer's boundary: only sources and opera
 
 ## 1. Cuts are read from the state
 
+- **A sphere is an ellipsoid**: the shaders clip it so (its half axes the scale's halves, turned by its rotation), so it
+  is drawn, sized and edited so everywhere (walls, edges, gizmo, form); round when placed. The type stays `sphere`
+  (Mol\*'s, MolViewSpec's, saved states). Why: a scale set from code or MolViewSpec cut another volume than was drawn.
+- **A cylinder is elliptic**: Mol\*'s clip takes its radii from the scale's x and z halves (its height y), and the cut
+  is drawn and edited so; round when placed. The cone stays round (its angle alone).
+
 - **The state tree is the record.** A cut is a Mol\* clip object in representations' params (`type.params.clip` or
   `clip`: `RepresentationClip.get`/`set`); the feature keeps no store. A clip set from code (MVS, mesoscale, a state
   update) is listed too. Why: undo, sessions and snapshots hold cuts with nothing to sync.
@@ -20,8 +26,8 @@ code is in `src/sources/clipping` (the viewer's boundary: only sources and opera
 ## 2. The `clipping` area
 
 - `list`; `add` (`shape`; `target` atoms, the selection by default, or `node` (volumes, shapes), or `everything`;
-  `types`; `invert`; `keepWhole`; `only`; `particles`); `update` (`shape`, `position`, `normal` or `rotation`, `scale`,
-  `invert`, `ghost`: only what is given); `apply` (one or several representations on or off, one step; never the last
+  `types`; `invert`; `keepWhole`; `only`; `particles`); `update` (`shape`, `position`, `normal` or `rotation`, `twist`,
+  `scale`, `invert`: only what is given); `apply` (one or several representations on or off, one step; never the last
   off); `keep` / `release` (§5; `release` of some atoms only with a `target`, the others kept whole); `show` (§6);
   `remove`; `clear`. Each a person's step, each a command, in the `clipping` skill.
 - **A cut by its number or its tag** (`cut`, `tag`): the views and the gizmos send the tag. Why: runs wait their turn,
@@ -30,14 +36,21 @@ code is in `src/sources/clipping` (the viewer's boundary: only sources and opera
   own (name, kind, range). `keepWhole` keeps atoms: with `node` or `everything` the cut is made and a warning says
   nothing was kept. `only` needs atoms: with `node`, `everything` or `keepWhole` it is refused. `particles` needs a
   `node` reaching particle representations.
-- **A new direction** (`normal`) turns the cut from where its axis points now (`turnedTo`): a box's twist is kept.
+- **A twist** (`twistOf`, `twisted`): the turn about a cut's axis, from the shortest turn of its local axis onto where
+  the axis points (`rotationTo`) to its rotation, measured on its local +X; which way a box's, an ellipsoid's or an
+  elliptic cylinder's other axes point. `twist` sets it after `normal`. It jumps where the axis points against the local
+  one (the shortest turn's axis flips there): a value shown and set, not a direction's turn.
+- **A new direction** (`normal`) turns the cut from where its axis points by the shortest turn (`turnedTo`): continuous
+  as the direction moves, small edits turn the other axes little; not by keeping the twist, which would spin a box about
+  its axis near that point.
 - **A new cut** is placed by its target's atoms (`placeCut`): a sphere or a box around a small target, with room; a
   window toward the viewer into a large one (one centered inside would show nothing); a plane through the center facing
   the camera; a cylinder a shaft along the view. With nothing selected, everything drawn.
 - **Add again** returns the cut like it on those representations (shape, flip, place, direction, size within 0.5 Å and
   ~2.5°: `nearlyEqual`) instead of stacking another.
-- **Another shape** keeps the place, the direction (a plane's normal is a cylinder's axis, a cone's opening), the size
-  and the flip (`reshape`); a plane or cone has none, so the new one is sized from what it cuts.
+- **Another shape** keeps the place, the direction (a plane's normal is a cylinder's axis, a cone's opening) and the
+  twist, the size (a box's, an ellipsoid's and a cylinder's three sizes each other's) and the flip (`reshape`); a plane
+  or cone has none, so the new one is sized from what it cuts.
 - **Directions** are unit; one of length 0 is refused.
 - **A refused edit** reloads the form from the cut (no state change would).
 - **Settings** (`settings`): `variant` (pixel: through, pixel by pixel; instance: whole copies left out by their center)
@@ -46,7 +59,14 @@ code is in `src/sources/clipping` (the viewer's boundary: only sources and opera
   (`withObject`); a cut moved or changed keeps the variant its representations have (an app may set one alone:
   prism-me's Clip whole, `stage.clipWhole`; a drag's release reset it). Why: Mol\* keeps it per representation, so a
   per-cut choice would change the other cuts on the same representations. Solid surface is the look's default (api.md
-  §2, "Look"): a representation with its own keeps it.
+  §2, "Look"): a representation with its own keeps it. `ghost`: what the cuts remove shown as a faint ghost, the
+  canvas's (`Canvas3DParams.clipGhost`, saved with its props); refused without a canvas. Its look (`ghostColor`,
+  `ghostOpacity`, `ghostEdgeOpacity`, `ghostResolution`: the canvas's `clipGhost` params) is the canvas's while on;
+  while off the area keeps it and turning the ghost on takes it. Why: the canvas's off state holds no params, and a look
+  set and then lost on off is surprising. What neither the canvas nor the options hold (that look, `fadeNormal`) is the
+  area's custom state (`prism-viewer.clipping`, `registerCustomState`): checkpoints and sessions carry it, so Undo of a
+  `clipping.settings` step and a ghost turned off by Undo keep it as it was. A representation can opt out (its
+  `clipGhost` param).
 
 ## 3. The section
 
@@ -58,28 +78,31 @@ code is in `src/sources/clipping` (the viewer's boundary: only sources and opera
   remove.
 - **The editor**: the shape (a strip, as a representation's type), cut away the other side, then folds closed at first:
   Cuts through (x/N: by type, then each, those it is on first, searched past eight), Kept whole, Position and size, In
-  the scene (while drawn). Forms send only the fields changed (a box's up alone would drop its twist), one update in
-  flight.
+  the scene (while drawn). A box and an ellipsoid have their up, twist and three sizes; a cylinder its axis, twist, two
+  diameters and height. Forms send only the fields changed, one update in flight.
 - **Clip…** in the selection menu (`ui.selectionActions`) opens the section; **Clip this…** in a row's menu
   (`ui.nodeActions`: components, representations, volumes, particles) adds a plane through what the row draws, active,
   the selection left as it is.
 
-- **Settings**: a fold under the cuts, the variant (Cut by) and Solid surface; its meta says "whole copies" while cuts
-  cut by instance.
+- **Settings**: a fold under the cuts, the variant (Cut by), Solid surface, Fade arrow and Ghost, then the ghost's look
+  while it is on (color, opacity, edges, resolution); its meta says "whole copies" while cuts cut by instance.
 
 ## 4. Gizmos
 
-- **On the gizmo library** (`@molstar/graphics/util/gizmo`), hosted by `GizmoHandles` ([gizmos.md](gizmos.md)): its
-  controller draws, hovers, drags, previews, commits and cancels; clipping is a binding
-  (`sources/clipping/gizmo/binding.ts`: a cut as a pose, previews on the representations' clip, a commit through
-  `clipping.update` by the cut's object, what a drag is on changing in the state invalidates it) and its layouts
-  (`geometry.ts`). Shown for the active cut while the section is (`onActive`); their clicks claimed
+- **On the gizmo library** (`@molstar/graphics/util/gizmo`): its controller draws, hovers, drags, previews, commits and
+  cancels; clipping is a binding (`sources/clipping/gizmo/binding.ts`: a cut as a pose, previews on the representations'
+  clip, a commit through `clipping.update` by the cut's object, what a drag is on changing in the state invalidates it)
+  and its layouts (`geometry.ts`). Shown for the active cut while the section is (`onActive`); their clicks claimed
   (`InteractivityManager.clickOwners`: no focus, no select).
-- **Each handle says what a drag does** (the library's `Handle`): move (the screen's plane), slide (along the axis),
-  turn (the screen's axes), scale (whole, a box across its edges, a cylinder's rims about their centers: by the cursor's
-  distance from the pivot over the grab's), faces (a box's face knob, a cylinder's bottom: the opposite face stays), and
-  the cone's angle (the binding's own: its rim under the cursor). Outlines are handles; a sphere's ring faces the
-  camera.
+- **Each handle says what a drag does** (the library's `Handle`): move (the screen's plane), slide (along an axis),
+  plane (in a plane), rotate (about an axis), roll (about the view axis), turn (the screen's axes, as the trackball),
+  scale (whole, a box across its edges, an ellipsoid across a section, a cylinder's rims about their centers: by the
+  cursor's distance from the pivot over the grab's), faces (a box's face knob, an ellipsoid's tip, a cylinder's side or
+  cap knob: the opposite one stays), and the cone's angle (the binding's own: its rim under the cursor). Outlines are
+  handles.
+- **The arrows are always drawn**, also pointing at the viewer (`clipping.settings` `fadeNormal`, off, fades them as the
+  move handles' arrows do; the area's custom state, as the ghost's look). Seen end-on the center is picked over a head
+  (its hit disk in front of every part).
 - **Bodies** are the clip volumes' walls (`graphics/geo/clip-volumes.ts`), drawn on both sides as fronts; handles glow.
 - **A view's gesture previews as a drag does** (`sources/clipping/preview.ts`, `ClippingApi.previewCut`, `endPreview`):
   a slider on a cut's numbers shows the cut as it goes on its representations through the same binding, outside the
@@ -91,6 +114,22 @@ code is in `src/sources/clipping` (the viewer's boundary: only sources and opera
   gizmo, if shown, is drawn where the preview is (`ClipGizmos.preview`: its item's value; moved, or remade when its size
   changes), back to the state's at the end. `boundsOf(cut)` (what it cuts, one sphere) is a view's reach; `cone` turns a
   cone's scale into its half-angle and back.
+- **Above the scene** (the controller's overlay layer, out of the scene's bounds and its clip): the walls x-ray where
+  the structure is in front of them, the handles on top, so a handle inside the structure can be grabbed (the library's
+  defaults, `DefaultOccludedAlpha`).
+- **In two parts** (`gizmo/geometry.ts`): the shape at the scene's scale, the move handles at a fixed size on screen.
+  The shape is the clip object and the handles that size it (a box's edges, corners and face knobs; an ellipsoid's the
+  box's on its surface: its three sections through two axes, its six tips, a knob at each octant's middle sizing it
+  whole; a cylinder's rims, its four side knobs halfway up and a knob on each cap; a cone's base rim), where the clip
+  is: a cut is a place in the scene; each part a set size on screen, the edges and rims as lines, the knobs as round
+  points. The move and turn handles are the library's transform handles (`transformHandles`, Blender's move and rotate
+  gizmo, as the move handles'), their groups first: about the cut's origin at 90 CSS pixels (`MoveScreenSize`: parts of
+  a screen size of their own, `GizmoPart`), so zoomed out on a large structure they are not a few pixels, zoomed in they
+  do not hide the cut. By cut what changes it (`moveOptions`): a plane's center slides along its normal, its one arrow
+  points to the side it cuts away, no squares, its rings about the two axes in it; a round cylinder and a cone no ring
+  about their own axis (round about it, a turn changes nothing); an elliptic cylinder (radii x and z apart), a box and
+  an ellipsoid all. The move handles have hit parts (thick meshes); the shape's lines and points are a pick pixel at
+  least. A turn hides the other handles, a move the turning and sizing ones (the controller's).
 
 ## 5. Keep whole
 
@@ -136,16 +175,6 @@ code is in `src/sources/clipping` (the viewer's boundary: only sources and opera
 
 ## 6. Drawn in the scene
 
-- **Ghosts** (`update` `ghost`, cellVIEW's, apps/prism-me `_spec/cellview.md` §4.3): what a cut removes drawn again as
-  outlines only, faint, not pickable: Mol\*'s clip object `ghost`, a depth draw of the cut part into the transparent
-  depth that the outline pass outlines (in `outline.transparentColor`, else the outline's color). With outlines off,
-  none. Several ghosted cuts on one representation outline what all of them cut (their intersection); graded ways turn
-  inside out as a whole. What ignores a ghosted cut (outside its parts, kept whole) has no ghost. Images, text and
-  direct volumes have none, nor the solid surface's caps. The ghosts share the transparent depth: depth of field,
-  emissive bloom and transparent SSAO see them as faint transparent surfaces. They are culled with what is drawn
-  (frustum, levels, the depth pyramid of the opaque depth): at rest and in two phases nothing visible is lost, as the
-  ghost pass discards what lies behind that same depth; in one phase, stereo and the image pass they lag or pop as the
-  rest of the scene does. The outline target's encoding: `.v6/plans/gl/depth-conventions.md`.
 - **`ClipVolumesShape3D`** (plugin core, imported by the feature: registered on import, Prism only): from a
   representation that can be cut to a shape provider of its clip objects (by tag) as translucent walls and solid edges
   (`ShapeProvider.transparency`, per group); options for walls, edges, colors, opacity, width, extent (a plane's disk

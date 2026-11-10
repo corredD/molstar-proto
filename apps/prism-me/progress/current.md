@@ -72,14 +72,16 @@ is not built is [../TODO.md](../TODO.md).
     b0f6c2e64; items 1–5 built (82209c184, pushed). Ludo 2026-11-09: goal "best lipid wrapper capable of scaling up to
     human cell size, looking great with and without cut"; item 6 (by zoom to atoms, colour control) added; each step its
     own agent (architect → builder → reviewer → skeptic); no images. Then round 8 (shells/parallax to compare live,
-    brief 481102c20). Item 6 built; round 7 gated at ecc2ae79b (pushed; X1: GPU region tables 688 → 105 MB; budget kept fixed shares, ceiling ~15 membranes, Ludo). Round 8 (Middle: coarse | parallax, live in the Look) built and gated at 50ff65480, pushed: the cut band under parallax, Atoms down to ≥ 9 px, a Middle switch without rebuild; shells’ band objects open; default middle look is Ludo’s pick.
-  - `merge-master` (`me/merge-master` from `origin/prism-me`, port 1355, [brief](2026-11-09-merge-master.md) on its
-    branch): started 2026-11-09 (Ludo: merge master, conflicts favoring master). origin/master dabbf29f9, 59 commits,
-    474 files, mostly graphics. Merged at 46aa8cae3 (63 files conflicted, master favoured, prism-me features kept and
-    listed), 25 adaptation and gate commits (HEAD ebc560d5d); checks pass but master’s flaky webgpu-points and a Dawn
-    SIGSEGV in webgpu-device-listener (prism-me’s, TODO). **PR #62** (2026-11-09), waits on Ludo’s merge.
-  - `paint` (`me/paint`, port 1352, [brief](2026-11-08-paint.md) on its branch): Paint v1, approved 2026-11-08 (the
-    mesoscale extension, random orientation, no collisions in v1). On hold until the lipids (Ludo, 2026-11-08).
+    brief 481102c20). Item 6 built; round 7 gated at ecc2ae79b (pushed; X1: GPU region tables 688 → 105 MB; budget kept
+    fixed shares, ceiling ~15 membranes, Ludo). Round 8 (Middle: coarse | parallax, live in the Look) built and gated at
+    50ff65480, pushed: the cut band under parallax, Atoms down to ≥ 9 px, a Middle switch without rebuild; shells’ band
+    objects open. Parallax the default (Ludo, 2026-11-10: 7e104fc0e, pushed); round 8 finished. Next on Ludo’s word:
+    shells, the clip pop, the PR (rounds 4–8).
+  - `paint` (`me/paint`, rounds 1-5, [progress](2026-11-08-paint.md) on its branch): **PR #64** open, waits on Ludo's
+    merge (fibres by rise, twist, axis, offset; a DNA/RNA bank by sequence).
+- **Merged 2026-11-08/09**: #60 (GPU culling dispatched in rows), #61 (targeted cellPACK fibres), #62 (master v6 #2069
+  in, favoring master; [progress](2026-11-09-merge-master.md)), #63 (colours by zoom on sites targets). Worktrees of
+  merge-master and color-levels-sites removed 2026-11-10.
 
 - **Fast particle drag** (Ludo, 2026-11-05, on the workstation: MG lags on a handle's drag, the release blocks): **PR
   #59 merged 2026-11-06** ([progress](2026-11-05-fast-particle-drag.md)). The handle previews by writing the moved

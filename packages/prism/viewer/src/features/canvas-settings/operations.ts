@@ -171,14 +171,11 @@ export const ClippingParams = {
   ),
   far: OptionalParam(PD.Boolean(true, { label: 'Hide distant scene', description: 'Hide the scene in the distance' })),
 };
-/** How every handle on the canvas is drawn (the gizmo library's `GizmoAppearance`): given, set; absent, kept. */
+/**
+ * How every handle on the canvas is drawn (the gizmo library's `GizmoAppearance`): given, set; absent, kept. Over the
+ * scene or in it is not a setting: the overlay layer draws every gizmo over the scene (`GizmoLayout.occludedAlpha`)
+ */
 export const HandlesParams = {
-  onTop: OptionalParam(
-    PD.Boolean(false, {
-      label: 'On top',
-      description: 'Handles drawn over everything, seen and grabbed through what is in front of them',
-    }),
-  ),
   scale: OptionalParam(
     PD.Numeric(1, { min: 0.25, max: 4, step: 0.05 }, { label: 'Size', description: 'Times their own size' }),
   ),
@@ -330,23 +327,15 @@ export const canvasSettingsOperations = (): {
       history: false,
       when: (ctx) => (ctx.plugin.canvas3d ? true : 'There is no canvas.'),
       async run(v, ctx) {
-        const { onTop, scale } = v as { onTop?: boolean; scale?: number };
+        const { scale } = v as { scale?: number };
         const canvas = ctx.plugin.canvas3d;
         if (!canvas) return ApiResult.fail('unavailable', 'There is no canvas.');
-        if (onTop === undefined && scale === undefined) {
-          return ApiResult.fail('invalid', 'Change what?', 'onTop (true or false) or scale (times their size).');
-        }
+        if (scale === undefined) return ApiResult.fail('invalid', 'Change what?', 'scale (times their size).');
         const look = GizmoAppearance.of(canvas);
-        const next = {
-          onTop: onTop ?? look.onTop,
-          scale: scale === undefined ? look.scale : Math.max(0.25, Math.min(4, scale)),
-        };
-        if (next.onTop === look.onTop && next.scale === look.scale)
-          return ApiResult.already('The handles are already so.');
+        const next = { scale: Math.max(0.25, Math.min(4, scale)) };
+        if (next.scale === look.scale) return ApiResult.already('The handles are already so.');
         GizmoAppearance.set(canvas, next);
-        return ApiResult.ok(`Handles ${next.onTop ? 'on top' : 'in the scene'}, at ${Math.round(next.scale * 100)}%.`, {
-          view: true,
-        });
+        return ApiResult.ok(`Handles at ${Math.round(next.scale * 100)}%.`, { view: true });
       },
     }),
   },

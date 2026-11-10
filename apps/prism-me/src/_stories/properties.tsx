@@ -290,7 +290,6 @@ function Clip(props: { name?: string }) {
           icon={<Icon name="sliders-horizontal" />}
           onClick={() => numbers.set(!numbers.value)}
         />
-        <OnTop />
         <Button size="xs" variant="ghost" title="Remove it" icon={<Icon name="x" />} />
       </div>
       {form({
@@ -374,7 +373,6 @@ function Position(props: { node: MockNode }) {
             icon={<Icon name="sliders-horizontal" />}
             onClick={() => numbers.set(!numbers.value)}
           />
-          <OnTop />
         </div>
       </Line>
       <Show when={numbers.asReadonly}>
@@ -397,23 +395,6 @@ function Position(props: { node: MockNode }) {
       })()}
       <Button size="sm">Reset</Button>
     </div>
-  );
-}
-
-/** Every handle on the canvas on top of the scene or in it (ui.md §4): one setting, the same in Position and Clips */
-const onTop = observableState(false);
-function OnTop() {
-  return (
-    <Button
-      size="xs"
-      variant="ghost"
-      title="Handles on top: drawn over everything, seen and grabbed through what is in front of them"
-      pressed={onTop.asReadonly}
-      icon={<Icon name="layers" />}
-      onClick={() => onTop.set(!onTop.value)}
-    >
-      On top
-    </Button>
   );
 }
 
