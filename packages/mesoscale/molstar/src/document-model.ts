@@ -13,6 +13,7 @@ import {
   classifyPatch,
   type Issue,
   issue,
+  LengthToAngstrom,
   type Look,
   type MesoViewSpecDoc,
   type Op,
@@ -32,7 +33,13 @@ import {
   unionRuns,
 } from '@molstar/meso-spec/ir';
 import { DefaultResolvers } from '@molstar/meso-spec/resolvers';
-import { classifyEdit, type ResolveOutput, type Resolver, shownViewOf } from '@molstar/meso-spec/runtime';
+import {
+  classifyEdit,
+  frameMatrices,
+  type ResolveOutput,
+  type Resolver,
+  shownViewOf,
+} from '@molstar/meso-spec/runtime';
 import { Particle, type ParticleList } from '@molstar/model/model/particles/particle-list';
 import type { PluginContext } from '@molstar/plugin/context';
 import { PluginStateObject as SO } from '@molstar/plugin/state/objects';
@@ -499,6 +506,63 @@ export class MesoDocumentModel {
     return this.doc ? shownViewOf(this.doc, this.shown)?.id : undefined;
   }
 
+  /**
+   * New view from here (prism.md §4.4): a view inserted last with the camera `here` (Å, the world frame) in the
+   * document's unit, and the view shown's looks copied with new ids (an edit's kind kept: `l.style.`, `l.eye.`,
+   * `l.only.`; the author's `l.copy.`). Its id `v.view.<n>`, its label `View <n>` unless given.
+   */
+  newViewPatch(here: CameraHere, label?: string): { readonly patch: Patch; readonly id: string } | undefined {
+    const doc = this.doc;
+    if (!doc) return undefined;
+    const views = doc.views ?? [];
+    let n = 1;
+    while (views.some((v) => v.id === `v.view.${n}`)) n++;
+    const id = `v.view.${n}`;
+    const next = lookIds(doc);
+    const looks = (shownViewOf(doc, this.shown)?.looks ?? []).map((l) => ({
+      ...l,
+      id: next(LookKinds.find((k) => l.id?.startsWith(k)) ?? 'l.copy.'),
+    }));
+    const node = {
+      id,
+      label: label?.trim() || `View ${n}`,
+      camera: cameraIn(doc, undefined, here),
+      ...(looks.length ? { looks } : {}),
+    };
+    return { id, patch: { format: PatchFormat, ops: [{ op: 'insert', node, parent: 'views', after: 'last' }] } };
+  }
+
+  /**
+   * Update camera (prism.md §4.4): the view shown's camera set to `here` (Å, the world frame), numeric, in its frame
+   * (a view with a frame: through the frame's inverse) or the document's unit. Undefined without a view shown.
+   */
+  updateCameraPatch(here: CameraHere): Patch | undefined {
+    const doc = this.doc;
+    const view = doc && shownViewOf(doc, this.shown);
+    if (!doc || !view) return undefined;
+    const camera = cameraIn(doc, view, here);
+    if (!camera) return undefined;
+    return { format: PatchFormat, ops: [{ op: 'set', id: view.id, fields: { camera } }] };
+  }
+
+  /**
+   * The view shown picked as it is, when none is (the document's own shown): an edit of `session.view` then leaves the
+   * screen as it is (Open with this view is what the file opens with, not what is shown).
+   */
+  pin() {
+    const id = this.shownId;
+    if (this.shown !== undefined || id === undefined) return;
+    this.shown = id;
+    if (this.session) this.session.view = id;
+  }
+
+  /** Open with this view (prism.md §4.4): `session.view` set, what the saved document opens with. */
+  openWithPatch(view: string): Patch | undefined {
+    const doc = this.doc;
+    if (!doc || doc.session?.view === view) return undefined;
+    return { format: PatchFormat, ops: [{ op: 'set', id: 'document', fields: { session: { ...doc.session, view } } }] };
+  }
+
   /** The tour playing and where it is (`mesoviewspec.tour.play`); none: no tour plays. */
   get playing(): TourPlaying | undefined {
     return this.#playing;
@@ -695,17 +759,7 @@ function lookPatch(
   edit: (looks: readonly Look[], next: (prefix: string) => string) => { ops: Op[]; add: Look[] },
 ): Patch | undefined {
   const view = shownViewOf(doc, shown);
-  const taken = new Set<string>();
-  for (const v of doc.views ?? []) for (const l of v.looks ?? []) if (l.id) taken.add(l.id);
-  const counters = new Map<string, number>();
-  const next = (prefix: string) => {
-    let n = counters.get(prefix) ?? 1;
-    while (taken.has(`${prefix}${n}`)) n++;
-    counters.set(prefix, n + 1);
-    taken.add(`${prefix}${n}`);
-    return `${prefix}${n}`;
-  };
-  const { ops, add } = edit(view?.looks ?? [], next);
+  const { ops, add } = edit(view?.looks ?? [], lookIds(doc));
   if (view)
     for (const node of add)
       ops.push({ op: 'insert', node: { ...node } as PatchNode, parent: view.id, list: 'looks', after: 'last' });
@@ -718,6 +772,72 @@ function lookPatch(
     });
   }
   return ops.length ? { format: PatchFormat, ops } : undefined;
+}
+
+/** Fresh look ids by prefix (`l.eye.3`): past every id of the document's looks, none given twice. */
+function lookIds(doc: MesoViewSpecDoc): (prefix: string) => string {
+  const taken = new Set<string>();
+  for (const v of doc.views ?? []) for (const l of v.looks ?? []) if (l.id) taken.add(l.id);
+  const counters = new Map<string, number>();
+  return (prefix: string) => {
+    let n = counters.get(prefix) ?? 1;
+    while (taken.has(`${prefix}${n}`)) n++;
+    counters.set(prefix, n + 1);
+    taken.add(`${prefix}${n}`);
+    return `${prefix}${n}`;
+  };
+}
+
+/** The look ids an edit writes, by kind (prism.md §5.3): a copy keeps its kind. */
+const LookKinds = ['l.style.', 'l.eye.', 'l.only.'] as const;
+
+/** A camera where the person stands (Å, the world frame): the canvas's. */
+export interface CameraHere {
+  readonly position: readonly number[];
+  readonly target: readonly number[];
+  readonly up: readonly number[];
+}
+
+/**
+ * `here` as a view's numeric camera (format.md: read in its view's frame, else the document's unit): a frame's matrix
+ * inverted (its points and directions), else Å into the unit. Rounded to a thousandth; the up made unit. Undefined
+ * when the frame's matrix cannot be inverted.
+ */
+function cameraIn(
+  doc: MesoViewSpecDoc,
+  view: { readonly frame?: string } | undefined,
+  here: CameraHere,
+): { position: number[]; target: number[]; up: number[] } | undefined {
+  const unit = doc.units?.length ?? 'nm';
+  const M = view?.frame ? frameMatrices(doc, unit).get(view.frame) : undefined;
+  const round = (x: number) => Math.round(x * 1000) / 1000 + 0;
+  const unitUp = (v: readonly number[]) => {
+    const n = Math.hypot(v[0], v[1], v[2]) || 1;
+    return v.map((x) => round(x / n));
+  };
+  if (!M) {
+    const f = LengthToAngstrom[unit];
+    return {
+      position: here.position.map((x) => round(x / f)),
+      target: here.target.map((x) => round(x / f)),
+      up: unitUp(here.up),
+    };
+  }
+  // A (3×3, column-major in M) and t: world = A·p + t, so p = A⁻¹·(world − t)
+  const a = (r: number, c: number) => M[4 * c + r];
+  const det =
+    a(0, 0) * (a(1, 1) * a(2, 2) - a(1, 2) * a(2, 1)) -
+    a(0, 1) * (a(1, 0) * a(2, 2) - a(1, 2) * a(2, 0)) +
+    a(0, 2) * (a(1, 0) * a(2, 1) - a(1, 1) * a(2, 0));
+  if (!det) return undefined;
+  const inv = [
+    [a(1, 1) * a(2, 2) - a(1, 2) * a(2, 1), a(0, 2) * a(2, 1) - a(0, 1) * a(2, 2), a(0, 1) * a(1, 2) - a(0, 2) * a(1, 1)],
+    [a(1, 2) * a(2, 0) - a(1, 0) * a(2, 2), a(0, 0) * a(2, 2) - a(0, 2) * a(2, 0), a(0, 2) * a(1, 0) - a(0, 0) * a(1, 2)],
+    [a(1, 0) * a(2, 1) - a(1, 1) * a(2, 0), a(0, 1) * a(2, 0) - a(0, 0) * a(2, 1), a(0, 0) * a(1, 1) - a(0, 1) * a(1, 0)],
+  ].map((row) => row.map((x) => x / det));
+  const turn = (v: readonly number[]) => inv.map((row) => row[0] * v[0] + row[1] * v[1] + row[2] * v[2]);
+  const place = (p: readonly number[]) => turn([p[0] - M[12], p[1] - M[13], p[2] - M[14]]).map(round);
+  return { position: place(here.position), target: place(here.target), up: unitUp(turn(here.up)) };
 }
 
 /** A style's change to a look: absent fields kept, null removes one (a color back to the default), reset drops it. */

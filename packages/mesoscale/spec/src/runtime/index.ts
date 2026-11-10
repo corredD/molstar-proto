@@ -53,6 +53,7 @@ export {
   classifyEdit,
   updateView,
   shownViewOf,
+  frameMatrices,
 } from './runtime.js';
 export {
   type Flattened,

@@ -26,7 +26,7 @@ import type { Loci } from '@molstar/model/model/loci';
 import { cssColor } from '@molstar/mesoscale-extension/color-file';
 import { registerParticleListOwner } from '@molstar/mesoscale-extension/owner';
 import { Color } from '@molstar/core/util/color';
-import { type DocumentViews, MesoDocumentModel } from './document-model.js';
+import { type CameraHere, type DocumentViews, MesoDocumentModel } from './document-model.js';
 import { blockedResult, DocumentListOwner } from './list-owner.js';
 import { documentVisible, type DocumentGroupBy, type DocumentLooks, type DocumentOutline } from './document-tree.js';
 import { openAddresses } from './prism-viewer.js';
@@ -283,6 +283,74 @@ export class MesoViewSpecApi extends ApiArea {
       if (!step.record) return ApiResult.fail('invalid', issueLines(step.issues).join('; ') || `Could not show ${id}.`);
       const label = this.model.doc.views.find((v) => v.id === id)?.label;
       return ApiResult.ok(`Showing ${label ? `${label} (${id})` : id}.`, { view: true });
+    },
+  });
+
+  /** Where the person stands: `given` (Å, the world frame), else the canvas's camera; none headless without one. */
+  #here(given: CameraHere | undefined): CameraHere | undefined {
+    if (given) return given;
+    const s = this.ctx.plugin.canvas3d?.camera.getSnapshot();
+    return s && { position: [...s.position], target: [...s.target], up: [...s.up] };
+  }
+
+  /**
+   * New view from here (prism.md §4.4, the Views row's ⋯): a patch, one step, inserting a view with the camera here and
+   * the view shown's looks (new ids); the new view is then the one shown, in the same step.
+   */
+  readonly newView = this.operation({
+    id: 'mesoviewspec.newView',
+    title: 'New view of the MesoViewSpec document from here',
+    params: {
+      label: OptionalParam(PD.Text('', { description: 'Its name; none: View <n>' })),
+      camera: OptionalParam(PD.Value<CameraHere | undefined>(undefined, { isHidden: true })),
+    },
+    run: async ({ label, camera }, ctx) => {
+      if (!this.model.doc) return ApiResult.fail('not-found', 'No document is open.');
+      const here = this.#here(camera);
+      if (!here) return ApiResult.fail('not-found', 'There is no camera here (no canvas).');
+      const made = this.model.newViewPatch(here, label);
+      if (!made) return ApiResult.fail('not-found', 'No document is open.');
+      const r = await this.applyLooks(made.patch, ctx.api, 'new view');
+      if (!r.ok || r.unchanged) return r;
+      await this.model.show(made.id, ctx.api);
+      return ApiResult.ok(`Made the view ${made.id} from here; it is shown.`, {}, { value: { id: made.id } });
+    },
+  });
+
+  /** Update camera (prism.md §4.4, the shown view's ⋯): the view shown's camera set to the one here; a patch, one step. */
+  readonly updateCamera = this.operation({
+    id: 'mesoviewspec.updateCamera',
+    title: "Set the shown view's camera to this one",
+    params: { camera: OptionalParam(PD.Value<CameraHere | undefined>(undefined, { isHidden: true })) },
+    run: async ({ camera }, ctx) => {
+      if (!this.model.doc) return ApiResult.fail('not-found', 'No document is open.');
+      const here = this.#here(camera);
+      if (!here) return ApiResult.fail('not-found', 'There is no camera here (no canvas).');
+      const id = this.model.shownId;
+      if (!id) return ApiResult.fail('not-found', 'The document has no view.', 'Make one with New view from here.');
+      const patch = this.model.updateCameraPatch(here);
+      if (!patch) return ApiResult.fail('invalid', `The frame of ${id} cannot be inverted: its camera is left.`);
+      const r = await this.applyLooks(patch, ctx.api, 'camera');
+      return r.ok && !r.unchanged ? ApiResult.ok(`Set the camera of ${id} to this one.`) : r;
+    },
+  });
+
+  /** Open with this view (prism.md §4.4, a view's ⋯): `session.view`, a patch, one step; the view shown stays. */
+  readonly openWith = this.operation({
+    id: 'mesoviewspec.openWith',
+    title: 'Open the MesoViewSpec document with this view',
+    params: { view: PD.Text('', { description: 'The id of one of the document’s views (v.cell)' }) },
+    run: async ({ view }, ctx) => {
+      const doc = this.model.doc;
+      if (!doc) return ApiResult.fail('not-found', 'No document is open.');
+      const id = view.trim();
+      if (!doc.views?.some((v) => v.id === id)) return ApiResult.fail('not-found', `The document has no view '${id}'.`);
+      const patch = this.model.openWithPatch(id);
+      if (!patch) return ApiResult.already(`The document opens with ${id}.`);
+      // the view shown stays the one shown: an edit of session.view would show its view where none was picked
+      this.model.pin();
+      const r = await this.applyLooks(patch, ctx.api, 'open with');
+      return r.ok && !r.unchanged ? ApiResult.ok(`The document opens with ${id}.`) : r;
     },
   });
 
