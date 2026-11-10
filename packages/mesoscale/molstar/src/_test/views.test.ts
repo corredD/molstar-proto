@@ -345,6 +345,72 @@ describe('New view from here, Update camera, Open with this view (prism.md §4.4
   });
 });
 
+/** The labels the adapter drew for the view's annotations: by annotation id, their text. */
+function annotationLabels(h: Harness): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const c of h.v.plugin.state.data.cells.values()) {
+    const p = c.transform.params as { node?: string; text?: string } | undefined;
+    if (p?.node?.startsWith('md:#an:')) out[p.node.slice('md:#an:'.length)] = p.text ?? '';
+  }
+  return out;
+}
+
+describe('annotations as labels (prism.md §5.2, Add label)', () => {
+  it('a view’s annotations are drawn as labels when it is shown, and go when another is', { tags: ['medium'] }, async () => {
+    const h = await open();
+    expect(annotationLabels(h)).toEqual({});
+    const steps = h.steps().length;
+    await h.run('mesoviewspec.view', { view: 'v.docked' });
+    expect(annotationLabels(h)).toEqual({ 'an.docked': 'Docked granule' });
+    await h.run('mesoviewspec.view', { view: 'v.granule-12' });
+    expect(annotationLabels(h)).toEqual({ 'an.g12': 'Granule 12: its VAMP2' });
+    await h.run('mesoviewspec.view', { view: 'v.cell' });
+    expect(annotationLabels(h)).toEqual({});
+    expect(h.steps().length).toBe(steps);
+    noUnsafe(h);
+  });
+
+  it('Undo brings back the labels of the view it shows again; a view removed takes its labels', {
+    tags: ['medium'],
+  }, async () => {
+    const h = await open();
+    await h.run('mesoviewspec.view', { view: 'v.docked' });
+    await h.run('mesoviewspec.eye', { select: '(population p.ribosomes)', visible: false });
+    await h.run('mesoviewspec.view', { view: 'v.cell' });
+    expect(annotationLabels(h)).toEqual({});
+    await h.v.managers.history.undo();
+    expect(annotationLabels(h)).toEqual({ 'an.docked': 'Docked granule' });
+    // the adapter knows the labels it adopted: showing another view removes them
+    await h.run('mesoviewspec.view', { view: 'v.cell' });
+    expect(annotationLabels(h)).toEqual({});
+
+    await h.run('mesoviewspec.view', { view: 'v.docked' });
+    const r = await h.run('mesoviewspec.edit', { patch: '(patch :ops [(remove t.granule) (remove v.docked)])' });
+    expect(r.ok, JSON.stringify(r)).toBe(true);
+    expect(annotationLabels(h)).toEqual({});
+    await h.v.managers.history.undo();
+    expect(annotationLabels(h)).toEqual({ 'an.docked': 'Docked granule' });
+    noUnsafe(h);
+  });
+
+  it('Add label on a row is an annotation of the view shown, one step, drawn and saved', { tags: ['medium'] }, async () => {
+    const h = await open();
+    await h.run('mesoviewspec.view', { view: 'v.cell' });
+    const steps = h.steps().length;
+    const r = await h.run('mesoviewspec.label', { select: '(instance i.granule-docked)', text: 'Here' });
+    expect(r.ok, JSON.stringify(r)).toBe(true);
+    expect(h.steps().length).toBe(steps + 1);
+    const cell = viewOf(h.model.doc, 'v.cell')!;
+    expect(cell.annotations).toEqual([{ id: 'an.1', target: '(instance i.granule-docked)', text: 'Here' }]);
+    expect(annotationLabels(h)).toEqual({ 'an.1': 'Here' });
+    expect(viewOf(await saved(h), 'v.cell')?.annotations?.[0]?.text).toBe('Here');
+    await h.v.managers.history.undo();
+    expect(annotationLabels(h)).toEqual({});
+    expect(viewOf(h.model.doc, 'v.cell')!.annotations).toBeUndefined();
+    noUnsafe(h);
+  });
+});
+
 describe('a tour (prism.md §4.4)', () => {
   it('plays each step as a view shown, records no step, and leaves the last view shown', {
     tags: ['medium'],
