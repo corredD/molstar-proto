@@ -5,7 +5,7 @@
  */
 
 import { emptyCut, eachHit, hitAffine, triangleCut } from './cutter.js';
-import type { MembraneData } from './membrane.js';
+import { type MembraneData, membraneSpecies } from './membrane.js';
 
 // A membrane's full build, only at export (Ludo, 2026-11-08: "only do the full build at export time"): every triangle
 // cut by the TypeScript reference (`cutter.ts`, the kernel's equal), streamed as a RELION STAR particle list a chunk of
@@ -71,8 +71,13 @@ export function* membraneStar(
   const angles = { rot: 0, tilt: 0, psi: 0 };
   const lines: string[] = [];
   const f = (x: number) => x.toFixed(2);
+  // a class a species of the whole membrane, a triangle the whole mesh's: a cell's parts have tables of their own and
+  // their own triangles (review S1)
+  const classOf = new Map(membraneSpecies(data).map((name, i) => [name, i + 1]));
   for (const leaflet of data.cut) {
-    if (leaflet.part !== undefined && hiddenParts.has(data.parts?.[leaflet.part]?.name ?? '')) continue;
+    const part = leaflet.part === undefined ? undefined : data.parts?.[leaflet.part];
+    if (part && hiddenParts.has(part.name)) continue;
+    const first = part?.start ?? 0;
     const { table, mesh, regions } = leaflet;
     const T = mesh.indices.length / 3;
     for (let t0 = 0; t0 < T; t0 += chunk) {
@@ -87,7 +92,7 @@ export function* membraneStar(
             hitAffine(table, cut, l, x, y, affine, 0);
             relionAngles(affine, 0, angles);
             lines.push(
-              `${f(affine[12])} ${f(affine[13])} ${f(affine[14])} ${f(angles.rot)} ${f(angles.tilt)} ${f(angles.psi)} ${table.members[m].species + 1} ${species} ${m} ${leaflet.name} ${t} ${index++}`,
+              `${f(affine[12])} ${f(affine[13])} ${f(affine[14])} ${f(angles.rot)} ${f(angles.tilt)} ${f(angles.psi)} ${classOf.get(species)} ${species} ${m} ${leaflet.name} ${first + t} ${index++}`,
             );
           });
         }
