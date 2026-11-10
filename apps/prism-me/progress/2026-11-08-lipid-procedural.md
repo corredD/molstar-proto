@@ -1987,4 +1987,54 @@ Yeast ring 450 unclipped: parallax 79 against 70 with a quarter of the lipids (o
 design's bounds: it runs one look a run (LIPID_MIDDLE), at 256² its frames are 6-7 ms with ±1-2 ms of noise on a shared
 machine (×1.1 is within the noise), and the yeast data is not in the repo; the lipid bound holds in every row above.
 
-**Checks.** Below (after the checks run).
+**Checks (a Sonnet run, after the gate's fixes).** `npx tsc -b`, `npx tsc --noEmit -p apps/prism-me`, lint,
+format:check, check:workspace, styles:check (mesoscale, prism-me), prism-me typecheck:storybook: pass. Quick lane with
+Dawn: graphics 1894 passed, mesoscale 206, cryoet 138, stage-tools 58, prism-me 208; the inherited webgpu-points and
+webgpu-device-listener did not show. mesoscale test:perf pass (the cut band's select 15.98 B, baseline 16). test:scaling
+21 of 22: `color-levels.scaling.ts` (not touched by the lane) killed by SIGKILL twice, alone too, its worker ~4.9 GB
+then falling, the machine's load at 50-155 (other processes); as in round 8's build: to rerun on a quiet machine.
+
+**Next (for the coordinator).** Rerun `color-levels.scaling.ts` alone on a quiet machine. Ludo on 1354: a cut through
+the yeast cell and x600 under Parallax (Add clip…, then a drag), and Middle / Atoms down to switched with and without a
+clip; then the default middle look is his pick.
+
+## PR body (draft; rounds 4 to 8)
+
+**What.** As rounds 4-7 (above), and round 8: a cut membrane's middle distance switched live, Coarse (the sphere levels)
+or Parallax (the heads' relief marched over the patch texture's height channel), with a cut band so a clip's
+cross-section shows lipids under either.
+
+**Changes (round 8).**
+
+- Library (`packages/graphics`, its own lane from `origin/master` on Ludo's word): the patch texture's height in alpha;
+  `mesh.wgsl.ts` `patchFrame`/`patchRead`/`patchParallax`/`patchNormal`, `dPatchMiddle` (off, shells, beneath,
+  parallax), `uPatchShells`, `uPatchMiddle`; parity lists; Dawn tests in plugin-headless (the shells' columns, the
+  march's ridge at ±60°).
+- `mesoscale`: `far-surface.ts` (`patchRaster` height and flat), `membrane.ts` (the middle look, `onlyMiddle`, the cut
+  band's params, the near surface at the coarse rule with a clip), `procedural.ts` (`SelectionParams.band`,
+  `nearClipBoundary`), operations and the Look (Middle, Atoms down to ≥ 9, Cut lipids down to; shells and tiles
+  refused), `shell-band.ts` (scaffolding).
+- `apps/prism-me`: Explorer › Membrane stories of the detail; ui.md, features.md, TODO, the changelog.
+
+**Notes for review.**
+
+- The graphics changes are a library change (N7): to their own lane from master on Ludo's word.
+- Shell scaffolding kept: `shell-band.ts` (tested, no production user), `dPatchMiddle` shells and beneath, `setMiddle`'s
+  beneath; `membraneDetail` refuses `middle: shells` and a shells count until the band objects exist (TODO).
+- The budget's ceiling (Ludo's decision, round 7, unchanged): fixed shares over every leaflet; about 15 membranes for a
+  close view.
+- The middle switch's fast path re-culls through a new version of the merged objects' transform (the culler has no hook
+  for a pool's params); Coarse ↔ Parallax with no clip still builds (the cutters kept).
+- `nearClipBoundary` is core's `Clip.classifySphere` written in (core's returns a boxed double a call: 5.8 kB a view);
+  tested against core's on every shape.
+- Numbers (900 × 600, Dawn, M1): the S3 table above. Parallax at or under coarse everywhere but yeast ring 450 Å
+  unclipped (79 vs 70 ms); the cut band at 450 Å takes 13 k (x600) and 72 k (yeast) lipids against coarse's 93 k and 143
+  k. Test 4 has no frame bound (one look a run, ±1-2 ms noise at 256²).
+- Open: a face-on cut's sliver between the leaflets, X2, N1, N2, N6 (TODO); the default middle look (Ludo).
+
+**Testing.** As the checks above; Dawn tests 3 (outside and inside), 5 (the ring, a drag), the S2 switch, the march
+guard; the measurement `lipid-measure.webgpu.test.ts` (opt-in, heavy) on the yeast cell and x600.
+
+**Review.** Round 8's gate: the table above (`~/prism-me-lanes/gate/r8-review.md`); earlier rounds' tables above.
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
