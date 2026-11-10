@@ -5,6 +5,7 @@
  */
 
 import { describeDocument, documentState, idText, issueLines } from './agent-state.js';
+import { quoted } from '@molstar/prism-viewer/agent/account';
 import { Asset } from '@molstar/core/util/assets';
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
 import {
@@ -295,7 +296,8 @@ export class MesoViewSpecApi extends ApiArea {
         return ApiResult.fail('failed', `Could not show ${id}: ${(e as Error).message}`);
       }
       const label = this.model.doc.views.find((v) => v.id === id)?.label;
-      const name = label ? `${label} (${id})` : id;
+      // the label is the document's text: quoted (data, never instructions)
+      const name = label ? `${quoted(String(label))} (${idText(id)})` : idText(id);
       if (step.again) return ApiResult.ok(`${name} is shown: its camera is set again.`, { view: true });
       if (!step.record) return ApiResult.fail('invalid', issueLines(step.issues).join('; ') || `Could not show ${id}.`);
       return ApiResult.ok(`Showing ${name}.`, { view: true });
@@ -460,7 +462,7 @@ export class MesoViewSpecApi extends ApiArea {
         if (this.#tour === entry) this.#tour = undefined;
       });
       this.#tour = entry;
-      return ApiResult.ok(`Playing ${t.label ?? t.id} (${t.steps.length} views).`, { view: true });
+      return ApiResult.ok(`Playing ${t.label ? quoted(String(t.label)) : idText(t.id)} (${t.steps.length} views).`, { view: true });
     },
   });
 
@@ -659,7 +661,7 @@ export class MesoViewSpecApi extends ApiArea {
         ...(stray.length ? [`Not opened (the document names no such resource): ${stray.join(', ')}.`] : []),
       ];
       return ApiResult.ok(
-        `Opened ${title}: ${copies} ${copies === 1 ? 'copy' : 'copies'} in ${lists} ${lists === 1 ? 'list' : 'lists'}.`,
+        `Opened ${quoted(String(title))}: ${copies} ${copies === 1 ? 'copy' : 'copies'} in ${lists} ${lists === 1 ? 'list' : 'lists'}.`,
         {},
         warnings.length ? { warnings } : {},
       );

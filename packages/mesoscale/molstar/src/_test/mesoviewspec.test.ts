@@ -83,7 +83,7 @@ describe('mesoviewspec.open', () => {
       files: resourceFiles(),
     });
     expect(r.ok).toBe(true);
-    if (r.ok) expect(r.did).toMatch(/^Opened Exosome in plasma: \d+ copies in \d+ lists\.$/);
+    if (r.ok) expect(r.did).toMatch(/^Opened "Exosome in plasma": \d+ copies in \d+ lists\.$/);
     expect(lists(v)).toBeGreaterThan(0);
     const got = await run('mesoviewspec.get', {});
     expect(got.ok).toBe(true);
@@ -305,7 +305,7 @@ describe('the stub', () => {
     const doc = new File([JSON.stringify(exosomeDoc())], 'exosome.mesoviewspec.json');
     const r = await v.api.load.files({ files: [doc, ...resourceFiles()] });
     expect(r.ok).toBe(true);
-    if (r.ok) expect(r.did).toMatch(/^Opened Exosome in plasma: \d+ copies in \d+ lists\.$/);
+    if (r.ok) expect(r.did).toMatch(/^Opened "Exosome in plasma": \d+ copies in \d+ lists\.$/);
     expect(v.extensions.status('mesoviewspec')?.value).toBe('loaded');
     expect(lists(v)).toBeGreaterThan(0);
     // the other files were its resources, not data of their own
