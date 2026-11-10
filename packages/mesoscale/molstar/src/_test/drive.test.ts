@@ -226,6 +226,34 @@ describe('the other operations on a document list (prism.md §5.1)', () => {
   });
 });
 
+describe('mesoviewspec.look: a row’s Color… (prism.md §5.3, §6)', () => {
+  it('is a style look on an address: one step; the color back to the default removes it; Undo', {
+    tags: ['medium'],
+  }, async () => {
+    const h = await open();
+    const s0 = h.steps();
+    const r = await h.run('mesoviewspec.look', { select: '(in c.exosome)', color: '#0000ff' });
+    expect(r.ok, JSON.stringify(r)).toBe(true);
+    expect(h.steps()).toBe(s0 + 1);
+    expect(styleLooks(await saved(h))).toEqual([{ id: 'l.style.1', select: '(in c.exosome)', color: '#0000ff' }]);
+    const { ref, type } = listOf(h, 'p.catalase');
+    expect(layerOf(h, ref, type)?.color).toBe(0x0000ff);
+    // the same address: the same look
+    expect((await h.run('mesoviewspec.look', { select: '(in c.exosome)', color: '#00ff00' })).ok).toBe(true);
+    expect(styleLooks(await saved(h))).toEqual([{ id: 'l.style.1', select: '(in c.exosome)', color: '#00ff00' }]);
+    // back to the default color: nothing left to say, the look goes
+    expect((await h.run('mesoviewspec.look', { select: '(in c.exosome)', defaultColor: true })).ok).toBe(true);
+    expect(styleLooks(await saved(h))).toEqual([]);
+    expect((await h.v.managers.history.undo()).ok).toBe(true);
+    expect(styleLooks(await saved(h))).toEqual([{ id: 'l.style.1', select: '(in c.exosome)', color: '#00ff00' }]);
+    // nothing to change, or no address: refused, no step
+    const s1 = h.steps();
+    expect((await h.run('mesoviewspec.look', { select: '(in c.exosome)' })).ok).toBe(false);
+    expect((await h.run('mesoviewspec.look', { select: '', color: '#ff0000' })).ok).toBe(false);
+    expect(h.steps()).toBe(s1);
+  });
+});
+
 describe('default colors (prism.md §5.3, option A)', () => {
   it('are drawn as today; a theme the person chose leaves them out and keeps the stated ones', {
     tags: ['medium'],
