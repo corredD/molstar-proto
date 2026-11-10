@@ -6,7 +6,6 @@
 
 import type { Frustum3D } from '@molstar/core/math/geometry/primitives/frustum3d';
 import type { Plane3D } from '@molstar/core/math/geometry/primitives/plane3d';
-import { sortArrayRange } from '@molstar/core/data/util/sort';
 import { cellEntry, cellSide, type CutterRegions, emptyCut, triangleCut } from './cutter.js';
 import { insidePart, type TrianglePart, triangleTree } from './triangle-tree.js';
 
@@ -15,8 +14,8 @@ import { insidePart, type TrianglePart, triangleTree } from './triangle-tree.js'
 // a member. A unit is a small triangle whole (its counts per member from the count pass, read back at the wrap) or a
 // cell of a large one (its slots its kind's counts, `kindCounts`: a cell on the triangle's edge writes the lipids it does
 // not own dead), so each member's live count and each unit's first slot are exact on the CPU without anything O(lipids):
-// the GPU only writes the hits. Pure; a view allocates only its sort's partition pair (core's `sortArrayRange`, a few
-// dozen bytes: `lipid-selection.quick.ts`), timed by its caller (a clock's reading is a heap number).
+// the GPU only writes the hits. Pure; a view allocates nothing of its own (`lipid-selection.quick.ts`; its keys sorted by
+// `sortKeys`, not core's `sortArrayRange`), timed by its caller (a clock's reading is a heap number).
 
 /** How the far membrane looks: the lipids' sphere levels, the textured surface, or both (the levels, then the surface) */
 export type MembraneFar = 'spheres' | 'texture' | 'both';
@@ -246,6 +245,35 @@ export function estimateLipids(input: SelectionInput) {
     }
   }
   return Math.round(sum);
+}
+
+/**
+ * `a[0, n)` ascending, in place, nothing allocated (a heap sort). On purpose instead of core's `sortArrayRange`, which
+ * allocates its partition pair (`[0, 0]`) a call and, by the keys' order, boxes a comparator's difference (`arrayLess`
+ * through `medianPivotIndex`): 64 and 16 bytes a view on the selection's hot path (review S3, round 7 item 5)
+ */
+export function sortKeys(a: Float64Array, n: number) {
+  for (let start = (n >> 1) - 1; start >= 0; --start) siftDown(a, start, n);
+  for (let end = n - 1; end > 0; --end) {
+    const top = a[0];
+    a[0] = a[end];
+    a[end] = top;
+    siftDown(a, 0, end);
+  }
+}
+
+function siftDown(a: Float64Array, root: number, n: number) {
+  const v = a[root];
+  let i = root;
+  for (;;) {
+    let c = 2 * i + 1;
+    if (c >= n) break;
+    if (c + 1 < n && a[c + 1] > a[c]) c += 1;
+    if (a[c] <= v) break;
+    a[i] = a[c];
+    i = c;
+  }
+  a[i] = v;
 }
 
 /** The apex of a perspective frustum (its right, left and bottom planes' point) in `out`; false for orthographic */
@@ -769,7 +797,7 @@ export function createLipidSelection(input: SelectionInput, capacity: Uint32Arra
       next[k++] = key;
     }
     // in key order: slots the same for the same set
-    sortArrayRange(next, 0, k);
+    sortKeys(next, k);
     let same = k === takenCount && version > 0 && !forced;
     for (let i = 0; i < k && same; ++i) same = next[i] === taken[i];
     if (same) return false;

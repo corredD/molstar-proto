@@ -13,6 +13,7 @@ import {
   enterPx,
   estimateLipids,
   poolCapacities,
+  sortKeys,
   WholeTriangle,
   wholeTriangles,
 } from '../lipids/procedural.js';
@@ -24,6 +25,30 @@ import { box, full, input, kinds, Params, sheet, table, view } from './lipid-sel
 // first within each member's capacity; the slots' accounting exact.
 
 describe('a membrane made per view: the pool and the selection', () => {
+  it("sorts a view's keys in place as core's sort does (`sortKeys`, nothing allocated: round 7 item 5)", () => {
+    // unit keys (t 2^32 + a cell's low word, or the whole triangle's), shuffled; repeats, sizes about the heap's edges
+    let seed = 7;
+    const rand = () => {
+      seed = (seed * 1103515245 + 12345) % 2147483648;
+      return seed / 2147483648;
+    };
+    for (const n of [0, 1, 2, 3, 16, 17, 100, 1000]) {
+      const a = new Float64Array(n + 3).fill(-1);
+      for (let i = 0; i < n; ++i) {
+        const t = Math.floor(rand() * 50);
+        a[i] =
+          t * 4294967296 +
+          (rand() < 0.3 ? 4294967295 : Math.floor(rand() * 65536) * 65536 + Math.floor(rand() * 65536));
+      }
+      if (n > 4) a[n - 1] = a[0];
+      const want = Array.from(a.subarray(0, n)).sort((x, y) => x - y);
+      sortKeys(a, n);
+      expect(Array.from(a.subarray(0, n))).toEqual(want);
+      // past n untouched
+      expect(Array.from(a.subarray(n))).toEqual([-1, -1, -1]);
+    }
+  });
+
   it('sizes each member from the budget: whole where it fits, a share past it', () => {
     const totals = [Uint32Array.of(100, 300), Uint32Array.of(600)];
     expect(poolCapacities(totals, 2000).map((t) => Array.from(t))).toEqual([[100, 300], [600]]);
