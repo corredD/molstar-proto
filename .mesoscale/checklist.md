@@ -44,7 +44,8 @@ Each lane: brief committed · steps · checks green · gate (reviewer, skeptic, 
 ### Spec: `mvs-levels-spec` ([progress](../apps/prism-me/progress/2026-11-09-mvs-levels-spec.md))
 
 - [x] semantic levels (views.md) and MesoLocation as a union (mesoql.md) drafted, gated, merged
-- [ ] the draft's open questions answered by Ludo, written into the spec
+- [x] the draft's open questions answered by Ludo, written into the spec (`f48bea732`); still open: `within` between a
+      region and copies
 - [ ] David's review
 - [ ] prism.md §5.1 (representation and LOD viewer-only) reconciled, after lane 4
 
@@ -52,11 +53,11 @@ Each lane: brief committed · steps · checks green · gate (reviewer, skeptic, 
 
 - [x] brief committed
 - [x] default colors decided (A)
-- [ ] 1. the owner port and `mesoscale.style`; stated vs default colors (Opus)
-- [ ] 2. the other rows of §5.1: `entities`, `colors`, `importColors`, `theme` (Sonnet)
-- [ ] 3. §5.2's calls (Sonnet)
-- [ ] checks: `npx tsc -b`, `npx tsc --noEmit -p apps/prism-me`, `pnpm lint`, `pnpm format:check`,
-      `pnpm check:workspace`, the quick lane
+- [x] 1. the owner port and `mesoscale.style`; stated vs default colors (Opus)
+- [x] 2. the other rows of §5.1: `entities`, `colors`, `importColors`, `theme` (Sonnet)
+- [x] 3. §5.2's calls (Sonnet)
+- [x] checks: tsc, format, styles green; `pnpm lint` (2 errors) and `check:workspace` (unbuilt assets) fail on the base
+      too; 14 Windows-only path-separator test failures also on the base
 - [ ] 4. checked in the app (Sonnet)
 - [ ] 5. the gate (Opus reviewer, Opus skeptic, a failing test then a fix per confirmed finding)
 - [ ] Ludo's check: exosome eyes, color, Generate colors, Show only, Import colors, Save, Undo; a cellPACK `.bcif`
