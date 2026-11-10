@@ -5,7 +5,12 @@
 - The budget is in Settings, Behaviors: "Streamed copies" (3000 by default). Changing it is one History step, and Undo
   sets it back.
 - Tiles loading and leaving are not History steps. Undo restores the document and leaves the tiles where the camera
-  is; Undo of a look edit while tiles stream undoes their looks too.
+  is; Undo of a look edit while tiles stream undoes their looks too. Undo of Close streams where the camera still
+  looks.
+- Close, Undo of the open, or another open while a tile is arriving leaves nothing behind: no tile on screen, and the
+  next open frames its camera as a first open does.
+- Tiles arriving never move the camera.
 - `mesoviewspec.open` with `example: 'tiled'` opens the streaming fixture (32 tiles of 400 copies).
 - For extensions: the runtime's `TileStreamer.step(ir, focus?)` plans from a focus the viewer gives (its canvas camera)
-  instead of the document's camera. `MesoSession.setFocus` and `MesoDocumentModel.setFocus` take it.
+  instead of the document's camera. `MesoSession.setFocus` and `MesoDocumentModel.setFocus` take it; a new session
+  can start with one (`SessionOptions.focus`).

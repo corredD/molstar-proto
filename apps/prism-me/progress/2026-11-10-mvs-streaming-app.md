@@ -98,5 +98,44 @@ coordinator's.
 - The stub's `owns.transformers` could name `ms-plugin.meso-view-spec-tiles` (lane 7's file).
 - Level 0 (envelopes) drawn; the panel's stream counters (streaming.md, "The panel reports") in prism-me.
 - A per-frame cost: the rest timer is set again on every draw while the target moves (no allocation otherwise).
+- (gate S3) `unsure` is cleared by any commit that succeeds: an unbound one (a stream step) after a failed bound one
+  writes only the tiles' looks and clears it, so the document lists' looks are not written again by the next edit.
+  Keep it across unbound commits.
+- (gate) The budget across a reload: Prism's web store keeps the theme and the keybindings only, so "Streamed copies"
+  may not persist (unverified).
+- (gate) `MesoSession.restore` streams (`stream()`, loads requested) before the caller's `adopt`; when `adopt` throws
+  there is no fallback (the streamer holds tiles the adapter never adopted).
+- (gate) Dropped promises: `void this.model.setFocus(...)` (the extension's feed) and `void this.session?.setBudget(...)`
+  (the owner's budget follower) need a `.catch`.
+- (gate) `tileLayers` and `sameLayers` (`prism-adapter.ts`) duplicate `particles.look`'s patching of layers; one helper
+  of the particles feature's would keep them the same.
+- (gate) The extension's `dispose` unregisters the tile transformer (behavior-owned) before the model disposes (and its
+  session with the tiles in flight).
 
 ## Review
+
+The gate (reviewer and skeptic, Opus) and its fixes. Each fix's test is its own commit, red, before the fix. The rows to\nrecord as Open came without a verdict or severity (-); S1 was not handed to the fix.
+
+| Finding                                                                                                                                     | Severity    | Verdict    | Fixed by / Open                                                                                                                      |
+| ------------------------------------------------------------------------------------------------------------------------------------------- | ----------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| M1. Close, Undo of the open and an open over an open document ran outside `session.exclusive`: a stream commit in flight landed after them | must-fix    | confirmed  | test `384e322be` (red), fix `f9d043700`                                                                                              |
+| S1                                                                                                                                          | -           | -          | not in the fix brief                                                                                                                 |
+| S2. An unbound commit keeping no set reset the camera (`commitCamera`'s new scene)                                                         | should-fix  | confirmed  | test `ab5c8f375` (red), fix `45b3692d8`                                                                                              |
+| S3. `unsure` is cleared by an unbound commit                                                                                                | should-fix  | -          | Open                                                                                                                                 |
+| S4. A session a restore made streamed around the document's camera, not the camera fed                                                      | should-fix  | confirmed  | test `03d918376` (red), fix `5f9b1896f`                                                                                              |
+| S5. Tests that passed while wrong: the placement store after evictions; the extension's feed wiring; Close and Undo of the open in flight   | should-fix  | confirmed  | tests `040e68960` (mutations seen red, no fix needed) and the M1, S4 tests                                                           |
+| The budget across a reload                                                                                                                  | -           | unverified | Open                                                                                                                                 |
+| `MesoSession.restore` streams before `adopt`, no fallback if it throws                                                                      | -           | -          | Open                                                                                                                                 |
+| Dropped promises (`setFocus`, `setBudget`) without `.catch`                                                                                 | -           | -          | Open                                                                                                                                 |
+| `tileLayers` and `sameLayers` duplicate `particles.look`'s patching                                                                         | -           | -          | Open                                                                                                                                 |
+| The extension's `dispose` unregisters the tiles before the model disposes                                                                   | -           | -          | Open                                                                                                                                 |
+
+- **M1, how the test holds the commit.** The brief's gated provider was not deterministic: a tile released by a gated
+  provider reaches the commit only by microtask order, and a stream step queued behind the close meets a disposed
+  streamer either way. The test holds the arrival's commit midway (its plan made, at the particles extension's load)
+  and releases it from the session's `dispose`, which both the old and the fixed code call. Seen red on the old code:
+  one tile list left under the root. The first commit setting the camera is checked as "kept nothing" (headless has no
+  canvas).
+- **M1, a second shape.** A stream commit held before its plan (not midway) planned against the cleared adapter
+  (`prev` none) and threw at its first document list (no API bound), leaving a `MesoPlacements` cell with no
+  representation. The fix covers it too; the test checks no document list is left.
