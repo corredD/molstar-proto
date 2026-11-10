@@ -1013,7 +1013,7 @@ export class MesoscaleApi extends ApiArea {
       }
       const membrane = membraneCell(ctx, particles.trim());
       if (membrane) {
-        // a membrane's: far its colour, then its species' (no chain or atom colours: a lipid is one group)
+        // a membrane's: far its colour, then its species' (its chain's the same), close its atoms' by element
         const old = (membrane.transform.params as LipidMembraneProps).colorLevels;
         const was = old.name === 'on' ? (old.params as ColorLevels.Props) : ColorLevels.defaults;
         const levels = { ...was, ...edges } as ColorLevels.Props;

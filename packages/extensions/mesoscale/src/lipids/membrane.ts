@@ -667,7 +667,8 @@ export const LipidMembraneReprParams = {
   hiddenParts: PD.Value<readonly string[]>([], { isHidden: true }),
   partColors: PD.Value<Readonly<Record<string, number>>>({}, { isHidden: true }),
   // colours by zoom, as a particle list's (round 4c item 8; `color-levels.md`): far the membrane's colour (`color`), then
-  // its species' (its entities'); a lipid is one group, so no chain or atom colours past them (`membraneColorLevels`)
+  // its species' (its entities'; its chain's the same), close each atom's by its element (`membraneColorLevels`; the
+  // tiles' too, round 7 item 6)
   colorLevels: PD.MappedStatic('off', { off: PD.EmptyGroup(), on: PD.Group(ColorLevels.Params, { isFlat: true }) }),
   // Prism's clipping (round 4b item 6): a cut on the spheres and the far surfaces alike, the culler dropping the
   // instances it cuts away; a cut alone changes the drawn objects' clip values, nothing built again
@@ -866,9 +867,8 @@ function elementColor(code: number) {
 /**
  * A membrane object's colours by zoom (round 4c item 8), as a particle list's (`setColorLevels` of its targets): far its
  * colour (`props.color`) on each of its `instances`, then each of its `groups`' colour (the theme's: its species');
- * the near data each group's (a cut member's atoms by element, round 5: far the membrane, then species, then atoms; a
- * tile's lipids by species). Off for one colour, as
- * a list's uniform theme
+ * the near data each group's (its atoms by element: a cut member's, round 5; a tile's, round 7 item 6). Off for one
+ * colour, as a list's uniform theme
  */
 function membraneColorLevels(
   values: ColorLevels.Data,
@@ -1014,7 +1014,10 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
     fading = [];
   }
 
-  /** a member's spheres values: its atoms (groups: lipids), `n` instances written by `writer`, colored by species */
+  /**
+   * a member's spheres values: its atoms (groups: its atoms with `elements`, else its lipids), `n` instances written by
+   * `writer`, colored by species
+   */
   function memberObject(
     positions: Float32Array,
     lipidAtomStart: ArrayLike<number> | undefined,
@@ -1029,13 +1032,27 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
     partColor?: Color,
   ) {
     const atoms = positions.length / 3;
-    // a cut member (one lipid, `elements` given): its atoms its groups, each coloured close up by its element (colours
-    // by zoom's atoms, round 5); a tile's: its lipids
+    // with `elements` (a cut member, one lipid; a tile's lipids, round 7 item 6): its atoms its groups, each coloured
+    // close up by its element (colours by zoom's atoms, round 5), its species its lipid's; else its lipids
     const byAtom = !!elements;
     const lipids = byAtom ? atoms : lipidSpecies.length;
     const groups = new Float32Array(atoms);
-    if (byAtom) for (let a = 0; a < atoms; ++a) groups[a] = a;
-    else if (lipidAtomStart) for (let l = 0; l < lipids; ++l) groups.fill(l, lipidAtomStart[l], lipidAtomStart[l + 1]);
+    // a group's species: O(atoms of the member), never of the lipids drawn
+    const speciesOf = new Uint16Array(Math.max(1, lipids));
+    if (byAtom) {
+      for (let a = 0; a < atoms; ++a) groups[a] = a;
+      if (!lipidAtomStart) speciesOf.fill(lipidSpecies[0]);
+      else {
+        for (let l = 0; l < lipidSpecies.length; ++l) {
+          speciesOf.fill(lipidSpecies[l], lipidAtomStart[l], lipidAtomStart[l + 1]);
+        }
+      }
+    } else if (lipidAtomStart) {
+      for (let l = 0; l < lipids; ++l) {
+        groups.fill(l, lipidAtomStart[l], lipidAtomStart[l + 1]);
+        speciesOf[l] = lipidSpecies[l];
+      }
+    }
     const spheres = Spheres.create(positions, groups, atoms);
     // gridless (one cell, the membrane's sphere), the CPU's transforms a placeholder: the kernel writes them
     const transform = createTransform(new Float32Array(n * 16), n, undefined, 0, 0);
@@ -1043,7 +1060,7 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
       lipids,
       n,
       1,
-      (g: number) => ({ kind: 'lipid', species: lipidSpecies[byAtom ? 0 : g] }) as never,
+      (g: number) => ({ kind: 'lipid', species: speciesOf[g] }) as never,
     );
     const levels = props.colorLevels.name === 'on' && props.colorBy !== 'uniform';
     const one = partColor ?? props.color;
@@ -1059,7 +1076,7 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
     // each lipid or tile at its own level by its size on screen (the culler's per-instance levels)
     const lod =
       props.detail === 'off' ? { lodLevels: [], lodPixelSize: 0 } : membraneLevels(props.detail, props.levels);
-    // markers by lipid (a cut member's groups are its atoms: by group and instance, 40 a lipid past a texture's size)
+    // markers by lipid; by atom (a cut member's, a tile's): by group and instance, 40 a lipid past a texture's size
     const p = {
       ...PD.getDefaultValues(Spheres.Params),
       ...lod,
@@ -1073,7 +1090,7 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
       props,
       n,
       lipids,
-      (g) => (byAtom ? elementColor(elements![g]) : colorOf(names[lipidSpecies[g]])),
+      (g) => (byAtom ? elementColor(elements![g]) : colorOf(names[speciesOf[g]])),
       one,
     );
     clipped.set(values, p);
@@ -1391,6 +1408,7 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
             bounds,
             assigner.writer(v),
             colorOf,
+            tile.elements,
           ),
         });
       }
