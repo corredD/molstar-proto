@@ -1050,8 +1050,10 @@ export function createMergedCuller(
   /** what the cells and records are written from: the grids and the instances they split, the counts and the levels */
   const getLayoutKey = () => {
     let key = getFixedKey();
-    for (const m of members) {
-      key += `,${m.instanceGrid.ref.version},${m.aTransform.ref.version},${m.boundingSphere.ref.version}`;
+    for (let s = 0; s < members.length; ++s) {
+      const m = members[s];
+      // a GPU writer replaced: its member written again (\`syncMembers\`)
+      key += `,${m.instanceGrid.ref.version},${m.aTransform.ref.version},${m.boundingSphere.ref.version},${writerVersion(s)}`;
     }
     return key;
   };
