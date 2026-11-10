@@ -1668,3 +1668,96 @@ before round 7's water-filling: `[[69,207],[275]]` vs `[[55,165],[330]]`, fails 
 Far and Atoms below. Far a colour: only the far view changes. Zoom in on a tiles membrane: atoms by element. Atoms ›
 Carbons by species: tails take the species' colours. Drag Species or Atoms: no rebuild (instant). The Meshes category's
 Color… now colours the membrane.
+
+## Round 7, the gate (remaining) (2026-11-09; on `git diff 89c4f13aa...b2ffca85c`: items 2, 3, 6 and their fixes)
+
+Reviewer and skeptic: `~/prism-me-lanes/gate/r7-review.md`. Ludo's decisions (2026-11-09, asked by the coordinator): S2
+"Keep fixed shares", S5 "Neither touches parts".
+
+| Finding                                                                         | Verdict                    | Test (fails first)                                                            | Fix                                                                       |
+| ------------------------------------------------------------------------------- | -------------------------- | ----------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| M1 `poolCapacities`' test expects the old split                                 | confirmed, must-fix        | the test itself, red on HEAD                                                  | `31f61ed50` ([[69, 207], [275]], the level 250)                           |
+| M2 `format:check` fails (progress file, `import-colors.scaling.ts`)             | confirmed, must-fix        | `pnpm format:check`                                                           | `ecb46a1fb`                                                               |
+| M3 no story for the part row, the Look's Far and Atoms, `ZoomColors {membrane}` | confirmed, must-fix        | rendered in jsdom (four frames each, no Chain)                                | `728ce57ae` (Explorer › Membrane; the look is Ludo's check)               |
+| S1 a view's cost O(P²) in parts (`showParts` and the fade per selection)        | confirmed, should-fix      | `d08e411f3` (×9.9 at 256 → 1024 parts; `9ccb09554` moved the code, unchanged) | `4404bf727` (×1.3)                                                        |
+| S2 the budget over every leaflet, not those in view                             | confirmed, Ludo's decision |                                                                               | kept (fixed shares); the ceiling in TODO and the PR's Notes (`5d915a112`) |
+| S3 no clip close-view colour test (lowered to nit)                              | nit                        | `c360d0280` (a guard, green on HEAD)                                          |                                                                           |
+| S4 `mesoscale.theme` on a membrane: a failed redraw returned ok, a no-op step   | confirmed, should-fix      | `35edc5fbc` (ok true on HEAD)                                                 | `9b00266ec` (the committed cells' errors roll back)                       |
+| S5 Reset and the theme leave `partColors`, `hiddenParts`                        | confirmed, Ludo's decision | `b9fa56eb5` (a guard: today's behaviour)                                      | `b9fa56eb5` (ui.md §4)                                                    |
+| S6 TODO's round 7 items stale                                                   | confirmed, low             |                                                                               | `5d915a112`                                                               |
+| N1 the loop over roots                                                          | confirmed, nit             |                                                                               | `209d7d20d`                                                               |
+| N2 the triangle tree built twice                                                | refuted (cached)           |                                                                               |                                                                           |
+| N3 the edges error names Chain                                                  | confirmed, nit             |                                                                               | `e0c0f0679`                                                               |
+| N4 a scan of the objects per mesh row                                           | confirmed, nit             |                                                                               | `ac9bd6039`                                                               |
+| N5 a part row picked shows empty properties                                     | confirmed, nit             |                                                                               | open (TODO)                                                               |
+| X1 a part uploads the whole mesh's region table, three times a leaflet          | new, plausible → confirmed | `321bd9813` (340 regions of 340 on HEAD)                                      | `4300e6a0d` (688 → 105 MB on a synthetic cell)                            |
+
+**X1, how.** `partMesh` keeps a part's regions alone, renumbered, each with its key in the cells' hash
+(`CutterRegions.keys`: its index among the whole mesh's). Every reader hashes the key, not the index: the TS cutter
+(`TriangleCut.key`), the selection, the far surface, the kernel (the keys after the triangles' regions in one buffer:
+the write pass is at the stage's storage-buffer limit) and the mesh shader (the key over the patch table's normal x,
+which it never read; `patchTableArray`). The same lipids a triangle: `lipid-parts.test.ts`'s rows of a split cut equal
+the whole mesh's; the Dawn cutter equals the reference on a cell's second part (its keys not its indices). Measured (a
+30,000 Å sphere and eight of 3,000 Å, 254,160 triangles, 190,388 regions, both leaflets): the region tables uploaded 658
+→ 73 MB; with the triangles' regions, the cells and the patch tables' shifts, 688 → 105 MB. The cells' table (64 KB)
+stays copied three times a leaflet (3.5 MB here).
+
+**S4, the mixed case** (particles and a membrane in one theme, the membrane failing) rolls back as one by construction
+(one transaction) but is tested on a membrane alone: TODO.
+
+**Checks (2026-11-09, after the gate).** `npx tsc -b`, `npx tsc --noEmit -p apps/prism-me`, `pnpm lint`,
+`pnpm format:check`, `pnpm check:workspace`, `styles:check` (mesoscale, prism-me), prism-me `typecheck:storybook`: pass.
+Quick lane with Dawn: mesoscale 30 files, 196 passed (4 skipped); cryoet 138; stage-tools 58; prism-me 208: pass.
+Mesoscale `test:perf`: 15.62 B a select (15.6), the parts' shown 0. `lipid-parts.scaling.ts`: ×1.3 at 256 → 1024 parts,
+its quadratic control caught. The stories rendered in jsdom only: light and dark, wide and narrow are Ludo's look in
+Storybook (Explorer › Membrane).
+
+**Size.** About 190 production lines (X1 ~90 across seven files, S1's views.ts ~110 moved and ~20 new, S4 ~15, nits
+~25), the stories ~150.
+
+## PR body (draft; rounds 4 to 7, after the gate)
+
+**What.** Lipid membranes made per view on the GPU (prism-me's Mesoscale Explorer): a mesh or the yeast cell's nine
+membranes wrapped with lipids cut from a CHARMM-GUI patch where they are seen, a textured far surface past them, one
+budget across membranes; each of a cell's membranes a part (its eye, its colour, its own lipid mix); colours by zoom on
+three levels (the membrane's, its species', its atoms' by element); master v6 #2069 merged in.
+
+**Changes.**
+
+- Rounds 4–6 as in the round 4–6 draft above.
+- Round 7: the merge of origin/prism-me, the lane's GPU instance writer, live counts, dead slots, per-level scales and
+  patch texture ported onto master's culler; a CPU write tells a pool's writer (`GpuInstanceTarget.cpuWrites`); the
+  coarse sphere level shows the finer one's top view; the selection's keys sorted in place (15.6 B a view, from 95.6).
+- Items 2 and 3: a cut leaflet a part and leaflet on its own triangles (`partMesh`), its table its membrane's mix
+  (`mixes.ts`, the LD a monolayer); a part's row in the tree, its eye and colour (`mesoscale.style`/`colors {parts}`,
+  one step each, never cut again); the budget water-filled over the pools.
+- Item 6: tiles get the atom level; `colorLevels {far, atoms}` (`element`, `carbon-species`); an edges-only path with no
+  rebuild; `mesoscale.theme` colours a membrane; the Look's Far and Atoms, `ZoomColors {membrane}`.
+- The gate: a part uploads its own regions only, keyed as the whole mesh's (688 → 105 MB on a cell of nine membranes;
+  graphics: the mesh shader hashes the key over the patch table's normal x); a view fades the surfaces and shows the
+  parts once (×9.9 → ×1.3 at 4× the parts); a theme whose redraw fails fails cleanly; Reset and a theme leave the parts;
+  Storybook's Explorer › Membrane.
+
+**Notes for review.**
+
+- Graphics changes in a library package (`merged-culler.ts`, `cell-cull.wgsl.ts`, `mesh.wgsl.ts`, `mesh.ts`): the writer
+  contract (`GpuInstanceWriter`, `merged-render-objects.md`); the patch table's fourth texel's x is now a region's key
+  (MeshSchema's doc). The patch texture is WebGPU only (`shader-parity.test.ts`).
+- **The budget's ceiling (Ludo's decision, 2026-11-09: keep fixed shares).** The budget is shared over every leaflet at
+  the wrap, not those in view: about 1.1 × budget / L a leaflet. At 2 M, the PM's outer leaflet holds 122 k lipids with
+  9 parts, 37 k at 30, 11 k at 100, 1.1 k at 1,000. A close view takes about 73 k a leaflet: about 15 membranes (30
+  leaflets) is the ceiling for a close view. A middle view of the PM wants about 2 M: already about 15× short at yeast
+  (far parts empty). About 1,700 member objects on yeast. In TODO.md.
+- Reset and a category's theme leave a membrane's parts (Ludo's decision, ui.md §4).
+- Open: the stories' look (light, dark, wide, narrow) for Ludo in Storybook; a part row's empty properties (N5); the
+  yeast wrap's time and RSS since the pools a part; the theme's mixed case; the TODO items.
+
+**Testing.** Quick lane with Dawn (mesoscale, cryoet, stage-tools, prism-me), `tsc -b`, prism-me's `tsc`, lint, format,
+`check:workspace`, `styles:check`, `typecheck:storybook`; mesoscale `test:perf` (15.62 B); the new scaling guard
+`lipid-parts.scaling.ts`; Dawn parity of the cutter on a part's renumbered regions; the X1 bytes by a measurement over a
+synthetic cell. Earlier rounds: plugin-headless with Dawn (two inherited failures, `webgpu-points`,
+`webgpu-device-listener`), `test:scaling` 19/20 (one killed under load, not the lane's).
+
+**Review.** The round 7 tables above: the first gate (merge and items 4, 5) and the remaining one (items 2, 3, 6).
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
