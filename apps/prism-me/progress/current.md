@@ -75,8 +75,11 @@ is not built is [../TODO.md](../TODO.md).
     brief 481102c20). Item 6 built; round 7 gated at ecc2ae79b (pushed; X1: GPU region tables 688 → 105 MB; budget kept
     fixed shares, ceiling ~15 membranes, Ludo). Round 8 (Middle: coarse | parallax, live in the Look) built and gated at
     50ff65480, pushed: the cut band under parallax, Atoms down to ≥ 9 px, a Middle switch without rebuild; shells’ band
-    objects open. Parallax the default (Ludo, 2026-11-10: 7e104fc0e, pushed); round 8 finished. Next on Ludo’s word:
-    shells, the clip pop, the PR (rounds 4–8).
+    objects open. Parallax the default (Ludo, 2026-11-10: 7e104fc0e, pushed); round 8 finished. Round 9 (a colour
+    multiplier per compartment, from its mesh: normalised, the part dot recolours its mesh, atoms by element untinted,
+    "Colours from meshes" on; Ludo 2026-11-10) built and gated at 0fa72ac06, pushed: parts named by file, de-duplicated,
+    mapped by index; a part's own colour where its mesh gives no tint (coordinator's call, Ludo to confirm). Next on
+    Ludo’s word: shells, the clip pop, the PR (rounds 4–9).
   - `paint` (`me/paint`, rounds 1-5, [progress](2026-11-08-paint.md) on its branch): **PR #64** open, waits on Ludo's
     merge (fibres by rise, twist, axis, offset; a DNA/RNA bank by sequence).
   - `paint-layer` (`me/paint-layer` from `me/paint` at fecd0db3e, stacked on #64; port 1363;
