@@ -21,12 +21,11 @@ import type { PaintBrushTarget, PaintHost, PaintSettings } from './paint-mode.js
 import {
   brushIdOf,
   brushOf,
-  decoratorUnder,
   type FiberSettingsMap,
   fiberSettingsOf,
   parseRange,
   isFiberBrush,
-  ParticleListPainted,
+  paintLayerOf,
 } from './paint.js';
 import { pluginPaintCursor } from './paint-cursor.js';
 import { membraneFrame } from './pick-surface.js';
@@ -154,7 +153,7 @@ export function pluginPaintHost(
       const b = data && brushOf(data, brush.entity);
       if (!list || !data || !b) return undefined;
       const id = brushIdOf(data, b);
-      const painted = decoratorUnder(plugin.state.data, list.cell.transform.ref, ParticleListPainted);
+      const painted = paintLayerOf(plugin.state.data, list.cell.transform.ref);
       const own = (painted?.transform.params as { fibers?: FiberSettingsMap } | undefined)?.fibers;
       if (!own?.[id] && !isFiberBrush(data, id)) return undefined;
       return fiberSettingsOf(data, id, b.target, own).rise;

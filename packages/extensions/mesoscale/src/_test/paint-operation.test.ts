@@ -13,10 +13,11 @@ import { DefaultPrismViewerSpec } from '@molstar/prism-viewer/default-spec';
 import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
 import type { PrismViewer } from '@molstar/prism-viewer/viewer';
 import {
+  ParticleListOffsets,
   ParticleListTargetsFromAttribute,
   ParticleListTransform,
 } from '@molstar/plugin/state/transforms/particles/ops';
-import { ParticleListPainted } from '../paint.js';
+import { ParticleListPaintLayer } from '../paint.js';
 import { MesoscaleExtension } from '../prism-viewer.js';
 import { setTestTargetStructure, TestTargetList } from './fixtures.js';
 
@@ -47,16 +48,60 @@ async function viewer() {
 }
 
 const entry = (v: PrismViewer) => v.plugin.managers.particles.hierarchy.current.lists[0];
-const drawn = (v: PrismViewer) =>
-  (entry(v).representations[0].cell.obj!.data as unknown as { sourceData: ParticleList }).sourceData;
-const instances = (v: PrismViewer) =>
-  (
-    (entry(v).representations[0].cell.obj!.data as unknown as { repr: { renderObjects: { values: any }[] } }).repr
-      .renderObjects ?? []
-  ).reduce((n, ro) => n + ro.values.instanceCount.ref.value, 0);
-const steps = (v: PrismViewer) => v.api.history.steps.value.length;
 const painted = (v: PrismViewer) =>
-  Array.from(v.plugin.state.data.cells.values()).filter((c) => c.transform.transformer === ParticleListPainted);
+  Array.from(v.plugin.state.data.cells.values()).filter((c) => c.transform.transformer === ParticleListPaintLayer);
+/** The list's own particles as its first representation draws them */
+const model = (v: PrismViewer) =>
+  (entry(v).representations[0].cell.obj!.data as unknown as { sourceData: ParticleList }).sourceData;
+/** The paint layer's copies (paint-layer, 2026-11-10), none before a stroke */
+const copies = (v: PrismViewer) => painted(v)[0]?.obj?.data as ParticleList | undefined;
+/** What is drawn: the list's particles, then the layer's copies (as the decorator appended them before the layer) */
+const drawn = (v: PrismViewer) => {
+  const c = copies(v);
+  return c ? joined(model(v), c) : model(v);
+};
+/** Instances over every representation of the list (the layer's are the list's, `isTypeRoot`) */
+const instances = (v: PrismViewer) =>
+  entry(v)
+    .representations.flatMap(
+      (r) => (r.cell.obj!.data as unknown as { repr: { renderObjects: { values: any }[] } }).repr.renderObjects ?? [],
+    )
+    .reduce((n, ro) => n + ro.values.instanceCount.ref.value, 0);
+const steps = (v: PrismViewer) => v.api.history.steps.value.length;
+
+/** `a`'s particles then `b`'s: the arrays the tests read, `b`'s fibres after `a`'s, `b`'s targets (a bank's units) */
+function joined(a: ParticleList, b: ParticleList): ParticleList {
+  const cat = <T extends Int32Array | Float32Array>(x: T, y: T) => {
+    const out = new (x.constructor as new (n: number) => T)(x.length + y.length);
+    out.set(x);
+    out.set(y, x.length);
+    return out;
+  };
+  const rotations = (l: ParticleList) =>
+    l.rotations ?? Float32Array.from({ length: l.count * 4 }, (_, i) => (i % 4 === 3 ? 1 : 0));
+  const fa = a.fibers ?? { count: 0, offsets: new Int32Array(1), indices: new Int32Array(0) };
+  const fb = b.fibers ?? { count: 0, offsets: new Int32Array(1), indices: new Int32Array(0) };
+  const fibers =
+    fa.count + fb.count
+      ? {
+          count: fa.count + fb.count,
+          offsets: cat(fa.offsets, fb.offsets.slice(1).map((o) => o + fa.indices.length)),
+          indices: cat(fa.indices, fb.indices.map((i) => i + a.count)),
+        }
+      : undefined;
+  return {
+    ...a,
+    count: a.count + b.count,
+    keys: cat(a.keys, b.keys),
+    targets: cat(a.targets, b.targets),
+    coordinates: cat(a.coordinates, b.coordinates),
+    rotations: cat(rotations(a), rotations(b)),
+    ...(a.compartments && b.compartments ? { compartments: cat(a.compartments, b.compartments) } : {}),
+    ...(fibers ? { fibers } : {}),
+    targetMapping: b.targetMapping,
+    getParticleLabel: (i) => (i < a.count ? a.getParticleLabel(i) : b.getParticleLabel(i - a.count)),
+  };
+}
 const zOf = (list: ParticleList, i: number) =>
   Vec3.transformQuat(
     Vec3(),
@@ -101,7 +146,7 @@ describe('mesoscale.paint', () => {
     expect(instances(v)).toBe(before.instances + 3);
   });
 
-  it('appends a second stroke to the same decorator, one more step; undo takes the second only', async () => {
+  it('appends a second stroke to the same layer, one more step; undo takes the second only', async () => {
     const v = await viewer();
     expectOk(await v.api.run('mesoscale.paint', { entity: 'CA', positions: [0, 50, 0], normals: [0, 1, 0], seed: 1 }));
     const s = steps(v);
@@ -290,9 +335,9 @@ describe('mesoscale.paint', () => {
     const p = Vec3.fromArray(Vec3(), list.coordinates, 7 * 3);
     expect(Vec3.distance(p, Vec3.create(10, 20, 30))).toBeLessThan(1e-3);
     expect(Vec3.distance(zOf(list, 7), Vec3.create(1, 0, 0))).toBeLessThan(1e-5);
-    // the painted decorator under the list, above its move
+    // the layer under the list's last decorator, its move (paint-layer): the copies moved with the list
     const cell = painted(v)[0];
-    expect(cell.transform.parent).toBe(ref);
+    expect(v.plugin.state.data.cells.get(cell.transform.parent)!.transform.transformer).toBe(ParticleListTransform);
   });
 
   it('keeps the strokes in a saved state: opened again, the copies are there, where they were painted', async () => {
