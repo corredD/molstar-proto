@@ -61,7 +61,12 @@ import {
   type BlobSurfaceTargetProps,
   createBlobSurfaceTargetGeometry,
 } from './blob-surface.js';
-import { createSitesBlobSurfaceGeometry, createSitesTargetGeometry, createSitesTargetSizes } from './sites.js';
+import {
+  createSitesBlobSurfaceGeometry,
+  createSitesTargetGeometry,
+  createSitesTargetSizes,
+  getSitesTargetNearColors,
+} from './sites.js';
 import { createShapeTargetGeometry } from './shape.js';
 import {
   createVolumeTargetGeometry,
@@ -834,7 +839,7 @@ export function createTargetVisual(_targetId: number, materialId: number, graphi
   }
 
   /**
-   * The color levels of a structure target (`color-levels.md`): its atoms' near data, its particles' far colors when the
+   * The color levels of a structure or sites target (`color-levels.md`): its atoms' near data, its particles' far colors when the
    * colors are made again or the levels turned on; off for a uniform theme or a palette (no per-vertex color to blend)
    */
   function setColorLevels(values: ColorLevels.Data, theme: Theme, props: ParticleTargetProps, target: ParticleTarget) {
@@ -842,13 +847,17 @@ export function createTargetVisual(_targetId: number, materialId: number, graphi
     // the representation's levels, on its every item (material uniforms), on where it has atoms and colors to blend
     const asked = props.colorLevels?.name === 'on';
     const levels = asked ? (props.colorLevels!.params as ColorLevels.Props) : ColorLevels.defaults;
-    const on = asked && color && target.kind === 'structure';
+    const on = asked && color && isElementTarget(target);
     const turnedOn = on && !values.dColorLevels.ref.value;
     ColorLevels.setProps(values, levels, on);
-    if (!on || target.kind !== 'structure' || !('color' in theme.color)) return;
+    if (!on || !isElementTarget(target) || !('color' in theme.color)) return;
     if (!turnedOn && !updateState.updateColor) return;
 
-    const near = getStructureTargetNearColors(target.structure);
+    // a structure's elements or a sites target's sites (mmCIF particles' targets: `ParticleSites`)
+    const near =
+      target.kind === 'structure'
+        ? getStructureTargetNearColors(target.structure)
+        : getSitesTargetNearColors(target.sites);
     ValueCell.update(values.tColorNear, { array: near, count: near.length / 4 });
     const far = theme.color.farColor ?? theme.color.color;
     const data = createDataArray(locationIt.instanceCount, 4, Uint8Array, values.tColorFar.ref.value.array);
