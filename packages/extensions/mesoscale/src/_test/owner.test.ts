@@ -162,8 +162,8 @@ describe('an owned list (prism.md §1.1)', () => {
     expectOk(r);
     // the name wins over another entity's alias of the same text
     expect(proposed[0].lists[0].looks.map((l) => [l.entities, l.change.color])).toEqual([
-      [[1], Color(0x00ffff)],
       [[2], Color(0xff00ff)],
+      [[1], Color(0x00ffff)],
     ]);
     expectOk(await v.api.run('mesoscale.style', { particles: owned, entities: 'p.two', visible: false }));
     expect(proposed[1].lists[0].looks[0].entities).toEqual([2]);

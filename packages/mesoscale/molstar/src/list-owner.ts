@@ -97,7 +97,10 @@ export class DocumentListOwner implements ParticleListOwner {
     if (!info) {
       const entities = setEntities(doc, set);
       const { groups, paths } = groupBy === 'compartment' ? byCompartment(doc, set, entities) : byKind(doc, set);
-      info = { entities, groups, groupBy, hasCompartments: true, paths };
+      // found by their population ids after their labels (prism.md §5.1: Import colors)
+      const aliases = new Map<string, number>();
+      for (const t of set.typeTable) if (!aliases.has(t.population)) aliases.set(t.population, t.index);
+      info = { entities, groups, groupBy, hasCompartments: true, aliases, paths };
       bySet.set(groupBy, info);
     }
     return info;

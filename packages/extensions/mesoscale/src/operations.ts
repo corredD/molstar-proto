@@ -364,7 +364,11 @@ export class MesoscaleApi extends ApiArea {
       const data = dataOf(l);
       if (!data) return ApiResult.fail('not-found', 'The particle list is not loaded yet.');
       const entities = entitiesOf(ctx, l, data);
-      const { colors, matched, unmatched, invalid, overridden } = matchColors(entities, file);
+      const { colors, matched, unmatched, invalid, overridden } = matchColors(
+        entities,
+        file,
+        ownerOf(ctx, l)?.info(l.cell.transform.ref)?.aliases,
+      );
       const value: ImportColorsResult = { matched, unmatched, invalid, overridden };
       if (!colors.size && invalid.length && !unmatched.length) {
         return ApiResult.fail(
@@ -1398,9 +1402,15 @@ function selectEntities(
     .map((s) => s.trim())
     .filter((s) => s);
   if (wanted.length) {
-    // indexed once (a drag over many rows names many entities): by name, the first of a name, else by id
+    // indexed once (a drag over many rows names many entities): by name, the first of a name, then by an owner's
+    // other names (a document's population ids), else by id
     const byName = new Map<string, MesoEntity>();
     for (const x of entities) if (!byName.has(x.name)) byName.set(x.name, x);
+    const byId = new Map(entities.map((x) => [x.id, x]));
+    for (const [name, id] of owner?.info(l.cell.transform.ref)?.aliases ?? []) {
+      const x = byId.get(id);
+      if (x && !byName.has(name)) byName.set(name, x);
+    }
     for (const x of entities) if (!byName.has(String(x.id))) byName.set(String(x.id), x);
     const picked: number[] = [];
     for (const w of wanted) {

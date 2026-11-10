@@ -208,6 +208,13 @@ describe('the other operations on a document list (prism.md §5.1)', () => {
     expect(styleLooks(await saved(h))).toEqual([
       { id: 'l.style.1', select: '(population p.catalase)', color: '#123456' },
     ]);
+    // then by population id
+    expect(
+      (await h.run('mesoscale.importColors', { particles: ref, json: JSON.stringify({ 'p.catalase': '#654321' }) })).ok,
+    ).toBe(true);
+    expect(styleLooks(await saved(h))).toEqual([
+      { id: 'l.style.1', select: '(population p.catalase)', color: '#654321' },
+    ]);
   });
 
   it('theme over the document’s lists: one step, one Undo', { tags: ['medium'] }, async () => {
