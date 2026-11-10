@@ -82,6 +82,10 @@ coordinator's.
   by the restore itself: `adopt` must write them.
 - The owner's restore adopted outside the session's queue, so a stream step settling between could commit against the
   pre-restore IR; the adoption now runs in the session's turn.
+- A tile that arrives while a restore waits in the queue is taken in by the restore's own stream step, so it is in the
+  IR the adapter adopts but has no list; the stream step after it sees no change and never draws it (a hole until the
+  next commit). `adopt` draws the restored IR's tiles that have no list (found by the advisor before handback; the test
+  holds the queue while tiles land and undoes meanwhile, with a budget of 4 tiles so no later arrival masks it).
 - A `.molj` holds tile lists (`getSnapshot` is not a checkpoint); on a new viewer the stub's declared transformer
   (`MesoPlacements`) loads the chunk, which registers `MesoTilePlacements` before the state is set, and `adopt` then
   deletes them (no provider on a fresh page: `stream.manifest`). The stub (`prism-viewer.ts`, lane 7's) does not name

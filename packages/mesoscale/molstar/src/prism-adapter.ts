@@ -777,6 +777,13 @@ export class PrismMesoAdapter implements RendererAdapter {
     this.index(source);
     // a kept tile's looks are what they were before the restore: the restored view's written over them
     await this.writeTileLooks(ir.view.looks);
+    // a tile the restore took in (it arrived while the restore waited) has no list yet, and no stream step will add it
+    // (its IR already names it): drawn now, through the state (owned cells, as the fills above)
+    const undrawn = placementSets(source).filter((s) => tiles.has(s.key) && s.count > 0 && !this.placed.has(s.key));
+    if (undrawn.length) {
+      await this.viewer.extensions.load('particles');
+      await this.drawTiles(undrawn, ir.view.looks);
+    }
     return { filled };
   }
 

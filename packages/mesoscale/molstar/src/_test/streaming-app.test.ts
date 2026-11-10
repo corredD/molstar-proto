@@ -7,6 +7,7 @@
 // @module-tag medium
 
 import { StateSelection } from '@molstar/core/state';
+import { placementSets } from '@molstar/meso-spec/ir';
 import { createMesoscaleExplorerSpec } from '@molstar/prism-me-app/spec';
 import { PluginStateObject as SO } from '@molstar/plugin/state/objects';
 import { ParticleRepresentation3DLayers } from '@molstar/plugin/state/transforms/particles/layers';
@@ -45,7 +46,23 @@ async function setup() {
     if (e.type === 'error') errors.push(String(e.message));
   });
   const area = () => (v.api as unknown as { mesoviewspec: MesoViewSpecApi }).mesoviewspec;
-  /** Waits until no tile is in flight and every stream step queued has run. */
+  const state = v.plugin.state.data;
+  const tileCells = () => state.select(StateSelection.Generators.ofTransformer(MesoTilePlacements));
+  /** Every resident tile (the session's IR) has one list, drawn by one representation, and no other tile has one. */
+  const expectTilesDrawn = () => {
+    const ir = area().model.session?.ir;
+    const resident = ir ? placementSets(ir).filter((s) => s.model === 'm.tiles') : [];
+    const keys = tileCells().map((c) => (c.transform.params as { key: string }).key);
+    expect(new Set(keys).size, 'a tile drawn twice').toBe(keys.length);
+    expect([...keys].sort()).toEqual(resident.map((s) => s.key).sort());
+    for (const c of tileCells()) {
+      const reps = state.select(
+        StateSelection.Generators.byRef(c.transform.ref).subtree().ofType(SO.Particle.Representation3D),
+      );
+      expect(reps.length, `representations of ${c.transform.ref}`).toBe(1);
+    }
+  };
+  /** Waits until no tile is in flight and every stream step queued has run; then every resident tile is drawn. */
   const settle = async () => {
     for (let i = 0; i < 200; i++) {
       await sleep(10);
@@ -55,13 +72,11 @@ async function setup() {
       if (!session.streamer?.stats().inFlight) {
         await sleep(10);
         await session.exclusive(async () => {});
-        if (!session.streamer?.stats().inFlight) return;
+        if (!session.streamer?.stats().inFlight) return expectTilesDrawn();
       }
     }
     throw new Error('the stream did not settle');
   };
-  const state = v.plugin.state.data;
-  const tileCells = () => state.select(StateSelection.Generators.ofTransformer(MesoTilePlacements));
   const tileRefs = () => tileCells().map((c) => c.transform.ref);
   /** Each tile list's representations' layers (by tile ref): what its looks are drawn with. */
   const tileLayers = () =>
@@ -146,6 +161,31 @@ describe('a streamed document in prism-me (headless)', () => {
     await h.settle();
     expect(hasRed().every(Boolean)).toBe(true);
     expect(h.unsafe()).toEqual([]);
+    expect(h.errors).toEqual([]);
+  });
+
+  it('Undo while tiles are arriving: the tiles the restore takes in are drawn', { tags: ['medium'] }, async () => {
+    const h = await setup();
+    // 4 tiles: all asked for at once (4 in flight), so no later arrival's commit would draw what the restore took in
+    const budget = await h.person.settings.set({
+      group: 'behaviors',
+      values: { [StreamingBudgetKey]: { budget: 1600 } },
+    });
+    expect(budget.ok).toBe(true);
+    await openTiled(h);
+    expect((await h.person.run('mesoviewspec.look', { select: '(population p.a)', color: 'red' })).ok).toBe(true);
+    await h.settle();
+    const session = h.area().model.session!;
+    // the camera to the far corner: its tiles are asked for; the queue is held while they land (150 ms each), and the
+    // Undo's restore is queued before the stream step their arrival queues, so the restore takes them in
+    void h.area().model.setFocus({ center: [7000, 7000, 3000], radius: 0 });
+    const held = session.exclusive(() => sleep(400));
+    const undone = h.v.managers.history.undo();
+    await held;
+    expect((await undone).ok).toBe(true);
+    await h.settle();
+    expect(h.resident()!.resident).toBeGreaterThan(0);
+    expect(h.tileLayers().some((layers) => layers.some((l) => l.color === 0xff0000))).toBe(false);
     expect(h.errors).toEqual([]);
   });
 
