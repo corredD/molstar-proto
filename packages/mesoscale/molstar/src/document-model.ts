@@ -32,7 +32,7 @@ import {
   unionRuns,
 } from '@molstar/meso-spec/ir';
 import { DefaultResolvers } from '@molstar/meso-spec/resolvers';
-import { classifyEdit, type ResolveOutput, type Resolver } from '@molstar/meso-spec/runtime';
+import { classifyEdit, type CompileProgress, type ResolveOutput, type Resolver } from '@molstar/meso-spec/runtime';
 import { Particle, type ParticleList } from '@molstar/model/model/particles/particle-list';
 import type { PluginContext } from '@molstar/plugin/context';
 import { PluginStateObject as SO } from '@molstar/plugin/state/objects';
@@ -46,7 +46,7 @@ import {
 } from './document-tree.js';
 import { placementStore } from './particle-list.js';
 import { type AdapterViewer, PrismMesoAdapter } from './prism-adapter.js';
-import { type EditRecord, MesoSession } from './session.js';
+import { type EditRecord, type EditRun, MesoSession } from './session.js';
 
 // The owner of the open MesoViewSpec document in a Prism viewer (prism.md §1.1, §2.3, §7): one document at a time, its
 // session (runtime cache, IR, issues, counts) and its adapter. A viewer proposes, the owner commits: an open, a patch or
@@ -125,6 +125,12 @@ export class MesoDocumentModel {
   private readonly ev = RxEventHelper.create();
   /** The document, its counts or its looks changed (a step ended, a restore, a close): the tree reads them again. */
   readonly changed = this.ev<void>();
+  /**
+   * The edit in flight: told as it starts each model that has to resolve, `undefined` when the edit ends (done,
+   * refused or stopped). What the explorer's Built by shows while a resolution runs.
+   */
+  readonly resolving = this.ev<CompileProgress | undefined>();
+  private resolvingNow: CompileProgress | undefined;
   /** The copies an address lights, by the drawn lists' revision: a hover allocates nothing twice. */
   private readonly lociCache = new Map<string, readonly Particle.Loci[]>();
   private lociRevision = -1;
@@ -419,8 +425,16 @@ export class MesoDocumentModel {
     });
   }
 
-  /** A patch (prism.md §2): refused whole with the validation's issues, else committed with a new revision. */
-  async edit(patch: Patch, api: ViewerApi, label = 'edit'): Promise<DocumentStep> {
+  /** The model the edit in flight is resolving now (and how far it is), or nothing. */
+  get progress(): CompileProgress | undefined {
+    return this.resolvingNow;
+  }
+
+  /**
+   * A patch (prism.md §2): refused whole with the validation's issues, else committed with a new revision. un's
+   * signal stops the resolution (nothing is drawn; the caller's step is rolled back), its onProgress is told per model.
+   */
+  async edit(patch: Patch, api: ViewerApi, label = 'edit', run: EditRun = {}): Promise<DocumentStep> {
     const doc = this.doc;
     const session = this.session;
     if (!doc || !session) return { issues: [issue('document.none', 'error', 'static', 'No document is open.')] };
@@ -429,9 +443,22 @@ export class MesoDocumentModel {
     if (classifyEdit(doc, r.doc) === 'none') return { issues: [], unchanged: true };
     this.filesOf.set(r.doc, this.files);
     return this.step(async () => {
-      const record = await this.adapter.bound(api, () =>
-        session.edit(r.doc, `${label} (${classifyPatch(doc, patch)})`),
-      );
+      const told = (p: CompileProgress) => {
+        this.resolvingNow = p;
+        this.resolving.next(p);
+        run.onProgress?.(p);
+      };
+      let record: EditRecord;
+      try {
+        record = await this.adapter.bound(api, () =>
+          session.edit(r.doc, `${label} (${classifyPatch(doc, patch)})`, { ...run, onProgress: told }),
+        );
+      } finally {
+        if (this.resolvingNow) {
+          this.resolvingNow = undefined;
+          this.resolving.next(undefined);
+        }
+      }
       this.doc = r.doc;
       return { record, inverse: r.inverse, issues: session.issues };
     });

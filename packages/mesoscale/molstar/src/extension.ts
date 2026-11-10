@@ -26,6 +26,7 @@ import type { Loci } from '@molstar/model/model/loci';
 import { cssColor } from '@molstar/mesoscale-extension/color-file';
 import { registerParticleListOwner } from '@molstar/mesoscale-extension/owner';
 import { Color } from '@molstar/core/util/color';
+import type { CompileProgress } from '@molstar/meso-spec/runtime';
 import { MesoDocumentModel } from './document-model.js';
 import { blockedResult, DocumentListOwner } from './list-owner.js';
 import { documentVisible, type DocumentGroupBy, type DocumentLooks, type DocumentOutline } from './document-tree.js';
@@ -197,6 +198,16 @@ export class MesoViewSpecApi extends ApiArea {
             a.showsOnly === b.showsOnly &&
             sameIssues(a.issues, b.issues)),
       },
+    );
+  }
+
+  /** The model the edit in flight is resolving, and how far it is (models done of the total); nothing between edits. */
+  progressState(): ReadonlyState<CompileProgress | undefined> {
+    const model = this.model;
+    return watchedState(
+      () => model.progress,
+      () => model.resolving,
+      { compare: (a, b) => a?.model === b?.model && a?.done === b?.done && a?.total === b?.total },
     );
   }
 
@@ -435,7 +446,8 @@ export class MesoViewSpecApi extends ApiArea {
       if ('ok' in read) return read;
       let step: Awaited<ReturnType<MesoDocumentModel['edit']>>;
       try {
-        step = await this.model.edit(read.patch, ctx.api, 'edit');
+        // the run's signal stops the resolution (Cancel): the step is rolled back, nothing is half-drawn (prism.md §7.2)
+        step = await this.model.edit(read.patch, ctx.api, 'edit', { signal: ctx.signal });
       } catch (e) {
         return ApiResult.fail('failed', `Could not apply the patch: ${(e as Error).message}`);
       }

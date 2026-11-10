@@ -24,7 +24,7 @@ export {
   MesoViewSpecStateKey,
   type SavedMesoViewSpec,
 } from './document-model.js';
-export { type EditRecord, MesoSession, type SessionOptions } from './session.js';
+export { type EditRecord, type EditRun, MesoSession, type SessionOptions } from './session.js';
 export {
   type Counts,
   type DocumentGroupBy,

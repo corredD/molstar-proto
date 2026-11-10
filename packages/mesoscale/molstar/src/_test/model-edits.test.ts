@@ -42,7 +42,8 @@ async function open(doc: MesoViewSpecDoc = exosomeDoc()) {
   expect(r.ok, JSON.stringify(r)).toBe(true);
   const model = api.model;
   const steps = () => v.managers.history.steps.value.length;
-  const edit = (patch: unknown) => person.run('mesoviewspec.edit', { patch: JSON.stringify(patch) });
+  const edit = (patch: unknown, signal?: AbortSignal) =>
+    person.run('mesoviewspec.edit', { patch: JSON.stringify(patch) }, signal ? { signal } : undefined);
   const last = () => model.session!.history.at(-1)!;
   /** The models the last edit resolved, and those it took from the cache */
   const ran = () =>
@@ -155,5 +156,55 @@ describe('Add relax stage', () => {
     expect(h.model.doc!.models?.some((m) => m.id === 'm.relax')).toBe(false);
     expect(copies(h, 'p.catalase').achieved).toBeLessThan(506);
     expect(h.steps()).toBe(s0);
+  });
+});
+
+describe('Cancel (prism.md §7.2: a cancelled resolution restores the checkpoint)', () => {
+  it('a count edit stopped as its model starts: nothing changed, no step, the next edit works', async () => {
+    const h = await open();
+    const doc = h.model.doc;
+    const session = h.model.session!.doc;
+    const keys = h.model.adapter.keys();
+    const lists = h.model.adapter.keys().map((k) => h.model.adapter.listObject(k)?.data);
+    const s0 = h.steps();
+    const ctl = new AbortController();
+    const told: (string | undefined)[] = [];
+    const off = h.model.resolving.subscribe((p) => {
+      told.push(p?.model);
+      if (p) ctl.abort();
+    });
+    const r = await h.edit(countPatch(doc!, 'p.catalase', 300).patch, ctl.signal);
+    off.unsubscribe();
+    expect(r.ok).toBe(false);
+    expect((r as { code?: string }).code).toBe('aborted');
+    // told which model, then that it is over
+    expect(told).toEqual(['m.recipe', undefined]);
+    expect(h.model.progress).toBeUndefined();
+    expect(h.steps()).toBe(s0);
+    expect(h.model.doc).toBe(doc);
+    expect(h.model.session!.doc).toBe(session);
+    expect(h.model.adapter.keys()).toEqual(keys);
+    expect(h.model.adapter.keys().map((k) => h.model.adapter.listObject(k)?.data)).toEqual(lists);
+    expect(h.v.managers.history.redoable.value.length).toBe(0);
+    expect(copies(h, 'p.catalase').requested).toBe(506);
+
+    // the stopped model is not the cache's (it never finished): the same edit resolves it, once
+    const again = await h.edit(countPatch(h.model.doc!, 'p.catalase', 300).patch);
+    expect(again.ok, JSON.stringify(again)).toBe(true);
+    expect(h.ran()).toEqual(['m.recipe']);
+    expect(h.steps()).toBe(s0 + 1);
+    expect(copies(h, 'p.catalase')).toEqual({ requested: 300, achieved: 300 });
+  });
+
+  it('progress: the model being resolved, as a state the explorer reads, until the edit ends', async () => {
+    const h = await open();
+    const seen: (string | undefined)[] = [];
+    const state = h.api.progressState();
+    const off = h.model.resolving.subscribe(() => seen.push(state.value?.model));
+    const r = await h.edit(countPatch(h.model.doc!, 'p.catalase', 300).patch);
+    expect(r.ok).toBe(true);
+    off.unsubscribe();
+    expect(seen).toContain('m.recipe');
+    expect(state.value).toBeUndefined();
   });
 });
