@@ -33,6 +33,7 @@ import { Vec3 } from '@molstar/core/math/linear-algebra/3d/vec3';
 import {
   canDrawLipidMembranes,
   LipidMembrane,
+  meshColorCell,
   LipidMembraneParams,
   type LipidMembraneProps,
   LipidMembraneReprParams,
@@ -318,6 +319,14 @@ export class MesoscaleApi extends ApiArea {
       } else if (mesh && !ctx.plugin.state.data.cells.has(mesh)) {
         return ApiResult.fail('not-found', `No mesh ${mesh} in the scene.`);
       }
+      // removed with its mesh (moving the mesh does not move it yet: TODO.md); and drawn again where a mesh's colour
+      // changes (round 9: its representation's `coloring`, `meshColorCell`), in that change's step
+      const given = parts.length > 0 ? parts : mesh ? [mesh] : [];
+      const dependsOn = new Set<string>(given);
+      for (const ref of given) {
+        const colour = meshColorCell(ctx.plugin.state.data, ref);
+        if (colour) dependsOn.add(colour.transform.ref);
+      }
       const b = ctx.plugin.state.data.build();
       const node = b.toRoot().apply(
         LipidMembrane,
@@ -332,8 +341,7 @@ export class MesoscaleApi extends ApiArea {
           leaflets,
           method,
         },
-        // removed with its mesh (moving the mesh does not move it yet: TODO.md)
-        parts.length > 0 ? { dependsOn: parts } : mesh ? { dependsOn: [mesh] } : undefined,
+        dependsOn.size > 0 ? { dependsOn: [...dependsOn] } : undefined,
       );
       // a failed transform (an unknown patch, a ref that is not a mesh) leaves no cell and no step: reverted, its error
       // read as it happened

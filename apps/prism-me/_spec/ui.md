@@ -241,9 +241,15 @@ on a tree row (its right-click or its ⋯), the same menu, in this order:
   is a row under the membrane in the tree (round 7, Ludo 2026-11-09): its eye and its colour dot (`mesoscale.style` and
   `mesoscale.colors` with `parts`, one step each; never cut again); the eyes a drag passes are one write a membrane; the
   membrane's eye is open only when every part is shown, and opening it shows them all. A part's colour is its far colour
-  by zoom (its species and atoms still close up), all of it when By zoom is off. Each part has its own lipid mix (the
-  yeast membranes': `mixes.ts`, the LD a monolayer) and its own pools, the budget water-filled across them (a small
-  membrane whole, the large ones alike).
+  by zoom (its species and atoms still close up), all of it when By zoom is off. Its colours follow its meshes' (round
+  9, Ludo 2026-11-10: one membrane, its colours changing by compartment): each part's colours (the whole membrane's, one
+  mesh) times its mesh's colour, normalised (the colour over its largest channel, so the meshes' grey is white and a
+  wrap dims nothing): its far colour, its species' and the patch's, carbons by species, never atoms by element; a mesh
+  in its own colours (given, vertex, custom) or black none. A mesh recoloured (its row, Color…, a theme, an undo)
+  reaches its membrane in the same step through the state (the membrane depends on the mesh's representation, its
+  `coloring`), its colours written in place, never cut or built again; a mesh's opacity draws nothing again. Each part
+  has its own lipid mix (the yeast membranes': `mixes.ts`, the LD a monolayer) and its own pools, the budget
+  water-filled across them (a small membrane whole, the large ones alike).
 - **Organelle meshes** (round 6): + Open reads the yeast cell viewer's `organelle_meshes.bin` (or `.bin.gz`): a mesh row
   a membrane, named (PM, ER, NE…), in Å.
 - **A membrane made per view** (Ludo, 2026-11-08; lane `lipid-procedural`): the cutter's lipids only on the triangles in

@@ -13,7 +13,7 @@ import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
 import { Vec3 } from '@molstar/core/math/linear-algebra/3d/vec3';
 import { Vec4 } from '@molstar/core/math/linear-algebra/3d/vec4';
 import { Sphere3D } from '@molstar/core/math/geometry/primitives/sphere3d';
-import { StateTransformer } from '@molstar/core/state';
+import { type State, type StateObjectCell, StateTransformer } from '@molstar/core/state';
 import { Spheres } from '@molstar/graphics/geo/geometry/spheres/spheres';
 import { createIdentityTransform, createTransform } from '@molstar/graphics/geo/geometry/transform-data';
 import { Mesh } from '@molstar/graphics/geo/geometry/mesh/mesh';
@@ -30,11 +30,13 @@ import { LodNominalRadius, orderLodLevels } from '@molstar/graphics/geo/geometry
 import { ColorLevels } from '@molstar/graphics/geo/geometry/color-levels';
 import { PositionGroupStride } from '@molstar/graphics/geo/geometry/center-group';
 import { createDataArray } from '@molstar/graphics/gl/renderable/util';
+import { createColors, createValueColor } from '@molstar/graphics/geo/geometry/color-data';
 import type { ColorTheme } from '@molstar/graphics/theme/color';
 import { UniformSizeTheme } from '@molstar/graphics/theme/size/uniform';
 import { EmptyLoci } from '@molstar/model/model/loci';
 import type { PluginContext } from '@molstar/plugin/context';
 import { PluginStateObject as SO, PluginStateTransform } from '@molstar/plugin/state/objects';
+import { ShapeRepresentation3D } from '@molstar/plugin/state/transforms/shape/representation';
 import { assignSlots, type TileKinds, type TriangleSlots, variantCount } from './assign.js';
 import { createLipidTileAssigner, type LipidTileAssigner } from './assign-kernel.js';
 import { type LipidPatch, parsePatchPdb } from './patch.js';
@@ -736,6 +738,11 @@ export const LipidMembraneReprParams = {
   // D1), all of it without colours by zoom
   hiddenParts: PD.Value<readonly string[]>([], { isHidden: true }),
   partColors: PD.Value<Readonly<Record<string, number>>>({}, { isHidden: true }),
+  // round 9 (Ludo, 2026-11-10: "if I change the color of the geometry/mesh the membrane color multiplier take it"): a
+  // part's colours (or the whole membrane's, one mesh) times its mesh's colour (`meshTint`), its far colour, its species'
+  // and the patch's, atoms by element not; on by default, off round 7's (`partColors` its far colour). A membrane with no
+  // mesh (a sphere) none. Here, not in `colorLevels`: By zoom off keeps it
+  meshColors: PD.Boolean(true, { description: 'Colours from meshes: each part’s colours times its mesh’s' }),
   // colours by zoom, as a particle list's (round 4c item 8; `color-levels.md`): far the membrane's colour (`color`), then
   // its species' (its entities'; its chain's the same), close each atom's by its element (`membraneColorLevels`; the
   // tiles' too, round 7 item 6)
@@ -1027,6 +1034,79 @@ export function elementColor(code: number, scheme: MembraneAtomColors = 'element
   return elementSymbolColor(ElementSymbolColors, String.fromCharCode(code) as ElementSymbol);
 }
 
+/** A membrane's tints (round 9): a part's (or the one mesh's) mesh colour as a multiplier, by part; none: neutral */
+export type MeshTints = readonly (Color | undefined)[];
+const NoTints: MeshTints = [];
+
+/**
+ * A mesh's colour as its membrane's multiplier (round 9; Ludo, 2026-11-10: normalised): the colour over its largest
+ * channel, so the meshes' default grey (0x808080) is white and a wrap dims nothing; black, white and none no tint
+ */
+export function meshTint(color: Color | undefined): Color | undefined {
+  if (color === undefined) return undefined;
+  const r = (color >> 16) & 255;
+  const g = (color >> 8) & 255;
+  const b = color & 255;
+  const m = Math.max(r, g, b);
+  if (m === 0) return undefined;
+  const t = Color.fromRgb(Math.round((r * 255) / m), Math.round((g * 255) / m), Math.round((b * 255) / m));
+  return t === 0xffffff ? undefined : t;
+}
+
+/**
+ * `color` times the tint `t` per channel (round 9; none: `color`). Local: Mol*'s `Color` has no multiply, and this
+ * round changes no library (a candidate for `@molstar/core/util/color`)
+ */
+export function tint(color: Color, t: Color | undefined): Color {
+  if (t === undefined) return color;
+  const r = Math.round((((color >> 16) & 255) * ((t >> 16) & 255)) / 255);
+  const g = Math.round((((color >> 8) & 255) * ((t >> 8) & 255)) / 255);
+  const b = Math.round(((color & 255) * (t & 255)) / 255);
+  return Color((r << 16) | (g << 8) | b);
+}
+
+/**
+ * The cell holding a mesh's colour (round 9): its representation (given, or its shape's first), whose `coloring`
+ * `cryoet.mesh` writes; a membrane depends on it (`mesoscale.wrapMembrane`), so a recolour reaches it in its step
+ */
+export function meshColorCell(state: State, ref: string): StateObjectCell | undefined {
+  const cell = state.cells.get(ref);
+  if (!cell) return undefined;
+  if (cell.transform.transformer === ShapeRepresentation3D) return cell;
+  let found: StateObjectCell | undefined;
+  state.tree.children.get(ref)?.forEach((c) => {
+    const child = state.cells.get(c!);
+    if (child?.transform.transformer !== ShapeRepresentation3D) return true;
+    found = child;
+    return false;
+  });
+  return found;
+}
+
+/**
+ * A membrane's tints from its meshes' colours, a part a mesh (`meshes`, else its one `mesh`; none for a sphere): a
+ * uniform colour's `meshTint`, a mesh's own colours (given, vertex, custom, material) none. One pass, O(meshes)
+ */
+export function meshTints(state: State, params: { readonly mesh: string; readonly meshes: readonly string[] }) {
+  const refs = params.meshes.length > 0 ? params.meshes : params.mesh ? [params.mesh] : [];
+  const out: (Color | undefined)[] = new Array(refs.length);
+  for (let k = 0; k < refs.length; ++k) {
+    const coloring = (meshColorCell(state, refs[k])?.transform.params as { coloring?: ColoringParam } | undefined)
+      ?.coloring;
+    out[k] = coloring?.name === 'uniform' ? meshTint(coloring.params.color) : undefined;
+  }
+  return out as MeshTints;
+}
+type ColoringParam = { readonly name: string; readonly params: { readonly color?: Color } };
+
+/** Whether two tints are the same, part by part */
+function sameTints(a: MeshTints, b: MeshTints) {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let k = 0; k < a.length; ++k) if (a[k] !== b[k]) return false;
+  return true;
+}
+
 /**
  * A membrane object's colours by zoom (round 4c item 8), as a particle list's (`setColorLevels` of its targets): far its
  * colour (`props.color`) on each of its `instances`, then each of its `groups`' colour (the theme's: its species');
@@ -1101,6 +1181,28 @@ function onlyClip(a: LipidMembraneReprProps, b: LipidMembraneReprProps) {
   return true;
 }
 
+/** Whether `a` and `b` differ at `k`, by value */
+function differs(a: LipidMembraneReprProps, b: LipidMembraneReprProps, k: keyof LipidMembraneReprProps) {
+  return a[k] !== b[k] && JSON.stringify(a[k]) !== JSON.stringify(b[k]);
+}
+
+/** The props a recolour writes in place (round 9, `recolor`): colours, nothing built */
+const ColorKeys: ReadonlySet<string> = new Set(['color', 'speciesColors', 'partColors', 'meshColors', 'atomColors']);
+
+/** Whether `b` differs from `a` by its colours alone, or not at all (round 9) */
+function onlyColors(a: LipidMembraneReprProps, b: LipidMembraneReprProps) {
+  for (const k of Object.keys(b) as (keyof LipidMembraneReprProps)[]) {
+    if (!ColorKeys.has(k) && differs(a, b, k)) return false;
+  }
+  return true;
+}
+
+/** Whether `b` is `a`'s look (round 9: a mesh's opacity, its dependency's update, draws nothing again) */
+function sameLook(a: LipidMembraneReprProps, b: LipidMembraneReprProps) {
+  for (const k of Object.keys(b) as (keyof LipidMembraneReprProps)[]) if (differs(a, b, k)) return false;
+  return true;
+}
+
 /** The props an object's values were made with (`setClip`: a cut alone updates its values with them) */
 const clipped = new WeakMap<BaseValues, PD.Values<BaseGeometry.Params>>();
 
@@ -1123,6 +1225,13 @@ function speciesColors(data: MembraneData) {
   const palette = distinctColors(Math.max(2, names.size));
   return (name: string) => palette[names.get(name) ?? 0];
 }
+
+/** A member's look (round 9): its part's colour (round 7) and its mesh's tint, read when it is painted */
+interface MemberLook {
+  readonly part: () => Color | undefined;
+  readonly tint: () => Color | undefined;
+}
+const NoLook: MemberLook = { part: () => undefined, tint: () => undefined };
 
 /**
  * The membrane's representation: a spheres object per (leaflet, variant) with tiles, merged with GPU culling; the
@@ -1152,16 +1261,36 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
   /** the merged objects' members' values (a cut alone updates them: `setClip`), and the build's */
   let members: BaseValues[] = [];
   let building: BaseValues[] = [];
+  /** each member's colours, painted again in place by a recolour (round 9, `recolor`), and the build's */
+  let painters: { uniform: boolean; uniformNow: () => boolean; paint: () => void }[] = [];
+  let paintersBuilding: typeof painters = [];
+  /** the meshes' tints (round 9): given by the transformer (`setMeshTints`), applied by `createOrUpdate` */
+  let givenTints = NoTints;
+  let tints = NoTints;
+  /** whether the meshes colour the membrane (round 9): the switch on and a mesh wrapped (a sphere's none) */
+  const meshMode = () => props.meshColors && tints.length > 0;
+  /** a part's tint (one mesh's: `part` none), none with the switch off */
+  const tintOf = (part: number | undefined) => (props.meshColors ? tints[part ?? 0] : undefined);
   /** the cut leaflets' far surfaces, faded in by distance (`fadeSurface`), and their lipids' size */
   let fading: { values: BaseValues; size: number; near: boolean }[] = [];
-  /** the cut leaflets' patch textures and what they are rastered from, their far surface (a middle switch: S2) */
+  /**
+   * every leaflet's patch texture and what it is rastered from (a cut leaflet's: its far surface, a middle switch: S2),
+   * its surfaces (their colour, round 9) and the colours it was rastered in (`signature`: a recolour rasters again only
+   * the leaflets whose colours changed)
+   */
   let rasters: {
     table: CutterTable;
     shown: (sp: number) => boolean;
     side: 'outer' | 'inner';
-    color: (sp: number) => number;
+    /** its species' colours now, the raster's (live: a recolour's) */
+    colors: () => (sp: number) => number;
+    farColor: () => Color;
+    signature: () => string;
+    signed: string;
+    cut: boolean;
     patch: Texture;
     far: BaseValues[];
+    surfaces: BaseValues[];
   }[] = [];
   /** every patch surface drawn and its lipids' size: its levels set where only the edges move (`setColorEdges`) */
   let patches: { values: BaseValues; size: number }[] = [];
@@ -1245,8 +1374,11 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
     writer: unknown,
     colorOf: (name: string) => Color,
     elements?: Uint8Array,
-    /** its part's colour (round 7): far by zoom (the species' and atoms' kept close: review D1), all of it otherwise */
-    partColor?: Color,
+    /**
+     * its part's colour (round 7): far by zoom (the species' and atoms' kept close: review D1), all of it otherwise; and
+     * its mesh's tint (round 9). Read when painted: a recolour paints again (`recolor`)
+     */
+    look: MemberLook = NoLook,
   ) {
     const atoms = positions.length / 3;
     // with `elements` (a cut member, one lipid; a tile's lipids, round 7 item 6): its atoms its groups, each coloured
@@ -1279,17 +1411,22 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
       1,
       (g: number) => ({ kind: 'lipid', species: speciesOf[g] }) as never,
     );
-    const levels = levelsOn(props);
-    const one = partColor ?? props.color;
-    const uniform = props.colorBy === 'uniform' || (partColor !== undefined && !levels);
-    const color = {
-      granularity: uniform ? 'uniform' : 'group',
-      color: (location: { species?: number }) =>
-        uniform || location.species === undefined ? one : colorOf(names[location.species]),
-      props: {},
-      description: 'Lipid species',
-    } as unknown as ColorTheme<any>;
-    const theme = { color, size: UniformSizeTheme({}, { value: props.sizeFactor }) };
+    const uniformNow = () => props.colorBy === 'uniform' || (look.part() !== undefined && !levelsOn(props));
+    // its colours as they are now (a build, a recolour): its species' and far colour times its mesh's tint (round 9)
+    const colorTheme = () => {
+      const t = look.tint();
+      const one = tint(look.part() ?? props.color, t);
+      const uniform = uniformNow();
+      return {
+        granularity: uniform ? 'uniform' : 'group',
+        color: (location: { species?: number }) =>
+          uniform || location.species === undefined ? one : tint(colorOf(names[location.species]), t),
+        props: {},
+        description: 'Lipid species',
+      } as unknown as ColorTheme<any>;
+    };
+    const uniform = uniformNow();
+    const theme = { color: colorTheme(), size: UniformSizeTheme({}, { value: props.sizeFactor }) };
     // each lipid or tile at its own level by its size on screen (the culler's per-instance levels)
     // round 8: with a middle look a cut lipid is its atoms down to it (the selection keeps a triangle's lipids a little
     // below `middlePx`, measured: no coarse level shows over the relief)
@@ -1305,19 +1442,32 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
       instanceGranularity: byAtom,
     };
     const values = Spheres.Utils.createValues(spheres, transform, locationIterator, theme, p);
-    membraneColorLevels(
-      values,
-      props,
-      n,
-      lipids,
-      (g) =>
-        byAtom
-          ? elementColor(elements![g], props.atomColors, colorOf(names[speciesOf[g]]))
-          : colorOf(names[speciesOf[g]]),
-      one,
-    );
+    // atoms by element not tinted; carbons by species their species' tinted colour (round 9, Ludo)
+    const levels = () => {
+      const t = look.tint();
+      membraneColorLevels(
+        values,
+        props,
+        n,
+        lipids,
+        (g) => {
+          const species = tint(colorOf(names[speciesOf[g]]), t);
+          return byAtom ? elementColor(elements![g], props.atomColors, species) : species;
+        },
+        tint(look.part() ?? props.color, t),
+      );
+    };
+    levels();
     clipped.set(values, p);
     building.push(values);
+    paintersBuilding.push({
+      uniform,
+      uniformNow,
+      paint: () => {
+        createColors(locationIterator, locationIterator, colorTheme(), values as never);
+        levels();
+      },
+    });
     ValueCell.update(values.boundingSphere, Sphere3D.clone(bounds));
     Object.assign(values, { gpuInstances: ValueCell.create(writer) });
     groupCount += lipids * n;
@@ -1473,6 +1623,8 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
       return name !== undefined && hiddenParts.has(name);
     };
     const partColor = (l: CutLeaflet) => {
+      // round 9: with its meshes' colours its mesh is its colour, its part colour none
+      if (meshMode()) return undefined;
       const name = partName(l);
       const c = name === undefined ? undefined : props.partColors[name];
       return c === undefined ? undefined : Color(c);
@@ -1481,6 +1633,7 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
     const bounds = Sphere3D.clone(data.sphere);
     groupCount = 0;
     building = [];
+    paintersBuilding = [];
     let visual = 0;
     // the cuts' counts first (a count pass each, read back), then the whole membrane's instances against the device
     if (!reuse) {
@@ -1585,11 +1738,13 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
             poolWriter(cutter, m, pool, lipidSize(table)),
             colorOf,
             member.elements,
-            partColor(leaflet),
+            { part: () => partColor(leaflet), tint: () => tintOf(leaflet.part) },
           ),
         });
       }
     }
+    // tiles: one mesh, its tint (round 9)
+    const tileLook: MemberLook = { part: () => undefined, tint: () => tintOf(undefined) };
     for (let k = 0; k < data.leaflets.length; ++k) {
       const { tileSet, mesh, slots } = data.leaflets[k];
       if (!reuse) {
@@ -1625,6 +1780,7 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
             assigner.writer(v),
             colorOf,
             tile.elements,
+            tileLook,
           ),
         });
       }
@@ -1647,10 +1803,9 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
     const nextTextures: Texture[] = [];
     if (props.far !== 'spheres') {
       const surfaces = [
-        ...data.cut.filter((l) => !partHidden(l)).map((l) => ({ ...l, offset: 0, far: partColor(l) })),
-        ...data.leaflets.map((l) => ({ ...l, offset: l.tileSet.offset, part: undefined, far: undefined })),
+        ...data.cut.filter((l) => !partHidden(l)).map((l) => ({ ...l, offset: 0, far: () => partColor(l) })),
+        ...data.leaflets.map((l) => ({ ...l, offset: l.tileSet.offset, part: undefined, far: () => undefined })),
       ];
-      const levels = levelsOn(props);
       const enter = lipidsPx(props);
       // round 8: the middle look over a cut leaflet's far surface, its texture flat (the look lights the relief)
       const middle = data.method === 'cutter' && middleOn(props) ? props.middle : 'coarse';
@@ -1658,10 +1813,17 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
         const { table } = leaflet;
         const size = lipidSize(table);
         const shown = (sp: number) => !hidden.has(table.species[sp]);
-        // a part's colour: the surface's far colour by zoom, all of its texture without (round 7 item 2)
-        const one = leaflet.far ?? props.color;
-        const flat = props.colorBy === 'uniform' || (leaflet.far !== undefined && !levels);
-        const speciesColor = (sp: number) => (flat || sp < 0 ? one : colorOf(table.species[sp]));
+        // a part's colour: the surface's far colour by zoom, all of its texture without (round 7 item 2); times its
+        // mesh's tint (round 9). Read when rastered: a recolour rasters again (`recolor`)
+        const farColor = () => tint(leaflet.far() ?? props.color, tintOf(leaflet.part));
+        const colors = () => {
+          const t = tintOf(leaflet.part);
+          const partColor = leaflet.far();
+          const one = tint(partColor ?? props.color, t);
+          const flat = props.colorBy === 'uniform' || (partColor !== undefined && !levelsOn(props));
+          return (sp: number) => (flat || sp < 0 ? one : tint(colorOf(table.species[sp]), t));
+        };
+        const signature = () => `${tintOf(leaflet.part) ?? -1} ${leaflet.far() ?? -1}`;
         // a cut leaflet's two (round 4c item 7): beneath its lipids at the lowest head, coarser, where they are drawn
         // (the gaps between them, no gap at any distance), and where its spheres stop the one that takes over, coloured
         // as they show the patch, at their tops; a tiles leaflet's beneath its tiles, always
@@ -1669,19 +1831,22 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
         // round 5: the patch as a texture on the mesh's own triangles, mapped per fragment as the cutter maps it (its
         // regions and cells), mipmapped: the spheres' look at the switch, their mean far away, at any scale
         const relief = cut && middle !== 'coarse';
-        const raster = patchRaster(
+        const raster = patchRaster(table, shown, leaflet.name, colors(), switchSpheres(table, props, enter), !relief);
+        const patch = patchTexture(graphics, raster);
+        const rastered = {
           table,
           shown,
-          leaflet.name,
-          speciesColor,
-          switchSpheres(table, props, enter),
-          !relief,
-        );
-        const patch = patchTexture(graphics, raster);
-        const rastered = cut
-          ? { table, shown, side: leaflet.name, color: speciesColor, patch, far: [] as BaseValues[] }
-          : undefined;
-        if (rastered) nextRasters.push(rastered);
+          side: leaflet.name,
+          colors,
+          farColor,
+          signature,
+          signed: signature(),
+          cut,
+          patch,
+          far: [] as BaseValues[],
+          surfaces: [] as BaseValues[],
+        };
+        nextRasters.push(rastered);
         made.push(patch);
         nextTextures.push(patch);
         const head = headOffset(table, leaflet.name) - leaflet.offset;
@@ -1698,9 +1863,10 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
           const patchShifts = patchTable(graphics, leaflet.regions, f.shifts);
           made.push(patchShifts);
           nextTextures.push(patchShifts);
-          const object = patchObject(f, [patch, patchShifts], table, leaflet.regions, size, props, !!fade, one);
+          const object = patchObject(f, [patch, patchShifts], table, leaflet.regions, size, props, !!fade, farColor());
           if (relief && fade === 'far') setMiddle(object.values, middle, props, raster);
-          if (rastered && fade === 'far') rastered.far.push(object.values as BaseValues);
+          if (cut && fade === 'far') rastered.far.push(object.values as BaseValues);
+          rastered.surfaces.push(object.values as BaseValues);
           nextPatches.push({ values: object.values as BaseValues, size });
           if (fade) {
             const values = object.values as BaseValues;
@@ -1725,6 +1891,7 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
     patchTexturesInUse = nextTextures;
     renderObjects = out;
     members = building;
+    painters = paintersBuilding;
     // a clip given while this build ran (a handle's preview: outside the state) reached the old members only: all of
     // this build's carry the latest (review S4)
     for (const v of members) setClip(v, props.clip);
@@ -1743,7 +1910,10 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
     const middle = builtFor?.method === 'cutter' && middleOn(props) ? props.middle : 'coarse';
     const relief = middle !== 'coarse';
     for (const r of rasters) {
-      const raster = patchRaster(r.table, r.shown, r.side, r.color, switchSpheres(r.table, props, enter), !relief);
+      // a tiles leaflet's has no middle look
+      if (!r.cut) continue;
+      const raster = patchRaster(r.table, r.shown, r.side, r.colors(), switchSpheres(r.table, props, enter), !relief);
+      r.signed = r.signature();
       r.patch.load(raster);
       r.patch.mipmap();
       for (const values of r.far) {
@@ -1767,6 +1937,36 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
     }
   }
 
+  /**
+   * Colours alone changed (round 9: a mesh recoloured, the switch, a species' or part's colour): each member's colour
+   * data written again in place, every surface's colour, and the patch rastered again only for the leaflets whose
+   * colours changed (all of them where the membrane's or its species' did); false, nothing written, where a member's
+   * granularity changes (one colour or by species: built again)
+   */
+  function recolor(before: LipidMembraneReprProps) {
+    for (const p of painters) if (p.uniform !== p.uniformNow()) return false;
+    for (const p of painters) p.paint();
+    const all = differs(before, props, 'color') || differs(before, props, 'speciesColors');
+    const enter = lipidsPx(props);
+    const relief = builtFor?.method === 'cutter' && middleOn(props) && props.middle !== 'coarse';
+    for (const r of rasters) {
+      const far = r.farColor();
+      for (const v of r.surfaces) createValueColor(far, v as never);
+      const signed = r.signature();
+      if (!all && signed === r.signed) continue;
+      r.signed = signed;
+      rastersMade += 1;
+      const shade = !(r.cut && relief);
+      r.patch.load(patchRaster(r.table, r.shown, r.side, r.colors(), switchSpheres(r.table, props, enter), shade));
+      r.patch.mipmap();
+    }
+    return true;
+  }
+  /** the patch rasters a recolour made (round 9: only the changed leaflets'), for the tests */
+  let rastersMade = 0;
+  /** the data whose last `createOrUpdate` finished: the same look of it again draws nothing (round 9) */
+  let settled: MembraneData | undefined;
+
   const repr: Representation<MembraneData, typeof LipidMembraneReprParams> = {
     label: 'Lipid membrane',
     updated,
@@ -1788,12 +1988,18 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
     createOrUpdate: (p, data) =>
       Task.create('Lipid membrane', async (runtime) => {
         const before = props;
+        const beforeTints = tints;
         props = { ...props, ...p };
         if (data) lastData = data;
+        tints = givenTints;
+        const tinted = !sameTints(beforeTints, tints);
+        // the same look of the same data (round 9: a mesh's opacity, its state dependency's update): nothing again
+        if (lastData && settled === lastData && !tinted && sameLook(before, props)) return;
+        settled = undefined;
         // a cut alone (a clip's handle as it goes, its release): the drawn objects' clip values, nothing built again
         // a middle look's cut band comes or goes with the clip: its lipids' levels built (the gate's M1)
         const bandChanged = cutBandOn(before) !== cutBandOn(props);
-        if (lastData && builtFor === lastData && onlyClip(before, props) && !bandChanged) {
+        if (lastData && builtFor === lastData && !tinted && onlyClip(before, props) && !bandChanged) {
           for (const v of members) setClip(v, props.clip);
           for (const o of renderObjects) setClip(o.values as never, props.clip);
           // a clip shows the leaflet behind (`facing` off): where clips come or go the next view selects anew (review M4;
@@ -1805,12 +2011,15 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
             // the band follows the cut (a handle's drag): the next view selects anew, the old units kept until then
             views.reset();
           }
-        } else if (lastData && builtFor === lastData && onlyMiddle(before, props)) {
+        } else if (lastData && builtFor === lastData && !tinted && onlyMiddle(before, props)) {
           setMiddleLook();
-        } else if (lastData && builtFor === lastData && onlyColorEdges(before, props)) {
+        } else if (lastData && builtFor === lastData && !tinted && onlyColorEdges(before, props)) {
           // the colours by zoom's edges alone (round 7 item 6): their uniforms, nothing built again
           setColorEdges();
+        } else if (lastData && builtFor === lastData && onlyColors(before, props) && recolor(before)) {
+          // colours alone (round 9): written in place, nothing built again
         } else if (lastData) await build(lastData, runtime);
+        settled = lastData;
         version += 1;
         updated.next(version);
       }),
@@ -1825,6 +2034,7 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
     // `createOrUpdate` where it can (on WebGL2 nothing: a WebGPU object there uploaded a texture past its range)
     setGraphics: (g) => {
       generation += 1;
+      settled = undefined;
       release();
       releaseTextures();
       builtFor = undefined;
@@ -1847,6 +2057,15 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
       merged.clear();
     },
   };
+  // the meshes' tints (round 9, `meshTints`), given before `createOrUpdate` (not a param: the meshes' state, not the
+  // membrane's); and those applied
+  Object.assign(repr, {
+    setMeshTints: (t: MeshTints) => {
+      givenTints = t;
+    },
+  });
+  Object.defineProperty(repr, 'meshTints', { get: () => tints });
+  Object.defineProperty(repr, 'rasters', { get: () => rastersMade });
   // the cutter's lipids, counted on the GPU (the tiles' are `membraneCounts`)
   // a getter (`Object.assign` would copy its value of now)
   Object.defineProperty(repr, 'cutLipids', { get: () => cutLipids });
@@ -1875,6 +2094,8 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
     },
   });
   return repr as typeof repr & {
+    setMeshTints(tints: MeshTints): void;
+    readonly meshTints: MeshTints;
     readonly cutLipids: number;
     readonly pool: {
       live: number;
@@ -2037,6 +2258,7 @@ export const LipidMembrane = PluginStateTransform.BuiltIn({
         plugin.log.warn('Lipid membranes are drawn with WebGPU only: switch the backend to WebGPU to see this one.');
       }
       const repr = LipidMembraneRepresentation(plugin.canvas3d?.graphics);
+      repr.setMeshTints(meshTints(plugin.state.data, params));
       await repr.createOrUpdate(params, data).runInContext(runtime);
       const { tiles, lipids } = membraneCounts(data);
       const all = lipids + repr.cutLipids;
@@ -2052,7 +2274,7 @@ export const LipidMembrane = PluginStateTransform.BuiltIn({
       );
     });
   },
-  update({ b, oldParams, newParams }) {
+  update({ b, oldParams, newParams }, plugin: PluginContext) {
     return Task.create('Lipid membrane', async (runtime) => {
       const rebuild = Object.keys(LipidMembraneParams).some(
         (k) =>
@@ -2060,6 +2282,10 @@ export const LipidMembrane = PluginStateTransform.BuiltIn({
           JSON.stringify(oldParams[k as never]) !== JSON.stringify(newParams[k as never]),
       );
       if (rebuild) return StateTransformer.UpdateResult.Recreate;
+      // its meshes' colours (round 9): a mesh's update reaches here by the state dependency (`mesoscale.wrapMembrane`)
+      (b.data.repr as unknown as { setMeshTints(t: MeshTints): void }).setMeshTints(
+        meshTints(plugin.state.data, newParams),
+      );
       await b.data.repr.createOrUpdate(newParams as never, b.data.sourceData as never).runInContext(runtime);
       return StateTransformer.UpdateResult.Updated;
     });

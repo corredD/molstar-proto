@@ -137,6 +137,57 @@ describe('organelle meshes (the yeast cell viewer’s organelle_meshes.bin)', ()
     expect(glow.ok).toBe(false);
   });
 
+  it('follows its meshes’ colours through the state: a recolour, no new cut, an opacity nothing (round 9)', async () => {
+    const base = DefaultPrismViewerSpec();
+    const v = await createPrismViewerHeadless({
+      spec: { ...base, extensions: [...(base.extensions ?? []), MesoscaleExtension] },
+    });
+    viewers.push(v);
+    const plugin = v.plugin;
+    const data = await plugin.builders.data.rawData({ data: two(), label: 'organelle_meshes.bin' });
+    await OrganelleMeshesProvider.visuals!(plugin, await OrganelleMeshesProvider.parse(plugin, data));
+    const refs = plugin.state.data.selectQ((q) => q.ofType(SO.Shape.Provider)).map((c) => c.transform.ref);
+    const reps = plugin.state.data.selectQ((q) => q.ofType(SO.Shape.Representation3D)).map((c) => c.transform.ref);
+    // the colour a part takes is its mesh's representation's (`cryoet.mesh` writes it there)
+    for (const ref of reps) {
+      expect(
+        (plugin.state.data.cells.get(ref)!.transform.params as { coloring?: { name: string } }).coloring?.name,
+      ).toBe('uniform');
+    }
+    const r = await v.api.mesoscale!.wrapMembrane({ meshes: refs.join(','), patch: 'organelle-patch' });
+    if (!r.ok) expect.fail(r.error.message);
+    const membrane = r.changed!.nodes![0];
+    const cell = () => plugin.state.data.cells.get(membrane)!;
+    const repr = () => (cell().obj!.data as { repr: { meshTints: readonly (number | undefined)[] } }).repr;
+    const source = (cell().obj!.data as { sourceData: unknown }).sourceData;
+    // the meshes' default grey (0x808080) is white normalised: no tint
+    expect(repr().meshTints).toEqual([undefined, undefined]);
+    const recolor = async (ref: string, color: number) => {
+      const b = plugin.state.data.build();
+      b.to(ref).update((p: any) => ({ ...p, coloring: { name: 'uniform', params: { color } } }));
+      await b.commit();
+    };
+    // the VAC's mesh a dark red: normalised, a pure red
+    await recolor(reps[1], 0x800000);
+    expect(repr().meshTints).toEqual([undefined, 0xff0000]);
+    expect((cell().obj!.data as { sourceData: unknown }).sourceData).toBe(source);
+    // its opacity: no tint changed, nothing drawn again
+    const objects = (cell().obj!.data as { repr: { renderObjects: unknown } }).repr.renderObjects;
+    const b = plugin.state.data.build();
+    b.to(reps[0]).update((p: any) => ({ ...p, alpha: 0.5 }));
+    await b.commit();
+    expect((cell().obj!.data as { repr: { renderObjects: unknown } }).repr.renderObjects).toBe(objects);
+    // black and a mesh's own colours are no tint
+    await recolor(reps[0], 0x000000);
+    expect(repr().meshTints).toEqual([undefined, 0xff0000]);
+    await recolor(reps[0], 0x336699);
+    expect(repr().meshTints).toEqual([0x55aaff, 0xff0000]);
+    // back to grey: no tint (the step and its undo through `cryoet.mesh`: the app's explorer tests)
+    await recolor(reps[0], 0x808080);
+    expect(repr().meshTints).toEqual([undefined, 0xff0000]);
+    expect((cell().obj!.data as { sourceData: unknown }).sourceData).toBe(source);
+  });
+
   it('leaves the parts as they were on a Reset of its species and on a category’s theme (Ludo, 2026-11-09; S5)', async () => {
     const base = DefaultPrismViewerSpec();
     const v = await createPrismViewerHeadless({
