@@ -2192,6 +2192,7 @@ its parts' eyes and colours, and its parts take their new names' mixes (the yeas
 cost one colour texture per member of a several-part membrane where one colour was uniform; no rebuild on a recolour
 (the granularity no longer depends on the colours).
 
-Checks: quick lane mesoscale + prism-me 57 files, 395 passed; Dawn `lipid-*.webgpu` 9 files, 37 passed (3 new cases in
-`lipid-compartments`); `test:perf` mesoscale at the baseline (15.62, 15.98, -0.02 B; not raised); `tsc` (app,
-mesoscale), biome, prettier pass. Not checked in the app.
+Checks (at HEAD): quick lane mesoscale + prism-me 57 files, 396 passed; Dawn `lipid-*.webgpu` 9 files, 37 passed (3 new
+cases in `lipid-compartments`); `test:perf` mesoscale at the baseline (15.62, 15.98, -0.02 B; not raised); `tsc` (app,
+mesoscale), biome, prettier pass. Not checked in the app. After: `5cd583e7a` (an OBJ's part and a VTP's coloured in one
+step: the split S2 makes, tested), `b7a5db7e3` (TODO true again).
