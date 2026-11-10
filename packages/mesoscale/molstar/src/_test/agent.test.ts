@@ -10,11 +10,13 @@ import { type ModelStep, scriptedModel } from '@molstar/ai/testing';
 import { exosomeDoc, ExosomeRecipe, syntheticPicksStar, syntheticVesicleObj } from '@molstar/meso-spec/examples';
 import type { Look, MesoViewSpecDoc } from '@molstar/meso-spec/format';
 import { createMesoscaleExplorerSpec } from '@molstar/prism-me-app/spec';
+import { createAgentPolicy } from '@molstar/prism-viewer/agent/policies';
 import { createViewerAgent } from '@molstar/prism-viewer/agent/session';
 import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
 import type { PrismViewer } from '@molstar/prism-viewer/viewer';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { SavedDocument } from '../extension.js';
+import { MesoViewSpecLazyExtension } from '../prism-viewer.js';
 import { stubCanvasForLabels } from './canvas.js';
 
 // The agent over the open document (prism.md §8): the `mesoviewspec` skill's tools over §5.3's operations, on a headless
@@ -378,6 +380,64 @@ describe('what the agent’s calls reach: an address it was not given asks first
       ['edit_mesoviewspec', 'succeeded'],
       ['edit_mesoviewspec', 'succeeded'],
     ]);
+    agent.dispose();
+  });
+
+  // A resource uri as the document's JSON source writes it: each is https://evil.example/x once read and resolved.
+  const evilUris = [
+    String.raw`https:\/\/evil.example/x`,
+    'HTTPS://evil.example/x',
+    'https:evil.example/x',
+    'https:/evil.example/x',
+    `${'\\'}u0068ttps://evil.example/x`, // an escaped h
+    String.raw`https:\\\\evil.example/x`,
+    String.raw`https:\t//evil.example/x`,
+  ];
+  const dataWith = (source: string) =>
+    `{"format":"meso_view_spec","version":"0.4","resources":[{"id":"r.x","kind":"placements","uri":"${source}"}]}`;
+
+  it('open’s addresses (the chunk’s and the stub’s) read the uris of a document given as data, however written', {
+    tags: ['medium'],
+  }, async () => {
+    const { v } = await viewer();
+    const loaded = v.api.describe('mesoviewspec.open')!.definition;
+    const stub = MesoViewSpecLazyExtension.stub.operations!.find((o) => o.id === 'mesoviewspec.open')!;
+    for (const source of evilUris) {
+      expect(loaded.addresses!({ data: dataWith(source) } as never), source).toContain('https://evil.example/x');
+      expect(stub.addresses!({ data: dataWith(source) } as never), source).toContain('https://evil.example/x');
+    }
+    // a fixture or a relative uri is the document's own; data that does not read reaches nothing (the run refuses it)
+    expect(loaded.addresses!({ data: dataWith('fixture://a.star') } as never)).toEqual([]);
+    expect(loaded.addresses!({ data: dataWith('picks/a.star') } as never)).toEqual([]);
+    expect(loaded.addresses!({ data: '{ not json' } as never)).toEqual([]);
+    expect(loaded.addresses!({ url: 'https://docs.example/a.json' } as never)).toEqual(['https://docs.example/a.json']);
+  });
+
+  it('the stub asks every time for an S-expression it cannot read, and offers no domain to allow', () => {
+    const stub = MesoViewSpecLazyExtension.stub.operations!.find((o) => o.id === 'mesoviewspec.open')!;
+    const data = '(meso_view_spec :resources [(resource r.x :uri "https:evil.example/x")])';
+    const policy = createAgentPolicy({ checkpointing: { value: true } as never });
+    expect(policy.approves(stub as never, { data })).toBe(false);
+    expect(policy.blockedHosts(stub as never, { data })).toEqual([]);
+  });
+
+  it('open_mesoviewspec asks for a resource host a document given as data hides, and fetches nothing', {
+    tags: ['medium'],
+  }, async () => {
+    const fetch = stubFetch();
+    const { v } = await viewer(false);
+    const data = JSON.stringify(exosomeDoc()).replace('"fixture://catalase_picks.star"', `"${evilUris[0]}"`);
+    expect(data).toContain(evilUris[0]);
+    const { agent } = agentOn(v, [
+      { calls: [disclose] },
+      { calls: [call('open_mesoviewspec', { data })] },
+      { text: 'Opened.' },
+    ]);
+    const r = await agent.turn('open this document');
+    expect(fetched(fetch).some((u) => u.includes('evil.example'))).toBe(false);
+    expect(r.status).toBe('awaiting-approval');
+    expect(r.approval?.[0].tool).toBe('open_mesoviewspec');
+    await agent.stop();
     agent.dispose();
   });
 
