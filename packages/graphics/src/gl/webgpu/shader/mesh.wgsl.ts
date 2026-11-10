@@ -39,7 +39,7 @@ import { assign_varyings_wgsl, grid_functions_wgsl, vertex_output_wgsl } from '.
 /**
  * A periodic patch mapped by planes and cells (`MeshSchema.dPatchTexture`; the lipid cutter's map, `cutter.ts` in the
  * mesoscale extension): the fragment's point in its plane (its group), then in the plane's patch coordinates, its cell's
- * kind by a hash of (plane, cell), the kind's spin and offset, and the patch read there with the footprint's gradients
+ * kind by a hash of (the plane's key, cell), the kind's spin and offset, and the patch read there with the footprint's gradients
  * (mipmapped: its mean far away, whatever the scale). From the far color to it by a texel's size on screen
  */
 const patch_texture_wgsl = /* wgsl */ `
@@ -87,7 +87,8 @@ fn patchColor(modelPosition: vec3<f32>, fdx: vec3<f32>, fdy: vec3<f32>, region: 
     let cell = floor(p / side);
     let cx = bitcast<u32>(i32(cell.x));
     let cy = bitcast<u32>(i32(cell.y));
-    let kind = patchHash(region ^ patchHash(cx ^ patchHash(cy))) & 4095u;
+    // the region's key in the cells' hash over its normal's x (unread here; a part's regions keep the whole mesh's)
+    let kind = patchHash(u32(g3.x) ^ patchHash(cx ^ patchHash(cy))) & 4095u;
     let c = patchTexel(u32(uObject.uPatch.w) + kind);
     let s = vec2<f32>(c.x * box.x, c.y * box.y) + patchTurn(c.z, c.w, p - (cell + 0.5) * side);
     let sdx = patchTurn(c.z, c.w, pdx) / box;

@@ -20,7 +20,7 @@ import {
   type GpuInstanceWriter,
   MergedCullerLimits,
 } from '@molstar/graphics/gl/renderable/merged-culler';
-import { CellKinds, cellSide, type CutterRegions, type CutterTable } from './cutter.js';
+import { CellKinds, cellSide, type CutterRegions, type CutterTable, regionKey } from './cutter.js';
 import { type LipidSelection, WholeTriangle } from './procedural.js';
 
 // The cutter on the GPU (`cutter.ts`, its TypeScript reference): one thread a triangle (its region's plane, spin and
@@ -52,6 +52,7 @@ struct Cut {
     ids: vec3<u32>,
     orient: f32,
     region: u32,
+    key: u32,
     pmin: vec2<f32>,
     pmax: vec2<f32>,
     rot: vec2<f32>,
@@ -68,6 +69,8 @@ fn project(k: Cut, i: u32) -> vec2<f32> {
 fn triangleCut(t: u32) -> Cut {
     var k: Cut;
     k.region = regionOf[t];
+    // its key in the cells' hash, after the triangles' regions (\`regionKey\`: a part's, the whole mesh's index)
+    k.key = regionOf[u32(uParams.uKeys) + k.region];
     let r = k.region * 4u;
     let g0 = regions[r];
     let g1 = regions[r + 1u];
@@ -142,7 +145,7 @@ fn cellAt(k: Cut, cx: i32, cy: i32) -> Cell {
     var c: Cell;
     let side = uParams.uCell;
     c.id = vec2<i32>(cx, cy);
-    let kind = hashU32(k.region ^ hashU32(bitcast<u32>(cx) ^ hashU32(bitcast<u32>(cy)))) & (CellKinds - 1u);
+    let kind = hashU32(k.key ^ hashU32(bitcast<u32>(cx) ^ hashU32(bitcast<u32>(cy)))) & (CellKinds - 1u);
     let g = regions[u32(uParams.uCells) + kind];
     c.e = vec2<f32>(g.x * uParams.uBoxX, g.y * uParams.uBoxY);
     c.rot = g.zw;
@@ -216,7 +219,7 @@ fn wholeCellAt(k: Cut, cx: i32, cy: i32) -> Cell {
 }
 
 fn cellKind(k: Cut, cx: i32, cy: i32) -> u32 {
-    return hashU32(k.region ^ hashU32(bitcast<u32>(cx) ^ hashU32(bitcast<u32>(cy)))) & (CellKinds - 1u);
+    return hashU32(k.key ^ hashU32(bitcast<u32>(cx) ^ hashU32(bitcast<u32>(cy)))) & (CellKinds - 1u);
 }
 
 fn triangleIndex(id: vec3<u32>, groups: vec3<u32>) -> u32 {
@@ -397,6 +400,7 @@ const Uniforms = {
   uBoxY: UniformSpec('f'),
   uCell: UniformSpec('f'),
   uCells: UniformSpec('i'),
+  uKeys: UniformSpec('i'),
   uTriangles: UniformSpec('i'),
   uMembers: UniformSpec('i'),
 };
@@ -426,6 +430,14 @@ export const LipidCutWriteSchema = {
   units: StorageBufferSpec('i32', 'read'),
   data: StorageBufferSpec('vec4<f32>', 'read-write'),
 };
+
+function regionsAndKeys(regions: CutterRegions) {
+  const T = regions.regionOf.length;
+  const all = new Uint32Array(T + regions.count);
+  all.set(regions.regionOf);
+  for (let r = 0; r < regions.count; ++r) all[T + r] = regionKey(regions, r);
+  return all;
+}
 
 function regionsAndCells(regions: CutterRegions) {
   const all = new Float32Array(regions.table.length + regions.cells.length);
@@ -475,6 +487,7 @@ export async function createLipidCutter(
     uBoxY: ValueCell.create(table.box[1]),
     uCell: ValueCell.create(cellSide(table.box)),
     uCells: ValueCell.create(regions.count * 4),
+    uKeys: ValueCell.create(T),
     uTriangles: ValueCell.create(W),
     uMembers: ValueCell.create(M),
   };
@@ -485,7 +498,9 @@ export async function createLipidCutter(
   const inputs = {
     positions: ValueCell.create(buffer(positions, 'lipid cut: positions')),
     indices: ValueCell.create(buffer(indices, 'lipid cut: indices')),
-    regionOf: ValueCell.create(buffer(regions.regionOf, 'lipid cut: region of each triangle')),
+    // each triangle's region, then each region's key in the cells' hash (one buffer: the write pass is at the stage's
+    // limit; review X1)
+    regionOf: ValueCell.create(buffer(regionsAndKeys(regions), 'lipid cut: region of each triangle, their keys')),
     // the cells' kinds after the regions, one buffer
     regions: ValueCell.create(buffer(regionsAndCells(regions), 'lipid cut: regions and cells')),
     memberStart: ValueCell.create(buffer(membersAndKinds, 'lipid cut: members and kinds')),

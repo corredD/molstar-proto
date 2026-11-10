@@ -38,7 +38,15 @@ import { PluginStateObject as SO, PluginStateTransform } from '@molstar/plugin/s
 import { assignSlots, type TileKinds, type TriangleSlots, variantCount } from './assign.js';
 import { createLipidTileAssigner, type LipidTileAssigner } from './assign-kernel.js';
 import { type LipidPatch, parsePatchPdb } from './patch.js';
-import { cellSide, type CutterRegions, cutterRegions, type CutterTable, cutterTable, kindCounts } from './cutter.js';
+import {
+  cellSide,
+  type CutterRegions,
+  cutterRegions,
+  type CutterTable,
+  cutterTable,
+  kindCounts,
+  regionKey,
+} from './cutter.js';
 import { createLipidCutter, type LipidCutter } from './cutter-kernel.js';
 import { ElementSymbolColors, elementSymbolColor } from '@molstar/graphics/theme/color/element-symbol';
 import type { ElementSymbol } from '@molstar/model/model/structure/model/types';
@@ -366,8 +374,9 @@ export function* buildMembraneSteps(
     // part has none or the patch lacks a species of it (said)
     yield { message: 'Mixing each membrane’s lipids' };
     const unmixed: string[] = [];
+    const scratch = new Int32Array(regions.count).fill(-1);
     for (let p = 0; p < parts.length; ++p) {
-      const own = partMesh(mesh, regions, parts[p]);
+      const own = partMesh(mesh, regions, parts[p], scratch);
       const found = mixOf(parts[p].name);
       // the patch has every species of the mix (either leaflet), or the part is cut from it as it is, both leaflets
       // (review S6: checked, not caught: another error is a bug, thrown)
@@ -443,9 +452,17 @@ export function* buildMembraneSteps(
 
 /**
  * A part of a mesh as a mesh of its own (round 7): its vertices (a range: `concatMeshes` appends each part's) copied, its
- * triangles' indices rebased, its triangles' regions (the whole mesh's: their frames and cells shared)
+ * triangles' indices rebased, its triangles' regions (the whole mesh's: their frames and cells shared), renumbered in
+ * the order its triangles meet them, their rows alone and each keyed by its index in the whole mesh (review X1: a part
+ * and leaflet uploaded the whole mesh's table three times; the key keeps the same lipids a triangle). `scratch`, the
+ * whole mesh's regions long and all -1, is left so (one for every part: O(the part), not O(the mesh), a part)
  */
-export function partMesh(mesh: TriMesh, regions: CutterRegions, part: TrianglePart) {
+export function partMesh(
+  mesh: TriMesh,
+  regions: CutterRegions,
+  part: TrianglePart,
+  scratch = new Int32Array(regions.count).fill(-1),
+) {
   const ix = mesh.indices.subarray(part.start * 3, part.end * 3);
   let lo = Infinity;
   let hi = -1;
@@ -457,9 +474,29 @@ export function partMesh(mesh: TriMesh, regions: CutterRegions, part: TrianglePa
   const indices = new Uint32Array(ix.length);
   for (let i = 0; i < ix.length; ++i) indices[i] = ix[i] - lo;
   const positions = mesh.positions.slice(lo * 3, (hi + 1) * 3);
+  const T = part.end - part.start;
+  const regionOf = new Uint32Array(T);
+  const whole: number[] = [];
+  for (let t = 0; t < T; ++t) {
+    const g = regions.regionOf[part.start + t];
+    let r = scratch[g];
+    if (r < 0) {
+      r = scratch[g] = whole.length;
+      whole.push(g);
+    }
+    regionOf[t] = r;
+  }
+  const table = new Float32Array(whole.length * 16);
+  const keys = new Uint32Array(whole.length);
+  for (let r = 0; r < whole.length; ++r) {
+    const g = whole[r];
+    table.set(regions.table.subarray(g * 16, g * 16 + 16), r * 16);
+    keys[r] = regionKey(regions, g);
+    scratch[g] = -1;
+  }
   return {
     mesh: { positions, indices } as TriMesh,
-    regions: { ...regions, regionOf: regions.regionOf.slice(part.start, part.end) },
+    regions: { regionOf, table, count: whole.length, cells: regions.cells, keys } as CutterRegions,
   };
 }
 
@@ -811,6 +848,22 @@ const NearLift = 2;
 const PatchTableWidth = 1024;
 
 /**
+ * A surface's table's texels (`MeshSchema.tPatchTable`): its regions (each one's key in the cells' hash over its
+ * normal's x, unread by the shader: `patchColor` hashes it; exact under 2^24 regions, `MaxCutterTriangles`; review X1),
+ * the cells, its vertices' shifts (review S2), in rows of `PatchTableWidth`
+ */
+export function patchTableArray(regions: CutterRegions, shifts: Float32Array) {
+  const texels = regions.table.length / 4 + regions.cells.length / 4 + Math.ceil(shifts.length / 4);
+  const rows = Math.ceil(texels / PatchTableWidth);
+  const array = new Float32Array(PatchTableWidth * rows * 4);
+  array.set(regions.table);
+  for (let r = 0; r < regions.count; ++r) array[r * 16 + 12] = regionKey(regions, r);
+  array.set(regions.cells, regions.table.length);
+  array.set(shifts, regions.table.length + regions.cells.length);
+  return { array, rows };
+}
+
+/**
  * A leaflet's patch surface (round 5, `patchSurface`): its mesh's triangles, the patch texture mapped by their regions
  * and cells (`dPatchTexture`), single-sided; with colours by zoom the membrane's colour far, the texture from a lipid's
  * entity edge (`ColorLevels.entity`, an atom's px a lipid's × its atom over its size)
@@ -1034,12 +1087,7 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
   }
   /** a surface's table (`MeshSchema.tPatchTable`): its regions, the cells, its vertices' shifts (review S2) */
   function patchTable(graphics: GraphicsContext, regions: CutterRegions, shifts: Float32Array) {
-    const texels = regions.table.length / 4 + regions.cells.length / 4 + Math.ceil(shifts.length / 4);
-    const rows = Math.ceil(texels / PatchTableWidth);
-    const array = new Float32Array(PatchTableWidth * rows * 4);
-    array.set(regions.table);
-    array.set(regions.cells, regions.table.length);
-    array.set(shifts, regions.table.length + regions.cells.length);
+    const { array, rows } = patchTableArray(regions, shifts);
     const table = graphics.resources.texture('image-float32', 'rgba', 'float', 'nearest');
     table.load({ array, width: PatchTableWidth, height: rows });
     return table;

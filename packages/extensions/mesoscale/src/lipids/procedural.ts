@@ -6,7 +6,7 @@
 
 import type { Frustum3D } from '@molstar/core/math/geometry/primitives/frustum3d';
 import type { Plane3D } from '@molstar/core/math/geometry/primitives/plane3d';
-import { cellEntry, cellSide, type CutterRegions, emptyCut, triangleCut } from './cutter.js';
+import { cellEntry, cellSide, type CutterRegions, emptyCut, regionKey, triangleCut } from './cutter.js';
 import { insidePart, type TrianglePart, triangleTree } from './triangle-tree.js';
 
 // A membrane made per view (lipid-procedural, its progress file's design; round 5: below the triangle): the cutter's
@@ -270,7 +270,7 @@ export function unitSlots(input: SelectionInput) {
     for (let cx = Math.floor(cut.pmin[0] / C); cx <= Math.floor(cut.pmax[0] / C); ++cx) {
       for (let cy = Math.floor(cut.pmin[1] / C); cy <= Math.floor(cut.pmax[1] / C); ++cy) {
         if (!cellMeets(cut, cx, cy, C)) continue;
-        const k = cellEntry(cut.region, cx, cy);
+        const k = cellEntry(cut.key, cx, cy);
         for (let m = 0; m < M; ++m) out[m] += kinds[k * M + m];
       }
     }
@@ -875,7 +875,9 @@ export function createLipidSelection(input: SelectionInput, capacity: Uint32Arra
         if (!fits) break;
         for (let m = 0; m < M; ++m) if (shown[m]) used[m] += wholeCounts[m * W + w];
       } else {
-        const kind = cellEntry(regions.regionOf[t], Math.floor(low / 65536) - 32768, (low % 65536) - 32768) * M;
+        const kind =
+          cellEntry(regionKey(regions, regions.regionOf[t]), Math.floor(low / 65536) - 32768, (low % 65536) - 32768) *
+          M;
         for (let m = 0; m < M && fits; ++m) if (shown[m]) fits = used[m] + kinds[kind + m] <= capacity[m];
         if (!fits) break;
         for (let m = 0; m < M; ++m) if (shown[m]) used[m] += kinds[kind + m];
@@ -913,7 +915,7 @@ export function createLipidSelection(input: SelectionInput, capacity: Uint32Arra
         const cy = (low % 65536) - 32768;
         units[i * 3 + 1] = cx;
         units[i * 3 + 2] = cy;
-        const kind = cellEntry(regions.regionOf[t], cx, cy) * M;
+        const kind = cellEntry(regionKey(regions, regions.regionOf[t]), cx, cy) * M;
         for (let m = 0; m < M; ++m) {
           bases[m * maxUnits + i] = live[m];
           if (shown[m]) live[m] += kinds[kind + m];

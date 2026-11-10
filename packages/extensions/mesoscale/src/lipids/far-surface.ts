@@ -4,7 +4,7 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import { type CutterRegions, type CutterTable, cellEntry, cellSide } from './cutter.js';
+import { type CutterRegions, type CutterTable, cellEntry, cellSide, regionKey } from './cutter.js';
 import type { TriMesh } from './remesh.js';
 
 // A membrane's far look (lipid-procedural round 4b; Ludo, 2026-11-08: "the bump should be colored like the spheres
@@ -322,7 +322,7 @@ export function farSurface(
         const py = sn * qx + c * qy + rg[r + 7] * by;
         const cx = Math.floor(px / cellC);
         const cy = Math.floor(py / cellC);
-        const e = cellEntry(regions.regionOf[t], cx, cy) * 4;
+        const e = cellEntry(regionKey(regions, regions.regionOf[t]), cx, cy) * 4;
         const rx = px - (cx + 0.5) * cellC;
         const ry = py - (cy + 0.5) * cellC;
         const ec = cells[e + 2];

@@ -80,7 +80,7 @@ describe('a membrane made per view: the pool and the selection', () => {
             n += 1;
             if (owned) got.push(l, Math.fround(x), Math.fround(y));
           });
-          expect(n).toBe(kinds[cellEntry(cut.region, cx, cy) * M + m]);
+          expect(n).toBe(kinds[cellEntry(cut.key, cx, cy) * M + m]);
         }
       }
       expect(got).toEqual(want);

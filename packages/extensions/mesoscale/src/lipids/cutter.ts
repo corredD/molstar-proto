@@ -184,6 +184,16 @@ export interface CutterRegions {
   readonly count: number;
   /** `CellKinds` cells' spins and offsets, 4 floats each: offset x and y (fractions of the box), cos, sin */
   readonly cells: Float32Array;
+  /**
+   * per region its key in the cells' hash (`cellEntry`): its index among the whole mesh's regions, where these are a
+   * part's own (`partMesh`, round 7 review X1: a part's cut the whole mesh's lipids); none: its index
+   */
+  readonly keys?: Uint32Array;
+}
+
+/** Region `r`'s key in the cells' hash (`CutterRegions.keys`) */
+export function regionKey(regions: CutterRegions, r: number) {
+  return regions.keys ? regions.keys[r] : r;
 }
 
 /**
@@ -372,8 +382,10 @@ export interface TriangleCut {
   corners: [number, number, number, number, number, number];
   ids: [number, number, number];
   orient: number;
-  /** the region's index; the corners' bounds in the patch's plane (unwrapped: p = offset + Rz(θ) q) */
+  /** the region's index and its key in the cells' hash (`regionKey`); the corners' bounds in the patch's plane
+   * (unwrapped: p = offset + Rz(θ) q) */
   region: number;
+  key: number;
   cells: Float32Array;
   pmin: [number, number];
   pmax: [number, number];
@@ -397,6 +409,7 @@ export function triangleCut(
 ) {
   const g = regions.table;
   out.region = regions.regionOf[t];
+  out.key = regionKey(regions, out.region);
   out.cells = regions.cells;
   const r = out.region * 16;
   for (let k = 0; k < 3; ++k) {
@@ -497,6 +510,7 @@ export function emptyCut(): TriangleCut {
     ids: [0, 0, 0],
     orient: 1,
     region: 0,
+    key: 0,
     cells: new Float32Array(4),
     pmin: [0, 0],
     pmax: [0, 0],
@@ -546,7 +560,7 @@ export function eachHit(
   const cells = cut.cells;
   for (let cx = Math.floor(cut.pmin[0] / C), cx1 = Math.floor(cut.pmax[0] / C); cx <= cx1; ++cx) {
     for (let cy = Math.floor(cut.pmin[1] / C), cy1 = Math.floor(cut.pmax[1] / C); cy <= cy1; ++cy) {
-      const e = cellEntry(cut.region, cx, cy) * 4;
+      const e = cellEntry(cut.key, cx, cy) * 4;
       const ex = cells[e] * bx;
       const ey = cells[e + 1] * by;
       const ec = cells[e + 2];
@@ -612,7 +626,7 @@ export function eachCellHit(
 ) {
   const [bx, by] = table.box;
   const C = cellSide(table.box);
-  const e = cellEntry(cut.region, cx, cy) * 4;
+  const e = cellEntry(cut.key, cx, cy) * 4;
   const cells = cut.cells;
   const ex = cells[e] * bx;
   const ey = cells[e + 1] * by;

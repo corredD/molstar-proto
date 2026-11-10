@@ -12,6 +12,7 @@ import {
   concatMeshes,
   forgetLipidPatch,
   type MembraneData,
+  patchTableArray,
   registerLipidPatch,
 } from '../lipids/membrane.js';
 import { mixOf } from '../lipids/mixes.js';
@@ -117,6 +118,12 @@ describe('a cell’s membranes, a cut leaflet a part (round 7)', () => {
           Array.from(regions.table.subarray(whole * 16, whole * 16 + 16)),
         );
       }
+    }
+    // the surface's table texture: each region's key over its normal's x, the shader's hash input (review X1)
+    for (const l of split.cut) {
+      const own = l.regions as CutterRegions & { keys?: Uint32Array };
+      const texels = patchTableArray(own, new Float32Array(0)).array;
+      for (let r = 0; r < own.count; ++r) expect(texels[r * 16 + 12]).toBe(own.keys?.[r] ?? r);
     }
     // the second part's regions renumbered from 0: its keys are not its indices (every reader must hash the key)
     const second = split.cut.find((l) => l.part === 1)!.regions as CutterRegions & { keys?: Uint32Array };

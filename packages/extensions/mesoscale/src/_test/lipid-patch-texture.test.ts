@@ -18,6 +18,7 @@ import {
   triangleCut,
 } from '../lipids/cutter.js';
 import { PatchTexels, patchRaster, patchSurface } from '../lipids/far-surface.js';
+import { patchTableArray } from '../lipids/membrane.js';
 import { parsePatchPdb } from '../lipids/patch.js';
 import { icosphere } from '../lipids/remesh.js';
 import { syntheticPatchPdb } from './lipid-fixtures.js';
@@ -121,7 +122,7 @@ describe('the patch texture surface', () => {
     // the shader's map (`mesh.wgsl.ts`, `patchColor`) ported: its hash chain and mask, which the source must hold
     expect(mesh_wgsl).toContain('x = x * 0x7feb352du;');
     expect(mesh_wgsl).toContain('x = x * 0x846ca68bu;');
-    expect(mesh_wgsl).toContain('patchHash(region ^ patchHash(cx ^ patchHash(cy))) & 4095u');
+    expect(mesh_wgsl).toContain('patchHash(u32(g3.x) ^ patchHash(cx ^ patchHash(cy))) & 4095u');
     expect(CellKinds).toBe(4096);
     const f = Math.fround;
     const hash = (x: number) => {
@@ -157,6 +158,8 @@ describe('the patch texture surface', () => {
       const indices = Uint32Array.from([0, 1, 2, 1, 3, 2]);
       const regions = cutterRegions(positions, indices, 12345);
       const g = regions.table;
+      // the texture's table: a region's key over its normal's x (review X1)
+      const texels = patchTableArray(regions, new Float32Array(0)).array;
       const cut = emptyCut();
       let n = 0;
       let worst = 0;
@@ -182,7 +185,7 @@ describe('the patch texture surface', () => {
               const cell = [Math.floor(p[0] / C), Math.floor(p[1] / C)];
               // a head on a cell's edge may read the next cell: then its own point is a cell away, not a drift
               if (cell[0] !== cx || cell[1] !== cy) return;
-              const kind = (hash((cut.region ^ hash((cell[0] >>> 0) ^ hash(cell[1] >>> 0))) >>> 0) & 4095) * 4;
+              const kind = (hash((texels[r + 12] ^ hash((cell[0] >>> 0) ^ hash(cell[1] >>> 0))) >>> 0) & 4095) * 4;
               const c = regions.cells;
               const ux = p[0] - (cell[0] + 0.5) * C;
               const uy = p[1] - (cell[1] + 0.5) * C;
