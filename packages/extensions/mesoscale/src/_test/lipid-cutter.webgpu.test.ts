@@ -119,6 +119,7 @@ describe.skipIf(!webgpu)('the lipid cutter on the GPU (Dawn)', () => {
             data: buffer,
             instanceBase: base,
             count: selection.live[m],
+            cpuWrites: 0,
           });
           expect(live).toBe(selection.live[m]);
           base += selection.live[m];

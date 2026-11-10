@@ -47,7 +47,7 @@ describe.skipIf(!webgpu)('lipid tile assignment on the GPU (Dawn)', () => {
       for (let v = 0; v < variantCount(kinds); ++v) {
         const count = slots.counts[v];
         if (count === 0) continue;
-        assigner.writer(v)(compute, { data, instanceBase: offset + slots.starts[v], count });
+        assigner.writer(v)(compute, { data, instanceBase: offset + slots.starts[v], count, cpuWrites: 0 });
       }
       graphics.flush();
       const check = new Uint32Array(await assigner.check.readAsync(0, total * 4));

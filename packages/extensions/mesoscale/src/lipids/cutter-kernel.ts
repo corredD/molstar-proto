@@ -565,15 +565,16 @@ export async function createLipidCutter(
     data: ValueCell.create(inputs.positions.ref.value),
   };
   let deadKernel: ComputeKernel | undefined;
-  /** per member what its rows hold: its buffer, base and live slots (the rest dead rows) */
-  const cleared = Array.from({ length: M }, () => ({ buffer: -1, base: -1, live: 0 }));
+  /** per member what its rows hold: its buffer, base, the CPU's writes and live slots (the rest dead rows) */
+  const cleared = Array.from({ length: M }, () => ({ buffer: -1, base: -1, cpuWrites: -1, live: 0 }));
   const write = (m: number, target: GpuInstanceTarget, selection: LipidSelection) => {
     upload(selection);
     const count = Math.min(target.count, selection.live[m]);
     // the slots past the live ones: zeros where views culled on the CPU read them; only those live before (review S3:
-    // the whole rest a frame), all of them in a new buffer or place
+    // the whole rest a frame), all of them in a new buffer or place or after the CPU wrote its placeholders
     const last = cleared[m];
-    const fresh = last.buffer !== target.data.id || last.base !== target.instanceBase;
+    const fresh =
+      last.buffer !== target.data.id || last.base !== target.instanceBase || last.cpuWrites !== target.cpuWrites;
     const end = fresh ? target.count : Math.min(target.count, last.live);
     if (count < end) {
       ValueCell.update(dead.uDeadStart, count);
@@ -587,6 +588,7 @@ export async function createLipidCutter(
     }
     last.buffer = target.data.id;
     last.base = target.instanceBase;
+    last.cpuWrites = target.cpuWrites;
     last.live = count;
     if (count === 0) return 0;
     const n = selection.count;
