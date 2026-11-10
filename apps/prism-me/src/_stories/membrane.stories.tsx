@@ -71,7 +71,10 @@ function fakeApi(start: Partial<GraphicsInfo>) {
   return { api, mesoscale };
 }
 
-/** ui.md §5: the cell's membranes as one, a row a part (`membrane part`): the PM coloured, the vacuole hidden. */
+/**
+ * ui.md §5: the cell's membranes as one, a row a part (`membrane part`): the PM coloured, the vacuole hidden. The mock
+ * shows a part's Clips and Labels; the app shows none yet (TODO, review N5).
+ */
 export const PartsInTheTree: StoryObj = {
   render: () => story(() => <PanelFrames roots={cellScene()} open={['c:meshes', 'o:cell']} picked="mp:cell:PM" />),
 };
