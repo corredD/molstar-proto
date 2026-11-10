@@ -7,7 +7,8 @@
 // @module-tag medium
 
 import { StateSelection } from '@molstar/core/state';
-import { placementSets } from '@molstar/meso-spec/ir';
+import { type IR, placementSets } from '@molstar/meso-spec/ir';
+import type { CommitReport } from '@molstar/meso-spec/runtime';
 import { createMesoscaleExplorerSpec } from '@molstar/prism-me-app/spec';
 import { PluginStateObject as SO } from '@molstar/plugin/state/objects';
 import { ParticleRepresentation3DLayers } from '@molstar/plugin/state/transforms/particles/layers';
@@ -16,7 +17,7 @@ import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
 import type { PrismViewer } from '@molstar/prism-viewer/viewer';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { MesoViewSpecApi } from '../extension.js';
-import { MesoPlacements, MesoTilePlacements } from '../particle-list.js';
+import { MesoPlacements, MesoTilePlacements, placementStore } from '../particle-list.js';
 import { StreamingBudgetKey } from '../streaming-settings.js';
 import { stubCanvasForLabels } from './canvas.js';
 
@@ -92,11 +93,80 @@ async function setup() {
   return { v, person, runs, errors, area, settle, tileCells, tileRefs, tileLayers, steps, unsafe, resident };
 }
 
-const openTiled = async (h: Awaited<ReturnType<typeof setup>>) => {
+type Harness = Awaited<ReturnType<typeof setup>>;
+
+const openTiled = async (h: Harness) => {
   const r = await h.person.run('mesoviewspec.open', { example: 'tiled' });
   expect(r.ok, JSON.stringify(r)).toBe(true);
   await h.settle();
 };
+
+const Far = { center: [7000, 7000, 3000] as [number, number, number], radius: 0 };
+
+/**
+ * The next stream commit that draws a tile not drawn yet, held midway (its plan made against the lists drawn, at the
+ * load of the particles extension before it draws) until the session is disposed: the commit a Close or an Undo of
+ * the open meets in flight. `entered` resolves once it is held; `done` is the held commit's end (its failure let go).
+ */
+function holdArrival(h: Harness) {
+  const model = h.area().model;
+  const adapter = model.adapter;
+  const session = model.session!;
+  const extensions = adapter.viewer.extensions;
+  const commit = adapter.commit.bind(adapter);
+  const load = extensions.load.bind(extensions);
+  let enter!: () => void;
+  const entered = new Promise<void>((r) => (enter = r));
+  let release!: () => void;
+  const released = new Promise<void>((r) => (release = r));
+  const dispose = session.dispose.bind(session);
+  session.dispose = () => {
+    release();
+    dispose();
+  };
+  let armed = false;
+  let held: Promise<CommitReport> | undefined;
+  adapter.commit = (ir: IR) => {
+    const drawn = adapter.tileKeys();
+    if (held || !placementSets(ir).some((s) => s.model === 'm.tiles' && !drawn.has(s.key))) return commit(ir);
+    armed = true;
+    held = commit(ir);
+    return held;
+  };
+  extensions.load = async (id: string) => {
+    if (armed) {
+      armed = false;
+      enter();
+      await released;
+    }
+    return load(id);
+  };
+  return {
+    entered,
+    done: async () => {
+      await held?.catch(() => {});
+      adapter.commit = commit;
+      extensions.load = load;
+    },
+  };
+}
+
+/** Nothing of the document is drawn or kept by the adapter: no list, no tile placements, no key. */
+function expectNothingDrawn(h: Harness) {
+  const adapter = h.area().model.adapter;
+  expect(h.tileCells().length, 'tile lists').toBe(0);
+  const lists = h.v.plugin.state.data.select(StateSelection.Generators.ofTransformer(MesoPlacements));
+  expect(lists.length, 'document lists').toBe(0);
+  expect([...placementStore(h.v.plugin).keys()].filter((k) => k.includes('#t.')), 'tile placements').toEqual([]);
+  expect([...adapter.tileKeys()], 'tile keys').toEqual([]);
+  expect(adapter.keys(), 'document keys').toEqual([]);
+}
+
+/** The open's first commit drew a new scene (nothing kept): the one that sets the camera. */
+function expectNewScene(h: Harness) {
+  const initial = h.area().model.session!.history.find((r) => r.kind === 'initial');
+  expect(initial?.commit?.kept, 'kept by the first commit').toEqual([]);
+}
 
 describe('a streamed document in prism-me (headless)', () => {
   it('tiles load and leave with no History step, no change outside the API and no particles run', {
@@ -197,6 +267,39 @@ describe('a streamed document in prism-me (headless)', () => {
     await sleep(50);
     expect(h.tileCells().length).toBe(0);
     expect(h.area().model.doc).toBeUndefined();
+  });
+
+  // gate M1: Close ran outside the session's queue, so a stream commit in flight landed after the lists were cleared
+  it('Close while a tile is drawn: nothing is left, and an open again draws anew', { tags: ['medium'] }, async () => {
+    const h = await setup();
+    await openTiled(h);
+    const hold = holdArrival(h);
+    void h.area().model.setFocus(Far);
+    await hold.entered;
+    const closed = await h.person.run('mesoviewspec.close', {});
+    expect(closed.ok, JSON.stringify(closed)).toBe(true);
+    await hold.done();
+    expectNothingDrawn(h);
+    await openTiled(h);
+    expectNewScene(h);
+    expect(h.errors).toEqual([]);
+  });
+
+  // gate M1: the same for Undo of the open (the owner's `forget`)
+  it('Undo of the open while a tile is drawn: nothing is left, and an open again draws anew', {
+    tags: ['medium'],
+  }, async () => {
+    const h = await setup();
+    await openTiled(h);
+    const hold = holdArrival(h);
+    void h.area().model.setFocus(Far);
+    await hold.entered;
+    expect((await h.v.managers.history.undo()).ok).toBe(true);
+    await hold.done();
+    expectNothingDrawn(h);
+    await openTiled(h);
+    expectNewScene(h);
+    expect(h.errors).toEqual([]);
   });
 
   it('a .molj of a streamed document opens on a new viewer: no tile list comes with it, no error', async () => {
