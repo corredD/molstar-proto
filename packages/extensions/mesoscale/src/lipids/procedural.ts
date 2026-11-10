@@ -594,10 +594,10 @@ export function createLipidSelection(input: SelectionInput, capacity: Uint32Arra
     // the triangles in view, nearest first: the tree descended, a node out of view or reach pruned
     let nt = 0;
     let far = 1;
-    for (let part = 0; part < roots.length; ++part) {
-      if (!partShown || roots[part] < 0) continue;
+    // a selection's tree is its part's alone: one root (round 7 review N1)
+    if (partShown && roots[0] >= 0) {
       let top = 0;
-      stack[top++] = roots[part];
+      stack[top++] = roots[0];
       while (top > 0) {
         const node = stack[--top];
         const no = node * 4;
