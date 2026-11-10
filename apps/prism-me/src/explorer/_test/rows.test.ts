@@ -12,6 +12,7 @@ import type { ExplorerApi, NodeRef, SceneObject } from '../operations.js';
 import { keepRows } from '@molstar/prism-ui';
 import { allItCuts, type Row, rowsOf, sameRow, setEyes, whatItCuts } from '../rows.js';
 import type { ViewerApi } from '@molstar/prism-viewer/api';
+import { colorable, colorItems } from '../menu.js';
 
 // A model's rows (_spec/ui.md §3) from its info, grouped by compartment or by function: lipids (function "membrane")
 // in root.membrane, CA in root.capsid.
@@ -220,5 +221,52 @@ describe("a cell membrane's part rows (lipid-procedural round 7)", () => {
     const rows = rowsOf([cellMembrane], new Map(), AllOpen, '').filter((r) => r.kind === 'membrane part');
     await setEyes(api, area, rows, false);
     expect(runs).toEqual([['mesoscale.style', { particles: 'lm', parts: 'PM,MITO_IM', visible: false }]]);
+  });
+
+  /** the writes `setEyes` makes for `keys`' rows (every row unfolded) */
+  const eyes = async (keys: string[], visible: boolean, objects: SceneObject[] = [cellMembrane]) => {
+    const runs: [string, Record<string, unknown>][] = [];
+    const g = { run: async (id: string, p: Record<string, unknown>) => (runs.push([id, p]), { ok: true }) };
+    const api = { group: (_: string, f: (g: unknown) => unknown) => f(g) } as unknown as ViewerApi;
+    const area = { objectsState: () => ({ value: objects }) } as unknown as ExplorerApi;
+    const rows = rowsOf(objects, new Map(), AllOpen, '').filter((r) => keys.includes(r.key));
+    await setEyes(api, area, rows, visible);
+    return runs;
+  };
+
+  it('close the Meshes category’s eye while a part is hidden, and its eye shows every part (review M2, N3)', async () => {
+    const category = rowsOf([cellMembrane], new Map(), AllOpen, '').find((r) => r.key === 'c:meshes')!;
+    expect(category.visible).toBe(false);
+    expect(await eyes(['c:meshes'], true)).toEqual([
+      ['state.visibility', { node: '#lm', visible: true }],
+      ['mesoscale.style', { particles: 'lm', parts: '', visible: true }],
+    ]);
+  });
+
+  it('hide every part with the membrane’s eye, so one part alone can be shown after (review S5)', async () => {
+    expect(await eyes(['o:lm'], false)).toEqual([
+      ['state.visibility', { node: '#lm', visible: false }],
+      ['mesoscale.style', { particles: 'lm', parts: '', visible: false }],
+    ]);
+    // a drag over the membrane and its parts: the membrane's write alone (nit: twice before)
+    expect(await eyes(['o:lm', 'mp:lm:PM', 'mp:lm:MITO_IM'], true)).toEqual([
+      ['state.visibility', { node: '#lm', visible: true }],
+      ['mesoscale.style', { particles: 'lm', parts: '', visible: true }],
+    ]);
+  });
+
+  it('colour a part through its Color… (its swatches, Generate over every part; review S4)', async () => {
+    const runs: [string, Record<string, unknown>][] = [];
+    const api = { run: async (id: string, p: Record<string, unknown>) => (runs.push([id, p]), { ok: true }) };
+    const area = { objectsState: () => ({ value: [cellMembrane] }) } as unknown as ExplorerApi;
+    const node = { ref: 'lm', membranePart: 'PM' };
+    const items = colorItems(api as unknown as ViewerApi, area, { node, kind: 'membrane part' } as never);
+    expect(colorable('membrane part', node)).toBe(true);
+    items.find((i) => i.id === 'generate')!.run!();
+    items.find((i) => i.id.startsWith('color-'))!.run!();
+    await Promise.resolve();
+    expect(runs[0]).toEqual(['mesoscale.colors', { scheme: 'generate', particles: 'lm', parts: '' }]);
+    expect(runs[1][0]).toBe('mesoscale.style');
+    expect(runs[1][1]).toMatchObject({ particles: 'lm', parts: 'PM' });
   });
 });
