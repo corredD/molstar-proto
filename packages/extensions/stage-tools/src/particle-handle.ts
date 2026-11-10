@@ -87,6 +87,19 @@ function offsetsCell(plugin: PluginContext, list: string): StateObjectCell | und
   }
 }
 
+/**
+ * Whether a representation under `parent` draws `list` itself: `parent` the list or one of its decorators, not a list
+ * of other particles under it (a child that is not a decorator, as mesoscale's paint layer)
+ */
+export function drawsList(plugin: PluginContext, parent: string, list: string): boolean {
+  const { cells } = plugin.state.data;
+  for (let at = cells.get(parent); at; at = cells.get(at.transform.parent)) {
+    if (at.transform.ref === list) return true;
+    if (!at.transform.transformer.definition.isDecorator) return false;
+  }
+  return false;
+}
+
 /** A particle's offsets, as the handle edits one of them */
 export interface Stack {
   /** The particles before the offsets (the decorator's input; the list as drawn without one) */
@@ -386,6 +399,9 @@ export class ParticleHandles {
       const repr = (r.cell.obj?.data as { repr?: Representation<ParticleList> } | undefined)?.repr;
       const source = (r.cell.obj?.data as { sourceData?: ParticleList } | undefined)?.sourceData;
       if (!repr || !source) continue;
+      // a list under the list (mesoscale's painted copies) is drawn by representations the hierarchy gives the list:
+      // they draw other particles, not moved by its handle (paint-layer, 2026-11-10)
+      if (!drawsList(this.plugin, r.cell.transform.parent, t.list)) continue;
       if (canSetParticleFrames(repr)) {
         if (repr.setParticleFrames(moved)) canvas?.update(repr);
         continue;
