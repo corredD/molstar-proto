@@ -79,6 +79,10 @@ is not built is [../TODO.md](../TODO.md).
     shells, the clip pop, the PR (rounds 4–8).
   - `paint` (`me/paint`, rounds 1-5, [progress](2026-11-08-paint.md) on its branch): **PR #64** open, waits on Ludo's
     merge (fibres by rise, twist, axis, offset; a DNA/RNA bank by sequence).
+  - `paint-layer` (`me/paint-layer` from `me/paint` at fecd0db3e, stacked on #64; port 1363;
+    [brief](2026-11-10-paint-layer.md) on its branch): started 2026-11-10 (Ludo: "yes do the painting layer"). The
+    painted copies as a list of their own under the model's (F1 of `plans/2026-11-10-bucket-and-relax.md`): a stroke on
+    cellpack-mg 1.3–1.7 s, spread over seven O(n) consumers of the list; the decorator replaced (Ludo).
 - **Merged 2026-11-08/09**: #60 (GPU culling dispatched in rows), #61 (targeted cellPACK fibres), #62 (master v6 #2069
   in, favoring master; [progress](2026-11-09-merge-master.md)), #63 (colours by zoom on sites targets). Worktrees of
   merge-master and color-levels-sites removed 2026-11-10.
