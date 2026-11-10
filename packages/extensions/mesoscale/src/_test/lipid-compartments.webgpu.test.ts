@@ -256,4 +256,60 @@ describe.skipIf(!webgpu)('a colour multiplier per compartment, its mesh’s colo
       plugin.dispose();
     }
   });
+
+  // review S1: one colour a member (colorBy uniform, or round 7's part colour without By zoom) was drawn uniform, and the
+  // merged spheres of two parts kept the first one's: each part's colour by group, a recolour still in place
+  it('two parts coloured apart, one colour each, keep their colours merged', { timeout: 180_000 }, async () => {
+    const plugin = await HeadlessPluginContext.create(
+      { webgpu },
+      DefaultPluginSpec(),
+      { width: Size, height: Size },
+      { backend: 'webgpu' },
+    );
+    registerLipidPatch('dawn-apart', syntheticPatchPdb(12, 14).text);
+    try {
+      await plugin.init();
+      const at = (m: TriMesh, x: number): TriMesh => ({
+        positions: Float32Array.from(m.positions, (v, i) => (i % 3 === 0 ? v + x : v)),
+        indices: m.indices,
+      });
+      const { mesh, parts } = concatMeshes([icosphere(400, 80), at(icosphere(300, 80), 900)], ['MITO_IM', 'LD']);
+      const data = await runSteps(
+        buildMembraneSteps({ mesh, parts }, 'dawn-apart', 0, 'both', Kinds, 'cutter'),
+        SyncRuntimeContext,
+      );
+      if (typeof data === 'string') expect.fail(data);
+      const base = { ...PD.getDefaultValues(LipidMembraneParams), method: 'cutter' as const, patch: 'dawn-apart' };
+      const repr = LipidMembraneRepresentation(plugin.canvas3d!.graphics);
+      const look = async (p: Partial<typeof base>, tints: MeshTints) => {
+        repr.setMeshTints(tints);
+        await repr.createOrUpdate({ ...base, ...p }, data as MembraneData).run();
+        await plugin.getImageRaw({ width: Size, height: Size });
+      };
+      const spheres = () => repr.renderObjects.filter((o) => o.type === 'spheres');
+      const granularity = () => new Set(spheres().map((o) => (o.values as Values).dColorType.ref.value));
+      const drawnColors = () => new Set(colors(repr).group);
+      const color = base.color;
+      // the meshes' colours: colorBy uniform, two tints
+      await look({ colorBy: 'uniform' }, [Red, Green]);
+      plugin.canvas3d!.add(repr as never);
+      await plugin.getImageRaw({ width: Size, height: Size });
+      expect(granularity().has('uniform')).toBe(false);
+      expect(drawnColors()).toEqual(new Set([tint(color, Red), tint(color, Green)]));
+      const objects = repr.renderObjects;
+      await look({ colorBy: 'uniform' }, [Green, Red]);
+      expect(repr.renderObjects).toBe(objects);
+      expect(drawnColors()).toEqual(new Set([tint(color, Green), tint(color, Red)]));
+      // round 7's: the switch off, each part its own colour, By zoom off
+      await look({ meshColors: false, partColors: { MITO_IM: 0xff0000, LD: 0x0000ff } }, [Green, Red]);
+      expect(granularity().has('uniform')).toBe(false);
+      expect(drawnColors()).toEqual(new Set([0xff0000, 0x0000ff]));
+      expect(plugin.canvas3d!.graphics.takeErrors?.() ?? []).toEqual([]);
+      plugin.canvas3d!.remove(repr as never);
+      repr.destroy();
+    } finally {
+      forgetLipidPatch('dawn-apart');
+      plugin.dispose();
+    }
+  });
 });

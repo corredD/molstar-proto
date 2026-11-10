@@ -1227,10 +1227,15 @@ function speciesColors(data: MembraneData) {
   return (name: string) => palette[names.get(name) ?? 0];
 }
 
-/** A member's look (round 9): its part's colour (round 7) and its mesh's tint, read when it is painted */
+/**
+ * A member's look (round 9): its part's colour (round 7) and its mesh's tint, read when it is painted; `apart`: its
+ * membrane has parts whose colours may differ (review S1: its one colour by group, never uniform, as the merged spheres
+ * of two parts keep one object's uniform colour)
+ */
 interface MemberLook {
   readonly part: () => Color | undefined;
   readonly tint: () => Color | undefined;
+  readonly apart?: boolean;
 }
 const NoLook: MemberLook = { part: () => undefined, tint: () => undefined };
 
@@ -1410,16 +1415,19 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
       1,
       (g: number) => ({ kind: 'lipid', species: speciesOf[g] }) as never,
     );
-    const uniformNow = () => props.colorBy === 'uniform' || (look.part() !== undefined && !levelsOn(props));
+    // one colour for all of it (colorBy uniform, or its part's colour without By zoom); drawn uniform only where no
+    // other part's member merges with it (review S1)
+    const oneNow = () => props.colorBy === 'uniform' || (look.part() !== undefined && !levelsOn(props));
+    const uniformNow = () => !look.apart && oneNow();
     // its colours as they are now (a build, a recolour): its species' and far colour times its mesh's tint (round 9)
     const colorTheme = () => {
       const t = look.tint();
       const one = tint(look.part() ?? props.color, t);
-      const uniform = uniformNow();
+      const single = oneNow();
       return {
-        granularity: uniform ? 'uniform' : 'group',
+        granularity: uniformNow() ? 'uniform' : 'group',
         color: (location: { species?: number }) =>
-          uniform || location.species === undefined ? one : tint(colorOf(names[location.species]), t),
+          single || location.species === undefined ? one : tint(colorOf(names[location.species]), t),
         props: {},
         description: 'Lipid species',
       } as unknown as ColorTheme<any>;
@@ -1621,6 +1629,8 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
       const name = partName(l);
       return name !== undefined && hiddenParts.has(name);
     };
+    // several parts: their members merged by leaflet and variant, coloured apart (review S1)
+    const apart = (data.parts?.length ?? 0) > 1;
     const partColor = (l: CutLeaflet) => {
       // round 9: with its meshes' colours its mesh is its colour, its part colour none; but where its mesh's tint is
       // neutral (a grey, a VTP's, a session before round 9) its own (review S2, S4a: the coordinator's decision)
@@ -1738,7 +1748,7 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
             poolWriter(cutter, m, pool, lipidSize(table)),
             colorOf,
             member.elements,
-            { part: () => partColor(leaflet), tint: () => tintOf(leaflet.part) },
+            { part: () => partColor(leaflet), tint: () => tintOf(leaflet.part), apart },
           ),
         });
       }
