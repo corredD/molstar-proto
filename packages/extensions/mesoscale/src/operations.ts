@@ -1461,7 +1461,23 @@ export class MesoscaleApi extends ApiArea {
       try {
         await ctx.plugin.dataTransaction(
           async () => {
-            if (nodes.length) await b.commit();
+            // a redraw that fails (a membrane's past the device's buffers, a cancel) fails the run: the transaction
+            // puts the state back, no step (round 7 review S4, as `membraneDetail`)
+            if (nodes.length) {
+              const committed = new Set(nodes);
+              let error: string | undefined;
+              const sub = ctx.plugin.state.data.events.cell.stateUpdated.subscribe((e) => {
+                if (committed.has(e.ref) && e.cell.status === 'error') error ??= e.cell.errorText;
+              });
+              try {
+                await b.commit({ revertOnError: true });
+              } finally {
+                sub.unsubscribe();
+              }
+              if (error !== undefined) {
+                throw new Rollback(ApiResult.fail('failed', `The colors were not changed: ${error}`));
+              }
+            }
             // a structure's own colors (its row's brush: an overpaint) paint over a theme: cleared by their owner,
             // `representation.reset`, once for every structure when all are colored (a category's), else one each
             for (const structure of everyStructure ? [''] : structures) {
