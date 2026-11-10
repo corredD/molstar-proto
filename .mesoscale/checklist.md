@@ -9,7 +9,10 @@ drives it is [loop.md](loop.md).
 
 Questions that stop the loop. One line each; move it to Decided with the answer.
 
-- Lane 4: your check in the app on port 1358.
+- Lane 4: your check in the app on port 1358. Run by Claude through the API on 2026-11-09: eye, Color…, Generate, Show
+  only, the refusal, Save and Undo pass on the exosome; a cellPACK HIV list behaves as before and leaves the document
+  alone. **Bug:** Import colors on a document list matches population ids only (`p.catalase`); entity names (`ALB`,
+  `catalase`) and labels (`Serum albumin`) are refused, though its own hint lists them. Not yet fixed.
 
 ## Decided
 
