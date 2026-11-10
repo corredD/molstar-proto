@@ -1340,9 +1340,10 @@ function groupsOf(ctx: Pick<ApiContext, 'plugin'>, l: ParticleListRef, by: MesoG
 
 function describe(ctx: Pick<ApiContext, 'plugin'>, l: ParticleListRef, asked?: MesoGroupBy): MesoscaleInfo {
   const data = dataOf(l)!;
-  const styles = readStyles(ctx, l);
   const owned = ownerOf(ctx, l)?.info(l.cell.transform.ref, asked);
   if (owned) {
+    // an owned list's entities are its targets, its owner's looks drawn as target layers, in order
+    const styles = drawnStyles(ctx, l);
     return {
       particles: l.cell.transform.ref,
       label: l.cell.obj?.label ?? l.cell.transform.ref,
@@ -1355,6 +1356,7 @@ function describe(ctx: Pick<ApiContext, 'plugin'>, l: ParticleListRef, asked?: M
   }
   const entities = mesoEntities(data);
   const groupBy = asked ?? defaultGroupBy(data);
+  const styles = readStyles(ctx, l);
   return {
     particles: l.cell.transform.ref,
     label: l.cell.obj?.label ?? l.cell.transform.ref,
@@ -1450,6 +1452,31 @@ function layersCell(ctx: Pick<ApiContext, 'plugin'>, r: ParticleRepresentationRe
     const t = tree.transforms.get(child);
     if (t?.transformer === ParticleRepresentation3DLayers) return t;
   }
+}
+
+/**
+ * An owned list's entity styles as drawn (prism.md §5.1: `mesoscale.entities`): its owner draws its looks as target
+ * layers, some on many targets (a look on a compartment, Show only's `(all)`), later layers over earlier ones; read
+ * from its first representation's, each target's fields as the last layer stating them leaves them.
+ */
+function drawnStyles(ctx: Pick<ApiContext, 'plugin'>, l: ParticleListRef): Map<number, EntityStyle> {
+  const styles = new Map<number, EntityStyle>();
+  const r = l.representations[0];
+  if (!r) return styles;
+  for (const layer of (layersCell(ctx, r)?.params?.layers ?? []) as ParticleLayerProps[]) {
+    if (layer.entities.length || layer.compartments.length) continue;
+    for (const id of layer.targets) {
+      const was = styles.get(id);
+      styles.set(id, {
+        ...was,
+        visible: layer.visible,
+        ...(layer.color !== null ? { color: layer.color } : {}),
+        ...(layer.transparency !== null ? { transparency: layer.transparency } : {}),
+        ...(layer.emissive !== null ? { emissive: layer.emissive } : {}),
+      });
+    }
+  }
+  return styles;
 }
 
 /**
