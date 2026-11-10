@@ -254,12 +254,19 @@ describe.skipIf(!webgpu)('a lipid membrane clipped by Prism (Dawn)', () => {
         const d = await v.api.mesoscale!.membraneDetail({ membrane, ...p } as never);
         expect(d.ok, d.message).toBe(true);
       };
+      const live = () =>
+        ((plugin.state.data.cells.get(membrane)?.obj?.data as { repr?: unknown })?.repr as { pool: { live: number } })
+          .pool.live;
       await detail({ middle: 'parallax' });
       const before = objects();
       const at11 = await image();
+      const live11 = live();
       await detail({ middlePx: 14 });
       expect(objects(), 'middlePx').toBe(before);
       expect(differs(at11, await image()), 'middlePx').toBeGreaterThan(0.01);
+      // selected anew for the still camera: fewer lipids past 14 px than past 11
+      expect(live(), 'middlePx: live').toBeLessThan(live11);
+      expect(live(), 'middlePx: live').toBeGreaterThan(0);
       // with a clip both looks keep the levels (the cut band): a switch without a build either way
       expect((await v.api.run('clipping.add', { shape: 'plane', node: `#${membrane}` })).ok).toBe(true);
       const clipped = objects();

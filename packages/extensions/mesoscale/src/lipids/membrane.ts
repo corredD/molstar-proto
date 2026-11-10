@@ -1068,6 +1068,26 @@ function onlyColorEdges(a: LipidMembraneReprProps, b: LipidMembraneReprProps) {
   return true;
 }
 
+/** Whether a cut member draws its atoms only, no sphere levels (round 8: a middle look without a cut band) */
+function cutAtomsOnly(props: LipidMembraneReprProps) {
+  return props.detail === 'off' || (middleOn(props) && !cutBandOn(props));
+}
+
+/**
+ * Whether `b` differs from `a` by its middle look alone (the gate's S2): its look or its atoms' px, the cut lipids'
+ * levels the same (`cutAtomsOnly`): a raster, uniforms and a selection anew, nothing built again
+ */
+function onlyMiddle(a: LipidMembraneReprProps, b: LipidMembraneReprProps) {
+  if (a.middle === b.middle && a.middlePx === b.middlePx) return false;
+  if (cutAtomsOnly(a) !== cutAtomsOnly(b)) return false;
+  for (const k of Object.keys(b) as (keyof LipidMembraneReprProps)[]) {
+    if (k !== 'middle' && k !== 'middlePx' && a[k] !== b[k] && JSON.stringify(a[k]) !== JSON.stringify(b[k])) {
+      return false;
+    }
+  }
+  return true;
+}
+
 /** Whether `b` differs from `a` by its clip alone */
 function onlyClip(a: LipidMembraneReprProps, b: LipidMembraneReprProps) {
   if (a.clip === b.clip) return false;
@@ -1130,6 +1150,15 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
   let building: BaseValues[] = [];
   /** the cut leaflets' far surfaces, faded in by distance (`fadeSurface`), and their lipids' size */
   let fading: { values: BaseValues; size: number; near: boolean }[] = [];
+  /** the cut leaflets' patch textures and what they are rastered from, their far surface (a middle switch: S2) */
+  let rasters: {
+    table: CutterTable;
+    shown: (sp: number) => boolean;
+    side: 'outer' | 'inner';
+    color: (sp: number) => number;
+    patch: Texture;
+    far: BaseValues[];
+  }[] = [];
   /** every patch surface drawn and its lipids' size: its levels set where only the edges move (`setColorEdges`) */
   let patches: { values: BaseValues; size: number }[] = [];
   /** the far surfaces of a membrane's parts (round 6): shown while their part is (`showParts`) */
@@ -1261,7 +1290,7 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
     // round 8: with a middle look a cut lipid is its atoms down to it (the selection keeps a triangle's lipids a little
     // below `middlePx`, measured: no coarse level shows over the relief)
     // with a clip the cut band's lipids keep the levels (the gate's M1: `cutBandOn`, a build where it comes or goes)
-    const atomsOnly = props.detail === 'off' || (lipidAtomStart === undefined && middleOn(props) && !cutBandOn(props));
+    const atomsOnly = lipidAtomStart === undefined ? cutAtomsOnly(props) : props.detail === 'off';
     const lod = atomsOnly ? { lodLevels: [], lodPixelSize: 0 } : membraneLevels(props.detail, props.levels);
     // markers by lipid; by atom (a cut member's, a tile's): by group and instance, 40 a lipid past a texture's size
     const p = {
@@ -1608,6 +1637,7 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
     // (round 4b); a tiles leaflet's on its surface (at its mid-plane: the heads past it), coloured as the cutter cuts the
     // patch there (the species' proportions and grain, not each tile's lipids)
     const nextFading: typeof fading = [];
+    const nextRasters: typeof rasters = [];
     const nextPatches: typeof patches = [];
     const nextPartSurfaces: typeof partSurfaces = [];
     const nextTextures: Texture[] = [];
@@ -1644,6 +1674,10 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
           !relief,
         );
         const patch = patchTexture(graphics, raster);
+        const rastered = cut
+          ? { table, shown, side: leaflet.name, color: speciesColor, patch, far: [] as BaseValues[] }
+          : undefined;
+        if (rastered) nextRasters.push(rastered);
         made.push(patch);
         nextTextures.push(patch);
         const head = headOffset(table, leaflet.name) - leaflet.offset;
@@ -1662,6 +1696,7 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
           nextTextures.push(patchShifts);
           const object = patchObject(f, [patch, patchShifts], table, leaflet.regions, size, props, !!fade, one);
           if (relief && fade === 'far') setMiddle(object.values, middle, props, raster);
+          if (rastered && fade === 'far') rastered.far.push(object.values as BaseValues);
           nextPatches.push({ values: object.values as BaseValues, size });
           if (fade) {
             const values = object.values as BaseValues;
@@ -1675,6 +1710,7 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
       }
     }
     fading = nextFading;
+    rasters = nextRasters;
     patches = nextPatches;
     partSurfaces = nextPartSurfaces;
     // as the last view showed them, before the next view's hook (review S1, nit)
@@ -1691,6 +1727,40 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
     for (const o of out) setClip(o.values as BaseValues, props.clip);
     // and the latest edges (an edge alone while it ran reached the old objects only: `setColorEdges`)
     setColorEdges();
+  }
+
+  /**
+   * A middle look switched (the gate's S2, design §5): each cut leaflet's patch rastered again into its texture (flat
+   * under a relief, shaded for coarse; the lipids' level at the new px), its far surface's define and uniforms, the
+   * fades for the new px, and the next view selects anew; nothing built
+   */
+  function setMiddleLook() {
+    const enter = lipidsPx(props);
+    const middle = builtFor?.method === 'cutter' && middleOn(props) ? props.middle : 'coarse';
+    const relief = middle !== 'coarse';
+    for (const r of rasters) {
+      const raster = patchRaster(r.table, r.shown, r.side, r.color, switchSpheres(r.table, props, enter), !relief);
+      r.patch.load(raster);
+      r.patch.mipmap();
+      for (const values of r.far) {
+        if (relief) setMiddle(values, middle, props, raster);
+        else ValueCell.updateIfChanged((values as unknown as { dPatchMiddle: ValueCell<string> }).dPatchMiddle, 'off');
+      }
+    }
+    const near = nearPx(props);
+    for (const f of fading) {
+      fadeSurface(f.values, f.size, f.near ? near : enter, f.near, lastLod.depthScale, lastLod.pixelSize);
+    }
+    // a new px, a new selection (not kept by the old one's hysteresis)
+    views.reset();
+    for (const sel of selections) sel.reset();
+    // the culler culls again (its view hooks, a still camera too) where its object's transform changes
+    // (merged-culler.ts, `uObjectTransform`): the same transform, a new version. It has no hook for a pool's params
+    for (const o of renderObjects) {
+      if (o.type !== 'spheres') continue;
+      const t = (o.values as { uObjectTransform?: ValueCell<unknown> }).uObjectTransform;
+      if (t) ValueCell.update(t, t.ref.value);
+    }
   }
 
   const repr: Representation<MembraneData, typeof LipidMembraneReprParams> = {
@@ -1731,6 +1801,8 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
             // the band follows the cut (a handle's drag): the next view selects anew, the old units kept until then
             views.reset();
           }
+        } else if (lastData && builtFor === lastData && onlyMiddle(before, props)) {
+          setMiddleLook();
         } else if (lastData && builtFor === lastData && onlyColorEdges(before, props)) {
           // the colours by zoom's edges alone (round 7 item 6): their uniforms, nothing built again
           setColorEdges();
