@@ -61,6 +61,11 @@ are the coordinator's.
   spec.test.ts 13, one-look-writer.test.ts 1). `--mode medium packages/mesoscale apps/prism-me/src/explorer`: 87 pass.
   `biome check` on the touched code and `prettier` 3.9.9 on the touched markdown: clean. `pnpm lint`, `format:check`,
   `check:workspace` not run (the coordinator's gate).
+- **Checks after the gate's fixes**: the three `tsc` above and `prism-ui`'s `tsconfig.storybook.json`: clean.
+  `vitest run packages/mesoscale apps/prism-me packages/prism/ui`: 1297 pass, 23 known failures and one test that failed
+  under load and passes alone (`exports.test.ts` once, `dock-splitter.test.tsx` once).
+  `--mode medium packages/mesoscale apps/prism-me/src/explorer`: 91 pass. `biome check` on the touched code: only
+  `text-input.tsx` flagged, for CRLF line endings alone (as untouched files are); prettier 3.9.9 on the markdown: clean.
 
 ## Decided
 
