@@ -1502,3 +1502,32 @@ live counts (73 k the PM close, one leaflet; 145 k inside a mito, over the IM's 
 **Next (if this session stops).** Dawn test `lipid-parts.webgpu.test.ts` (hide a part: its lipids and surfaces gone;
 a part's colour changes the image with By zoom off (close) and on (far), close species kept; the LD's two surfaces);
 gate on `git diff 89c4f13aa...HEAD`; checks; r7 images; write-up.
+
+## Round 7 finish and item 6 brief (Ludo, 2026-11-09)
+
+**Goal (Ludo, restated).** "the best lipid wrapper capable of scaling up to human cell size, and looking great at the
+same time with and without cut."
+
+**How (Ludo).** "we need to use the lane system with architect, skeptic etc." From here each piece goes: an architect
+(Opus, read-only) designs it into this file; a builder implements it with tests failing first; the lane-reviewer, then
+the lane-skeptic, gate it; confirmed findings fixed test-first. The coordinator runs each step as its own agent. No
+images ("we dont need picture"): the checks are tests and numbers.
+
+**Item 6: colour control and colours by zoom on three levels.** "we want to have more control on color, and the
+dynamic color should show the atomic color and residues color and membrane colors."
+- By zoom on a membrane shows three levels, as a particle list does (`color-levels.md`): far the membrane's colour
+  (the part's, for a cell's part), middle the species' (= the lipid's residue / entity colour), close each atom's
+  colour by element (the patch's atoms carry their element). Today `membraneColorLevels` stops at species ("a lipid is
+  one group, so no chain or atom colours past them"): lift that. The far surfaces follow the far and middle levels.
+- More control: the membrane's and each part's colour, each species' colour, the element colours (or a scheme for the
+  close level), the levels' distances (`ColorLevels.Params`), the palettes and Generate colors, from the same controls
+  as a particle list (properties, right-click), one history step each.
+- Tests (failing first): at three distances a membrane draws its colour, then its species', then its atoms' element
+  colours (Dawn pixel reads on a known patch); a part's colour, a species' colour and the element scheme each change
+  only their level; one history step each.
+
+**Then the rest of round 7's gate.** On `git diff 89c4f13aa...HEAD` (items 2, 3, 6 and the review fixes): reviewer,
+skeptic, fixes test-first, the table here and in the PR body; the lane checks; the progress end; the PR body for
+rounds 4–7.
+
+**Then round 8** (its brief below): a second rendering for the middle distance to compare and pick from.
