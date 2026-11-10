@@ -1139,7 +1139,16 @@ export class MesoscaleApi extends ApiArea {
             'Give a color name (tomato), #rrggbb, rgb() or hsl().',
           );
         }
-        const old = (membrane.transform.params as LipidMembraneProps).colorLevels;
+        const params = membrane.transform.params as LipidMembraneProps;
+        // colours from meshes: a membrane wrapping none (a sphere) has no switch (review N6)
+        if (meshColors !== undefined && params.meshes.length === 0 && !params.mesh) {
+          return ApiResult.fail(
+            'invalid',
+            'The membrane wraps no mesh: its colours come from none.',
+            'Nothing was changed.',
+          );
+        }
+        const old = params.colorLevels;
         // the levels as they are where only a colour is given
         const levelsGiven = on !== undefined || Object.keys(edges).length > 0;
         const was = old.name === 'on' ? (old.params as ColorLevels.Props) : ColorLevels.defaults;

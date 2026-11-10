@@ -178,6 +178,11 @@ describe('a membrane’s parts coloured from their meshes (round 9)', () => {
     const sphere = await v.api.run('mesoscale.wrapMembrane', { radius: 300 });
     expectOk(sphere);
     expect(v.api.mesoscale!.graphicsState(sphere.changed!.nodes![0]).value?.meshColors).toBeUndefined();
+    // review N6: the switch asked of it fails, nothing changed (not a step that does nothing)
+    const steps0 = steps();
+    const off = await v.api.run('mesoscale.colorLevels', { particles: sphere.changed!.nodes![0], meshColors: false });
+    expect(off.ok).toBe(false);
+    expect(steps()).toBe(steps0);
   });
 
   // the state fills a param left out with its default (`resolveParams`, a session's too): the operations' raw reads of
