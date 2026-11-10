@@ -1338,3 +1338,23 @@ recorded, so they are encoded first.
 `e31d53beb` format. `4c01547d0` and `0cadec122` (test first): since one buffer holds the rows both views read, a CPU
 write of the member's placeholders (zeros) left a pool's dead slots at the origin where the cutter thought them written;
 the target carries `cpuWrites`, and the cutter writes its dead slots again after one.
+
+## Round 7, after the merge (2026-11-09)
+
+**Merge follow-ups (test first each).** `eb1e42174`/`5dcb0d7f0` a replaced writer was never written (the layout key had
+no writer version: `getLayoutKey` now has it); `GpuInstanceTarget.cpuWrites` per segment, an epoch never seen again
+(`e32d53bfa`/`546e27771`; one count for the culler made every pool write all its dead slots again on any member's
+update); the selection's comment says what a view measures (15.6 B). `shader-parity.test.ts` (master's, new) lists the
+mesh's patch texture as WGSL only.
+
+**Item 4, the slab's frame (measured, nothing to fix).** `~/Downloads/yeast_slab_z600nm.bcif` opened once, outside the
+viewer: a Node script over Mol*'s BinaryCIF decoder (`lipid-tiles-shots/r7/slab/frame.mjs`, kept outside the tree), RSS
+1.25 GB. The file (`yc2bcif_atoms` 0.3.0, block `cellpack_yeast_atoms_-999_999_-999_999_-1_1`) holds 5,457 entities,
+19.7 M template atoms (centred, ±625 Å), 6.89 M operators (`_pdbx_struct_oper_list`) and 216 k assembly rows. The
+operators' translations span x −20,030..22,641, y −20,610..19,675, z −2,102..4,109 Å; the PM mesh × 10 spans x
+−19,398..21,600, y −19,588..18,878 Å. Of 186 k sampled instances (every 37th), 7,272 lie within 400 Å of a PM vertex,
+their mean offset from it (−1.1, 4.8, 3.4) Å: no shift. The instances reach 630–1,000 Å past the PM on both sides of x
+and y alike (the cell wall's proteins; a scale error would grow with the coordinate), so no scale either. **The slab is
+in the meshes' frame: Å = nm × 10, the same origin.** The reader's ×10 is right; the user opens both with + Open,
+nothing to set. (The PM's vertices are about 420 Å apart, so a vertex distance is not a surface distance: the histogram
+has no peak at 0, and is not evidence either way.)
