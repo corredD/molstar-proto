@@ -4,7 +4,7 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Color } from '@molstar/core/util/color';
 import type { ApiResult } from '@molstar/prism-viewer/api/area';
 import { DefaultPrismViewerSpec } from '@molstar/prism-viewer/default-spec';
@@ -140,9 +140,10 @@ describe('a membrane’s parts coloured from their meshes (round 9)', () => {
     );
     expect(swatch).toBeDefined();
     const before = steps();
-    expectOk(await v.api.run('mesoscale.style', { particles: membrane, parts: 'VAC', color: 'tomato' }));
+    // run as the menu runs it (review N5): its operation not awaited, its step awaited
+    swatch!.run!();
+    await vi.waitFor(() => expect(meshColor(1)).toBe(0xff6347));
     expect(steps()).toBe(before + 1);
-    expect(meshColor(1)).toBe(0xff6347);
     expect(params().partColors).toEqual({});
     expect(tints()).toEqual([undefined, meshTint(Color(0xff6347))]);
     expect(dots()).toEqual([meshColor(0), 0xff6347]);
@@ -281,5 +282,23 @@ describe('a membrane’s parts coloured from their meshes (round 9)', () => {
     expect(meshColor(1)).toBe(0xff6347);
     expect(params().partColors).toEqual({});
     expect(dots()).toEqual([meshColor(0), 0xff6347]);
+  });
+
+  // review N5: a part's eye and colour in one style, one step: its mesh painted and the part hidden, undone together
+  it('a part’s eye and colour in one style are one step, undone together', async () => {
+    const { v, membrane, meshColor, steps } = await wrapped();
+    const cells = v.plugin.state.data.cells;
+    const hidden = () => (cells.get(membrane)!.transform.params as { hiddenParts: readonly string[] }).hiddenParts;
+    const grey = meshColor(1);
+    const before = steps();
+    expectOk(
+      await v.api.run('mesoscale.style', { particles: membrane, parts: 'VAC', color: 'tomato', visible: false }),
+    );
+    expect(steps()).toBe(before + 1);
+    expect(meshColor(1)).toBe(0xff6347);
+    expect(hidden()).toEqual(['VAC']);
+    expectOk(await v.api.history.undo({}));
+    expect(meshColor(1)).toBe(grey);
+    expect(hidden()).toEqual([]);
   });
 });
