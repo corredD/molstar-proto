@@ -342,6 +342,15 @@ export function documentMenuItems(
     ];
     items.push({ id: 'color', label: 'Color…', icon: 'palette', run: () => open(swatches) });
   }
+  if (doc.select && doc.id) {
+    // an annotation of the view shown, its target the row's address (prism.md §5.2): saved, drawn as a label
+    items.push({
+      id: 'label',
+      label: 'Add a label',
+      icon: 'type',
+      run: () => void api.run('mesoviewspec.label', { select: doc.select, text: label }),
+    });
+  }
   if (doc.select && doc.id && !part) {
     items.push({
       id: 'show-only',

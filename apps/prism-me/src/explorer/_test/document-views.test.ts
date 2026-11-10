@@ -116,7 +116,8 @@ describe('the Views row', () => {
     const h = harness();
     const row = { label: 'catalase', doc: { id: 'p.catalase', select: '(population p.catalase)' } };
     const add = documentMenuItems(h.api, treeOf(), row).find((i) => i.id === 'label')!;
-    expect(add.label).toBe('Add label');
+    // the same words as an object row's
+    expect(add.label).toBe('Add a label');
     await add.run!();
     expect(h.run).toHaveBeenLastCalledWith('mesoviewspec.label', { select: '(population p.catalase)', text: 'catalase' });
     // the document's own row has none (its address is everything)
