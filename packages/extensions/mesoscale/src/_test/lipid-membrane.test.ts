@@ -320,6 +320,32 @@ describe('lipid membrane', () => {
     expect(v.plugin.state.data.cells.has(ref)).toBe(false);
   });
 
+  it('fails a theme on a membrane cleanly when the redraw fails: ok false, the membrane kept, no step (round 7 S4)', async () => {
+    const base = DefaultPrismViewerSpec();
+    const v = await createPrismViewerHeadless({
+      spec: { ...base, extensions: [...(base.extensions ?? []), MesoscaleExtension] },
+    });
+    viewers.push(v);
+    const r = await v.api.mesoscale!.wrapMembrane({ radius: 400, edge: 80, patch: 'test-patch' });
+    expectOk(r);
+    const ref = r.changed!.nodes![0];
+    const before = JSON.stringify(v.plugin.state.data.cells.get(ref)!.transform.params);
+    const repr = v.plugin.state.data.cells.get(ref)!.obj!.data.repr;
+    vi.spyOn(repr, 'createOrUpdate').mockReturnValue(
+      Task.create('fails', async () => {
+        throw new Error('past this GPU’s buffers');
+      }) as never,
+    );
+    const res = await v.api.run('mesoscale.theme', { objects: [ref], theme: 'zoom' });
+    expect(res.ok).toBe(false);
+    const cell = v.plugin.state.data.cells.get(ref)!;
+    expect(cell.status).toBe('ok');
+    expect(JSON.stringify(cell.transform.params)).toBe(before);
+    // the history's last step is still the wrap
+    expectOk(await v.api.history.undo({}));
+    expect(v.plugin.state.data.cells.has(ref)).toBe(false);
+  });
+
   it('says its stages while it wraps, and a cancel leaves the scene as it was (Ludo, 2026-11-08)', async () => {
     // "a progress bar so we know computation is happening and is not blocking": a task with readable stages, yielding
     const base = DefaultPrismViewerSpec();
