@@ -1491,17 +1491,17 @@ by the frustum); `hiddenParts`, `partColors` look params (no re-cut: `sourceData
 `mesoscale.colors` take `parts` (one step each). `26fcbdc88` prism-me: a row a part under the membrane (`mp:`), its eye
 and colour; a drag's eyes one write a membrane.
 
-**The budget (decided here; Ludo to be told).** A share per pool, water-filled across the pools (`poolCapacities`):
-a leaflet under the level whole, the others the level each (+10 %). Nearest first across parts is gone: a part's
-colour is its objects' far colour, and a mix has its own members, so a part needs its own pools; one pool across parts
-would need several GPU writers into one pool (the graphics writer contract), not a modest cost. Water-filling over a
-share by area because a share by area starves the small membranes (yeast, 2 M: LD ~31 k, PEROX ~15 k lipids, a close
-view of either a disc of spheres); water-filled, each of the 17 leaflets ~129 k (2 M / 17 × 1.1), against round 6's
-live counts (73 k the PM close, one leaflet; 145 k inside a mito, over the IM's and OM's inner leaflets): both held.
+**The budget (decided here; Ludo to be told).** A share per pool, water-filled across the pools (`poolCapacities`): a
+leaflet under the level whole, the others the level each (+10 %). Nearest first across parts is gone: a part's colour is
+its objects' far colour, and a mix has its own members, so a part needs its own pools; one pool across parts would need
+several GPU writers into one pool (the graphics writer contract), not a modest cost. Water-filling over a share by area
+because a share by area starves the small membranes (yeast, 2 M: LD ~31 k, PEROX ~15 k lipids, a close view of either a
+disc of spheres); water-filled, each of the 17 leaflets ~129 k (2 M / 17 × 1.1), against round 6's live counts (73 k the
+PM close, one leaflet; 145 k inside a mito, over the IM's and OM's inner leaflets): both held.
 
-**Next (if this session stops).** Dawn test `lipid-parts.webgpu.test.ts` (hide a part: its lipids and surfaces gone;
-a part's colour changes the image with By zoom off (close) and on (far), close species kept; the LD's two surfaces);
-gate on `git diff 89c4f13aa...HEAD`; checks; r7 images; write-up.
+**Next (if this session stops).** Dawn test `lipid-parts.webgpu.test.ts` (hide a part: its lipids and surfaces gone; a
+part's colour changes the image with By zoom off (close) and on (far), close species kept; the LD's two surfaces); gate
+on `git diff 89c4f13aa...HEAD`; checks; r7 images; write-up.
 
 ## Round 7 finish and item 6 brief (Ludo, 2026-11-09)
 
@@ -1513,12 +1513,13 @@ same time with and without cut."
 the lane-skeptic, gate it; confirmed findings fixed test-first. The coordinator runs each step as its own agent. No
 images ("we dont need picture"): the checks are tests and numbers.
 
-**Item 6: colour control and colours by zoom on three levels.** "we want to have more control on color, and the
-dynamic color should show the atomic color and residues color and membrane colors."
-- By zoom on a membrane shows three levels, as a particle list does (`color-levels.md`): far the membrane's colour
-  (the part's, for a cell's part), middle the species' (= the lipid's residue / entity colour), close each atom's
-  colour by element (the patch's atoms carry their element). Today `membraneColorLevels` stops at species ("a lipid is
-  one group, so no chain or atom colours past them"): lift that. The far surfaces follow the far and middle levels.
+**Item 6: colour control and colours by zoom on three levels.** "we want to have more control on color, and the dynamic
+color should show the atomic color and residues color and membrane colors."
+
+- By zoom on a membrane shows three levels, as a particle list does (`color-levels.md`): far the membrane's colour (the
+  part's, for a cell's part), middle the species' (= the lipid's residue / entity colour), close each atom's colour by
+  element (the patch's atoms carry their element). Today `membraneColorLevels` stops at species ("a lipid is one group,
+  so no chain or atom colours past them"): lift that. The far surfaces follow the far and middle levels.
 - More control: the membrane's and each part's colour, each species' colour, the element colours (or a scheme for the
   close level), the levels' distances (`ColorLevels.Params`), the palettes and Generate colors, from the same controls
   as a particle list (properties, right-click), one history step each.
@@ -1527,33 +1528,33 @@ dynamic color should show the atomic color and residues color and membrane color
   only their level; one history step each.
 
 **Then the rest of round 7's gate.** On `git diff 89c4f13aa...HEAD` (items 2, 3, 6 and the review fixes): reviewer,
-skeptic, fixes test-first, the table here and in the PR body; the lane checks; the progress end; the PR body for
-rounds 4–7.
+skeptic, fixes test-first, the table here and in the PR body; the lane checks; the progress end; the PR body for rounds
+4–7.
 
 **Then round 8** (its brief below): a second rendering for the middle distance to compare and pick from.
 
 ## Round 8 brief (Ludo, 2026-11-09): shell-textured heads in the middle distance, to compare and pick
 
-**Asked.** "can we get some improvement using something like
-https://samdauwe.github.io/webgpu-native-examples/fur.html" (shell fur: the mesh drawn as ~20 instanced shells along
-its normals, each alpha-tested against a noise texture), then "yes" to a round 8 after round 7; "start lane 8, so we
-can have an additional rendering test to compare and pick from."
+**Asked.** "can we get some improvement using something like https://samdauwe.github.io/webgpu-native-examples/fur.html"
+(shell fur: the mesh drawn as ~20 instanced shells along its normals, each alpha-tested against a noise texture), then
+"yes" to a round 8 after round 7; "start lane 8, so we can have an additional rendering test to compare and pick from."
 
 **Idea.** The lipid heads as shells: the far surface drawn as N shells (6–10) through the head layer (its base to the
-heads' top, ~10 Å), both leaflets; each shell reads the patch top-view texture, which gains a height channel (the
-heads' top per texel, from the patch's head atoms); a fragment is kept where the heads reach that shell's height, its
-normal from the head's profile, its colour the species' (and by zoom, item 6's levels). Far away the shells blur to
-today's texture; closer the heads read as relief with parallax; near, the real atoms.
+heads' top, ~10 Å), both leaflets; each shell reads the patch top-view texture, which gains a height channel (the heads'
+top per texel, from the patch's head atoms); a fragment is kept where the heads reach that shell's height, its normal
+from the head's profile, its colour the species' (and by zoom, item 6's levels). Far away the shells blur to today's
+texture; closer the heads read as relief with parallax; near, the real atoms.
 
-**To compare and pick (Ludo).** The middle distance gets a choice in the Look, live: `middle: coarse spheres |
-shells | parallax` (today's coarse sphere levels; shells; parallax occlusion mapping, one pass ray-marching the same
-height channel, flat silhouettes). Ludo flies each and picks the default; no images, the comparison is the live switch
-plus the metrics.
+**To compare and pick (Ludo).** The middle distance gets a choice in the Look, live:
+`middle: coarse spheres | shells | parallax` (today's coarse sphere levels; shells; parallax occlusion mapping, one pass
+ray-marching the same height channel, flat silhouettes). Ludo flies each and picks the default; no images, the
+comparison is the live switch plus the metrics.
 
 **Design at the architect's checkpoint (measure first; stop and report if the graphics change passes ~600 lines).**
+
 - Shells: one instanced draw of each far surface (instance = shell), offset per shell along the leaflet's normal (the
-  far surface's lift and per-vertex shift kept), alpha-tested in the mesh shader from `dPatchTexture`'s height
-  channel; faded by view angle at grazing and by distance into the flat texture.
+  far surface's lift and per-vertex shift kept), alpha-tested in the mesh shader from `dPatchTexture`'s height channel;
+  faded by view angle at grazing and by distance into the flat texture.
 - Parallax: the same texture, ray-marched in the fragment shader of the existing far surface.
 - With the app's look: outline, SSAO, shadows (shells write depth: no banding), picking (a shell picks its membrane),
   clipping and graded cuts (a cut through a shell stack must look right: Ludo's "with and without cut").
@@ -1563,15 +1564,14 @@ plus the metrics.
 
 **Tests.** The height channel equals the patch's head tops (TS, quick); a shell keeps exactly the texels whose height
 passes it (Dawn, a 2-triangle mesh, pixel reads); the zoom sequence's largest step dE across all switches under 0.03
-from outside and inside (round 7's metric), for each middle look; frame time and drawn lipids at whole/middle/close
-on ×600 and the yeast cell, each middle look against the coarse spheres; a cut through the middle look; 0 frames at
-rest.
+from outside and inside (round 7's metric), for each middle look; frame time and drawn lipids at whole/middle/close on
+×600 and the yeast cell, each middle look against the coarse spheres; a cut through the middle look; 0 frames at rest.
 
 **Ludo checks.** 1354: the yeast cell and model_vertexcolor ×600, Look › middle: switch coarse spheres / shells /
 parallax while flying in from far, with and without a clip; pick the default.
 
-**Steps (Ludo: the lane system).** Architect (Opus, read-only) → builder (Opus) → lane-reviewer → lane-skeptic →
-fixes test-first; the coordinator runs each.
+**Steps (Ludo: the lane system).** Architect (Opus, read-only) → builder (Opus) → lane-reviewer → lane-skeptic → fixes
+test-first; the coordinator runs each.
 
 **Machine care.** The machine restarted three times on 2026-11-09 under load (128–540, several sessions building at
 once): one heavy job at a time, wait while load > 12, abort past 8 GB RSS.
@@ -1588,34 +1588,34 @@ Ludo's word.
 membrane's or part's colour in `tColorFar` (chain offset 0: chain = species). The far surfaces go far → species
 (`patchObject` :812–858, `uPatchLevels`, mesh.wgsl.ts:96–101); they never need atoms (lipids cover them first).
 `lipid-colors.webgpu.test.ts:129` reads the three levels by moving the edges, not the camera. Stale comments
-(membrane.ts:669–670, operations.ts:1016) say otherwise. So item 6 is: tiles' atom level, an element scheme, a
-far-only colour, an edges fast path, the UI, and parity gaps.
+(membrane.ts:669–670, operations.ts:1016) say otherwise. So item 6 is: tiles' atom level, an element scheme, a far-only
+colour, an edges fast path, the UI, and parity gaps.
 
-1. **Tiles' close level.** Pass `tile.elements` (tiles.ts:61) to the tiles' `memberObject` (:1385), atoms as groups,
-   an `atomSpecies: Uint16Array` per variant from `lipidAtomStart`; `tColorNear` O(atoms of a variant). Per-lipid
-   markers lost (unused: `getLoci` is `EmptyLoci` :1535). Fix the stale comments.
+1. **Tiles' close level.** Pass `tile.elements` (tiles.ts:61) to the tiles' `memberObject` (:1385), atoms as groups, an
+   `atomSpecies: Uint16Array` per variant from `lipidAtomStart`; `tColorNear` O(atoms of a variant). Per-lipid markers
+   lost (unused: `getLoci` is `EmptyLoci` :1535). Fix the stale comments.
 2. **Controls (each one `updateMembrane` commit, operations.ts:1852).**
    - Far-only colour: `far?: PD.Text` on `mesoscale.colorLevels` (:997), membrane only, writes `props.color` alone.
      `style {particles, color}` keeps its semantics (every species and the far colour, review S2).
-   - Part colour: exists (far-only). Species colour: exists (`membraneSpecies` :481); a species' right-click Color…
-     only if cheap.
+   - Part colour: exists (far-only). Species colour: exists (`membraneSpecies` :481); a species' right-click Color… only
+     if cheap.
    - Element scheme: repr param `atomColors: 'element' | 'carbon-species'` (carbons take the species' colour,
-     heteroatoms their element's: the classic lipid look), via `colorLevels {atoms}`; `elementColor(code, scheme,
-     speciesColor)` in `membraneColorLevels`' `colorOf`.
+     heteroatoms their element's: the classic lipid look), via `colorLevels {atoms}`;
+     `elementColor(code, scheme, speciesColor)` in `membraneColorLevels`' `colorOf`.
    - Edges fast path: `onlyColorEdges(before, props)` when only the levels' params move: `ColorLevels.setProps` on
      members and render objects (as `setClip` :1503–1504), `uPatchLevels` rewritten on every patch object (keep their
      `{values, size}`), no rebuild (today ~1 s on model ×20). On/off still rebuilds.
    - Palettes/Generate: check by a test first whether `mesoscale.theme` (rows.ts:505–524; operations.ts :1204–1300, no
      membrane branch) handles a membrane; if not, a membrane plan (uniform/object, generate, zoom).
-   - UI: `MembraneLook` gains a Far `ColorField` (By zoom on) and an Atoms `Select`; `ZoomColors`
-     (controls.tsx:116–160) gains `membrane?: boolean`: Chain hidden, edges labelled Species and Atoms; the operation
-     clamps `chain` to the geometric mean of entity and atom so `entity < chain < atom` (:1020) holds.
-3. **Tests (Dawn, `syntheticPatchPdb`, perspective, 128², `lipid-colors.webgpu.test.ts`), failing on HEAD.**
-   Three camera distances with fixed default edges, far blue via `{far}`, species green: far blue > 0.6, middle green
+   - UI: `MembraneLook` gains a Far `ColorField` (By zoom on) and an Atoms `Select`; `ZoomColors` (controls.tsx:116–160)
+     gains `membrane?: boolean`: Chain hidden, edges labelled Species and Atoms; the operation clamps `chain` to the
+     geometric mean of entity and atom so `entity < chain < atom` (:1020) holds.
+3. **Tests (Dawn, `syntheticPatchPdb`, perspective, 128², `lipid-colors.webgpu.test.ts`), failing on HEAD.** Three
+   camera distances with fixed default edges, far blue via `{far}`, species green: far blue > 0.6, middle green
    > 0.6, close P/O > 0.1 and carbon grey > 0.3, both methods. Each control changes only its level (`changed(a, b)`):
-   far, a species, `atoms: carbon-species`, a part (extend `lipid-parts.webgpu.test.ts:56`). Edges without a rebuild
-   (same render objects, image changed). One history step each (undo restores). TS quick: `elementColor` per scheme,
-   the clamp, the theme on a membrane. A close view with a clip plane keeps the element share.
+   > far, a species, `atoms: carbon-species`, a part (extend `lipid-parts.webgpu.test.ts:56`). Edges without a rebuild
+   > (same render objects, image changed). One history step each (undo restores). TS quick: `elementColor` per scheme,
+   > the clamp, the theme on a membrane. A close view with a clip plane keeps the element share.
 4. **Size.** ~170 production lines, no `packages/graphics` change. Optional library lanes (Ludo's word): `atomColors`
    for particle lists (~60), a uniform far colour instead of per-instance `tColorFar` (~30, saves up to 8 MB at 2 M).
 5. **Risks.** Nothing per frame; every colour buffer bounded by budget or patch, never by lipids; colour changes other
@@ -1627,25 +1627,26 @@ scheme offers `carbon-species`; `style`'s one colour keeps setting the far colou
 
 ## Round 7, item 6: built (2026-11-09)
 
-**Commits** (from 72f8647b7): e3b5ff994 the tests first (failing); e412d4766 the tiles' atom level and the stale comments;
-83360a32c `colorLevels {far}`; 65c1d4eaa `atomColors` through `colorLevels {atoms}` (and `elementColor(code, scheme,
-species)`, `graphicsState` gives `far` and `atomColors`); dfed4e45f the edges fast path (`onlyColorEdges`,
-`setColorEdges`, `patchLevels`; also run at a build's end); a821c96db `mesoscale.theme` on a membrane (the gap was
-real: "There is no object to color"); fcd57780a the chain clamp; a967a1936 the UI (`ZoomColors {membrane}`, Look's Far
-and Atoms); 61e16cb84 specs (ui.md §4, features.md, color-levels.md, the changelog).
+**Commits** (from 72f8647b7): e3b5ff994 the tests first (failing); e412d4766 the tiles' atom level and the stale
+comments; 83360a32c `colorLevels {far}`; 65c1d4eaa `atomColors` through `colorLevels {atoms}` (and
+`elementColor(code, scheme, species)`, `graphicsState` gives `far` and `atomColors`); dfed4e45f the edges fast path
+(`onlyColorEdges`, `setColorEdges`, `patchLevels`; also run at a build's end); a821c96db `mesoscale.theme` on a membrane
+(the gap was real: "There is no object to color"); fcd57780a the chain clamp; a967a1936 the UI (`ZoomColors {membrane}`,
+Look's Far and Atoms); 61e16cb84 specs (ui.md §4, features.md, color-levels.md, the changelog).
 
 **Red before, green after.** Dawn (`lipid-colors.webgpu.test.ts`, a describe of its own, both methods): far blue via
 `{far}` ("Unknown value 'far'"); species in the middle and atoms close (tiles: close `heads 0, green 1`); each control
 its level, one step (the species step a guard, green on HEAD; far and atoms red on their param); edges without a rebuild
-("object 0 kept" false). Quick (`lipid-membrane.test.ts`): far, atoms ("Unknown value"), the clamp ("The edges go
-entity < chain < atom"), the theme ("no object"); `elementColor` per scheme added with its fix. `lipid-parts`: a part's
-colour keeps the species level (a guard, green on HEAD). UI (`zoom-colors.test.tsx`): timed out waiting for the Species
-edge, then green.
+("object 0 kept" false). Quick (`lipid-membrane.test.ts`): far, atoms ("Unknown value"), the clamp ("The edges go entity
+< chain < atom"), the theme ("no object"); `elementColor` per scheme added with its fix. `lipid-parts`: a part's colour
+keeps the species level (a guard, green on HEAD). UI (`zoom-colors.test.tsx`): timed out waiting for the Species edge,
+then green.
 
 **Deviations from the design.**
+
 - The close view at default edges: an atom must be over 40.7 px, so within ~13 Å of the camera; from above only the
-  heads are that close, the carbons lie 1.5–16 Å under them at the species level. So "close" asserts P/O > 0.1 (over
-  the heads, 120 px) and the carbon grey > 0.3 is read from a fourth view, `tails`, along the mid-plane among the tails.
+  heads are that close, the carbons lie 1.5–16 Å under them at the species level. So "close" asserts P/O > 0.1 (over the
+  heads, 120 px) and the carbon grey > 0.3 is read from a fourth view, `tails`, along the mid-plane among the tails.
 - The middle view at 6 px an atom (not ~0.8): a patch surface's level is per fragment, its foreshortened limbs go far;
   closer, the surface fills the view. A membrane's chain level is its species', so 6 px is still the species.
 - "Each control its level" checks the levels each control must keep, not all: a species' colour also changes the atoms

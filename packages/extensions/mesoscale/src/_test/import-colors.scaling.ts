@@ -12,12 +12,7 @@ import { PluginStateObject as SO, PluginStateTransform } from '@molstar/plugin/s
 import { DefaultPrismViewerSpec } from '@molstar/prism-viewer/default-spec';
 import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
 import type { PrismViewer } from '@molstar/prism-viewer/viewer';
-import {
-  checkLinear,
-  quadraticControl,
-  scaling,
-  scalingAsync,
-} from '@molstar/test-harness/scaling';
+import { checkLinear, quadraticControl, scaling, scalingAsync } from '@molstar/test-harness/scaling';
 import { matchColors, parseColorFile } from '../color-file.js';
 import { mesoEntities } from '../model.js';
 import { MesoscaleExtension } from '../prism-viewer.js';
