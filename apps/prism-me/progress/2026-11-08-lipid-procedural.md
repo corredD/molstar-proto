@@ -2051,3 +2051,28 @@ guard; the measurement `lipid-measure.webgpu.test.ts` (opt-in, heavy) on the yea
 Ludo picked Parallax as the default middle look ("the parallax works really well"): 7e104fc0e. Checks: the quick lane of
 mesoscale and prism-me (381 passed), the five Dawn lipid files (29 passed), tsc, lint, format. Open: shells' band
 objects, the pop with a clip, the face-on sliver, X2, N1, N2, N6, color-levels.scaling's kill (TODO.md).
+
+## Round 9 brief: a colour multiplier per compartment (Ludo, 2026-11-10)
+
+Ludo: "we still want a color multiplier per compartments, like species colors, we add compartments colors, so one
+membrane but colors can change from the compartments", and "we can use the source geometry color for that. So we need a
+link geometry-membrane at least for the color. so if I change the color of the geometry/mesh the membrane color
+multiplier take it."
+
+- **What Ludo sees:** a membrane's colours (species, and what By zoom shows) multiplied by its compartment's colour. A
+  compartment is a part (Wrap all N meshes: one a mesh), or the whole membrane (one mesh). The multiplier is the source
+  mesh's colour: recolouring the mesh (its row's dot, Color…, a theme) recolours its membrane part at once, one undo
+  step, no new cut.
+- **What exists:** the membrane keeps its meshes' refs (`mesh`, `meshes`; `dependsOn`), round 7's `partColors` (a part's
+  colour replaces its far colour, set from the part's row), `onlyColorEdges` (a colour change without a rebuild).
+- **Questions for the architect** (recommend, Ludo decides at the checkpoint): the levels the multiplier applies to
+  (far, species, atoms); one source of truth (the part's dot writes the mesh's colour) or the mesh as a default under
+  the part's own colour; a switch to turn it off (a grey mesh dims everything); a membrane with no mesh (a compartment's
+  sphere, a sphere); how a mesh's colour change reaches the membrane (an operation's write, a state listener) with one
+  step and no rebuild; tiles as well as the cutter.
+- **Spec:** `_spec/ui.md` (Lipid membranes, parts), `features.md`; the changelog.
+- **Tests, failing first:** the species colours times the compartment's, read from the colour data (no image); a mesh
+  recoloured → its part's colours follow, no new cut, one step, undo restores; two parts with two meshes coloured apart;
+  the switch off → round 7's colours; a membrane with no mesh unchanged; the perf baseline not raised.
+- **Size:** about 300 production lines. **Steps:** architect (Plan, Opus, read-only) → builder (Opus) → lane-reviewer →
+  lane-skeptic → fixes with a failing test each. No images.
