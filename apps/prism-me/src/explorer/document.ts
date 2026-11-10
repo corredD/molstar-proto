@@ -244,7 +244,11 @@ export function activateViewsRow(api: ViewerApi, doc: DocumentRef): Promise<unkn
   return undefined;
 }
 
-/** The Views row's ⋯ (prism.md §4.4): a view's Show this view; a tour's Play, or Stop while it plays. */
+/**
+ * The Views row's ⋯ (prism.md §4.4): its own and a view's New view from here; a view's Show this view (another than the
+ * shown), Update camera (the shown), Open with this view (another than the one the file opens with); a tour's Play, or
+ * Stop while it plays.
+ */
 function viewsMenuItems(api: ViewerApi, tree: DocumentTree | undefined, doc: DocumentRef): ContextMenuItem[] {
   const items: ContextMenuItem[] = [];
   const views = tree?.views;
@@ -254,6 +258,30 @@ function viewsMenuItems(api: ViewerApi, tree: DocumentTree | undefined, doc: Doc
       label: 'Show this view',
       icon: 'eye',
       run: () => void api.run('mesoviewspec.view', { view: doc.view }),
+    });
+  }
+  if (doc.view && views?.shown === doc.view) {
+    items.push({
+      id: 'update-camera',
+      label: 'Update camera',
+      icon: 'camera',
+      run: () => void api.run('mesoviewspec.updateCamera', {}),
+    });
+  }
+  if (doc.view && views?.opensWith !== doc.view) {
+    items.push({
+      id: 'open-with',
+      label: 'Open with this view',
+      icon: 'file-code',
+      run: () => void api.run('mesoviewspec.openWith', { view: doc.view }),
+    });
+  }
+  if (doc.view || doc.id === ViewsId) {
+    items.push({
+      id: 'new-view',
+      label: 'New view from here',
+      icon: 'plus',
+      run: () => void api.run('mesoviewspec.newView', {}),
     });
   }
   if (doc.tour) {
