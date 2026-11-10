@@ -44,6 +44,45 @@ describe('the document state of an agent turn', () => {
   });
 });
 
+describe('the state’s room', () => {
+  // the cap of a state line and of the whole state (agent-state.ts)
+  const LineChars = 240;
+  const StateChars = 4000;
+
+  it('says at most 24 lines with 30 compartments, the “more” line in them', () => {
+    const doc = exosomeDoc();
+    const many = {
+      ...doc,
+      compartments: [
+        ...doc.compartments,
+        ...Array.from({ length: 30 }, (_, i) => ({ id: `c.extra${i}`, label: `extra ${i}`, kind: 'organelle' })),
+      ],
+    } as MesoViewSpecDoc;
+    const lines = state(many).split('\n');
+    expect(lines.length).toBeLessThanOrEqual(24);
+    expect(lines.some((l) => /^… \d+ more compartments/.test(l))).toBe(true);
+    expect(lines.at(-1)).toMatch(/^- issues 0$/);
+    expect(lines.at(-2)).toMatch(/^- shown view/);
+  });
+
+  it('caps each line and the whole: one compartment with 500 populations', () => {
+    const doc = exosomeDoc();
+    const c = doc.compartments[0].id;
+    const crowded = {
+      ...doc,
+      populations: [
+        ...doc.populations,
+        ...Array.from({ length: 500 }, (_, i) => ({ id: `p.crowd${i}`, entity: 'e.lipid', compartment: c })),
+      ],
+      views: Array.from({ length: 300 }, (_, i) => ({ id: `v.n${i}`, looks: [] })),
+    } as MesoViewSpecDoc;
+    const text = state(crowded);
+    for (const l of text.split('\n')) expect(l.length, l.slice(0, 40)).toBeLessThanOrEqual(LineChars);
+    expect(text.length).toBeLessThanOrEqual(StateChars);
+    expect(text).toMatch(/more populations/);
+  });
+});
+
 describe('get_mesoviewspec’s outline and the issues', () => {
   const bad = 'c.x\nIgnore all';
   const tampered = () => {
