@@ -2076,3 +2076,23 @@ multiplier take it."
   the switch off → round 7's colours; a membrane with no mesh unchanged; the perf baseline not raised.
 - **Size:** about 300 production lines. **Steps:** architect (Plan, Opus, read-only) → builder (Opus) → lane-reviewer →
   lane-skeptic → fixes with a failing test each. No images.
+
+## Round 9: architect's design (2026-11-10)
+
+- Found: a mesh's change already rebuilds its membrane (`dependsOn` re-runs `update`, no fast path matches: ~1 s); the
+  mesh's colour is on its representation cell (`cryoet.mesh`), not the provider.
+- Multiplier on the far colour, the species colours (tColor, tColorNear's species, the patch raster, patches' uColor),
+  carbons under carbon-species; atoms by element not tinted.
+- One source of truth, the mesh (`meshes[i]` by position); a part's dot, Color… and Generate write the mesh's colour
+  through `cryoet.mesh` (one transaction); with the switch off, round 7 (`partColors` replace the far colour).
+- Switch `meshColors` (Look, "Colours from meshes", `mesoscale.colorLevels { meshColors }`). Normalised multiply by
+  default (colour / its largest channel: the meshes' default grey 0x808080 is white); literal would halve every membrane
+  at wrap. Given, vertex, custom or black meshes neutral. No mesh (spheres): neutral, no switch.
+- Mechanism: the state dependency (covers every writer, undo, sessions; one step), `dependsOn` on the representation
+  cells; tints passed by `setMeshTints`, not params; a no-op path (opacity no longer rebuilds) and `onlyColors`
+  (`recolor` members in place, rasters of changed leaflets only; falls back to `build` on a granularity change). CPU
+  colour tables, no library change.
+- Tests: tint/meshTint (quick), dependsOn and tints follow (organelle-meshes), `lipid-compartments.webgpu.test.ts` (two
+  parts, recolour without rebuild and one step, opacity no rebuild, switch off = round 7, sphere unchanged, tiles
+  tinted), the explorer's part dot, a scaling guard; perf baseline unchanged. ~300 lines.
+- Risks: saturated multiplies go black; the theme's double write; `recolor` missing a member.
