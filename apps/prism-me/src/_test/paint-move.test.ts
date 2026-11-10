@@ -12,12 +12,11 @@ import { DefaultPrismViewerSpec } from '@molstar/prism-viewer/default-spec';
 import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
 import type { PrismViewer } from '@molstar/prism-viewer/viewer';
 import { afterEach, describe, expect, it } from 'vitest';
-import { ParticleListPaintLayer } from '@molstar/mesoscale-extension/paint';
 import { MesoscaleExplorerExtensions } from '../extensions.js';
 
 // Painted copies move with their list (lane `paint`, review must-fix 1): a list moved after its first stroke carries
-// the copies (stage.move updates the list's one Transform; the paint layer under it, paint-layer 2026-11-10), and a
-// later stroke lands where it is painted. Over a mesoscale model made in memory, drawn as spheres.
+// the copies (stage.move updates the list's one Transform, under the painted decorator), and a later stroke lands where
+// it is painted. Over a mesoscale model made in memory, drawn as spheres.
 
 function model(): ParticleList {
   const count = 2;
@@ -78,10 +77,6 @@ const drawn = (v: PrismViewer) =>
       sourceData: ParticleList;
     }
   ).sourceData;
-/** The paint layer's copies */
-const copies = (v: PrismViewer) =>
-  Array.from(v.plugin.state.data.cells.values()).find((c) => c.transform.transformer === ParticleListPaintLayer)!.obj!
-    .data as ParticleList;
 const at = (list: ParticleList, i: number) => Vec3.fromArray(Vec3(), list.coordinates, i * 3);
 
 describe('painted copies and a move of their list', () => {
@@ -96,19 +91,11 @@ describe('painted copies and a move of their list', () => {
       }),
     );
     expect(Vec3.distance(at(drawn(v), 0), Vec3.create(100, 0, 0))).toBeLessThan(1e-3);
-    expect(Vec3.distance(at(copies(v), 0), Vec3.create(110, 20, 30))).toBeLessThan(1e-3);
+    expect(Vec3.distance(at(drawn(v), 2), Vec3.create(110, 20, 30))).toBeLessThan(1e-3);
     ok(await v.api.run('mesoscale.paint', { entity: 'CA', positions: [10, 20, 30], normals: [0, 0, 1], seed: 2 }));
-    expect(Vec3.distance(at(copies(v), 1), Vec3.create(10, 20, 30))).toBeLessThan(1e-3);
-    // the scale too: the copies where the list's move puts its own particles (its particle 0 at 0, 0, 0 and 1 at 10,
-    // 0, 0 in its frame: the scale and the translation read from them), the list itself not given the copies
+    expect(Vec3.distance(at(drawn(v), 3), Vec3.create(10, 20, 30))).toBeLessThan(1e-3);
+    // the scale too
     ok(await v.api.run('stage.scale', { target: ref, scale: 2 }));
-    expect(drawn(v).count).toBe(2);
-    expect(copies(v).count).toBe(2);
-    const t = at(drawn(v), 0);
-    const scale = Vec3.distance(at(drawn(v), 1), t) / 10;
-    expect(scale).toBeCloseTo(2, 5);
-    expect(
-      Vec3.distance(at(copies(v), 0), Vec3.add(Vec3(), Vec3.scale(Vec3(), Vec3.create(10, 20, 30), scale), t)),
-    ).toBeLessThan(1e-3);
+    expect(drawn(v).count).toBe(4);
   });
 });

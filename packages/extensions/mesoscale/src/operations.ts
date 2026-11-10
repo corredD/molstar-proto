@@ -47,10 +47,7 @@ import {
   fiberSettingsOf,
   type PaintOrient,
   type PaintStroke,
-  ParticleListPaintLayer,
-  decoratedTail,
-  listMove,
-  paintLayerOf,
+  ParticleListPainted,
   paintRotations,
   principalAxisOf,
   toListFrame,
@@ -624,9 +621,8 @@ export class MesoscaleApi extends ApiArea {
   /**
    * Paint v1 (progress/2026-11-08-paint.md, Design 2): copies of an entity (a target of a list without entities)
    * painted at points of the scene, one stroke a run (one commit, one history step: an undo removes the stroke). The
-   * copies go in the list's paint layer (`ParticleListPaintLayer`, made on the first stroke under the list's last
-   * decorator, with representations like the list's: a list of millions is not drawn again), in the list's frame (a
-   * later move carries them). Orientation (Decided 2): a membrane protein's +z along the normal (its compartment a
+   * copies go in the list's `ParticleListPainted` (made on the first stroke, right under the list: a later move carries
+   * them), in the list's frame. Orientation (Decided 2): a membrane protein's +z along the normal (its compartment a
    * surface), anything else at random; `axis` and `view` on request. No collision checks (Decided 3).
    */
   readonly paint = this.operation({
@@ -726,16 +722,6 @@ export class MesoscaleApi extends ApiArea {
       }
       const how: PaintOrient = orient ?? (brush.surface ? 'normal' : 'random');
       const state = ctx.plugin.state.data;
-      // the layer moves its copies as the list is moved (`listMove`: a rigid move and a scale); a list whose particles
-      // are moved one by one (offsets) would leave them behind
-      const drawnList = decoratedTail(state, l.cell.transform.ref).obj?.data as ParticleList | undefined;
-      if (drawnList && listMove(data, drawnList)?.exact === false) {
-        return ApiResult.fail(
-          'invalid',
-          'Painting a list whose particles are moved one by one (offsets) is not there yet.',
-          'Paint a list moved as a whole, or one without offsets.',
-        );
-      }
       const moved = decoratorUnder(state, l.cell.transform.ref, ParticleListTransform);
       const local = [...positions];
       const k = local.length / 3;
@@ -1745,33 +1731,24 @@ const round1 = (x: number) => Math.round(x * 10) / 10;
 
 type PaintedParams = { strokes: PaintStroke[]; fibers: FiberSettingsMap };
 
-/** The fibre settings of a list's paint layer (none: none painted, no settings) */
+/** The fibre settings of a list's painted decorator (none: none painted, no settings) */
 function paintedFibers(state: State, list: string): FiberSettingsMap | undefined {
-  return (paintLayerOf(state, list)?.transform.params as PaintedParams | undefined)?.fibers;
+  return (decoratorUnder(state, list, ParticleListPainted)?.transform.params as PaintedParams | undefined)?.fibers;
 }
 
 /**
- * Updates a list's paint layer, one step. Made on first use (paint-layer, 2026-11-10): a child of the list's last
- * decorator (under its move and scale: a move inserted later goes above it too), depending on the list (the frame of
- * its strokes), with a representation for each of the list's, of its params, its state and its children (its looks'
- * layers): the copies drawn as the list is, the list itself not drawn again
+ * Updates a list's painted decorator, one step; made on first use, right under the list, with the move under it
+ * (review must-fix 1): a move or scale of the list (`stage.move`, `stage.scale`) updates the Transform it finds in the
+ * chain; one inserted later would go right under the list, above the copies, and leave them behind
  */
 async function updatePainted(state: State, l: ParticleListRef, fn: (p: PaintedParams) => PaintedParams) {
-  const painted = paintLayerOf(state, l.cell.transform.ref);
+  const painted = decoratorUnder(state, l.cell.transform.ref, ParticleListPainted);
   const b = state.build();
   if (painted) b.to(painted).update((p: PaintedParams) => fn({ ...p, fibers: p.fibers ?? {} }));
   else {
-    const tail = decoratedTail(state, l.cell.transform.ref);
-    const layer = b.to(tail).apply(ParticleListPaintLayer, fn({ strokes: [], fibers: {} }), {
-      dependsOn: [l.cell.transform.ref],
-    });
-    for (const r of l.representations) {
-      const t = r.cell.transform;
-      const made = layer.apply(t.transformer, t.params, { state: { isHidden: !!r.cell.state.isHidden } });
-      for (const c of state.tree.children.get(t.ref).toArray()) {
-        const child = state.tree.transforms.get(c);
-        if (child) made.apply(child.transformer, child.params);
-      }
+    const at = b.to(l.cell).insert(ParticleListPainted, fn({ strokes: [], fibers: {} }));
+    if (!decoratorUnder(state, l.cell.transform.ref, ParticleListTransform)) {
+      at.insert(ParticleListTransform, { transform: Mat4.identity(), scale: 1 });
     }
   }
   await b.commit();

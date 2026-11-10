@@ -203,72 +203,31 @@ export function paintParticles(
   painted: readonly PaintStroke[],
   fibers?: FiberSettingsMap,
 ): ParticleList {
-  return painting(list, painted, fibers, true) ?? list;
-}
-
-/**
- * The strokes' copies alone (paint-layer, 2026-11-10: the copies a list of their own, the model's left as it is), in
- * `list`'s frame: the copies `paintParticles` appends, in their order, with the same keys (after the list's largest),
- * targets, entities, compartments, radii, fibres (theirs only) and labels; `list`'s targets, entities and compartments
- * by reference (a bank's unit targets added), its attributes not; no copy: an empty list. O(copies) once the list's
- * largest key is known (one scan a list, kept)
- */
-export function paintedCopies(
-  list: ParticleList,
-  painted: readonly PaintStroke[],
-  fibers?: FiberSettingsMap,
-): ParticleList {
-  return painting(list, painted, fibers, false)!;
-}
-
-/** A list's largest key, scanned once a list (a stroke on 2.1 M particles would scan them all) */
-const maxKeys = new WeakMap<ParticleList, number>();
-function maxKeyOf(list: ParticleList) {
-  let max = maxKeys.get(list);
-  if (max !== undefined) return max;
-  max = -1;
-  for (let i = 0, n = list.count; i < n; ++i) if (list.keys[i] > max) max = list.keys[i];
-  maxKeys.set(list, max);
-  return max;
-}
-
-/**
- * The strokes' copies after `list`'s particles (`append`), or alone; undefined where `append` and no copy is made (the
- * list itself stands)
- */
-function painting(
-  list: ParticleList,
-  painted: readonly PaintStroke[],
-  fibers: FiberSettingsMap | undefined,
-  append: boolean,
-): ParticleList | undefined {
   const strokes = makeFibers(list, painted, fibers);
   const units = withUnits(list, strokes);
   let added = 0;
   for (const s of strokes) added += Math.floor(s.positions.length / 3);
-  if (!added && append) return undefined;
-  // the copies' first index: after the list's particles, or the first
-  const n = append ? list.count : 0;
+  if (!added) return list;
+  const n = list.count;
   const count = n + added;
 
-  let maxKey = maxKeyOf(list);
+  let maxKey = -1;
+  for (let i = 0; i < n; ++i) if (list.keys[i] > maxKey) maxKey = list.keys[i];
   const keys = new Int32Array(count);
+  keys.set(list.keys);
   const targets = new Int32Array(count);
+  targets.set(list.targets);
   const coordinates = new Float32Array(count * 3);
+  coordinates.set(list.coordinates);
   const rotations = new Float32Array(count * 4);
+  if (list.rotations) rotations.set(list.rotations);
+  else for (let i = 0; i < n; ++i) rotations[i * 4 + 3] = 1;
   const entities = list.entities ? new Int32Array(count) : undefined;
+  entities?.set(list.entities!);
   const compartments = list.compartments ? new Int32Array(count) : undefined;
+  compartments?.set(list.compartments!);
   const radii = list.radii ? new Float32Array(count) : undefined;
-  if (append) {
-    keys.set(list.keys);
-    targets.set(list.targets);
-    coordinates.set(list.coordinates);
-    if (list.rotations) rotations.set(list.rotations);
-    else for (let i = 0; i < n; ++i) rotations[i * 4 + 3] = 1;
-    entities?.set(list.entities!);
-    compartments?.set(list.compartments!);
-    radii?.set(list.radii!);
-  }
+  radii?.set(list.radii!);
   const groups = radii ? getParticleTargetGroups(list) : undefined;
 
   let at = n;
@@ -301,11 +260,8 @@ function painting(
     const e = entities?.[i] ?? info.get(targets[i])?.entity;
     return (e !== undefined && list.entityInfo?.get(e)?.name) || info.get(targets[i])?.name || 'Particle';
   };
-  const copyLabel = (i: number) => `${name(i)} · painted ${i - n + 1}${units.letterOf(i - n)}`;
-  // the copies alone: none of the list's fibres, attributes or line of moves (`movedFrom`: the copies are not it)
-  const { fibers: _f, attributes: _a, movedFrom: _m, ...rest } = list;
   return {
-    ...(append ? list : rest),
+    ...list,
     count,
     keys,
     targets,
@@ -314,11 +270,11 @@ function painting(
     ...(entities ? { entities } : {}),
     ...(compartments ? { compartments } : {}),
     ...(radii ? { radii } : {}),
-    ...(append && list.attributes ? { attributes: extendAttributes(list.attributes, n, count) } : {}),
-    ...(newFibers.length ? { fibers: withFibers(append ? list.fibers : undefined, newFibers) } : {}),
+    ...(list.attributes ? { attributes: extendAttributes(list.attributes, n, count) } : {}),
+    ...(newFibers.length ? { fibers: withFibers(list.fibers, newFibers) } : {}),
     targetMapping: units.targetMapping,
     targetInfo: units.targetInfo,
-    getParticleLabel: append ? (i) => (i < n ? label(i) : copyLabel(i)) : copyLabel,
+    getParticleLabel: (i) => (i < n ? label(i) : `${name(i)} · painted ${i - n + 1}${units.letterOf(i - n)}`),
     customProperties: new CustomProperties(),
     _propertyData: Object.create(null),
   };
@@ -524,107 +480,19 @@ function extendAttributes(
   return out;
 }
 
-/** What a layer last took: its input, and the list its strokes are in (its root) */
-type LayerCache = { input?: ParticleList; root?: ParticleList };
+/** The list a decorator last took (as plugin core's particle decorators: what is above it may change it) */
+type InputCache = { input?: ParticleList };
 
+export { ParticleListPainted };
+type ParticleListPainted = typeof ParticleListPainted;
 /**
- * A list's move from its root (`ParticleListTransform`'s, above the representations: no `movedFrom`), read from the
- * two lists' particles (the same particles in the same order): the turn from one particle's orientations, the scale
- * and the translation from two particles' positions, checked on a few more (`exact`); undefined: no move (the same
- * frames). Kept per pair, O(1) after
+ * Copies of a list's targets painted onto a surface (`mesoscale.paint`): each stroke's particles appended to the list,
+ * in its frame (under its move and scale). A decorator: what is under it takes the painted list.
  */
-export interface ListMove {
-  /** the scale, then the turn, then the translation: `Particle.transform`'s matrix */
-  readonly matrix: Mat4;
-  /** every particle checked moved by it (a rigid move and a scale, as a Transform makes) */
-  readonly exact: boolean;
-}
-
-const moves = new WeakMap<ParticleList, { root: ParticleList; move: ListMove | undefined }>();
-
-export function listMove(root: ParticleList, moved: ParticleList): ListMove | undefined {
-  if (moved === root || (moved.coordinates === root.coordinates && moved.rotations === root.rotations)) return;
-  const kept = moves.get(moved);
-  if (kept?.root === root) return kept.move;
-  const move = readMove(root, moved);
-  moves.set(moved, { root, move });
-  return move;
-}
-
-/** Particles a move is read from or checked on: at most `k`, spread over the list */
-function spread(count: number, k: number) {
-  const out: number[] = [];
-  const step = Math.max(1, Math.floor(count / k));
-  for (let i = 0; i < count && out.length < k; i += step) out.push(i);
-  return out;
-}
-
-function readMove(root: ParticleList, moved: ParticleList): ListMove | undefined {
-  const n = root.count;
-  if (moved.count !== n) return { matrix: Mat4.identity(), exact: false };
-  if (n === 0) return;
-  const at = (l: ParticleList, i: number) => Vec3.fromArray(Vec3(), l.coordinates, i * 3);
-  const turnOf = (l: ParticleList, i: number) =>
-    l.rotations ? Quat.fromArray(Quat(), l.rotations, i * 4) : Quat.identity();
-  // the turn: one particle's orientation after over before
-  const turn = Quat.normalize(
-    Quat(),
-    Quat.multiply(Quat(), turnOf(moved, 0), Quat.conjugate(Quat(), turnOf(root, 0))),
-  );
-  // the scale: the particle farthest from the first among a few, its distance after over before (1 for a list of
-  // one particle, or of particles at one point: no distance to read it from)
-  const p0 = at(root, 0);
-  let far = 0;
-  let farDistance = 0;
-  for (const i of spread(n, 64)) {
-    const d = Vec3.distance(at(root, i), p0);
-    if (d > farDistance) [far, farDistance] = [i, d];
-  }
-  const scale = farDistance > 1e-6 ? Vec3.distance(at(moved, far), at(moved, 0)) / farDistance : 1;
-  const matrix = Mat4.fromQuat(Mat4(), turn);
-  Mat4.mul(matrix, matrix, Mat4.fromScaling(Mat4(), Vec3.create(scale, scale, scale)));
-  // the translation: the first particle where the scale and the turn put it, to where it is
-  const t = Vec3.sub(Vec3(), at(moved, 0), Vec3.transformMat4(Vec3(), p0, matrix));
-  Mat4.setTranslation(matrix, t);
-  let exact = true;
-  const q = Quat();
-  for (const i of spread(n, 16)) {
-    const want = at(moved, i);
-    const got = Vec3.transformMat4(Vec3(), at(root, i), matrix);
-    if (Vec3.distance(want, got) > 1e-3 * (1 + Vec3.magnitude(want))) exact = false;
-    Quat.multiply(q, turn, turnOf(root, i));
-    if (Math.abs(Quat.dot(q, turnOf(moved, i))) < 1 - 1e-4) exact = false;
-  }
-  return { matrix, exact };
-}
-
-/**
- * The layer's copies (paint-layer, 2026-11-10): the strokes' copies made in their list's frame (`root`, where the
- * strokes are), then moved as the list is (`input`, the list its representations draw: under its move and scale)
- */
-export function paintLayerList(
-  root: ParticleList,
-  input: ParticleList,
-  strokes: readonly PaintStroke[],
-  fibers?: FiberSettingsMap,
-): ParticleList {
-  const copies = paintedCopies(root, strokes, fibers);
-  const move = listMove(root, input);
-  return move ? Particle.transform(copies, move.matrix) : copies;
-}
-
-export { ParticleListPaintLayer };
-type ParticleListPaintLayer = typeof ParticleListPaintLayer;
-/**
- * The copies painted onto a surface (`mesoscale.paint`) as a list of their own (paint-layer, 2026-11-10: a stroke on
- * a list of millions draws its copies alone, the list's representations left as they are): a child of the list the
- * list's representations draw (its last decorator), with representations of its own; the particle hierarchy takes a
- * list under a list as part of it, so its representations are the list's (its looks, colours and clips with it).
- * Depends on the list's root (`dependsOn`), the frame its strokes are in
- */
-const ParticleListPaintLayer = PluginStateTransform.BuiltIn({
-  name: 'mesoscale-particle-list-paint-layer',
-  display: { name: 'Painted copies', description: 'Copies of the targets painted onto a surface.' },
+const ParticleListPainted = PluginStateTransform.BuiltIn({
+  name: 'mesoscale-particle-list-painted',
+  display: { name: 'Painted', description: 'Copies of the targets painted onto a surface.' },
+  isDecorator: true,
   from: SO.Particle.List,
   to: SO.Particle.List,
   params: {
@@ -638,34 +506,26 @@ const ParticleListPaintLayer = PluginStateTransform.BuiltIn({
     ),
   },
 })({
-  apply({ a, params, cache, dependencies }) {
-    const root = rootOf(dependencies) ?? a.data;
-    Object.assign(cache as LayerCache, { input: a.data, root });
-    const copies = paintLayerList(root, a.data, params.strokes, params.fibers);
-    return new SO.Particle.List(copies, { label: 'Painted copies', description: copiesDescription(copies) });
+  apply({ a, params, cache }) {
+    (cache as InputCache).input = a.data;
+    return new SO.Particle.List(paintParticles(a.data, params.strokes, params.fibers), {
+      label: a.label,
+      description: a.description,
+    });
   },
-  update({ a, b, newParams, oldParams, cache, dependencies }) {
-    const c = cache as LayerCache;
-    const root = rootOf(dependencies) ?? a.data;
-    const changed = c.input !== a.data || c.root !== root;
-    Object.assign(c, { input: a.data, root });
+  update({ a, b, newParams, oldParams, cache }) {
+    const c = cache as InputCache;
+    const changed = c.input !== a.data;
+    c.input = a.data;
     if (!changed && sameStrokes(newParams.strokes, oldParams.strokes) && newParams.fibers === oldParams.fibers) {
       return StateTransformer.UpdateResult.Unchanged;
     }
-    b.data = paintLayerList(root, a.data, newParams.strokes, newParams.fibers);
-    b.description = copiesDescription(b.data);
+    b.data = paintParticles(a.data, newParams.strokes, newParams.fibers);
+    b.label = a.label;
+    b.description = a.description;
     return StateTransformer.UpdateResult.Updated;
   },
 });
-
-/** The list a layer depends on (its root), of its dependencies */
-function rootOf(dependencies: { [k: string]: { data: unknown } } | undefined): ParticleList | undefined {
-  for (const d of Object.values(dependencies ?? {})) if (SO.Particle.List.is(d as never)) return d.data as ParticleList;
-}
-
-function copiesDescription(copies: ParticleList) {
-  return `${copies.count.toLocaleString('en')} ${copies.count === 1 ? 'copy' : 'copies'}`;
-}
 
 /** Whether two stroke lists are the same strokes (a stroke is never edited in place: compared by reference) */
 function sameStrokes(a: readonly PaintStroke[], b: readonly PaintStroke[]) {
@@ -956,35 +816,8 @@ export function decoratorUnder(state: State, ref: string, transformer: StateTran
 }
 
 /**
- * The last of a list's decorators (`decoratorUnder`'s chain): the list its representations draw, where its paint layer
- * goes (`ParticleListPaintLayer`); the list itself without one
- */
-export function decoratedTail(state: State, ref: string): StateObjectCell {
-  const { cells, tree } = state;
-  let at = cells.get(ref)!;
-  for (;;) {
-    const next = tree.children
-      .get(at.transform.ref)
-      .toArray()
-      .map((c) => cells.get(c))
-      .find((c) => c?.transform.transformer.definition.isDecorator);
-    if (!next) return at;
-    at = next;
-  }
-}
-
-/** A list's paint layer (`ParticleListPaintLayer`): a child of its last decorator; none before its first stroke */
-export function paintLayerOf(state: State, ref: string): StateObjectCell | undefined {
-  const tail = decoratedTail(state, ref);
-  for (const c of state.tree.children.get(tail.transform.ref).toArray()) {
-    const cell = state.cells.get(c);
-    if (cell?.transform.transformer === ParticleListPaintLayer) return cell;
-  }
-}
-
-/**
- * Points and directions of the scene in a list's own frame (before its move and scale, `ParticleListTransform`: the
- * frame the paint layer makes its copies in), in place: a later move carries the strokes with the list
+ * Points and directions of the scene in a list's own frame (before its move and scale, `ParticleListTransform`, where
+ * the painted decorator sits: right under the list), in place: a later move carries the strokes with the list
  */
 export function toListFrame(
   transform: { readonly transform: Mat4; readonly scale?: number } | undefined,

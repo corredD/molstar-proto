@@ -7,7 +7,7 @@
 import { operationCommand } from '@molstar/prism-viewer/commands/operations';
 import type { ViewerExtension, ViewerSkill } from '@molstar/prism-viewer/spec';
 import { MesoscaleApi } from './operations.js';
-import { ParticleListPaintLayer } from './paint.js';
+import { ParticleListPainted } from './paint.js';
 
 declare module '@molstar/prism-viewer/api' {
   // The `mesoscale` area: the Mesoscale Explorer's entity controls on particle lists.
@@ -166,6 +166,6 @@ export const MesoscaleExtension: ViewerExtension = {
   },
   skills: [MesoscaleSkill],
   // its painted strokes are a state transform: registered, so a session that has them opens
-  plugin: { registry: [{ actions: [ParticleListPaintLayer] }] },
+  plugin: { registry: [{ actions: [ParticleListPainted] }] },
   ui: async (ctx) => (await import('./prism-viewer-ui.js')).mesoscaleUI(ctx),
 };
