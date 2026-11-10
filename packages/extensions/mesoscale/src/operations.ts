@@ -17,7 +17,7 @@ import { Spheres } from '@molstar/graphics/geo/geometry/spheres/spheres';
 import { ColorLevels } from '@molstar/graphics/geo/geometry/color-levels';
 import type { ParticleList } from '@molstar/model/model/particles/particle-list';
 import { PluginStateObject as SO } from '@molstar/plugin/state/objects';
-import { type StateObjectCell, StateTransform } from '@molstar/core/state';
+import { type State, type StateObjectCell, StateTransform } from '@molstar/core/state';
 import type {
   ParticleListRef,
   ParticleRepresentationRef,
@@ -36,9 +36,12 @@ import { pluginPaintHost } from './paint-host.js';
 import { PaintMode } from './paint-mode.js';
 import {
   brushOf,
+  brushIdOf,
   decoratorUnder,
-  fiberConventionOf,
-  fiberRotations,
+  isFiberBrush,
+  type FiberSettings,
+  type FiberSettingsMap,
+  fiberSettingsOf,
   type PaintOrient,
   type PaintStroke,
   ParticleListPainted,
@@ -222,6 +225,23 @@ export class MesoscaleApi extends ApiArea {
           : all.find((x) => x.kind === 'particles' && x.representations.length);
         return o && graphicsOf(o);
       },
+      () => plugin.state.data.events.changed,
+      { compare: (a, b) => JSON.stringify(a) === JSON.stringify(b) },
+    );
+  }
+
+  /**
+   * An entity's fibre settings in effect (`mesoscale.fiber`; its own, else its file's fibres', else touching points
+   * without a twist) and whether it has fibres or settings of its own, following the state tree while watched: a read
+   * for views; undefined without the list or the entity
+   */
+  fiberState(
+    particles: string,
+    entity: number,
+  ): ReadonlyState<(FiberSettings & { readonly fibers: boolean }) | undefined> {
+    const plugin = this.ctx.plugin;
+    return watchedState(
+      () => fiberInfo(plugin.state.data, { plugin }, particles, entity),
       () => plugin.state.data.events.changed,
       { compare: (a, b) => JSON.stringify(a) === JSON.stringify(b) },
     );
@@ -635,7 +655,8 @@ export class MesoscaleApi extends ApiArea {
       fiber: OptionalParam(
         PD.Boolean(false, {
           description:
-            "The copies are a new fibre's points, in order: turned along it as the entity's fibres are (absent: no fibre)",
+            "The positions are a new fibre's path: its points made every rise along it, turned by the entity's twist " +
+            '(mesoscale.fiber; absent: no fibre)',
         }),
       ),
       particles: ListParam(),
@@ -693,19 +714,14 @@ export class MesoscaleApi extends ApiArea {
       }
       if (dirs && side === 'in') for (let i = 0; i < dirs.length; ++i) dirs[i] = -dirs[i];
       toListFrame(moved?.transform.params as { transform: Mat4; scale?: number } | undefined, local, dirs);
-      // a fibre's points turned along it as the entity's own fibres are; without one, its principal axis along it
-      // (progress/2026-11-08-paint.md, Round 2, Decided 4); a click (one point) is a copy, turned as the one shown under
-      // the pointer (review S4)
+      // a fibre stroke keeps its path and a seed: its points are made by the decorator from the entity's fibre settings
+      // (progress/2026-11-08-paint.md, Round 3); a click (one point) is a copy, turned as the one shown under the pointer
+      // (review S4)
       const asFiber = !!fiber && k >= 2;
+      const drawn = seed ?? Math.floor(Math.random() * 2 ** 31);
       const rotations = asFiber
-        ? fiberRotations(
-            local,
-            fiberConventionOf(data, ids[0]) ?? {
-              axis: principalAxisOf(data.targetMapping?.get(brush.target)),
-              twist: 0,
-            },
-          )
-        : paintRotations(dirs ?? new Array(k * 3).fill(0), how, seed ?? Math.floor(Math.random() * 2 ** 31), {
+        ? []
+        : paintRotations(dirs ?? new Array(k * 3).fill(0), how, drawn, {
             axis: how === 'axis' ? principalAxisOf(data.targetMapping?.get(brush.target)) : undefined,
             spin,
           });
@@ -715,26 +731,72 @@ export class MesoscaleApi extends ApiArea {
         compartment: brush.compartment,
         positions: local,
         rotations,
-        ...(asFiber ? { fiber: true } : {}),
+        ...(asFiber ? { fiber: true, seed: drawn } : {}),
       };
-      const painted = decoratorUnder(state, l.cell.transform.ref, ParticleListPainted);
-      const b = state.build();
-      if (painted) b.to(painted).update((p: { strokes: PaintStroke[] }) => ({ ...p, strokes: [...p.strokes, stroke] }));
-      else {
-        const at = b.to(l.cell).insert(ParticleListPainted, { strokes: [stroke] });
-        // the list's move under the copies (review must-fix 1): a move or scale of the list (`stage.move`, `stage.scale`)
-        // updates the Transform it finds in the chain; one inserted later would go right under the list, above the
-        // copies, and leave them behind
-        if (!moved) at.insert(ParticleListTransform, { transform: Mat4.identity(), scale: 1 });
-      }
-      await b.commit();
+      await updatePainted(state, l, (p) => ({ ...p, strokes: [...p.strokes, stroke] }));
       const name = mesoEntities(dataOf(l) ?? data).find((e) => e.id === ids[0])?.name ?? entity;
       return ApiResult.ok(
-        asFiber
-          ? `Painted a fibre of ${k} ${name} points.`
-          : `Painted ${k} ${k === 1 ? 'copy' : 'copies'} of ${name} (${how}).`,
+        asFiber ? `Painted a fibre of ${name}.` : `Painted ${k} ${k === 1 ? 'copy' : 'copies'} of ${name} (${how}).`,
         { nodes: [l.cell.transform.ref] },
         { value: { count: k, orient: asFiber ? 'fiber' : how } },
+      );
+    },
+  });
+
+  /**
+   * An entity's fibre settings (progress/2026-11-08-paint.md, Round 3): its painted fibres' points every rise along
+   * their paths, each turned by the twist from the one before, plus a random amount within ±jitter (a DNA: 3.4 Å and
+   * 34.3° a base pair, no jitter; an RNA: its rise, jitter 180). Every painted fibre of the entity is made again; the
+   * fibres the file has stay as they are. One step.
+   */
+  readonly fiber = this.operation({
+    id: 'mesoscale.fiber',
+    title: "Set an entity's fibre rise and twist",
+    params: {
+      entity: PD.Text('', { description: 'An entity by name or id (a list without entities: a target id)' }),
+      rise: OptionalParam(PD.Numeric(3.4, { min: 0.1, max: 1000, step: 0.1 }, { description: 'Between points, Å' })),
+      twist: OptionalParam(
+        PD.Numeric(0, { min: -360, max: 360, step: 0.1 }, { description: 'The turn from one point to the next, °' }),
+      ),
+      jitter: OptionalParam(
+        PD.Numeric(0, { min: 0, max: 180, step: 1 }, { description: 'A random turn within ± this a point, °' }),
+      ),
+      particles: ListParam(),
+    },
+    async run(values, ctx) {
+      const { entity, particles } = values;
+      const given = values as typeof values & Partial<FiberSettings>;
+      if (given.rise === undefined && given.twist === undefined && given.jitter === undefined) {
+        return ApiResult.fail('invalid', 'Nothing to change.', 'Give a rise, a twist or a jitter.');
+      }
+      if (given.rise !== undefined && !(given.rise > 0)) return ApiResult.fail('invalid', 'The rise is above 0 Å.');
+      const l = oneList(ctx, particles || undefined);
+      if (isFailure(l)) return l;
+      const data = l.cell.obj?.data;
+      if (!data) return ApiResult.fail('not-found', 'The particle list is not loaded yet.');
+      const ids = selectEntities(ctx, l, entity, '');
+      if (isFailure(ids)) return ids;
+      if (ids.length !== 1 || !entity.trim()) return ApiResult.fail('invalid', 'Give one entity.');
+      const brush = brushOf(data, ids[0]);
+      if (!brush) return ApiResult.fail('not-found', 'No particle of that entity.');
+      const id = brushIdOf(data, brush);
+      const state = ctx.plugin.state.data;
+      const old = paintedFibers(state, l.cell.transform.ref);
+      const now = fiberSettingsOf(data, id, brush.target, old);
+      const next: FiberSettings = {
+        rise: given.rise ?? now.rise,
+        twist: given.twist ?? now.twist,
+        jitter: Math.min(180, Math.max(0, given.jitter ?? now.jitter)),
+      };
+      if (next.rise === now.rise && next.twist === now.twist && next.jitter === now.jitter && old?.[id]) {
+        return ApiResult.already('The fibres are already so.');
+      }
+      await updatePainted(state, l, (p) => ({ ...p, fibers: { ...p.fibers, [id]: next } }));
+      const name = mesoEntities(dataOf(l) ?? data).find((e) => e.id === ids[0])?.name ?? entity;
+      return ApiResult.ok(
+        `${name}'s fibres: ${round1(next.rise)} Å a point, ${round1(next.twist)}°${next.jitter ? ` ± ${round1(next.jitter)}°` : ''}.`,
+        { nodes: [l.cell.transform.ref] },
+        { value: next },
       );
     },
   });
@@ -1588,3 +1650,42 @@ async function writeStyles(
 }
 
 export { cssColor };
+
+const round1 = (x: number) => Math.round(x * 10) / 10;
+
+type PaintedParams = { strokes: PaintStroke[]; fibers: FiberSettingsMap };
+
+/** The fibre settings of a list's painted decorator (none: none painted, no settings) */
+function paintedFibers(state: State, list: string): FiberSettingsMap | undefined {
+  return (decoratorUnder(state, list, ParticleListPainted)?.transform.params as PaintedParams | undefined)?.fibers;
+}
+
+/**
+ * Updates a list's painted decorator, one step; made on first use, right under the list, with the move under it
+ * (review must-fix 1): a move or scale of the list (`stage.move`, `stage.scale`) updates the Transform it finds in the
+ * chain; one inserted later would go right under the list, above the copies, and leave them behind
+ */
+async function updatePainted(state: State, l: ParticleListRef, fn: (p: PaintedParams) => PaintedParams) {
+  const painted = decoratorUnder(state, l.cell.transform.ref, ParticleListPainted);
+  const b = state.build();
+  if (painted) b.to(painted).update((p: PaintedParams) => fn({ ...p, fibers: p.fibers ?? {} }));
+  else {
+    const at = b.to(l.cell).insert(ParticleListPainted, fn({ strokes: [], fibers: {} }));
+    if (!decoratorUnder(state, l.cell.transform.ref, ParticleListTransform)) {
+      at.insert(ParticleListTransform, { transform: Mat4.identity(), scale: 1 });
+    }
+  }
+  await b.commit();
+}
+
+/** An entity's fibre settings in effect and whether it makes fibres (`MesoscaleApi.fiberState`) */
+function fiberInfo(state: State, ctx: Pick<ApiContext, 'plugin'>, particles: string, entity: number) {
+  const l = oneList(ctx, particles || undefined);
+  if (isFailure(l)) return undefined;
+  const data = l.cell.obj?.data;
+  const brush = data && brushOf(data, entity);
+  if (!data || !brush) return undefined;
+  const id = brushIdOf(data, brush);
+  const own = paintedFibers(state, l.cell.transform.ref);
+  return { ...fiberSettingsOf(data, id, brush.target, own), fibers: !!own?.[id] || isFiberBrush(data, id) };
+}

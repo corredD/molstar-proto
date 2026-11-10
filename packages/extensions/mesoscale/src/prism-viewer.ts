@@ -144,6 +144,12 @@ export const MesoscaleExtension: ViewerExtension = {
         alias: ['color levels', 'colors by zoom', 'dynamic coloring', 'chameleon'],
         action: 'Apply',
       }),
+      operationCommand(api, m.fiber, {
+        category,
+        icon: 'sliders-horizontal',
+        alias: ['fibre', 'fiber rise', 'fiber twist', 'dna twist', 'rna', 'helix rise'],
+        action: 'Apply',
+      }),
       operationCommand(api, m.example, {
         category,
         icon: 'folder-open',

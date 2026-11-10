@@ -13,7 +13,13 @@ import { type ObjectPose, placementWith, poseOf } from '@molstar/stage-tools-ext
 import type { LabelInfo, StageApi } from '@molstar/stage-tools-extension/operations';
 import { Decorations, MeshControls, ObliqueSlice, Slice, VolumeData } from '@molstar/cryoet-extension/controls';
 import type { CryoetApi, DecorationsInfo, TargetDecoration } from '@molstar/cryoet-extension/operations';
-import { ImportColors, ObjectGraphics, PaintBrush, ZoomColors } from '@molstar/mesoscale-extension/controls';
+import {
+  FiberSettings,
+  ImportColors,
+  ObjectGraphics,
+  PaintBrush,
+  ZoomColors,
+} from '@molstar/mesoscale-extension/controls';
 import type { MesoGroupBy } from '@molstar/mesoscale-extension/model';
 import type { MesoscaleInfo } from '@molstar/mesoscale-extension/operations';
 import {
@@ -401,6 +407,21 @@ export const Sections: readonly Section[] = [
           name={picked.label}
         />
       );
+    },
+  },
+  {
+    // a model's entity's fibres (progress/2026-11-08-paint.md, Round 3): its painted fibres' rise, twist and jitter
+    id: 'fibre',
+    title: 'Fibre',
+    when: ({ api, picked }) =>
+      !!api.mesoscale &&
+      picked.kind === 'entity' &&
+      !!picked.node &&
+      'particles' in picked.node &&
+      picked.node.particles.entities?.length === 1,
+    render: ({ api, picked }) => {
+      const node = picked.node as Extract<NodeRef, { particles: unknown }>;
+      return <FiberSettings area={api.mesoscale!} particles={node.ref} entity={node.particles.entities![0]} />;
     },
   },
   {

@@ -16,3 +16,8 @@
 - Paint a fibre: a stroke with an entity that has fibres (or Fibre on) becomes a new fibre of the list, its points the
   entity's fibre step apart, each turned along it as the entity's own fibres are (its axis and twist).
   `mesoscale.paint` takes `fiber`.
+- Fibres by rise and twist (round 3): a painted fibre keeps its path, and its points are made from the entity's fibre
+  settings, a point every Rise (Å) along the path, each turned by the Twist (°) from the one before plus a random turn
+  within ±Jitter (°, seeded). The settings are in the entity's Fibre section (and the Paint section);
+  `mesoscale.fiber` sets them, one step, and every painted fibre of the entity is made again (the file's fibres stay).
+  Default: the entity's own fibres' step and twist. A DNA: 3.4 Å, 34.3°, 0; an RNA: its rise, Jitter 180.

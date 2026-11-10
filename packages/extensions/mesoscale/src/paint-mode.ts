@@ -78,7 +78,7 @@ export interface PaintHost {
   project(out: Vec3, p: Vec3): Vec3;
   /** A copy's radius, Å (its spacing's default and the preview's disc) */
   radius(brush: PaintBrushTarget): number;
-  /** The brush's fibres' step, Å, when it has fibres in its list (`fiberConventionOf`) */
+  /** The brush's fibres' rise, Å, when it makes fibres (its own settings or its file's fibres; Round 3) */
   fiberStep(brush: PaintBrushTarget): number | undefined;
   /**
    * Paints a stroke: one operation (`mesoscale.paint`); `seed`, its random turns' (the copy under the pointer's);
@@ -221,8 +221,8 @@ function paintLayer(mode: PaintMode, host: PaintHost, canvas: HTMLElement, brush
   let where: PaintPlace = placeOf(mode.settings.value, upright);
   /** How far along the pointer's ray a copy at a depth goes, Å (Round 2, Decided 2): the camera's focus at the start */
   let depth = Math.max(host.focus(), radius);
-  /** The brush's fibres' step (Round 2, Decided 4): undefined when it has none */
-  const fiberStep = host.fiberStep(brush);
+  /** The brush's fibres' rise (Round 3): undefined when it makes none; read again at each stroke's start */
+  let fiberStep = host.fiberStep(brush);
   /** Whether the stroke is a new fibre (the settings' Fibre, or the brush's own: `auto`, when it has fibres) */
   const fiberOf = (s: PaintSettings) => s.fiber === 'on' || (s.fiber === 'auto' && fiberStep !== undefined);
   let fiber = fiberOf(mode.settings.value);
@@ -410,8 +410,10 @@ function paintLayer(mode: PaintMode, host: PaintHost, canvas: HTMLElement, brush
       radius = Math.max(host.radius(brush), 1e-3);
       upright = host.upright(brush);
       where = placeOf(settings, upright);
+      // the entity's rise as it is now (its settings changed since the mode started)
+      fiberStep = host.fiberStep(brush);
       fiber = fiberOf(settings);
-      // a fibre's points its own step apart (the entity's fibres'), else copies that touch
+      // a fibre's path read a rise apart (the entity's: the points the decorator makes), else copies that touch
       spacing = settings.spacing > 0 ? settings.spacing : fiber && fiberStep ? fiberStep : 2 * radius;
       clear();
       const s: Stroke = {

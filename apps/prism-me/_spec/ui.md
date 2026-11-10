@@ -232,7 +232,10 @@ on a tree row (its right-click or its ⋯), the same menu, in this order:
   copy of the brush follows the pointer (drawn over the scene, not picked, in the entity's look color), where a click
   puts it and turned as it will be (the stroke's seed); hidden off the canvas and while Alt is held. **Fibre**: an
   entity with fibres in its list paints a new fibre (its points its fibres' step apart, a line on the canvas while
-  drawn, each point turned as its fibres are: their axis along the way, their twist a point); On or Off to override.
+  drawn, each point turned as its fibres are: their axis along the way, their twist a point); On or Off to override. A
+  fibre's points are made from its path by the entity's **Fibre** settings (round 3): Rise (Å a point), Twist (° a
+  point), Jitter (± ° a point, random); in the entity's own Fibre section and in Paint. A change makes every painted
+  fibre of the entity again, one step; the file's fibres stay. Default: the entity's fibres' step and twist.
 - **Remove** (an object: with its file and labels).
 
 On a clip or a label (its guide in 3D, or its row): **Move**, **Rotate**, (a clip: **Size**, **Flip**; a label: **Edit

@@ -37,8 +37,95 @@ export interface PaintStroke {
   readonly compartment: number;
   readonly positions: readonly number[];
   readonly rotations: readonly number[];
-  /** The copies are the points of a new fibre, in order (Round 2, Decided 4): one polyline added to the list's `fibers` */
+  /**
+   * The copies are the points of a new fibre, in order (Round 2, Decided 4): one polyline added to the list's `fibers`.
+   * Its `positions` are the fibre's path (Round 3): its points are made from it by the brush's `FiberSettings` (every
+   * rise along it, turned by the twist), its `rotations` not read
+   */
   readonly fiber?: boolean;
+  /** A fibre's jitter's seed (Round 3, Decided 2): the same turns each time the fibre is made */
+  readonly seed?: number;
+}
+
+/**
+ * How a brush's painted fibres are made (Round 3; progress/2026-11-08-paint.md): a point every `rise` (Å) along the
+ * path, each turned about the fibre by `twist` (°) from the one before, plus a random amount within ±`jitter` (°)
+ */
+export interface FiberSettings {
+  readonly rise: number;
+  readonly twist: number;
+  readonly jitter: number;
+}
+
+/** A brush's settings by its id (`brushIdOf`), as `ParticleListPainted` keeps them */
+export type FiberSettingsMap = Readonly<Record<string, FiberSettings>>;
+
+/** A stroke's brush: its entity on a list with entities, else its target (`fiberOfBrush`'s) */
+export function brushIdOf(list: ParticleList, stroke: Pick<PaintStroke, 'entity' | 'target'>): number {
+  return list.entityInfo?.size ? stroke.entity : stroke.target;
+}
+
+/** The radius of a target's first particle (0 without radii) */
+function targetRadius(list: ParticleList, target: number): number {
+  if (!list.radii) return 0;
+  const groups = getParticleTargetGroups(list);
+  const set = groups.sets[groups.groupOfTarget.get(target) ?? -1];
+  return set && OrderedSet.size(set) ? list.radii[OrderedSet.start(set)] : 0;
+}
+
+/**
+ * A brush's fibre settings in effect: the ones given, else its own fibres' (`fiberConventionOf`: their step and twist,
+ * no jitter), else points that touch (its diameter, 10 Å without radii) and no twist
+ */
+export function fiberSettingsOf(
+  list: ParticleList,
+  id: number,
+  target: number,
+  given?: FiberSettingsMap,
+): FiberSettings {
+  const set = given?.[id];
+  if (set) return set;
+  const c = fiberConventionOf(list, id);
+  if (c && c.step > 0) return { rise: c.step, twist: c.twist, jitter: 0 };
+  return { rise: 2 * targetRadius(list, target) || 10, twist: 0, jitter: 0 };
+}
+
+/** Points every `step` along a path (x, y, z each), by arc length from its first point; the path itself for no step */
+export function resamplePath(path: ArrayLike<number>, step: number): number[] {
+  const k = Math.floor(path.length / 3);
+  if (!(step > 0) || k < 2) return Array.from(path).slice(0, k * 3);
+  const out = [path[0], path[1], path[2]];
+  // how far along the current segment the next point is
+  let next = step;
+  let walked = 0;
+  for (let i = 1; i < k; ++i) {
+    const ax = path[i * 3 - 3];
+    const ay = path[i * 3 - 2];
+    const az = path[i * 3 - 1];
+    const dx = path[i * 3] - ax;
+    const dy = path[i * 3 + 1] - ay;
+    const dz = path[i * 3 + 2] - az;
+    const len = Math.hypot(dx, dy, dz);
+    // a tolerance: a path drawn a step a point keeps its last point
+    while (next <= walked + len + 1e-6 * step) {
+      const t = len > 0 ? Math.min(1, (next - walked) / len) : 0;
+      out.push(ax + dx * t, ay + dy * t, az + dz * t);
+      next += step;
+    }
+    walked += len;
+  }
+  return out;
+}
+
+/** A fibre stroke's points and their orientations, made from its path by the settings about the axis */
+export function makeFiber(
+  path: ArrayLike<number>,
+  settings: FiberSettings,
+  axis: Vec3,
+  seed: number,
+): { positions: number[]; rotations: number[] } {
+  const positions = resamplePath(path, settings.rise);
+  return { positions, rotations: fiberRotations(positions, { axis, ...settings }, seed) };
 }
 
 /**
@@ -46,7 +133,12 @@ export interface PaintStroke {
  * compartments extended, orientations (identity for an input without), radii (each copy its target's first particle's),
  * attributes not present for the copies, fibres untouched. No stroke (or none with a copy): the list itself.
  */
-export function paintParticles(list: ParticleList, strokes: readonly PaintStroke[]): ParticleList {
+export function paintParticles(
+  list: ParticleList,
+  painted: readonly PaintStroke[],
+  fibers?: FiberSettingsMap,
+): ParticleList {
+  const strokes = makeFibers(list, painted, fibers);
   let added = 0;
   for (const s of strokes) added += Math.floor(s.positions.length / 3);
   if (!added) return list;
@@ -117,6 +209,24 @@ export function paintParticles(list: ParticleList, strokes: readonly PaintStroke
   };
 }
 
+/**
+ * The strokes with each fibre stroke's points made (`makeFiber`) by its brush's settings (`fiberSettingsOf`) about its
+ * brush's fibre axis (its own fibres', else its target's principal axis); the others as they are
+ */
+function makeFibers(list: ParticleList, strokes: readonly PaintStroke[], given?: FiberSettingsMap): PaintStroke[] {
+  const axes = new Map<number, Vec3>();
+  return strokes.map((s) => {
+    if (!s.fiber || s.positions.length < 6) return s;
+    const id = brushIdOf(list, s);
+    let axis = axes.get(id);
+    if (!axis) {
+      axis = fiberConventionOf(list, id)?.axis ?? principalAxisOf(list.targetMapping?.get(s.target));
+      axes.set(id, axis);
+    }
+    return { ...s, ...makeFiber(s.positions, fiberSettingsOf(list, id, s.target, given), axis, s.seed ?? 0) };
+  });
+}
+
 /** `fibers` (or none) with a polyline per (first, count) pair of `added` after them: its particles in order */
 function withFibers(fibers: ParticleList['fibers'], added: readonly number[]): NonNullable<ParticleList['fibers']> {
   const old = fibers?.count ?? 0;
@@ -173,11 +283,18 @@ const ParticleListPainted = PluginStateTransform.BuiltIn({
   to: SO.Particle.List,
   params: {
     strokes: PD.Value<PaintStroke[]>([], { description: 'The strokes, in the order painted', isHidden: true }),
+    fibers: PD.Value<FiberSettingsMap>(
+      {},
+      {
+        description: "The brushes' fibre settings (rise, twist, jitter) by brush id: their fibres made by them",
+        isHidden: true,
+      },
+    ),
   },
 })({
   apply({ a, params, cache }) {
     (cache as InputCache).input = a.data;
-    return new SO.Particle.List(paintParticles(a.data, params.strokes), {
+    return new SO.Particle.List(paintParticles(a.data, params.strokes, params.fibers), {
       label: a.label,
       description: a.description,
     });
@@ -186,8 +303,10 @@ const ParticleListPainted = PluginStateTransform.BuiltIn({
     const c = cache as InputCache;
     const changed = c.input !== a.data;
     c.input = a.data;
-    if (!changed && sameStrokes(newParams.strokes, oldParams.strokes)) return StateTransformer.UpdateResult.Unchanged;
-    b.data = paintParticles(a.data, newParams.strokes);
+    if (!changed && sameStrokes(newParams.strokes, oldParams.strokes) && newParams.fibers === oldParams.fibers) {
+      return StateTransformer.UpdateResult.Unchanged;
+    }
+    b.data = paintParticles(a.data, newParams.strokes, newParams.fibers);
     b.label = a.label;
     b.description = a.description;
     return StateTransformer.UpdateResult.Updated;
@@ -359,13 +478,21 @@ export function fiberConventionOf(list: ParticleList, id: number): FiberConventi
 
 /**
  * The orientations of a new fibre's points (x, y, z, w each): the convention's axis along the way (each point toward
- * the next, the last from the one before), turned by its twist a point
+ * the next, the last from the one before), turned by its twist a point, plus a random amount within ±`jitter` a step
+ * (of the seed and the step: the same each time)
  */
-export function fiberRotations(positions: ArrayLike<number>, c: Pick<FiberConvention, 'axis' | 'twist'>): number[] {
+export function fiberRotations(
+  positions: ArrayLike<number>,
+  c: Pick<FiberConvention, 'axis' | 'twist'> & { readonly jitter?: number },
+  seed = 0,
+): number[] {
   const k = Math.floor(positions.length / 3);
   const out: number[] = new Array(k * 4);
   const axis = Vec3.normalize(_a, c.axis);
+  const jitter = c.jitter ?? 0;
+  let turn = 0;
   for (let i = 0; i < k; ++i) {
+    if (i > 0) turn += c.twist + (jitter ? jitter * (2 * paintRandom(seed, i, 4) - 1) : 0);
     const a = k < 2 ? i : i < k - 1 ? i : i - 1;
     const b = k < 2 ? i : a + 1;
     Vec3.set(
@@ -376,7 +503,7 @@ export function fiberRotations(positions: ArrayLike<number>, c: Pick<FiberConven
     );
     if (Vec3.squaredMagnitude(_n) === 0) Vec3.copy(_n, axis);
     Vec3.normalize(_n, _n);
-    Quat.setAxisAngle(_spin, axis, (c.twist * i * Math.PI) / 180);
+    Quat.setAxisAngle(_spin, axis, (turn * Math.PI) / 180);
     Quat.rotationTo(_q, axis, _n);
     Quat.multiply(_q, _q, _spin);
     Quat.normalize(_q, _q);

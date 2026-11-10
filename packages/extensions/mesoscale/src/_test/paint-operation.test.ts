@@ -136,6 +136,36 @@ describe('mesoscale.paint', () => {
     expect(drawn(v).fibers?.count ?? 0).toBe(before.fibers);
   });
 
+  it("sets an entity's fibre rise and twist as one step: every painted fibre of it made again; undo puts them back", async () => {
+    const v = await viewer();
+    const base = drawn(v).count;
+    // NC without fibres or settings (the list has no radii): 10 Å a point, no twist
+    const st = v.api.mesoscale!.fiberState(entry(v).cell.transform.ref, 2);
+    const sub = st.subscribe(() => {});
+    expect(st.value).toEqual({ rise: 10, twist: 0, jitter: 0, fibers: false });
+    for (const y of [0, 30]) {
+      expectOk(await v.api.run('mesoscale.paint', { entity: 'NC', positions: [0, y, 0, 20, y, 0], fiber: true }));
+    }
+    expect(drawn(v).count).toBe(base + 6);
+    const before = steps(v);
+    const r = await v.api.run('mesoscale.fiber', { entity: 'NC', rise: 5, twist: 34.3 });
+    expectOk(r);
+    expect(steps(v)).toBe(before + 1);
+    // both painted fibres again: 5 points each (20 Å at 5); the file's fibres as they were
+    expect(drawn(v).count).toBe(base + 10);
+    expect(st.value).toEqual({ rise: 5, twist: 34.3, jitter: 0, fibers: true });
+    // the jitter alone: the rise and twist kept
+    expectOk(await v.api.run('mesoscale.fiber', { entity: 'NC', jitter: 180 }));
+    expect(st.value).toEqual({ rise: 5, twist: 34.3, jitter: 180, fibers: true });
+    expectOk(await v.api.run('history.undo', {}));
+    expectOk(await v.api.run('history.undo', {}));
+    expect(drawn(v).count).toBe(base + 6);
+    expect(st.value).toEqual({ rise: 10, twist: 0, jitter: 0, fibers: false });
+    const bad = await v.api.run('mesoscale.fiber', { entity: 'NC' });
+    expect(bad.ok).toBe(false);
+    sub.unsubscribe();
+  });
+
   it('turns a copy of an entity not on a surface at random, repeatably by its seed', async () => {
     const v = await viewer();
     const r = await v.api.run('mesoscale.paint', { entity: 'loose', positions: [0, 0, 0, 1, 1, 1], seed: 5 });

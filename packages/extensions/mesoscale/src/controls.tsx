@@ -269,6 +269,9 @@ export function PaintBrush(props: { area: MesoscaleApi; particles: string; entit
         active={mapState(settings, (s) => s.fiber)}
         onPick={(id) => mode.set({ fiber: id as PaintSettings['fiber'] })}
       />
+      <Show when={mapState(settings, (st) => st.fiber !== 'off')}>
+        {() => <FiberSettings area={props.area} particles={props.particles} entity={props.entity} />}
+      </Show>
       <Choices
         label="Place"
         choices={[
@@ -310,6 +313,68 @@ export function PaintBrush(props: { area: MesoscaleApi; particles: string; entit
           onCommit={(v) => mode.set({ spin: v })}
         />
       </div>
+    </div>
+  );
+}
+
+/**
+ * An entity's fibre settings (`mesoscale.fiber`; progress/2026-11-08-paint.md, Round 3): its painted fibres' rise (Å a
+ * point along the path), twist (° a point) and jitter (± ° a point, random); a change makes every painted fibre of the
+ * entity again, one step (a slider once released). A DNA: 3.4 Å, 34.3°, 0; an RNA: its rise, jitter 180.
+ */
+export function FiberSettings(props: { area: MesoscaleApi; particles: string; entity: number }) {
+  const fiber = props.area.fiberState(props.particles, props.entity);
+  const run = (patch: object) =>
+    void props.area.fiber({ particles: props.particles, entity: String(props.entity), ...patch } as never);
+  const line = (label: string, title: string, slider: Node) => (
+    <div class={classes.line}>
+      <div class={classes.label} title={title}>
+        {label}
+      </div>
+      {slider}
+    </div>
+  );
+  return (
+    <div class={classes.tight}>
+      {line(
+        'Rise',
+        "Between a fibre's points along its path",
+        <Slider
+          aria-label="Fibre rise, Å a point"
+          value={mapState(fiber, (f) => f?.rise)}
+          min={0.5}
+          max={500}
+          scale="log"
+          unit="Å"
+          onCommit={(v) => run({ rise: v })}
+        />,
+      )}
+      {line(
+        'Twist',
+        'The turn about the fibre from one point to the next',
+        <Slider
+          aria-label="Fibre twist, ° a point"
+          value={mapState(fiber, (f) => f?.twist)}
+          min={-180}
+          max={180}
+          step={0.1}
+          unit="°"
+          onCommit={(v) => run({ twist: v })}
+        />,
+      )}
+      {line(
+        'Jitter',
+        'A random turn within ± this a point (180: at random)',
+        <Slider
+          aria-label="Fibre twist jitter, ± ° a point"
+          value={mapState(fiber, (f) => f?.jitter)}
+          min={0}
+          max={180}
+          step={1}
+          unit="°"
+          onCommit={(v) => run({ jitter: v })}
+        />,
+      )}
     </div>
   );
 }

@@ -18,7 +18,15 @@ import {
 import type { PluginContext } from '@molstar/plugin/context';
 import type { ParticleListRef } from '@molstar/plugin/state/manager/particles/hierarchy-state';
 import type { PaintBrushTarget, PaintHost, PaintSettings } from './paint-mode.js';
-import { brushOf, fiberConventionOf } from './paint.js';
+import {
+  brushIdOf,
+  brushOf,
+  decoratorUnder,
+  type FiberSettingsMap,
+  fiberSettingsOf,
+  isFiberBrush,
+  ParticleListPainted,
+} from './paint.js';
 import { pluginPaintCursor } from './paint-cursor.js';
 import { membraneFrame } from './pick-surface.js';
 
@@ -133,8 +141,16 @@ export function pluginPaintHost(
       return pluginPaintCursor(plugin, list, brush, color, !!data && !!brushOf(data, brush.entity)?.surface);
     },
     fiberStep(brush) {
-      const data = listOf(brush.particles)?.cell.obj?.data;
-      return data ? fiberConventionOf(data, brush.entity)?.step : undefined;
+      // the entity's rise (Round 3): its own settings, else its file's fibres'; none when it makes no fibres
+      const list = listOf(brush.particles);
+      const data = list?.cell.obj?.data;
+      const b = data && brushOf(data, brush.entity);
+      if (!list || !data || !b) return undefined;
+      const id = brushIdOf(data, b);
+      const painted = decoratorUnder(plugin.state.data, list.cell.transform.ref, ParticleListPainted);
+      const own = (painted?.transform.params as { fibers?: FiberSettingsMap } | undefined)?.fibers;
+      if (!own?.[id] && !isFiberBrush(data, id)) return undefined;
+      return fiberSettingsOf(data, id, b.target, own).rise;
     },
     async paint(brush: PaintBrushTarget, s: PaintSettings, positions, normals, seed, fiber) {
       const r = (await paint({
