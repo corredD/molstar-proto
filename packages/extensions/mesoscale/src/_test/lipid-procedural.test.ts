@@ -52,8 +52,8 @@ describe('a membrane made per view: the pool and the selection', () => {
   it('sizes each member from the budget: whole where it fits, a share past it', () => {
     const totals = [Uint32Array.of(100, 300), Uint32Array.of(600)];
     expect(poolCapacities(totals, 2000).map((t) => Array.from(t))).toEqual([[100, 300], [600]]);
-    // 1000 lipids, a budget of 500: half each (+10 %)
-    expect(poolCapacities(totals, 500).map((t) => Array.from(t))).toEqual([[55, 165], [330]]);
+    // 1000 lipids over two leaflets (400, 600), a budget of 500: water-filled, the level 250 each (+10 %)
+    expect(poolCapacities(totals, 500).map((t) => Array.from(t))).toEqual([[69, 207], [275]]);
     expect(enterPx('texture', 2, 0.5)).toBe(2);
     expect(enterPx('both', 2, 0.5)).toBe(0.5);
   });
