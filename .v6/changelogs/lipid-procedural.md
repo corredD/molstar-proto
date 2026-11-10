@@ -51,5 +51,7 @@
   a view, not once a part and leaflet.
 - A cut lipid membrane's middle distance, switched live in its Look (Far › Middle: Coarse or Parallax, Atoms down to;
   `mesoscale.membraneDetail { middle, middlePx }`): Parallax draws the lipids as atoms down to 11 px, then the far
-  surface's relief from the patch's heads' heights (its texture's alpha), lit by their profile. A patch mesh (WebGPU)
+  surface's relief from the patch's heads' heights (its texture's alpha), lit by their profile; with a clip, the lipids
+  within two lipid sizes of the cut are taken as Coarse takes them (the cut band, Cut lipids down to), so a
+  cross-section shows lipids. A switch of Middle or Atoms down to (9 px at least) builds nothing. A patch mesh (WebGPU)
   gains `dPatchMiddle` (shells, beneath, parallax), `uPatchShells` and `uPatchMiddle`.
