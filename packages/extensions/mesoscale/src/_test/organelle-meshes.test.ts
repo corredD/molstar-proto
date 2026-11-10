@@ -136,4 +136,42 @@ describe('organelle meshes (the yeast cell viewer’s organelle_meshes.bin)', ()
     const glow = await v.api.run('mesoscale.style', { particles: membrane, parts: 'PM', emissive: 0.5 });
     expect(glow.ok).toBe(false);
   });
+
+  it('leaves the parts as they were on a Reset of its species and on a category’s theme (Ludo, 2026-11-09; S5)', async () => {
+    const base = DefaultPrismViewerSpec();
+    const v = await createPrismViewerHeadless({
+      spec: { ...base, extensions: [...(base.extensions ?? []), MesoscaleExtension] },
+    });
+    viewers.push(v);
+    const plugin = v.plugin;
+    const data = await plugin.builders.data.rawData({ data: two(), label: 'organelle_meshes.bin' });
+    await OrganelleMeshesProvider.visuals!(plugin, await OrganelleMeshesProvider.parse(plugin, data));
+    const refs = plugin.state.data.selectQ((q) => q.ofType(SO.Shape.Provider)).map((c) => c.transform.ref);
+    const r = await v.api.mesoscale!.wrapMembrane({ meshes: refs.join(','), patch: 'organelle-patch' });
+    if (!r.ok) expect.fail(r.error.message);
+    const membrane = r.changed!.nodes![0];
+    const params = () =>
+      plugin.state.data.cells.get(membrane)!.transform.params as {
+        hiddenParts: string[];
+        partColors: Record<string, number>;
+      };
+    const ok = async (id: string, p: Record<string, unknown>) => {
+      const out = await v.api.run(id, p);
+      expect(out.ok, `${id} ${JSON.stringify(p)} ${out.message}`).toBe(true);
+    };
+    await ok('mesoscale.style', { particles: membrane, parts: 'VAC', visible: false });
+    await ok('mesoscale.style', { particles: membrane, parts: 'PM', color: 'tomato' });
+    const parts = () => ({ hiddenParts: params().hiddenParts, partColors: params().partColors });
+    const want = { hiddenParts: ['VAC'], partColors: { PM: 0xff6347 } };
+    expect(parts()).toEqual(want);
+    // the species' Reset (a list's Reset: no parts given)
+    await ok('mesoscale.style', { particles: membrane, color: 'gold' });
+    await ok('mesoscale.style', { particles: membrane, reset: true });
+    expect(parts()).toEqual(want);
+    // a category's brush, every theme a membrane takes
+    for (const theme of ['uniform', 'generate', 'entity', 'object', 'zoom']) {
+      await ok('mesoscale.theme', { objects: [membrane], theme, color: 'teal' });
+      expect(parts(), theme).toEqual(want);
+    }
+  });
 });
