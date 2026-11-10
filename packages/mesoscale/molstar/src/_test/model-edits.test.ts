@@ -11,7 +11,7 @@ import type { MesoViewSpecDoc } from '@molstar/meso-spec/format';
 import { createMesoscaleExplorerSpec } from '@molstar/prism-me-app/spec';
 import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
 import type { PrismViewer } from '@molstar/prism-viewer/viewer';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createMesoViewSpecExtension, type MesoViewSpecApi } from '../extension.js';
 import { countPatch, relaxPatch, seedPatch } from '../model-edits.js';
 import { resolverGate } from './resolver-gate.js';
@@ -252,6 +252,56 @@ describe('a model edit is a Mol* task: the status pill (Ludo, 2026-11-09; prism.
     expect((await run).ok).toBe(false);
     await until(() => !pill(h));
     expect(h.steps()).toBe(s0);
+  });
+
+  // The coordinator's app check (gate S4, and a regression of S1's first fix): in Chromium a `scheduler.yield`
+  // continuation runs ahead of the timers, so an abort a timer sends while the packer runs (the agent's, a script's,
+  // the task's own report beat) waited for the edit's end and the edit committed. Node has no `scheduler`: one whose
+  // continuations run ahead of every task stands in for Chromium's.
+  describe('an abort mid-packer, through the owner (gate S4)', () => {
+    const scheduler = (globalThis as { scheduler?: unknown }).scheduler;
+    beforeEach(() => {
+      (globalThis as { scheduler?: unknown }).scheduler = { yield: () => Promise.resolve() };
+    });
+    afterEach(() => {
+      (globalThis as { scheduler?: unknown }).scheduler = scheduler;
+    });
+
+    /** A count edit long enough to be stopped while m.recipe packs; `stop` is called 60 ms into its packing. */
+    async function stoppedMidPacker(stop: (h: Harness, ctl: AbortController) => void) {
+      const h = await open();
+      const doc = h.model.doc;
+      const s0 = h.steps();
+      const keys = h.model.adapter.keys();
+      const lists = keys.map((k) => h.model.adapter.listObject(k)?.data);
+      const ctl = new AbortController();
+      let packing = 0;
+      const off = h.model.resolving.subscribe((p) => {
+        if (p?.model !== 'm.recipe') return;
+        packing = performance.now();
+        setTimeout(() => stop(h, ctl), 60);
+      });
+      const r = await h.edit(countPatch(doc!, 'p.catalase', 20000).patch, ctl.signal);
+      off.unsubscribe();
+      // the packer ran past the stop: it is the packer's loop that had to see it
+      expect(packing).toBeGreaterThan(0);
+      expect(r.ok, JSON.stringify(r)).toBe(false);
+      expect((r as { code?: string }).code).toBe('aborted');
+      expect(h.steps()).toBe(s0);
+      expect(h.model.doc).toBe(doc);
+      expect(h.model.adapter.keys()).toEqual(keys);
+      expect(h.model.adapter.keys().map((k) => h.model.adapter.listObject(k)?.data)).toEqual(lists);
+      expect(h.v.managers.history.redoable.value.length).toBe(0);
+      expect(copies(h, 'p.catalase').requested).toBe(506);
+    }
+
+    it('the run’s signal, aborted by a timer while the packer runs: aborted, nothing changed', async () => {
+      await stoppedMidPacker((_, ctl) => ctl.abort());
+    });
+
+    it('the status pill task’s Cancel while the packer runs: aborted, nothing changed', async () => {
+      await stoppedMidPacker((h) => h.v.plugin.managers.task.requestAbortAll('Cancelled'));
+    });
   });
 
   it('an edit that resolves nothing long leaves no task behind', async () => {
