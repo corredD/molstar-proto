@@ -4,16 +4,25 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import type { Issue, MesoViewSpecDoc } from '@molstar/meso-spec/format';
+import { IdPattern, type Issue, type MesoViewSpecDoc } from '@molstar/meso-spec/format';
 import { quoted } from '@molstar/prism-viewer/agent/account';
 import type { Counts } from './document-tree.js';
 
 // What the agent is told of the open document at the start of each turn (prism.md §8, agent.md §5): the document's
 // outline joins the scene's as one line a compartment (its populations and their counts), the view shown and the
-// issues' count. The ids are the ones a MesoQL address is written with. Text from the document (a title, a label) is
-// data: `quoted`. At most `MaxStateLines` lines; `get_mesoviewspec` says the rest.
+// issues' count. The ids are the ones a MesoQL address is written with. Text from the document (a title, a label, an
+// issue's message, an id that is not one) is data: `quoted`. At most `MaxStateLines` lines; `get_mesoviewspec` says the
+// rest.
 
 const MaxStateLines = 24;
+
+/** An id as written, when it is one (a MesoQL address names it so); else quoted, as any text from the document. */
+export function idText(x: unknown, pattern: RegExp = IdPattern): string {
+  return typeof x === 'string' && pattern.test(x) ? x : quoted(String(x));
+}
+
+/** A version as written (`0.4`), else quoted. */
+const VersionPattern = /^[\w.+-]+$/;
 
 export interface DocumentStateInput {
   readonly doc: MesoViewSpecDoc;
@@ -34,12 +43,12 @@ export function documentState({ doc, counts, shown, issues }: DocumentStateInput
           .filter((p) => p.compartment === c.id)
           .map((p) => {
             const n = counts[p.id];
-            return `${p.id} (${p.entity}) ${n ? `${n.achieved}${n.requested !== undefined ? ` of ${n.requested}` : ''}` : 'not placed'}`;
+            return `${idText(p.id)} (${idText(p.entity)}) ${n ? `${n.achieved}${n.requested !== undefined ? ` of ${n.requested}` : ''}` : 'not placed'}`;
           }),
-        ...(doc.instances ?? []).filter((i) => i.compartment === c.id).map((i) => `${i.id} (${i.entity}) instance`),
+        ...(doc.instances ?? []).filter((i) => i.compartment === c.id).map((i) => `${idText(i.id)} (${idText(i.entity)}) instance`),
       ];
       compartments.push(
-        `${'  '.repeat(depth)}- compartment ${c.id} ${quoted(c.label)}${parts.length ? `: ${parts.join(', ')}` : ''}`,
+        `${'  '.repeat(depth)}- compartment ${idText(c.id)} ${quoted(c.label)}${parts.length ? `: ${parts.join(', ')}` : ''}`,
       );
       walk(c.id, depth + 1);
     }
@@ -55,7 +64,7 @@ export function documentState({ doc, counts, shown, issues }: DocumentStateInput
   const view = views.find((v) => v.id === shown) ?? views[0];
   lines.push(
     view
-      ? `- shown view ${view.id}${view.label ? ` ${quoted(view.label)}` : ''}; views ${views.map((v) => v.id).join(', ')}`
+      ? `- shown view ${idText(view.id)}${view.label ? ` ${quoted(view.label)}` : ''}; views ${views.map((v) => idText(v.id)).join(', ')}`
       : '- shown view: none (the document has no views)',
     `- issues ${issues.length}`,
   );
@@ -66,7 +75,7 @@ const MaxIssuesListed = 5;
 
 /** The issues' messages, the first few (an open's or an edit's warnings, `get`'s Issues). */
 export const issueLines = (issues: readonly Issue[]) => {
-  const lines = issues.slice(0, MaxIssuesListed).map((i) => i.message);
+  const lines = issues.slice(0, MaxIssuesListed).map((i) => idText(i.message));
   if (issues.length > MaxIssuesListed) lines.push(`and ${issues.length - MaxIssuesListed} more`);
   return lines;
 };
@@ -78,11 +87,11 @@ export function describeDocument(
   issues: readonly Issue[],
   detail: 'summary' | 'outline',
 ): string {
-  const lines = [`${quoted(doc.metadata?.title || 'Untitled')} (${doc.format} ${doc.version})`];
+  const lines = [`${quoted(doc.metadata?.title || 'Untitled')} (${idText(doc.format)} ${idText(doc.version, VersionPattern)})`];
   if (detail === 'outline') {
     const walk = (parent: string | undefined, depth: number) => {
       for (const c of doc.compartments.filter((c) => c.parent === parent)) {
-        lines.push(`${'  '.repeat(depth + 1)}${c.id}: ${quoted(c.label)} (${c.kind})`);
+        lines.push(`${'  '.repeat(depth + 1)}${idText(c.id)}: ${quoted(c.label)} (${idText(c.kind)})`);
         for (const p of doc.populations.filter((p) => p.compartment === c.id))
           lines.push(populationLine(p, counts, depth + 2));
         walk(c.id, depth + 1);
@@ -105,5 +114,5 @@ export function describeDocument(
 function populationLine(p: MesoViewSpecDoc['populations'][number], counts: Counts, depth: number): string {
   const c = counts[p.id];
   const n = c ? `${c.achieved}${c.requested !== undefined ? ` of ${c.requested}` : ''}` : 'not placed';
-  return `${'  '.repeat(depth)}${p.id} (${p.entity}): ${n}`;
+  return `${'  '.repeat(depth)}${idText(p.id)} (${idText(p.entity)}): ${n}`;
 }

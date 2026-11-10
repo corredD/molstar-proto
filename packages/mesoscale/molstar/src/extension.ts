@@ -4,7 +4,7 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import { describeDocument, documentState, issueLines } from './agent-state.js';
+import { describeDocument, documentState, idText, issueLines } from './agent-state.js';
 import { Asset } from '@molstar/core/util/assets';
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
 import {
@@ -285,7 +285,7 @@ export class MesoViewSpecApi extends ApiArea {
         return ApiResult.fail(
           'not-found',
           `The document has no view '${id}'.`,
-          ids.length ? `Its views: ${ids.join(', ')}.` : 'It has no views.',
+          ids.length ? `Its views: ${ids.map((x) => idText(x)).join(', ')}.` : 'It has no views.',
         );
       }
       let step: Awaited<ReturnType<MesoDocumentModel['show']>>;
@@ -449,7 +449,7 @@ export class MesoViewSpecApi extends ApiArea {
         return ApiResult.fail(
           'not-found',
           id ? `The document has no tour '${id}'.` : 'The document has no tour.',
-          tours.length ? `Its tours: ${tours.map((x) => x.id).join(', ')}.` : undefined,
+          tours.length ? `Its tours: ${tours.map((x) => idText(x.id)).join(', ')}.` : undefined,
         );
       }
       if (!t.steps.length) return ApiResult.fail('invalid', `The tour ${t.id} has no steps.`);
