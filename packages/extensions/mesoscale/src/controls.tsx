@@ -281,7 +281,7 @@ export function MembraneDetailControls(props: { area: MesoscaleApi; membrane: st
   const cutter = mapState(state, (s) => s?.method === 'cutter');
   const tiles = mapState(state, (s) => !!s && s.method !== 'cutter');
   const far = mapState(state, (s) => s?.far ?? 'both');
-  const middle = mapState(state, (s) => s?.middle ?? 'coarse');
+  const middle = mapState(state, (s) => s?.middle ?? 'parallax');
   const setLevel = (j: number, key: keyof MembraneLevel, v: number) =>
     run({ levels: levels.value.map((l, k) => (k === j ? { ...l, [key]: key === 'stride' ? Math.round(v) : v } : l)) });
   const row = (j: number, label: string, key: keyof MembraneLevel, min: number, max: number, unit?: string) => (

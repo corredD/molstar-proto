@@ -80,6 +80,8 @@ describe.skipIf(!webgpu)('the switch between a membrane’s spheres and its far 
           const params = {
             ...PD.getDefaultValues(LipidMembraneParams),
             method: 'cutter' as const,
+            // Coarse's look (parallax the default since 2026-11-10: the atoms only down to 11 px, the relief below): the spheres' switch
+            middle: 'coarse' as const,
             radius,
             edge,
             leaflets: 'outer' as const,

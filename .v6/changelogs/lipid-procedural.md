@@ -49,7 +49,7 @@
   step. A membrane's Reset and a category's theme leave its parts' colours and eyes. A cell's membranes upload each
   part's own regions only (about 6× less GPU memory on a cell of nine membranes) and show and fade their surfaces once
   a view, not once a part and leaflet.
-- A cut lipid membrane's middle distance, switched live in its Look (Far › Middle: Coarse or Parallax, Atoms down to;
+- A cut lipid membrane's middle distance, switched live in its Look (Far › Middle: Parallax, the default, or Coarse, Atoms down to;
   `mesoscale.membraneDetail { middle, middlePx }`): Parallax draws the lipids as atoms down to 11 px, then the far
   surface's relief from the patch's heads' heights (its texture's alpha), lit by their profile; with a clip, the lipids
   within two lipid sizes of the cut are taken as Coarse takes them (the cut band, Cut lipids down to), so a

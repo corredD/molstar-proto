@@ -83,7 +83,13 @@ describe.skipIf(!webgpu)('a cell’s membranes, each part its eye, colour and mi
       );
       if (typeof data === 'string') expect.fail(data);
       expect(data.unmixed).toEqual([]);
-      const base = { ...PD.getDefaultValues(LipidMembraneParams), method: 'cutter' as const, patch: 'dawn-parts' };
+      // Coarse's look (parallax the default since 2026-11-10: the atoms only down to 11 px, the relief below)
+      const base = {
+        ...PD.getDefaultValues(LipidMembraneParams),
+        method: 'cutter' as const,
+        middle: 'coarse' as const,
+        patch: 'dawn-parts',
+      };
       const repr = LipidMembraneRepresentation(plugin.canvas3d!.graphics);
       const look = async (p: Partial<typeof base>) => {
         await repr.createOrUpdate({ ...base, ...p }, data).run();

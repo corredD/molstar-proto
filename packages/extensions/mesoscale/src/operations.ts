@@ -421,7 +421,7 @@ export class MesoscaleApi extends ApiArea {
       ),
       budget: OptionalParam(PD.Numeric(2_000_000, { min: 10_000, max: 8_000_000 }, { description: 'Lipids at most' })),
       // round 8: the middle distance's look (the cutter's far surface), to compare and pick
-      middle: OptionalParam(PD.Select<MembraneMiddle>('coarse', LipidMembraneReprParams.middle.options)),
+      middle: OptionalParam(PD.Select<MembraneMiddle>('parallax', LipidMembraneReprParams.middle.options)),
       middlePx: OptionalParam(
         PD.Numeric(11, { min: MiddlePxMin, max: 32 }, { description: 'Parallax: atoms down to this size, px' }),
       ),

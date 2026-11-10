@@ -44,3 +44,9 @@ describe('the spheres at a membrane’s switch', () => {
     expect(s.radii[1]).toBeCloseTo(2 * Math.sqrt(23), 3);
   });
 });
+
+describe('a membrane’s middle look by default', () => {
+  it('is parallax (Ludo, 2026-11-10: "the parallax works really well, make it the default")', () => {
+    expect(props.middle).toBe('parallax');
+  });
+});

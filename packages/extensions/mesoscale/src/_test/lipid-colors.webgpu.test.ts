@@ -150,6 +150,8 @@ describe.skipIf(!webgpu)('a lipid membrane coloured as a particle list (Dawn)', 
       } as never);
       if (!r.ok) throw new Error(r.message);
       const membrane = r.changed!.nodes![0];
+      // Coarse's look (parallax the default since 2026-11-10: the atoms only down to 11 px, the relief below): its atoms by element as spheres
+      expect((await v.api.mesoscale!.membraneDetail({ membrane, middle: 'coarse' } as never)).ok).toBe(true);
       canvas.requestCameraReset({ durationMs: 0 });
       await plugin.getImageRaw({ width: Size, height: Size });
       canvas.camera.setState(

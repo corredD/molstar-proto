@@ -190,6 +190,8 @@ describe.skipIf(!webgpu)('lipid membrane on WebGPU (Dawn)', () => {
           ...PD.getDefaultValues(LipidMembraneParams),
           method,
           far,
+          // Coarse's look (parallax the default since 2026-11-10: the atoms only down to 11 px, the relief below): a first clip under parallax builds its cut band (round 8, lipid-clip's)
+          middle: 'coarse' as const,
           ...extra,
           radius: 300,
           edge: 80,

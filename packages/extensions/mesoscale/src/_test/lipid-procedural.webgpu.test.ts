@@ -172,6 +172,8 @@ describe.skipIf(!webgpu)('a lipid membrane made per view (Dawn)', () => {
         .apply(LipidMembrane, {
           ...PD.getDefaultValues(LipidMembraneParams),
           method: 'cutter',
+          // Coarse's look (parallax the default since 2026-11-10): at 250 Å no lipid reaches its 11 px, none selected
+          middle: 'coarse',
           radius: 600,
           edge: 100,
           patch: 'dawn-procedural-props',
@@ -236,6 +238,8 @@ describe.skipIf(!webgpu)('a lipid membrane made per view (Dawn)', () => {
         .apply(LipidMembrane, {
           ...PD.getDefaultValues(LipidMembraneParams),
           method: 'cutter',
+          // Coarse's look (parallax the default since 2026-11-10): at 250 Å no lipid reaches its 11 px, none selected
+          middle: 'coarse',
           radius: 600,
           edge: 100,
           patch: 'dawn-procedural-clip',

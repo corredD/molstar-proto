@@ -707,8 +707,8 @@ export const LipidMembraneReprParams = {
   budget: PD.Numeric(2_000_000, { min: 10_000, max: 8_000_000, step: 10_000 }, { description: 'Lipids at most' }),
   // round 8 (Ludo, 2026-11-09: "to compare and pick"): a cut leaflet's middle distance, between its atoms and the flat
   // texture: the coarse sphere levels, or the heads' relief over the patch's height channel (`patchRaster`'s alpha),
-  // drawn as shells or by parallax
-  middle: PD.Select<MembraneMiddle>('coarse', [
+  // drawn as shells or by parallax; parallax by default (Ludo, 2026-11-10: "the parallax works really well")
+  middle: PD.Select<MembraneMiddle>('parallax', [
     ['coarse', 'Coarse spheres'],
     ['shells', 'Shells'],
     ['parallax', 'Parallax'],

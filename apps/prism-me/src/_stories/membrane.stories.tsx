@@ -32,7 +32,7 @@ export default meta;
 const Ref = 'membrane';
 
 /** The operations the Look runs, answered in memory: its graphics' state and its species' as they would follow */
-function fakeApi(start: Partial<GraphicsInfo>, middle: MembraneMiddle = 'coarse') {
+function fakeApi(start: Partial<GraphicsInfo>, middle: MembraneMiddle = 'parallax') {
   // its detail (`membraneDetail`, round 8: Far, Middle, the px switches), a cut membrane's defaults
   const detail = observableState({
     detail: 'balanced',

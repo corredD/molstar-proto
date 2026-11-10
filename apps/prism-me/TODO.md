@@ -123,7 +123,7 @@ maintainer first (2026-10-25). All are v6 (master); the MRC reader and the parti
     view hook, mid-frame, and whether they reach the GPU that frame (and a frame after them at rest) is open
     (`updateGPUData`, the draw order of the objects). Then the band's clip, tests 3-6 for shells; `membraneDetail`
     refuses `middle: shells` and a shells count until then. The shell band's stack and cap (256 nodes, 65,536 triangles;
-    the design's 256 k) drop past them silently (gate N6). The default middle look is Ludo's pick.
+    the design's 256 k) drop past them silently (gate N6). Parallax is the default middle look (Ludo, 2026-11-10).
   - Parallax with a clip (round 8 gate, measured): every cut member keeps its sphere levels while a clip exists (the cut
     band needs them), so away from the cut the lipids the hysteresis keeps under 8.8 px show the stride-8 level again: a
     zoom with a clip far from the path pops by 0.041 at 6.7 px (0.023 without the clip, same probe). A fix: the band's

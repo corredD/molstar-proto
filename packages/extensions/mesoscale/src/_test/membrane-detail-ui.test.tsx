@@ -96,7 +96,9 @@ describe('a membrane’s levels in its properties', () => {
     const button = (label: string) =>
       [...host.querySelectorAll('button')].find((b) => b.textContent?.trim() === label) as HTMLButtonElement;
     await until(() => button('Both')?.getAttribute('aria-pressed') === 'true');
-    expect(host.querySelector('[aria-label="Lipids down to"]')).not.toBeNull();
+    // the far look's own switches: Coarse's (Parallax the default since 2026-11-10, its middle test below)
+    button('Coarse').click();
+    await until(() => !!host.querySelector('[aria-label="Lipids down to"]'));
     button('Texture').click();
     await until(() => !!host.querySelector('[aria-label="Lipids from"]'));
     const params = () => v.plugin.state.data.cells.get(membrane)!.transform.params;
@@ -161,9 +163,14 @@ describe('a membrane’s levels in its properties', () => {
     const button = (label: string) =>
       [...host.querySelectorAll('button')].find((b) => b.textContent?.trim() === label) as HTMLButtonElement;
     const params = () => v.plugin.state.data.cells.get(membrane)!.transform.params;
-    // coarse by default (until Ludo picks): the spheres' switch, no middle slider
-    await until(() => button('Coarse')?.getAttribute('aria-pressed') === 'true');
-    expect(host.querySelector('[aria-label="Lipids down to"]')).not.toBeNull();
+    // parallax by default (Ludo, 2026-11-10): the atoms' px, no spheres' switch
+    await until(() => button('Parallax')?.getAttribute('aria-pressed') === 'true');
+    expect(host.querySelector('[aria-label="Atoms down to"]')).not.toBeNull();
+    expect(host.querySelector('[aria-label="Lipids down to"]')).toBeNull();
+    // coarse: the spheres' switch, no middle slider
+    button('Coarse').click();
+    await until(() => !!host.querySelector('[aria-label="Lipids down to"]'));
+    expect(params()).toMatchObject({ middle: 'coarse' });
     expect(host.querySelector('[aria-label="Atoms down to"]')).toBeNull();
     button('Parallax').click();
     await until(() => !!host.querySelector('[aria-label="Atoms down to"]'));
