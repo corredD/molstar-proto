@@ -121,9 +121,15 @@ maintainer first (2026-10-25). All are v6 (master); the MRC reader and the parti
   - Round 8's shells (the heads as N instanced shells over a per-view band): the shader (`dPatchMiddle` shells, beneath)
     and the band (`shell-band.ts`) are built and tested, the band objects are not: their writes happen in the culler's
     view hook, mid-frame, and whether they reach the GPU that frame (and a frame after them at rest) is open
-    (`updateGPUData`, the draw order of the objects). Then the band's clip, the cut band (the coarse rule within two
-    lipids of a clip), tests 3-6 for shells, an `onlyMiddle` fast path (a Middle switch rebuilds the look today), and a
-    parallax pixel control (oblique, march on vs off). The default middle look is Ludo's pick.
+    (`updateGPUData`, the draw order of the objects). Then the band's clip, tests 3-6 for shells; `membraneDetail`
+    refuses `middle: shells` and a shells count until then. The shell band's stack and cap (256 nodes, 65,536 triangles;
+    the design's 256 k) drop past them silently (gate N6). The default middle look is Ludo's pick.
+  - Parallax (round 8 gate): the near surface takes the flat raster under a relief but not the profile normal (X2); a
+    face-on cut (k ≈ 1) shows a sliver between the leaflets past the cut band (the middle look has nothing between them
+    there); no grazing scale of the gradients (N1); test 6 asserts no frame at rest only through the selection (N2). A
+    middle switch without a clip, coarse ↔ parallax, still builds (the cut lipids' levels change; the cutters kept); the
+    fast path re-culls through a new version of the merged objects' transform, as the culler has no hook for a pool's
+    params (a library lane could add one).
   - Close views at x600 and x20 alike: about 170-240 ms a frame on the M1 under Dawn (lipids of 8-16 px at atom detail,
     their spheres writing depth: no early-z); not the scale. A lighter close level (fewer, larger spheres from 8 px) is
     the next lever, Ludo's call after Chrome.

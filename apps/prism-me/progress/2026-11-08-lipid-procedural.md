@@ -1934,12 +1934,57 @@ the params, `setMiddle`, `lipidsPx`, operation and Look ~170). Tests ~650.
 **How Ludo compares on 1354.** A cut membrane (the yeast cell's Wrap all, or model_vertexcolor ×600): its properties,
 Look › Far: Both › Middle: Coarse or Parallax, and Atoms down to (11 px); fly in from far, with and without Add clip….
 
-## Round 8, the gate (2026-11-10, builder; in progress)
+## Round 8, the gate (2026-11-10, builder)
 
-Findings and verdicts: `~/prism-me-lanes/gate/r8-review.md`. Order: M2 (test 5 rewritten, failing) → M1 (the cut band
-in the selection) → S1 → S2 → S5, S6, M3, X1 → S4 → S3 → checks. Each fix test-first, one commit with its id.
+Findings and verdicts: `~/prism-me-lanes/gate/r8-review.md` (reviewer and skeptic, Opus). Each fix test-first, one
+commit with its id.
 
-Done so far: M2 `e36090777` (test 5 failing: parallax 0.318 vs coarse 0.435, band 0.008 vs 0.229), M1 `93ff97566`
-(the cut band; 0.405 / 0.212), S1 `55cc3c3cc`, S2 `a6389f4ad` (test `672ae3b9c` failing first), S5 `89fceb004`, S6
-`8356b3c1b`, X1 `770eda784`, M3 `cf4e192af`. Next: S4 (march guard, inside run of test 3), S3 (yeast and x600
-numbers), nits X2 N5 N6, the checks, the PR body.
+| Finding                                                      | Verdict                   | Test (fails first)                                                               | Fix                                                                                     |
+| ------------------------------------------------------------ | ------------------------- | -------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| M1 a cut under Parallax shows no lipids (no cut band)        | confirmed, must-fix       | `e36090777` (test 5 at the ring: 0.318 vs 0.435, band 0.008 vs 0.229)            | `93ff97566` the cut band (0.405, band 0.212; after a drag 0.392, the objects kept)      |
+| M2 test 5 orthographic, flat vs flat                         | confirmed, must-fix       | `e36090777` (perspective, on the ring at k 0.7 and 0.999, coverage and the band) | same                                                                                    |
+| M3 no story for MembraneDetailControls                       | confirmed, must-fix       | typecheck:storybook; mounted once in jsdom (not kept)                            | `cf4e192af` (Explorer › Membrane: Detail Middle Coarse, Parallax; the fake API's state) |
+| S1 Atoms down to 2: atoms to the budget                      | confirmed, should-fix     | `55cc3c3cc` (UI test: 2 and 8.5 accepted)                                        | `55cc3c3cc` refused under 9 (param, operation, slider)                                  |
+| S2 no `onlyMiddle` fast path                                 | confirmed, low            | `672ae3b9c` (a build)                                                            | `a6389f4ad` (raster, define, fades, a new selection; live 0 without the re-cull)        |
+| S3 yeast unmeasured, test 4 asserts nothing                  | confirmed, low            | measurement (`c344b9c2b`, opt-in, heavy)                                         | numbers below; no bound (why below)                                                     |
+| S4 no pixel control of the march; test 3 outside only        | confirmed gap             | guards: `071950423` (pass on HEAD)                                               | none needed (the march works; inside 0.013)                                             |
+| S5 Texture + Parallax: Lipids from does nothing              | confirmed (changed by M1) | `89fceb004` (UI test)                                                            | `89fceb004` one Cut lipids down to slider: the band's px                                |
+| S6 `membraneDetail {shells}` a no-op step; staged shell code | split: should-fix + nit   | `8356b3c1b` (UI test)                                                            | `8356b3c1b` refused; scaffolding kept, named in the PR Notes                            |
+| X1 tiles + middle not refused                                | plausible nit             | `770eda784` (UI test)                                                            | `770eda784` refused                                                                     |
+| N5 parallax depth/pick variants compute an unused frame      | plausible nit             | the shells and clip Dawn tests (guards)                                          | `1ac9459eb` (yeast mid 1,500 Å: parallax 53 → 31 ms)                                    |
+| X2 near surface flat raster, no profile normal               | plausible nit             |                                                                                  | open (TODO)                                                                             |
+| N1, N2, N6, N7                                               | nits                      |                                                                                  | N7 in the PR Notes; N1, N2, N6 open (TODO)                                              |
+| N3, N4                                                       | refuted                   |                                                                                  |                                                                                         |
+
+**M1, the cut band (design §2), not the fallback.** `SelectionParams.band`: the clip objects (`Clip.getClip`), a width
+of 2 lipid sizes and the coarse rule's px (Far's switch: Both spheresPx, Texture atomsPx). The tree nodes, triangles and
+a large triangle's cells within the band's reach and near a clip object's boundary are taken at the band's px; the rest
+at middlePx. The boundary test is core's `classifySphere` written in (`nearClipBoundary`, checked against core's on
+every shape, inverted or not): core's returns its distance, a double boxed a call, 5.8 kB a view; written in, 16 B (the
+plain select's 15.6). With a clip, a middle look keeps its cut lipids' sphere levels and its near surface at the coarse
+rule (a build where the clip count crosses 0, ~0.2 s on x600, ~1 s on yeast); a handle's drag is the fast path, the next
+view selecting anew. Left: a face-on cut (k ≈ 1) shows a sliver between the leaflets past the band.
+
+**S3, the numbers (Dawn, M1, 900 × 600, perspective; settled frame ms / live lipids; the camera above the surface's top
+at the distance named, ring: on the clip's ring at k 0.7; machine shared, load 5-7).**
+
+| view                   | x600 coarse | x600 parallax | yeast coarse  | yeast parallax  |
+| ---------------------- | ----------- | ------------- | ------------- | --------------- |
+| whole                  | 11 / 0      | 12 / 0        | 20 / 0        | 20 / 0          |
+| middle 20,000 Å        | 14 / 0      | 12 / 0        | 19 / 0        | 20 / 0          |
+| mid 1,500 Å            | 11 / 0      | 12 / 0        | 30 / 0        | 31 / 0          |
+| close 300 Å            | 34 / 25,078 | 19 / 0        | 58 / 127,521  | 34 / 0          |
+| close 60 Å             | 48 / 10,288 | 48 / 10,288   | 68 / 126,546  | 37 / 1,379      |
+| ring 450 Å             | 36 / 46,618 | 20 / 1,961    | 70 / 70,981   | 79 / 17,644     |
+| ring 450 Å, clipped    | 49 / 93,227 | 17 / 12,922   | 171 / 142,593 | 154 / 71,619    |
+| ring 150 Å, clipped    | 96 / 90,708 | 41 / 11,768   | 209 / 153,285 | 186 / 53,707    |
+| the clip's first frame | 71          | 210 (a build) | 770           | 1,090 (a build) |
+| wrap                   | 0.4 s       | 0.5 s         | 10.5 s        | 13.3 s          |
+
+The yeast cell is Wrap all (9 membranes, the CHARMM-GUI patch). Before N5, yeast mid 1,500 Å was 53 ms under parallax
+(30 coarse): the depth pass computed the patch frame. The cut band at 450 Å takes half to a seventh of coarse's lipids.
+Yeast ring 450 unclipped: parallax 79 against 70 with a quarter of the lipids (open: not profiled). Test 4 not given the
+design's bounds: it runs one look a run (LIPID_MIDDLE), at 256² its frames are 6-7 ms with ±1-2 ms of noise on a shared
+machine (×1.1 is within the noise), and the yeast data is not in the repo; the lipid bound holds in every row above.
+
+**Checks.** Below (after the checks run).
