@@ -15,7 +15,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { MesoGroup } from '../model.js';
 import { type OwnedEdit, type ParticleListOwner, registerParticleListOwner } from '../owner.js';
 import { MesoscaleExtension } from '../prism-viewer.js';
-import { TestParticleList, TestPlainList } from './fixtures.js';
+import { readFileSync } from 'node:fs';
+import { setTestTargetStructure, TestParticleList, TestPlainList, TestTargetList } from './fixtures.js';
 
 // The owner port (packages/mesoscale/_spec/prism.md §1.1, §5.1): a list another extension owns (a MesoViewSpec
 // document's) is styled by its owner, never by layers this extension writes. The operations read its entities and groups
@@ -198,5 +199,52 @@ describe('an owned list (prism.md §1.1)', () => {
     expectOk(await v.api.run('mesoscale.style', { particles: plain, entities: '0', color: '#ff0000' }));
     expect(proposed).toHaveLength(0);
     expect(layers(v, plain)).toHaveLength(1);
+  });
+});
+
+describe('an owned list’s theme changed by zoom (prism.md §5.3)', () => {
+  /** An owned list drawn as targets (1CRN at every target): an owner told when its colors follow the zoom */
+  async function targets() {
+    const base = DefaultPrismViewerSpec();
+    const v = await createPrismViewerHeadless({
+      spec: { ...base, extensions: [...(base.extensions ?? []), MesoscaleExtension] },
+    });
+    viewers.push(v);
+    const crn = readFileSync(new URL('../../../../../data/examples/1crn.cif', import.meta.url));
+    expectOk(await v.api.load.files({ files: [new File([crn], '1crn.cif')] }));
+    setTestTargetStructure(v.plugin.managers.structure.hierarchy.current.structures[0].cell.obj!.data);
+    await v.plugin.build().toRoot().apply(TestTargetList).commit();
+    expectOk(await v.api.particles.representation({ type: 'target' }));
+    const ref = v.plugin.managers.particles.hierarchy.current.lists[0].cell.transform.ref;
+    const told: string[][] = [];
+    const owner: ParticleListOwner = {
+      owns: (list) => list === ref,
+      info: () => undefined,
+      propose: async () => ApiResult.already('so'),
+      themeChanged: async (lists) => {
+        told.push([...lists]);
+      },
+    };
+    registerParticleListOwner(v.plugin, owner);
+    return { v, ref, told, steps: () => v.api.history.steps.value.length };
+  }
+
+  it('colorLevels on and off: the owner draws its looks again, each one step', async () => {
+    const { v, ref, told, steps } = await targets();
+    const s0 = steps();
+    expectOk(await v.api.run('mesoscale.colorLevels', { on: true }));
+    expect(told).toEqual([[ref]]);
+    expect(steps()).toBe(s0 + 1);
+    expectOk(await v.api.run('mesoscale.colorLevels', { on: false }));
+    expect(told).toEqual([[ref], [ref]]);
+    expect(steps()).toBe(s0 + 2);
+  });
+
+  it('theme by zoom: the owner draws its looks again, in the one step', async () => {
+    const { v, ref, told, steps } = await targets();
+    const s0 = steps();
+    expectOk(await v.api.run('mesoscale.theme', { objects: [ref], theme: 'zoom' }));
+    expect(told).toEqual([[ref]]);
+    expect(steps()).toBe(s0 + 1);
   });
 });
