@@ -419,9 +419,12 @@ export class PrismMesoAdapter implements RendererAdapter {
 
     const canvas = v.plugin.canvas3d;
     const cameraPlan = unsure?.camera ? { ...plan, cameraChanged: true } : plan;
-    const cameraSet = canvas
-      ? commitCamera(canvas, ir, cameraPlan, () => sceneRadius(placementSets(ir), this.bounds))
-      : false;
+    // a stream step's commit (unbound) never sets the camera, though it may keep no set (tiles only, one swapped): the
+    // camera is the person's; only a failed commit's camera is set again
+    const cameraSet =
+      canvas && (bound || unsure?.camera)
+        ? commitCamera(canvas, ir, cameraPlan, () => sceneRadius(placementSets(ir), this.bounds))
+        : false;
     this.cameraMoved = cameraSet;
     const t3 = now();
     // representation hints: spheres drawn; structure and surface fall back to spheres here, said once per hint
