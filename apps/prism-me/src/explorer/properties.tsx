@@ -780,14 +780,23 @@ function ModelEdits(props: { s: Subject }) {
     (a, b) => a.count === b.count && a.model === b.model && a.seed === b.seed && a.relax === b.relax,
   );
   const said = observableState('');
+  // the edit in flight: Cancel stops its resolution (the step is rolled back: nothing is half-drawn)
+  const running = observableState<AbortController | undefined>(undefined);
+  const progress = s.api.mesoviewspec!.progressState();
   const send = async (make: (doc: DocData) => ModelEdit) => {
     const doc = model.doc;
-    if (!doc) return;
+    if (!doc || running.value) return;
     const edit = make(doc);
     said.set(edit.refused ?? '');
     if (!edit.patch) return;
-    const r = await s.api.run('mesoviewspec.edit', { patch: JSON.stringify(edit.patch) });
-    if (!r.ok) said.set(r.message);
+    const ctl = new AbortController();
+    running.set(ctl);
+    try {
+      const r = await s.api.run('mesoviewspec.edit', { patch: JSON.stringify(edit.patch) }, { signal: ctl.signal });
+      if (!r.ok) said.set(r.code === 'aborted' ? 'Stopped: nothing changed.' : r.message);
+    } finally {
+      running.set(undefined);
+    }
   };
   const number = (text: string) => (text.trim() === '' ? Number.NaN : Number(text));
   return (
@@ -827,6 +836,18 @@ function ModelEdits(props: { s: Subject }) {
               onClick={() => void send((doc) => relaxPatch(doc, now.value.model ?? ''))}
             >
               Add relax stage
+            </Button>
+          </Line>
+        )}
+      </Show>
+      <Show when={mapState(running.asReadonly, (c) => !!c)}>
+        {() => (
+          <Line label="Status">
+            <span>
+              {mapState(progress, (p) => (p ? `Resolving ${p.model} (${p.done + 1} of ${p.total})…` : 'Resolving…'))}
+            </span>
+            <Button size="sm" variant="ghost" class={classes.fit} onClick={() => running.value?.abort()}>
+              Cancel
             </Button>
           </Line>
         )}

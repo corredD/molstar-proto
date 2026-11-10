@@ -149,4 +149,33 @@ describe('Built by: the model edits (prism.md §4.3)', () => {
     await until(() => !m.owner.model.doc!.models?.some((x) => x.id === 'm.relax'));
     await until(() => !!add());
   });
+
+  it('while it resolves, the status names the model and Cancel is there; Cancel stops it and nothing changes', {
+    timeout: 120000,
+  }, async () => {
+    const m = await mounted();
+    await openBuiltBy(m);
+    await until(() => !!field(m, 'Copies asked for'));
+    const s0 = m.steps();
+    const doc = m.owner.model.doc;
+    const cancel = () => buttons(m).find((b) => b.textContent?.trim() === 'Cancel');
+    expect(cancel()).toBeUndefined();
+
+    await enter(field(m, 'Copies asked for')!, '300');
+    // Cancel is there at once; the status follows the models as they start
+    await until(() => !!cancel(), 5000);
+    await until(() => /Resolving m\.recipe \(\d of \d\)/.test(textOf(m)), 5000);
+    cancel()!.click();
+    await until(() => textOf(m).includes('Stopped'));
+    await until(() => !cancel());
+    expect(m.steps()).toBe(s0);
+    expect(m.owner.model.doc).toBe(doc);
+    expect(countOf(m)).toBe(506);
+
+    // and the same edit goes through after
+    await enter(field(m, 'Copies asked for')!, '300');
+    await until(() => countOf(m) === 300);
+    expect(m.steps()).toBe(s0 + 1);
+    await until(() => !textOf(m).includes('Stopped'));
+  });
 });
