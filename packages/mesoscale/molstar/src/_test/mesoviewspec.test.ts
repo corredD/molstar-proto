@@ -320,7 +320,13 @@ describe('the stub', () => {
     expect(v.api.describe('mesoviewspec.open')).toBeDefined();
     const source = fs.readFileSync(new URL('../prism-viewer.ts', import.meta.url), 'utf8');
     const imports = source.split('\n').filter((l) => /^\s*(import|export)\b.*\bfrom\b/.test(l) || /\bimport\(/.test(l));
-    const code = imports.filter((l) => !/^import type\b/.test(l.trim()) && !/\bimport\('\.\/extension\.js'\)/.test(l));
+    // types, the chunk, and one module of plain data (the agent skill's text: `skill-text.test.ts` says it imports none)
+    const code = imports.filter(
+      (l) =>
+        !/^import type\b/.test(l.trim()) &&
+        !/\bimport\('\.\/extension\.js'\)/.test(l) &&
+        !/^import \{ MesoQLSkillText \} from '\.\/mesoql-skill-text\.js';$/.test(l.trim()),
+    );
     expect(code).toEqual([]);
     expect(source).not.toMatch(/from '@molstar\/meso-spec|from '\.\/document-model|from '\.\/extension/);
   });
