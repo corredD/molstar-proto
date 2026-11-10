@@ -58,7 +58,7 @@ import {
   wholeTriangles,
 } from './procedural.js';
 import { enclosures, type TrianglePart, triangleTree } from './triangle-tree.js';
-import { mixOf, mixTable, standIns } from './mixes.js';
+import { type MembraneMix, mixOf, mixTable, standIns } from './mixes.js';
 import type { GpuInstanceView, GpuInstanceWriter } from '@molstar/graphics/gl/renderable/merged-culler';
 import { farTriangles, icosphere, isotropicRemeshSteps, offsetSurface, type TriMesh } from './remesh.js';
 import { bakeTileSetSteps, type Tile, type TileSet } from './tiles.js';
@@ -367,19 +367,17 @@ export function* buildMembraneSteps(
     const unmixed: string[] = [];
     for (let p = 0; p < parts.length; ++p) {
       const own = partMesh(mesh, regions, parts[p]);
-      const mix = mixOf(parts[p].name);
-      let failed = false;
+      const found = mixOf(parts[p].name);
+      // the patch has every species of the mix (either leaflet), or the part is cut from it as it is, both leaflets
+      // (review S6: checked, not caught: another error is a bug, thrown)
+      const mix = found && mixable(found, plain.outer, plain.inner) ? found : undefined;
+      if (found && !mix) unmixed.push(parts[p].name);
       for (const name of names) {
         if (mix && name === 'inner' && !mix.inner) continue;
         let table = plain[name]!;
-        if (mix && !failed) {
-          try {
-            const other = plain[name === 'outer' ? 'inner' : 'outer'];
-            table = mixTable(table, other, standIns(mix[name] ?? mix.outer, mix.plasma), mixSeed(kinds.seed, p, name));
-          } catch {
-            failed = true;
-            unmixed.push(parts[p].name);
-          }
+        if (mix) {
+          const other = plain[name === 'outer' ? 'inner' : 'outer'];
+          table = mixTable(table, other, standIns(mix[name] ?? mix.outer, mix.plasma), mixSeed(kinds.seed, p, name));
         }
         cut.push({ name, table, mesh: own.mesh, regions: own.regions, part: p });
       }
@@ -462,6 +460,16 @@ export function partMesh(mesh: TriMesh, regions: CutterRegions, part: TrianglePa
     mesh: { positions, indices } as TriMesh,
     regions: { ...regions, regionOf: regions.regionOf.slice(part.start, part.end) },
   };
+}
+
+/** Whether the patch's leaflets hold every species `mix` stands its classes in by (`standIns`) */
+function mixable(mix: MembraneMix, outer: CutterTable | undefined, inner: CutterTable | undefined) {
+  const has = (s: string) => !!outer?.species.includes(s) || !!inner?.species.includes(s);
+  for (const leaflet of [mix.outer, mix.inner]) {
+    if (!leaflet) continue;
+    for (const s of Object.keys(standIns(leaflet, mix.plasma))) if (!has(s)) return false;
+  }
+  return true;
 }
 
 /** A part and leaflet's seed of its mix's shuffle */
@@ -1295,11 +1303,16 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
       inputs.map((input, c) => (partHidden(data.cut[c]) ? new Uint32Array(input.members) : slotTotals(input, budget))),
       budget,
     );
-    const pools = inputs.map((input, c) => createLipidSelection(input, capacities[c]));
+    // a hidden part's none (its selection's arrays, a few MB, never selecting: review N2)
+    const pools = inputs.map((input, c) =>
+      partHidden(data.cut[c]) ? undefined : createLipidSelection(input, capacities[c]),
+    );
     for (let c = 0; c < pools.length; ++c) {
       const { table } = data.cut[c];
+      const pool = pools[c];
+      if (!pool) continue;
       for (let m = 0; m < table.members.length; ++m) {
-        pools[c].shown[m] = hidden.has(table.species[table.members[m].species]) ? 0 : 1;
+        pool.shown[m] = hidden.has(table.species[table.members[m].species]) ? 0 : 1;
       }
     }
     let instances = 0;
@@ -1311,7 +1324,10 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
       const leaflet = data.cut[c];
       const { table } = leaflet;
       const cutter = cuts[c];
-      // the lipids the leaflet holds, about: nothing O(lipids) at the wrap (round 5); exact by export
+      const pool = pools[c];
+      if (!pool) continue;
+      // the lipids the leaflet holds, about: nothing O(lipids) at the wrap (round 5); exact by export; a hidden part's
+      // not counted
       cutLipids += estimateLipids(inputs[c]);
       const b = cutBounds(leaflet);
       for (let m = 0; m < table.members.length; ++m) {
@@ -1333,7 +1349,7 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
             table.species,
             n,
             b,
-            poolWriter(cutter, m, pools[c], lipidSize(table)),
+            poolWriter(cutter, m, pool, lipidSize(table)),
             colorOf,
             member.elements,
             partColor(leaflet),
@@ -1384,7 +1400,7 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
     // kept: what the next build of the same data reuses (review S1: set only by a build that finished)
     builtFor = data;
     cutters = cuts;
-    selections = pools;
+    selections = pools.filter((p) => p !== undefined);
     assigners = assigns;
     merged = mergeRenderObjectsByType(entries, true, new Map(), out, true, true, graphics);
     // the far look's surfaces (`far`: texture, both; tiles: both): one a leaflet at its heads, in its species' colours
