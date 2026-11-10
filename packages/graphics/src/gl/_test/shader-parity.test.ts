@@ -2,6 +2,7 @@
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { describe, expect, it } from 'vitest';
@@ -23,7 +24,9 @@ import { GraphicsShaders, resolveGeometryType } from './graphics-shaders.js';
  *   direct volumes (`#undef`, no clipping layers there on either backend);
  * - grids (`t*Grid`, `u*GridTexDim`): only meshes have them (color smoothing); the shared GLSL color chunk reads them
  *   for every geometry, WebGPU reports them unsupported for the others (`getUnsupported`);
- * - WGSL: direct volumes' `uInvView` (GLSL derives it), the sphere raster's uniforms (`uRaster*`, `uViewport`).
+ * - WGSL: direct volumes' `uInvView` (GLSL derives it), the sphere raster's uniforms (`uRaster*`, `uViewport`), a
+ *   mesh's patch texture (`dPatchTexture`: `tPatch`, `tPatchTable`, `uPatch`, `uPatchLevels`; lipid membranes' far
+ *   look, WebGPU only as the lipids it stands for are: `MeshSchema`).
  */
 const Grids = [
   'tColorGrid',
@@ -38,7 +41,10 @@ const Grids = [
   'uTransparencyGridTexDim',
 ];
 const Expected: { [program: string]: { glsl: string[]; wgsl: string[] } } = {
-  mesh: { glsl: ['dLightCount', 'uClipObjectCount', 'uDrawId', 'uPickType'], wgsl: [] },
+  mesh: {
+    glsl: ['dLightCount', 'uClipObjectCount', 'uDrawId', 'uPickType'],
+    wgsl: ['tPatch', 'tPatchTable', 'uPatch', 'uPatchLevels'],
+  },
   'texture-mesh': {
     glsl: ['dLightCount', 'uClipObjectCount', 'uDrawId', 'uGeoTexDim', 'uPickType'],
     wgsl: [],
