@@ -38,3 +38,4 @@ export {
   documentVisible,
 } from './document-tree.js';
 export type { DocumentTree, MesoViewSpecApi, MesoViewSpecOptions, ReadonlyState } from './extension.js';
+export { countPatch, type ModelEdit, relaxPatch, seedPatch } from './model-edits.js';
