@@ -357,6 +357,36 @@ describe('New view from here, Update camera, Open with this view (prism.md §4.4
     expect(ribosomes(again)?.color).toBe(Red);
   });
 
+  it('Update camera on a view with a frame: the camera written in the frame derives back to the canvas’s', {
+    tags: ['medium'],
+  }, async () => {
+    const d = doc();
+    const s = Math.SQRT1_2;
+    const framed: MesoViewSpecDoc = {
+      ...d,
+      // a tomogram's frame: 2 nm voxels, turned a quarter about z and moved
+      frames: [...(d.frames ?? []), { id: 'f.tomo', kind: 'instrument', units: 'nm', handedness: 'right', voxelSize: 2 }],
+      alignments: [
+        ...(d.alignments ?? []),
+        { id: 'a.tomo', from: 'f.tomo', to: 'f.cell', transform: { rotation: [0, 0, s, s], translation: [100, -50, 20] } },
+      ],
+      views: [
+        ...d.views!,
+        { id: 'v.tomo', frame: 'f.tomo', camera: { position: [0, 0, 500], target: [0, 0, 0], up: [0, 1, 0] } },
+      ],
+    };
+    const h = await open(framed);
+    await h.run('mesoviewspec.view', { view: 'v.tomo' });
+    const r = await h.run('mesoviewspec.updateCamera', { camera: here });
+    expect(r.ok, JSON.stringify(r)).toBe(true);
+    // written in voxels of the frame, not in Å of the world
+    expect(viewOf(h.model.doc, 'v.tomo')!.camera!.position).not.toEqual(here.position);
+    expect(shownId(h)).toBe('v.tomo');
+    const cam = h.model.session!.ir!.view.camera!;
+    for (const k of ['position', 'target', 'up'] as const)
+      cam[k].forEach((x, i) => expect(x, `${k}[${i}]`).toBeCloseTo(here[k][i], 1));
+  });
+
   it('the new ids of a view and an annotation are past every id of the document, not only views and annotations', {
     tags: ['medium'],
   }, async () => {
