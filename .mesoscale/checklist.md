@@ -86,9 +86,10 @@ Each lane: brief committed · steps · checks green · gate (reviewer, skeptic, 
 - [x] checks green (base failures only)
 - [x] checked in the app through the API (β-cell): all pass but Open with (no view named) fails; camera moves not
       verifiable (hidden pane)
-- [ ] gate: reviewer and skeptic done; fixes running (Open with, labels on stream commits, camera in a frame test,
-      Ludo's four decisions)
-- [ ] Ludo's check by hand · merged (before 6)
+- [x] gate: reviewer and skeptic; fixed: Open with, labels on stream commits, camera in a frame test, Ludo's four
+      decisions; open: S5 (serial label runs), `pin()` order, tour caption, a click during a tour
+- [ ] Ludo's check by hand
+- [x] merged into `me/mesoviewspec` (`3e42733f9`)
 
 ### 6. `mvs-model-edits` ([progress](../apps/prism-me/progress/2026-11-09-mvs-model-edits.md)), port 1368
 
@@ -96,8 +97,12 @@ Each lane: brief committed · steps · checks green · gate (reviewer, skeptic, 
 - [x] steps 1–2 (Sonnet)
 - [x] checks green (base failures only)
 - [x] checked in the app through the API (exosome): count, seed, relax, refused count, Cancel, Undo all pass
-- [ ] gate: reviewer and skeptic done; fixes running (status pill task, yield, fields, abort guard, cancel test)
-- [ ] Ludo's check by hand · merged (after 5)
+- [x] gate: reviewer and skeptic; fixed: status pill task, yield (MessageChannel, not `scheduler.yield`, which starved
+      the abort in Chromium; Cancel at 20, 60 and 300 ms checked live), fields, abort guard, cancel test; open: S3b, N2,
+      N3
+- [ ] Ludo's check by hand
+- [x] merged with 4–5 in its worktree (`df2a671e8`; medium 115 pass, unit base failures only), then into
+      `me/mesoviewspec` (`1bf3bd49e`)
 
 ### 7. `mvs-agent` (after 4, 5 and `mvs-skill-cli`)
 
