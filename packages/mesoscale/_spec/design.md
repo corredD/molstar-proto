@@ -647,7 +647,8 @@ Fibers mock exposed the adapter's `excludeFibers` bug (§11).
 4. **Representation hints.** The hint exists (§5) and falls back to spheres. Which hints must an adapter honour, and
    should a document be able to state a fallback chain (SeqViewSpec's)? **(v0.5) Reopened with 8 and 12** as semantic
    levels: a representation chosen per scale by a rule in the document
-   ([views.md](views.md#semantic-levels-proposed-v05-for-david-and-ludo)).
+   ([views.md](views.md#semantic-levels-proposed-v05-for-david-and-ludo)). Ludo (2026-11-09), for David's review: hints
+   gain `envelope`, and a representation may be a fallback chain.
 5. **L scenes.** Tiles as a first-class IR concept (a set per tile, keyed), or a renderer-side streaming source?
    **(v0.4) Decided for the IR:** one placement set per tile, keyed `<model>@<hash>#<tileId>`, spliced under a `stream`
    node by the session, so `planCommit` commits only the tiles added and removed and every adapter gets streaming for

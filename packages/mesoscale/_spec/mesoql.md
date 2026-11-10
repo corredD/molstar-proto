@@ -46,35 +46,49 @@ type MesoLocation =
   | { kind: 'copy'; set: string; index: number } // today's, stable id `<population>#<ordinal>`
   | { kind: 'label'; resource: Id; label: number | string } // a segmentation's label, as a compartment's geometry
   | { kind: 'voxel'; resource: Id; ijk: Vec3 } // a tomogram's or map's voxel, in its frame
-  | { kind: 'point'; frame: Id; position: Vec3 }; // a place with nothing at it
+  | { kind: 'point'; frame: Id; position: Vec3 } // a place with nothing at it
+  | { kind: 'face'; resource: Id; face: number } // a mesh resource's face (a compartment's surface)
+  | { kind: 'arc'; set: string; fiber: number; s: number }; // a place along one fiber, at arc length s
 
 interface MesoLoci {
   copies: ReadonlyMap<string, readonly number[]>; // set key → runs, as today
   labels?: ReadonlyMap<Id, readonly (number | string)[]>; // segmentation → labels
   voxels?: ReadonlyMap<Id, readonly VoxelBox[]>; // volume → boxes, in its voxels (not doc.ts's `Box`, Å, world)
+  faces?: ReadonlyMap<Id, readonly number[]>; // mesh → face runs
 }
 ```
 
 - **Copies stay runs.** The `copies` part is today's MesoLoci: the run operations keep their algorithm, and their
   callers read `.copies`. The other parts are empty for every address the examples use.
-- **`point`** has no MesoLoci part: no address yields one. It is a pick on empty space, or an annotation's anchor, which
-  `Annotation.target` already states as `{position}`; whether `point` replaces that field is open (question 3).
-- **Mixed addresses.** `(and (in c.nucleus) (label r.seg 3))` or `within` across kinds needs a meeting point: a label or
-  a voxel box is a region, and a copy is in it if its centre is. Proposed: regions filter copies, and a combination's
-  copies are what each operator gives today once the regions have filtered them. What `or` and `not` give on the regions
-  themselves, and how this meets `in`'s `:location` and a compartment whose geometry is the same segmentation label, is
-  open (question 2).
-- **New symbols**, if agreed: `(label <resource> <label>)`, `(voxels <resource> <box>)`. They would be generated into
-  [reference/mesoql.md](reference/mesoql.md) like the others.
+- **`point`** has no MesoLoci part: no address yields one. It is a pick on empty space, or an annotation's anchor.
+  `Annotation.target`'s `{position}` becomes a `point` location, so a pick and an anchor say "here" the same way. (Ludo,
+  2026-11-09.)
+- **`arc`** names a place along a fiber (an actin filament at 1.2 µm from its pointed end), between its copies; like
+  `point`, a location without a MesoLoci part.
+- **Regions and copies, both ways.** A label, a voxel box or a mesh's faces is a region, and a copy is in it if its
+  centre is. (Ludo, 2026-11-09.)
+  - **Regions filter copies:** `(and (population p.ribosomes) (label r.seg 3))` is the ribosomes whose centres are in
+    label 3. A combination's copies are what each operator gives today once the regions have filtered them.
+  - **Regions combine as regions:** `and`, `or` and `not` on regions of one resource are set operations on its labels,
+    boxes or faces; regions of different resources meet only through the copies they filter.
+  - **A copy selects a region only by name:** `(region-of <copies> <resource>)` gives the labels (or faces) the copies'
+    centres sit in. `and` and `or` never turn copies into regions on their own.
+  - `in`'s `:location` keeps its meaning for compartments; a compartment whose geometry is a segmentation label and
+    `(label …)` of the same label select the same copies.
+- **New symbols:** `(label <resource> <label>)`, `(voxels <resource> <box>)`, `(faces <resource> <runs>)`,
+  `(region-of <copies> <resource>)`. They would be generated into [reference/mesoql.md](reference/mesoql.md) like the
+  others.
 - **Only `copy` would be built at first.** Adding `kind` to `MesoLocation` breaks nothing: only `ir/index.ts` re-exports
   it, and no code takes one (`rowOfCopy` takes a set and an index). The work is MesoLoci's new shape: `ir/loci.ts`
   (`evaluateMesoQL`, `perInstance`, `within`, `lociSize`, `lociToIds`, `lociSphere`), `runtime/runtime.ts`
   (`materialize`), `molstar/src/prism-adapter.ts` (`drawnRuns`, `runsOn`) and `molstar/src/document-model.ts`
   (`mesoLoci`). A small lane after lane 4 (`mvs-drive`), which also edits `document-model.ts`.
 
-**Open for David and Ludo:**
+**Decided (Ludo, 2026-11-09), for David's review:**
 
-1. Are `label`, `voxel` and `point` the right first kinds, or is a mesh's face, or a filament's arc length, needed too?
-2. Do regions filter copies only (proposed), or can a copy select a region (the label a copy sits in)? What do `or`,
-   `not` and `within` return for regions?
-3. Does `point` replace `Annotation.target`'s `{position}`?
+1. Kinds specified: `copy`, `label`, `voxel`, `point`, `face`, `arc`. Only `copy` is built first.
+2. Both ways: regions filter copies, regions combine as regions, and a copy selects a region only through
+   `(region-of …)`.
+3. `point` replaces `Annotation.target`'s `{position}`.
+
+**Still open:** what `within` gives between a region and copies (distance to the region's surface, or to its centre).
