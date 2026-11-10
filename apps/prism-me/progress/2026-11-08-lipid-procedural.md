@@ -1985,7 +1985,8 @@ The yeast cell is Wrap all (9 membranes, the CHARMM-GUI patch). Before N5, yeast
 (30 coarse): the depth pass computed the patch frame. The cut band at 450 Å takes half to a seventh of coarse's lipids.
 Yeast ring 450 unclipped: parallax 79 against 70 with a quarter of the lipids (open: not profiled). Test 4 not given the
 design's bounds: it runs one look a run (LIPID_MIDDLE), at 256² its frames are 6-7 ms with ±1-2 ms of noise on a shared
-machine (×1.1 is within the noise), and the yeast data is not in the repo; the lipid bound holds in every row above.
+machine (×1.1 is within the noise), and the yeast data is not in the repo; the lipid bound (≤ coarse/2) holds in the
+close-300, ring and cut rows; close 60 Å is atoms under both looks (x600 10,288 each).
 
 **Checks (a Sonnet run, after the gate's fixes).** `npx tsc -b`, `npx tsc --noEmit -p apps/prism-me`, lint,
 format:check, check:workspace, styles:check (mesoscale, prism-me), prism-me typecheck:storybook: pass. Quick lane with
@@ -2027,9 +2028,9 @@ cross-section shows lipids under either.
   for a pool's params); Coarse ↔ Parallax with no clip still builds (the cutters kept).
 - `nearClipBoundary` is core's `Clip.classifySphere` written in (core's returns a boxed double a call: 5.8 kB a view);
   tested against core's on every shape.
-- Numbers (900 × 600, Dawn, M1): the S3 table above. Parallax at or under coarse everywhere but yeast ring 450 Å
-  unclipped (79 vs 70 ms); the cut band at 450 Å takes 13 k (x600) and 72 k (yeast) lipids against coarse's 93 k and 143
-  k. Test 4 has no frame bound (one look a run, ±1-2 ms noise at 256²).
+- Numbers (900 × 600, Dawn, M1): the S3 table above. Parallax within 1 ms of coarse or under it everywhere but yeast
+  ring 450 Å unclipped (79 vs 70 ms); the cut band at 450 Å takes 13 k (x600) and 72 k (yeast) lipids against coarse's
+  93 k and 143 k. Test 4 has no frame bound (one look a run, ±1-2 ms noise at 256²).
 - Open: a face-on cut's sliver between the leaflets, X2, N1, N2, N6 (TODO); the default middle look (Ludo).
 
 **Testing.** As the checks above; Dawn tests 3 (outside and inside), 5 (the ring, a drag), the S2 switch, the march
