@@ -11,6 +11,7 @@ import { UUID } from '@molstar/core/util/uuid';
 import {
   applyPatch,
   classifyPatch,
+  indexDoc,
   type Issue,
   issue,
   LengthToAngstrom,
@@ -515,9 +516,7 @@ export class MesoDocumentModel {
   newViewPatch(here: CameraHere, label?: string): { readonly patch: Patch; readonly id: string } | undefined {
     const doc = this.doc;
     if (!doc) return undefined;
-    const views = doc.views ?? [];
-    let n = 1;
-    while (views.some((v) => v.id === `v.view.${n}`)) n++;
+    const n = freshNumber(doc, 'v.view.');
     const id = `v.view.${n}`;
     const next = lookIds(doc);
     const looks = (shownViewOf(doc, this.shown)?.looks ?? []).map((l) => ({
@@ -548,15 +547,12 @@ export class MesoDocumentModel {
 
   /**
    * Add label (prism.md §5.2): an annotation `{id: an.<n>, target: select, text}` inserted last in the view shown's
-   * annotations; no view: `v.prism` with it. Its id past every annotation id of the document's views.
+   * annotations; no view: `v.prism` with it. Its id past every id of the document.
    */
   annotationPatch(select: string, text: string): Patch | undefined {
     const doc = this.doc;
     if (!doc) return undefined;
-    const taken = new Set((doc.views ?? []).flatMap((v) => (v.annotations ?? []).map((a) => a.id)));
-    let n = 1;
-    while (taken.has(`an.${n}`)) n++;
-    const node = { id: `an.${n}`, target: select, text };
+    const node = { id: `an.${freshNumber(doc, 'an.')}`, target: select, text };
     const view = shownViewOf(doc, this.shown);
     const op: Op = view
       ? { op: 'insert', node, parent: view.id, list: 'annotations', after: 'last' }
@@ -810,6 +806,14 @@ function lookIds(doc: MesoViewSpecDoc): (prefix: string) => string {
     taken.add(`${prefix}${n}`);
     return `${prefix}${n}`;
   };
+}
+
+/** The first `n` whose `<prefix><n>` is no id of the document (one namespace: format.md, `indexDoc`). */
+function freshNumber(doc: MesoViewSpecDoc, prefix: string): number {
+  const taken = indexDoc(doc).kinds;
+  let n = 1;
+  while (taken.has(`${prefix}${n}`)) n++;
+  return n;
 }
 
 /** The look ids an edit writes, by kind (prism.md §5.3): a copy keeps its kind. */
