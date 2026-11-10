@@ -9,7 +9,9 @@
 import { exosomeDoc, ExosomeRecipe, syntheticPicksStar, syntheticVesicleObj } from '@molstar/meso-spec/examples';
 import type { Look, MesoViewSpecDoc } from '@molstar/meso-spec/format';
 import { ParticleRepresentation3DLayers } from '@molstar/plugin/state/transforms/particles/layers';
-import { PluginStateObject as SO } from '@molstar/plugin/state/objects';
+import { PluginStateObject as SO, PluginStateTransform } from '@molstar/plugin/state/objects';
+import { CustomProperties } from '@molstar/model/model/custom-property';
+import type { ParticleList } from '@molstar/model/model/particles/particle-list';
 import { StateSelection } from '@molstar/core/state';
 import { createMesoscaleExplorerSpec } from '@molstar/prism-me-app/spec';
 import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
@@ -265,6 +267,66 @@ describe('the other operations on a document list (prism.md §5.1)', () => {
     expect(looks).toHaveLength(1);
     expect(looks[0]).toMatchObject({ select: '(all)', color: expect.stringMatching(/^#[0-9a-f]{6}$/) });
   });
+
+  it('theme over the document’s lists and a plain list together: one step; one Undo restores both', {
+    tags: ['medium'],
+  }, async () => {
+    const h = await open();
+    await h.v.plugin.build().toRoot().apply(PlainTestList).commit();
+    const plain = h.v.plugin.managers.particles.hierarchy.current.lists
+      .map((l) => l.cell.transform.ref)
+      .find((ref) => !listRefs(h).includes(ref))!;
+    expect(plain).toBeDefined();
+    const r0 = await h.v.api.run('particles.representation', { type: 'spacefill', particles: plain });
+    expect(r0.ok, JSON.stringify(r0)).toBe(true);
+    const plainTheme = () => {
+      const l = h.v.plugin.managers.particles.hierarchy.current.lists.find((x) => x.cell.transform.ref === plain)!;
+      return (l.representations[0].cell.transform.params as { colorTheme: { name: string } }).colorTheme.name;
+    };
+    const before = plainTheme();
+    const s0 = h.steps();
+    const r = await h.run('mesoscale.theme', { objects: [...listRefs(h), plain], theme: 'uniform', color: '#808080' });
+    expect(r.ok, JSON.stringify(r)).toBe(true);
+    expect(h.steps()).toBe(s0 + 1);
+    expect(plainTheme()).toBe('uniform');
+    expect(styleLooks(await saved(h))).toEqual([{ id: 'l.style.1', select: '(all)', color: '#808080' }]);
+    expect((await h.v.managers.history.undo()).ok).toBe(true);
+    expect(plainTheme()).toBe(before);
+    expect(styleLooks(await saved(h))).toEqual([]);
+  });
+});
+
+/** A plain particle list beside the document (a cellPACK-like list of the mesoscale area's own): two entities. */
+const PlainTestList = PluginStateTransform.BuiltIn({
+  name: 'meso-molstar-test-plain-list',
+  display: { name: 'Plain Test List' },
+  from: SO.Root,
+  to: SO.Particle.List,
+  params: {},
+})({
+  apply() {
+    const count = 4;
+    const list: ParticleList = {
+      label: 'Plain',
+      count,
+      keys: Int32Array.from({ length: count }, (_, i) => i),
+      targets: Int32Array.of(0, 0, 1, 1),
+      targetInfo: new Map([
+        [0, { entity: 0 }],
+        [1, { entity: 1 }],
+      ]),
+      entityInfo: new Map([
+        [0, { name: 'A' }],
+        [1, { name: 'B' }],
+      ]),
+      coordinates: Float32Array.from({ length: count * 3 }, (_, i) => (i % 3 === 0 ? (i / 3) * 10 : 0)),
+      getParticleLabel: (i) => `${i}`,
+      sourceData: { kind: 'test', name: 'test', data: {} },
+      customProperties: new CustomProperties(),
+      _propertyData: Object.create(null),
+    };
+    return new SO.Particle.List(list, { label: 'Plain' });
+  },
 });
 
 describe('colors back to the default over looks at other addresses (prism.md §5.1: theme, reset)', () => {
