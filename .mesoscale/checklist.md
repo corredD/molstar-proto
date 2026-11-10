@@ -69,17 +69,24 @@ Each lane: brief committed · steps · checks green · gate (reviewer, skeptic, 
 - [ ] Ludo's check by hand (the gestures clicked in the tree and menus; Claude's check called the operations)
 - [x] merged into `me/mesoviewspec` (`4b9d4cd1c`), on Ludo's go-ahead after the Import colors fix
 
-### Small lane: MesoLocation `kind` (after lane 4)
+### `mvs-location`: MesoLocation `kind` ([progress](../apps/prism-me/progress/2026-11-09-mvs-location.md))
 
-- [ ] brief (mesoql.md "MesoLocation as a union", only `copy` built)
+- [x] brief (mesoql.md "MesoLocation as a union", only `copy` built)
+- [x] built (Sonnet), checks green (base failures only)
+- [x] gate: reviewer (Opus); the story's `loci.size` fixed, `lociToLocations` dropped
+- [x] merged into `me/mesoviewspec` (`29d95d6c5`); no app change to check
 
-### 5. `mvs-views` (after lane 4)
+### 5. `mvs-views` ([progress](../apps/prism-me/progress/2026-11-09-mvs-views.md)), port 1359
 
-- [ ] brief · steps · checks · gate · Ludo's check · merged
+- [x] brief committed
+- [ ] steps 1–4 (building, Opus)
+- [ ] checks · checked in the app · gate · Ludo's check · merged (before 6)
 
-### 6. `mvs-model-edits` (after lane 4, parallel with 5)
+### 6. `mvs-model-edits` ([progress](../apps/prism-me/progress/2026-11-09-mvs-model-edits.md)), port 1368
 
-- [ ] brief · steps · checks · gate · Ludo's check · merged
+- [x] brief committed
+- [ ] steps 1–2 (building, Sonnet, parallel with 5)
+- [ ] checks · checked in the app · gate · Ludo's check · merged (after 5)
 
 ### 7. `mvs-agent` (after 4, 5 and `mvs-skill-cli`)
 
