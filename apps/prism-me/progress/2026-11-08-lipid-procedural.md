@@ -1358,3 +1358,35 @@ and y alike (the cell wall's proteins; a scale error would grow with the coordin
 in the meshes' frame: Å = nm × 10, the same origin.** The reader's ×10 is right; the user opens both with + Open,
 nothing to set. (The PM's vertices are about 420 Å apart, so a vertex distance is not a surface distance: the histogram
 has no peak at 0, and is not evidence either way.)
+
+**Item 3, the mixes (data built; not yet wired into the view).** `lipids/mixes.ts`: `YeastMixes` by part name (PM,
+MITO_IM, MITO_OM, ER, VAC, LD; NE, GOLGI and PEROX take the ER's), `standIns` (ERG → CHL1, SL → SSM, CL → 2 DOPA
+renormalized, PC POPC in the PM / DOPC elsewhere, PE POPE / PLPE), `mixTable` (a leaflet's table with each patch place
+given a species: exact counts by largest remainder, a seeded shuffle, the places and turns kept; a species the leaflet
+lacks takes the other leaflet's conformers mirrored through the centre). **Conflicts, by the measurement's publication
+(one reading, applied to all):** PM sterol van 't Klooster 2020 (25–30, taken 27.5; inner 44.0, outer 11.0 by Solanko's
+80 %) over Schneiter 1999's 31.5 and Surma 2011's > 44 (as Reinhard 2024 quotes it); ER 9.7 and vacuole 11.7 (Reinhard
+2024); LD PC Grillitsch 2011 over Leber 1994. Delphine's rows kept as she gave them (the vacuole's sums to 99.9). Test:
+`lipid-mixes.test.ts`.
+
+### Items 2 and 3, the design to build (decided here, 2026-11-09; changes round 6's "one candidate list")
+
+- **A cut leaflet per (part, leaflet)**, each on the part's own triangles: `indices.subarray(start * 3, end * 3)` over
+  the shared positions, its regions the whole mesh's (`regionOf.subarray(start, end)`, the table and cells shared: the
+  same seams as today), its table `mixTable(getCutterTable(patch, leaflet), other, standIns(mix…), seed)` where the part
+  has a mix, the patch's table otherwise; the LD's inner none. Memory as today (the per-triangle arrays sum to the same
+  T), member objects about 9× (measure wrap time and RSS against 9.2 s and 1.1–2.3 GB).
+- **Enclosure once a view:** the whole-mesh tree and `enclosedBy` stay built at the wrap; a shared `PartVisibility`
+  (`procedural.ts`) computes `partShown` once per frustum (keyed by its planes), each part's selection reads its part's
+  bit. Today's multi-part selection path stays for the tests that use it, or is retired with them.
+- **Budget:** `poolCapacities` over all ~17 leaflets (one budget still, its sum ≤ budget); round 6's "nearest first
+  across parts" becomes a share per pool: update `lipid-cell.test.ts`'s budget case openly and check the PM's and a
+  mitochondrion's capacities against round 6's live counts (73 k PM close, 145 k inside a mito).
+- **Far surfaces:** each cut leaflet's own (`partOfSurface` per part already), its texture from its mix table.
+- **Item 2 on it:** repr params `hiddenParts: string[]`, `partColors: Record<string, number>` (hidden, auto-update); a
+  hidden part's selections take nothing and its objects are hidden; a part's colour its members' `uniform` colour and
+  its surfaces'. Operations: `mesoscale.style { particles: membrane, parts: 'PM,ER', visible?, color? }` (one
+  `updateMembrane`), the explorer's rows `mp:${ref}:${name}` (kind `part`, under the membrane's mesh row, rows.ts
+  `objectRows`, `rowKeysOf`; a membrane's parts state `api.mesoscale.membranePartsState(ref)` beside
+  `membraneSpeciesState`); the eye through `setEyes` (one `api.group`), the colour through `colorItems`' part case.
+  Tests as `tree-eyes.test.tsx` (an eye one step, one undo; the colour dot) and `lipid-membrane.test.ts`.
