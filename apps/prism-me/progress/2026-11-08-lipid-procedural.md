@@ -2048,6 +2048,6 @@ guard; the measurement `lipid-measure.webgpu.test.ts` (opt-in, heavy) on the yea
 
 ## Round 8 finished (2026-11-10)
 
-Ludo picked Parallax as the default middle look ("the parallax works really well"): 7e104fc0e. Checks: the quick lane
-of mesoscale and prism-me (381 passed), the five Dawn lipid files (29 passed), tsc, lint, format. Open: shells' band
+Ludo picked Parallax as the default middle look ("the parallax works really well"): 7e104fc0e. Checks: the quick lane of
+mesoscale and prism-me (381 passed), the five Dawn lipid files (29 passed), tsc, lint, format. Open: shells' band
 objects, the pop with a clip, the face-on sliver, X2, N1, N2, N6, color-levels.scaling's kill (TODO.md).
