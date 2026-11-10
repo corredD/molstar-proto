@@ -83,7 +83,7 @@ function files(d: MesoViewSpecDoc) {
   return out;
 }
 
-async function open() {
+async function open(d = doc()) {
   const spec = createMesoscaleExplorerSpec('');
   const v = await createPrismViewerHeadless({
     spec: { ...spec, extensions: (spec.extensions ?? []).filter((e) => e.id !== 'mesoviewspec') },
@@ -99,7 +99,6 @@ async function open() {
     if (e.type === 'error') errors.push(String(e.message));
   });
   const run = (id: string, values: Record<string, unknown> = {}) => person.run(id, values);
-  const d = doc();
   const r = await run('mesoviewspec.open', { data: JSON.stringify(d), files: files(d) });
   expect(r.ok, JSON.stringify(r)).toBe(true);
   const h = { v, api, model: api.model, run, runs, errors, steps: () => v.managers.history.steps.value };
@@ -356,6 +355,28 @@ describe('New view from here, Update camera, Open with this view (prism.md §4.4
     expect(o.ok, JSON.stringify(o)).toBe(true);
     expect(shownId(again)).toBe('v.red');
     expect(ribosomes(again)?.color).toBe(Red);
+  });
+
+  it('the new ids of a view and an annotation are past every id of the document, not only views and annotations', {
+    tags: ['medium'],
+  }, async () => {
+    const d = doc();
+    const taken: MesoViewSpecDoc = {
+      ...d,
+      // a tour and a look holding the ids New view and Add label would take first
+      tours: [...(d.tours ?? []), { id: 'v.view.1', steps: [{ view: 'v.cell' }] }],
+      views: d.views!.map((v) =>
+        v.id === 'v.cell' ? { ...v, looks: [...(v.looks ?? []), { id: 'an.1', select: '(population p.ribosomes)' }] } : v,
+      ),
+    };
+    const h = await open(taken);
+    await h.run('mesoviewspec.view', { view: 'v.cell' });
+    const made = await h.run('mesoviewspec.newView', { camera: here });
+    expect(made.ok, JSON.stringify(made)).toBe(true);
+    expect(h.model.doc!.views!.at(-1)!.id).toBe('v.view.2');
+    const label = await h.run('mesoviewspec.label', { select: '(instance i.granule-docked)', text: 'Here' });
+    expect(label.ok, JSON.stringify(label)).toBe(true);
+    expect(viewOf(h.model.doc, 'v.view.2')!.annotations?.map((a) => a.id)).toEqual(['an.2']);
   });
 
   it('Open with no view named opens with the view shown', { tags: ['medium'] }, async () => {
