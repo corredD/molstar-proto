@@ -52,6 +52,7 @@ export {
   compile,
   classifyEdit,
   updateView,
+  shownViewOf,
 } from './runtime.js';
 export {
   type Flattened,
