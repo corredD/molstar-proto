@@ -48,6 +48,7 @@
   },
   "devDependencies": {
     "@molstar/plugin-headless": "workspace:*",
+    "@molstar/test-harness": "workspace:*",
     "typescript": "catalog:",
     "@types/node": "catalog:",
     "@types/webxr": "catalog:",

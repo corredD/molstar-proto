@@ -19,7 +19,7 @@ import type { GraphicsResources } from '@molstar/graphics/gl/context';
 import { createMergedRenderObject, createRenderObject } from '@molstar/graphics/gl/render-object';
 import { createMergedCuller } from '@molstar/graphics/gl/renderable/merged-culler';
 import type { MergeableValues, Merged } from '@molstar/graphics/gl/renderable/merged';
-import { checkLinear, scaling } from '../../../../sequences/core/_test/model/scaling.js';
+import { checkLinear, scaling } from '@molstar/test-harness/scaling';
 
 // The GPU culling's CPU side over N members (`test:scaling`): what a layout change writes (`syncLayout`: cells, each
 // instance's cell, the segments' bases and paddings, the records) and the instances (`syncInstances`), with a compute

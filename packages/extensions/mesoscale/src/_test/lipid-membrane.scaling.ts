@@ -10,7 +10,7 @@ import {
   describeScaling,
   quadraticControl,
   scaling,
-} from '../../../../sequences/core/_test/model/scaling.js';
+} from '@molstar/test-harness/scaling';
 import { assignReference, assignSlots } from '../lipids/assign.js';
 import {
   CellKinds,

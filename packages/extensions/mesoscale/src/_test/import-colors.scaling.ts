@@ -17,7 +17,7 @@ import {
   quadraticControl,
   scaling,
   scalingAsync,
-} from '../../../../sequences/core/_test/model/scaling.js';
+} from '@molstar/test-harness/scaling';
 import { matchColors, parseColorFile } from '../color-file.js';
 import { mesoEntities } from '../model.js';
 import { MesoscaleExtension } from '../prism-viewer.js';

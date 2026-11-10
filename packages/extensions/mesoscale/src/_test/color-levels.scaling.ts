@@ -9,7 +9,7 @@ import { expect, it } from 'vitest';
 import { DefaultPrismViewerSpec } from '@molstar/prism-viewer/default-spec';
 import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
 import type { PrismViewer } from '@molstar/prism-viewer/viewer';
-import { checkLinear, scalingAsync } from '../../../../sequences/core/_test/model/scaling.js';
+import { checkLinear, scalingAsync } from '@molstar/test-harness/scaling';
 import { MesoscaleExtension } from '../prism-viewer.js';
 import { TestTargetList, setTestTargetStructure } from './fixtures.js';
 

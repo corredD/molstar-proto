@@ -9,7 +9,7 @@
 
 import { expect, it } from 'vitest';
 import { Vec3 } from '@molstar/core/math/linear-algebra/3d/vec3';
-import { quickCase } from '../../../../sequences/core/_test/model/quick.js';
+import { quickCase } from '@molstar/test-harness/quick';
 import { createLipidSelection } from '../lipids/procedural.js';
 import { full, input, Params, view } from './lipid-selection-cases.js';
 
