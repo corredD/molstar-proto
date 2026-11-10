@@ -395,8 +395,9 @@ fn fragmentMain(in: VertexOutput, @builtin(front_facing) frontFacing: bool) -> F
         let viewPosition = in.vViewPosition;
     #endif
 
-    #if defined(dPatchTexture) && (defined(dPatchMiddle_shells) || defined(dPatchMiddle_beneath) || defined(dPatchMiddle_parallax))
-        // the middle look's handoff and the shells' test in every variant: depth, pick and colour discard alike (round 8)
+    #if defined(dPatchTexture) && (defined(dPatchMiddle_shells) || defined(dPatchMiddle_beneath))
+        // the middle look's handoff and the shells' test in every variant: depth, pick and colour discard alike (round 8;
+        // parallax discards nothing: its frame in the colour variants only, the gate's N5)
         var frame = patchFrame(modelPosition, fdx, fdy, u32(in.vPatch.x + 0.5), in.vPatchShift);
         let middle = frame.px >= uObject.uPatchMiddle.x && frame.px < uObject.uPatchMiddle.y;
         #if defined(dPatchMiddle_beneath)
@@ -454,11 +455,11 @@ fn fragmentMain(in: VertexOutput, @builtin(front_facing) frontFacing: bool) -> F
     ${assign_material_wgsl}
     // the patch's colour where colour is drawn (not in the depth, pick or marking variants)
     #if defined(dPatchTexture) && (defined(dRenderVariant_colorBlended) || defined(dRenderVariant_colorWboit) || defined(dRenderVariant_colorDpoit) || defined(dRenderVariant_tracing) || defined(dRenderVariant_emissive))
-        #if !defined(dPatchMiddle_shells) && !defined(dPatchMiddle_beneath) && !defined(dPatchMiddle_parallax)
-            let frame = patchFrame(modelPosition, fdx, fdy, u32(in.vPatch.x + 0.5), in.vPatchShift);
+        #if !defined(dPatchMiddle_shells) && !defined(dPatchMiddle_beneath)
+            var frame = patchFrame(modelPosition, fdx, fdy, u32(in.vPatch.x + 0.5), in.vPatchShift);
         #endif
         #if defined(dPatchMiddle_parallax)
-            if (middle) {
+            if (frame.px >= uObject.uPatchMiddle.x && frame.px < uObject.uPatchMiddle.y) {
                 let up = normalize((uGlobal.uInvView * vec4<f32>(-normal, 0.0)).xyz);
                 frame = patchParallax(frame, modelPosition, up);
             }
