@@ -15,7 +15,6 @@ import {
   intersectRuns,
   lociSize,
   lociToIds,
-  lociToLocations,
   subtractRuns,
   typeRuns,
   unionRuns,
@@ -99,21 +98,11 @@ describe('MesoQL', () => {
     expect(near).toBeLessThan(r.counts['p.catalase'].achieved);
   });
 
-  it('MesoLocation is a union: every location an address yields is a copy', async () => {
-    const r = await compileExosome(exosomeDoc());
-    const ctx = { doc: exosomeDoc(), ir: r.ir! };
-    const loci = evaluateMesoQL(q('(copies p.catalase 12 3)'), ctx).loci;
-    const locations = lociToLocations(loci, 10);
-    expect(locations.length).toBe(3);
-    for (const l of locations) expect(l.kind).toBe('copy');
-  });
-
   it('MesoLoci from an address has only copies', async () => {
     const r = await compileExosome(exosomeDoc());
     const ctx = { doc: exosomeDoc(), ir: r.ir! };
     for (const t of ['(population p.lipids)', '(not (population p.lipids))', '(within (all) :of (all) :distance 1)']) {
       const loci = evaluateMesoQL(q(t), ctx).loci;
-      expect(Object.keys(loci)).toEqual(['copies']);
       expect(loci.copies).toBeInstanceOf(Map);
       expect(loci.labels).toBeUndefined();
       expect(loci.voxels).toBeUndefined();

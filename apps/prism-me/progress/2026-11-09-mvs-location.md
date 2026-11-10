@@ -32,9 +32,8 @@ touch the same files (`runtime.ts`, the adapter, `document-model.ts`).
 
 - `ir/loci.ts`: `MesoLocation` is the discriminated union (`copy` produced; `label`, `voxel`, `point`, `face`, `arc`
   declared, documented as never produced); `MesoLoci` is `{ copies, labels?, voxels?, faces? }` with only `copies`
-  filled; `VoxelBox`, `CopyRuns` (the run map, internal to the run combiners, `perInstance` and `within`),
-  `lociOfCopies` and `lociToLocations` (the copy locations of a MesoLoci, what the first test reads) are new.
-  `lociSize`, `lociToIds` and `lociSphere` take a MesoLoci and read `.copies`; `evaluateMesoQL` wraps its result with
+  filled; `VoxelBox`, `CopyRuns` (the run map, `lociOfCopies`' argument) and `lociOfCopies` are new. `lociSize`,
+  `lociToIds` and `lociSphere` take a MesoLoci and read `.copies`; `evaluateMesoQL` wraps its result with
   `lociOfCopies`. `ir/index.ts` re-exports them.
 - Consumers read `.copies`: `runtime/runtime.ts` (`materialize`'s looks, selection, cutaway, the camera's whole-scene
   sphere; a failed parse gives `EmptyLoci`), `cli/meso-query.ts`, `molstar/src/prism-adapter.ts` (`runsOn`),
@@ -48,6 +47,22 @@ touch the same files (`runtime.ts`, the adapter, `document-model.ts`).
 - Checks: `npx tsc -b` clean; `vitest run packages/mesoscale packages/extensions/mesoscale` 458 pass, 22 fail, the same
   22 as on the base (cli.test.ts 8, spec.test.ts 13, examples.test.ts 1: Windows CRLF and path separators); the medium
   lane 68 pass, 8 skipped; biome lint and format clean on the touched files (checked on LF text: the worktree is CRLF).
+
+## Review
+
+Opus reviewer (read-only); the one must-fix confirmed by `tsc -p tsconfig.storybook.json` before the fix (a skeptic pass
+was not needed for a compiler error). Fixes in one commit after the docs commit.
+
+| Finding                                                                                      | Severity   | Verdict                                        | Fixed                                 |
+| -------------------------------------------------------------------------------------------- | ---------- | ---------------------------------------------- | ------------------------------------- |
+| 1. the address story read `loci.size` (`tsc -b` skips stories): "undefined placement sets"   | must-fix   | confirmed (storybook typecheck: TS2339 ×2)     | yes: `loci.copies.size`               |
+| 2. `lociToLocations` public API added for a tautological test                                | should-fix | confirmed                                      | yes: removed with its test            |
+| 3. `CopyRuns` exported                                                                       | should-fix | refuted: it is `lociOfCopies`' public argument | —                                     |
+| nits: local `Id`/`Vec3`; heading still "proposed"; `Object.keys` pinned in a test; changelog | nit        | plausible                                      | the test's key pin and changelog, yes |
+
+The spec.test "stale" failures are the CRLF checkout (the reference files are `i/lf w/crlf`), not this lane: the
+generator's inputs are unchanged. The heading of mesoql.md's section keeps "(proposed …)" because other files link its
+anchor.
 
 ## Size
 

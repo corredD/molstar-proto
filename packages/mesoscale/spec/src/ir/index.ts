@@ -35,7 +35,6 @@ export {
   type VoxelBox,
   EmptyLoci,
   lociOfCopies,
-  lociToLocations,
   unionRuns,
   intersectRuns,
   subtractRuns,

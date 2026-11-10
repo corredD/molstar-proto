@@ -60,15 +60,6 @@ export const EmptyLoci: MesoLoci = { copies: EmptyCopies };
 /** The MesoLoci of these copy runs. */
 export const lociOfCopies = (copies: CopyRuns): MesoLoci => ({ copies });
 
-/** The locations of the copies, the first `limit`: each is `kind: 'copy'`. */
-export function lociToLocations(l: MesoLoci, limit = 50): MesoLocation[] {
-  const out: MesoLocation[] = [];
-  for (const [set, r] of l.copies)
-    for (let j = 0; j < r.length && out.length < limit; j += 2)
-      for (let i = r[j]; i < r[j + 1] && out.length < limit; i++) out.push({ kind: 'copy', set, index: i });
-  return out;
-}
-
 // ---- runs ----
 
 export function unionRuns(a: readonly number[], b: readonly number[]): number[] {

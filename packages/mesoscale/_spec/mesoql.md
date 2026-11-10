@@ -83,7 +83,7 @@ interface MesoLoci {
   no code takes one (`rowOfCopy` takes a set and an index). The work is MesoLoci's new shape: `ir/loci.ts`
   (`evaluateMesoQL`, `perInstance`, `within`, `lociSize`, `lociToIds`, `lociSphere`), `runtime/runtime.ts`
   (`materialize`), `molstar/src/prism-adapter.ts` (`drawnRuns`, `runsOn`) and `molstar/src/document-model.ts`
-  (`mesoLoci`). A small lane after lane 4 (`mvs-drive`), which also edits `document-model.ts`.
+  (`mesoLoci`). Built in lane `mvs-location`, after lane 4 (`mvs-drive`).
 
 **Decided (Ludo, 2026-11-09), for David's review:**
 
