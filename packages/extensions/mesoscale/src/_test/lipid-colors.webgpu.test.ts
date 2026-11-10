@@ -378,6 +378,27 @@ describe.skipIf(!webgpu)('a membrane coloured by zoom on three levels, each its 
       }
     });
 
+    it(`${method}: a clip keeps the atoms' colours close up (round 7 review S3)`, { timeout: 120_000 }, async () => {
+      const s = await levelsSetup(method, `dawn-clip-close-${method}`);
+      try {
+        // a plane through the center facing +x (Prism's new plane faces the camera): the x > 0 half cut away, the close
+        // view over the top heads (on the plane) half drawn
+        const camera = s.canvas.camera;
+        const snapshot = camera.getSnapshot();
+        const d = Vec3.distance(snapshot.position, snapshot.target);
+        camera.setState({ ...snapshot, position: Vec3.create(d, 0, 0), up: Vec3.create(0, 0, 1) }, 0);
+        const clip = await s.v.api.run('clipping.add', { shape: 'plane', node: `#${s.membrane}` });
+        expect(clip.ok, clip.message).toBe(true);
+        const c = shares(await s.image('close'));
+        expect(c.drawn, `close ${JSON.stringify(c)}`).toBeGreaterThan(50);
+        // the atoms by element, not the species' lime: heads (P, O) and, through the cut, the tails' carbons
+        expect(c.heads + c.grey, `close ${JSON.stringify(c)}`).toBeGreaterThan(0.3);
+        expect(s.canvas.graphics.takeErrors?.() ?? []).toEqual([]);
+      } finally {
+        s.dispose();
+      }
+    });
+
     it(`${method}: the levels' edges move without a rebuild (the same objects, drawn anew)`, {
       timeout: 120_000,
     }, async () => {
