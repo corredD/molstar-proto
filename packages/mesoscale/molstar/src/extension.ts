@@ -23,7 +23,9 @@ import type { ViewerExtension } from '@molstar/prism-viewer/spec';
 import { watchedState } from '@molstar/prism-viewer/sources/watched';
 import { downloadBlob } from '@molstar/prism-viewer/ui/download';
 import type { Loci } from '@molstar/model/model/loci';
+import { cssColor } from '@molstar/mesoscale-extension/color-file';
 import { registerParticleListOwner } from '@molstar/mesoscale-extension/owner';
+import { Color } from '@molstar/core/util/color';
 import { MesoDocumentModel } from './document-model.js';
 import { DocumentListOwner } from './list-owner.js';
 import { documentVisible, type DocumentGroupBy, type DocumentLooks, type DocumentOutline } from './document-tree.js';
@@ -269,6 +271,49 @@ export class MesoViewSpecApi extends ApiArea {
     },
     run: async ({ select }, ctx) =>
       this.applyLooks(this.model.showOnlyPatch(select?.trim() || undefined), ctx.api, 'show only'),
+  });
+
+  readonly look = this.operation({
+    id: 'mesoviewspec.look',
+    title: 'Style part of the MesoViewSpec document',
+    params: {
+      select: SelectParam(),
+      color: OptionalParam(PD.Text('', { description: 'A CSS color (tomato, #ff6347)' })),
+      defaultColor: OptionalParam(PD.Boolean(false, { description: 'Back to the default color' })),
+      visible: OptionalParam(PD.Boolean(true)),
+      transparency: OptionalParam(PD.Numeric(0, { min: 0, max: 1, step: 0.01 })),
+      emissive: OptionalParam(PD.Numeric(0, { min: 0, max: 1, step: 0.01 })),
+    },
+    run: async (values, ctx) => {
+      const { select, color, defaultColor, visible, transparency, emissive } = values as {
+        select: string;
+        color?: string;
+        defaultColor?: boolean;
+        visible?: boolean;
+        transparency?: number;
+        emissive?: number;
+      };
+      if (!select.trim()) return ApiResult.fail('invalid', 'Style what? Give an address.');
+      const parsed = color?.trim() ? cssColor(color.trim()) : undefined;
+      if (color?.trim() && parsed === undefined) {
+        return ApiResult.fail('invalid', `'${color}' is not a color.`, 'Give a color name (tomato), #rrggbb or rgb().');
+      }
+      const hex = parsed !== undefined ? Color.toHexStyle(parsed).toLowerCase() : undefined;
+      const change = {
+        ...(defaultColor ? { color: null } : hex ? { color: hex } : {}),
+        ...(visible !== undefined ? { visible } : {}),
+        ...(transparency !== undefined ? { transparency } : {}),
+        ...(emissive !== undefined ? { emissive } : {}),
+      };
+      if (!Object.keys(change).length) {
+        return ApiResult.fail(
+          'invalid',
+          'Nothing to change.',
+          'Give a color, defaultColor, visible, transparency or emissive.',
+        );
+      }
+      return this.applyLooks(this.model.stylePatch([{ select: select.trim(), change }]), ctx.api, 'style');
+    },
   });
 
   /** A look patch committed as one step (an eye, Show only): saved in the document (prism.md §11, question 3). */
