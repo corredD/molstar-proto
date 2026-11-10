@@ -914,6 +914,16 @@ describe('TileStreamer', () => {
     expect(s.stats().budget).toBe(60);
   });
 
+  it("a focus given to step (a viewer's canvas camera) is planned from, not the IR's camera", async () => {
+    const { s, state } = await streamer(doc, provider, 60);
+    const ir = updateView(withView(doc, 'v.corner'), state.ir);
+    // the document's camera is at the corner; the canvas looks at the far corner of the 3 x 3 grid
+    const out = s.step(ir, { center: [5000, 5000, 1000], radius: 0 });
+    expect(out.plan!.request).toEqual(['t.2.2.0', 't.1.2.0']);
+    // no focus: the IR's camera again
+    expect(s.step(ir).plan!.want).toEqual(['t.0.0.0', 't.0.1.0']);
+  });
+
   it('with no stream node it does nothing', () => {
     const s = new TileStreamer(
       () => undefined,

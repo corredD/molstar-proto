@@ -372,9 +372,13 @@ export class TileStreamer {
    * `ir.view.camera` (center = target, radius = focus radius or 0; no camera: the bounds' centre, radius 0), aborts
    * `cancel`, drops `evict`, starts `request` up to `maxInFlight`, and returns the IR with the resident tiles spliced
    * in (`withTiles`), the plan and issues (`stream.tile`, `stream.budget`; phase `load`). A changed stream key (or no
-   * stream node) aborts everything and drops every resident tile first.
+   * stream node) aborts everything and drops every resident tile first. `focus`, when given, is planned from instead
+   * of the IR's camera: a viewer's canvas camera, which the person moves (prism.md §9).
    */
-  step(ir: IR): { readonly ir: IR; readonly plan?: StreamPlan; readonly issues: readonly Issue[] } {
+  step(
+    ir: IR,
+    focus?: StreamFocus,
+  ): { readonly ir: IR; readonly plan?: StreamPlan; readonly issues: readonly Issue[] } {
     const node = streamNode(ir);
     if (node?.params.key !== this.key) this.reset(node?.params.key);
     const issues = this.fresh.splice(0);
@@ -390,13 +394,15 @@ export class TileStreamer {
       tiles,
     };
     const cam = ir.view.camera;
-    const focus: StreamFocus = cam
-      ? { center: cam.target as [number, number, number], radius: cam.focus?.radius ?? 0 }
-      : { center: bounds.min.map((x, k) => (x + bounds.max[k]) / 2) as [number, number, number], radius: 0 };
+    const at: StreamFocus =
+      focus ??
+      (cam
+        ? { center: cam.target as [number, number, number], radius: cam.focus?.radius ?? 0 }
+        : { center: bounds.min.map((x, k) => (x + bounds.max[k]) / 2) as [number, number, number], radius: 0 });
     const sizes = (m: ReadonlyMap<string, PlacementSet>) => new Map([...m].map(([id, s]) => [id, s.count]));
     const plan = planStream(
       manifest,
-      focus,
+      at,
       {
         loaded: sizes(new Map([...this.resident, ...this.arrived])),
         pending: new Set(this.pending.keys()),

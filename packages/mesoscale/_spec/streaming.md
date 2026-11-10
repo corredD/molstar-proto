@@ -335,9 +335,12 @@ export class TileStreamer {
    * `ir.view.camera` (center = target, radius = focus radius or 0; no camera: the bounds' centre, radius 0), aborts
    * `cancel`, drops `evict`, starts `request` up to `maxInFlight`, and returns the IR with the resident tiles spliced
    * in (`withTiles`), the plan and issues (`stream.tile`, `stream.budget`; phase `load`). A changed stream key (or no
-   * stream node) aborts everything and drops every resident tile first.
+   * stream node) aborts everything and drops every resident tile first. `focus`, when given, is planned from instead
+   * of `ir.view.camera`: a viewer's canvas camera (prism.md §9).
    */
-  step(ir: IR): { readonly ir: IR; readonly plan?: StreamPlan; readonly issues: readonly Issue[] };
+  step(ir: IR, focus?: StreamFocus): { readonly ir: IR; readonly plan?: StreamPlan; readonly issues: readonly Issue[] };
+  /** The copy budget of the next steps (a viewer's setting); resident tiles beyond it leave on the next step. */
+  setBudget(copies: number): void;
   /** Every issue standing for the stream key: failed tiles, the over-budget tile while it is over. `step` returns the new ones. */
   issues(): readonly Issue[];
   /** The viewer did not take the last step's IR: resident becomes the tiles `drawn` holds, the rest wait as arrivals. */
