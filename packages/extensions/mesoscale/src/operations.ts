@@ -37,6 +37,7 @@ import {
   mesoEntities,
   mesoGroups,
 } from './model.js';
+import { type OwnedLookEdit, type ParticleListOwner, particleListOwner } from './owner.js';
 
 // The `mesoscale` area (_spec/features.md, "Mesoscale"): the Mesoscale Explorer's entity controls on a particle list
 // (cellPACK and PetWorld load as particles): the entities and their groups (`entities`), each entity's visibility,
@@ -277,14 +278,11 @@ export class MesoscaleApi extends ApiArea {
         return ApiResult.fail('invalid', 'Nothing to change.', 'Give visible, color, transparency, emissive or reset.');
       }
       const change: LayerChange = reset ? { reset: true } : patch;
-      const changed = await writeStyles(
-        ctx,
-        l,
-        ids.map((id) => [id, change]),
-      );
+      const group = values.group.trim() && !values.entities.trim() ? values.group.trim() : undefined;
+      const changed = await writeLooks(ctx, l, [{ entities: ids, ...(group ? { group } : {}), change }], 'style');
       if (isFailure(changed)) return changed;
       if (!changed) return ApiResult.already('They already look so.');
-      return ApiResult.ok(`${reset ? 'Reset' : 'Styled'} ${describeSelection(l, ids)}.`, { nodes: changed });
+      return ApiResult.ok(`${reset ? 'Reset' : 'Styled'} ${describeSelection(ctx, l, ids)}.`, { nodes: changed });
     },
   });
 
@@ -319,19 +317,21 @@ export class MesoscaleApi extends ApiArea {
           'Give a color name (tomato), #rrggbb, rgb() or hsl().',
         );
       }
-      const data = dataOf(l)!;
       const generated =
-        scheme === 'generate'
-          ? generateColors(mesoGroups(data, mesoEntities(data), groupBy), variability, shift)
-          : undefined;
-      const changed = await writeStyles(
-        ctx,
-        l,
-        ids.map((id) => [id, { color: (scheme === 'theme' ? undefined : (uniform ?? generated?.get(id))) ?? null }]),
-      );
+        scheme === 'generate' ? generateColors(groupsOf(ctx, l, groupBy), variability, shift) : undefined;
+      const looks: OwnedLookEdit[] = generated
+        ? ids.map((id) => ({ entities: [id], change: { color: generated.get(id) ?? null } }))
+        : [
+            {
+              entities: ids,
+              ...(group.trim() && !entities.trim() ? { group: group.trim() } : {}),
+              change: { color: uniform ?? null },
+            },
+          ];
+      const changed = await writeLooks(ctx, l, looks, 'colors');
       if (isFailure(changed)) return changed;
       if (!changed) return ApiResult.already('They are already colored so.');
-      return ApiResult.ok(`Colored ${describeSelection(l, ids)} (${scheme}).`, { nodes: changed });
+      return ApiResult.ok(`Colored ${describeSelection(ctx, l, ids)} (${scheme}).`, { nodes: changed });
     },
   });
 
@@ -358,7 +358,7 @@ export class MesoscaleApi extends ApiArea {
       if (isFailure(l)) return l;
       const data = dataOf(l);
       if (!data) return ApiResult.fail('not-found', 'The particle list is not loaded yet.');
-      const entities = mesoEntities(data);
+      const entities = entitiesOf(ctx, l, data);
       const { colors, matched, unmatched, invalid, overridden } = matchColors(entities, file);
       const value: ImportColorsResult = { matched, unmatched, invalid, overridden };
       if (!colors.size && invalid.length && !unmatched.length) {
@@ -376,10 +376,11 @@ export class MesoscaleApi extends ApiArea {
         );
       }
       // one write: one commit, one history step, whatever the number of entities
-      const changed = await writeStyles(
+      const changed = await writeLooks(
         ctx,
         l,
-        Array.from(colors, ([id, color]) => [id, { color }]),
+        Array.from(colors, ([id, color]) => ({ entities: [id], change: { color } })),
+        'import colors',
       );
       if (isFailure(changed)) return changed;
       const missed = [
@@ -537,6 +538,12 @@ export class MesoscaleApi extends ApiArea {
       }
       if (!nodes.length && !uniform.length) return ApiResult.already('The colors already follow the zoom so.');
       if (nodes.length) await b.commit();
+      // an owned list draws its looks again: its default colors only while the colors do not follow the zoom
+      // (prism.md §5.3)
+      for (const l of one ? [one] : lists(ctx)) {
+        if (!l.representations.some((r) => nodes.includes(r.cell.transform.ref))) continue;
+        await ownerOf(ctx, l)?.themeChanged?.([l.cell.transform.ref], ctx.api);
+      }
       if (on === false) return ApiResult.ok('Colors no longer follow the zoom.', { nodes });
       for (const [ref, value] of uniform) {
         const r = await ctx.api.run('mesoscale.theme', {
@@ -717,6 +724,23 @@ export class MesoscaleApi extends ApiArea {
           const data = particleData(o.cell, o.representations);
           const entities = !!data?.entityInfo?.size;
           const list = lists.get(o.cell.transform.ref);
+          const ref = o.cell.transform.ref;
+          const owner = particleListOwner(ctx.plugin, ref);
+          const owned = owner?.info(ref);
+          if (owner && owned && theme !== 'zoom') {
+            // an owned list's colors are its owner's looks (prism.md §5.1): By object and Uniform one color, By entity
+            // the owner's default colors, Generate a color an entity over the owner's groups
+            const ids = owned.entities.map((e) => e.id);
+            const generated =
+              theme === 'generate'
+                ? generateColors(owner.info(ref, groupBy[ref] ?? owned.groupBy)?.groups ?? owned.groups)
+                : undefined;
+            const looks: OwnedLookEdit[] = generated
+              ? ids.map((id) => ({ entities: [id], change: { color: generated.get(id) ?? null } }))
+              : [{ entities: ids, change: { color: theme === 'entity' ? null : mine } }];
+            plans.push({ kind: 'owned', o, owner, looks });
+            continue;
+          }
           if (theme === 'zoom') {
             // compartment (Particle Hierarchy: compartments and entities per particle), else entity (Particle Entity:
             // entities per particle, PetWorld's), then chain and atom by size on screen
@@ -726,7 +750,8 @@ export class MesoscaleApi extends ApiArea {
               (r) => !!(r.transform.params as { type?: Partial<ParticleType> }).type?.params?.structure,
             );
             if (!data?.entities || !targets) return doesNotTake(o.name, label);
-            const look = list ? clearedColors(ctx, list) : undefined;
+            // an owned list's colors are its owner's: it draws them again for the new theme (`themeChanged`)
+            const look = list && !owner ? clearedColors(ctx, list) : undefined;
             const theme = named(hierarchy ? 'particle-hierarchy' : 'particle-entity');
             plans.push({ kind: 'reps', o, theme, levels: true, look });
             continue;
@@ -845,6 +870,32 @@ export class MesoscaleApi extends ApiArea {
                 for (const s of structure ? [structure] : structures) changed.add(s);
               }
             }
+            // owned lists: one proposal an owner, its lists together (one change of its document)
+            const byOwner = new Map<ParticleListOwner, { list: string; looks: readonly OwnedLookEdit[] }[]>();
+            for (const p of plans) {
+              if (p.kind !== 'owned') continue;
+              const of = byOwner.get(p.owner) ?? [];
+              of.push({ list: p.o.cell.transform.ref, looks: p.looks });
+              byOwner.set(p.owner, of);
+            }
+            for (const [owner, of] of byOwner) {
+              const r = await owner.propose({ label: 'theme', lists: of }, ctx.api);
+              if (!r.ok) throw new Rollback(r);
+              if (!r.unchanged) {
+                nodes.push(...(r.changed.nodes?.length ? r.changed.nodes : of.map((x) => x.list)));
+                for (const x of of) changed.add(x.list);
+              }
+            }
+            // owned lists whose theme changed (By zoom): their owners draw their looks again
+            const rethemed = new Map<ParticleListOwner, string[]>();
+            for (const w of writes) {
+              if (w.same || w.o.kind !== 'particles') continue;
+              const ref = w.o.cell.transform.ref;
+              const owner = particleListOwner(ctx.plugin, ref);
+              if (owner?.themeChanged && !rethemed.get(owner)?.includes(ref))
+                rethemed.set(owner, [...(rethemed.get(owner) ?? []), ref]);
+            }
+            for (const [owner, refs] of rethemed) await owner.themeChanged!(refs, ctx.api);
             if (looks.length) {
               const r = await ctx.api.run('particles.look', { lists: looks });
               if (!r.ok) throw new Rollback(r);
@@ -911,6 +962,13 @@ type ThemePlan =
     }
   /** A model's generated colors, its look (no theme of its own) */
   | { readonly kind: 'look'; readonly o: GraphicsObject; readonly look: readonly LookLayer[] }
+  /** A list another extension owns: its looks proposed to its owner (prism.md §1.1) */
+  | {
+      readonly kind: 'owned';
+      readonly o: GraphicsObject;
+      readonly owner: ParticleListOwner;
+      readonly looks: readonly OwnedLookEdit[];
+    }
   | { readonly kind: 'mesh'; readonly ref: string; readonly color: Color };
 
 const doesNotTake = (name: string, theme: string) =>
@@ -1254,11 +1312,41 @@ function defaultGroupBy(data: ParticleList): MesoGroupBy {
   return data.compartmentInfo?.size ? 'compartment' : 'function';
 }
 
+/** The list's owner (prism.md §1.1), when another extension owns it (a MesoViewSpec document's list) */
+function ownerOf(ctx: Pick<ApiContext, 'plugin'>, l: ParticleListRef): ParticleListOwner | undefined {
+  return particleListOwner(ctx.plugin, l.cell.transform.ref);
+}
+
+/** The list's entities: its owner's, else read from the list */
+function entitiesOf(ctx: Pick<ApiContext, 'plugin'>, l: ParticleListRef, data: ParticleList): readonly MesoEntity[] {
+  return ownerOf(ctx, l)?.info(l.cell.transform.ref)?.entities ?? mesoEntities(data);
+}
+
+/** The list's groups by `by`: its owner's, else read from the list */
+function groupsOf(ctx: Pick<ApiContext, 'plugin'>, l: ParticleListRef, by: MesoGroupBy): MesoGroup {
+  const owned = ownerOf(ctx, l)?.info(l.cell.transform.ref, by);
+  if (owned) return owned.groups;
+  const data = dataOf(l)!;
+  return mesoGroups(data, mesoEntities(data), by);
+}
+
 function describe(ctx: Pick<ApiContext, 'plugin'>, l: ParticleListRef, asked?: MesoGroupBy): MesoscaleInfo {
   const data = dataOf(l)!;
+  const styles = readStyles(ctx, l);
+  const owned = ownerOf(ctx, l)?.info(l.cell.transform.ref, asked);
+  if (owned) {
+    return {
+      particles: l.cell.transform.ref,
+      label: l.cell.obj?.label ?? l.cell.transform.ref,
+      count: data.count,
+      entities: owned.entities.map((e) => ({ ...e, visible: true, ...styles.get(e.id) })),
+      groups: owned.groups,
+      groupBy: owned.groupBy,
+      hasCompartments: owned.hasCompartments,
+    };
+  }
   const entities = mesoEntities(data);
   const groupBy = asked ?? defaultGroupBy(data);
-  const styles = readStyles(ctx, l);
   return {
     particles: l.cell.transform.ref,
     label: l.cell.obj?.label ?? l.cell.transform.ref,
@@ -1283,14 +1371,15 @@ function selectEntities(
 ): number[] | ApiFailure {
   const data = dataOf(l);
   if (!data) return ApiResult.fail('not-found', 'The particle list is not loaded yet.');
-  const entities = mesoEntities(data);
+  const entities = entitiesOf(ctx, l, data);
+  const owner = ownerOf(ctx, l);
   let ids: number[] | undefined;
   if (group.trim()) {
     const path = group.trim();
     const g = groupBy
-      ? findGroup(mesoGroups(data, entities, groupBy), path)
-      : (findGroup(mesoGroups(data, entities, defaultGroupBy(data)), path) ??
-        findGroup(mesoGroups(data, entities, 'function'), path));
+      ? findGroup(groupsOf(ctx, l, groupBy), path)
+      : (findGroup(groupsOf(ctx, l, owner ? 'compartment' : defaultGroupBy(data)), path) ??
+        findGroup(groupsOf(ctx, l, 'function'), path));
     if (!g)
       return ApiResult.fail('not-found', `There is no group '${group}'.`, 'Read the groups with mesoscale.entities.');
     ids = groupEntities(g);
@@ -1325,9 +1414,8 @@ function selectEntities(
   return ids ?? entities.map((e) => e.id);
 }
 
-function describeSelection(l: ParticleListRef, ids: readonly number[]): string {
-  const data = dataOf(l)!;
-  const all = mesoEntities(data);
+function describeSelection(ctx: Pick<ApiContext, 'plugin'>, l: ParticleListRef, ids: readonly number[]): string {
+  const all = entitiesOf(ctx, l, dataOf(l)!);
   if (ids.length === all.length) return `every entity of ${l.cell.obj?.label ?? 'the list'}`;
   const names = ids.map((id) => all.find((e) => e.id === id)?.name ?? String(id));
   return names.length <= 3 ? names.join(', ') : `${names.length} entities`;
@@ -1382,20 +1470,28 @@ interface LayerChange {
 }
 
 /**
- * Patches the entities' layers on every representation of the list (`particles.look`, by id: the one writer of the
- * layers cell, so the cuts and the hidden targets there, and the other entities' layers, stay): by entity, or by
- * target on a list without entities (whose entities are its targets). The refs changed, none when already so.
+ * Changes the entities' looks. An owned list's (prism.md §1.1): proposed to its owner, in this run (one step). Else
+ * patches the entities' layers on every representation of the list (`particles.look`, by id: the one writer of the
+ * layers cell, so the cuts and the hidden targets there, and the other entities' layers, stay), a layer an entity: by
+ * entity, or by target on a list without entities (whose entities are its targets). The refs changed, none when
+ * already so.
  */
-async function writeStyles(
+async function writeLooks(
   ctx: ApiContext,
   l: ParticleListRef,
-  changes: readonly (readonly [number, LayerChange])[],
+  looks: readonly OwnedLookEdit[],
+  label: string,
 ): Promise<readonly string[] | ApiFailure | undefined> {
+  const owner = ownerOf(ctx, l);
+  if (owner) {
+    const r = await owner.propose({ label, lists: [{ list: l.cell.transform.ref, looks }] }, ctx.api);
+    if (!r.ok) return r;
+    return r.unchanged ? undefined : (r.changed.nodes ?? [l.cell.transform.ref]);
+  }
   const byTarget = !dataOf(l)?.entityInfo;
-  const layers = changes.map(([id, change]) => ({
-    selector: byTarget ? { targets: [id] } : { entities: [id] },
-    ...change,
-  }));
+  const layers = looks.flatMap(({ entities, change }) =>
+    entities.map((id) => ({ selector: byTarget ? { targets: [id] } : { entities: [id] }, ...change })),
+  );
   const r = await ctx.api.run('particles.look', { particles: l.cell.transform.ref, layers });
   if (!r.ok) return r;
   return r.unchanged ? undefined : (r.changed.nodes ?? []);
