@@ -131,7 +131,7 @@ function hash(x0: number) {
  * The leaflet's table `own` with its lipids given species by `fractions` (`standIns`), their counts exact: each place of
  * the patch (its headgroup and turn) kept, its species drawn by a shuffle seeded by `seed`, its member one of that
  * species' conformers. A species the leaflet lacks takes the other leaflet's (`other`) conformers, mirrored through the
- * bilayer's center (z negated). Deterministic; O(lipids of the patch)
+ * bilayer's center (turned 180° about x); every member copied and levelled together. Deterministic; O(lipids of the patch)
  */
 export function mixTable(
   own: CutterTable,
@@ -148,23 +148,26 @@ export function mixTable(
     const source = fromOwn >= 0 ? own : other;
     const s = fromOwn >= 0 ? fromOwn : (other?.species.indexOf(names[k]) ?? -1);
     if (s < 0 || !source) throw new Error(`No ${names[k]} in the lipid patch: a mix needs it`);
-    const mirrored: { positions: Float32Array; elements: Uint8Array }[] = [];
     for (const m of source.members) {
       if (m.species !== s) continue;
-      let positions = m.positions;
-      if (source !== own) {
-        positions = positions.slice();
-        for (let i = 2; i < positions.length; i += 3) positions[i] = -positions[i];
-      }
-      const member = { species: k, positions, elements: m.elements };
-      if (source !== own) mirrored.push(member);
+      // copies (the tables read are cached and shared: the levels' order below swaps atoms in place, review M1)
+      const positions = m.positions.slice();
+      // borrowed from the other leaflet: turned 180° about x onto this side (y and z negated: a rotation, not a mirror
+      // image, review N3)
+      if (source !== own)
+        for (let i = 0; i < positions.length; i += 3) {
+          positions[i + 1] = -positions[i + 1];
+          positions[i + 2] = -positions[i + 2];
+        }
       list.push(members.length);
-      members.push(member);
+      members.push({ species: k, positions, elements: m.elements.slice() });
     }
-    // the mirrored conformers' atoms in the levels' order of their new side
-    if (mirrored.length) coarseLevelOrder(mirrored);
+    if (list.length === 0) throw new Error(`No ${names[k]} lipids in the lipid patch: a mix needs them`);
     membersOf.push(list);
   }
+  // every member's atoms in the levels' order at one height common to the mix (a borrowed species' coarse slots at the
+  // leaflet's, not its own: review S1, item 1's pop)
+  coarseLevelOrder(members);
   const n = own.memberStart[own.members.length];
   const counts = exactCounts(n, names, fractions);
   // the places shuffled (Fisher–Yates by the hash), then dealt to the species in order
