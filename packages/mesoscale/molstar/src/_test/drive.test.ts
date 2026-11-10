@@ -235,6 +235,42 @@ describe('the other operations on a document list (prism.md §5.1)', () => {
   });
 });
 
+describe('colors back to the default over looks at other addresses (prism.md §5.1: theme, reset)', () => {
+  it('theme over every list clears a group’s color look, (in c.x), one step; Undo', { tags: ['medium'] }, async () => {
+    const h = await open();
+    expect((await h.run('mesoviewspec.look', { select: '(in c.exosome)', color: '#ff0000' })).ok).toBe(true);
+    expect(
+      (await h.run('mesoviewspec.look', { select: '(population p.catalase p.lipids)', color: '#00ff00' })).ok,
+    ).toBe(true);
+    const a = await saved(h);
+    const s0 = h.steps();
+    const r = await h.run('mesoscale.theme', { objects: listRefs(h), theme: 'entity' });
+    expect(r.ok, JSON.stringify(r)).toBe(true);
+    expect(h.steps()).toBe(s0 + 1);
+    // looks that held only a color go
+    expect(styleLooks(await saved(h))).toEqual([]);
+    const { ref, type } = listOf(h, 'p.catalase');
+    expect(layerOf(h, ref, type)?.color).not.toBe(0xff0000);
+    expect((await h.v.managers.history.undo()).ok).toBe(true);
+    expect(styleLooks(await saved(h))).toEqual(styleLooks(a));
+  });
+
+  it('a look that reaches beyond the entities is not cleared from one list: said, no step', { tags: ['medium'] }, async () => {
+    const h = await open();
+    expect((await h.run('mesoviewspec.look', { select: '(in c.exosome)', color: '#ff0000' })).ok).toBe(true);
+    const { ref, type } = listOf(h, 'p.catalase');
+    const s0 = h.steps();
+    const theme = await h.run('mesoscale.colors', { particles: ref, scheme: 'theme' });
+    expect(theme.ok).toBe(false);
+    expect(JSON.stringify(theme)).toContain('(in c.exosome)');
+    const reset = await h.run('mesoscale.style', { particles: ref, entities: String(type), reset: true });
+    expect(reset.ok).toBe(false);
+    expect(JSON.stringify(reset)).toContain('(in c.exosome)');
+    expect(h.steps()).toBe(s0);
+    expect(styleLooks(await saved(h))).toEqual([{ id: 'l.style.1', select: '(in c.exosome)', color: '#ff0000' }]);
+  });
+});
+
 describe('mesoviewspec.look: a row’s Color… (prism.md §5.3, §6)', () => {
   it('is a style look on an address: one step; the color back to the default removes it; Undo', {
     tags: ['medium'],
