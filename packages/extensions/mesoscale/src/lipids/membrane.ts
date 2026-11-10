@@ -851,21 +851,32 @@ function patchObject(
     { color, size: UniformSizeTheme({}, { value: 1 }) },
     props,
   );
-  const levels = reprProps.colorLevels.name === 'on' && reprProps.colorBy !== 'uniform';
-  const entity = levels ? (reprProps.colorLevels.params as ColorLevels.Props).entity : 0;
-  const band = levels ? (reprProps.colorLevels.params as ColorLevels.Props).band : 1;
-  // a lipid's px where the species start: the levels' entity edge for an atom, a lipid `size / AtomSize` atoms across
-  const px = (entity * size) / ColorLevels.AtomSize;
   Object.assign(values, {
     dPatchTexture: ValueCell.create(true),
     tPatch: ValueCell.create(textures[0]),
     tPatchTable: ValueCell.create(textures[1]),
     uPatch: ValueCell.create(Vec4.create(cellSide(table.box), table.box[0], table.box[1], regions.table.length / 4)),
-    uPatchLevels: ValueCell.create(Vec4.create(levels ? 1 : 0, px * 2 ** (-band / 2), px * 2 ** (band / 2), size)),
+    uPatchLevels: ValueCell.create(patchLevels(Vec4(), reprProps, size)),
   });
   const object = createRenderObject('mesh', values, Mesh.Utils.createRenderableState(props), -1);
   clipped.set(object.values as never, props);
   return object;
+}
+
+/** Whether a membrane's colours follow the zoom: on, and not one colour (as a list's uniform theme) */
+function levelsOn(props: LipidMembraneReprProps) {
+  return props.colorLevels.name === 'on' && props.colorBy !== 'uniform';
+}
+
+/**
+ * A patch surface's levels (`MeshSchema.uPatchLevels`): on, the lipid's px where its species start and end blending in
+ * (the levels' entity edge for an atom, a lipid `size / AtomSize` atoms across, a band wide), its lipids' size
+ */
+function patchLevels(out: Vec4, props: LipidMembraneReprProps, size: number) {
+  const on = levelsOn(props);
+  const { entity, band } = on ? (props.colorLevels.params as ColorLevels.Props) : { entity: 0, band: 1 };
+  const px = (entity * size) / ColorLevels.AtomSize;
+  return Vec4.set(out, on ? 1 : 0, px * 2 ** (-band / 2), px * 2 ** (band / 2), size);
 }
 
 /** The char code of carbon's element (`Tile.elements`: an atom's element by its first letter) */
@@ -894,7 +905,7 @@ function membraneColorLevels(
   colorOf: (group: number) => Color,
   farColor: Color,
 ) {
-  const on = props.colorLevels.name === 'on' && props.colorBy !== 'uniform';
+  const on = levelsOn(props);
   ColorLevels.setProps(values, on ? (props.colorLevels.params as ColorLevels.Props) : ColorLevels.defaults, on);
   if (!on) return;
   const near = new Uint8Array(Math.max(1, groups) * 4);
@@ -906,6 +917,19 @@ function membraneColorLevels(
   const far = new Uint8Array(Math.max(1, instances) * 4);
   for (let i = 0; i < instances; ++i) Color.toArray(farColor, far, i * 4);
   ValueCell.update(values.tColorFar, { array: far, count: instances });
+}
+
+/**
+ * Whether `b` differs from `a` by its colours by zoom's edges alone, on in both (round 7 item 6): uniforms, nothing
+ * built again (on or off, a colour, a scheme: their data, built)
+ */
+function onlyColorEdges(a: LipidMembraneReprProps, b: LipidMembraneReprProps) {
+  if (a.colorLevels.name !== 'on' || b.colorLevels.name !== 'on') return false;
+  if (JSON.stringify(a.colorLevels) === JSON.stringify(b.colorLevels)) return false;
+  for (const k of Object.keys(b) as (keyof LipidMembraneReprProps)[]) {
+    if (k !== 'colorLevels' && a[k] !== b[k] && JSON.stringify(a[k]) !== JSON.stringify(b[k])) return false;
+  }
+  return true;
 }
 
 /** Whether `b` differs from `a` by its clip alone */
@@ -970,6 +994,8 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
   let building: BaseValues[] = [];
   /** the cut leaflets' far surfaces, faded in by distance (`fadeSurface`), and their lipids' size */
   let fading: { values: BaseValues; size: number; near: boolean }[] = [];
+  /** every patch surface drawn and its lipids' size: its levels set where only the edges move (`setColorEdges`) */
+  let patches: { values: BaseValues; size: number }[] = [];
   /** the far surfaces of a membrane's parts (round 6): shown while their part is (`showParts`) */
   let partSurfaces: { object: GraphicsRenderObject; part: number }[] = [];
   /** which parts of a cell's membranes the last view showed (round 7: one for all its selections), kept with the cutters */
@@ -979,6 +1005,19 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
     for (const { object, part } of partSurfaces) {
       const visible = state.visible && (!visibility || visibility.shown[part] === 1);
       if (object.state.visible !== visible) Object.assign(object.state, { visible });
+    }
+  }
+  /** the colours by zoom's edges on every drawn object: members, merged objects, patch surfaces (round 7 item 6) */
+  function setColorEdges() {
+    const on = levelsOn(props);
+    const levels = on ? (props.colorLevels.params as ColorLevels.Props) : ColorLevels.defaults;
+    for (const v of members) ColorLevels.setProps(v as unknown as ColorLevels.Data, levels, on);
+    for (const o of renderObjects) {
+      if ('uColorLevelEdges' in o.values) ColorLevels.setProps(o.values as unknown as ColorLevels.Data, levels, on);
+    }
+    for (const { values, size } of patches) {
+      const u = values as unknown as { uPatchLevels: ValueCell<Vec4> };
+      ValueCell.update(u.uPatchLevels, patchLevels(u.uPatchLevels.ref.value, props, size));
     }
   }
   /** the last view's size on screen: a new look's surfaces faded from their first frame (the hook comes after it) */
@@ -1028,6 +1067,7 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
     selections = [];
     selectedViews = new WeakMap();
     fading = [];
+    patches = [];
   }
 
   /**
@@ -1078,7 +1118,7 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
       1,
       (g: number) => ({ kind: 'lipid', species: speciesOf[g] }) as never,
     );
-    const levels = props.colorLevels.name === 'on' && props.colorBy !== 'uniform';
+    const levels = levelsOn(props);
     const one = partColor ?? props.color;
     const uniform = props.colorBy === 'uniform' || (partColor !== undefined && !levels);
     const color = {
@@ -1444,6 +1484,7 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
     // (round 4b); a tiles leaflet's on its surface (at its mid-plane: the heads past it), coloured as the cutter cuts the
     // patch there (the species' proportions and grain, not each tile's lipids)
     const nextFading: typeof fading = [];
+    const nextPatches: typeof patches = [];
     const nextPartSurfaces: typeof partSurfaces = [];
     const nextTextures: Texture[] = [];
     if (props.far !== 'spheres') {
@@ -1451,7 +1492,7 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
         ...data.cut.filter((l) => !partHidden(l)).map((l) => ({ ...l, offset: 0, far: partColor(l) })),
         ...data.leaflets.map((l) => ({ ...l, offset: l.tileSet.offset, part: undefined, far: undefined })),
       ];
-      const levels = props.colorLevels.name === 'on' && props.colorBy !== 'uniform';
+      const levels = levelsOn(props);
       const enter = enterPx(props.far, props.atomsPx, props.spheresPx);
       for (const leaflet of surfaces) {
         const { table } = leaflet;
@@ -1486,6 +1527,7 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
           made.push(patchShifts);
           nextTextures.push(patchShifts);
           const object = patchObject(f, [patch, patchShifts], table, leaflet.regions, size, props, !!fade, one);
+          nextPatches.push({ values: object.values as BaseValues, size });
           if (fade) {
             const values = object.values as BaseValues;
             nextFading.push({ values, size, near: fade === 'near' });
@@ -1497,6 +1539,7 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
       }
     }
     fading = nextFading;
+    patches = nextPatches;
     partSurfaces = nextPartSurfaces;
     // as the last view showed them, before the next view's hook (review S1, nit)
     showParts();
@@ -1510,6 +1553,8 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
     // this build's carry the latest (review S4)
     for (const v of members) setClip(v, props.clip);
     for (const o of out) setClip(o.values as BaseValues, props.clip);
+    // and the latest edges (an edge alone while it ran reached the old objects only: `setColorEdges`)
+    setColorEdges();
   }
 
   const repr: Representation<MembraneData, typeof LipidMembraneReprParams> = {
@@ -1545,6 +1590,9 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
             selectedViews = new WeakMap();
             for (const sel of selections) sel.reset();
           }
+        } else if (lastData && builtFor === lastData && onlyColorEdges(before, props)) {
+          // the colours by zoom's edges alone (round 7 item 6): their uniforms, nothing built again
+          setColorEdges();
         } else if (lastData) await build(lastData, runtime);
         version += 1;
         updated.next(version);
