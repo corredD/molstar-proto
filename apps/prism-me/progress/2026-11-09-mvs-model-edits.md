@@ -64,9 +64,14 @@ are the coordinator's.
 
 ## Decided
 
-- **No Mol\* `Task`** for Cancel (the brief says "cancel through a Mol\* task"). Prism's run already owns an
-  `AbortSignal` (`api.run(id, values, { signal })`, `ctx.signal`) and rolls a failed or aborted step back to its
-  checkpoint, the same path as a failed commit; a Task would be a second stop mechanism beside it.
+- **The status pill task (Ludo, 2026-11-09)**, replacing the lane's first choice (no Mol\* `Task`, Prism's run signal
+  only), which left Built by's Cancel the only one and lost it when another row was picked. Every model edit (count,
+  seed, relax; started by Built by, the agent or `api.run('mesoviewspec.edit')`) runs as a Mol\* task shown in the
+  status pill with Cancel (prism.md:166-167, §7.2). The task's abort is linked to the run's signal and the run's signal
+  aborts the task; the task's progress is the models done of the total. Built by keeps its own status and Cancel beside
+  it. Built: `editAsTask` (`meso-molstar/src/edit-task.ts`) in the `mesoviewspec.edit` operation; it reports every 100
+  ms (a Mol\* task sees an abort only when it reports, and the pill lists it once it has run 250 ms), and the operation
+  rethrows the abort so Prism fails it as `aborted` and rolls the step back.
 - **Generators for the packers.** The packers are synchronous CPU loops: an abort could never be seen inside one, so
   they must yield. `meso.pack` and `meso.relax` are written as generators that `yield` in their long loops, run by
   `drive` (no signal: straight through, `resolve` still returns its output synchronously, so the CLI, the tests and the
@@ -85,16 +90,38 @@ are the coordinator's.
 - **A refused patch (count below 0)**: the builder refuses it before any patch, and the validation refuses it again if
   sent raw (`value.range`); the unit test is a pin (the validation already refused it), the UI test is the one that
   failed first.
+- **The slice yield in Node is `setImmediate`**, not a `MessageChannel` (the brief's fallback): in Node a channel's
+  messages posted from their own handler are delivered in the same turn, so the timers never ran and the pack and relax
+  abort tests timed out. In a browser: `scheduler.yield`, else a `MessageChannel`; a timer only where there is neither.
+
+## Review
+
+The gate's findings on the lane's diff; each fixed one has a test that failed first, then its fix.
+
+| Finding                                                                                       | Severity   | Verdict                    | Commit / open               |
+| --------------------------------------------------------------------------------------------- | ---------- | -------------------------- | --------------------------- |
+| Cancel through a Mol\* task (prism.md:166-167): Built by's Cancel only, lost on a pick        | decision   | Ludo: the status pill task | 1a0a2741e (test), 4c819fc44 |
+| S1 `cancel.ts`: the slice yield is `setTimeout(0)` (4 ms clamp, ≥1 s in a background tab)     | should-fix | confirmed                  | 29ed90a04 (test), 9cdbd6378 |
+| S2 Built by: a refused, aborted or dropped value stays in its field; `send` drops silently    | should-fix | confirmed                  | d717b54f7 (test), e369f53ac |
+| S3a `built-by-edits.test.tsx`: the Cancel test races the packer                               | should-fix | confirmed                  | 9b37633ca                   |
+| S3b                                                                                           | should-fix | not taken up here          | open (below)                |
+| S4                                                                                            | should-fix | not taken up here          | open (below)                |
+| N1 `runtime.ts`: a non-`AbortError` reason, or a stop in the last model, commits a partial IR | nit        | confirmed                  | 072286300 (test), 9409ba0a9 |
+| N2                                                                                            | nit        | not taken up here          | open (below)                |
+| N3                                                                                            | nit        | not taken up here          | open (below)                |
 
 ## Size
 
 ~407 production lines added, 21 removed (`git diff -w`, tests, markdown and `_spec` aside) against the brief's ~400:
 properties.tsx 128 (the controls, the status and Cancel), `model-edits.ts` 75, `cancel.ts` 65, the owner, session and
-runtime plumbing about 130.
+runtime plumbing about 130. The gate's fixes add about 120 more: `edit-task.ts` 85 (the status pill task), `cancel.ts`
+30 (the yield), properties.tsx 20, `runtime.ts`, the extension and `TextInput` the rest.
 
 ## Open
 
-- Step 3, the app check (Ludo: 506 to 300, a seed, Add relax stage 506 of 506, Undo each, Cancel a long one), and step
-  4, the gate.
+- Step 3, the app check (Ludo: 506 to 300, a seed, Add relax stage 506 of 506, Undo each, Cancel a long one, from Built
+  by and from the status pill with another row picked). Step 4, the gate: run; its S1, S2, S3a, N1 and the Cancel
+  decision fixed (Review).
+- The gate's S3b, S4, N2 and N3, left open by the coordinator (2026-11-09).
 - N1 for a label-only edit that keeps the set objects; N2, N3, N5 of lane 4's table.
 - Lattice, fiber and bilayer between models only (above).

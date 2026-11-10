@@ -61,10 +61,13 @@ reproducibility and failures. The concepts and terms are in [README.md](README.m
    - **Stopping** (`options.signal`, an `AbortSignal`): checked before each model and, for the resolvers that run long
      (`meso.pack`, `cellpack-gpu`, `meso.relax`), in their loops, which give the event loop back every 30 ms when a
      signal is given (`runtime/cancel.ts`, `drive`; with no signal they run straight through, synchronously, as before).
-     A stopped compile rejects with an `AbortError` and keeps nothing half-resolved (what finished is the cache's); an
-     abort in a resolver is never filed as `resolver.failed`. The signal rides on `ResolveJob`, not in the projected
-     input, so it is not part of a model's key. `options.onProgress` is told, before each model that has to resolve,
-     which one and how many are done of how many.
+     The yield is never a timer (`setTimeout` is clamped to 4 ms, and to a second or more in a background tab):
+     `scheduler.yield` where there is one, else a `MessageChannel` message; `setImmediate` in Node. A stopped compile
+     rejects with an `AbortError` and keeps nothing half-resolved (what finished is the cache's); an abort in a resolver
+     is never filed as `resolver.failed`, whatever the signal's reason or the resolver threw once stopped, and a stop
+     during the last model still rejects (the signal is checked after the models). The signal rides on `ResolveJob`, not
+     in the projected input, so it is not part of a model's key. `options.onProgress` is told, before each model that
+     has to resolve, which one and how many are done of how many.
 5. **Assemble** the IR, then **derive the view** from the active view.
 
 ## The resolver contract (`runtime/resolver.ts`)

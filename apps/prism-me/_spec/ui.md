@@ -68,7 +68,9 @@ patches saved in the document (one step each); its double click frames its copie
 picks its row; its ⋯: Focus, Show only this, Show all again; the document's also Save and Close. No Move, no Add clip,
 no Color… on a document row (lane `mvs-drive`). A population's Built by changes the biology (lane `mvs-model-edits`):
 its count of copies and its model's seed (type, Enter), Add relax stage; while the copies are placed the status names
-the model and Cancel stops it (one step, rolled back); a value the document would refuse is said under the field.
+the model and Cancel stops it (one step, rolled back), and the edit is a task in the status pill with its own Cancel,
+there whatever row is picked; a value the document would refuse is said under the field, which shows the document's
+value again.
 
 A model's groups follow its Group by (§4), a model's own choice: compartments (the dotted names' tree) by default when
 it has some, else functions; switching remakes that model's rows only. A group row stands for its entities (their ids),

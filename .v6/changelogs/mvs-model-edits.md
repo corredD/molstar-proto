@@ -11,3 +11,14 @@
   packers' loops) and `onProgress`; a stopped compile rejects with an `AbortError` and keeps no partial result.
   `meso.pack`, `cellpack-gpu` and `meso.relax` give the event loop back every 30 ms when a signal is given, and run as
   before when none is. `api.mesoviewspec.progressState()`, `countPatch`, `seedPatch`, `relaxPatch` in `meso-molstar`.
+
+### After the review gate
+
+- Every model edit (Built by, the agent, `api.run('mesoviewspec.edit')`) is a Mol\* task in the status pill while it
+  resolves: `Resolving m.recipe (1 of 3)…`, its progress per model, and Cancel, which stays when another row is picked.
+  The pill's Cancel and the run's signal are one: either stops the resolution and the step is rolled back.
+- Built by's fields are disabled while an edit runs, and show the document's value again after a refused, stopped or
+  failed edit. `TextInput` takes `disabled`.
+- The packers' slice yield is no longer a timer (`scheduler.yield`, a `MessageChannel`, `setImmediate` in Node), so a
+  long resolution does not crawl in a background tab. A stop whose reason is not an `AbortError`, or that comes during
+  the last model, never commits a partial IR. `MesoViewSpecOptions.resolvers` sets the resolvers.
