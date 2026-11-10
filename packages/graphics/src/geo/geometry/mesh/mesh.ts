@@ -878,6 +878,9 @@ export namespace Mesh {
       tPatchTable: ValueCell.create(createNullTexture()),
       uPatch: ValueCell.create(Vec4()),
       uPatchLevels: ValueCell.create(Vec4()),
+      dPatchMiddle: ValueCell.create('off'),
+      uPatchShells: ValueCell.create(Vec4()),
+      uPatchMiddle: ValueCell.create(Vec4()),
       uDepthOffset: ValueCell.create(props.depthOffset),
       uScreenSize: ValueCell.create(props.screenSize),
 

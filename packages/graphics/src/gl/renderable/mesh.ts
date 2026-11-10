@@ -70,6 +70,16 @@ export const MeshSchema = {
   uPatch: UniformSpec('v4'),
   /** the far color's blend: on (1) or off (0), the patch's px where the patch starts and is whole, a texel's Å */
   uPatchLevels: UniformSpec('v4'),
+  /**
+   * The middle distance's look (round 8): off (the patch flat), `shells` (a band's stack, an instance a shell, each
+   * kept where `tPatch`'s alpha, the heads' height, reaches it), `beneath` (a surface under a shell band: discarded
+   * where the band draws), `parallax` (the view ray marched through the heights)
+   */
+  dPatchMiddle: DefineSpec('string', ['off', 'shells', 'beneath', 'parallax']),
+  /** the shells' count, the heads' lo and hi (`tPatch`'s alpha 0 and 1) and the surface's height, Å out of the leaflet */
+  uPatchShells: UniformSpec('v4'),
+  /** the lipid's px where the middle look starts and ends (shells drawn, `beneath` discarded, parallax marched) */
+  uPatchMiddle: UniformSpec('v4'),
   /** Å toward the camera, in depth only (`Mesh.Params.depthOffset`) */
   uDepthOffset: UniformSpec('f'),
   /**

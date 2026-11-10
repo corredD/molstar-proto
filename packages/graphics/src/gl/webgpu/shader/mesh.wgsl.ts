@@ -67,40 +67,137 @@ fn patchShift(vertex: u32) -> vec2<f32> {
     return select(t.xy, t.zw, (vertex & 1u) == 1u);
 }
 
-fn patchColor(modelPosition: vec3<f32>, fdx: vec3<f32>, fdy: vec3<f32>, region: u32, shift: vec2<f32>, far: vec3<f32>) -> vec3<f32> {
+// the patch at a point q of a region's plane: s (Å, in the patch) and its cell's spin (cos, sin)
+fn patchAt(region: u32, q: vec2<f32>) -> vec4<f32> {
     let box = uObject.uPatch.yz;
     let side = uObject.uPatch.x;
     let g0 = patchTexel(region * 4u);
     let g1 = patchTexel(region * 4u + 1u);
     let g2 = patchTexel(region * 4u + 2u);
     let g3 = patchTexel(region * 4u + 3u);
-    // the plane's point q and the patch's p = offset + Rz(θ) q, with their derivatives on screen
-    let w = modelPosition / uGlobal.uModelScale;
-    let q = vec2<f32>(dot(w - g0.xyz, g1.xyz), dot(w - g0.xyz, g2.xyz)) + shift;
+    // the plane's p = offset + Rz(θ) q; the cell, its kind's offset e and spin φ: s = e + Rz(φ)(p − its center)
     let p = vec2<f32>(g0.w * box.x, g1.w * box.y) + patchTurn(g2.w, g3.w, q);
-    let invView = mat3x3<f32>(uGlobal.uInvView[0].xyz, uGlobal.uInvView[1].xyz, uGlobal.uInvView[2].xyz);
-    let mdx = (invView * fdx) / uGlobal.uModelScale;
-    let mdy = (invView * fdy) / uGlobal.uModelScale;
-    let pdx = patchTurn(g2.w, g3.w, vec2<f32>(dot(mdx, g1.xyz), dot(mdx, g2.xyz)));
-    let pdy = patchTurn(g2.w, g3.w, vec2<f32>(dot(mdy, g1.xyz), dot(mdy, g2.xyz)));
-    // the cell, its kind's offset e and spin φ: s = e + Rz(φ)(p − its center)
     let cell = floor(p / side);
     let cx = bitcast<u32>(i32(cell.x));
     let cy = bitcast<u32>(i32(cell.y));
     // the region's key in the cells' hash over its normal's x (unread here; a part's regions keep the whole mesh's)
     let kind = patchHash(u32(g3.x) ^ patchHash(cx ^ patchHash(cy))) & 4095u;
     let c = patchTexel(u32(uObject.uPatch.w) + kind);
-    let s = vec2<f32>(c.x * box.x, c.y * box.y) + patchTurn(c.z, c.w, p - (cell + 0.5) * side);
-    let sdx = patchTurn(c.z, c.w, pdx) / box;
-    let sdy = patchTurn(c.z, c.w, pdy) / box;
-    let color = textureSampleGrad(tPatch, sLinearMipmapRepeat, s / box, sdx, sdy).rgb;
+    return vec4<f32>(vec2<f32>(c.x * box.x, c.y * box.y) + patchTurn(c.z, c.w, p - (cell + 0.5) * side), c.z, c.w);
+}
+
+struct PatchFrame {
+    region: u32,
+    // the plane's point, the patch's (s) and its cell's spin
+    q: vec2<f32>,
+    s: vec2<f32>,
+    spin: vec2<f32>,
+    // the plane's p on screen (per pixel), a lipid's px
+    pdx: vec2<f32>,
+    pdy: vec2<f32>,
+    px: f32,
+}
+
+// a fragment's place in the patch (round 8: split out of the colour for the shells' test and parallax)
+fn patchFrame(modelPosition: vec3<f32>, fdx: vec3<f32>, fdy: vec3<f32>, region: u32, shift: vec2<f32>) -> PatchFrame {
+    let g0 = patchTexel(region * 4u);
+    let g1 = patchTexel(region * 4u + 1u);
+    let g2 = patchTexel(region * 4u + 2u);
+    let g3 = patchTexel(region * 4u + 3u);
+    let w = modelPosition / uGlobal.uModelScale;
+    let q = vec2<f32>(dot(w - g0.xyz, g1.xyz), dot(w - g0.xyz, g2.xyz)) + shift;
+    let invView = mat3x3<f32>(uGlobal.uInvView[0].xyz, uGlobal.uInvView[1].xyz, uGlobal.uInvView[2].xyz);
+    let mdx = (invView * fdx) / uGlobal.uModelScale;
+    let mdy = (invView * fdy) / uGlobal.uModelScale;
+    let pdx = patchTurn(g2.w, g3.w, vec2<f32>(dot(mdx, g1.xyz), dot(mdx, g2.xyz)));
+    let pdy = patchTurn(g2.w, g3.w, vec2<f32>(dot(mdy, g1.xyz), dot(mdy, g2.xyz)));
+    let at = patchAt(region, q);
+    let px = uObject.uPatchLevels.w / max(max(length(pdx), length(pdy)), 1e-6);
+    return PatchFrame(region, q, at.xy, at.zw, pdx, pdy, px);
+}
+
+// the patch read at s (a cell of spin \`spin\`), the footprint's gradients turned with it; with an offset in s (Å)
+fn patchRead(f: PatchFrame, s: vec2<f32>, spin: vec2<f32>) -> vec4<f32> {
+    let box = uObject.uPatch.yz;
+    return textureSampleGrad(tPatch, sLinearMipmapRepeat, s / box, patchTurn(spin.x, spin.y, f.pdx) / box, patchTurn(spin.x, spin.y, f.pdy) / box);
+}
+
+fn patchColor(f: PatchFrame, far: vec3<f32>) -> vec3<f32> {
+    let color = patchRead(f, f.s, f.spin).rgb;
     if (uObject.uPatchLevels.x == 0.0) {
         return color;
     }
     // a lipid's px: the levels' far color below .y, the patch from .z
-    let px = uObject.uPatchLevels.w / max(max(length(pdx), length(pdy)), 1e-6);
-    return mix(far, color, smoothstep(uObject.uPatchLevels.y, uObject.uPatchLevels.z, px));
+    return mix(far, color, smoothstep(uObject.uPatchLevels.y, uObject.uPatchLevels.z, f.px));
 }
+
+#if defined(dPatchMiddle_shells) || defined(dPatchMiddle_parallax)
+// the heads' height at s, Å over lo (\`tPatch\`'s alpha over [lo, hi], \`uPatchShells\`)
+fn patchHeight(f: PatchFrame, s: vec2<f32>, spin: vec2<f32>) -> f32 {
+    return patchRead(f, s, spin).a * (uObject.uPatchShells.z - uObject.uPatchShells.y);
+}
+
+// the heads' profile's normal, from the fragment's (view space, Mol*'s sign): the height's gradient by central
+// differences a texel apart, from the patch back through the cell's spin and the plane's turn onto its axes
+fn patchNormal(f: PatchFrame, normal: vec3<f32>) -> vec3<f32> {
+    let e = uObject.uPatch.y / f32(textureDimensions(tPatch).x);
+    let gs = vec2<f32>(
+        patchHeight(f, f.s + vec2<f32>(e, 0.0), f.spin) - patchHeight(f, f.s - vec2<f32>(e, 0.0), f.spin),
+        patchHeight(f, f.s + vec2<f32>(0.0, e), f.spin) - patchHeight(f, f.s - vec2<f32>(0.0, e), f.spin),
+    ) / (2.0 * e);
+    let g2 = patchTexel(f.region * 4u + 2u);
+    let g3 = patchTexel(f.region * 4u + 3u);
+    let gq = patchTurn(g2.w, -g3.w, patchTurn(f.spin.x, -f.spin.y, gs));
+    let g1 = patchTexel(f.region * 4u + 1u);
+    let grad = gq.x * g1.xyz + gq.y * g2.xyz;
+    return normalize(normal + (uGlobal.uView * vec4<f32>(grad, 0.0)).xyz);
+}
+#endif
+
+#if defined(dPatchMiddle_parallax)
+// parallax (round 8 §3): the view ray marched through the heads' layer, hi to lo, from the surface at the mean; the
+// patch where it first meets the heads (one secant step after), with the frame's footprint. \`up\` the leaflet's normal
+fn patchParallax(f: PatchFrame, modelPosition: vec3<f32>, up: vec3<f32>) -> PatchFrame {
+    let g1 = patchTexel(f.region * 4u + 1u);
+    let g2 = patchTexel(f.region * 4u + 2u);
+    let v = mix(normalize(modelPosition - uGlobal.uCameraPosition), uGlobal.uCameraDir, uGlobal.uIsOrtho);
+    let vn = dot(v, up);
+    if (vn > -0.05) {
+        return f;
+    }
+    let vq = vec2<f32>(dot(v, g1.xyz), dot(v, g2.xyz));
+    let lo = uObject.uPatchShells.y;
+    let hi = uObject.uPatchShells.z;
+    let mean = uObject.uPatchShells.w;
+    // the ray's height over lo at t: mean − lo + t vn; it enters the layer at hi and leaves it at lo
+    let t0 = (hi - mean) / vn;
+    let t1 = (lo - mean) / vn;
+    let steps = i32(mix(16.0, 6.0, -vn));
+    let dt = (t1 - t0) / f32(steps);
+    var t = t0;
+    var before = hi - lo;
+    var at = patchAt(f.region, f.q + t * vq);
+    for (var i = 0; i < steps; i++) {
+        let next = t + dt;
+        let nextAt = patchAt(f.region, f.q + next * vq);
+        let ray = mean - lo + next * vn;
+        let gap = ray - patchHeight(f, nextAt.xy, nextAt.zw);
+        if (gap <= 0.0) {
+            // the secant between the last step above and this one
+            let a = before / max(before - gap, 1e-6);
+            at = patchAt(f.region, f.q + (t + a * dt) * vq);
+            break;
+        }
+        t = next;
+        at = nextAt;
+        before = gap;
+    }
+    var out = f;
+    out.s = at.xy;
+    out.spin = at.zw;
+    return out;
+}
+#endif
 #endif
 `;
 
@@ -118,7 +215,7 @@ ${grid_functions_wgsl}
 
 ${vertex_output_wgsl(`    @location(9) vNormal: vec3<f32>,
 #if defined(dPatchTexture)
-    @location(10) @interpolate(flat) vPatchRegion: f32,
+    @location(10) @interpolate(flat) vPatch: vec2<f32>,
     @location(11) vPatchShift: vec2<f32>,
 #endif`)}
 ${patch_texture_wgsl}
@@ -160,6 +257,12 @@ fn vertexMain(in: VertexInput) -> VertexOutput {
     let modelView = uGlobal.uView * model;
     ${assign_wiggle_wgsl}
     var position4 = vec4<f32>(applyWiggle(basePosition, group, wiggle), 1.0);
+    #if defined(dPatchMiddle_shells)
+        // shell k (the instance) at lo + k (hi − lo) / (N − 1) out of the leaflet, the surface at the mean (round 8 §2)
+        let shells = uObject.uPatchShells;
+        let shellHeight = shells.y + in.aInstance * (shells.z - shells.y) / max(shells.x - 1.0, 1.0);
+        position4 = vec4<f32>(position4.xyz + normalize(baseNormal) * (shellHeight - shells.w), 1.0);
+    #endif
     #if defined(dGeometryType_mesh)
         if (uObject.uScreenSize > 0.0) {
             // constant on screen: scaled about the instance's origin by the world size of a CSS pixel there, as
@@ -208,8 +311,13 @@ fn vertexMain(in: VertexInput) -> VertexOutput {
     #endif
     out.vNormal = normal;
     #if defined(dPatchTexture)
-        out.vPatchRegion = group;
+        out.vPatch = vec2<f32>(group, 0.0);
         out.vPatchShift = patchShift(in.vertexIndex);
+        #if defined(dPatchMiddle_shells)
+            out.vPatch.y = in.aInstance;
+            // the shift grows with the lift (\`patchSurface\`: −h P(n)), from the mean's to the shell's
+            out.vPatchShift *= select(1.0, shellHeight / shells.w, shells.w != 0.0);
+        #endif
     #endif
 
     #if defined(dSolidInterior)
@@ -287,6 +395,23 @@ fn fragmentMain(in: VertexOutput, @builtin(front_facing) frontFacing: bool) -> F
         let viewPosition = in.vViewPosition;
     #endif
 
+    #if defined(dPatchTexture) && (defined(dPatchMiddle_shells) || defined(dPatchMiddle_beneath) || defined(dPatchMiddle_parallax))
+        // the middle look's handoff and the shells' test in every variant: depth, pick and colour discard alike (round 8)
+        var frame = patchFrame(modelPosition, fdx, fdy, u32(in.vPatch.x + 0.5), in.vPatchShift);
+        let middle = frame.px >= uObject.uPatchMiddle.x && frame.px < uObject.uPatchMiddle.y;
+        #if defined(dPatchMiddle_beneath)
+            if (middle) {
+                discard;
+            }
+        #elif defined(dPatchMiddle_shells)
+            let shell = in.vPatch.y;
+            let shellCut = (shell - 0.5) / max(uObject.uPatchShells.x - 1.0, 1.0);
+            if (!middle || (shell > 0.5 && patchRead(frame, frame.s, frame.spin).a < shellCut)) {
+                discard;
+            }
+        #endif
+    #endif
+
     var interior = !frontFacing;
     #if defined(dSolidInterior)
         // the fill may draw front faces (reflected instances), a cap is always interior
@@ -329,7 +454,21 @@ fn fragmentMain(in: VertexOutput, @builtin(front_facing) frontFacing: bool) -> F
     ${assign_material_wgsl}
     // the patch's colour where colour is drawn (not in the depth, pick or marking variants)
     #if defined(dPatchTexture) && (defined(dRenderVariant_colorBlended) || defined(dRenderVariant_colorWboit) || defined(dRenderVariant_colorDpoit) || defined(dRenderVariant_tracing) || defined(dRenderVariant_emissive))
-        material = vec4<f32>(patchColor(modelPosition, fdx, fdy, u32(in.vPatchRegion + 0.5), in.vPatchShift, material.rgb), material.a);
+        #if !defined(dPatchMiddle_shells) && !defined(dPatchMiddle_beneath) && !defined(dPatchMiddle_parallax)
+            let frame = patchFrame(modelPosition, fdx, fdy, u32(in.vPatch.x + 0.5), in.vPatchShift);
+        #endif
+        #if defined(dPatchMiddle_parallax)
+            if (middle) {
+                let up = normalize((uGlobal.uInvView * vec4<f32>(-normal, 0.0)).xyz);
+                frame = patchParallax(frame, modelPosition, up);
+            }
+        #endif
+        #if defined(dPatchMiddle_shells) || defined(dPatchMiddle_parallax)
+            if (middle) {
+                normal = patchNormal(frame, normal);
+            }
+        #endif
+        material = vec4<f32>(patchColor(frame, material.rgb), material.a);
     #endif
     ${apply_occlusion_wgsl}
     ${check_transparency_wgsl}

@@ -25,7 +25,8 @@ import { GraphicsShaders, resolveGeometryType } from './graphics-shaders.js';
  * - grids (`t*Grid`, `u*GridTexDim`): only meshes have them (color smoothing); the shared GLSL color chunk reads them
  *   for every geometry, WebGPU reports them unsupported for the others (`getUnsupported`);
  * - WGSL: direct volumes' `uInvView` (GLSL derives it), the sphere raster's uniforms (`uRaster*`, `uViewport`), a
- *   mesh's patch texture (`dPatchTexture`: `tPatch`, `tPatchTable`, `uPatch`, `uPatchLevels`; lipid membranes' far
+ *   mesh's patch texture (`dPatchTexture`: `tPatch`, `tPatchTable`, `uPatch`, `uPatchLevels`, the middle look's `uPatchShells`,
+ *   `uPatchMiddle` and its parallax's view ray, `uCameraPosition`, `uCameraDir`; lipid membranes' far
  *   look, WebGPU only as the lipids it stands for are: `MeshSchema`).
  */
 const Grids = [
@@ -43,11 +44,21 @@ const Grids = [
 const Expected: { [program: string]: { glsl: string[]; wgsl: string[] } } = {
   mesh: {
     glsl: ['dLightCount', 'uClipObjectCount', 'uDrawId', 'uPickType'],
-    wgsl: ['tPatch', 'tPatchTable', 'uPatch', 'uPatchLevels'],
+    wgsl: [
+      'tPatch',
+      'tPatchTable',
+      'uCameraDir',
+      'uCameraPosition',
+      'uPatch',
+      'uPatchLevels',
+      'uPatchMiddle',
+      'uPatchShells',
+    ],
   },
   'texture-mesh': {
     glsl: ['dLightCount', 'uClipObjectCount', 'uDrawId', 'uGeoTexDim', 'uPickType'],
-    wgsl: [],
+    // the mesh source's patch parallax (never on a texture mesh: no patch texture there)
+    wgsl: ['uCameraDir', 'uCameraPosition'],
   },
   spheres: {
     glsl: ['dLightCount', ...Grids, 'uClipObjectCount', 'uDrawId', 'uPickType'],
