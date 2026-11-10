@@ -119,12 +119,18 @@ const ZoomEdges = [
   ['Atom', 'atom'],
 ] as const;
 
+/** A lipid membrane's (round 7 item 6): its chain is its species, so no chain edge (the operation keeps it between) */
+const MembraneZoomEdges = [
+  ['Species', 'entity'],
+  ['Atoms', 'atom'],
+] as const;
+
 /**
  * A model's colors that follow the zoom (`mesoscale.colorLevels`; apps/prism-me/_spec/ui.md §4 Look): on or off, and
  * where the entity, chain and atom colors start, in pixels an atom covers (the unit, `color-levels.md`); a slider once
- * released (one step)
+ * released (one step). A lipid membrane's (`membrane`): its species' and its atoms' edges
  */
-export function ZoomColors(props: { area: MesoscaleApi; particles: string }) {
+export function ZoomColors(props: { area: MesoscaleApi; particles: string; membrane?: boolean }) {
   const levels = mapState(props.area.graphicsState(props.particles), (g) => g?.colorLevels);
   const run = (patch: object) => void props.area.colorLevels({ particles: props.particles, ...patch } as never);
   return (
@@ -135,7 +141,11 @@ export function ZoomColors(props: { area: MesoscaleApi; particles: string }) {
             size="xs"
             variant="ghost"
             pressed={mapState(levels, (l) => !!l)}
-            title="Colors that follow the zoom (compartment, entity, chain, atom): on or off"
+            title={
+              props.membrane
+                ? 'Colors that follow the zoom (the membrane, its species, its atoms): on or off'
+                : 'Colors that follow the zoom (compartment, entity, chain, atom): on or off'
+            }
             onClick={() => run({ on: !levels.value })}
           >
             By zoom
@@ -144,7 +154,7 @@ export function ZoomColors(props: { area: MesoscaleApi; particles: string }) {
       </div>
       <Show when={mapState(levels, (l) => !!l)}>
         {() =>
-          ZoomEdges.map(([label, key]) => (
+          (props.membrane ? MembraneZoomEdges : ZoomEdges).map(([label, key]) => (
             <div class={classes.line}>
               <div class={classes.label}>{label}</div>
               <Slider

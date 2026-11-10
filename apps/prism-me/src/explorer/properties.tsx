@@ -776,11 +776,12 @@ function common<T>(values: readonly T[]): T | undefined {
 /**
  * A lipid membrane's colours as a particle list's Look (round 4c item 8; ui.md §4): one colour for all its species,
  * generated colours, back to its species' own, colours by zoom; the same operations as a list's, its species its
- * entities
+ * entities. By zoom on (round 7 item 6): its far colour alone and its atoms' colours (by element, carbons by species)
  */
 function MembraneLook(props: { api: ViewerApi; membrane: string }) {
   const { api, membrane } = props;
   const species = api.mesoscale!.membraneSpeciesState(membrane);
+  const graphics = api.mesoscale!.graphicsState(membrane);
   return (
     <div class={classes.tight}>
       <ColorField
@@ -788,7 +789,31 @@ function MembraneLook(props: { api: ViewerApi; membrane: string }) {
         none="Its species’"
         onPick={(color) => void api.run('mesoscale.style', { particles: membrane, color })}
       />
-      <ZoomColors area={api.mesoscale!} particles={membrane} />
+      <ZoomColors area={api.mesoscale!} particles={membrane} membrane />
+      <Show when={mapState(graphics, (g) => !!g?.colorLevels)}>
+        {() => (
+          <div class={classes.tight}>
+            <ColorField
+              label="Far"
+              value={mapState(graphics, (g) => g?.far as number | undefined)}
+              none="The membrane’s"
+              onPick={(far) => void api.run('mesoscale.colorLevels', { particles: membrane, far })}
+            />
+            <Line label="Atoms">
+              <Select
+                size="sm"
+                aria-label="Atoms’ colors"
+                options={[
+                  ['element', 'By element'],
+                  ['carbon-species', 'Carbons by species'],
+                ]}
+                value={mapState(graphics, (g) => g?.atomColors ?? 'element')}
+                onChange={(atoms) => void api.run('mesoscale.colorLevels', { particles: membrane, atoms })}
+              />
+            </Line>
+          </div>
+        )}
+      </Show>
       <div class={classes.tools}>
         <Button
           size="sm"

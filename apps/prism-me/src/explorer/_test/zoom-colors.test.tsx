@@ -148,6 +148,44 @@ describe('colors that follow the zoom (Look)', () => {
     await until(() => !!host.querySelector('[aria-label^="Chain colors from"]'));
   });
 
+  it("a lipid membrane's Look: its species and atoms edges (no chain), its far colour and atoms' colours, one step each (round 7 item 6)", async () => {
+    const base = DefaultPrismViewerSpec();
+    const v = await createPrismViewerHeadless({
+      spec: { ...base, extensions: [...(base.extensions ?? []), ...MesoscaleExplorerExtensions] },
+    });
+    viewers.push(v);
+    const r = await v.api.mesoscale!.wrapMembrane({ radius: 300, edge: 80 });
+    if (!r.ok) throw new Error(r.message);
+    const membrane = r.changed!.nodes![0];
+    const params = () => v.plugin.state.data.cells.get(membrane)!.transform.params as Record<string, unknown>;
+    const host = mountScene(v);
+    await until(() => !!rowOf(host, 'Lipid membrane'));
+    rowOf(host, 'Lipid membrane')!.click();
+    await until(() => !!button(host, 'Look'));
+    const look = button(host, 'Look')!;
+    if (look.getAttribute('aria-expanded') !== 'true') look.click();
+    await until(() => !!button(host, 'By zoom'));
+    expect(host.querySelector('[aria-label="Atoms’ colors"]')).toBeNull();
+    button(host, 'By zoom')!.click();
+    await until(() => !!host.querySelector('[aria-label^="Species colors from"]'));
+    // a membrane's chain is its species: no chain edge; its species' and its atoms'
+    expect(host.querySelector('[aria-label^="Chain colors from"]')).toBeNull();
+    expect(host.querySelector('[aria-label^="Atoms colors from"]')).not.toBeNull();
+    // its far colour and its atoms' colours, while By zoom is on
+    await until(() => !!host.querySelector('[aria-label="Atoms’ colors"]'));
+    expect([...host.querySelectorAll('label, [class]')].some((e) => e.textContent?.trim() === 'Far')).toBe(true);
+    const steps = v.api.history.steps.value.length;
+    host.querySelector<HTMLElement>('button[aria-label="Atoms’ colors"]')!.click();
+    const option = () =>
+      [...host.querySelectorAll<HTMLElement>('[role=option]')].find(
+        (o) => o.textContent?.trim() === 'Carbons by species',
+      );
+    await until(() => !!option());
+    option()!.click();
+    await until(() => params().atomColors === 'carbon-species');
+    expect(v.api.history.steps.value.length).toBe(steps + 1);
+  });
+
   it("the particles' category offers the theme by zoom", () => {
     expect(CategoryThemes['c:particles'].map(([id]) => id)).toContain('zoom');
   });
