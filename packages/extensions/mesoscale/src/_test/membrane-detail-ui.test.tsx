@@ -178,6 +178,8 @@ describe('a membrane’s levels in its properties', () => {
     // shells are not built this round (round 8: the band object open): not offered, refused
     expect(button('Shells')).toBeUndefined();
     expect((await area.membraneDetail({ membrane, middle: 'shells' } as never)).ok).toBe(false);
+    // nor their count: no history step for a look not built (gate S6)
+    expect((await area.membraneDetail({ membrane, shells: 6 } as never)).ok).toBe(false);
     // the operation checks its switches; a valid one is one step
     expect((await area.membraneDetail({ membrane, middlePx: 100 } as never)).ok).toBe(false);
     // atoms only down to the stride-1 px (8.8 a lipid): lower would draw atoms the levels draw as spheres (gate S1)

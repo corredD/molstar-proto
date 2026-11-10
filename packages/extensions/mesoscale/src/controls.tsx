@@ -256,16 +256,14 @@ export function MembraneDetailControls(props: { area: MesoscaleApi; membrane: st
     budget?: number;
     middle?: MembraneMiddle;
     middlePx?: number;
-    shells?: number;
   }) => void props.area.membraneDetail({ membrane: props.membrane, ...patch } as never);
   /** a switch of the far look (lipid-procedural): a slider committing once */
   const viewRow = (
     label: string,
-    key: 'atomsPx' | 'spheresPx' | 'budget' | 'middlePx' | 'shells',
+    key: 'atomsPx' | 'spheresPx' | 'budget' | 'middlePx',
     min: number,
     max: number,
     unit?: string,
-    linear?: boolean,
   ) => (
     <div class={classes.line}>
       <div class={classes.label}>{label}</div>
@@ -274,9 +272,9 @@ export function MembraneDetailControls(props: { area: MesoscaleApi; membrane: st
         value={mapState(state, (s) => s?.[key] ?? 0)}
         min={min}
         max={max}
-        {...(linear ? {} : { scale: 'log' as const })}
+        scale="log"
         {...(unit ? { unit } : {})}
-        onCommit={(v) => run({ [key]: key === 'shells' ? Math.round(v) : v })}
+        onCommit={(v) => run({ [key]: v })}
       />
     </div>
   );
