@@ -301,4 +301,28 @@ describe('a membrane’s parts coloured from their meshes (round 9)', () => {
     expect(meshColor(1)).toBe(grey);
     expect(hidden()).toEqual([]);
   });
+
+  // review S2: an OBJ's part and a VTP's in one membrane, coloured in one step: the OBJ's mesh painted, the VTP's part
+  // its own colour
+  it('an OBJ’s part and a VTP’s coloured together: the mesh painted, the other its own colour, one step', async () => {
+    const { v, membrane, meshColor, parts, params, dots } = await wrappedFiles([
+      objFile('pm.obj', 100),
+      vtpFile('vac.vtp', 20),
+    ]);
+    expect(parts()).toEqual(['pm.obj', 'vac.vtp']);
+    const grey = meshColor(0);
+    const was = dots();
+    const steps = () => v.api.history.steps.value.length;
+    const before = steps();
+    expectOk(await v.api.run('mesoscale.colors', { scheme: 'generate', particles: membrane, parts: '' }));
+    expect(steps()).toBe(before + 1);
+    expect(meshColor(0)).not.toBe(grey);
+    expect(Object.keys(params().partColors)).toEqual(['vac.vtp']);
+    expect(dots()[0]).not.toBe(was[0]);
+    expect(dots()[1]).not.toBe(was[1]);
+    const r = await v.api.run('mesoscale.style', { particles: membrane, parts: 'vac.vtp', color: 'tomato' });
+    expectOk(r);
+    expect(r.unchanged).toBeFalsy();
+    expect(params().partColors).toEqual({ 'vac.vtp': 0xff6347 });
+  });
 });
