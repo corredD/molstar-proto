@@ -144,13 +144,11 @@ export const MesoViewSpecLazyExtension: LazyViewerExtension = {
         id: 'mesoviewspec.focus',
         title: 'Focus the camera on part of the MesoViewSpec document',
         history: false,
-        undoable: false,
       },
       {
         id: 'mesoviewspec.highlight',
         title: 'Highlight part of the MesoViewSpec document',
         history: false,
-        undoable: false,
       },
       { id: 'mesoviewspec.view', title: 'Show a view of the MesoViewSpec document', undoable: false },
       {

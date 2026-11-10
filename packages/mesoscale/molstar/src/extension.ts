@@ -246,7 +246,6 @@ export class MesoViewSpecApi extends ApiArea {
     title: 'Focus the camera on part of the MesoViewSpec document',
     params: { select: SelectParam() },
     history: false,
-    undoable: false,
     run: async ({ select }, ctx) => {
       if (!this.model.doc) return ApiResult.fail('not-found', 'No document is open.');
       const s = this.model.sphereOf(select);
@@ -261,7 +260,6 @@ export class MesoViewSpecApi extends ApiArea {
     title: 'Highlight part of the MesoViewSpec document',
     params: { select: SelectParam() },
     history: false,
-    undoable: false,
     run: async ({ select }, ctx) => {
       if (!this.model.doc) return ApiResult.fail('not-found', 'No document is open.');
       const lights = ctx.plugin.managers.interactivity.lociHighlights;

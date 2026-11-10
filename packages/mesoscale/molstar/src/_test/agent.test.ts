@@ -13,7 +13,7 @@ import { createMesoscaleExplorerSpec } from '@molstar/prism-me-app/spec';
 import { createViewerAgent } from '@molstar/prism-viewer/agent/session';
 import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
 import type { PrismViewer } from '@molstar/prism-viewer/viewer';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { SavedDocument } from '../extension.js';
 import { stubCanvasForLabels } from './canvas.js';
 
@@ -178,6 +178,32 @@ describe('the mesoviewspec tools', () => {
     const r = await agent.turn('what is in it?');
     expect(r.tools.at(-1)?.status).toBe('succeeded');
     expect(r.tools.at(-1)?.text ?? '').toMatch(/p\.lipids/);
+    agent.dispose();
+  });
+
+  it('focus_meso and highlight_meso go without asking: view changes, no step', {
+    tags: ['medium'],
+  }, async () => {
+    const { v } = await viewer();
+    vi.spyOn(v.plugin.managers.camera, 'focusSphere').mockImplementation(() => {});
+    const steps = v.managers.history.steps.value.length;
+    const { agent } = agentOn(v, [
+      { calls: [disclose] },
+      {
+        calls: [
+          call('focus_meso', { select: '(population p.catalase)' }),
+          call('highlight_meso', { select: '(population p.lipids)' }),
+        ],
+      },
+      { text: 'Framed.' },
+    ]);
+    const r = await agent.turn('frame the catalase and light the lipids');
+    expect(r.status).toBe('completed');
+    expect(r.tools.slice(1).map((t) => [t.name, t.status])).toEqual([
+      ['focus_meso', 'succeeded'],
+      ['highlight_meso', 'succeeded'],
+    ]);
+    expect(v.managers.history.steps.value.length).toBe(steps);
     agent.dispose();
   });
 
