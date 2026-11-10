@@ -238,7 +238,8 @@ on a tree row (its right-click or its ⋯), the same menu, in this order:
   fibre of the entity again, one step; the file's fibres stay. Default: the entity's fibres' step and twist. Round 4:
   Axis (Auto, X, Y, Z: the unit's own axis along the path) and Offset (Å off the path, along a perpendicular of that
   axis, turned with the unit). The copy under the pointer is drawn in the scene, depth-tested (round 4); the wheel's
-  depth stays inside the camera's near and far planes.
+  depth stays inside the camera's near and far planes. Round 5: Bank (None, DNA, RNA: the units the fibres switch
+  between, a letter each), and in Paint a Sequence (one-letter codes; empty: at random) and its Range (`3-120`).
 - **Remove** (an object: with its file and labels).
 
 On a clip or a label (its guide in 3D, or its row): **Move**, **Rotate**, (a clip: **Size**, **Flip**; a label: **Edit

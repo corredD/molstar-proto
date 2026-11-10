@@ -6,7 +6,7 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import { Button, Choices, Icon, Select, type SelectOption, Show, Slider } from '@molstar/prism-ui';
+import { Button, Choices, Icon, Select, type SelectOption, Show, Slider, TextInput } from '@molstar/prism-ui';
 import { mapState } from '@molstar/prism-ui/reactive/map-state';
 import type { ReadonlyState } from '@molstar/prism-ui/reactive/readonly-state';
 import { classes } from './_generated/controls.module.css.js';
@@ -270,7 +270,34 @@ export function PaintBrush(props: { area: MesoscaleApi; particles: string; entit
         onPick={(id) => mode.set({ fiber: id as PaintSettings['fiber'] })}
       />
       <Show when={mapState(settings, (st) => st.fiber !== 'off')}>
-        {() => <FiberSettings area={props.area} particles={props.particles} entity={props.entity} />}
+        {() => (
+          <div class={classes.tight}>
+            <FiberSettings area={props.area} particles={props.particles} entity={props.entity} />
+            <div class={classes.line}>
+              <div class={classes.label} title="The next fibres' sequence, one-letter codes; empty: at random">
+                Sequence
+              </div>
+              <TextInput
+                size="sm"
+                aria-label="Fibre sequence"
+                placeholder="at random"
+                value={mapState(settings, (st) => st.sequence ?? '')}
+                onInput={(sequence) => mode.set({ sequence })}
+              />
+            </div>
+            <div class={classes.line}>
+              <div class={classes.label} title="The letters of the sequence used, 1-based (3-120); empty: all">
+                Range
+              </div>
+              <TextInput
+                size="sm"
+                aria-label="Fibre sequence range"
+                placeholder="all"
+                onInput={(text) => mode.set({ start: undefined, end: undefined, ...parseRange(text) })}
+              />
+            </div>
+          </div>
+        )}
       </Show>
       <Choices
         label="Place"
@@ -389,6 +416,18 @@ export function FiberSettings(props: { area: MesoscaleApi; particles: string; en
         />,
       )}
       {line(
+        'Bank',
+        'The units painted fibres switch between by their sequences: DNA a base pair a letter (A, T, G, C), RNA a nucleotide (A, U, G, C); none: the entity itself',
+        <Select
+          size="sm"
+          over
+          aria-label="Fibre bank of units"
+          options={FiberBankOptions}
+          value={mapState(fiber, (f) => f?.bank ?? 'none')}
+          onChange={(bank) => run({ bank })}
+        />,
+      )}
+      {line(
         'Offset',
         'Off the path, along a perpendicular of the axis that turns with the unit (with a twist: a helix)',
         <Slider
@@ -403,6 +442,22 @@ export function FiberSettings(props: { area: MesoscaleApi; particles: string; en
       )}
     </div>
   );
+}
+
+const FiberBankOptions: readonly SelectOption[] = [
+  ['none', 'None'],
+  ['dna', 'DNA'],
+  ['rna', 'RNA'],
+];
+
+/** A range written `3-120` (1-based, inclusive): its ends; empty or unread, none */
+export function parseRange(text: string): { start?: number; end?: number } {
+  const m = /^\s*(\d+)?\s*(?:[-–:]\s*(\d+)?)?\s*$/.exec(text);
+  if (!m) return {};
+  return {
+    ...(m[1] ? { start: Number(m[1]) } : {}),
+    ...(m[2] ? { end: Number(m[2]) } : {}),
+  };
 }
 
 const FiberAxisOptions: readonly SelectOption[] = [

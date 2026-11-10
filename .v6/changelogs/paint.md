@@ -26,3 +26,8 @@
   that axis that turns with the unit (with a twist: a helix about the path). `mesoscale.fiber` takes `axis`, `offset`.
 - The copy under the pointer is drawn in the scene (round 4), depth-tested: seen behind or inside what is in front of
   it, where a copy at a depth goes; the wheel keeps that depth inside the camera's near and far planes.
+- A bank of units by sequence (round 5): an entity's Fibre settings choose a Bank, DNA (a base pair a letter: AT, TA,
+  GC, CG) or RNA (a nucleotide a letter: A, U, G, C), cellPACK's 3DNA units stored forward +z; choosing one sets its
+  helix (3.38 Å, 36°, axis z). A painted fibre's points switch unit by its Sequence (a Range of it, 1-based; a shorter
+  one repeats), or at random (seeded) without one or for a letter not in the bank. A point's label names its letter.
+  `mesoscale.fiber` takes `bank`; `mesoscale.paint` takes `sequence`, `start`, `end`.

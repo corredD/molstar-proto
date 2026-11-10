@@ -44,6 +44,13 @@ export interface PaintSettings {
    * `auto`: when the entity has fibres in its list
    */
   readonly fiber: 'auto' | 'on' | 'off';
+  /**
+   * A new fibre's sequence (Round 5): one-letter codes, with the entity's bank a unit a letter; its range (1-based,
+   * `end` inclusive). Empty: the bank's units at random
+   */
+  readonly sequence?: string;
+  readonly start?: number;
+  readonly end?: number;
 }
 
 export type PaintPlace = 'surface' | 'depth';

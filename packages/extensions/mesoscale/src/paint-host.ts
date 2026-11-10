@@ -166,6 +166,13 @@ export function pluginPaintHost(
         normals,
         seed,
         ...(fiber ? { fiber: true } : {}),
+        ...(fiber && s.sequence?.trim()
+          ? {
+              sequence: s.sequence.trim(),
+              ...(s.start !== undefined ? { start: s.start } : {}),
+              ...(s.end !== undefined ? { end: s.end } : {}),
+            }
+          : {}),
         side: s.side,
         ...(s.orient !== 'auto' ? { orient: s.orient } : {}),
         ...(s.spin !== undefined ? { spin: s.spin } : {}),
