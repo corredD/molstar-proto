@@ -282,6 +282,98 @@ describe('the mesoviewspec tools', () => {
   });
 });
 
+describe('what the agent’s calls reach: an address it was not given asks first (agent.md §4)', () => {
+  // No test reaches the network: every fetch is answered here, and recorded.
+  const stubFetch = (served: Record<string, string> = {}) => {
+    const fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      const text = served[url];
+      return text === undefined ? new Response('', { status: 404 }) : new Response(text, { status: 200 });
+    });
+    vi.stubGlobal('fetch', fetch);
+    return fetch;
+  };
+  const fetched = (fetch: ReturnType<typeof stubFetch>) =>
+    fetch.mock.calls.map(([input]) =>
+      typeof input === 'string' ? input : input instanceof URL ? input.href : (input as Request).url,
+    );
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const setUri = (uri: string) => `(patch :ops [(set r.picks :fields (:uri ${JSON.stringify(uri)}))])`;
+
+  const count = '(patch :ops [(set p.catalase :fields (:abundance (:count 300)))])';
+
+  it('a uri an edit writes is fetched by the next compile: the edit that writes it is the one to ask', {
+    tags: ['medium'],
+  }, async () => {
+    // The premise of the tests below. An edit's compile loads the resources of the document before it (the session's),
+    // so the new uri is fetched by the next model edit, which names no address of its own.
+    const fetch = stubFetch();
+    const { person } = await viewer();
+    expect((await person.run('mesoviewspec.edit', { patch: setUri('https://unknown.example/x') })).ok).toBe(true);
+    expect((await person.run('mesoviewspec.edit', { patch: count })).ok).toBe(true);
+    expect(fetched(fetch)).toContain('https://unknown.example/x');
+  });
+
+  it('edit_mesoviewspec asks before a patch makes it fetch a resource from an unknown host', {
+    tags: ['medium'],
+  }, async () => {
+    const fetch = stubFetch();
+    const { v } = await viewer();
+    const { agent } = agentOn(v, [
+      { calls: [disclose] },
+      { calls: [call('edit_mesoviewspec', { patch: setUri('https://unknown.example/x') })] },
+      { calls: [call('edit_mesoviewspec', { patch: count })] },
+      { text: 'Done.' },
+    ]);
+    const r = await agent.turn('use the other picks');
+    expect(r.status).toBe('awaiting-approval');
+    expect(r.approval?.[0].tool).toBe('edit_mesoviewspec');
+    expect(fetched(fetch).some((u) => u.includes('unknown.example'))).toBe(false);
+    await agent.stop();
+    agent.dispose();
+  });
+
+  it('edit_mesoviewspec asks for a scheme-relative uri on a document opened by its address', {
+    tags: ['medium'],
+  }, async () => {
+    const at = 'https://docs.example/exosome.mesoviewspec.json';
+    const fetch = stubFetch({ [at]: JSON.stringify(exosomeDoc()) });
+    const { v } = await viewer(false);
+    const person = v.api.as({ kind: 'person' });
+    const opened = await person.run('mesoviewspec.open', { url: at, files: files() });
+    expect(opened.ok, JSON.stringify(opened)).toBe(true);
+    const { agent } = agentOn(v, [
+      { calls: [disclose] },
+      { calls: [call('edit_mesoviewspec', { patch: setUri('//unknown.example/x') })] },
+      { calls: [call('edit_mesoviewspec', { patch: count })] },
+      { text: 'Done.' },
+    ]);
+    const r = await agent.turn('use the other picks');
+    expect(r.status).toBe('awaiting-approval');
+    expect(fetched(fetch).some((u) => u.includes('unknown.example'))).toBe(false);
+    await agent.stop();
+    agent.dispose();
+  });
+
+  it('edit_mesoviewspec does not ask for a patch that names no address', {
+    tags: ['medium'],
+  }, async () => {
+    stubFetch();
+    const { v } = await viewer();
+    const { agent } = agentOn(v, [
+      { calls: [disclose] },
+      { calls: [call('edit_mesoviewspec', { patch: count })] },
+      { text: 'Done.' },
+    ]);
+    const r = await agent.turn('300 catalase');
+    expect(r.status).toBe('completed');
+    agent.dispose();
+  });
+});
+
 describe('what the agent sees of the document each turn (prism.md §8, agent.md §5)', () => {
   // The turn's text as the model gets it (not the tool definitions): the state is in it.
   const sentOf = (model: ReturnType<typeof agentOn>['model']) => {
