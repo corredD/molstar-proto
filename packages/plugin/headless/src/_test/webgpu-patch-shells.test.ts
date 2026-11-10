@@ -184,4 +184,120 @@ describe.skipIf(!WebGPU.module)('a patch mesh’s shells (WebGPU)', () => {
     expect(beneath.errors).toEqual([]);
     expect(beneath.width).toBeLessThan(0);
   }, 60_000);
+
+  it('marches the heads’ heights: tilted, the ridge moves on screen as the shells move it (the gate’s S4)', async () => {
+    const differ = (a: number[], b: number[]) => {
+      let n = 0;
+      for (let o = 0; o < a.length; o += 4) if (Math.abs(a[o] - b[o]) + Math.abs(a[o + 1] - b[o + 1]) > 24) n += 1;
+      return n;
+    };
+    const face = [await drawRidge('parallax', 0), await drawRidge('flat', 0)];
+    for (const d of face) expect(d.errors).toEqual([]);
+    // from above the relief does not move anything
+    expect(Math.abs(face[0].cx - face[1].cx)).toBeLessThan(0.5);
+    for (const tilt of [60, -60]) {
+      const [parallax, flat, shells] = [
+        await drawRidge('parallax', tilt),
+        await drawRidge('flat', tilt),
+        await drawRidge('shells', tilt),
+      ];
+      expect([...parallax.errors, ...flat.errors, ...shells.errors]).toEqual([]);
+      // the march off draws the texture flat: its ridge where the shells' base is, the march's where the top is
+      const marched = parallax.cx - flat.cx;
+      const truth = shells.cx - flat.cx;
+      expect(Math.abs(truth), `${tilt}: shells`).toBeGreaterThan(1);
+      expect(Math.sign(marched), `${tilt}: the march's sign`).toBe(Math.sign(truth));
+      expect(Math.abs(marched), `${tilt}: the march's shift`).toBeGreaterThan(1);
+      expect(differ(parallax.image, flat.image), `${tilt}: pixels`).toBeGreaterThan(500);
+    }
+  }, 120_000);
 });
+
+/**
+ * A ridge (the gate's S4): a 16 × 16 patch, its two middle columns red at the top (alpha 255), the rest green at the
+ * floor; drawn by parallax (`march`), flat (the middle look off at every px) or as 8 shells (the true offsets), seen
+ * from above and tilted by `tilt` degrees about the ridge's axis: the ridge's red centroid on screen, and the image
+ */
+async function drawRidge(look: 'parallax' | 'flat' | 'shells', tilt: number) {
+  const plugin = await HeadlessPluginContext.create(
+    { webgpu: WebGPU.module! },
+    DefaultPluginSpec(),
+    { width: Size, height: Size },
+    { backend: 'webgpu' },
+  );
+  try {
+    await plugin.init();
+    const canvas = plugin.canvas3d!;
+    canvas.setProps({ camera: { mode: 'orthographic' }, cameraFog: { name: 'off', params: {} } } as never);
+    const graphics = canvas.graphics;
+    const patch = graphics.resources.texture('image-uint8', 'rgba', 'ubyte', 'linear');
+    const n = 16;
+    const pixels = new Uint8Array(n * n * 4);
+    for (let y = 0; y < n; ++y) {
+      for (let x = 0; x < n; ++x) {
+        const on = x === 7 || x === 8;
+        pixels.set([on ? 255 : 0, on ? 0 : 255, 0, on ? 255 : 0], (y * n + x) * 4);
+      }
+    }
+    patch.load({ array: pixels, width: n, height: n });
+    patch.mipmap();
+    const patchTable = graphics.resources.texture('image-float32', 'rgba', 'float', 'nearest');
+    patchTable.load(table());
+    const positions = Float32Array.of(0, 0, 0, Box, 0, 0, Box, Box, 0, 0, Box, 0);
+    const normals = Float32Array.of(0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1);
+    const mesh = Mesh.create(positions, Uint32Array.of(0, 1, 2, 0, 2, 3), normals, new Float32Array(4), 4, 2);
+    const props = { ...PD.getDefaultValues(Mesh.Params), ignoreLight: true, doubleSided: true };
+    const color = {
+      granularity: 'uniform',
+      color: () => Color(0x808080),
+      props: {},
+      description: '',
+    } as unknown as ColorTheme<any>;
+    const instances = look === 'shells' ? 8 : 1;
+    const transforms = new Float32Array(16 * instances);
+    for (let k = 0; k < instances; ++k) Mat4.toArray(Mat4.identity(), transforms, k * 16);
+    const values = Mesh.Utils.createValues(
+      mesh,
+      createTransform(transforms, instances, undefined, 0, -1),
+      LocationIterator(1, instances, 1, () => ({}) as never),
+      { color, size: UniformSizeTheme({}, { value: 1 }) },
+      props,
+    );
+    ValueCell.update(values.dPatchTexture, true);
+    ValueCell.update(values.tPatch, patch);
+    ValueCell.update(values.tPatchTable, patchTable);
+    ValueCell.update(values.uPatch, Vec4.create(1000, Box, Box, 4));
+    ValueCell.update(values.uPatchLevels, Vec4.create(0, 0, 0, 1));
+    ValueCell.update(values.uPatchShells, Vec4.create(8, 0, 12, 6));
+    ValueCell.update(values.dPatchMiddle, look === 'shells' ? 'shells' : 'parallax');
+    // flat: the middle look from px past any view (the texture alone)
+    ValueCell.update(values.uPatchMiddle, look !== 'flat' ? Vec4.create(0, 1e9, 0, 0) : Vec4.create(1e9, 2e9, 0, 0));
+    const object = createRenderObject('mesh', values, Mesh.Utils.createRenderableState(props), -1);
+    canvas.add(Representation.fromRenderObject('ridge', object));
+    const a = (tilt * Math.PI) / 180;
+    canvas.camera.setState(
+      {
+        position: Vec3.create(Box / 2 + 500 * Math.sin(a), Box / 2, 500 * Math.cos(a)),
+        target: Vec3.create(Box / 2, Box / 2, 0),
+        up: Vec3.create(0, 1, 0),
+      },
+      0,
+    );
+    await plugin.getImageRaw({ width: Size, height: Size });
+    const image = Array.from((await plugin.getImageRaw({ width: Size, height: Size })).data);
+    let sx = 0;
+    let red = 0;
+    for (let o = 0; o < image.length; o += 4) {
+      if (image[o] > 2 * image[o + 1] + 20) {
+        sx += (o / 4) % Size;
+        red += 1;
+      }
+    }
+    const errors = graphics.takeErrors?.() ?? [];
+    patch.destroy();
+    patchTable.destroy();
+    return { cx: sx / Math.max(1, red), red, image, errors };
+  } finally {
+    plugin.dispose();
+  }
+}

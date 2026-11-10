@@ -212,9 +212,13 @@ describe.skipIf(!webgpu)('the switch between a membrane’s spheres and its far 
     }
   });
   // round 8 (Ludo, 2026-11-09: "to compare and pick"): each middle look zoomed from a lipid at 16 px (its atoms) to 0.8
-  // px (the flat texture) with no pop, outside the leaflet: the largest step's Oklab under 0.03, as round 7's coarse
-  for (const middle of ['parallax'] as const) {
-    it(`zooms across the ${middle} middle look with no pop (16 to 0.8 px, the largest step's Oklab under 0.03)`, {
+  // px (the flat texture) with no pop, outside the leaflet and inside (the gate's S4: the inner leaflet seen from the
+  // center, across to the far wall): the largest step's Oklab under 0.03, as round 7's coarse
+  for (const [middle, side] of [
+    ['parallax', 'outside'],
+    ['parallax', 'inside'],
+  ] as const) {
+    it(`zooms across the ${middle} middle look with no pop, ${side} (16 to 0.8 px, the largest step's Oklab under 0.03)`, {
       timeout: 240_000,
     }, async () => {
       const plugin = await HeadlessPluginContext.create(
@@ -233,7 +237,7 @@ describe.skipIf(!webgpu)('the switch between a membrane’s spheres and its far 
           method: 'cutter' as const,
           radius: Radius,
           edge: 100,
-          leaflets: 'outer' as const,
+          leaflets: side === 'outside' ? ('outer' as const) : ('inner' as const),
           patch: 'dawn-middle',
           center: Vec3.zero(),
           middle,
@@ -250,16 +254,20 @@ describe.skipIf(!webgpu)('the switch between a membrane’s spheres and its far 
         const camera = canvas.camera;
         canvas.requestCameraReset({ durationMs: 0 });
         await plugin.getImageRaw({ width: Size, height: Size });
-        const top = Radius + 20;
+        // the heads: outside the outer's, inside the inner's (seen from within, the camera toward −z of them)
+        const top = side === 'outside' ? Radius + 20 : Radius - 20;
+        const toward = side === 'outside' ? 1 : -1;
         const lipid = Math.sqrt((12 * 8 * (14 * 8 * 0.866)) / (12 * 14));
         const steps: { px: number; L: number; a: number; b: number }[] = [];
         for (let px = 16; px > 0.8; px /= 1.06) {
           const depth = (lipid * Size * camera.projection[5]) / (2 * px);
+          // inside, no farther than the far wall's across
+          if (side === 'inside' && depth > 2 * Radius - 200) break;
           camera.setState(
             {
               ...camera.getSnapshot(),
               target: Vec3.create(0, 0, top),
-              position: Vec3.create(0, 0, top + depth),
+              position: Vec3.create(0, 0, top + toward * depth),
               up: Vec3.create(0, 1, 0),
             },
             0,
@@ -267,7 +275,7 @@ describe.skipIf(!webgpu)('the switch between a membrane’s spheres and its far 
           await plugin.getImageRaw({ width: Size, height: Size });
           const image = (await plugin.getImageRaw({ width: Size, height: Size })).data;
           if (process.env.LIPID_SHOTS) {
-            await writePng(`${process.env.LIPID_SHOTS}/r8-${middle}-${px.toFixed(2)}.png`, Size, Size, image);
+            await writePng(`${process.env.LIPID_SHOTS}/r8-${middle}-${side}-${px.toFixed(2)}.png`, Size, Size, image);
           }
           steps.push({ px, ...meanOklab(image) });
         }
@@ -278,7 +286,9 @@ describe.skipIf(!webgpu)('the switch between a membrane’s spheres and its far 
           const d = Math.hypot(q.L - p.L, q.a - p.a, q.b - p.b);
           if (d > largest) [largest, at] = [d, q.px];
         }
-        if (process.env.LIPID_NUMBERS) console.log(JSON.stringify({ middle, largest, at, steps }));
+        if (process.env.LIPID_NUMBERS) console.log(JSON.stringify({ middle, side, largest, at, steps }));
+        // inside, it reached the middle look's range (the far wall a lipid ~1 px)
+        expect(steps[steps.length - 1].px).toBeLessThan(1.5);
         expect(largest, `at ${at.toFixed(2)} px`).toBeLessThan(0.03);
         await plugin.build().delete(node.ref).commit();
         expect(canvas.graphics.takeErrors?.() ?? []).toEqual([]);
