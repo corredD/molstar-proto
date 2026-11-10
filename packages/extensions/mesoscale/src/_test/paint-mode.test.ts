@@ -291,6 +291,17 @@ describe('paint mode', () => {
     mode.stop();
   });
 
+  it("N2: starts the depth inside the camera's drawn range too", () => {
+    // the focus 100 Å away, the camera drawing 10 to 50 Å: a copy's radius (5) inside the far plane
+    const { mode, layer, strokes } = setup(0, { upright: false, depthRange: [10, 50] });
+    mode.start(brush);
+    const el = layer();
+    el.dispatchEvent(pointer('pointerdown', { x: 10, y: 10 }));
+    el.dispatchEvent(pointer('pointerup', { x: 10, y: 10 }));
+    expect(strokes[0].positions[2]).toBe(55);
+    mode.stop();
+  });
+
   it('Place: a membrane protein on the surface by default, at the depth when asked; anything else the other way', () => {
     for (const [upright, place, z] of [
       [true, 'auto', 0],

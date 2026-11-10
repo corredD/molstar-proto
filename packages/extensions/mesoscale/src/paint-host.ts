@@ -24,6 +24,7 @@ import {
   decoratorUnder,
   type FiberSettingsMap,
   fiberSettingsOf,
+  parseRange,
   isFiberBrush,
   ParticleListPainted,
 } from './paint.js';
@@ -169,8 +170,7 @@ export function pluginPaintHost(
         ...(fiber && s.sequence?.trim()
           ? {
               sequence: s.sequence.trim(),
-              ...(s.start !== undefined ? { start: s.start } : {}),
-              ...(s.end !== undefined ? { end: s.end } : {}),
+              ...parseRange(s.range ?? ''),
             }
           : {}),
         side: s.side,

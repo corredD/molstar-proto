@@ -13,7 +13,9 @@ import {
   fiberConventionOf,
   fiberRotations,
   fiberSettingsOf,
+  fiberUnits,
   makeFiber,
+  parseRange,
   resamplePath,
   isFiberBrush,
   type PaintStroke,
@@ -459,5 +461,61 @@ describe('fibres of a bank of units by a sequence (Round 5)', () => {
     const list = { ...cellpackLike(), entityInfo: undefined, targetInfo: new Map([[2, {}]]) };
     const out = paintParticles(list, [nc({ sequence: { residues: 'AT' } })], dna);
     expect(Array.from(out.targets.slice(list.count))).toEqual([2, 2, 2, 2]);
+  });
+});
+
+describe('the review of rounds 3 to 5', () => {
+  const dna = (id: number) => ({
+    [id]: { ...FiberBankHelix, jitter: 0, axis: 'z' as const, offset: 0, bank: 'dna' as const },
+  });
+  const path = (n: number) => [0, 0, 0, 0, 0, FiberBankHelix.rise * (n - 1)];
+  const fibre = (over: Partial<PaintStroke> = {}) =>
+    stroke({ target: 2, entity: 2, fiber: true, positions: path(4), rotations: [], seed: 5, ...over });
+
+  it("M2: never gives a unit a list's own target id: no bank for the entity -1 (no entity)", () => {
+    const list = cellpackLike();
+    const out = paintParticles(list, [fibre({ entity: -1, sequence: { residues: 'ATGC' } })], dna(-1));
+    expect(Array.from(out.targets.slice(list.count))).toEqual([2, 2, 2, 2]);
+    expect(out.targetInfo).toBe(list.targetInfo);
+  });
+
+  it("S1: the units' maps made again when the list's targets change, its mapping the same", () => {
+    const mapping = new Map();
+    const a = { ...cellpackLike(), targetMapping: mapping };
+    const b = { ...a, targetInfo: new Map([...a.targetInfo, [50, { entity: 1 }]]) };
+    const strokes = [fibre({ sequence: { residues: 'AT' } })];
+    paintParticles(a, strokes, dna(2));
+    const out = paintParticles(b, strokes, dna(2));
+    for (let i = b.count; i < out.count; ++i) {
+      expect(out.targetMapping!.has(out.targets[i])).toBe(true);
+      expect(out.targetInfo.has(out.targets[i])).toBe(true);
+    }
+  });
+
+  it('S2, X1: a unit point named by its entity and numbered by its place in the sequence; a random one by none', () => {
+    const list = cellpackLike();
+    const out = paintParticles(
+      list,
+      [fibre({ positions: path(5), sequence: { residues: 'ACGTACGT', start: 3, end: 4 } })],
+      dna(2),
+    );
+    const labels = Array.from({ length: 5 }, (_, j) => out.getParticleLabel(list.count + j));
+    expect(labels[0]).toBe('NC · painted 1 · G3');
+    expect(labels.map((l) => l.split(' · ').pop())).toEqual(['G3', 'T4', 'G3', 'T4', 'G3']);
+    const random = paintParticles(list, [fibre()], dna(2));
+    expect(random.getParticleLabel(list.count)).toMatch(/^NC · painted 1 · [ATGC]$/);
+  });
+
+  it('N3: an RNA bank reads T as U; a FASTA header and what is not a letter are left out', () => {
+    expect(fiberUnits('rna', { residues: 'TTTT' }, 4, 1).units).toEqual(['rna:U', 'rna:U', 'rna:U', 'rna:U']);
+    expect(fiberUnits('dna', { residues: '>seq1 test\nAC GT\n' }, 4, 1).letters).toBe('ACGT');
+  });
+
+  it('S4: reads a range, refusing 0 and an end before the start', () => {
+    expect(parseRange('3-120')).toEqual({ start: 3, end: 120 });
+    expect(parseRange('0-5')).toEqual({ end: 5 });
+    expect(parseRange('9-3')).toEqual({});
+    expect(parseRange('-9')).toEqual({ end: 9 });
+    expect(parseRange('abc')).toEqual({});
   });
 });

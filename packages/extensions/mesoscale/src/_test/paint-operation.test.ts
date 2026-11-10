@@ -142,7 +142,16 @@ describe('mesoscale.paint', () => {
     // NC without fibres or settings (the list has no radii): 10 Å a point, no twist
     const st = v.api.mesoscale!.fiberState(entry(v).cell.transform.ref, 2);
     const sub = st.subscribe(() => {});
-    expect(st.value).toEqual({ rise: 10, twist: 0, jitter: 0, axis: 'auto', offset: 0, bank: 'none', fibers: false });
+    expect(st.value).toEqual({
+      rise: 10,
+      twist: 0,
+      jitter: 0,
+      axis: 'auto',
+      offset: 0,
+      bank: 'none',
+      banks: true,
+      fibers: false,
+    });
     for (const y of [0, 30]) {
       expectOk(await v.api.run('mesoscale.paint', { entity: 'NC', positions: [0, y, 0, 20, y, 0], fiber: true }));
     }
@@ -153,7 +162,16 @@ describe('mesoscale.paint', () => {
     expect(steps(v)).toBe(before + 1);
     // both painted fibres again: 5 points each (20 Å at 5); the file's fibres as they were
     expect(drawn(v).count).toBe(base + 10);
-    expect(st.value).toEqual({ rise: 5, twist: 34.3, jitter: 0, axis: 'auto', offset: 0, bank: 'none', fibers: true });
+    expect(st.value).toEqual({
+      rise: 5,
+      twist: 34.3,
+      jitter: 0,
+      axis: 'auto',
+      offset: 0,
+      bank: 'none',
+      banks: true,
+      fibers: true,
+    });
     // the jitter alone: the rise and twist kept
     expectOk(await v.api.run('mesoscale.fiber', { entity: 'NC', jitter: 180 }));
     expect(st.value).toEqual({
@@ -163,13 +181,23 @@ describe('mesoscale.paint', () => {
       axis: 'auto',
       offset: 0,
       bank: 'none',
+      banks: true,
       fibers: true,
     });
     // the axis and the offset (Round 4): the points 4 Å off the path, as many
     const r4 = await v.api.run('mesoscale.fiber', { entity: 'NC', axis: 'x', offset: 4 });
     expectOk(r4);
     expect(r4.ok && r4.did).toContain('x axis');
-    expect(st.value).toEqual({ rise: 5, twist: 34.3, jitter: 180, axis: 'x', offset: 4, bank: 'none', fibers: true });
+    expect(st.value).toEqual({
+      rise: 5,
+      twist: 34.3,
+      jitter: 180,
+      axis: 'x',
+      offset: 4,
+      bank: 'none',
+      banks: true,
+      fibers: true,
+    });
     expect(drawn(v).count).toBe(base + 10);
     const c = drawn(v).coordinates;
     const at = drawn(v).count - 5;
@@ -178,7 +206,16 @@ describe('mesoscale.paint', () => {
     expectOk(await v.api.run('history.undo', {}));
     expectOk(await v.api.run('history.undo', {}));
     expect(drawn(v).count).toBe(base + 6);
-    expect(st.value).toEqual({ rise: 10, twist: 0, jitter: 0, axis: 'auto', offset: 0, bank: 'none', fibers: false });
+    expect(st.value).toEqual({
+      rise: 10,
+      twist: 0,
+      jitter: 0,
+      axis: 'auto',
+      offset: 0,
+      bank: 'none',
+      banks: true,
+      fibers: false,
+    });
     const bad = await v.api.run('mesoscale.fiber', { entity: 'NC' });
     expect(bad.ok).toBe(false);
     sub.unsubscribe();
@@ -189,6 +226,9 @@ describe('mesoscale.paint', () => {
     const base = drawn(v).count;
     const st = v.api.mesoscale!.fiberState(entry(v).cell.transform.ref, 2);
     const sub = st.subscribe(() => {});
+    // S3: a bank is for an entity of a list with entities
+    expect(st.value?.banks).toBe(true);
+    expect((await v.api.run('mesoscale.fiber', { entity: '-1', bank: 'dna' })).ok).toBe(false);
     // the DNA bank: its helix (3.38 Å, 36°, z forward) unless given
     expectOk(await v.api.run('mesoscale.fiber', { entity: 'NC', bank: 'dna' }));
     expect(st.value).toMatchObject({ rise: 3.38, twist: 36, axis: 'z', offset: 0, bank: 'dna' });
@@ -201,6 +241,15 @@ describe('mesoscale.paint', () => {
       end: 6,
     });
     expectOk(r);
+    // X1: a range past the sequence's end refused
+    const past = await v.api.run('mesoscale.paint', {
+      entity: 'NC',
+      positions: [0, 0, 0, 10, 0, 0],
+      fiber: true,
+      sequence: 'ATGC',
+      start: 9,
+    });
+    expect(past.ok).toBe(false);
     const d = drawn(v);
     expect(d.count).toBe(base + 6);
     const units = Array.from(d.targets.slice(base)).map((t) => {

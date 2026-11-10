@@ -293,7 +293,8 @@ export function PaintBrush(props: { area: MesoscaleApi; particles: string; entit
                 size="sm"
                 aria-label="Fibre sequence range"
                 placeholder="all"
-                onInput={(text) => mode.set({ start: undefined, end: undefined, ...parseRange(text) })}
+                value={mapState(settings, (st) => st.range ?? '')}
+                onInput={(range) => mode.set({ range })}
               />
             </div>
           </div>
@@ -415,18 +416,22 @@ export function FiberSettings(props: { area: MesoscaleApi; particles: string; en
           onChange={(axis) => run({ axis })}
         />,
       )}
-      {line(
-        'Bank',
-        'The units painted fibres switch between by their sequences: DNA a base pair a letter (A, T, G, C), RNA a nucleotide (A, U, G, C); none: the entity itself',
-        <Select
-          size="sm"
-          over
-          aria-label="Fibre bank of units"
-          options={FiberBankOptions}
-          value={mapState(fiber, (f) => f?.bank ?? 'none')}
-          onChange={(bank) => run({ bank })}
-        />,
-      )}
+      <Show when={mapState(fiber, (f) => !!f?.banks)}>
+        {() =>
+          line(
+            'Bank',
+            'The units painted fibres switch between by their sequences: DNA a base pair a letter (A, T, G, C), RNA a nucleotide (A, U, G, C); none: the entity itself',
+            <Select
+              size="sm"
+              over
+              aria-label="Fibre bank of units"
+              options={FiberBankOptions}
+              value={mapState(fiber, (f) => f?.bank ?? 'none')}
+              onChange={(bank) => run({ bank })}
+            />,
+          )
+        }
+      </Show>
       {line(
         'Offset',
         'Off the path, along a perpendicular of the axis that turns with the unit (with a twist: a helix)',
@@ -449,16 +454,6 @@ const FiberBankOptions: readonly SelectOption[] = [
   ['dna', 'DNA'],
   ['rna', 'RNA'],
 ];
-
-/** A range written `3-120` (1-based, inclusive): its ends; empty or unread, none */
-export function parseRange(text: string): { start?: number; end?: number } {
-  const m = /^\s*(\d+)?\s*(?:[-–:]\s*(\d+)?)?\s*$/.exec(text);
-  if (!m) return {};
-  return {
-    ...(m[1] ? { start: Number(m[1]) } : {}),
-    ...(m[2] ? { end: Number(m[2]) } : {}),
-  };
-}
 
 const FiberAxisOptions: readonly SelectOption[] = [
   ['auto', 'Auto'],

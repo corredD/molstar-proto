@@ -73,3 +73,43 @@ it('a list painted with N copies in strokes of 16', () => {
   );
   checkLinear('paintParticles, N copies', s);
 });
+
+it('a list with a fibre of 4N points painted with fibres of N points in strokes of 16 (review M1)', () => {
+  // the entity's own settings not given: its file fibre's convention read, once, not once a stroke
+  const s = scaling(
+    {
+      setup: (n) => {
+        const input = list(4 * n);
+        // one file fibre of target 1's particles... every particle of the list, in order
+        const fibered = {
+          ...input,
+          targets: new Int32Array(4 * n).fill(1),
+          fibers: {
+            count: 1,
+            offsets: Int32Array.of(0, 4 * n),
+            indices: Int32Array.from({ length: 4 * n }, (_, i) => i),
+          },
+          coordinates: Float32Array.from({ length: 4 * n * 3 }, (_, i) => (i % 3 === 0 ? (i / 3) * 10 : 0)),
+        };
+        const fibres: PaintStroke[] = [];
+        for (let k = 0; k * PerStroke < n; ++k) {
+          fibres.push({
+            target: 1,
+            entity: 1,
+            compartment: 1,
+            positions: [k * 100, 0, 0, k * 100, 10 * (PerStroke - 1), 0],
+            rotations: [],
+            fiber: true,
+            seed: k,
+          });
+        }
+        return { input: fibered, strokes: fibres };
+      },
+      run: ({ input, strokes }) => {
+        if (paintParticles(input, strokes).count <= input.count) throw new Error('not painted');
+      },
+    },
+    20000,
+  );
+  checkLinear('paintParticles, N fibre points', s);
+});

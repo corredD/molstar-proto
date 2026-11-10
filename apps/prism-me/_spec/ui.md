@@ -229,17 +229,17 @@ on a tree row (its right-click or its ⋯), the same menu, in this order:
   zooms: the layer steps aside while Alt is held, the canvas's bindings take Alt until the mode ends); **Place**: a
   membrane protein on the surface, anything else at a depth along the pointer's ray (from the camera's focus; the plain
   wheel moves it a copy's diameter a notch, shown in the hint), Surface or Depth to override; a click paints one copy. A
-  copy of the brush follows the pointer (drawn over the scene, not picked, in the entity's look color), where a click
-  puts it and turned as it will be (the stroke's seed); hidden off the canvas and while Alt is held. **Fibre**: an
-  entity with fibres in its list paints a new fibre (its points its fibres' step apart, a line on the canvas while
-  drawn, each point turned as its fibres are: their axis along the way, their twist a point); On or Off to override. A
-  fibre's points are made from its path by the entity's **Fibre** settings (round 3): Rise (Å a point), Twist (° a
-  point), Jitter (± ° a point, random); in the entity's own Fibre section and in Paint. A change makes every painted
-  fibre of the entity again, one step; the file's fibres stay. Default: the entity's fibres' step and twist. Round 4:
-  Axis (Auto, X, Y, Z: the unit's own axis along the path) and Offset (Å off the path, along a perpendicular of that
-  axis, turned with the unit). The copy under the pointer is drawn in the scene, depth-tested (round 4); the wheel's
-  depth stays inside the camera's near and far planes. Round 5: Bank (None, DNA, RNA: the units the fibres switch
-  between, a letter each), and in Paint a Sequence (one-letter codes; empty: at random) and its Range (`3-120`).
+  copy of the brush follows the pointer (drawn in the scene, depth-tested, not picked, in the entity's look color),
+  where a click puts it and turned as it will be (the stroke's seed); hidden off the canvas and while Alt is held.
+  **Fibre**: an entity with fibres in its list paints a new fibre (its points its fibres' step apart, a line on the
+  canvas while drawn, each point turned as its fibres are: their axis along the way, their twist a point); On or Off to
+  override. A fibre's points are made from its path by the entity's **Fibre** settings (round 3): Rise (Å a point),
+  Twist (° a point), Jitter (± ° a point, random); in the entity's own Fibre section and in Paint. A change makes every
+  painted fibre of the entity again, one step; the file's fibres stay. Default: the entity's fibres' step and twist.
+  Round 4: Axis (Auto, X, Y, Z: the unit's own axis along the path) and Offset (Å off the path, along a perpendicular of
+  that axis, turned with the unit). The copy under the pointer is drawn in the scene, depth-tested (round 4); the
+  wheel's depth stays inside the camera's near and far planes. Round 5: Bank (None, DNA, RNA: the units the fibres
+  switch between, a letter each), and in Paint a Sequence (one-letter codes; empty: at random) and its Range (`3-120`).
 - **Remove** (an object: with its file and labels).
 
 On a clip or a label (its guide in 3D, or its row): **Move**, **Rotate**, (a clip: **Size**, **Flip**; a label: **Edit

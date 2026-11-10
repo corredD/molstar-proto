@@ -254,9 +254,11 @@ export function paintParticles(
   }
 
   const label = list.getParticleLabel;
+  // the output's targets: a unit's are not the input's (review S2)
+  const info = units.targetInfo;
   const name = (i: number) => {
-    const e = entities?.[i] ?? list.targetInfo.get(targets[i])?.entity;
-    return (e !== undefined && list.entityInfo?.get(e)?.name) || list.targetInfo.get(targets[i])?.name || 'Particle';
+    const e = entities?.[i] ?? info.get(targets[i])?.entity;
+    return (e !== undefined && list.entityInfo?.get(e)?.name) || info.get(targets[i])?.name || 'Particle';
   };
   return {
     ...list,
@@ -295,13 +297,19 @@ function makeFibers(list: ParticleList, strokes: readonly PaintStroke[], given?:
     const settings = fiberSettingsOf(list, id, s.target, given);
     const made = makeFiber(s.positions, settings, axis, s.seed ?? 0);
     // a bank's units only where the brush is an entity (a list without: its targets are its brushes)
-    const bank = list.entityInfo?.size && settings.bank !== 'none' ? settings.bank : undefined;
+    // and an entity of its own (review M2: -1, none, would give ids below the list's)
+    const bank = list.entityInfo?.size && s.entity >= 0 && settings.bank !== 'none' ? settings.bank : undefined;
     return { ...s, ...made, ...(bank ? fiberUnits(bank, s.sequence, made.positions.length / 3, s.seed ?? 0) : {}) };
   });
 }
 
 /** A made stroke: a fibre's units a point (`fiberUnits`) and their letters */
-type MadeStroke = PaintStroke & { readonly units?: readonly string[]; readonly letters?: string };
+type MadeStroke = PaintStroke & {
+  readonly units?: readonly string[];
+  readonly letters?: string;
+  /** a point's place in the sequence (1-based), 0 for a unit at random */
+  readonly numbers?: readonly number[];
+};
 
 /**
  * A fibre's `count` units of `bank` (Round 5): its sequence's letters from `start` to `end` (1-based, inclusive),
@@ -312,22 +320,54 @@ export function fiberUnits(
   sequence: PaintSequence | undefined,
   count: number,
   seed: number,
-): { units: string[]; letters: string } {
+): { units: string[]; letters: string; numbers: number[] } {
   const table = FiberBankLetters[bank];
   const keys = Object.keys(table);
-  const residues = sequence?.residues.replace(/\s+/g, '').toUpperCase() ?? '';
+  const residues = sequence ? cleanSequence(sequence.residues) : '';
   const from = Math.max(0, (sequence?.start ?? 1) - 1);
   const to = Math.min(residues.length, sequence?.end ?? residues.length);
   const range = residues.slice(from, Math.max(from, to));
   const units: string[] = [];
+  const numbers: number[] = [];
   let letters = '';
   for (let i = 0; i < count; ++i) {
-    let letter = range ? range[i % range.length] : '';
-    if (!table[letter]) letter = keys[Math.min(keys.length - 1, Math.floor(paintRandom(seed, i, 5) * keys.length))];
+    const k = range ? i % range.length : -1;
+    let letter = k >= 0 ? range[k] : '';
+    // an RNA's T read as U (a sequence written as DNA; review N3)
+    if (bank === 'rna' && letter === 'T') letter = 'U';
+    let number = k >= 0 ? from + k + 1 : 0;
+    if (!table[letter]) {
+      letter = keys[Math.min(keys.length - 1, Math.floor(paintRandom(seed, i, 5) * keys.length))];
+      number = 0;
+    }
     units.push(table[letter]);
     letters += letter;
+    numbers.push(number);
   }
-  return { units, letters };
+  return { units, letters, numbers };
+}
+
+/** A sequence's letters: a FASTA header line and what is not a letter left out, upper case */
+export function cleanSequence(text: string): string {
+  return text
+    .split('\n')
+    .filter((l) => !l.startsWith('>'))
+    .join('')
+    .replace(/[^A-Za-z]/g, '')
+    .toUpperCase();
+}
+
+/** A range written `3-120` (1-based, inclusive): its ends; 0, an end before the start, or unread: none (review S4) */
+export function parseRange(text: string): { start?: number; end?: number } {
+  const m = /^\s*(\d+)?\s*(?:[-–:]\s*(\d+)?)?\s*$/.exec(text);
+  if (!m) return {};
+  const start = m[1] ? Number(m[1]) : undefined;
+  const end = m[2] ? Number(m[2]) : undefined;
+  if (start !== undefined && end !== undefined && end < start) return {};
+  return {
+    ...(start !== undefined && start >= 1 ? { start } : {}),
+    ...(end !== undefined && end >= 1 ? { end } : {}),
+  };
 }
 
 /** A unit's radius: its sites' farthest reach from its origin (a painted point's, for the culling and the picking) */
@@ -378,13 +418,15 @@ function withUnits(list: ParticleList, strokes: readonly MadeStroke[]) {
     // a painted point's letter and its place in its fibre (`· A12`)
     let k = 0;
     while (k + 1 < offsets.length && offsets[k + 1] <= i) ++k;
-    const letters = strokes[k]?.letters;
+    const { letters, numbers } = strokes[k] ?? {};
     const j = i - (offsets[k] ?? 0);
-    return letters ? ` · ${letters[j]}${(strokes[k].sequence?.start ?? 1) + j}` : '';
+    // its place in the sequence, not along the fibre (review S2); a unit at random, its letter alone
+    return letters ? ` · ${letters[j]}${numbers?.[j] ? numbers[j] : ''}` : '';
   };
   const idOf = (s: MadeStroke) => s.units!.map((u) => idOfUnit(s.entity, u));
   if (!used.size) return { targetMapping: list.targetMapping, targetInfo: list.targetInfo, idOf, letterOf };
-  const key = [...used.keys()].sort().join(',');
+  // the base too: the same mapping with other targets moves it (review S1)
+  const key = `${base}|${[...used.keys()].sort().join(',')}`;
   const owner = (list.targetMapping ?? list.targetInfo) as object;
   const kept = unitMaps.get(owner);
   if (kept?.key === key) return { targetMapping: kept.mapping, targetInfo: kept.info, idOf, letterOf };
@@ -622,8 +664,23 @@ export function isFiberBrush(list: ParticleList, id: number): boolean {
   return !!fiberOfBrush(list, id);
 }
 
-/** The convention of the brush's fibres (`FiberConvention`); undefined when it has none */
+const conventions = new WeakMap<ParticleList, Map<number, FiberConvention | null>>();
+
+/**
+ * The convention of the brush's fibres (`FiberConvention`); undefined when it has none. Read once a list and a brush
+ * (review M1: a scan of its whole first fibre, else once a stroke at each rebuild and once a state change for views)
+ */
 export function fiberConventionOf(list: ParticleList, id: number): FiberConvention | undefined {
+  let byId = conventions.get(list);
+  if (!byId) conventions.set(list, (byId = new Map()));
+  const kept = byId.get(id);
+  if (kept !== undefined) return kept ?? undefined;
+  const c = readConvention(list, id);
+  byId.set(id, c ?? null);
+  return c;
+}
+
+function readConvention(list: ParticleList, id: number): FiberConvention | undefined {
   const range = fiberOfBrush(list, id);
   if (!range) return undefined;
   const [s, e] = range;

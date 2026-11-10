@@ -37,6 +37,7 @@ import { PaintMode } from './paint-mode.js';
 import {
   brushOf,
   brushIdOf,
+  cleanSequence,
   decoratorUnder,
   isFiberBrush,
   FiberAxes,
@@ -241,7 +242,7 @@ export class MesoscaleApi extends ApiArea {
   fiberState(
     particles: string,
     entity: number,
-  ): ReadonlyState<(FiberSettingsIn & { readonly fibers: boolean }) | undefined> {
+  ): ReadonlyState<(FiberSettingsIn & { readonly banks: boolean; readonly fibers: boolean }) | undefined> {
     const plugin = this.ctx.plugin;
     return watchedState(
       () => fiberInfo(plugin.state.data, { plugin }, particles, entity),
@@ -714,6 +715,11 @@ export class MesoscaleApi extends ApiArea {
       }
       const brush = brushOf(data, ids[0]);
       if (!brush) return ApiResult.fail('not-found', 'No particle of that entity to copy.');
+      // a range with no letter of the sequence in it (review X1)
+      const letters = sequence?.trim() ? cleanSequence(sequence).length : 0;
+      if (letters && ((start ?? 1) > letters || (end !== undefined && end < (start ?? 1)))) {
+        return ApiResult.fail('invalid', `The range has no letter of the sequence (${letters} letters).`);
+      }
       const how: PaintOrient = orient ?? (brush.surface ? 'normal' : 'random');
       const state = ctx.plugin.state.data;
       const moved = decoratorUnder(state, l.cell.transform.ref, ParticleListTransform);
@@ -837,6 +843,10 @@ export class MesoscaleApi extends ApiArea {
       const brush = brushOf(data, ids[0]);
       if (!brush) return ApiResult.fail('not-found', 'No particle of that entity.');
       const id = brushIdOf(data, brush);
+      // a bank is an entity's (review S3, M2): a list with entities, an entity of its own
+      if (given.bank && given.bank !== 'none' && !(data.entityInfo?.size && ids[0] >= 0)) {
+        return ApiResult.fail('invalid', 'A bank of units is for an entity of a list with entities.');
+      }
       const state = ctx.plugin.state.data;
       const old = paintedFibers(state, l.cell.transform.ref);
       const now = fiberSettingsOf(data, id, brush.target, old);
@@ -1753,5 +1763,10 @@ function fiberInfo(state: State, ctx: Pick<ApiContext, 'plugin'>, particles: str
   if (!data || !brush) return undefined;
   const id = brushIdOf(data, brush);
   const own = paintedFibers(state, l.cell.transform.ref);
-  return { ...fiberSettingsOf(data, id, brush.target, own), fibers: !!own?.[id] || isFiberBrush(data, id) };
+  return {
+    ...fiberSettingsOf(data, id, brush.target, own),
+    // whether it can have a bank (review S3)
+    banks: !!data.entityInfo?.size && entity >= 0,
+    fibers: !!own?.[id] || isFiberBrush(data, id),
+  };
 }

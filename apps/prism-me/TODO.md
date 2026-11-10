@@ -104,6 +104,15 @@ maintainer first (2026-10-25). All are v6 (master); the MRC reader and the parti
   as text (a name "3" would win), the principal axis read where `targetMapping` is on the list (not a decorator's), a
   real 100 ms wait in paint-mode.test.ts.
 
+- **Paint, what rounds 3 to 5 left** (lane `paint`, 2026-11-09; progress/2026-11-08-paint.md, Round 5 and its review): a
+  protein bank (cellPACK_data has `alanine.pdb` only; the 19 others from the CCD's ideal coordinates, in the units'
+  frame, on Ludo's word); the Seq\* link (a painted fibre's points as a Seq\* sequence's positions, highlight both ways:
+  `Translator` external systems and a particle 3D view); a painted fibre's sequence changed after it is painted; a
+  stroke drawn without rebuilding the whole list (2.1 M particles: about 1.2 s a stroke on cellpack-mg, the
+  representation's update; the painted copies as a list of their own); the review's nits: the cursor's moves dirty the
+  scene's bounds (N1), the depth clamp along the ray against the planes' view depth (N2), the sliders narrower than
+  `mesoscale.fiber` (N4), a string a point in `withUnits` (S6); the `*.scaling.ts` configs of io, cryoet and mesoscale
+  import Seq*'s old harness path (moved to `@molstar/test-harness`, b50bd2f07): broken on prism-me.
 - **Fibre points drawn twice** (lane `fibers-targeted`, 2026-11-08; to decide): a cellPACK fibre's points keep their
   one-atom target under the new tubes (the yeast slab: 2.3M extra instances). Leave fibre points untargeted in the
   reader (lighter, tubes only), or keep both (a cellPACK fibre whose points carry an ingredient)?

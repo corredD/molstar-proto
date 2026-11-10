@@ -34,7 +34,7 @@ describe('pluginPaintHost', () => {
       return { ok: true };
     });
     const brush = { particles: 'l', entity: 1, name: 'DNA' };
-    const s = { ...DefaultPaintSettings, sequence: 'ATGC', start: 2, end: 3 };
+    const s = { ...DefaultPaintSettings, sequence: 'ATGC', range: '2-3' };
     await host.paint(brush, s, [0, 0, 0, 1, 0, 0], [0, 0, 1, 0, 0, 1], 1, true);
     await host.paint(brush, s, [0, 0, 0], [0, 0, 1], 1, false);
     expect(calls[0]).toMatchObject({ sequence: 'ATGC', start: 2, end: 3, fiber: true });
@@ -67,16 +67,5 @@ describe('withAltCamera', () => {
     expect(Binding.match(attribs.trackball.bindings.dragRotate, ButtonsType.Flag.Primary, alt)).toBe(true);
     release();
     expect(attribs.trackball.bindings).toBe(own);
-  });
-});
-
-describe('parseRange (Round 5)', () => {
-  it('reads a range of a sequence, 1-based: both ends, one, or none', async () => {
-    const { parseRange } = await import('../controls.js');
-    expect(parseRange('3-120')).toEqual({ start: 3, end: 120 });
-    expect(parseRange(' 5 ')).toEqual({ start: 5 });
-    expect(parseRange('-9')).toEqual({ end: 9 });
-    expect(parseRange('')).toEqual({});
-    expect(parseRange('abc')).toEqual({});
   });
 });

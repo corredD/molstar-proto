@@ -45,12 +45,11 @@ export interface PaintSettings {
    */
   readonly fiber: 'auto' | 'on' | 'off';
   /**
-   * A new fibre's sequence (Round 5): one-letter codes, with the entity's bank a unit a letter; its range (1-based,
-   * `end` inclusive). Empty: the bank's units at random
+   * A new fibre's sequence (Round 5): one-letter codes, with the entity's bank a unit a letter; its range as written
+   * (`3-120`, 1-based, inclusive; `parseRange`). Empty: the bank's units at random
    */
   readonly sequence?: string;
-  readonly start?: number;
-  readonly end?: number;
+  readonly range?: string;
 }
 
 export type PaintPlace = 'surface' | 'depth';
@@ -239,6 +238,8 @@ function paintLayer(mode: PaintMode, host: PaintHost, canvas: HTMLElement, brush
     if (!range || range[1] - range[0] <= 2 * radius) return d;
     return Math.min(range[1] - radius, Math.max(range[0] + radius, d));
   };
+  // the focus too (review N2)
+  depth = inRange(depth);
   /** The brush's fibres' rise (Round 3): undefined when it makes none; read again at each stroke's start */
   let fiberStep = host.fiberStep(brush);
   /** Whether the stroke is a new fibre (the settings' Fibre, or the brush's own: `auto`, when it has fibres) */
