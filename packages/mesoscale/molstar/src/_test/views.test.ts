@@ -40,7 +40,34 @@ function doc(): MesoViewSpecDoc {
     camera: { position: [0, 0, 9000], target: [0, 0, 0], up: [0, 1, 0] },
     looks: [...(cell.looks ?? []), { select: '(population p.ribosomes)', color: '#ff0000' }],
   };
-  return { ...d, views: [...d.views!, red] };
+  return {
+    ...d,
+    views: [...d.views!, red],
+    tours: [
+      ...(d.tours ?? []),
+      {
+        id: 't.quick',
+        label: 'Quick',
+        steps: [
+          { view: 'v.cell', duration: 1, caption: 'The slice' },
+          { view: 'v.red', duration: 1, caption: 'Red' },
+        ],
+      },
+      { id: 't.slow', steps: [{ view: 'v.cell', duration: 60000 }, { view: 'v.red' }] },
+    ],
+  };
+}
+
+/** Resolves when `test` holds, checked at each change of the owner. */
+function until(h: Harness, test: () => boolean): Promise<void> {
+  if (test()) return Promise.resolve();
+  return new Promise((resolve) => {
+    const sub = h.model.changed.subscribe(() => {
+      if (!test()) return;
+      sub.unsubscribe();
+      resolve();
+    });
+  });
 }
 
 function files(d: MesoViewSpecDoc) {
@@ -201,12 +228,34 @@ describe('showing a view (prism.md §4.4)', () => {
     expect(ribosomes(h)?.color).toBe(Red);
   });
 
+  it('the Views row: the views and tours, the view shown, the same object while they are the same', {
+    tags: ['medium'],
+  }, async () => {
+    const h = await open();
+    const tree = h.api.treeState();
+    const views = tree.value!.views;
+    expect(views.views.map((v) => v.id)).toEqual(['v.granules', 'v.cell', 'v.granule-12', 'v.docked', 'v.red']);
+    expect(views.tours.map((t) => [t.id, t.label, t.steps])).toEqual([
+      ['t.granule', 'Into one granule', 3],
+      ['t.quick', 'Quick', 2],
+      ['t.slow', 't.slow', 2],
+    ]);
+    expect(views.shown).toBe('v.granules');
+    expect(views.opensWith).toBeUndefined();
+    // a look edit makes new views in the document, not a new Views row
+    await h.run('mesoviewspec.eye', { select: '(population p.ribosomes)', visible: false });
+    expect(tree.value!.views).toBe(views);
+    await h.run('mesoviewspec.view', { view: 'v.red' });
+    expect(tree.value!.views.shown).toBe('v.red');
+  });
+
   it('a patch that removes the view shown falls back to the first; Undo shows it again', {
     tags: ['medium'],
   }, async () => {
     const h = await open();
     await h.run('mesoviewspec.view', { view: 'v.red' });
-    const r = await h.run('mesoviewspec.edit', { patch: '(patch :ops [(remove v.red)])' });
+    // the tours naming it go with it (no cascade: prism.md §2.1)
+    const r = await h.run('mesoviewspec.edit', { patch: '(patch :ops [(remove t.quick) (remove t.slow) (remove v.red)])' });
     expect(r.ok, JSON.stringify(r)).toBe(true);
     expect(shownId(h)).toBe('v.granules');
     expect(ribosomes(h)?.color).not.toBe(Red);
@@ -218,5 +267,61 @@ describe('showing a view (prism.md §4.4)', () => {
     expect(shownId(h)).toBe('v.red');
     expect(ribosomes(h)?.color).toBe(Red);
     noUnsafe(h);
+  });
+});
+
+describe('a tour (prism.md §4.4)', () => {
+  it('plays each step as a view shown, records no step, and leaves the last view shown', {
+    tags: ['medium'],
+  }, async () => {
+    const h = await open();
+    const steps = h.steps().length;
+    const runs = h.runs.length;
+    const captions: string[] = [];
+    const sub = h.model.changed.subscribe(() => {
+      const c = h.model.playing?.caption;
+      if (c !== undefined && captions.at(-1) !== c) captions.push(c);
+    });
+    const r = await h.run('mesoviewspec.tour.play', { tour: 't.quick' });
+    expect(r.ok, JSON.stringify(r)).toBe(true);
+    await h.api.tourEnded();
+    sub.unsubscribe();
+    expect(captions).toEqual(['The slice', 'Red']);
+    expect(h.runs.slice(runs)).toEqual(['mesoviewspec.tour.play', 'mesoviewspec.view', 'mesoviewspec.view']);
+    expect(h.steps().length).toBe(steps);
+    noUnsafe(h);
+    expect(shownId(h)).toBe('v.red');
+    expect(ribosomes(h)?.color).toBe(Red);
+    expect(h.model.playing).toBeUndefined();
+  });
+
+  it('Stop leaves the view shown; Undo stops a tour playing', { tags: ['medium'] }, async () => {
+    const h = await open();
+    await h.run('mesoviewspec.tour.play', { tour: 't.slow' });
+    await until(h, () => shownId(h) === 'v.cell');
+    expect(h.model.playing).toMatchObject({ tour: 't.slow', step: 1, of: 2 });
+    const stop = await h.run('mesoviewspec.tour.stop', {});
+    expect(stop.ok, JSON.stringify(stop)).toBe(true);
+    await h.api.tourEnded();
+    expect(h.model.playing).toBeUndefined();
+    expect(shownId(h)).toBe('v.cell');
+    expect((await h.run('mesoviewspec.tour.stop', {})) as { unchanged?: boolean }).toMatchObject({ unchanged: true });
+
+    await h.run('mesoviewspec.eye', { select: '(population p.ribosomes)', visible: false });
+    await h.run('mesoviewspec.tour.play', { tour: 't.slow' });
+    await until(h, () => h.model.playing?.step === 1);
+    expect((await h.v.managers.history.undo()).ok).toBe(true);
+    await h.api.tourEnded();
+    expect(h.model.playing).toBeUndefined();
+  });
+
+  it('an unknown tour is refused; none named plays the first', { tags: ['medium'] }, async () => {
+    const h = await open();
+    expect((await h.run('mesoviewspec.tour.play', { tour: 't.nowhere' })).ok).toBe(false);
+    const r = await h.run('mesoviewspec.tour.play', {});
+    expect(r.ok, JSON.stringify(r)).toBe(true);
+    expect(h.model.playing?.tour).toBe('t.granule');
+    await h.run('mesoviewspec.tour.stop', {});
+    await h.api.tourEnded();
   });
 });
