@@ -357,6 +357,17 @@ describe('New view from here, Update camera, Open with this view (prism.md §4.4
     expect(shownId(again)).toBe('v.red');
     expect(ribosomes(again)?.color).toBe(Red);
   });
+
+  it('Open with no view named opens with the view shown', { tags: ['medium'] }, async () => {
+    const h = await open();
+    await h.run('mesoviewspec.view', { view: 'v.cell' });
+    const steps = h.steps().length;
+    const r = await h.run('mesoviewspec.openWith', {});
+    expect(r.ok, JSON.stringify(r)).toBe(true);
+    expect(h.steps().length).toBe(steps + 1);
+    expect(h.model.doc!.session?.view).toBe('v.cell');
+    expect(shownId(h)).toBe('v.cell');
+  });
 });
 
 /** The labels the adapter drew for the view's annotations: by annotation id, their text. */
