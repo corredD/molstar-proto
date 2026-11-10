@@ -451,11 +451,11 @@ _atom_site.Cartn_y
 _atom_site.Cartn_z
 _atom_site.pdbx_PDB_model_num
 ATOM 1 C CA ALA A 1 1 0 0 0 1
-ATOM 2 C CA ALA B 2 1 1 0 0 1
-ATOM 3 C CA ALA A 1 2 2 0 0 1
-ATOM 4 C CA ALA C 1 1 3 0 0 1
+ATOM 2 N CA ALA B 2 1 1 0 0 1
+ATOM 3 O CA ALA A 1 2 2 0 0 1
+ATOM 4 S CA ALA C 1 1 3 0 0 1
 ATOM 5 C CA ALA A 1 1 5 0 0 2
-ATOM 6 C CA ALA B 1 1 6 0 0 2
+ATOM 6 N CA ALA B 1 1 6 0 0 2
 
 loop_
 _pdbx_struct_assembly_gen.assembly_id
@@ -569,6 +569,15 @@ describe('mmCIF particle targets', () => {
     expect(Array.from(second.positions.filter((_, i) => i % 3 === 0))).toEqual([5, 6]);
     expect(Array.from(second.chains!.offsets)).toEqual([0, 1, 2]);
     expect(second.chains!.labels).toEqual(['A', 'B']);
+  });
+
+  it("are a model's sites' elements, a site's where the sites are reordered", async () => {
+    const list = await parsePetworld(petworldCif('label_asym_id'));
+    const symbols = (sites: ReturnType<typeof sitesOf>) =>
+      Array.from(sites.elements!.index, (i) => sites.elements!.symbols[i]);
+    // model 1: rows 1, 3, 4, 2 (as the positions above)
+    expect(symbols(sitesOf(list, 0))).toEqual(['C', 'O', 'S', 'N']);
+    expect(symbols(sitesOf(list, 1))).toEqual(['C', 'N']);
   });
 
   it("are a model's chains by auth_asym_id without label_asym_id", async () => {
