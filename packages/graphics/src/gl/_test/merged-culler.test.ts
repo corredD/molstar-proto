@@ -375,4 +375,35 @@ describe('the GPU culler of a merged object', () => {
     expect(seen[1]).toBeGreaterThanOrEqual(0);
     expect(seen[1]).not.toBe(seen[0]);
   });
+
+  it('writes a member again where its GPU writer is replaced, nothing else changed', () => {
+    const builder = SpheresBuilder.create(2, 1);
+    builder.add(0, 0, 0, 0);
+    builder.add(1, 0, 0, 1);
+    const geometry = builder.getSpheres();
+    const props = PD.getDefaultValues(Spheres.Params);
+    const calls = [0, 0];
+    const cell = { ref: { value: (() => void (calls[0] += 1)) as unknown, version: 0 } };
+    const objects = [false, true].map((gpu) => {
+      const transform = createTransform(new Float32Array(8 * 16), 8, undefined, 0, 0);
+      const values = Spheres.Utils.createValuesSimple(geometry, props, ColorNames.orange, 1, transform);
+      if (gpu) Object.assign(values, { gpuInstances: cell });
+      return createRenderObject('spheres', values, Spheres.Utils.createRenderableState(props), -1);
+    });
+    const ro = createMergedRenderObject(objects, { gpuCulling: true });
+    ro.merged.sync();
+    const fake = fakeCompute(65535);
+    const culler = createMergedCuller(
+      fake.compute,
+      fake.resources,
+      ro.merged,
+      objects.map((o) => o.values as MergeableValues),
+      false,
+    );
+    expect(calls).toEqual([1, 0]);
+    // a new writer (as \`ValueCell.update\` does): its instances written, by it
+    cell.ref = { value: () => void (calls[1] += 1), version: 1 };
+    culler.sync();
+    expect(calls).toEqual([1, 1]);
+  });
 });
