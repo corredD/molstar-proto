@@ -25,7 +25,7 @@ import { MesoscaleExtension } from '../prism-viewer.js';
 import { syntheticPatchPdb } from './lipid-fixtures.js';
 
 // The middle looks' cost at the app's size (round 8 test 4, the gate's S3): the yeast cell (its organelle meshes, never
-// committed: LIPID_YEAST, the .bin or .bin.gz) wrapped as the app wraps them (Wrap all, the CHARMM-GUI patch), and the
+// committed: LIPID_YEAST, the .bin or .bin.gz; its patch LIPID_PATCH, the app's file by default) wrapped as the app wraps them (Wrap all, the CHARMM-GUI patch), and the
 // model at x600 (a sphere of 50,000 Å), each look at whole, middle and close, with a clip at the middle; 900 × 600,
 // perspective. Numbers only (LIPID_MEASURE=1): the frame times of a shared machine are not a bound.
 
@@ -63,7 +63,8 @@ describe.skipIf(!webgpu || !process.env.LIPID_MEASURE)('the middle looks measure
           patch,
           model === 'yeast'
             ? readFileSync(
-                join(import.meta.dirname, '../../../../../apps/prism-me/src/lipid-patch-charmm-gui.dat'),
+                process.env.LIPID_PATCH ??
+                  join(import.meta.dirname, '../../../../../apps/prism-me/src/lipid-patch-charmm-gui.dat'),
                 'utf8',
               )
             : syntheticPatchPdb().text,
