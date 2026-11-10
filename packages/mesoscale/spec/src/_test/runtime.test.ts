@@ -10,7 +10,7 @@ import { placementSets } from '../ir/ir.js';
 import { contentHash } from '../ir/hash.js';
 import { BytesPerPlacement, placementBytes, rotateVec } from '../ir/placements.js';
 import { planCommit } from '../runtime/adapter.js';
-import { classifyEdit, compile, updateView } from '../runtime/runtime.js';
+import { classifyEdit, compile, defaultColor, updateView } from '../runtime/runtime.js';
 import { DefaultResolvers } from '../resolvers/index.js';
 import type { Resolver } from '../runtime/resolver.js';
 import { compileExosome, countingResolvers, editPopulation, exosomeOptions, recolor } from './helpers.js';
@@ -316,5 +316,34 @@ describe('looks: emissive', () => {
       placementSets(ir).find((s) => s.key === l.set)?.typeTable[l.types[0]].population;
     expect(ir.view.looks.find((l) => pop(l) === 'p.miRNA')?.emissive).toBe(0.7);
     expect(ir.view.looks.filter((l) => l.emissive !== undefined).length).toBe(1);
+  });
+
+  it('a stated color is kept apart from the default one (prism.md §5.3): defaults are marked, stated ones are not', async () => {
+    const r = await compile(exosomeDoc(), exosomeOptions());
+    const doc = exosomeDoc();
+    const edited = {
+      ...doc,
+      session: undefined,
+      views: [
+        {
+          id: 'v.t',
+          looks: [
+            { select: '(population p.miRNA)', color: '#00ff00' },
+            { select: '(population p.lipids)', visible: false },
+          ],
+        },
+      ],
+    };
+    const ir = updateView(edited, r.ir!);
+    const pop = (l: { set: string; types: readonly number[] }) =>
+      placementSets(ir).find((s) => s.key === l.set)?.typeTable[l.types[0]].population;
+    const whole = ir.view.looks.filter((l) => !l.runs);
+    const miRNA = whole.find((l) => pop(l) === 'p.miRNA')!;
+    expect(miRNA.color).toBe(0x00ff00);
+    expect(miRNA.colorDefault).toBeUndefined();
+    // hidden, its color not stated: still the default, marked so
+    const lipids = whole.find((l) => pop(l) === 'p.lipids')!;
+    expect(lipids).toMatchObject({ visible: false, color: defaultColor('p.lipids'), colorDefault: true });
+    for (const l of whole) if (pop(l) !== 'p.miRNA') expect(l.colorDefault).toBe(true);
   });
 });
