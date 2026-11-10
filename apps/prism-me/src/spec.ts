@@ -17,6 +17,7 @@ import { webStore } from '@molstar/prism-viewer/persist/stores';
 import type { PrismViewerSpec } from '@molstar/prism-viewer/spec';
 import { FullPrismViewerSpec } from '@molstar/prism-viewer-app/full-spec';
 import { optionsFromUrl } from '@molstar/prism-viewer-app/url';
+import { MesoViewSpecStreaming } from '@molstar/meso-molstar/streaming-settings';
 import { StageSkill } from '@molstar/stage-tools-extension/prism-viewer';
 import { MesoscaleExplorerExtensions } from './extensions.js';
 import { withZoomColorsAtLoad } from './formats.js';
@@ -38,6 +39,9 @@ export function createMesoscaleExplorerSpec(search: string): PrismViewerSpec {
     plugin: {
       ...base.plugin,
       config: [...(base.plugin.config ?? []), [PluginConfig.Particles.ShowOrientations, true]],
+      // A streamed document's budget, a viewer setting (Settings › Behaviors; packages/mesoscale/_spec/prism.md §9):
+      // eager, so every checkpoint holds it (the MesoViewSpec chunk is lazy)
+      behaviors: [...base.plugin.behaviors, PluginSpec.Behavior(MesoViewSpecStreaming)],
     },
     // cellPACK and PetWorld open with colors that follow the zoom (_spec/ui.md §4 Look; Ludo, 2026-11-04)
     extensions: [...withZoomColorsAtLoad(base.extensions ?? []), ...MesoscaleExplorerExtensions],

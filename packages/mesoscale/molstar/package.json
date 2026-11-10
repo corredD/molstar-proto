@@ -19,6 +19,11 @@
       "types": "./lib/prism-viewer.d.ts",
       "import": "./lib/prism-viewer.js"
     },
+    "./streaming-settings": {
+      "molstar-src": "./src/streaming-settings.ts",
+      "types": "./lib/streaming-settings.d.ts",
+      "import": "./lib/streaming-settings.js"
+    },
     "./_test/*": null,
     "./_stories/*": null
   },
