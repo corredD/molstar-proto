@@ -128,6 +128,23 @@ describe('a membrane’s parts coloured from their meshes (round 9)', () => {
     expect(v.api.mesoscale!.graphicsState(sphere.changed!.nodes![0]).value?.meshColors).toBeUndefined();
   });
 
+  // the state fills a param left out with its default (`resolveParams`, a session's too): the operations' raw reads of
+  // `meshColors` agree with the representation's
+  it('reads a membrane saved before round 9 (no meshColors) as on, as it draws', async () => {
+    const { v, membrane, meshColor, params } = await wrapped();
+    const b = v.plugin.state.data.build();
+    b.to(membrane).update((p: Record<string, unknown>) => {
+      const { meshColors: _, ...old } = p;
+      return old;
+    });
+    await b.commit();
+    expect(params().meshColors).toBe(true);
+    expect(v.api.mesoscale!.graphicsState(membrane).value?.meshColors).toBe(true);
+    expectOk(await v.api.run('mesoscale.style', { particles: membrane, parts: 'VAC', color: 'tomato' }));
+    expect(meshColor(1)).toBe(0xff6347);
+    expect(params().partColors).toEqual({});
+  });
+
   it('a category’s theme over a membrane and all its meshes colours the meshes, not the membrane twice', async () => {
     const { v, meshes, membrane, meshColor, params, tints } = await wrapped();
     const old = params();
