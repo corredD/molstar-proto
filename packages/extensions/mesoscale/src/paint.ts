@@ -47,15 +47,26 @@ export interface PaintStroke {
   readonly seed?: number;
 }
 
+/** The unit's own axis that follows a fibre's path (Round 4): `auto`, its fibres' axis, else its principal axis */
+export const FiberAxes = ['auto', 'x', 'y', 'z'] as const;
+export type FiberAxis = (typeof FiberAxes)[number];
+
 /**
  * How a brush's painted fibres are made (Round 3; progress/2026-11-08-paint.md): a point every `rise` (Å) along the
- * path, each turned about the fibre by `twist` (°) from the one before, plus a random amount within ±`jitter` (°)
+ * path, each turned about the fibre by `twist` (°) from the one before, plus a random amount within ±`jitter` (°).
+ * Round 4: the unit's `axis` along the path (`auto` without), and each point moved `offset` (Å, 0 without) along a
+ * perpendicular of that axis, turned with the unit (`fiberOffsetDirection`)
  */
 export interface FiberSettings {
   readonly rise: number;
   readonly twist: number;
   readonly jitter: number;
+  readonly axis?: FiberAxis;
+  readonly offset?: number;
 }
+
+/** A brush's settings in effect: every one set */
+export type FiberSettingsIn = Required<FiberSettings>;
 
 /** A brush's settings by its id (`brushIdOf`), as `ParticleListPainted` keeps them */
 export type FiberSettingsMap = Readonly<Record<string, FiberSettings>>;
@@ -82,12 +93,12 @@ export function fiberSettingsOf(
   id: number,
   target: number,
   given?: FiberSettingsMap,
-): FiberSettings {
+): FiberSettingsIn {
   const set = given?.[id];
-  if (set) return set;
+  if (set) return { axis: 'auto', offset: 0, ...set };
   const c = fiberConventionOf(list, id);
-  if (c && c.step > 0) return { rise: c.step, twist: c.twist, jitter: 0 };
-  return { rise: 2 * targetRadius(list, target) || 10, twist: 0, jitter: 0 };
+  if (c && c.step > 0) return { rise: c.step, twist: c.twist, jitter: 0, axis: 'auto', offset: 0 };
+  return { rise: 2 * targetRadius(list, target) || 10, twist: 0, jitter: 0, axis: 'auto', offset: 0 };
 }
 
 /** Points every `step` along a path (x, y, z each), by arc length from its first point; the path itself for no step */
@@ -117,15 +128,54 @@ export function resamplePath(path: ArrayLike<number>, step: number): number[] {
   return out;
 }
 
-/** A fibre stroke's points and their orientations, made from its path by the settings about the axis */
+const UnitAxes = { x: Vec3.create(1, 0, 0), y: Vec3.create(0, 1, 0), z: Vec3.create(0, 0, 1) } as const;
+
+/**
+ * The way a fibre's points are moved by its offset, in the unit's frame (Round 4): a perpendicular of its axis that
+ * follows the path; x's is y, y's z, z's x; another axis's (`auto`), the one of the three least along it, made
+ * perpendicular
+ */
+export function fiberOffsetDirection(out: Vec3, axis: FiberAxis, along: Vec3): Vec3 {
+  if (axis === 'x') return Vec3.copy(out, UnitAxes.y);
+  if (axis === 'y') return Vec3.copy(out, UnitAxes.z);
+  if (axis === 'z') return Vec3.copy(out, UnitAxes.x);
+  const a = Vec3.normalize(Vec3(), along);
+  const ax = Math.abs(a[0]);
+  const ay = Math.abs(a[1]);
+  const az = Math.abs(a[2]);
+  const e = ax <= ay && ax <= az ? UnitAxes.x : ay <= az ? UnitAxes.y : UnitAxes.z;
+  Vec3.scaleAndAdd(out, e, a, -Vec3.dot(e, a));
+  return Vec3.normalize(out, out);
+}
+
+/**
+ * A fibre stroke's points and their orientations, made from its path by the settings: the unit's axis along the path
+ * (the settings' own, else `axis`, the brush's), each point then moved by the offset (`fiberOffsetDirection`, turned)
+ */
 export function makeFiber(
   path: ArrayLike<number>,
   settings: FiberSettings,
   axis: Vec3,
   seed: number,
 ): { positions: number[]; rotations: number[] } {
+  const kind = settings.axis ?? 'auto';
+  const along = kind === 'auto' ? axis : UnitAxes[kind];
   const positions = resamplePath(path, settings.rise);
-  return { positions, rotations: fiberRotations(positions, { axis, ...settings }, seed) };
+  const rotations = fiberRotations(positions, { axis: along, twist: settings.twist, jitter: settings.jitter }, seed);
+  const offset = settings.offset ?? 0;
+  if (offset) {
+    const dir = fiberOffsetDirection(Vec3(), kind, along);
+    const q = Quat();
+    const d = Vec3();
+    for (let i = 0; i < positions.length / 3; ++i) {
+      Quat.set(q, rotations[i * 4], rotations[i * 4 + 1], rotations[i * 4 + 2], rotations[i * 4 + 3]);
+      Vec3.transformQuat(d, dir, q);
+      positions[i * 3] += offset * d[0];
+      positions[i * 3 + 1] += offset * d[1];
+      positions[i * 3 + 2] += offset * d[2];
+    }
+  }
+  return { positions, rotations };
 }
 
 /**

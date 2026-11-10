@@ -6,7 +6,7 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import { Button, Choices, Icon, Show, Slider } from '@molstar/prism-ui';
+import { Button, Choices, Icon, Select, type SelectOption, Show, Slider } from '@molstar/prism-ui';
 import { mapState } from '@molstar/prism-ui/reactive/map-state';
 import type { ReadonlyState } from '@molstar/prism-ui/reactive/readonly-state';
 import { classes } from './_generated/controls.module.css.js';
@@ -320,7 +320,8 @@ export function PaintBrush(props: { area: MesoscaleApi; particles: string; entit
 /**
  * An entity's fibre settings (`mesoscale.fiber`; progress/2026-11-08-paint.md, Round 3): its painted fibres' rise (Å a
  * point along the path), twist (° a point) and jitter (± ° a point, random); a change makes every painted fibre of the
- * entity again, one step (a slider once released). A DNA: 3.4 Å, 34.3°, 0; an RNA: its rise, jitter 180.
+ * entity again, one step (a slider once released). A DNA: 3.4 Å, 34.3°, 0; an RNA: its rise, jitter 180. Round 4: the
+ * unit's axis along the path (a pull-down) and its offset off the path, along a perpendicular of that axis.
  */
 export function FiberSettings(props: { area: MesoscaleApi; particles: string; entity: number }) {
   const fiber = props.area.fiberState(props.particles, props.entity);
@@ -375,6 +376,38 @@ export function FiberSettings(props: { area: MesoscaleApi; particles: string; en
           onCommit={(v) => run({ jitter: v })}
         />,
       )}
+      {line(
+        'Axis',
+        "The unit's own axis that follows the path (Auto: its fibres', else its longest)",
+        <Select
+          size="sm"
+          over
+          aria-label="Fibre axis along the path"
+          options={FiberAxisOptions}
+          value={mapState(fiber, (f) => f?.axis ?? 'auto')}
+          onChange={(axis) => run({ axis })}
+        />,
+      )}
+      {line(
+        'Offset',
+        'Off the path, along a perpendicular of the axis that turns with the unit (with a twist: a helix)',
+        <Slider
+          aria-label="Fibre offset off the path, Å"
+          value={mapState(fiber, (f) => f?.offset)}
+          min={-50}
+          max={50}
+          step={0.1}
+          unit="Å"
+          onCommit={(v) => run({ offset: v })}
+        />,
+      )}
     </div>
   );
 }
+
+const FiberAxisOptions: readonly SelectOption[] = [
+  ['auto', 'Auto'],
+  ['x', 'X'],
+  ['y', 'Y'],
+  ['z', 'Z'],
+];

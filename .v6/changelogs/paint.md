@@ -21,3 +21,8 @@
   within ±Jitter (°, seeded). The settings are in the entity's Fibre section (and the Paint section);
   `mesoscale.fiber` sets them, one step, and every painted fibre of the entity is made again (the file's fibres stay).
   Default: the entity's own fibres' step and twist. A DNA: 3.4 Å, 34.3°, 0; an RNA: its rise, Jitter 180.
+- Fibres by an axis and an offset (round 4): the entity's Fibre settings choose the unit's own axis along the path
+  (Auto, X, Y, Z; Auto: its fibres', else its principal axis) and an Offset (Å) off the path, along a perpendicular of
+  that axis that turns with the unit (with a twist: a helix about the path). `mesoscale.fiber` takes `axis`, `offset`.
+- The copy under the pointer is drawn in the scene (round 4), depth-tested: seen behind or inside what is in front of
+  it, where a copy at a depth goes; the wheel keeps that depth inside the camera's near and far planes.

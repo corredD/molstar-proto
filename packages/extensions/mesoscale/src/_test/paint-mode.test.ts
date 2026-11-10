@@ -22,7 +22,10 @@ afterEach(() => {
   document.body.innerHTML = '';
 });
 
-function setup(pending = 0, options: { upright?: boolean; changeOnPaint?: boolean; fiberStep?: number } = {}) {
+function setup(
+  pending = 0,
+  options: { upright?: boolean; changeOnPaint?: boolean; fiberStep?: number; depthRange?: [number, number] } = {},
+) {
   vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null);
   const root = document.createElement('div');
   const canvas = document.createElement('canvas');
@@ -59,6 +62,7 @@ function setup(pending = 0, options: { upright?: boolean; changeOnPaint?: boolea
       return true;
     },
     focus: () => 100,
+    ...(options.depthRange ? { depthRange: () => options.depthRange! } : {}),
     refine: (p) => {
       refined.push(p.position[0]);
     },
@@ -266,6 +270,24 @@ describe('paint mode', () => {
     el.dispatchEvent(pointer('pointerdown', { x: 20, y: 10 }));
     el.dispatchEvent(pointer('pointerup', { x: 20, y: 10 }));
     expect(strokes[2].positions[2]).toBe(95);
+    mode.stop();
+  });
+
+  it("keeps the depth in the camera's drawn range (Round 4): the copy never past its near or far plane", () => {
+    // the camera draws 60 to 130 Å from the eye; a copy's radius 5
+    const { mode, layer, strokes } = setup(0, { upright: false, depthRange: [60, 130] });
+    mode.start(brush);
+    const el = layer();
+    const at = (x: number) => {
+      el.dispatchEvent(pointer('pointerdown', { x, y: 10 }));
+      el.dispatchEvent(pointer('pointerup', { x, y: 10 }));
+      return strokes[strokes.length - 1].positions[2];
+    };
+    el.dispatchEvent(new WheelEvent('wheel', { deltaY: -10000, bubbles: true, cancelable: true }));
+    // 65 Å from the eye at z = 100
+    expect(at(10)).toBe(35);
+    el.dispatchEvent(new WheelEvent('wheel', { deltaY: 10000, bubbles: true, cancelable: true }));
+    expect(at(20)).toBe(-25);
     mode.stop();
   });
 

@@ -70,6 +70,11 @@ export interface PaintHost {
   ray(x: number, y: number, origin: Vec3, direction: Vec3): boolean;
   /** The distance from the camera to its focus (its target), Å: where a copy at a depth starts */
   focus(): number;
+  /**
+   * The distances from the eye the camera draws between (its near and far planes, Å), when known (Round 4): a copy at a
+   * depth is kept between them, where it and what it paints are seen
+   */
+  depthRange?(): readonly [near: number, far: number] | undefined;
   /** The membrane at a point when its pick is a membrane particle's (`membraneFrame`); the point as it is else */
   refine(point: SurfacePoint): void;
   /** Whether the brush stands upright in a membrane (a membrane protein): only its copies go on the mid-plane */
@@ -221,6 +226,12 @@ function paintLayer(mode: PaintMode, host: PaintHost, canvas: HTMLElement, brush
   let where: PaintPlace = placeOf(mode.settings.value, upright);
   /** How far along the pointer's ray a copy at a depth goes, Å (Round 2, Decided 2): the camera's focus at the start */
   let depth = Math.max(host.focus(), radius);
+  /** A depth kept a copy's radius inside the camera's drawn range (Round 4), when it is wider than a copy */
+  const inRange = (d: number) => {
+    const range = host.depthRange?.();
+    if (!range || range[1] - range[0] <= 2 * radius) return d;
+    return Math.min(range[1] - radius, Math.max(range[0] + radius, d));
+  };
   /** The brush's fibres' rise (Round 3): undefined when it makes none; read again at each stroke's start */
   let fiberStep = host.fiberStep(brush);
   /** Whether the stroke is a new fibre (the settings' Fibre, or the brush's own: `auto`, when it has fibres) */
@@ -511,7 +522,7 @@ function paintLayer(mode: PaintMode, host: PaintHost, canvas: HTMLElement, brush
       if (e.altKey) return;
       e.preventDefault();
       const delta = e.deltaMode === 1 ? e.deltaY * 33 : e.deltaMode === 2 ? e.deltaY * 100 : e.deltaY;
-      depth = Math.max(radius, depth + (delta / 100) * 2 * radius);
+      depth = inRange(Math.max(radius, depth + (delta / 100) * 2 * radius));
       hintNext.request();
       follow.request();
     },

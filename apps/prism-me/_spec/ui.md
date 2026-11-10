@@ -235,7 +235,10 @@ on a tree row (its right-click or its ⋯), the same menu, in this order:
   drawn, each point turned as its fibres are: their axis along the way, their twist a point); On or Off to override. A
   fibre's points are made from its path by the entity's **Fibre** settings (round 3): Rise (Å a point), Twist (° a
   point), Jitter (± ° a point, random); in the entity's own Fibre section and in Paint. A change makes every painted
-  fibre of the entity again, one step; the file's fibres stay. Default: the entity's fibres' step and twist.
+  fibre of the entity again, one step; the file's fibres stay. Default: the entity's fibres' step and twist. Round 4:
+  Axis (Auto, X, Y, Z: the unit's own axis along the path) and Offset (Å off the path, along a perpendicular of that
+  axis, turned with the unit). The copy under the pointer is drawn in the scene, depth-tested (round 4); the wheel's
+  depth stays inside the camera's near and far planes.
 - **Remove** (an object: with its file and labels).
 
 On a clip or a label (its guide in 3D, or its row): **Move**, **Rotate**, (a clip: **Size**, **Flip**; a label: **Edit

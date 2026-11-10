@@ -13,6 +13,7 @@ import {
   fiberConventionOf,
   fiberRotations,
   fiberSettingsOf,
+  makeFiber,
   resamplePath,
   isFiberBrush,
   type PaintStroke,
@@ -329,11 +330,67 @@ describe('fibres by rise and twist (Round 3)', () => {
     expect(own.twist).toBeCloseTo(30, 3);
     expect(own.jitter).toBe(0);
     const given = { rise: 3.4, twist: 34.3, jitter: 0 };
-    expect(fiberSettingsOf(fibered, 2, 2, { 2: given })).toBe(given);
+    expect(fiberSettingsOf(fibered, 2, 2, { 2: given })).toEqual({ ...given, axis: 'auto', offset: 0 });
     const none = fiberSettingsOf(list, 1, 1);
     expect(none.twist).toBe(0);
     expect(none.rise).toBeGreaterThan(0);
     // a stroke's brush: its entity where the list has entities, else its target
     expect(brushIdOf({ ...list, entityInfo: new Map() }, { entity: 5, target: 1 })).toBe(1);
+  });
+});
+
+describe('fibres by an axis and an offset (Round 4)', () => {
+  const z = Vec3.create(0, 0, 1);
+  /** A straight path along world x, 40 Å */
+  const line = [0, 0, 0, 40, 0, 0];
+  const point = (p: ArrayLike<number>, i: number) => Vec3.create(p[i * 3], p[i * 3 + 1], p[i * 3 + 2]);
+
+  it("puts the unit's chosen axis along the path, whatever the entity's own", () => {
+    for (const [axis, local] of [
+      ['x', Vec3.create(1, 0, 0)],
+      ['y', Vec3.create(0, 1, 0)],
+      ['z', z],
+    ] as const) {
+      const f = makeFiber(line, { rise: 10, twist: 25, jitter: 0, axis, offset: 0 }, z, 0);
+      for (let i = 0; i < 5; ++i) {
+        const along = axisOf(f.rotations, i, local);
+        expect(along[0]).toBeCloseTo(1, 5);
+      }
+    }
+  });
+
+  it('moves each point the offset off the path, along a perpendicular of the axis turned with it (a helix)', () => {
+    // a half turn a point: the offsets of two points in a row opposite
+    const f = makeFiber(line, { rise: 10, twist: 180, jitter: 0, axis: 'z', offset: 3 }, z, 0);
+    expect(f.positions.length / 3).toBe(5);
+    for (let i = 0; i < 5; ++i) {
+      const p = point(f.positions, i);
+      // still a rise along the path, 3 Å off it
+      expect(p[0]).toBeCloseTo(i * 10, 5);
+      expect(Math.hypot(p[1], p[2])).toBeCloseTo(3, 5);
+      // the unit's x (z's perpendicular), turned: the way it is moved
+      const x = axisOf(f.rotations, i, Vec3.create(1, 0, 0));
+      expect(p[1]).toBeCloseTo(3 * x[1], 5);
+      expect(p[2]).toBeCloseTo(3 * x[2], 5);
+    }
+    const p0 = point(f.positions, 0);
+    const p1 = point(f.positions, 1);
+    expect(p1[1]).toBeCloseTo(-p0[1], 5);
+    expect(p1[2]).toBeCloseTo(-p0[2], 5);
+    // a quarter turn: perpendicular offsets
+    const q = makeFiber(line, { rise: 10, twist: 90, jitter: 0, axis: 'z', offset: 3 }, z, 0);
+    const a = point(q.positions, 0);
+    const b = point(q.positions, 1);
+    expect(a[1] * b[1] + a[2] * b[2]).toBeCloseTo(0, 5);
+  });
+
+  it("reads Round 3's settings (no axis, no offset) as auto and none", () => {
+    const old = makeFiber(line, { rise: 10, twist: 30, jitter: 5 }, z, 9);
+    expect(makeFiber(line, { rise: 10, twist: 30, jitter: 5, axis: 'auto', offset: 0 }, z, 9)).toEqual(old);
+    expect(Array.from(old.positions)).toEqual([0, 0, 0, 10, 0, 0, 20, 0, 0, 30, 0, 0, 40, 0, 0]);
+    const list = cellpackLike();
+    const s = fiberSettingsOf(list, 1, 1);
+    expect(s.axis).toBe('auto');
+    expect(s.offset).toBe(0);
   });
 });

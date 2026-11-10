@@ -108,6 +108,12 @@ export function pluginPaintHost(
       const state = plugin.canvas3d?.camera.state;
       return state ? Vec3.distance(state.position, state.target) : 100;
     },
+    depthRange() {
+      // the camera's planes in its scaled units (`Camera.scale`), as its rays' (`ray`)
+      const camera = plugin.canvas3d?.camera;
+      if (!camera || !(camera.far > camera.near)) return undefined;
+      return [camera.near / camera.scale, camera.far / camera.scale];
+    },
     refine(point) {
       const loci = plugin.canvas3d?.getLoci(point.id as PickingId).loci;
       if (!loci || !Particle.isLoci(loci) || OrderedSet.size(loci.indices) !== 1) return;

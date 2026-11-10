@@ -39,7 +39,9 @@ import {
   brushIdOf,
   decoratorUnder,
   isFiberBrush,
+  FiberAxes,
   type FiberSettings,
+  type FiberSettingsIn,
   type FiberSettingsMap,
   fiberSettingsOf,
   type PaintOrient,
@@ -238,7 +240,7 @@ export class MesoscaleApi extends ApiArea {
   fiberState(
     particles: string,
     entity: number,
-  ): ReadonlyState<(FiberSettings & { readonly fibers: boolean }) | undefined> {
+  ): ReadonlyState<(FiberSettingsIn & { readonly fibers: boolean }) | undefined> {
     const plugin = this.ctx.plugin;
     return watchedState(
       () => fiberInfo(plugin.state.data, { plugin }, particles, entity),
@@ -746,8 +748,9 @@ export class MesoscaleApi extends ApiArea {
   /**
    * An entity's fibre settings (progress/2026-11-08-paint.md, Round 3): its painted fibres' points every rise along
    * their paths, each turned by the twist from the one before, plus a random amount within ±jitter (a DNA: 3.4 Å and
-   * 34.3° a base pair, no jitter; an RNA: its rise, jitter 180). Every painted fibre of the entity is made again; the
-   * fibres the file has stay as they are. One step.
+   * 34.3° a base pair, no jitter; an RNA: its rise, jitter 180). Round 4: the unit's axis along the path and an offset
+   * off it, along a perpendicular of that axis turned with the unit (a helix about the path with a twist). Every
+   * painted fibre of the entity is made again; the fibres the file has stay as they are. One step.
    */
   readonly fiber = this.operation({
     id: 'mesoscale.fiber',
@@ -761,13 +764,31 @@ export class MesoscaleApi extends ApiArea {
       jitter: OptionalParam(
         PD.Numeric(0, { min: 0, max: 180, step: 1 }, { description: 'A random turn within ± this a point, °' }),
       ),
+      axis: OptionalParam(
+        PD.Select('auto', PD.arrayToOptions(FiberAxes), {
+          description: "The unit's own axis along the path (auto: its fibres', else its principal axis)",
+        }),
+      ),
+      offset: OptionalParam(
+        PD.Numeric(
+          0,
+          { min: -1000, max: 1000, step: 0.1 },
+          { description: 'Off the path, along a perpendicular of the axis, Å' },
+        ),
+      ),
       particles: ListParam(),
     },
     async run(values, ctx) {
       const { entity, particles } = values;
       const given = values as typeof values & Partial<FiberSettings>;
-      if (given.rise === undefined && given.twist === undefined && given.jitter === undefined) {
-        return ApiResult.fail('invalid', 'Nothing to change.', 'Give a rise, a twist or a jitter.');
+      if (
+        given.rise === undefined &&
+        given.twist === undefined &&
+        given.jitter === undefined &&
+        given.axis === undefined &&
+        given.offset === undefined
+      ) {
+        return ApiResult.fail('invalid', 'Nothing to change.', 'Give a rise, a twist, a jitter, an axis or an offset.');
       }
       if (given.rise !== undefined && !(given.rise > 0)) return ApiResult.fail('invalid', 'The rise is above 0 Å.');
       const l = oneList(ctx, particles || undefined);
@@ -783,18 +804,20 @@ export class MesoscaleApi extends ApiArea {
       const state = ctx.plugin.state.data;
       const old = paintedFibers(state, l.cell.transform.ref);
       const now = fiberSettingsOf(data, id, brush.target, old);
-      const next: FiberSettings = {
+      const next: FiberSettingsIn = {
         rise: given.rise ?? now.rise,
         twist: given.twist ?? now.twist,
         jitter: Math.min(180, Math.max(0, given.jitter ?? now.jitter)),
+        axis: given.axis ?? now.axis,
+        offset: given.offset ?? now.offset,
       };
-      if (next.rise === now.rise && next.twist === now.twist && next.jitter === now.jitter && old?.[id]) {
-        return ApiResult.already('The fibres are already so.');
-      }
+      const same = (Object.keys(next) as (keyof FiberSettingsIn)[]).every((k) => next[k] === now[k]);
+      if (same && old?.[id]) return ApiResult.already('The fibres are already so.');
       await updatePainted(state, l, (p) => ({ ...p, fibers: { ...p.fibers, [id]: next } }));
       const name = mesoEntities(dataOf(l) ?? data).find((e) => e.id === ids[0])?.name ?? entity;
       return ApiResult.ok(
-        `${name}'s fibres: ${round1(next.rise)} Å a point, ${round1(next.twist)}°${next.jitter ? ` ± ${round1(next.jitter)}°` : ''}.`,
+        `${name}'s fibres: ${round1(next.rise)} Å a point, ${round1(next.twist)}°${next.jitter ? ` ± ${round1(next.jitter)}°` : ''}` +
+          `, its ${next.axis} axis along${next.offset ? `, ${round1(next.offset)} Å off` : ''}.`,
         { nodes: [l.cell.transform.ref] },
         { value: next },
       );

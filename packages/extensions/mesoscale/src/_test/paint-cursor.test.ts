@@ -20,7 +20,7 @@ import { MesoscaleExtension } from '../prism-viewer.js';
 import { setTestTargetStructure, TestTargetList } from './fixtures.js';
 
 // The copy under the pointer (progress/2026-11-08-paint.md, Round 2) on a headless viewer: one copy of the brush's
-// target drawn outside the state, in the overlay layer, never picked, moved by its transform (turned as the stroke's
+// target drawn outside the state, in the scene layer (depth-tested, Round 4), never picked, moved by its transform (turned as the stroke's
 // first copy of the same seed), gone with the mode.
 
 const viewers: PrismViewer[] = [];
@@ -47,7 +47,7 @@ async function viewer() {
 }
 
 describe('the copy under the pointer', () => {
-  it('is one copy of the brush, overlay, not picked, moved by its transform, hidden and gone with the mode', async () => {
+  it('is one copy of the brush, in the scene (depth-tested), not picked, moved by its transform, hidden and gone with the mode', async () => {
     const v = await viewer();
     // the headless viewer draws nothing: a canvas that keeps what is added (`VisualSetCanvas`)
     const added: Representation<any, any, any>[] = [];
@@ -69,7 +69,7 @@ describe('the copy under the pointer', () => {
     await vi.waitFor(() => expect(added.length).toBe(1));
     const repr = added[0];
     expect(repr.state.pickable).toBe(false);
-    expect(repr.state.layer).toBe('overlay');
+    expect(repr.state.layer).toBe('scene');
     expect(repr.state.visible).toBe(true);
     expect(Mat4.getTranslation(Vec3(), repr.state.transform)).toEqual(Vec3.create(1, 2, 3));
     // a surface brush, Turn auto: +z along the normal, spun by the seed as the stroke's first copy

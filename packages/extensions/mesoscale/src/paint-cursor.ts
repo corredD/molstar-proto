@@ -23,8 +23,8 @@ import { type PaintOrient, paintRotation, principalAxisOf } from './paint.js';
 // The copy under the pointer (progress/2026-11-08-paint.md, Round 2): one copy of the brush drawn before it is painted,
 // where a click would put it and turned as it would be (the stroke's seed). A representation outside the state (a
 // `VisualSet`) of a one-particle list of the brush's target, with the list's own representation and its entity's color;
-// in the overlay layer (drawn over the scene, out of its bounds: the camera's planes do not follow it), never picked
-// (the surface under it is read through it). Moved by its transform, not rebuilt.
+// in the scene layer (Round 4: depth-tested against the scene, where a copy at a depth goes is seen among the others),
+// never picked (the surface under it is read through it). Moved by its transform, not rebuilt.
 
 const _m = Mat4();
 const _q = Quat();
@@ -102,7 +102,7 @@ export function pluginPaintCursor(
       props: params.type.params,
       colorTheme: color !== undefined ? { name: 'uniform', params: { value: color } } : params.colorTheme,
       sizeTheme: params.sizeTheme,
-      state: { pickable: false, layer: 'overlay', visible: false },
+      state: { pickable: false, layer: 'scene', visible: false },
     })
     .then((built) => {
       if (gone) return;
