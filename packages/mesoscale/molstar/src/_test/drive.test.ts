@@ -219,6 +219,23 @@ describe('the other operations on a document list (prism.md §5.1)', () => {
     expect(styleLooks(await saved(h))).toEqual(styleLooks(a));
   });
 
+  it('importColors: by the entity id and by the bare name (ALB, catalase), as the hint lists them', { tags: ['medium'] }, async () => {
+    const h = await open();
+    const { ref } = listOf(h, 'p.catalase');
+    const r = await h.run('mesoscale.importColors', {
+      particles: ref,
+      json: JSON.stringify({ ALB: '#123456', 'e.TF': '#234567', catalase: '#345678' }),
+    });
+    expect(r.ok, JSON.stringify(r)).toBe(true);
+    expect(styleLooks(await saved(h))).toEqual(
+      expect.arrayContaining([
+        { id: expect.any(String), select: '(population p.ALB)', color: '#123456' },
+        { id: expect.any(String), select: '(population p.TF)', color: '#234567' },
+        { id: expect.any(String), select: '(population p.catalase)', color: '#345678' },
+      ]),
+    );
+  });
+
   it('importColors: one patch, by the populations’ labels', { tags: ['medium'] }, async () => {
     const h = await open();
     const { ref, key, type } = listOf(h, 'p.catalase');
