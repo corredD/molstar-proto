@@ -56,6 +56,7 @@ export function relaxPatch(doc: MesoViewSpecDoc, model: string): ModelEdit {
   const m = models.find((x) => x.id === model);
   if (!m) return { refused: `There is no model ${model}.` };
   if (m.kind === 'precomputed') return { refused: `${m.id} is precomputed: there is nothing to relax.` };
+  if (m.method === 'meso.relax') return { refused: `${m.id} is already a relax stage.` };
   const by = models.find((x) => x.refines === model);
   if (by) return { refused: `${m.id} is already refined by ${by.id}.` };
   const taken = new Set(models.map((x) => x.id));

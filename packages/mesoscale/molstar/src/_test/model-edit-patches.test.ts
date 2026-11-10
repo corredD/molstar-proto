@@ -74,13 +74,18 @@ describe('relaxPatch', () => {
     expect(applied.doc.models?.at(-1)?.id).toBe('m.relax');
   });
 
-  it('takes the next id when m.relax is there, and refuses a model that has a refiner already', () => {
+  it('refuses a model that has a refiner already, and a relax stage itself (a second would only repeat it)', () => {
     const had = applyPatch(doc, relaxPatch(doc, 'm.recipe').patch!).doc;
     expect(relaxPatch(had, 'm.recipe').refused).toMatch(/already.*m\.relax/);
-    // the stage itself can be refined further: its id is the next free
-    const second = relaxPatch(had, 'm.relax');
-    expect(second.patch?.ops[0]).toMatchObject({ node: { id: 'm.relax.2', refines: 'm.relax' } });
-    expect(applyPatch(had, second.patch!).issues).toEqual([]);
+    expect(relaxPatch(had, 'm.relax').refused).toMatch(/already a relax stage/);
+  });
+
+  it('takes the next id when m.relax is used by another model', () => {
+    const taken = {
+      ...doc,
+      models: [...(doc.models ?? []), { id: 'm.relax', kind: 'procedural', method: 'meso.pack', populations: [] }],
+    } as unknown as MesoViewSpecDoc;
+    expect(relaxPatch(taken, 'm.recipe').patch?.ops[0]).toMatchObject({ node: { id: 'm.relax.2' } });
   });
 
   it('refuses a model that is not there, and one a relax cannot refine (precomputed)', () => {
