@@ -358,6 +358,29 @@ describe('what the agent’s calls reach: an address it was not given asks first
     agent.dispose();
   });
 
+  it('edit_mesoviewspec does not ask for a uri beside the document: the chunk’s definition judges, not the stub’s', {
+    tags: ['medium'],
+  }, async () => {
+    const at = 'https://docs.example/exosome.mesoviewspec.json';
+    stubFetch({ [at]: JSON.stringify(exosomeDoc()) });
+    const { v } = await viewer(false);
+    const person = v.api.as({ kind: 'person' });
+    expect((await person.run('mesoviewspec.open', { url: at, files: files() })).ok).toBe(true);
+    const { agent } = agentOn(v, [
+      { calls: [disclose] },
+      { calls: [call('edit_mesoviewspec', { patch: setUri('other/picks.star') })] },
+      { calls: [call('edit_mesoviewspec', { patch: setUri('fixture://catalase_picks.star') })] },
+      { text: 'Done.' },
+    ]);
+    const r = await agent.turn('use the other picks');
+    expect(r.status).toBe('completed');
+    expect(r.tools.slice(1).map((t) => [t.name, t.status])).toEqual([
+      ['edit_mesoviewspec', 'succeeded'],
+      ['edit_mesoviewspec', 'succeeded'],
+    ]);
+    agent.dispose();
+  });
+
   it('edit_mesoviewspec does not ask for a patch that names no address', {
     tags: ['medium'],
   }, async () => {
