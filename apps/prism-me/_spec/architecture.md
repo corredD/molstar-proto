@@ -62,7 +62,7 @@ Prism's operations.
 | decorations, classes             | cryoet                                  | —                                                                         |
 | list and particle positions      | stage-tools (`Transform`, `Offsets`)    | cryoet (`offset`, `instance` operations)                                  |
 | motion, level of detail          | mesoscale (the representation's params) | —                                                                         |
-| painted copies (strokes)         | mesoscale (`ParticleListPaintLayer`)    | stage-tools' drag skips its representations (`drawsList`)                 |
+| painted copies (strokes)         | mesoscale (`ParticleListPainted`)       | —                                                                         |
 | slices                           | cryoet                                  | stage-tools moves plane slices with the volume                            |
 | mesh look / mesh transform       | cryoet / stage-tools                    | cryoet writes the scale too                                               |
 | labels                           | stage-tools                             | —                                                                         |
