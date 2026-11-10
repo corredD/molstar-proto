@@ -339,11 +339,17 @@ export class MesoViewSpecApi extends ApiArea {
   readonly openWith = this.operation({
     id: 'mesoviewspec.openWith',
     title: 'Open the MesoViewSpec document with this view',
-    params: { view: PD.Text('', { description: 'The id of one of the document’s views (v.cell)' }) },
+    params: {
+      view: OptionalParam(
+        PD.Text('', { description: 'The id of one of the document’s views (v.cell); none: the view shown' }),
+      ),
+    },
     run: async ({ view }, ctx) => {
       const doc = this.model.doc;
       if (!doc) return ApiResult.fail('not-found', 'No document is open.');
-      const id = view.trim();
+      // no view named: the view shown
+      const id = view?.trim() || this.model.shownId;
+      if (!id) return ApiResult.fail('not-found', 'The document has no view.', 'Make one with New view from here.');
       if (!doc.views?.some((v) => v.id === id)) return ApiResult.fail('not-found', `The document has no view '${id}'.`);
       const patch = this.model.openWithPatch(id);
       if (!patch) return ApiResult.already(`The document opens with ${id}.`);
