@@ -464,9 +464,8 @@ fn fragmentMain(in: VertexOutput, @builtin(front_facing) frontFacing: bool) -> F
             }
         #endif
         #if defined(dPatchMiddle_shells) || defined(dPatchMiddle_parallax)
-            if (middle) {
-                normal = patchNormal(frame, normal);
-            }
+            // at every px: the mips flatten it far away, so no light steps where the middle look starts
+            normal = patchNormal(frame, normal);
         #endif
         material = vec4<f32>(patchColor(frame, material.rgb), material.a);
     #endif
