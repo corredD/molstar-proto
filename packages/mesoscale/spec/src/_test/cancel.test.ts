@@ -4,12 +4,13 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { exosomeDoc } from '../examples/exosome.js';
 import { placementSets } from '../ir/ir.js';
 import { contentHash } from '../ir/hash.js';
 import { MesoPackResolver } from '../resolvers/meso-pack.js';
 import { MesoRelaxResolver } from '../resolvers/relax.js';
+import { drive, SliceMs } from '../runtime/cancel.js';
 import type { ResolveJob, ResolveOutput } from '../runtime/resolver.js';
 import { compile } from '../runtime/runtime.js';
 import { compileExosome, countingResolvers, exosomeOptions, job, setOf } from './helpers.js';
@@ -95,6 +96,32 @@ const packJob = (n: number, signal?: AbortSignal): ResolveJob => ({
     { model: 'm.pack' },
   ),
   ...(signal ? { signal } : {}),
+});
+
+describe('drive gives the event loop back without a timer', () => {
+  // A timer is clamped to 4 ms after a few nested ones, and to a second or more in a background tab: a slice yield
+  // through `setTimeout` would make a long resolution crawl. With the timers faked (none ever fires), a slice still ends.
+  const realSetTimeout = globalThis.setTimeout;
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('a generator that crosses slices resolves with no timer firing', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setImmediate', 'clearImmediate'] });
+    function* steps(): Generator<void, number, void> {
+      for (let slice = 0; slice < 3; slice++) {
+        const t0 = performance.now();
+        while (performance.now() - t0 < SliceMs + 2) {
+          // busy: past a slice
+        }
+        yield;
+      }
+      return 7;
+    }
+    const run = drive({ signal: new AbortController().signal }, steps()) as Promise<number>;
+    const hung = new Promise((resolve) => realSetTimeout(() => resolve('hung'), 2000));
+    expect(await Promise.race([run, hung])).toBe(7);
+  });
 });
 
 describe('the packers and the signal', () => {
