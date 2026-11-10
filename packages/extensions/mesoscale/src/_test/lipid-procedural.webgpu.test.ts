@@ -437,9 +437,11 @@ describe.skipIf(!webgpu)('a lipid membrane made per view (Dawn)', () => {
       };
       const a = await at('whole', whole);
       const b = await at('middle', above(20000));
-      const c = await at('close', above(300));
+      // a middle look draws lipids from 11 px, not 2: its close view nearer (round 8)
+      const closeAt = process.env.LIPID_MIDDLE === 'parallax' ? 60 : 300;
+      const c = await at('close', above(closeAt));
       const d = await at('whole again', whole);
-      const e = await at('close again', above(300));
+      const e = await at('close again', above(closeAt));
       // round 8: the middle look's range (a lipid about 2 to 11 px), with the numbers only
       if (process.env.LIPID_NUMBERS) {
         for (const h of [3000, 1500, 800]) await at(`mid ${h}`, above(h));

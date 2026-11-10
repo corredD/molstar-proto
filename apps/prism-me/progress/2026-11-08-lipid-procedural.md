@@ -1887,3 +1887,49 @@ Steps done so far (commits on me/lipid-procedural):
    with a middle look (deviation: the design relied on middlePx alone), now 0.007. UI test failed on HEAD (timed out),
    passes. Tests 5 (cut: coverage and Oklab vs coarse; parallax 0.709 vs 0.661, dE 0.028) and 6 (at rest) per look pass,
    but would pass on HEAD too (guards, not failing-first).
+
+## Round 8: built (2026-11-10, end of the builder's session; stopped after parallax, as the brief allows)
+
+**Commits after the ones above.** `6f1e0187e` the shell band (`shell-band.ts`: the tree walked for the triangles in the
+middle px, copied with renumbered regions, the cells and shifts; the same view writes nothing); test first (failed: no
+module). `412d5e98c` shells gated off: with Shells picked the far surface was discarded in [2, 22) px with no band to
+fill it (a hole); the operation refuses `middle: shells`, the Look offers Coarse and Parallax, the build draws shells as
+coarse; the atoms-only rule follows `middleOn` (it compared px values). Test first: the UI test (failed: the button was
+there). `dd8029526` and the next: the x600 flight measures `LIPID_MIDDLE` and its middle views, the parallax close view
+at 60 Å (a lipid 11 px and up only there). `c55bbd9a2` specs: ui.md (Look › Middle), features.md, the changelog, TODO.md
+(the shells' band objects).
+
+**Numbers, x600 (Dawn, M1, the flight test's view, a billion lipids, first frame of each view, ms / live lipids).**
+
+| view                         | coarse      | parallax                                  |
+| ---------------------------- | ----------- | ----------------------------------------- |
+| whole                        | 11 / 0      | 10 / 0                                    |
+| middle (20,000 Å)            | 7 / 0       | 7 / 0                                     |
+| mid 3,000 / 1,500 / 800 Å    | 6 / 0 each  | 5–6 / 0 each                              |
+| close (300 Å; parallax 60 Å) | 24 / 14,937 | 20 / 3,440 (at 300 Å: 10 / 0, the relief) |
+| close again                  | 12 / 14,937 | 7 / 3,440                                 |
+
+At 300 Å coarse draws 14.9 k lipids at 2–4 px (stride 8/64 levels), parallax none (the relief, 10 ms). Whole is within
+the noise. The yeast PM was not measured: no harness (round 6's numbers were taken in the app by hand); open, and Ludo's
+look on 1354.
+
+**Checks (a Sonnet run, then the fixes).** `npx tsc -b`, `npx tsc --noEmit -p apps/prism-me`, lint, check:workspace,
+styles:check (mesoscale, prism-me), prism-me typecheck:storybook: pass. format:check failed on this progress file
+(prettier), formatted in `c55bbd9a2`. Quick lane with Dawn: graphics 1894 passed, mesoscale 202, cryoet 138, stage-tools
+58, prism-me 208, the two patch Dawn tests 3; the known webgpu-points and webgpu-device-listener did not show. mesoscale
+test:perf pass; test:scaling 21 of 22, `color-levels.scaling.ts` killed (SIGKILL) twice at load 64–180 (other sessions):
+not confirmed, to rerun on a quiet machine.
+
+**Deviations from the design.** Shells not shipped (the band objects open: see TODO.md; the shader, `beneath` and the
+band module are in). Lipids drawn as atoms down to middlePx with a middle look (the selection keeps a triangle's lipids
+below middlePx·Keep, where the stride-8 level popped by 0.043). No `onlyMiddle` fast path: a Middle switch rebuilds the
+look (the cutters reused); its cost on yeast unmeasured. The profile normal is applied at every px (not only in the
+middle range: no light step at mergePx); no grazing scale of the gradients. `uCameraPosition`/`uCameraDir` are on the
+texture-mesh parity list too (one source). Tests 5 and 6 for parallax are guards (they pass on coarse alike), and
+parallax has no pixel control of the march yet (TODO).
+
+**Size.** Graphics 170 lines added (mesh.wgsl.ts most of it; stop was ~600). Extension 370 (shell-band.ts ~200 of it,
+the params, `setMiddle`, `lipidsPx`, operation and Look ~170). Tests ~650.
+
+**How Ludo compares on 1354.** A cut membrane (the yeast cell's Wrap all, or model_vertexcolor ×600): its properties,
+Look › Far: Both › Middle: Coarse or Parallax, and Atoms down to (11 px); fly in from far, with and without Add clip….
