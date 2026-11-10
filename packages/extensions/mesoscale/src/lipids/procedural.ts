@@ -14,8 +14,9 @@ import { insidePart, type TrianglePart, triangleTree } from './triangle-tree.js'
 // a member. A unit is a small triangle whole (its counts per member from the count pass, read back at the wrap) or a
 // cell of a large one (its slots its kind's counts, `kindCounts`: a cell on the triangle's edge writes the lipids it does
 // not own dead), so each member's live count and each unit's first slot are exact on the CPU without anything O(lipids):
-// the GPU only writes the hits. Pure; a view allocates nothing of its own (`lipid-selection.quick.ts`; its keys sorted by
-// `sortKeys`, not core's `sortArrayRange`), timed by its caller (a clock's reading is a heap number).
+// the GPU only writes the hits. Pure; a view measures 15.6 B (`lipid-selection.quick.ts`, the case's step with it; its
+// keys sorted by `sortKeys`, not core's `sortArrayRange`: 95.6 B before), timed by its caller (a clock's reading is a
+// heap number).
 
 /** How the far membrane looks: the lipids' sphere levels, the textured surface, or both (the levels, then the surface) */
 export type MembraneFar = 'spheres' | 'texture' | 'both';
