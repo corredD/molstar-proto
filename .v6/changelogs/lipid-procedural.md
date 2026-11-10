@@ -55,3 +55,9 @@
   within two lipid sizes of the cut are taken as Coarse takes them (the cut band, Cut lipids down to), so a
   cross-section shows lipids. A switch of Middle or Atoms down to (9 px at least) builds nothing. A patch mesh (WebGPU)
   gains `dPatchMiddle` (shells, beneath, parallax), `uPatchShells` and `uPatchMiddle`.
+- A cell's lipid membrane takes its colours from its meshes: each part's (the whole membrane's, one mesh) far colour,
+  species' colours and patch times its mesh's colour, normalised (the meshes' grey is no tint), atoms by element not.
+  A mesh recoloured (its row, Color…, a theme, an undo) recolours its part in the same step, in place: nothing cut or
+  built again; a mesh's opacity draws nothing again. A part's dot, Color… and Generate colour its mesh. Look › Colours
+  from meshes (`mesoscale.colorLevels { meshColors }`, on by default) turns it off. A membrane wrapping the explorer's
+  mesh rows names its parts by their shapes (PM, VAC), no longer all `Mesh`.

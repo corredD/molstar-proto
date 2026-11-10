@@ -111,9 +111,16 @@ maintainer first (2026-10-25). All are v6 (master); the MRC reader and the parti
     with round 5's cells), but the membrane's `getLoci` is still empty; per-lipid layers stay per species (a slot is not
     a lipid).
   - Ghosts, outlines, transparency and glow per species: not mapped onto the membrane yet (colours by zoom are, round
-    4c: far its colour, then its species'; round 5: then its atoms by element). A colour change builds the membrane's
-    objects again (the patch texture itself is a few hundred kB): a colour-only update path. A dither of the spheres
-    themselves at the switch: a graphics library change (the object fade is off with levels), Ludo's call.
+    4c: far its colour, then its species'; round 5: then its atoms by element). A colour change writes the colours in
+    place since round 9 (`recolor`), but a change of a member's granularity (one colour or by species: `colorBy`, a part
+    colour with By zoom off) still builds. A dither of the spheres themselves at the switch: a graphics library change
+    (the object fade is off with levels), Ludo's call.
+  - Round 9, colours from meshes: a part's Reset and `mesoscale.colors { scheme: theme }` on parts clear round 7's part
+    colours only, the mesh's colour left (its default grey again? Ludo's call); without cryoet in a spec the dot writes
+    part colours that the switch on leaves out (prism-me always has cryoet); a saturated mesh colour times a saturated
+    species colour goes dark (a red mesh on a green species: black); the recoloured patch raster is checked by count
+    (only the changed leaflets'), not by its texels (no readback of the texture on Dawn yet); `tint` is local (Mol*'s
+    `Color` has no multiply): a candidate for `@molstar/core/util/color`.
   - Spheres far look past the budget: far parts empty. Thinning lipids at generation needs each sphere grown by its
     instance's scale (the spheres shader takes the model scale only): a library change.
   - The far texture is flat colour (the heads' heights shaded into it), no normal from the head bumps; it switches from

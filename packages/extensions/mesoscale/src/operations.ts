@@ -93,6 +93,8 @@ export interface GraphicsInfo {
   /** A lipid membrane's far colour by zoom (its own colour) and its atoms' colours close up (round 7 item 6) */
   readonly far?: Color;
   readonly atomColors?: MembraneAtomColors;
+  /** A lipid membrane's colours from its meshes (round 9): none for a membrane with no mesh (a sphere) */
+  readonly meshColors?: boolean;
 }
 
 /** What a graphics mode sets on each kind of object (apps/prism-me/_spec/ui.md §4, Graphics & Motion) */
@@ -210,6 +212,7 @@ export class MesoscaleApi extends ApiArea {
             colorLevels: levels.name === 'on' ? (levels.params as ColorLevels.Props) : null,
             far: p.color,
             atomColors: p.atomColors,
+            ...(p.meshes.length > 0 || p.mesh ? { meshColors: p.meshColors } : {}),
           };
         }
         const all = graphicsObjects({ plugin });
@@ -735,6 +738,28 @@ export class MesoscaleApi extends ApiArea {
           const chosen = membranePartsOf(membrane, parts);
           if (isFailure(chosen)) return chosen;
           const all = membranePartNames(membrane);
+          // round 9: with its meshes' colours a part's colour is its mesh's, written there (one step with its eye)
+          const meshes = !reset && parsed !== undefined ? await partMeshes(ctx, membrane) : undefined;
+          if (meshes) {
+            const r = await paintPartMeshes(
+              ctx,
+              membrane,
+              chosen.map((p) => [meshes.get(p)!, parsed!]),
+              visible === undefined
+                ? undefined
+                : (old) => {
+                    const hidden = new Set(old.hiddenParts);
+                    for (const p of chosen) {
+                      if (visible) hidden.delete(p);
+                      else hidden.add(p);
+                    }
+                    return { hiddenParts: all.filter((n) => hidden.has(n)) };
+                  },
+            );
+            if (isFailure(r)) return r;
+            if (!r.length) return ApiResult.already('They already look so.');
+            return ApiResult.ok(`Styled ${chosen.join(', ')} of the membrane (their meshes).`, { nodes: r });
+          }
           const changed = await updateMembrane(ctx, membrane, (old) => {
             const hidden = new Set(old.hiddenParts);
             for (const p of chosen) {
@@ -850,6 +875,18 @@ export class MesoscaleApi extends ApiArea {
         const root = { path: '', label: '', groups: [], entities: chosen.map((_, i) => i) };
         const generated = scheme === 'generate' ? generateColors(root, variability, shift) : undefined;
         const index = new Map(chosen.map((p, i) => [p, i]));
+        // round 9: with its meshes' colours each part's colour is its mesh's, written there in one step
+        const meshes = scheme !== 'theme' ? await partMeshes(ctx, membrane) : undefined;
+        if (meshes) {
+          const r = await paintPartMeshes(
+            ctx,
+            membrane,
+            chosen.map((p) => [meshes.get(p)!, uniform ?? generated!.get(index.get(p)!)!]),
+          );
+          if (isFailure(r)) return r;
+          if (!r.length) return ApiResult.already('They are already colored so.');
+          return ApiResult.ok(`Colored ${chosen.join(', ')} of the membrane (${scheme}, their meshes).`, { nodes: r });
+        }
         const changed = await updateMembrane(ctx, membrane, (old) => ({
           partColors: withPartColors(old, chosen, (p) =>
             scheme === 'theme' ? null : (uniform ?? generated!.get(index.get(p)!)!),
@@ -1056,24 +1093,30 @@ export class MesoscaleApi extends ApiArea {
       // one colour sets them all)
       far: OptionalParam(PD.Text('', { description: 'A lipid membrane’s far colour alone (a CSS color)' })),
       atoms: OptionalParam(LipidMembraneReprParams.atomColors),
+      // round 9: a lipid membrane's colours from its meshes (each part's times its mesh's colour), on by default
+      meshColors: OptionalParam(
+        PD.Boolean(true, { description: 'A lipid membrane’s colours times its meshes’ (each part its mesh’s)' }),
+      ),
       particles: PD.Text('', { description: 'A particle list (a model) by label or state ref; empty: every one' }),
     },
     async run(values, ctx) {
-      const { on, particles, far, atoms, ...given } = values as {
+      const { on, particles, far, atoms, meshColors, ...given } = values as {
         on?: boolean;
         particles: string;
         far?: string;
         atoms?: MembraneAtomColors;
+        meshColors?: boolean;
       } & Partial<ColorLevels.Props>;
       const edges = Object.fromEntries(Object.entries(given).filter(([, x]) => x !== undefined));
-      if (on === undefined && !Object.keys(edges).length && far === undefined && atoms === undefined) {
+      const own = far !== undefined || atoms !== undefined || meshColors !== undefined;
+      if (on === undefined && !Object.keys(edges).length && !own) {
         return ApiResult.fail('invalid', 'Nothing to change.', 'Give on, or an edge (entity, chain, atom).');
       }
       const membrane = membraneCell(ctx, particles.trim());
-      if ((far !== undefined || atoms !== undefined) && !membrane) {
+      if (own && !membrane) {
         return ApiResult.fail(
           'invalid',
-          'A far colour alone and the atoms’ colours are a lipid membrane’s: name the membrane.',
+          'A far colour alone, the atoms’ colours and colours from meshes are a lipid membrane’s: name the membrane.',
         );
       }
       if (membrane) {
@@ -1109,6 +1152,7 @@ export class MesoscaleApi extends ApiArea {
           ...(levelsGiven ? { colorLevels } : {}),
           ...(farColor !== undefined ? { color: farColor } : {}),
           ...(atoms !== undefined ? { atomColors: atoms } : {}),
+          ...(meshColors !== undefined ? { meshColors } : {}),
         }));
         if (!changed) return ApiResult.already('The colors already follow the zoom so.');
         const said = !levelsGiven
@@ -1435,6 +1479,14 @@ export class MesoscaleApi extends ApiArea {
           plans.push({ kind: 'reps', o, theme: named('uniform', { value: mine }), only: 'isosurface' });
         }
       }
+      // round 9: a membrane whose meshes are all coloured here takes their colours (its tints), not its own as well
+      const planned = new Set(plans.flatMap((p) => (p.kind === 'mesh' ? [p.ref] : [])));
+      if (planned.size > 0) {
+        for (let i = plans.length - 1; i >= 0; --i) {
+          const p = plans[i];
+          if (p.kind === 'membrane' && tintedBy(ctx, p.cell, planned)) plans.splice(i, 1);
+        }
+      }
       // each representation's theme, planned too: an object with none it can take has nothing to color (a volume's
       // slices show the data; a list not drawn), said rather than "already so"
       const writes: { o: GraphicsObject; r: StateObjectCell; next: object; same: boolean }[] = [];
@@ -1604,6 +1656,18 @@ type ThemePlan =
 
 const doesNotTake = (name: string, theme: string) =>
   ApiResult.fail('invalid', `${name} cannot be colored ${theme.toLowerCase()}.`, 'Nothing was changed.');
+
+/** Whether a membrane's colours come from its meshes (round 9) and every one of them is in `meshes` (by colour cell) */
+function tintedBy(ctx: Pick<ApiContext, 'plugin'>, cell: StateObjectCell, meshes: ReadonlySet<string>) {
+  const p = cell.transform.params as LipidMembraneProps;
+  const refs = p.meshes.length > 0 ? p.meshes : p.mesh ? [p.mesh] : [];
+  if (!p.meshColors || refs.length === 0) return false;
+  for (const ref of refs) {
+    const colour = meshColorCell(ctx.plugin.state.data, ref);
+    if (!colour || !meshes.has(colour.transform.ref)) return false;
+  }
+  return true;
+}
 
 /** The meshes' refs, as cryoet lists them (its read operation, by id); none without cryoet */
 async function meshesOf(ctx: ApiContext): Promise<ReadonlySet<string>> {
@@ -1987,6 +2051,56 @@ function withPartColors(old: LipidMembraneProps, parts: readonly string[], color
     else colors[p] = c;
   }
   return colors;
+}
+
+/**
+ * A cell membrane's parts' meshes by part name (round 9), each its colour cell (`meshColorCell`), where its colours come
+ * from them (its switch on, a mesh a part) and `cryoet.mesh` colours them (every one a mesh cryoet lists); else none:
+ * round 7's part colours. Indexed once (a Set of cryoet's meshes)
+ */
+async function partMeshes(ctx: ApiContext, cell: StateObjectCell): Promise<ReadonlyMap<string, string> | undefined> {
+  const p = cell.transform.params as LipidMembraneProps;
+  if (!p.meshColors || p.meshes.length === 0) return undefined;
+  const names = membranePartNames(cell);
+  if (names.length !== p.meshes.length) return undefined;
+  const known = await meshesOf(ctx);
+  const out = new Map<string, string>();
+  for (let k = 0; k < names.length; ++k) {
+    const ref = meshColorCell(ctx.plugin.state.data, p.meshes[k])?.transform.ref;
+    if (!ref || !known.has(ref)) return undefined;
+    out.set(names[k], ref);
+  }
+  return out;
+}
+
+/**
+ * Parts' colours written to their meshes (round 9) by `cryoet.mesh` (its one writer, by id), with the membrane's other
+ * change (`patch`: a part's eye), in one data transaction (restored if a part fails): the nodes changed, or the failure
+ */
+async function paintPartMeshes(
+  ctx: ApiContext,
+  cell: StateObjectCell,
+  colors: readonly (readonly [string, Color])[],
+  patch?: (old: LipidMembraneProps) => Partial<LipidMembraneProps>,
+): Promise<string[] | ApiFailure> {
+  const nodes: string[] = [];
+  try {
+    await ctx.plugin.dataTransaction(
+      async () => {
+        if (patch && (await updateMembrane(ctx, cell, patch))) nodes.push(cell.transform.ref);
+        const r = await ctx.api.run('cryoet.mesh', {
+          colors: colors.map(([mesh, color]) => ({ mesh, color: Color.toHexStyle(color) })),
+        });
+        if (!r.ok) throw new Rollback(r);
+        if (!r.unchanged) nodes.push(...(r.changed.nodes ?? []));
+      },
+      { rethrowErrors: true },
+    );
+  } catch (e) {
+    if (e instanceof Rollback) return e.failure;
+    throw e;
+  }
+  return nodes;
 }
 
 /**

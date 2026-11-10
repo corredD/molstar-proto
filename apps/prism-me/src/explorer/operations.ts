@@ -796,20 +796,48 @@ interface MembraneLook {
   readonly color: number;
   readonly hiddenParts?: readonly string[];
   readonly partColors?: Readonly<Record<string, number>>;
+  readonly meshes?: readonly string[];
+  readonly meshColors?: boolean;
 }
 
-/** A lipid membrane's parts (its data's, round 6), each shown or not and its colour (round 7); none for one surface */
-function membraneParts(look: MembraneLook, data: unknown): { parts?: MembranePart[] } {
+/**
+ * A lipid membrane's parts (its data's, round 6), each shown or not and its colour (round 7); none for one surface. With
+ * its meshes' colours (round 9) a part's colour is its mesh's (`k`: the part's index, its mesh `meshes[k]`)
+ */
+function membraneParts(plugin: PluginContext, look: MembraneLook, data: unknown): { parts?: MembranePart[] } {
   const names = (data as { sourceData?: { parts?: readonly { name: string }[] } }).sourceData?.parts;
   if (!names || names.length < 2) return {};
   const hidden = new Set(look.hiddenParts ?? []);
+  const fromMeshes = look.meshColors !== false && !!look.meshes?.length;
   return {
-    parts: names.map(({ name }) => ({
+    parts: names.map(({ name }, k) => ({
       name,
       visible: !hidden.has(name),
-      color: look.partColors?.[name] ?? look.color,
+      color: fromMeshes ? (meshColor(plugin, look.meshes![k]) ?? look.color) : (look.partColors?.[name] ?? look.color),
     })),
   };
+}
+
+/**
+ * A mesh's one colour (its representation's uniform `coloring`, as `cryoet.mesh` writes it; the representation given or
+ * its shape's first): none for a mesh in its own colours
+ */
+function meshColor(plugin: PluginContext, ref: string | undefined): number | undefined {
+  if (!ref) return undefined;
+  const { cells, tree } = plugin.state.data;
+  let cell = cells.get(ref);
+  if (cell && !SO.Shape.Representation3D.is(cell.obj)) {
+    let child: string | undefined;
+    tree.children.get(ref)?.forEach((c) => {
+      if (!SO.Shape.Representation3D.is(cells.get(c!)?.obj)) return true;
+      child = c!;
+      return false;
+    });
+    cell = child === undefined ? undefined : cells.get(child);
+  }
+  const coloring = (cell?.transform.params as { coloring?: { name: string; params: { color?: number } } } | undefined)
+    ?.coloring;
+  return coloring?.name === 'uniform' ? coloring.params.color : undefined;
 }
 
 /**
@@ -832,7 +860,7 @@ function meshes(plugin: PluginContext): SceneObject[] {
         visible: !cell.state.isHidden,
         membrane: true,
         wraps: wrappedMeshes(cell.transform.params as { mesh?: string; meshes?: readonly string[] }),
-        ...membraneParts(cell.transform.params as MembraneLook, cell.obj.data),
+        ...membraneParts(plugin, cell.transform.params as MembraneLook, cell.obj.data),
       });
       continue;
     }

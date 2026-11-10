@@ -791,6 +791,24 @@ export function MembraneLook(props: { api: ViewerApi; membrane: string }) {
         onPick={(color) => void api.run('mesoscale.style', { particles: membrane, color })}
       />
       <ZoomColors area={api.mesoscale!} particles={membrane} membrane />
+      {/* round 9: each part's colours times its mesh's (a membrane with meshes only), one step */}
+      <Show when={mapState(graphics, (g) => g?.meshColors !== undefined)}>
+        {() => (
+          <div class={classes.tools}>
+            <Button
+              size="sm"
+              variant="ghost"
+              pressed={mapState(graphics, (g) => !!g?.meshColors)}
+              title="Colours from meshes: each part’s colours times its mesh’s colour, on or off"
+              onClick={() =>
+                void api.run('mesoscale.colorLevels', { particles: membrane, meshColors: !graphics.value?.meshColors })
+              }
+            >
+              Colours from meshes
+            </Button>
+          </div>
+        )}
+      </Show>
       <Show when={mapState(graphics, (g) => !!g?.colorLevels)}>
         {() => (
           <div class={classes.tight}>

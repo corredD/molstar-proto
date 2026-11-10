@@ -62,7 +62,9 @@ function fakeApi(start: Partial<GraphicsInfo>, middle: MembraneMiddle = 'paralla
     { name: 'POPE', shown: true, shownColor: Color(0x93c47d) },
     { name: 'CHL1', shown: true, shownColor: Color(0xf6b26b) },
   ]);
-  const colorLevels = (p: { on?: boolean; far?: string; atoms?: GraphicsInfo['atomColors'] } & object) => {
+  const colorLevels = (
+    p: { on?: boolean; far?: string; atoms?: GraphicsInfo['atomColors']; meshColors?: boolean } & object,
+  ) => {
     const g = graphics.value ?? {};
     const levels =
       p.on === false ? null : p.on === true ? (g.colorLevels ?? ColorLevels.defaults) : (g.colorLevels ?? null);
@@ -74,6 +76,7 @@ function fakeApi(start: Partial<GraphicsInfo>, middle: MembraneMiddle = 'paralla
       colorLevels: levels ? { ...levels, ...edges } : null,
       ...(p.atoms ? { atomColors: p.atoms } : {}),
       ...(p.far ? { far: Color.fromHexStyle(p.far) } : {}),
+      ...(p.meshColors !== undefined ? { meshColors: p.meshColors } : {}),
     });
     return Promise.resolve({ ok: true });
   };
@@ -116,6 +119,14 @@ export const LookCarbonsBySpecies: StoryObj = {
           <MembraneLook api={fakeApi({ atomColors: 'carbon-species', far: Color(0xff6347) }).api} membrane={Ref} />
         )}
       />
+    )),
+};
+
+/** ui.md §5 (round 9): a cell's membranes, its colours from its meshes (Colours from meshes, on by default). */
+export const LookColoursFromMeshes: StoryObj = {
+  render: () =>
+    story(() => (
+      <Frames height={300} render={() => <MembraneLook api={fakeApi({ meshColors: true }).api} membrane={Ref} />} />
     )),
 };
 

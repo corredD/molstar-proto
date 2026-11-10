@@ -131,7 +131,9 @@ column (`--msp-label-width`) and its control, Prism's (styling.md §4).
 A membrane's parts keep their own look (Ludo, 2026-11-09; round 7 review S5): its Look's Reset (the species') and a
 category's theme leave each part's colour and eye (`partColors`, `hiddenParts`) as they were, because a part is shown
 and coloured from its own row; only a part's own Reset (`mesoscale.style` with `parts`) clears them. A part coloured
-with By zoom off stays all its colour. Guarded by `organelle-meshes.test.ts`.
+with By zoom off stays all its colour. With its colours from its meshes (round 9), a theme over the membrane and every
+one of its meshes colours the meshes and the membrane takes them, its own colour not written as well. Guarded by
+`organelle-meshes.test.ts`.
 
 Colors by zoom at load (Ludo, 2026-11-04; lane `zoom-default`): a cellPACK or PetWorld file (`mmcif_particles`: an
 example, a URL, a dropped file) opens with its colors following the zoom, its targets made so in the load's one build,
@@ -240,16 +242,21 @@ on a tree row (its right-click or its ⋯), the same menu, in this order:
   part each, one step, because one membrane can hide a part enclosed by another while the eye is outside it. Each part
   is a row under the membrane in the tree (round 7, Ludo 2026-11-09): its eye and its colour dot (`mesoscale.style` and
   `mesoscale.colors` with `parts`, one step each; never cut again); the eyes a drag passes are one write a membrane; the
-  membrane's eye is open only when every part is shown, and opening it shows them all. A part's colour is its far colour
-  by zoom (its species and atoms still close up), all of it when By zoom is off. Its colours follow its meshes' (round
-  9, Ludo 2026-11-10: one membrane, its colours changing by compartment): each part's colours (the whole membrane's, one
-  mesh) times its mesh's colour, normalised (the colour over its largest channel, so the meshes' grey is white and a
-  wrap dims nothing): its far colour, its species' and the patch's, carbons by species, never atoms by element; a mesh
-  in its own colours (given, vertex, custom) or black none. A mesh recoloured (its row, Color…, a theme, an undo)
-  reaches its membrane in the same step through the state (the membrane depends on the mesh's representation, its
-  `coloring`), its colours written in place, never cut or built again; a mesh's opacity draws nothing again. Each part
-  has its own lipid mix (the yeast membranes': `mixes.ts`, the LD a monolayer) and its own pools, the budget
-  water-filled across them (a small membrane whole, the large ones alike).
+  membrane's eye is open only when every part is shown, and opening it shows them all. With Colours from meshes off
+  (round 7) a part's colour is its far colour by zoom (its species and atoms still close up), all of it when By zoom is
+  off. Its colours follow its meshes' (round 9, Ludo 2026-11-10: one membrane, its colours changing by compartment):
+  each part's colours (the whole membrane's, one mesh) times its mesh's colour, normalised (the colour over its largest
+  channel, so the meshes' grey is white and a wrap dims nothing): its far colour, its species' and the patch's, carbons
+  by species, never atoms by element; a mesh in its own colours (given, vertex, custom) or black none. A mesh recoloured
+  (its row, Color…, a theme, an undo) reaches its membrane in the same step through the state (the membrane depends on
+  the mesh's representation, its `coloring`), its colours written in place, never cut or built again; a mesh's opacity
+  draws nothing again. So a part's dot shows its mesh's colour, and the dot, Color… and Generate colour the mesh
+  (`cryoet.mesh`, in the one step of `mesoscale.style`/`mesoscale.colors` with `parts`, with the part's eye; without
+  cryoet, round 7's part colours); a part's Reset and the theme scheme clear round 7's part colours only (TODO). The
+  Look's Colours from meshes (`mesoscale.colorLevels { meshColors }`, on by default) turns it off: round 7's colours
+  exactly. A membrane with no mesh (a sphere) has no tint and no switch. Each part has its own lipid mix (the yeast
+  membranes': `mixes.ts`, the LD a monolayer) and its own pools, the budget water-filled across them (a small membrane
+  whole, the large ones alike).
 - **Organelle meshes** (round 6): + Open reads the yeast cell viewer's `organelle_meshes.bin` (or `.bin.gz`): a mesh row
   a membrane, named (PM, ER, NE…), in Å.
 - **A membrane made per view** (Ludo, 2026-11-08; lane `lipid-procedural`): the cutter's lipids only on the triangles in
