@@ -37,6 +37,8 @@ export interface EditRecord {
   readonly resolverRuns: number;
   readonly cacheHits: number;
   readonly compileMs?: CompileResult['stats']['ms'];
+  /** A model edit: each model, whether it was the cache's (so which resolved again), its key and its time. */
+  readonly models?: CompileResult['stats']['models'];
   readonly commit?: CommitReport;
   readonly totalMs: number;
   /** The streamer's counters after the step, and what its plan asked for (a stream session only). */
@@ -245,6 +247,7 @@ export class MesoSession {
         resolverRuns: r.stats.resolverRuns,
         cacheHits: r.stats.cacheHits,
         compileMs: r.stats.ms,
+        models: r.stats.models,
         commit,
         totalMs: performance.now() - t0,
         stream: streamed?.stream,
