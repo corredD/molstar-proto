@@ -302,6 +302,27 @@ describe('a streamed document in prism-me (headless)', () => {
     expect(h.errors).toEqual([]);
   });
 
+  // gate S4: the session a restore made started with no focus, and the feed does not fire again (the canvas stayed)
+  it('Undo of Close streams where the camera was fed before the close', { tags: ['medium'] }, async () => {
+    const h = await setup();
+    await openTiled(h);
+    const residentKeys = () =>
+      placementSets(h.area().model.session!.ir!)
+        .filter((s) => s.model === 'm.tiles')
+        .map((s) => s.key)
+        .sort();
+    const corner = residentKeys();
+    await h.area().model.setFocus(Far);
+    await h.settle();
+    const far = residentKeys();
+    expect(far).not.toEqual(corner);
+    expect((await h.person.run('mesoviewspec.close', {})).ok).toBe(true);
+    expect((await h.v.managers.history.undo()).ok).toBe(true);
+    await h.settle();
+    expect(residentKeys()).toEqual(far);
+    expect(h.errors).toEqual([]);
+  });
+
   it('a .molj of a streamed document opens on a new viewer: no tile list comes with it, no error', async () => {
     const h = await setup();
     await openTiled(h);
