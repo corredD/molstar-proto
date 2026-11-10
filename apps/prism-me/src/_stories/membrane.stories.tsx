@@ -8,7 +8,8 @@
 
 import { Color } from '@molstar/core/util/color';
 import { ColorLevels } from '@molstar/graphics/geo/geometry/color-levels';
-import { ZoomColors } from '@molstar/mesoscale-extension/controls';
+import { MembraneDetailControls, ZoomColors } from '@molstar/mesoscale-extension/controls';
+import { DefaultCustomLevels, type MembraneMiddle } from '@molstar/mesoscale-extension/lipids/membrane';
 import type { GraphicsInfo, MesoscaleApi } from '@molstar/mesoscale-extension/operations';
 import { observableState } from '@molstar/prism-ui/reactive/observable-state';
 import { story } from '@molstar/prism-ui/testing/index';
@@ -31,7 +32,25 @@ export default meta;
 const Ref = 'membrane';
 
 /** The operations the Look runs, answered in memory: its graphics' state and its species' as they would follow */
-function fakeApi(start: Partial<GraphicsInfo>) {
+function fakeApi(start: Partial<GraphicsInfo>, middle: MembraneMiddle = 'coarse') {
+  // its detail (`membraneDetail`, round 8: Far, Middle, the px switches), a cut membrane's defaults
+  const detail = observableState({
+    detail: 'balanced',
+    levels: DefaultCustomLevels,
+    method: 'cutter',
+    far: 'both',
+    atomsPx: 2,
+    spheresPx: 2,
+    budget: 2_000_000,
+    middle,
+    middlePx: 11,
+    shells: 8,
+  });
+  const membraneDetail = (p: Record<string, unknown>) => {
+    const { membrane: _, ...patch } = p;
+    detail.set({ ...detail.value, ...patch } as typeof detail.value);
+    return Promise.resolve({ ok: true });
+  };
   const graphics = observableState<GraphicsInfo | undefined>({
     colorLevels: ColorLevels.defaults,
     far: Color(0x7a9cc6),
@@ -61,6 +80,8 @@ function fakeApi(start: Partial<GraphicsInfo>) {
   const mesoscale = {
     graphicsState: () => graphics.asReadonly,
     membraneSpeciesState: () => species.asReadonly,
+    membraneDetailState: () => detail.asReadonly,
+    membraneDetail,
     colorLevels,
   } as unknown as MesoscaleApi;
   const api = {
@@ -103,5 +124,30 @@ export const ZoomColorsMembrane: StoryObj = {
   render: () =>
     story(() => (
       <Frames height={140} render={() => <ZoomColors area={fakeApi({}).mesoscale} particles={Ref} membrane />} />
+    )),
+};
+
+/**
+ * ui.md §4 (round 8): the cutter's far look, Far Both, Middle Coarse: its sphere levels down to Lipids down to, the
+ * budget.
+ */
+export const DetailMiddleCoarse: StoryObj = {
+  render: () =>
+    story(() => (
+      <Frames height={200} render={() => <MembraneDetailControls area={fakeApi({}).mesoscale} membrane={Ref} />} />
+    )),
+};
+
+/**
+ * ui.md §4 (round 8): Middle Parallax: its atoms down to Atoms down to (9 at least), a cut's lipids down to Cut lipids
+ * down to (the cut band, the gate's M1), the budget.
+ */
+export const DetailMiddleParallax: StoryObj = {
+  render: () =>
+    story(() => (
+      <Frames
+        height={220}
+        render={() => <MembraneDetailControls area={fakeApi({}, 'parallax').mesoscale} membrane={Ref} />}
+      />
     )),
 };
