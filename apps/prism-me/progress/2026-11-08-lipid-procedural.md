@@ -1933,3 +1933,8 @@ the params, `setMiddle`, `lipidsPx`, operation and Look ~170). Tests ~650.
 
 **How Ludo compares on 1354.** A cut membrane (the yeast cell's Wrap all, or model_vertexcolor ×600): its properties,
 Look › Far: Both › Middle: Coarse or Parallax, and Atoms down to (11 px); fly in from far, with and without Add clip….
+
+## Round 8, the gate (2026-11-10, builder; in progress)
+
+Findings and verdicts: `~/prism-me-lanes/gate/r8-review.md`. Order: M2 (test 5 rewritten, failing) → M1 (the cut band
+in the selection) → S1 → S2 → S5, S6, M3, X1 → S4 → S3 → checks. Each fix test-first, one commit with its id.
