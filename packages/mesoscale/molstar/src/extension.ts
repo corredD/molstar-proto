@@ -612,6 +612,8 @@ export class MesoViewSpecApi extends ApiArea {
       const files = new Map<string, string | Uint8Array>();
       for (const f of values.files ?? []) files.set(f.name, new Uint8Array(await f.arrayBuffer()));
       let step: Awaited<ReturnType<MesoDocumentModel['open']>>;
+      // a tour of the document open stops now, not after its step's hold (not awaited: its next view may queue behind)
+      this.#stopTour();
       try {
         step = await this.model.open(read.doc, { ...(url ? { url } : {}), files }, ctx.api);
       } catch (e) {
@@ -646,6 +648,8 @@ export class MesoViewSpecApi extends ApiArea {
     params: {},
     run: async (_values, ctx) => {
       if (!this.model.doc) return ApiResult.already('No document is open.');
+      // the tour playing stops now, not after its step's hold
+      this.#stopTour();
       await this.model.close(ctx.api);
       return ApiResult.ok('Closed the document: its lists are gone.');
     },
