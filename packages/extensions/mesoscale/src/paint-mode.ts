@@ -40,12 +40,12 @@ export interface PaintSettings {
    */
   readonly place: 'auto' | PaintPlace;
   /**
-   * Whether a stroke is a new fibre (Round 2, Decided 4): its copies the fibre's points, a step apart, turned along it;
-   * `auto`: when the entity has fibres in its list
+   * Whether a stroke is a new fiber (Round 2, Decided 4): its copies the fiber's points, a step apart, turned along it;
+   * `auto`: when the entity has fibers in its list
    */
   readonly fiber: 'auto' | 'on' | 'off';
   /**
-   * A new fibre's sequence (Round 5): one-letter codes, with the entity's bank a unit a letter; its range as written
+   * A new fiber's sequence (Round 5): one-letter codes, with the entity's bank a unit a letter; its range as written
    * (`3-120`, 1-based, inclusive; `parseRange`). Empty: the bank's units at random
    */
   readonly sequence?: string;
@@ -89,11 +89,11 @@ export interface PaintHost {
   project(out: Vec3, p: Vec3): Vec3;
   /** A copy's radius, Å (its spacing's default and the preview's disc) */
   radius(brush: PaintBrushTarget): number;
-  /** The brush's fibres' rise, Å, when it makes fibres (its own settings or its file's fibres; Round 3) */
+  /** The brush's fibers' rise, Å, when it makes fibers (its own settings or its file's fibers; Round 3) */
   fiberStep(brush: PaintBrushTarget): number | undefined;
   /**
    * Paints a stroke: one operation (`mesoscale.paint`); `seed`, its random turns' (the copy under the pointer's);
-   * `fiber`, the stroke a new fibre
+   * `fiber`, the stroke a new fiber
    */
   paint(
     brush: PaintBrushTarget,
@@ -240,9 +240,9 @@ function paintLayer(mode: PaintMode, host: PaintHost, canvas: HTMLElement, brush
   };
   // the focus too (review N2)
   depth = inRange(depth);
-  /** The brush's fibres' rise (Round 3): undefined when it makes none; read again at each stroke's start */
+  /** The brush's fibers' rise (Round 3): undefined when it makes none; read again at each stroke's start */
   let fiberStep = host.fiberStep(brush);
-  /** Whether the stroke is a new fibre (the settings' Fibre, or the brush's own: `auto`, when it has fibres) */
+  /** Whether the stroke is a new fiber (the settings' Fiber, or the brush's own: `auto`, when it has fibers) */
   const fiberOf = (s: PaintSettings) => s.fiber === 'on' || (s.fiber === 'auto' && fiberStep !== undefined);
   let fiber = fiberOf(mode.settings.value);
   /** Strokes painted and not committed yet: their own change of the state is not an undo */
@@ -251,7 +251,7 @@ function paintLayer(mode: PaintMode, host: PaintHost, canvas: HTMLElement, brush
 
   const writeHint = () => {
     const how = where === 'depth' ? `click or drag · wheel: depth ${Math.round(depth)} Å` : 'drag on a surface';
-    const what = fiber ? `a fibre of ${brush.name}` : brush.name;
+    const what = fiber ? `a fiber of ${brush.name}` : brush.name;
     hint.textContent = `Painting with ${what} · ${how} · Alt to move the camera · Esc to stop`;
   };
   writeHint();
@@ -283,7 +283,7 @@ function paintLayer(mode: PaintMode, host: PaintHost, canvas: HTMLElement, brush
       const d = Vec3.distance(_a, p);
       if (d < spacing) return true;
       if (fiber) {
-        // a fibre's points exactly a step apart along the way read (review S1): as many as fit from its last point
+        // a fiber's points exactly a step apart along the way read (review S1): as many as fit from its last point
         Vec3.copy(_from, _a);
         for (let t = spacing; t <= d; t += spacing) {
           Vec3.lerp(_b, _from, p, t / d);
@@ -320,7 +320,7 @@ function paintLayer(mode: PaintMode, host: PaintHost, canvas: HTMLElement, brush
     return true;
   };
 
-  /** A fibre's segment between two points, projected */
+  /** A fiber's segment between two points, projected */
   const drawLink = (a: Vec3, b: Vec3) => {
     if (!ctx) return;
     host.project(_sa, a);
@@ -432,7 +432,7 @@ function paintLayer(mode: PaintMode, host: PaintHost, canvas: HTMLElement, brush
       // the entity's rise as it is now (its settings changed since the mode started)
       fiberStep = host.fiberStep(brush);
       fiber = fiberOf(settings);
-      // a fibre's path read a rise apart (the entity's: the points the decorator makes), else copies that touch
+      // a fiber's path read a rise apart (the entity's: the points the decorator makes), else copies that touch
       spacing = settings.spacing > 0 ? settings.spacing : fiber && fiberStep ? fiberStep : 2 * radius;
       clear();
       const s: Stroke = {

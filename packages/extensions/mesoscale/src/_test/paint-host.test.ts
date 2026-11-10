@@ -26,7 +26,7 @@ describe('pluginPaintHost', () => {
     expect(warn).toHaveBeenCalledWith('Not painted: No particle of that entity to copy.');
   });
 
-  it("gives a fibre stroke the brush's sequence and range (Round 5), a copy none", async () => {
+  it("gives a fiber stroke the brush's sequence and range (Round 5), a copy none", async () => {
     const plugin = { log: { warn: vi.fn() }, managers: { particles: { hierarchy: { current: { lists: [] } } } } };
     const calls: Record<string, unknown>[] = [];
     const host = pluginPaintHost(plugin as unknown as PluginContext, async (p) => {

@@ -410,9 +410,9 @@ export const Sections: readonly Section[] = [
     },
   },
   {
-    // a model's entity's fibres (progress/2026-11-08-paint.md, Round 3): its painted fibres' rise, twist and jitter
-    id: 'fibre',
-    title: 'Fibre',
+    // a model's entity's fibers (progress/2026-11-08-paint.md, Round 3): its painted fibers' rise, twist and jitter
+    id: 'fiber',
+    title: 'Fiber',
     when: ({ api, picked }) =>
       !!api.mesoscale &&
       picked.kind === 'entity' &&

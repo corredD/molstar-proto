@@ -8,10 +8,10 @@ import { AtomNumber, VdwRadiusOfNumber } from '@molstar/model/model/structure/mo
 import { ElementSymbol } from '@molstar/model/model/structure/model/types';
 import type { ParticleSites } from '@molstar/model/model/particles/particle-list';
 
-// The units of a fibre's bank (progress/2026-11-08-paint.md, Round 5): a DNA base pair a letter of its first strand,
+// The units of a fiber's bank (progress/2026-11-08-paint.md, Round 5): a DNA base pair a letter of its first strand,
 // an RNA nucleotide a letter. Their atoms from cellPACK's (3DNA v1.6): `dna_AT`, `dna_TA`, `dna_GC`, `dna_CG`
 // (cellpackgpu Data/proteins), `RNA_A_Base` … `RNA_U_Base` (mesoscope/cellPACK_data, cellPACK_database_1.1.0/other).
-// Every unit forward +z, its helix axis z (the path): a fibre of them by rise 3.38 Å and twist +36° about +z is the
+// Every unit forward +z, its helix axis z (the path): a fiber of them by rise 3.38 Å and twist +36° about +z is the
 // source's helix. A DNA pair turned 180° about y (its first strand, 5' to 3', along -z in 3DNA's frame: a proper turn,
 // the hand kept), on the axis; an RNA nucleotide turned and lowered to its P at +x (8.97 Å off the axis), z 0.
 

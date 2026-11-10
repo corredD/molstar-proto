@@ -9,10 +9,10 @@ import { Quat, Vec3 } from '@molstar/core/math/linear-algebra';
 import { FiberBankHelix, FiberBankLetters, fiberUnitSites } from '../fiber-units.js';
 import { makeFiber } from '../paint.js';
 
-// The frame of the bank's units (progress/2026-11-08-paint.md, Round 5): placed by a fibre along z at the bank's
+// The frame of the bank's units (progress/2026-11-08-paint.md, Round 5): placed by a fiber along z at the bank's
 // helix, they land on their sources' atoms (the P atoms below, from the cellPACK files).
 
-/** Site `s` of the unit `key` at point `i` of the fibre `f` */
+/** Site `s` of the unit `key` at point `i` of the fiber `f` */
 function placed(f: { positions: number[]; rotations: number[] }, i: number, key: string, s: number): Vec3 {
   const u = fiberUnitSites(key)!;
   const q = Quat.create(f.rotations[i * 4], f.rotations[i * 4 + 1], f.rotations[i * 4 + 2], f.rotations[i * 4 + 3]);
@@ -24,7 +24,7 @@ const along = (n: number) => [0, 0, 0, 0, 0, FiberBankHelix.rise * (n - 1)];
 const settings = { ...FiberBankHelix, jitter: 0, axis: 'z' as const, offset: 0 };
 const z = Vec3.create(0, 0, 1);
 
-describe('fibre units (Round 5)', () => {
+describe('fiber units (Round 5)', () => {
   it("places RNA's U, A, C, G as their source strand (residues 2 to 5): forward +z, 36° a step", () => {
     const f = makeFiber(along(4), settings, z, 0);
     // the source's P atoms; the strand's first (U, residue 2) at -58.2° and z 1.239

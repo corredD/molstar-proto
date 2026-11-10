@@ -40,34 +40,34 @@ export interface PaintStroke {
   readonly positions: readonly number[];
   readonly rotations: readonly number[];
   /**
-   * The copies are the points of a new fibre, in order (Round 2, Decided 4): one polyline added to the list's `fibers`.
-   * Its `positions` are the fibre's path (Round 3): its points are made from it by the brush's `FiberSettings` (every
+   * The copies are the points of a new fiber, in order (Round 2, Decided 4): one polyline added to the list's `fibers`.
+   * Its `positions` are the fiber's path (Round 3): its points are made from it by the brush's `FiberSettings` (every
    * rise along it, turned by the twist), its `rotations` not read
    */
   readonly fiber?: boolean;
-  /** A fibre's jitter's seed (Round 3, Decided 2): the same turns each time the fibre is made */
+  /** A fiber's jitter's seed (Round 3, Decided 2): the same turns each time the fiber is made */
   readonly seed?: number;
   /**
-   * A fibre's sequence (Round 5): with its entity's bank, point i the unit of letter `start + i` (1-based, `end`
-   * inclusive; the range repeated along a longer fibre). Absent: the bank's units at random (of the seed)
+   * A fiber's sequence (Round 5): with its entity's bank, point i the unit of letter `start + i` (1-based, `end`
+   * inclusive; the range repeated along a longer fiber). Absent: the bank's units at random (of the seed)
    */
   readonly sequence?: PaintSequence;
 }
 
-/** A fibre's sequence or a range of it (Round 5): one-letter codes, 1-based, `end` inclusive */
+/** A fiber's sequence or a range of it (Round 5): one-letter codes, 1-based, `end` inclusive */
 export interface PaintSequence {
   readonly residues: string;
   readonly start?: number;
   readonly end?: number;
 }
 
-/** The unit's own axis that follows a fibre's path (Round 4): `auto`, its fibres' axis, else its principal axis */
+/** The unit's own axis that follows a fiber's path (Round 4): `auto`, its fibers' axis, else its principal axis */
 export const FiberAxes = ['auto', 'x', 'y', 'z'] as const;
 export type FiberAxis = (typeof FiberAxes)[number];
 
 /**
- * How a brush's painted fibres are made (Round 3; progress/2026-11-08-paint.md): a point every `rise` (Å) along the
- * path, each turned about the fibre by `twist` (°) from the one before, plus a random amount within ±`jitter` (°).
+ * How a brush's painted fibers are made (Round 3; progress/2026-11-08-paint.md): a point every `rise` (Å) along the
+ * path, each turned about the fiber by `twist` (°) from the one before, plus a random amount within ±`jitter` (°).
  * Round 4: the unit's `axis` along the path (`auto` without), and each point moved `offset` (Å, 0 without) along a
  * perpendicular of that axis, turned with the unit (`fiberOffsetDirection`)
  */
@@ -77,7 +77,7 @@ export interface FiberSettings {
   readonly jitter: number;
   readonly axis?: FiberAxis;
   readonly offset?: number;
-  /** Round 5: the units its painted fibres switch between by their sequences (`fiber-units.ts`); none without */
+  /** Round 5: the units its painted fibers switch between by their sequences (`fiber-units.ts`); none without */
   readonly bank?: FiberBank;
 }
 
@@ -101,7 +101,7 @@ function targetRadius(list: ParticleList, target: number): number {
 }
 
 /**
- * A brush's fibre settings in effect: the ones given, else its own fibres' (`fiberConventionOf`: their step and twist,
+ * A brush's fiber settings in effect: the ones given, else its own fibers' (`fiberConventionOf`: their step and twist,
  * no jitter), else points that touch (its diameter, 10 Å without radii) and no twist
  */
 export function fiberSettingsOf(
@@ -147,7 +147,7 @@ export function resamplePath(path: ArrayLike<number>, step: number): number[] {
 const UnitAxes = { x: Vec3.create(1, 0, 0), y: Vec3.create(0, 1, 0), z: Vec3.create(0, 0, 1) } as const;
 
 /**
- * The way a fibre's points are moved by its offset, in the unit's frame (Round 4): a perpendicular of its axis that
+ * The way a fiber's points are moved by its offset, in the unit's frame (Round 4): a perpendicular of its axis that
  * follows the path; x's is y, y's z, z's x; another axis's (`auto`), the one of the three least along it, made
  * perpendicular
  */
@@ -165,7 +165,7 @@ export function fiberOffsetDirection(out: Vec3, axis: FiberAxis, along: Vec3): V
 }
 
 /**
- * A fibre stroke's points and their orientations, made from its path by the settings: the unit's axis along the path
+ * A fiber stroke's points and their orientations, made from its path by the settings: the unit's axis along the path
  * (the settings' own, else `axis`, the brush's), each point then moved by the offset (`fiberOffsetDirection`, turned)
  */
 export function makeFiber(
@@ -197,7 +197,7 @@ export function makeFiber(
 /**
  * The particles of `list` with the strokes' copies after them: keys after the input's largest, targets, entities and
  * compartments extended, orientations (identity for an input without), radii (each copy its target's first particle's),
- * attributes not present for the copies, fibres untouched. No stroke (or none with a copy): the list itself.
+ * attributes not present for the copies, fibers untouched. No stroke (or none with a copy): the list itself.
  */
 export function paintParticles(
   list: ParticleList,
@@ -232,11 +232,11 @@ export function paintParticles(
   const groups = radii ? getParticleTargetGroups(list) : undefined;
 
   let at = n;
-  /** The fibre strokes' first copy and count, in order */
+  /** The fiber strokes' first copy and count, in order */
   const newFibers: number[] = [];
   for (const s of strokes) {
     const k = Math.floor(s.positions.length / 3);
-    // a fibre of two points or more: a click (one) is a copy (review S4)
+    // a fiber of two points or more: a click (one) is a copy (review S4)
     if (s.fiber && k >= 2) newFibers.push(at, k);
     const set = groups?.sets[groups.groupOfTarget.get(s.target) ?? -1];
     const radius = set && OrderedSet.size(set) ? list.radii![OrderedSet.start(set)] : 0;
@@ -282,8 +282,8 @@ export function paintParticles(
 }
 
 /**
- * The strokes with each fibre stroke's points made (`makeFiber`) by its brush's settings (`fiberSettingsOf`) about its
- * brush's fibre axis (its own fibres', else its target's principal axis); the others as they are
+ * The strokes with each fiber stroke's points made (`makeFiber`) by its brush's settings (`fiberSettingsOf`) about its
+ * brush's fiber axis (its own fibers', else its target's principal axis); the others as they are
  */
 function makeFibers(list: ParticleList, strokes: readonly PaintStroke[], given?: FiberSettingsMap): MadeStroke[] {
   const axes = new Map<number, Vec3>();
@@ -304,7 +304,7 @@ function makeFibers(list: ParticleList, strokes: readonly PaintStroke[], given?:
   });
 }
 
-/** A made stroke: a fibre's units a point (`fiberUnits`) and their letters */
+/** A made stroke: a fiber's units a point (`fiberUnits`) and their letters */
 type MadeStroke = PaintStroke & {
   readonly units?: readonly string[];
   readonly letters?: string;
@@ -313,7 +313,7 @@ type MadeStroke = PaintStroke & {
 };
 
 /**
- * A fibre's `count` units of `bank` (Round 5): its sequence's letters from `start` to `end` (1-based, inclusive),
+ * A fiber's `count` units of `bank` (Round 5): its sequence's letters from `start` to `end` (1-based, inclusive),
  * repeated; a letter not in the bank, or no sequence, a unit at random (of the seed and the point)
  */
 export function fiberUnits(
@@ -416,12 +416,12 @@ function withUnits(list: ParticleList, strokes: readonly MadeStroke[]) {
     at += Math.floor(s.positions.length / 3);
   }
   const letterOf = (i: number) => {
-    // a painted point's letter and its place in its fibre (`· A12`)
+    // a painted point's letter and its place in its fiber (`· A12`)
     let k = 0;
     while (k + 1 < offsets.length && offsets[k + 1] <= i) ++k;
     const { letters, numbers } = strokes[k] ?? {};
     const j = i - (offsets[k] ?? 0);
-    // its place in the sequence, not along the fibre (review S2); a unit at random, its letter alone
+    // its place in the sequence, not along the fiber (review S2); a unit at random, its letter alone
     return letters ? ` · ${letters[j]}${numbers?.[j] ? numbers[j] : ''}` : '';
   };
   const idOf = (s: MadeStroke) => s.units!.map((u) => idOfUnit(s.entity, u));
@@ -724,11 +724,11 @@ export function paintRotation(
   return Quat.normalize(out, out);
 }
 
-// --- Fibres (Round 2, Decided 4) --------------------------------------------------------------------------------------
+// --- Fibers (Round 2, Decided 4) --------------------------------------------------------------------------------------
 
 /**
- * How a brush's fibres are built, read from one of the list's fibres of it: the target's own axis that follows the
- * fibre (its first segment's direction in the first point's frame), the turn about it from one point to the next (°;
+ * How a brush's fibers are built, read from one of the list's fibers of it: the target's own axis that follows the
+ * fiber (its first segment's direction in the first point's frame), the turn about it from one point to the next (°;
  * a helix's twist), and the mean step between points (Å)
  */
 export interface FiberConvention {
@@ -753,7 +753,7 @@ function pointOf(out: Vec3, list: ParticleList, i: number) {
   return Vec3.set(out, list.coordinates[i * 3], list.coordinates[i * 3 + 1], list.coordinates[i * 3 + 2]);
 }
 
-/** The first fibre of the brush `id` (an entity, or a target on a list without entities) with two points or more */
+/** The first fiber of the brush `id` (an entity, or a target on a list without entities) with two points or more */
 function fiberOfBrush(list: ParticleList, id: number): [number, number] | undefined {
   const f = list.fibers;
   if (!f) return undefined;
@@ -768,7 +768,7 @@ function fiberOfBrush(list: ParticleList, id: number): [number, number] | undefi
   return undefined;
 }
 
-/** Whether the brush `id` makes fibres: one of its particles is a point of a fibre of the list */
+/** Whether the brush `id` makes fibers: one of its particles is a point of a fiber of the list */
 export function isFiberBrush(list: ParticleList, id: number): boolean {
   return !!fiberOfBrush(list, id);
 }
@@ -776,8 +776,8 @@ export function isFiberBrush(list: ParticleList, id: number): boolean {
 const conventions = new WeakMap<ParticleList, Map<number, FiberConvention | null>>();
 
 /**
- * The convention of the brush's fibres (`FiberConvention`); undefined when it has none. Read once a list and a brush
- * (review M1: a scan of its whole first fibre, else once a stroke at each rebuild and once a state change for views)
+ * The convention of the brush's fibers (`FiberConvention`); undefined when it has none. Read once a list and a brush
+ * (review M1: a scan of its whole first fiber, else once a stroke at each rebuild and once a state change for views)
  */
 export function fiberConventionOf(list: ParticleList, id: number): FiberConvention | undefined {
   let byId = conventions.get(list);
@@ -800,7 +800,7 @@ function readConvention(list: ParticleList, id: number): FiberConvention | undef
   }
   const i0 = indices[s];
   const i1 = indices[s + 1];
-  // the first segment in the first point's frame: the target's axis along the fibre
+  // the first segment in the first point's frame: the target's axis along the fiber
   Vec3.sub(_ax, pointOf(_p1, list, i1), pointOf(_p0, list, i0));
   Quat.conjugate(_q0, quatOf(_q0, list, i0));
   const axis = Vec3.normalize(Vec3(), Vec3.transformQuat(Vec3(), _ax, _q0));
@@ -809,13 +809,13 @@ function readConvention(list: ParticleList, id: number): FiberConvention | undef
   // the shorter way (q and -q are one turn: `getAxisAngle` reads 2·acos(w), past π for w < 0; review S5)
   if (_r[3] < 0) Quat.set(_r, -_r[0], -_r[1], -_r[2], -_r[3]);
   const angle = Quat.getAxisAngle(_ax, _r);
-  // its part about the axis (a fibre point turns about the fibre)
+  // its part about the axis (a fiber point turns about the fiber)
   const twist = (angle * Vec3.dot(_ax, axis) * 180) / Math.PI;
   return { axis, twist: Number.isFinite(twist) ? twist : 0, step: sum / (e - s - 1) };
 }
 
 /**
- * The orientations of a new fibre's points (x, y, z, w each): the convention's axis along the way (each point toward
+ * The orientations of a new fiber's points (x, y, z, w each): the convention's axis along the way (each point toward
  * the next, the last from the one before), turned by its twist a point, plus a random amount within ±`jitter` a step
  * (of the seed and the step: the same each time)
  */

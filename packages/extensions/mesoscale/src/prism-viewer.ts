@@ -147,7 +147,7 @@ export const MesoscaleExtension: ViewerExtension = {
       operationCommand(api, m.fiber, {
         category,
         icon: 'sliders-horizontal',
-        alias: ['fibre', 'fiber rise', 'fiber twist', 'dna twist', 'rna', 'helix rise'],
+        alias: ['fiber', 'fiber rise', 'fiber twist', 'dna twist', 'rna', 'helix rise'],
         action: 'Apply',
       }),
       operationCommand(api, m.example, {

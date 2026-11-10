@@ -242,8 +242,8 @@ export class MesoscaleApi extends ApiArea {
   }
 
   /**
-   * An entity's fibre settings in effect (`mesoscale.fiber`; its own, else its file's fibres', else touching points
-   * without a twist) and whether it has fibres or settings of its own, following the state tree while watched: a read
+   * An entity's fiber settings in effect (`mesoscale.fiber`; its own, else its file's fibers', else touching points
+   * without a twist) and whether it has fibers or settings of its own, following the state tree while watched: a read
    * for views; undefined without the list or the entity
    */
   fiberState(
@@ -673,14 +673,14 @@ export class MesoscaleApi extends ApiArea {
       fiber: OptionalParam(
         PD.Boolean(false, {
           description:
-            "The positions are a new fibre's path: its points made every rise along it, turned by the entity's twist " +
-            '(mesoscale.fiber; absent: no fibre)',
+            "The positions are a new fiber's path: its points made every rise along it, turned by the entity's twist " +
+            '(mesoscale.fiber; absent: no fiber)',
         }),
       ),
       sequence: OptionalParam(
         PD.Text('', {
           description:
-            "A fibre's sequence, one-letter codes: with its entity's bank (mesoscale.fiber), a unit a letter; absent: at random",
+            "A fiber's sequence, one-letter codes: with its entity's bank (mesoscale.fiber), a unit a letter; absent: at random",
         }),
       ),
       start: OptionalParam(
@@ -738,7 +738,7 @@ export class MesoscaleApi extends ApiArea {
       }
       if (dirs && side === 'in') for (let i = 0; i < dirs.length; ++i) dirs[i] = -dirs[i];
       toListFrame(moved?.transform.params as { transform: Mat4; scale?: number } | undefined, local, dirs);
-      // a fibre stroke keeps its path and a seed: its points are made by the decorator from the entity's fibre settings
+      // a fiber stroke keeps its path and a seed: its points are made by the decorator from the entity's fiber settings
       // (progress/2026-11-08-paint.md, Round 3); a click (one point) is a copy, turned as the one shown under the pointer
       // (review S4)
       const asFiber = !!fiber && k >= 2;
@@ -785,15 +785,15 @@ export class MesoscaleApi extends ApiArea {
   });
 
   /**
-   * An entity's fibre settings (progress/2026-11-08-paint.md, Round 3): its painted fibres' points every rise along
+   * An entity's fiber settings (progress/2026-11-08-paint.md, Round 3): its painted fibers' points every rise along
    * their paths, each turned by the twist from the one before, plus a random amount within ±jitter (a DNA: 3.4 Å and
    * 34.3° a base pair, no jitter; an RNA: its rise, jitter 180). Round 4: the unit's axis along the path and an offset
    * off it, along a perpendicular of that axis turned with the unit (a helix about the path with a twist). Every
-   * painted fibre of the entity is made again; the fibres the file has stay as they are. One step.
+   * painted fiber of the entity is made again; the fibers the file has stay as they are. One step.
    */
   readonly fiber = this.operation({
     id: 'mesoscale.fiber',
-    title: "Set an entity's fibre rise and twist",
+    title: "Set an entity's fiber rise and twist",
     params: {
       entity: PD.Text('', { description: 'An entity by name or id (a list without entities: a target id)' }),
       rise: OptionalParam(PD.Numeric(3.4, { min: 0.1, max: 1000, step: 0.1 }, { description: 'Between points, Å' })),
@@ -805,13 +805,13 @@ export class MesoscaleApi extends ApiArea {
       ),
       axis: OptionalParam(
         PD.Select('auto', PD.arrayToOptions(FiberAxes), {
-          description: "The unit's own axis along the path (auto: its fibres', else its principal axis)",
+          description: "The unit's own axis along the path (auto: its fibers', else its principal axis)",
         }),
       ),
       bank: OptionalParam(
         PD.Select('none', PD.arrayToOptions(FiberBanks), {
           description:
-            'The units its painted fibres switch between by their sequences (dna: a base pair a letter, rna: a nucleotide); its helix unless given',
+            'The units its painted fibers switch between by their sequences (dna: a base pair a letter, rna: a nucleotide); its helix unless given',
         }),
       ),
       offset: OptionalParam(
@@ -872,11 +872,11 @@ export class MesoscaleApi extends ApiArea {
         bank: given.bank ?? now.bank,
       };
       const same = (Object.keys(next) as (keyof FiberSettingsIn)[]).every((k) => next[k] === now[k]);
-      if (same && old?.[id]) return ApiResult.already('The fibres are already so.');
+      if (same && old?.[id]) return ApiResult.already('The fibers are already so.');
       await updatePainted(ctx, l, (p) => ({ ...p, fibers: { ...p.fibers, [id]: next } }));
       const name = mesoEntities(dataOf(l) ?? data).find((e) => e.id === ids[0])?.name ?? entity;
       return ApiResult.ok(
-        `${name}'s fibres: ${round1(next.rise)} Å a point, ${round1(next.twist)}°${next.jitter ? ` ± ${round1(next.jitter)}°` : ''}` +
+        `${name}'s fibers: ${round1(next.rise)} Å a point, ${round1(next.twist)}°${next.jitter ? ` ± ${round1(next.jitter)}°` : ''}` +
           `, its ${next.axis} axis along${next.offset ? `, ${round1(next.offset)} Å off` : ''}` +
           `${next.bank !== 'none' ? `, ${next.bank.toUpperCase()} units by sequence` : ''}.`,
         { nodes: [l.cell.transform.ref] },
@@ -1739,7 +1739,7 @@ const round1 = (x: number) => Math.round(x * 10) / 10;
 
 type PaintedParams = { strokes: PaintStroke[]; fibers: FiberSettingsMap; structures?: PaintStructure[] };
 
-/** The fibre settings of a list's painted decorator (none: none painted, no settings) */
+/** The fiber settings of a list's painted decorator (none: none painted, no settings) */
 function paintedFibers(state: State, list: string): FiberSettingsMap | undefined {
   return (decoratorUnder(state, list, ParticleListPainted)?.transform.params as PaintedParams | undefined)?.fibers;
 }
@@ -1875,7 +1875,7 @@ function targetRepresentationParams(plugin: ApiContext['plugin'], data: Particle
   } as never;
 }
 
-/** An entity's fibre settings in effect and whether it makes fibres (`MesoscaleApi.fiberState`) */
+/** An entity's fiber settings in effect and whether it makes fibers (`MesoscaleApi.fiberState`) */
 function fiberInfo(state: State, ctx: Pick<ApiContext, 'plugin'>, particles: string, entity: number) {
   const l = oneList(ctx, particles || undefined);
   if (isFailure(l)) return undefined;

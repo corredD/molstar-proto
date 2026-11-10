@@ -114,7 +114,7 @@ describe('mesoscale.paint', () => {
     expect(drawn(v).count).toBe(8);
   });
 
-  it('paints a fibre as one step: its points copies, one new fibre through them, turned along it; undo removes both', async () => {
+  it('paints a fiber as one step: its points copies, one new fiber through them, turned along it; undo removes both', async () => {
     const v = await viewer();
     const before = { count: drawn(v).count, fibers: drawn(v).fibers?.count ?? 0, steps: steps(v) };
     const r = await v.api.run('mesoscale.paint', {
@@ -136,10 +136,10 @@ describe('mesoscale.paint', () => {
     expect(drawn(v).fibers?.count ?? 0).toBe(before.fibers);
   });
 
-  it("sets an entity's fibre rise and twist as one step: every painted fibre of it made again; undo puts them back", async () => {
+  it("sets an entity's fiber rise and twist as one step: every painted fiber of it made again; undo puts them back", async () => {
     const v = await viewer();
     const base = drawn(v).count;
-    // NC without fibres or settings (the list has no radii): 10 Å a point, no twist
+    // NC without fibers or settings (the list has no radii): 10 Å a point, no twist
     const st = v.api.mesoscale!.fiberState(entry(v).cell.transform.ref, 2);
     const sub = st.subscribe(() => {});
     expect(st.value).toEqual({
@@ -160,7 +160,7 @@ describe('mesoscale.paint', () => {
     const r = await v.api.run('mesoscale.fiber', { entity: 'NC', rise: 5, twist: 34.3 });
     expectOk(r);
     expect(steps(v)).toBe(before + 1);
-    // both painted fibres again: 5 points each (20 Å at 5); the file's fibres as they were
+    // both painted fibers again: 5 points each (20 Å at 5); the file's fibers as they were
     expect(drawn(v).count).toBe(base + 10);
     expect(st.value).toEqual({
       rise: 5,
@@ -221,7 +221,7 @@ describe('mesoscale.paint', () => {
     sub.unsubscribe();
   });
 
-  it("switches an entity's painted fibre between a bank's units by its sequence (Round 5), one step each", async () => {
+  it("switches an entity's painted fiber between a bank's units by its sequence (Round 5), one step each", async () => {
     const v = await viewer();
     const base = drawn(v).count;
     const st = v.api.mesoscale!.fiberState(entry(v).cell.transform.ref, 2);
@@ -258,7 +258,7 @@ describe('mesoscale.paint', () => {
     });
     expect(units).toEqual(['dna:AT', 'dna:TA', 'dna:GC', 'dna:CG', 'dna:AT', 'dna:TA']);
     expect(d.getParticleLabel(base + 1)).toContain('T4');
-    // RNA now: the same fibre's letters read again as nucleotides (T is not one: at random)
+    // RNA now: the same fiber's letters read again as nucleotides (T is not one: at random)
     expectOk(await v.api.run('mesoscale.fiber', { entity: 'NC', bank: 'rna' }));
     expect(drawn(v).targetMapping?.get(drawn(v).targets[base])).toMatchObject({ sites: { label: 'rna:A' } });
     // none: the entity's own target again

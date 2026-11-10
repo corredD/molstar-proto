@@ -363,7 +363,7 @@ describe('paint mode', () => {
     expect(copy.disposed).toBe(true);
   });
 
-  it("a brush with fibres paints a fibre by default, its points its fibres' step apart; Fibre overrides it", () => {
+  it("a brush with fibers paints a fiber by default, its points its fibers' step apart; Fiber overrides it", () => {
     for (const [fiberStep, setting, painted, points] of [
       [3, 'auto', true, 11],
       [undefined, 'auto', false, 3],
@@ -374,12 +374,12 @@ describe('paint mode', () => {
       mode.set({ fiber: setting });
       mode.start(brush);
       const el = layer();
-      expect(el.textContent?.includes('a fibre of'), `${fiberStep} ${setting}`).toBe(painted);
+      expect(el.textContent?.includes('a fiber of'), `${fiberStep} ${setting}`).toBe(painted);
       el.dispatchEvent(pointer('pointerdown', { x: 10, y: 10 }));
       el.dispatchEvent(pointer('pointermove', { x: 40, y: 10 }));
       el.dispatchEvent(pointer('pointerup', { x: 40, y: 10 }));
       expect(fibers[0]).toBe(painted);
-      // 30 Å: a fibre's points exactly its fibres' step apart (3 Å), whatever the reads' (review S1); copies every
+      // 30 Å: a fiber's points exactly its fibers' step apart (3 Å), whatever the reads' (review S1); copies every
       // 10 Å (a copy's diameter) else
       const ps = strokes[0].positions;
       expect(ps.length / 3, `${fiberStep} ${setting}`).toBe(points);

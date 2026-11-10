@@ -96,7 +96,7 @@ describe('the copy under the pointer', () => {
 });
 
 describe('oneCopyOf and paintRotation', () => {
-  it('one copy of a particle: its target, entity and compartment at the origin, no fibre nor attribute', async () => {
+  it('one copy of a particle: its target, entity and compartment at the origin, no fiber nor attribute', async () => {
     const v = await viewer();
     const data = v.plugin.managers.particles.hierarchy.current.lists[0].cell.obj!.data;
     const one = oneCopyOf(data, 2);

@@ -260,10 +260,10 @@ export function PaintBrush(props: { area: MesoscaleApi; particles: string; entit
         onPick={(id) => mode.set({ orient: id as PaintSettings['orient'] })}
       />
       <Choices
-        label="Fibre"
+        label="Fiber"
         choices={[
-          { id: 'auto', label: 'Auto', title: 'A new fibre when the entity has fibres, else copies' },
-          { id: 'on', label: 'On', title: 'A stroke is a new fibre: its points a step apart, turned along it' },
+          { id: 'auto', label: 'Auto', title: 'A new fiber when the entity has fibers, else copies' },
+          { id: 'on', label: 'On', title: 'A stroke is a new fiber: its points a step apart, turned along it' },
           { id: 'off', label: 'Off', title: 'A stroke is copies' },
         ]}
         active={mapState(settings, (s) => s.fiber)}
@@ -274,12 +274,12 @@ export function PaintBrush(props: { area: MesoscaleApi; particles: string; entit
           <div class={classes.tight}>
             <FiberSettings area={props.area} particles={props.particles} entity={props.entity} />
             <div class={classes.line}>
-              <div class={classes.label} title="The next fibres' sequence, one-letter codes; empty: at random">
+              <div class={classes.label} title="The next fibers' sequence, one-letter codes; empty: at random">
                 Sequence
               </div>
               <TextInput
                 size="sm"
-                aria-label="Fibre sequence"
+                aria-label="Fiber sequence"
                 placeholder="at random"
                 value={mapState(settings, (st) => st.sequence ?? '')}
                 onInput={(sequence) => mode.set({ sequence })}
@@ -291,7 +291,7 @@ export function PaintBrush(props: { area: MesoscaleApi; particles: string; entit
               </div>
               <TextInput
                 size="sm"
-                aria-label="Fibre sequence range"
+                aria-label="Fiber sequence range"
                 placeholder="all"
                 value={mapState(settings, (st) => st.range ?? '')}
                 onInput={(range) => mode.set({ range })}
@@ -346,8 +346,8 @@ export function PaintBrush(props: { area: MesoscaleApi; particles: string; entit
 }
 
 /**
- * An entity's fibre settings (`mesoscale.fiber`; progress/2026-11-08-paint.md, Round 3): its painted fibres' rise (Å a
- * point along the path), twist (° a point) and jitter (± ° a point, random); a change makes every painted fibre of the
+ * An entity's fiber settings (`mesoscale.fiber`; progress/2026-11-08-paint.md, Round 3): its painted fibers' rise (Å a
+ * point along the path), twist (° a point) and jitter (± ° a point, random); a change makes every painted fiber of the
  * entity again, one step (a slider once released). A DNA: 3.4 Å, 34.3°, 0; an RNA: its rise, jitter 180. Round 4: the
  * unit's axis along the path (a pull-down) and its offset off the path, along a perpendicular of that axis.
  */
@@ -367,9 +367,9 @@ export function FiberSettings(props: { area: MesoscaleApi; particles: string; en
     <div class={classes.tight}>
       {line(
         'Rise',
-        "Between a fibre's points along its path",
+        "Between a fiber's points along its path",
         <Slider
-          aria-label="Fibre rise, Å a point"
+          aria-label="Fiber rise, Å a point"
           value={mapState(fiber, (f) => f?.rise)}
           min={0.5}
           max={500}
@@ -380,9 +380,9 @@ export function FiberSettings(props: { area: MesoscaleApi; particles: string; en
       )}
       {line(
         'Twist',
-        'The turn about the fibre from one point to the next',
+        'The turn about the fiber from one point to the next',
         <Slider
-          aria-label="Fibre twist, ° a point"
+          aria-label="Fiber twist, ° a point"
           value={mapState(fiber, (f) => f?.twist)}
           min={-180}
           max={180}
@@ -395,7 +395,7 @@ export function FiberSettings(props: { area: MesoscaleApi; particles: string; en
         'Jitter',
         'A random turn within ± this a point (180: at random)',
         <Slider
-          aria-label="Fibre twist jitter, ± ° a point"
+          aria-label="Fiber twist jitter, ± ° a point"
           value={mapState(fiber, (f) => f?.jitter)}
           min={0}
           max={180}
@@ -406,11 +406,11 @@ export function FiberSettings(props: { area: MesoscaleApi; particles: string; en
       )}
       {line(
         'Axis',
-        "The unit's own axis that follows the path (Auto: its fibres', else its longest)",
+        "The unit's own axis that follows the path (Auto: its fibers', else its longest)",
         <Select
           size="sm"
           over
-          aria-label="Fibre axis along the path"
+          aria-label="Fiber axis along the path"
           options={FiberAxisOptions}
           value={mapState(fiber, (f) => f?.axis ?? 'auto')}
           onChange={(axis) => run({ axis })}
@@ -420,11 +420,11 @@ export function FiberSettings(props: { area: MesoscaleApi; particles: string; en
         {() =>
           line(
             'Bank',
-            'The units painted fibres switch between by their sequences: DNA a base pair a letter (A, T, G, C), RNA a nucleotide (A, U, G, C); none: the entity itself',
+            'The units painted fibers switch between by their sequences: DNA a base pair a letter (A, T, G, C), RNA a nucleotide (A, U, G, C); none: the entity itself',
             <Select
               size="sm"
               over
-              aria-label="Fibre bank of units"
+              aria-label="Fiber bank of units"
               options={FiberBankOptions}
               value={mapState(fiber, (f) => f?.bank ?? 'none')}
               onChange={(bank) => run({ bank })}
@@ -436,7 +436,7 @@ export function FiberSettings(props: { area: MesoscaleApi; particles: string; en
         'Offset',
         'Off the path, along a perpendicular of the axis that turns with the unit (with a twist: a helix)',
         <Slider
-          aria-label="Fibre offset off the path, Å"
+          aria-label="Fiber offset off the path, Å"
           value={mapState(fiber, (f) => f?.offset)}
           min={-50}
           max={50}

@@ -87,7 +87,7 @@ describe('paintParticles', () => {
     expect(Array.from(out.rotations!.slice(28))).toEqual(Array.from(Float32Array.from(q)));
   });
 
-  it('leaves the fibres as they are, gives each copy its target radius, attributes not present for the copies', () => {
+  it('leaves the fibers as they are, gives each copy its target radius, attributes not present for the copies', () => {
     const fibers = { count: 1, offsets: Int32Array.of(0, 3), indices: Int32Array.of(2, 3, 4) };
     const radii = Float32Array.of(1, 1, 7, 9, 9, 9, 3);
     const cc = Column.ofArray({ array: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7], schema: Column.Schema.float });
@@ -157,8 +157,8 @@ describe('paintRotations', () => {
   });
 });
 
-describe('fibres (Round 2, Decided 4)', () => {
-  /** NC (target 2, particles 3, 4, 5, along x 10 Å apart) as a fibre: its +z along x, turned 30° a point about it */
+describe('fibers (Round 2, Decided 4)', () => {
+  /** NC (target 2, particles 3, 4, 5, along x 10 Å apart) as a fiber: its +z along x, turned 30° a point about it */
   const withFiber = () => {
     const list = cellpackLike();
     const q0 = Quat.rotationTo(Quat(), Vec3.create(0, 0, 1), Vec3.create(1, 0, 0));
@@ -172,25 +172,25 @@ describe('fibres (Round 2, Decided 4)', () => {
     return { ...list, rotations, fibers };
   };
 
-  it("a fibre stroke appends its copies and one fibre through them, in order; the input's fibres kept", () => {
+  it("a fiber stroke appends its copies and one fiber through them, in order; the input's fibers kept", () => {
     const list = withFiber();
-    // a path a rise (the fibre's step, 10 Å) a point: its points those
+    // a path a rise (the fiber's step, 10 Å) a point: its points those
     const line = { target: 2, fiber: true, positions: [0, 0, 0, 10, 0, 0, 20, 0, 0], rotations: [] };
     const out = paintParticles(list, [stroke(), stroke(line)]);
     expect(out.count).toBe(12);
     expect(out.fibers!.count).toBe(2);
     expect(Array.from(out.fibers!.offsets)).toEqual([0, 3, 6]);
     expect(Array.from(out.fibers!.indices)).toEqual([3, 4, 5, 9, 10, 11]);
-    // the painted list's own fibre mask, not the input's (cached on it)
+    // the painted list's own fiber mask, not the input's (cached on it)
     expect(getFiberParticleMask(list)!.length).toBe(7);
     const mask = getFiberParticleMask(out)!;
     expect(mask.length).toBe(12);
     expect(Array.from(mask.slice(7))).toEqual([0, 0, 1, 1, 1]);
-    // a list without fibres gets its first
+    // a list without fibers gets its first
     const first = paintParticles(cellpackLike(), [stroke({ fiber: true })], { 1: { rise: 10, twist: 0, jitter: 0 } });
     expect(Array.from(first.fibers!.offsets)).toEqual([0, 2]);
     expect(Array.from(first.fibers!.indices)).toEqual([7, 8]);
-    // a click (one point) is a copy, not a fibre: no polyline of one point (review S4)
+    // a click (one point) is a copy, not a fiber: no polyline of one point (review S4)
     const click = paintParticles(cellpackLike(), [stroke({ fiber: true, positions: [0, 0, 0], rotations: [] })]);
     expect(click.count).toBe(8);
     expect(click.fibers).toBeUndefined();
@@ -203,14 +203,14 @@ describe('fibres (Round 2, Decided 4)', () => {
     for (let c = 0; c < 4; ++c) r[4 * 4 + c] = -r[4 * 4 + c];
     list.coordinates[5 * 3 + 1] = 2;
     expect(fiberConventionOf(list, 2)!.twist).toBeCloseTo(30, 3);
-    // a bent first segment: the twist part of a turn about an axis off the fibre stays small, not near ±180
+    // a bent first segment: the twist part of a turn about an axis off the fiber stays small, not near ±180
     const bent = withFiber();
     bent.coordinates[4 * 3 + 1] = 3;
     const t = fiberConventionOf(bent, 2)!.twist;
     expect(Math.abs(t)).toBeLessThan(31);
   });
 
-  it("reads a brush's fibres: the axis along them, the twist a point, the step; none for a brush without", () => {
+  it("reads a brush's fibers: the axis along them, the twist a point, the step; none for a brush without", () => {
     const list = withFiber();
     expect(isFiberBrush(list, 2)).toBe(true);
     expect(isFiberBrush(list, 1)).toBe(false);
@@ -221,10 +221,10 @@ describe('fibres (Round 2, Decided 4)', () => {
     expect(c.step).toBeCloseTo(10, 5);
   });
 
-  it("turns a new fibre's points as the brush's fibres are: its axis along the way, the twist a point", () => {
+  it("turns a new fiber's points as the brush's fibers are: its axis along the way, the twist a point", () => {
     const list = withFiber();
     const c = fiberConventionOf(list, 2)!;
-    // the same way as the existing fibre: the same orientations
+    // the same way as the existing fiber: the same orientations
     const r = fiberRotations([30, 0, 0, 40, 0, 0, 50, 0, 0], c);
     for (let j = 0; j < 3; ++j) {
       const q = Quat.create(r[j * 4], r[j * 4 + 1], r[j * 4 + 2], r[j * 4 + 3]);
@@ -240,9 +240,9 @@ describe('fibres (Round 2, Decided 4)', () => {
   });
 });
 
-describe('fibres by rise and twist (Round 3)', () => {
+describe('fibers by rise and twist (Round 3)', () => {
   const z = Vec3.create(0, 0, 1);
-  /** The turn about the fibre's axis (+z here, along x) of point `i` from point 0, in (-180, 180] */
+  /** The turn about the fiber's axis (+z here, along x) of point `i` from point 0, in (-180, 180] */
   const turnOf = (r: ArrayLike<number>, i: number) => {
     const x = axisOf(r, i, Vec3.create(1, 0, 0));
     const x0 = axisOf(r, 0, Vec3.create(1, 0, 0));
@@ -286,7 +286,7 @@ describe('fibres by rise and twist (Round 3)', () => {
     expect(Math.max(...steps) - Math.min(...steps)).toBeGreaterThan(5);
   });
 
-  it("makes every painted fibre of an entity again by its settings; another entity's and the copies as they were", () => {
+  it("makes every painted fiber of an entity again by its settings; another entity's and the copies as they were", () => {
     const list = { ...cellpackLike(), entities: cellpackLike().targets };
     const path = [0, 0, 0, 20, 0, 0];
     const strokes = [
@@ -301,19 +301,19 @@ describe('fibres by rise and twist (Round 3)', () => {
     });
     const coarse = paintParticles(list, strokes, settings(10));
     const fine = paintParticles(list, strokes, settings(5));
-    // entity 1's two fibres: 3 points each at 10 Å, 5 at 5 Å; entity 2's 3 points both times; the copy one
+    // entity 1's two fibers: 3 points each at 10 Å, 5 at 5 Å; entity 2's 3 points both times; the copy one
     expect(coarse.count).toBe(7 + 3 + 3 + 3 + 1);
     expect(fine.count).toBe(7 + 5 + 5 + 3 + 1);
     expect(Array.from(fine.fibers!.offsets)).toEqual([0, 5, 10, 13]);
     expect(Array.from(fine.coordinates.slice(7 * 3, 12 * 3).filter((_, i) => i % 3 === 0))).toEqual([0, 5, 10, 15, 20]);
-    // entity 2's fibre the same points either way
+    // entity 2's fiber the same points either way
     const two = (o: typeof fine, at: number) => Array.from(o.coordinates.slice(at * 3, (at + 3) * 3));
     expect(two(fine, 17)).toEqual(two(coarse, 13));
     // the copy last, as painted
     expect(Array.from(fine.coordinates.slice(-3))).toEqual([5, 5, 5]);
   });
 
-  it("defaults to the entity's own fibres' step and twist, else touching points, no twist", () => {
+  it("defaults to the entity's own fibers' step and twist, else touching points, no twist", () => {
     // withFiber's NC (target 2): 10 Å, 30°
     const list = cellpackLike();
     const q0 = Quat.rotationTo(Quat(), z, Vec3.create(1, 0, 0));
@@ -342,7 +342,7 @@ describe('fibres by rise and twist (Round 3)', () => {
   });
 });
 
-describe('fibres by an axis and an offset (Round 4)', () => {
+describe('fibers by an axis and an offset (Round 4)', () => {
   const z = Vec3.create(0, 0, 1);
   /** A straight path along world x, 40 Å */
   const line = [0, 0, 0, 40, 0, 0];
@@ -398,7 +398,7 @@ describe('fibres by an axis and an offset (Round 4)', () => {
   });
 });
 
-describe('fibres of a bank of units by a sequence (Round 5)', () => {
+describe('fibers of a bank of units by a sequence (Round 5)', () => {
   const dna = { 2: { ...FiberBankHelix, jitter: 0, axis: 'z' as const, offset: 0, bank: 'dna' as const } };
   const rna = { 2: { ...FiberBankHelix, jitter: 0, axis: 'z' as const, offset: 0, bank: 'rna' as const } };
   /** A path along z of `n` points a rise apart */
@@ -423,7 +423,7 @@ describe('fibres of a bank of units by a sequence (Round 5)', () => {
     }
     // the units are sites, the same objects every time
     expect(out.targetMapping!.get(out.targets[list.count])).toEqual({ kind: 'sites', sites: fiberUnitSites('dna:AT') });
-    // the fibre's points still the entity's: its convention read from them
+    // the fiber's points still the entity's: its convention read from them
     expect(out.fibers!.count).toBe(1);
   });
 
@@ -469,12 +469,12 @@ describe('the review of rounds 3 to 5', () => {
     [id]: { ...FiberBankHelix, jitter: 0, axis: 'z' as const, offset: 0, bank: 'dna' as const },
   });
   const path = (n: number) => [0, 0, 0, 0, 0, FiberBankHelix.rise * (n - 1)];
-  const fibre = (over: Partial<PaintStroke> = {}) =>
+  const fiber = (over: Partial<PaintStroke> = {}) =>
     stroke({ target: 2, entity: 2, fiber: true, positions: path(4), rotations: [], seed: 5, ...over });
 
   it("M2: never gives a unit a list's own target id: no bank for the entity -1 (no entity)", () => {
     const list = cellpackLike();
-    const out = paintParticles(list, [fibre({ entity: -1, sequence: { residues: 'ATGC' } })], dna(-1));
+    const out = paintParticles(list, [fiber({ entity: -1, sequence: { residues: 'ATGC' } })], dna(-1));
     expect(Array.from(out.targets.slice(list.count))).toEqual([2, 2, 2, 2]);
     expect(out.targetInfo).toBe(list.targetInfo);
   });
@@ -483,7 +483,7 @@ describe('the review of rounds 3 to 5', () => {
     const mapping = new Map();
     const a = { ...cellpackLike(), targetMapping: mapping };
     const b = { ...a, targetInfo: new Map([...a.targetInfo, [50, { entity: 1 }]]) };
-    const strokes = [fibre({ sequence: { residues: 'AT' } })];
+    const strokes = [fiber({ sequence: { residues: 'AT' } })];
     paintParticles(a, strokes, dna(2));
     const out = paintParticles(b, strokes, dna(2));
     for (let i = b.count; i < out.count; ++i) {
@@ -496,13 +496,13 @@ describe('the review of rounds 3 to 5', () => {
     const list = cellpackLike();
     const out = paintParticles(
       list,
-      [fibre({ positions: path(5), sequence: { residues: 'ACGTACGT', start: 3, end: 4 } })],
+      [fiber({ positions: path(5), sequence: { residues: 'ACGTACGT', start: 3, end: 4 } })],
       dna(2),
     );
     const labels = Array.from({ length: 5 }, (_, j) => out.getParticleLabel(list.count + j));
     expect(labels[0]).toBe('NC · painted 1 · G3');
     expect(labels.map((l) => l.split(' · ').pop())).toEqual(['G3', 'T4', 'G3', 'T4', 'G3']);
-    const random = paintParticles(list, [fibre()], dna(2));
+    const random = paintParticles(list, [fiber()], dna(2));
     expect(random.getParticleLabel(list.count)).toMatch(/^NC · painted 1 · [ATGC]$/);
   });
 

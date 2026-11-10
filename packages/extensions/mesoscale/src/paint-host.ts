@@ -148,7 +148,7 @@ export function pluginPaintHost(
       return pluginPaintCursor(plugin, list, brush, color, !!data && !!brushOf(data, brush.entity)?.surface);
     },
     fiberStep(brush) {
-      // the entity's rise (Round 3): its own settings, else its file's fibres'; none when it makes no fibres
+      // the entity's rise (Round 3): its own settings, else its file's fibers'; none when it makes no fibers
       const list = listOf(brush.particles);
       const data = list?.cell.obj?.data;
       const b = data && brushOf(data, brush.entity);
