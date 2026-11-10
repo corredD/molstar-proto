@@ -740,8 +740,9 @@ export const LipidMembraneReprParams = {
   partColors: PD.Value<Readonly<Record<string, number>>>({}, { isHidden: true }),
   // round 9 (Ludo, 2026-11-10: "if I change the color of the geometry/mesh the membrane color multiplier take it"): a
   // part's colours (or the whole membrane's, one mesh) times its mesh's colour (`meshTint`), its far colour, its species'
-  // and the patch's, atoms by element not; on by default, off round 7's (`partColors` its far colour). A membrane with no
-  // mesh (a sphere) none. Here, not in `colorLevels`: By zoom off keeps it
+  // and the patch's, atoms by element not; on by default, off round 7's (`partColors` its far colour). A part whose mesh's
+  // tint is neutral (grey, a VTP's) keeps its `partColors` (review S2, S4a). A membrane with no mesh (a sphere) none.
+  // Here, not in `colorLevels`: By zoom off keeps it
   meshColors: PD.Boolean(true, { description: 'Colours from meshes: each part’s colours times its mesh’s' }),
   // colours by zoom, as a particle list's (round 4c item 8; `color-levels.md`): far the membrane's colour (`color`), then
   // its species' (its entities'; its chain's the same), close each atom's by its element (`membraneColorLevels`; the
@@ -1267,8 +1268,6 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
   /** the meshes' tints (round 9): given by the transformer (`setMeshTints`), applied by `createOrUpdate` */
   let givenTints = NoTints;
   let tints = NoTints;
-  /** whether the meshes colour the membrane (round 9): the switch on and a mesh wrapped (a sphere's none) */
-  const meshMode = () => props.meshColors && tints.length > 0;
   /** a part's tint (one mesh's: `part` none), none with the switch off */
   const tintOf = (part: number | undefined) => (props.meshColors ? tints[part ?? 0] : undefined);
   /** the cut leaflets' far surfaces, faded in by distance (`fadeSurface`), and their lipids' size */
@@ -1623,8 +1622,9 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
       return name !== undefined && hiddenParts.has(name);
     };
     const partColor = (l: CutLeaflet) => {
-      // round 9: with its meshes' colours its mesh is its colour, its part colour none
-      if (meshMode()) return undefined;
+      // round 9: with its meshes' colours its mesh is its colour, its part colour none; but where its mesh's tint is
+      // neutral (a grey, a VTP's, a session before round 9) its own (review S2, S4a: the coordinator's decision)
+      if (tintOf(l.part) !== undefined) return undefined;
       const name = partName(l);
       const c = name === undefined ? undefined : props.partColors[name];
       return c === undefined ? undefined : Color(c);

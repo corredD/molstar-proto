@@ -742,20 +742,25 @@ export class MesoscaleApi extends ApiArea {
           const meshes = !reset && parsed !== undefined ? await partMeshes(ctx, membrane) : undefined;
           if (meshes) {
             const at = partIndex(membrane);
+            const meshOf = (p: string) => meshes[at.get(p)!];
             const r = await paintPartMeshes(
               ctx,
               membrane,
-              chosen.map((p) => [meshes[at.get(p)!], parsed!]),
-              visible === undefined
-                ? undefined
-                : (old) => {
-                    const hidden = new Set(old.hiddenParts);
-                    for (const p of chosen) {
-                      if (visible) hidden.delete(p);
-                      else hidden.add(p);
-                    }
-                    return { hiddenParts: all.filter((n) => hidden.has(n)) };
-                  },
+              chosen.flatMap((p) => (meshOf(p) ? [[meshOf(p)!, parsed!] as const] : [])),
+              (old) => {
+                const hidden = new Set(old.hiddenParts);
+                if (visible !== undefined) {
+                  for (const p of chosen) {
+                    if (visible) hidden.delete(p);
+                    else hidden.add(p);
+                  }
+                }
+                // a part its mesh paints has no colour of its own (the mesh the one source); one it cannot, its own
+                return {
+                  hiddenParts: all.filter((n) => hidden.has(n)),
+                  partColors: withPartColors(old, chosen, (p) => (meshOf(p) ? null : parsed!)),
+                };
+              },
             );
             if (isFailure(r)) return r;
             if (!r.length) return ApiResult.already('They already look so.');
@@ -880,10 +885,13 @@ export class MesoscaleApi extends ApiArea {
         const meshes = scheme !== 'theme' ? await partMeshes(ctx, membrane) : undefined;
         if (meshes) {
           const at = partIndex(membrane);
+          const meshOf = (p: string) => meshes[at.get(p)!];
+          const colorOf = (p: string) => uniform ?? generated!.get(index.get(p)!)!;
           const r = await paintPartMeshes(
             ctx,
             membrane,
-            chosen.map((p) => [meshes[at.get(p)!], uniform ?? generated!.get(index.get(p)!)!]),
+            chosen.flatMap((p) => (meshOf(p) ? [[meshOf(p)!, colorOf(p)] as const] : [])),
+            (old) => ({ partColors: withPartColors(old, chosen, (p) => (meshOf(p) ? null : colorOf(p))) }),
           );
           if (isFailure(r)) return r;
           if (!r.length) return ApiResult.already('They are already colored so.');
@@ -1666,7 +1674,7 @@ function tintedBy(ctx: Pick<ApiContext, 'plugin'>, cell: StateObjectCell, meshes
   if (!p.meshColors || refs.length === 0) return false;
   for (const ref of refs) {
     const colour = meshColorCell(ctx.plugin.state.data, ref);
-    if (!colour || !meshes.has(colour.transform.ref)) return false;
+    if (!colour || !paintable(colour) || !meshes.has(colour.transform.ref)) return false;
   }
   return true;
 }
@@ -2058,21 +2066,33 @@ function withPartColors(old: LipidMembraneProps, parts: readonly string[], color
 /**
  * A cell membrane's parts' meshes (round 9), by part index (review S3: part `k` is mesh `k`, never looked up by name),
  * each its colour cell (`meshColorCell`), where its colours come from them (its switch on, a mesh a part) and
- * `cryoet.mesh` colours them (every one a mesh cryoet lists); else none: round 7's part colours. Indexed once (a Set
- * of cryoet's meshes)
+ * `cryoet.mesh` colours them (every one a mesh cryoet lists); a part whose mesh it cannot paint none (its own colour);
+ * none at all: round 7's part colours. Indexed once (a Set of cryoet's meshes)
  */
-async function partMeshes(ctx: ApiContext, cell: StateObjectCell): Promise<readonly string[] | undefined> {
+async function partMeshes(
+  ctx: ApiContext,
+  cell: StateObjectCell,
+): Promise<readonly (string | undefined)[] | undefined> {
   const p = cell.transform.params as LipidMembraneProps;
   if (!p.meshColors || p.meshes.length === 0) return undefined;
   if (membranePartNames(cell).length !== p.meshes.length) return undefined;
   const known = await meshesOf(ctx);
-  const out: string[] = new Array(p.meshes.length);
+  const out: (string | undefined)[] = new Array(p.meshes.length);
+  let any = false;
   for (let k = 0; k < p.meshes.length; ++k) {
-    const ref = meshColorCell(ctx.plugin.state.data, p.meshes[k])?.transform.ref;
-    if (!ref || !known.has(ref)) return undefined;
-    out[k] = ref;
+    const colour = meshColorCell(ctx.plugin.state.data, p.meshes[k]);
+    if (!colour || !known.has(colour.transform.ref)) return undefined;
+    // review S2: a mesh in its theme's colours (a VTP's: no `coloring`) is not painted; its part keeps its own colour
+    if (!paintable(colour)) continue;
+    out[k] = colour.transform.ref;
+    any = true;
   }
-  return out;
+  return any ? out : undefined;
+}
+
+/** Whether `cryoet.mesh` paints a mesh's colour cell: its representation has a `coloring` (a VTP's has not) */
+function paintable(colour: StateObjectCell) {
+  return (colour.transform.params as { coloring?: unknown } | undefined)?.coloring !== undefined;
 }
 
 /** A membrane's parts' indices by name (unique: `concatMeshes`), indexed once */
@@ -2082,7 +2102,7 @@ function partIndex(cell: StateObjectCell): ReadonlyMap<string, number> {
 
 /**
  * Parts' colours written to their meshes (round 9) by `cryoet.mesh` (its one writer, by id), with the membrane's other
- * change (`patch`: a part's eye), in one data transaction (restored if a part fails): the nodes changed, or the failure
+ * change (`patch`: a part's eye, the colours of parts no mesh paints), in one data transaction (restored if a part fails): the nodes changed, or the failure
  */
 async function paintPartMeshes(
   ctx: ApiContext,
@@ -2095,6 +2115,7 @@ async function paintPartMeshes(
     await ctx.plugin.dataTransaction(
       async () => {
         if (patch && (await updateMembrane(ctx, cell, patch))) nodes.push(cell.transform.ref);
+        if (colors.length === 0) return;
         const r = await ctx.api.run('cryoet.mesh', {
           colors: colors.map(([mesh, color]) => ({ mesh, color: Color.toHexStyle(color) })),
         });

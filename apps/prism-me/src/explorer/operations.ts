@@ -813,9 +813,24 @@ function membraneParts(plugin: PluginContext, look: MembraneLook, data: unknown)
     parts: names.map(({ name }, k) => ({
       name,
       visible: !hidden.has(name),
-      color: fromMeshes ? (meshColor(plugin, look.meshes![k]) ?? look.color) : (look.partColors?.[name] ?? look.color),
+      color: fromMeshes
+        ? meshPartColor(meshColor(plugin, look.meshes![k]), look.partColors?.[name], look.color)
+        : (look.partColors?.[name] ?? look.color),
     })),
   };
+}
+
+/**
+ * A part's colour with its meshes' colours on, as it is drawn: its mesh's where that tints (not grey, white, black: the
+ * neutral ones of `meshTint`, mesoscale), else its own (review S2, S4a: a VTP's, a session's before round 9), else its
+ * mesh's or the membrane's
+ */
+function meshPartColor(mesh: number | undefined, own: number | undefined, membrane: number): number {
+  if (mesh !== undefined) {
+    const g = (mesh >> 8) & 255;
+    if (((mesh >> 16) & 255) !== g || g !== (mesh & 255)) return mesh;
+  }
+  return own ?? mesh ?? membrane;
 }
 
 /**

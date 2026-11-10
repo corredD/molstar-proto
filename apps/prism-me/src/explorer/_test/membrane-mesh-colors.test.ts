@@ -85,6 +85,18 @@ function objFile(name: string, s: number) {
   return new File([text], name);
 }
 
+/** a tetrahedron as a VTP file: its colour its colour theme's, no `coloring` (cryoet.mesh does not paint it) */
+function vtpFile(name: string, s: number) {
+  const p = [s, s, s, s, -s, -s, -s, s, -s, -s, -s, s];
+  const text =
+    '<?xml version="1.0"?><VTKFile type="PolyData" version="0.1" byte_order="LittleEndian"><PolyData>' +
+    '<Piece NumberOfPoints="4" NumberOfVerts="0" NumberOfLines="0" NumberOfStrips="0" NumberOfPolys="4">' +
+    `<Points><DataArray type="Float32" NumberOfComponents="3" format="ascii">${p.join(' ')}</DataArray></Points>` +
+    '<Polys><DataArray type="Int32" Name="connectivity" format="ascii">0 1 2 0 3 1 0 2 3 1 3 2</DataArray>' +
+    '<DataArray type="Int32" Name="offsets" format="ascii">3 6 9 12</DataArray></Polys></Piece></PolyData></VTKFile>';
+  return new File([text], name);
+}
+
 /** meshes opened from `files`, wrapped all: the membrane, the meshes' rows, its parts' names and its meshes' colours */
 async function wrappedFiles(files: File[]) {
   const base = DefaultPrismViewerSpec();
@@ -106,7 +118,13 @@ async function wrappedFiles(files: File[]) {
       .objectsState()
       .value.find((o) => o.ref === membrane)!
       .parts!.map((p) => p.name);
-  return { v, meshes, membrane, meshColor, parts };
+  const params = () => cells.get(membrane)!.transform.params as { partColors: object; color: number };
+  const dots = () =>
+    area
+      .objectsState()
+      .value.find((o) => o.ref === membrane)!
+      .parts!.map((p) => p.color);
+  return { v, meshes, membrane, meshColor, parts, params, dots };
 }
 
 describe('a membrane’s parts coloured from their meshes (round 9)', () => {
@@ -217,5 +235,46 @@ describe('a membrane’s parts coloured from their meshes (round 9)', () => {
     expectOk(await v.api.run('mesoscale.style', { particles: membrane, parts: 'pm.obj 2', color: 'tomato' }));
     expect(meshColor(1)).toBe(0xff6347);
     expect(meshColor(0)).toBe(first);
+  });
+
+  // review S2 (the coordinator's decision, for Ludo): a VTP's colour is its theme's, which cryoet.mesh does not write:
+  // its part takes round 7's path, its own colour, which applies where its mesh's tint is neutral
+  it('a part of a VTP mesh takes its own colour (round 7’s path), its dot and a theme colour it', async () => {
+    const { v, meshes, membrane, parts, params, dots } = await wrappedFiles([
+      vtpFile('pm.vtp', 100),
+      vtpFile('vac.vtp', 20),
+    ]);
+    expect(parts()).toEqual(['pm.vtp', 'vac.vtp']);
+    const r = await v.api.run('mesoscale.style', { particles: membrane, parts: 'vac.vtp', color: 'tomato' });
+    expectOk(r);
+    expect(r.unchanged).toBeFalsy();
+    expect(params().partColors).toEqual({ 'vac.vtp': 0xff6347 });
+    expect(dots()[1]).toBe(0xff6347);
+    // a category's theme over the membrane and its meshes: the membrane coloured (its meshes' tints cannot)
+    expectOk(
+      await v.api.run('mesoscale.theme', {
+        objects: [membrane, ...meshes.map((m) => m.ref)],
+        theme: 'uniform',
+        color: 'teal',
+      }),
+    );
+    expect(params().color).toBe(0x008080);
+  });
+
+  // review S4a: a session saved before round 9 kept its parts' colours in partColors, its meshes grey: they still show
+  it('a part colour of a session before round 9 (grey meshes) is its dot’s, as it is drawn', async () => {
+    const { v, membrane, meshColor, params, dots } = await wrapped();
+    const b = v.plugin.state.data.build();
+    b.to(membrane).update((p: Record<string, unknown>) => ({ ...p, partColors: { VAC: 0xff0000 } }));
+    await b.commit();
+    expect(params().partColors).toEqual({ VAC: 0xff0000 });
+    expect(dots()).toEqual([meshColor(0), 0xff0000]);
+    // styled: its mesh painted, its own colour cleared (the mesh the one source again), one step
+    const before = v.api.history.steps.value.length;
+    expectOk(await v.api.run('mesoscale.style', { particles: membrane, parts: 'VAC', color: 'tomato' }));
+    expect(v.api.history.steps.value.length).toBe(before + 1);
+    expect(meshColor(1)).toBe(0xff6347);
+    expect(params().partColors).toEqual({});
+    expect(dots()).toEqual([meshColor(0), 0xff6347]);
   });
 });

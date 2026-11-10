@@ -189,6 +189,12 @@ describe.skipIf(!webgpu)('a colour multiplier per compartment, its mesh’s colo
       // the switch on again: the meshes', the part colour left out
       await look({ meshColors: true, partColors: { LD: 0x0000ff } }, [Red, Green]);
       expect(drawn(colors(repr))).toEqual(drawn(both));
+      // review S2, S4a (the coordinator's decision, for Ludo): a part's own colour where its mesh's tint is neutral (a
+      // grey, a VTP's, a session saved before round 9 with its part colours), its mesh's where it is not
+      await look({ meshColors: true, partColors: { LD: 0x0000ff } }, [undefined, undefined]);
+      expect(colors(repr).surfaces).toEqual(surfaces((p) => (p === 0 ? color : 0x0000ff)));
+      await look({ meshColors: true, partColors: { LD: 0x0000ff } }, [Red, undefined]);
+      expect(colors(repr).surfaces).toEqual(surfaces((p) => (p === 0 ? tint(color, Red) : 0x0000ff)));
 
       // By zoom: far times the tint; atoms by element not tinted, carbons by species tinted
       const levels = {
