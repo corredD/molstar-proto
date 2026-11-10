@@ -14,7 +14,7 @@ import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
 import type { PrismViewer } from '@molstar/prism-viewer/viewer';
 import { ParticleRepresentation3DLayers } from '@molstar/plugin/state/transforms/particles/layers';
 import { PluginStateObject as SO } from '@molstar/plugin/state/objects';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createMesoViewSpecExtension, type MesoViewSpecApi, type SavedDocument } from '../extension.js';
 import { MesoPlacements } from '../particle-list.js';
 import { stubCanvasForLabels } from './canvas.js';
@@ -160,13 +160,29 @@ describe('showing a view (prism.md §4.4)', () => {
     expect(h.model.doc).toBe(before);
     expect((await saved(h)).session?.view).toBeUndefined();
 
-    expect((await h.run('mesoviewspec.view', { view: 'v.red' })) as { unchanged?: boolean }).toMatchObject({
-      ok: true,
-      unchanged: true,
-    });
     const gone = await h.run('mesoviewspec.view', { view: 'v.nowhere' });
     expect(gone.ok).toBe(false);
     expect(h.steps().length).toBe(steps);
+  });
+
+  it('showing the view shown again moves the camera back to it (Ludo, 2026-11-09), no step', {
+    tags: ['medium'],
+  }, async () => {
+    const h = await open();
+    await h.run('mesoviewspec.view', { view: 'v.red' });
+    const steps = h.steps().length;
+    const runs = h.runs.length;
+    // a headless viewer has no canvas: the adapter's camera write is what is watched
+    const adapter = h.model.adapter as unknown as { applyCamera(): boolean };
+    const camera = vi.spyOn(adapter, 'applyCamera');
+    const r = await h.run('mesoviewspec.view', { view: 'v.red' });
+    expect(r.ok, JSON.stringify(r)).toBe(true);
+    expect((r as { unchanged?: boolean }).unchanged).toBeUndefined();
+    expect(camera).toHaveBeenCalledTimes(1);
+    expect(h.steps().length).toBe(steps);
+    expect(h.runs.slice(runs)).toEqual(['mesoviewspec.view']);
+    expect(shownId(h)).toBe('v.red');
+    noUnsafe(h);
   });
 
   it('look edits go to the view shown; switching back shows them', { tags: ['medium'] }, async () => {
