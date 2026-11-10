@@ -14,6 +14,5 @@
   longer turned off while moving: master's two phases are exact
 - GPU culling (cells, instances) and CPU culling (batches, cells) keep the allowance for wiggle and tumble at the
   view's edges
-- Ghosts with master's clip culling: clip objects with a ghosted one cull nothing, so the ghost pass draws all they cut
 - The sphere raster (devices with `atomicMinMax64`) draws color levels; objects with a clipping table (graded cuts) stay
   with the impostors

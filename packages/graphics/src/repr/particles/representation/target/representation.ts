@@ -26,15 +26,15 @@ import {
   getNextMaterialId,
 } from '@molstar/graphics/gl/render-object';
 import { Subject } from 'rxjs';
-import { Mat4 } from '@molstar/core/math/linear-algebra';
-import { Visual } from '../../../visual.js';
 import { Task } from '@molstar/core/task';
 import { type Loci as ModelLoci, EmptyLoci, isEveryLoci, EveryLoci } from '@molstar/model/model/loci';
 import { type MarkerAction, MarkerActions } from '@molstar/core/util/marker-action';
 import type { LocationCallback } from '../../../util.js';
 import type { PickingId } from '@molstar/graphics/geo/geometry/picking';
+import { BaseGeometry } from '@molstar/graphics/geo/geometry/base';
 import { OrderedSet } from '@molstar/core/data/int';
 import { mergeRenderObjectsByType, pickMergedLoci, type MergedEntry } from '../../../merged.js';
+import { Visual } from '../../../visual.js';
 import { canCullOnGpu } from '@molstar/graphics/gl/renderable/merged';
 import {
   ParticleTargetRepresentationParams,
@@ -106,6 +106,23 @@ export function ParticleTargetRepresentation(
 
   let mergedByType = new Map<string, MergedEntry<TargetVisual>>();
 
+  /** What the last full update built from: a later one changing the clip alone sets it on the visuals (`isClipOnly`) */
+  let built: { particles: ParticleList; theme: Theme; props: ParticleTargetRepresentationProps } | undefined;
+
+  /**
+   * Whether the update to `_props` changes the clip alone, its defines kept: a clip object moved (a clipping gizmo's
+   * drag), nothing to rebuild and nothing merged otherwise; every target's full update and the merge check are skipped
+   */
+  function isClipOnly() {
+    if (!built || built.particles !== _particles || built.theme !== _theme || targetVisuals.size === 0) return false;
+    const before = built.props;
+    if (before.clip === _props.clip) return false;
+    for (const k in _props) {
+      if (k !== 'clip' && (_props as any)[k] !== (before as any)[k]) return false;
+    }
+    return BaseGeometry.isSameClipDefines(before.clip, _props.clip);
+  }
+
   /** updates one after another, see `Representation.createUpdateQueue` */
   const serialize = Representation.createUpdateQueue();
   function createOrUpdate(props: Partial<ParticleTargetRepresentationProps> = {}, input?: ParticleList) {
@@ -117,6 +134,21 @@ export function ParticleTargetRepresentation(
     // Quality-derived props are resolved per target (see `createParticleTargetPropsProvider`),
     // since each target has its own data and its own geometry params.
     Object.assign(_props, props);
+
+    if (isClipOnly()) {
+      const clip = _props.clip;
+      built!.props = { ..._props };
+      return serialize(
+        Task.create('ParticleTargetRepresentation clip', async () => {
+          // every member, also of a merged object (its first member's cells are the merged object's): one leaving its
+          // group draws right
+          for (const visual of targetVisuals.values()) {
+            if (visual.renderObject) BaseGeometry.updateClip(visual.renderObject.values as any, clip);
+          }
+          updated.next(version++);
+        }),
+      );
+    }
 
     const task = Task.create('ParticleTargetRepresentation', async (runtime) => {
       if (!_particles) return;
@@ -160,6 +192,7 @@ export function ParticleTargetRepresentation(
           // Render objects can be created here, so they need the current state applied, with its layers.
           applyState(visual.renderObject, _state);
           visual.setLayers(_state);
+          visual.setTransform(_state.transform);
           entries.push({ visual, renderObject: visual.renderObject });
           geometryState.add(visual.renderObject.id, visual.geometryVersion);
         }
@@ -175,9 +208,8 @@ export function ParticleTargetRepresentation(
 
       // `previewed` kept: an update of the same particles (a theme) leaves a preview's instances where it put them
       updateRenderObjectList(entries);
-      // made or merged again: they take the representation's transform
-      if (!Mat4.isIdentity(_state.transform)) applyTransform(_state.transform);
       geometryState.snapshot();
+      built = { particles, theme: _theme, props: { ..._props } };
       updated.next(version++);
     });
     return serialize(task);
@@ -192,6 +224,7 @@ export function ParticleTargetRepresentation(
       _props.gpuCulling,
       canCullOnGpu(graphics),
       graphics,
+      _state.previewTransform,
     );
   }
 
@@ -200,28 +233,23 @@ export function ParticleTargetRepresentation(
     if (state.pickable !== undefined) renderObject.state.pickable = state.pickable;
   }
 
-  /**
-   * The representation's transform on what it draws: each target's visual, then the merged render objects synced from
-   * them (as `units-representation` does). Not set on a merged object itself: it shares `matrix` and `transform` with
-   * its first member only, so its own instances and bounds would be made from those (zeros, radius 0: culled)
-   */
-  function applyTransform(transform: Mat4) {
-    for (const visual of targetVisuals.values()) {
-      if (visual.renderObject) Visual.setTransform(visual.renderObject, transform);
-    }
-    for (const ro of renderObjects) (ro as Partial<MergedGraphicsRenderObject>).merged?.sync();
-  }
-
   function setState(state: Partial<Representation.State>) {
-    const moved = state.transform !== undefined && !Mat4.areEqual(state.transform, _state.transform, 1e-9);
     Representation.updateState(_state, state);
-    if (moved) applyTransform(_state.transform);
     // apply per visual, not per (possibly merged) renderObject: a merged render object only
     // aliases its first member's state, so looping renderObjects would miss the other members
     for (const visual of targetVisuals.values()) {
       if (visual.renderObject) applyState(visual.renderObject, state);
       visual.setLayers(state);
+      if (state.transform !== undefined) visual.setTransform(state.transform);
     }
+    // a merged object follows its members' new transforms at once, not when a renderable syncs it (4af9a48cd: its
+    // bounds and the culler's cells read before that; WebGPU)
+    if (state.transform !== undefined) {
+      for (const ro of renderObjects) (ro as Partial<MergedGraphicsRenderObject>).merged?.sync();
+    }
+    // on what is drawn: a merged object moves as one, its members' are not read (`mergeRenderObjectsByType`)
+    const preview = state.previewTransform;
+    if (preview !== undefined) for (const ro of renderObjects) Visual.setPreviewTransform(ro, preview);
   }
 
   /** The visuals a preview drew at other frames, put back by the next `setParticleFrames(undefined)` */
@@ -416,8 +444,32 @@ function getParticleTargetSignatures(
 ): ObjectSignature[] {
   const particles = ctx.data;
   if (!Particle.is(particles) || !particles.targetMapping?.size) return [];
-  const targetProps = createParticleTargetPropsProvider(props);
   const groups = getParticleTargetGroups(particles);
+  // the same targets, groups, props and context as last: a list moved as a whole (the release of a move), where each
+  // target's signatures cost a visual's values (848 targets of a cellpack model: 80 ms)
+  const key = JSON.stringify([props, ctx.color, ctx.size, ctx.layers]);
+  const cached = signaturesCache.get(particles.targetMapping);
+  if (cached && cached.groups === groups && cached.graphics === ctx.graphics && cached.key === key) {
+    return cached.signatures.slice();
+  }
+  const signatures = computeParticleTargetSignatures(props, ctx, particles.targetMapping, groups);
+  signaturesCache.set(particles.targetMapping, { groups, graphics: ctx.graphics, key, signatures });
+  return signatures.slice();
+}
+
+/** `getParticleTargetSignatures` per target mapping, with what it was computed from */
+const signaturesCache = new WeakMap<
+  ReadonlyMap<number, ParticleTarget>,
+  { groups: unknown; graphics: unknown; key: string; signatures: ObjectSignature[] }
+>();
+
+function computeParticleTargetSignatures(
+  props: ParticleTargetRepresentationProps,
+  ctx: SignatureContext,
+  targetMapping: ReadonlyMap<number, ParticleTarget>,
+  groups: ReturnType<typeof getParticleTargetGroups>,
+): ObjectSignature[] {
+  const targetProps = createParticleTargetPropsProvider(props);
   const uniformSize = ctx.size.types.length === 1 && ctx.size.types[0] === 'uniform';
   // per geometry type: the signatures, the objects (a target each), their particles and the spheres of a structure's
   const byType = new Map<
@@ -425,7 +477,7 @@ function getParticleTargetSignatures(
     { signatures: ObjectSignature[]; objects: number; instances: number; spheres: number }
   >();
   for (let g = 0; g < groups.targetIds.length; g++) {
-    const target = particles.targetMapping.get(groups.targetIds[g]);
+    const target = targetMapping.get(groups.targetIds[g]);
     const count = OrderedSet.size(groups.sets[g]);
     if (!target || count === 0) continue;
     // marking is per particle (see `createTargetVisual`)
@@ -456,8 +508,10 @@ function getParticleTargetSignatures(
       const entry = byType.get(type)!;
       entry.objects += 1;
       entry.instances += count;
-      if (choice === 'structure-spheres' && target.kind === 'structure')
-        entry.spheres += count * target.structure.elementCount;
+      if (choice === 'structure-spheres') {
+        if (target.kind === 'structure') entry.spheres += count * target.structure.elementCount;
+        else if (target.kind === 'sites') entry.spheres += count * target.sites.count;
+      }
     }
   }
   const out: ObjectSignature[] = [];
@@ -478,7 +532,7 @@ function getParticleTargetParams(ctx: RepresentationContext, particles: Particle
     let hasVolume = false;
     let hasShape = false;
     for (const target of particles.targetMapping.values()) {
-      if (target.kind === 'structure') hasStructure = true;
+      if (target.kind === 'structure' || target.kind === 'sites') hasStructure = true;
       if (target.kind === 'volume') hasVolume = true;
       if (target.kind === 'shape') hasShape = true;
     }

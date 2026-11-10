@@ -3,6 +3,7 @@
  *
  * @author David Sehnal <david.sehnal@gmail.com>
  * @author Ludovic Autin <autin@scripps.edu>
+ * @author Alexander Rose <alexander.rose@weirdbyte.de>
  */
 
 import { describe, expect, it } from 'vitest';
@@ -217,8 +218,9 @@ describe('the default spec', () => {
       'built-in.animate-state-interpolation',
       'built-in.animate-time',
     ]);
-    // 5.x's 48, and OME-Zarr's action and two transforms (OpenOmeZarr, OmeZarrFromUrl, VolumeFromOmeZarr)
-    expect(c.dataActions).toBe(51);
+    // 5.x's 48, OME-Zarr's action and two transforms (OpenOmeZarr, OmeZarrFromUrl, VolumeFromOmeZarr), and
+    // TransformShapeProvider (moving a shape by hand)
+    expect(c.dataActions).toBe(52);
     expect(c.lociLabelProviders).toBe(5);
     plugin.dispose();
   });

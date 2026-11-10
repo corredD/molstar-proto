@@ -16,12 +16,12 @@ import {
 import { cbs, headlessViewer } from '../../../_test/harness.js';
 import { type GizmoCanvas, mountGizmoCanvas } from '../../../testing/gizmo-canvas.js';
 import type { PrismViewer } from '../../../viewer.js';
-import { applyToPlacement, PlacementHandles } from '../placement.js';
-import { StructureMoveGizmos } from '../../structure-move/gizmos.js';
+import { GizmoHandles } from '../handles.js';
+import { applyToPlacement, type Placement, PlacementHandles } from '../placement.js';
 
 // A drag's previews grow about linearly with their number (`test:scaling`; AGENTS.md: nothing allocated per pointer
-// event that grows): N moves of a structure's handles (`GizmoHandles`, the structure's preview on its representations),
-// each previewed, at N and 4N. And what a move allocates of its own, read exactly: a placement's gesture and its frame
+// event that grows): N moves of a structure's placement handles (`GizmoHandles` with `PlacementHandles`; the preview
+// the host's, none here: master's move feature moves a structure on its own controller), each previewed, at N and 4N. And what a move allocates of its own, read exactly: a placement's gesture and its frame
 // work in scratch matrices, the new placement's matrix and the gesture's pose aside.
 
 it('the positive control (a copy per item) is caught', () => {
@@ -29,14 +29,27 @@ it('the positive control (a copy per item) is caught', () => {
 });
 
 it("N previews of a drag on a structure's handles", async () => {
-  const s = await scalingAsync<{ v: PrismViewer; canvas: GizmoCanvas; gizmos: StructureMoveGizmos; steps: number[] }>(
+  const s = await scalingAsync<{
+    v: PrismViewer;
+    canvas: GizmoCanvas;
+    gizmos: GizmoHandles<Placement>;
+    steps: number[];
+  }>(
     {
       setup: async (n) => {
         const v = await headlessViewer({ files: [cbs()] });
         const canvas = mountGizmoCanvas(v.plugin);
-        const gizmos = new StructureMoveGizmos(v.plugin);
-        gizmos.setTarget(v.plugin.managers.structure.hierarchy.current.structures[0].cell.transform.ref);
-        gizmos.show(async () => false);
+        const cell = v.plugin.managers.structure.hierarchy.current.structures[0].cell;
+        const sphere = cell.obj!.data.boundary.sphere;
+        const value: Placement = { matrix: Mat4.identity(), center: sphere.center, radius: sphere.radius };
+        const gizmos = new GizmoHandles<Placement>(v.plugin, {
+          ...PlacementHandles,
+          items: () => [{ key: cell.transform.ref, label: 'structure', value }],
+          preview: async () => {},
+          commit: async () => false,
+          cancel: () => {},
+        });
+        gizmos.show();
         if (!(await canvas.hover())) throw new Error('no handle');
         return { v, canvas, gizmos, steps: Array.from({ length: n }, (_, i) => i + 1) };
       },

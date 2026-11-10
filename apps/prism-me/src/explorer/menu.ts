@@ -9,7 +9,7 @@ import type { ContextMenuItem } from '@molstar/prism-ui';
 import type { ViewerApi } from '@molstar/prism-viewer/api';
 import type {} from '@molstar/cryoet-extension/portal';
 import type {} from '@molstar/prism-viewer/features/clipping';
-import type {} from '@molstar/prism-viewer/features/structure-move';
+import type {} from '@molstar/prism-viewer/features/move';
 import { startMoveDrag } from '@molstar/stage-tools-extension/drag';
 import { moveBetween } from '@molstar/stage-tools-extension/move-gizmos';
 import { observableState } from '@molstar/prism-ui/reactive/observable-state';
@@ -123,8 +123,8 @@ export function showHandles(api: ViewerApi, ref: string, kind: string) {
   hideHandles(api);
   if (kind === 'structure' && api.move) {
     api.move.gizmos.setTarget(ref);
-    // Prism's handles, their release through the stage: its clips and labels with it
-    api.move.gizmos.show((structure, matrix) => commitStructureMove(api, structure, matrix));
+    // Prism's handles (its move feature), their release through the stage: its clips and labels with it
+    api.move.gizmos.show((structure, _kind, matrix) => commitStructureMove(api, structure, matrix));
     return;
   }
   const gizmos = api.stage?.moveGizmos;

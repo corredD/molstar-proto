@@ -69,6 +69,13 @@ export const MeshSchema = {
   uPatch: UniformSpec('v4'),
   /** the far color's blend: on (1) or off (0), the patch's px where the patch starts and is whole, a texel's Å */
   uPatchLevels: UniformSpec('v4'),
+  /** Å toward the camera, in depth only (`Mesh.Params.depthOffset`) */
+  uDepthOffset: UniformSpec('f'),
+  /**
+   * CSS pixels per unit of the mesh, constant on screen: the vertex stage scales it about the instance's origin by the
+   * world size of a pixel there (the instance's own scale multiplies); 0: world units
+   */
+  uScreenSize: UniformSpec('f'),
   meta: ValueSpec('unknown'),
 
   ...InteriorSchema,

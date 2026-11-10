@@ -30,13 +30,20 @@ describe('frameHandles', () => {
     expect(h.equal(from, spun)).toBe(false);
   });
 
-  it('draws the rings asked for: a plane tilts about X and Y', () => {
+  it('draws the rings asked for: a plane tilts about X and Y, no roll, no free turn', () => {
     const item = { key: 'a', label: 'A', value: { frame: Mat4.identity(), size: 10 } };
-    const rings = (o?: Parameters<typeof frameHandles>[0]) =>
+    const kinds = (o?: Parameters<typeof frameHandles>[0]) =>
       frameHandles(o)
         .layout(item)!
-        .groups.filter((g) => g.handle.kind === 'rotate').length;
-    expect(rings()).toBe(3);
-    expect(rings({ rotate: [0, 1] })).toBe(2);
+        .groups.map((g) => g.handle.kind);
+    const count = (ks: string[], kind: string) => ks.filter((k) => k === kind).length;
+    const all = kinds();
+    expect(count(all, 'rotate')).toBe(3);
+    expect(count(all, 'roll')).toBe(1);
+    expect(count(all, 'turn')).toBe(1);
+    const tilt = kinds({ rings: [0, 1], roll: false, free: false });
+    expect(count(tilt, 'rotate')).toBe(2);
+    expect(count(tilt, 'roll')).toBe(0);
+    expect(count(tilt, 'turn')).toBe(0);
   });
 });

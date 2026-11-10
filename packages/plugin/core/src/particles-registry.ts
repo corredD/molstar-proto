@@ -2,6 +2,7 @@
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Alexander Rose <alexander.rose@weirdbyte.de>
  */
 
 import type { ColorTheme } from '@molstar/graphics/theme/color';
@@ -27,6 +28,7 @@ import {
   ParticleListTransform,
   ParticleListWithTargets,
 } from '@molstar/plugin/state/transforms/particles/ops';
+import { TransformParticleList } from '@molstar/plugin/state/transforms/particles/transform';
 import { ParticleListUnitcell3D } from '@molstar/plugin/state/transforms/particles/unitcell';
 import { ParticlesRepresentation3D } from '@molstar/plugin/state/transforms/particles/representation';
 import { AnimateParticleTrajectory } from '@molstar/plugin/state/animation/built-in/particles';
@@ -82,6 +84,7 @@ export const ParticleActions: PluginRegistryEntry = {
     ParticleListTargetsFromAttribute,
     ParticleListTransform,
     ParticleListOffsets,
+    TransformParticleList,
     ParticleListUnitcell3D,
     ParticlesRepresentation3D,
   ],

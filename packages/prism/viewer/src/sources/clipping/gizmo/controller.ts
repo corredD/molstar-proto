@@ -3,43 +3,70 @@
  *
  * @author David Sehnal <david.sehnal@gmail.com>
  * @author Ludovic Autin <ludovic.autin@gmail.com>
+ * @author Alexander Rose <alexander.rose@weirdbyte.de>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
+import { GizmoController } from '@molstar/graphics/util/gizmo/controller';
 import type { PluginContext } from '@molstar/plugin/context';
 import { RepresentationClip } from '@molstar/plugin/state/helpers/representation-clip';
 import { observableState, type ReadonlyState } from '@molstar/prism-ui/core';
-import { GizmoHandles } from '../../gizmos/handles.js';
+import { BehaviorSubject } from 'rxjs';
 import { type Cut, type CutObject, representationsSphere } from '../cuts.js';
 import { ClipBinding, type ClipItem, type GizmoCommit } from './binding.js';
 
 export type { GizmoCommit } from './binding.js';
 
-// The clipping gizmos (clipping.md §4): `GizmoHandles` (gizmos.md) on the cuts' binding (`ClipBinding`), for the active
-// cut (its editor open: `handleOnly`), shown while the section is (`show`, `hide`). The active cut outlives `hide`: shown
+// The clipping gizmos (clipping.md §4): the gizmo library's controller (`@molstar/graphics/util/gizmo`) on the cuts'
+// binding (`ClipBinding`), for the active cut (its editor open: `handleOnly`), shown while the section is (`show`,
+// `hide`), its clicks claimed (`InteractivityManager.clickOwners`: no focus, no select). The active cut outlives `hide`: shown
 // again, its gizmo comes back. A cut is known by its number, which shifts when one before it goes: the active cut is
 // followed by its object (its tag), or by its number when its object changed and the count did not (an edit).
 
+/**
+ * The active cuts `before` (by number) in `cuts`: each by its object (its tag), else by its number when its object is
+ * gone and the count is the same as `followedCount` (it was edited; a removal shifts the numbers, and the next cut is
+ * not the removed one)
+ */
+export function followCuts(
+  before: ReadonlyMap<number, CutObject>,
+  cuts: readonly Pick<Cut, 'index' | 'object'>[],
+  followedCount: number,
+): Map<number, CutObject> {
+  const next = new Map<number, CutObject>();
+  const sameCount = cuts.length === followedCount;
+  for (const cut of cuts) {
+    const same = [...before.values()].some((o) => RepresentationClip.sameCut(o, cut.object));
+    const old = before.get(cut.index);
+    const edited = sameCount && !!old && !cuts.some((c) => RepresentationClip.sameCut(c.object, old));
+    if (same || edited) next.set(cut.index, cut.object);
+  }
+  return next;
+}
+
 export class ClipGizmos {
+  readonly #shown = observableState(false);
   /** The active cuts by number (one: the section's), and their objects as last seen (to follow them) */
   readonly #handled = observableState<readonly number[]>([]);
   #handledObjects = new Map<number, CutObject>();
   /** How many cuts there were when the active ones were last followed: an edit keeps the count, a removal does not */
   #followedCount = 0;
-  readonly #binding: ClipBinding;
-  readonly #handles: GizmoHandles<CutObject>;
+  readonly #fadeNormal = observableState(false);
+  readonly #items = new BehaviorSubject<readonly ClipItem[]>([]);
+  #controller: GizmoController<CutObject> | undefined;
+  #binding: ClipBinding | undefined;
+  #subs: { unsubscribe(): void }[] = [];
+  #releaseClicks: (() => void) | undefined;
   /** The cut a view previews (`preview`), as it shows it */
   #previewed: CutObject | undefined;
 
   constructor(
     private readonly plugin: PluginContext,
     private readonly cuts: ReadonlyState<readonly Cut[]>,
-  ) {
-    this.#binding = new ClipBinding(plugin, () => this.#items(this.cuts.value));
-    this.#handles = new GizmoHandles(plugin, this.#binding, { changes: cuts });
-  }
+  ) {}
 
   get shown(): ReadonlyState<boolean> {
-    return this.#handles.shown;
+    return this.#shown.asReadonly;
   }
 
   /** The cuts whose gizmos show (while `shown`), by number */
@@ -47,40 +74,72 @@ export class ClipGizmos {
     return this.#handled.asReadonly;
   }
 
+  /** Whether the slide arrow fades out as it turns toward the viewer; by default always drawn (clipping.md §4) */
+  get fadeNormal(): ReadonlyState<boolean> {
+    return this.#fadeNormal.asReadonly;
+  }
+
+  setFadeNormal(fade: boolean): void {
+    this.#fadeNormal.set(fade);
+    this.#controller?.setFadeSlides(fade);
+  }
+
   /** The active cut: its gizmo alone, or none */
   handleOnly(index: number | undefined): void {
     const cut = index === undefined ? undefined : this.cuts.value.find((c) => c.index === index);
     this.#handledObjects = new Map(cut ? [[cut.index, cut.object] as const] : []);
     this.#followedCount = this.cuts.value.length;
-    this.#handles.publish();
+    this.#publish(this.cuts.value);
   }
 
   /** Shows the gizmos; a drag's release commits through `commit`. Without a canvas (headless): false */
   show(commit: GizmoCommit): boolean {
-    this.#binding.setCommit(commit);
-    return this.#handles.show();
+    if (this.#binding) {
+      this.#binding.setCommit(commit);
+      return true;
+    }
+    const canvas = this.plugin.canvas3d;
+    if (!canvas) return false;
+    const binding = new ClipBinding(this.plugin, this.#items);
+    binding.setCommit(commit);
+    const controller = new GizmoController(canvas, binding, { fadeSlides: this.#fadeNormal.value });
+    this.#binding = binding;
+    this.#controller = controller;
+    this.#releaseClicks = this.plugin.managers.interactivity.clickOwners.claim((r) => controller.owns(r));
+    this.#subs.push(this.cuts.subscribe((cuts) => this.#publish(cuts)));
+    this.#shown.set(true);
+    return true;
   }
 
   hide(): void {
-    this.#handles.hide();
+    if (!this.#controller) return;
+    for (const s of this.#subs) s.unsubscribe();
+    this.#subs = [];
+    this.#releaseClicks?.();
+    this.#releaseClicks = undefined;
+    this.#controller.dispose();
+    this.#binding?.dispose();
+    this.#controller = undefined;
+    this.#binding = undefined;
+    this.#shown.set(false);
   }
 
   /** The drag in progress, undone */
   cancel(): void {
-    this.#handles.cancel();
+    this.#controller?.cancel();
   }
 
   /** A cut previewed outside the state (a slider, `CutPreview`): its gizmo drawn there; undefined: as the state holds */
   preview(object: CutObject | undefined): void {
     if (this.#previewed === object) return;
     this.#previewed = object;
-    this.#handles.publish();
+    this.#publish(this.cuts.value);
   }
 
-  /** The active cuts followed into `cuts`, as the gizmos' items */
-  #items(cuts: readonly Cut[]): ClipItem[] {
+  /** The active cuts followed into `cuts`, and published as the gizmos' items */
+  #publish(cuts: readonly Cut[]) {
     // during a drag the cut is the drag's (its number and object are followed again once it ends)
-    if (this.#handles.dragging === undefined) this.#follow(cuts);
+    if (this.#controller?.dragging.value === undefined) this.#follow(cuts);
     const items: ClipItem[] = [];
     for (const cut of cuts) {
       if (!this.#handledObjects.has(cut.index)) continue;
@@ -95,24 +154,13 @@ export class ClipGizmos {
       const value = previewed && RepresentationClip.sameCut(previewed, cut.object) ? previewed : cut.object;
       items.push({ key: cut.object.tag || `#${cut.index}`, value, label: `Cut ${cut.index}`, bounds });
     }
-    return items;
+    this.#items.next(items);
   }
 
-  /**
-   * The active cuts in `cuts`: each by its object (its tag), else by its number when its object is gone and the count
-   * is the same (it was edited; a removal shifts the numbers, and the next cut is not the removed one)
-   */
+  /** The active cuts followed into `cuts` (`followCuts`) */
   #follow(cuts: readonly Cut[]) {
-    const before = this.#handledObjects;
-    const next = new Map<number, CutObject>();
-    const sameCount = cuts.length === this.#followedCount;
+    const next = followCuts(this.#handledObjects, cuts, this.#followedCount);
     this.#followedCount = cuts.length;
-    for (const cut of cuts) {
-      const same = [...before.values()].some((o) => RepresentationClip.sameCut(o, cut.object));
-      const old = before.get(cut.index);
-      const edited = sameCount && !!old && !cuts.some((c) => RepresentationClip.sameCut(c.object, old));
-      if (same || edited) next.set(cut.index, cut.object);
-    }
     this.#handledObjects = next;
     const ids = [...next.keys()];
     const prev = this.#handled.value;

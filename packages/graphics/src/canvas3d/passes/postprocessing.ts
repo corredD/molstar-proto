@@ -59,7 +59,6 @@ export const PostprocessingSchema = {
   uFogFar: UniformSpec('f'),
   uFogColor: UniformSpec('v3'),
   uOutlineColor: UniformSpec('v3'),
-  uTransparentOutlineColor: UniformSpec('v3'),
   uOcclusionColor: UniformSpec('v3'),
   uTransparentBackground: UniformSpec('b'),
 
@@ -116,7 +115,6 @@ function getPostprocessingRenderable(
     uFogFar: ValueCell.create(10000),
     uFogColor: ValueCell.create(Vec3.create(1, 1, 1)),
     uOutlineColor: ValueCell.create(Vec3.create(0, 0, 0)),
-    uTransparentOutlineColor: ValueCell.create(Vec3.create(0, 0, 0)),
     uOcclusionColor: ValueCell.create(Vec3.create(0, 0, 0)),
     uTransparentBackground: ValueCell.create(false),
 
@@ -245,14 +243,6 @@ export class PostprocessingPass {
     );
   }
 
-  /**
-   * Whether the ghosts of what clips cut (a ghosted clip object, `Scene.hasGhosts`) are drawn into the transparent depth,
-   * for the outline pass to draw their edges: with outlines on (cellview.md §4.3)
-   */
-  static isGhostDepthRequired(scene: Scene, props: PostprocessingProps) {
-    return props.enabled && OutlinePass.isEnabled(props) && scene.hasGhosts;
-  }
-
   static isTransparentOutlineEnabled(props: PostprocessingProps) {
     return (
       props.enabled &&
@@ -359,7 +349,6 @@ export class PostprocessingPass {
 
     const orthographic = camera.state.mode === 'orthographic' ? 1 : 0;
     const outlinesEnabled = OutlinePass.isEnabled(props);
-    const ghosts = PostprocessingPass.isGhostDepthRequired(scene, props);
     const shadowsEnabled = ShadowPass.isEnabled(props);
     const occlusionEnabled = SsaoPass.isEnabled(props);
 
@@ -392,19 +381,11 @@ export class PostprocessingPass {
         outlineProps,
         this.drawPass.depthTextureTransparent,
         this.drawPass.depthTextureOpaque,
-        ghosts,
       );
 
       ValueCell.update(
         this.renderable.values.uOutlineColor,
         Color.toVec3Normalized(this.renderable.values.uOutlineColor.ref.value, outlineProps.color),
-      );
-      ValueCell.update(
-        this.renderable.values.uTransparentOutlineColor,
-        Color.toVec3Normalized(
-          this.renderable.values.uTransparentOutlineColor.ref.value,
-          outlineProps.transparentColor ?? outlineProps.color,
-        ),
       );
 
       if (this.renderable.values.dOutlineScale.ref.value !== outlineScale) {
@@ -445,8 +426,7 @@ export class PostprocessingPass {
       ValueCell.update(this.renderable.values.dOcclusionEnable, occlusionEnabled);
     }
 
-    // the ghosts' outlines are blended as transparent outlines are
-    const blendTransparency = scene.opacityAverage < 1 || ghosts;
+    const blendTransparency = scene.opacityAverage < 1;
     if (this.renderable.values.dBlendTransparency.ref.value !== blendTransparency) {
       needsUpdateMain = true;
       ValueCell.update(this.renderable.values.dBlendTransparency, blendTransparency);
@@ -458,7 +438,10 @@ export class PostprocessingPass {
   }
 
   private occlusionOffset: [x: number, y: number] = [0, 0];
-  /** shift in uv (top-left origin) of the occlusion rendered without jitter to the jittered image */
+  /**
+   * shift in uv (top-left origin) of the occlusion rendered without jitter to the jittered image: an image jittered by
+   * `j` pixels (`setJitter`) is the unjittered one read `j` pixels away
+   */
   setOcclusionOffset(x: number, y: number) {
     this.occlusionOffset[0] = x;
     this.occlusionOffset[1] = y;
