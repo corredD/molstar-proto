@@ -28,7 +28,15 @@
   take it as `particles` (its species its entities; colours by zoom: its colour far, its species' near); the explorer's
   Look and right-click › Color… on it.
 - A cell's membranes wrap as one: right-click › Wrap all N meshes with lipids (`mesoscale.wrapMembrane { meshes }`), one
-  step, one pool and budget nearest first across them; a membrane inside a closed one is neither selected nor drawn
-  while the eye is outside it (and is under a clip). A view's selection descends a sphere tree over the triangles (the
+  step; a membrane inside a closed one is neither selected nor drawn while the eye is outside it (and is under a clip,
+  or once its encloser is hidden). A view's selection descends a sphere tree over the triangles (the
   yeast cell's 1.08 M triangles: under 5 ms a view). + Open reads the yeast cell viewer's `organelle_meshes.bin`
   (`.bin.gz`): a mesh a membrane, named, in Å.
+- Each membrane of a wrapped cell is a row under the membrane in the tree, its eye and colour
+  (`mesoscale.style { parts, visible, color }`, `mesoscale.colors { parts }`, one step each, never cut again): a hidden
+  part draws no lipid and no surface; a part's colour is its far colour by zoom (its species and atoms still close),
+  all of it with By zoom off. Each part has its own lipid mix (the yeast membranes: the PM's leaflets, the mito IM's
+  cardiolipin, the LD a monolayer; stand-ins from the CHARMM-GUI patch, a source per number) and its own pools, the
+  budget water-filled across them (a small membrane whole, the large ones alike; no longer nearest first across the
+  cell). The export numbers a class by the membrane's species and a triangle by the whole mesh. The slab
+  (`yeast_slab_z600nm.bcif`) and the organelle meshes share one frame: opened together they line up.
