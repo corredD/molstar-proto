@@ -9,8 +9,6 @@ drives it is [loop.md](loop.md).
 
 Questions that stop the loop. One line each; move it to Decided with the answer.
 
-- Lane 7: the real-model evals need a key (`ANTHROPIC_API_KEY` or `GEMINI_API_KEY`); none in the lane's worktree. Run
-  them, or give one for the worktree?
 - Lane 7 gate, S1: `get_mesoviewspec` with `detail: 'document'` prints the whole document uncapped (prism.md §8 says
   "the rest on request" with no cap or paging defined). A cap, paging, or leave it?
 - Lane 7 gate (predates the lane, prism.md §3): an agent `open {url}` on a known service (zenodo.org, public uploads)
@@ -25,6 +23,7 @@ Questions that stop the loop. One line each; move it to Decided with the answer.
 - 2026-11-09: lane 6: a model edit runs as a Mol\* task in the status pill with Cancel (prism.md), not only in Built by.
 - 2026-11-09: lane 5: Undo keeps the camera still; clicking the shown view re-applies its camera; Update camera on a
   semantic view writes a numeric camera (with fov, transition); a failed show redraws the previous view.
+- 2026-11-10: Ludo runs lane 7's real-model evals, after the gate fixes.
 - 2026-11-10: lane 7's library hook `ViewerExtension.agentState` (`14c430588`) stays in lane 7.
 - 2026-11-10: showing a document's view becomes an undoable step (History), so Undo turn puts it back; prism.md §4.4 and
   §7.4 to change with it (done in lane 7, after its gate fixes).
