@@ -80,6 +80,35 @@ describe('compile with a signal', () => {
     await expect(compile(exosomeDoc(), exosomeOptions({ resolvers, signal: ctl.signal }))).rejects.toSatisfy(aborted);
   });
 
+  // The last model is the one with no check after it: a stop there must still keep the partial IR from standing.
+  const stoppedAtLast = (stop: (ctl: AbortController) => void) => {
+    const ctl = new AbortController();
+    let last = false;
+    const resolvers = countingResolvers().resolvers.map((r) => ({
+      ...r,
+      resolve: (input: unknown, j: ResolveJob) => {
+        if (last) stop(ctl);
+        return r.resolve(input, j);
+      },
+    }));
+    const onProgress = (p: { done: number; total: number }) => {
+      last = p.done === p.total - 1;
+    };
+    return compile(exosomeDoc(), exosomeOptions({ resolvers, signal: ctl.signal, onProgress }));
+  };
+
+  it('an abort whose reason is not an AbortError, the resolver failing with another error: the compile rejects', async () => {
+    const r = stoppedAtLast((ctl) => {
+      ctl.abort(new Error('closed'));
+      throw new TypeError('cannot read the upstream');
+    });
+    await expect(r).rejects.toSatisfy(aborted);
+  });
+
+  it('an abort during the last model, the resolver finishing anyway: the compile rejects', async () => {
+    await expect(stoppedAtLast((ctl) => ctl.abort())).rejects.toSatisfy(aborted);
+  });
+
   it('the signal is not part of a model’s key: the same document with and without one is the same IR', async () => {
     const ctl = new AbortController();
     const a = await compileExosome(exosomeDoc(), { signal: ctl.signal });
