@@ -535,6 +535,7 @@ export class PrismMesoAdapter implements RendererAdapter {
     const { plugin } = this.viewer;
     const state = plugin.state.data;
     const store = this.store;
+    const bySet = looksBySet(looks);
     const b = state.build();
     for (const set of sets) {
       const was = this.placed.get(set.key);
@@ -544,7 +545,7 @@ export class PrismMesoAdapter implements RendererAdapter {
       if (!list) store.set(set.key, (list = toParticleList(set, label, this.labelsOf(set.key))));
       const cell = b.toRoot().apply(MesoTilePlacements, { key: set.key, label });
       const repr = cell.apply(ParticlesRepresentation3D, tileRepresentationParams(plugin, list, this.tileType()));
-      const layers = tileLayers(looks, set.key, false);
+      const layers = tileLayers(bySet.get(set.key) ?? [], false);
       if (layers.length) repr.apply(ParticleRepresentation3DLayers, { layers, cuts: [], hidden: [] } as never);
       this.placed.set(set.key, { ref: cell.ref, label, tile: true });
     }
@@ -562,9 +563,10 @@ export class PrismMesoAdapter implements RendererAdapter {
     const b = state.build();
     let written = 0;
     let changed = false;
+    const bySet = looksBySet(looks);
     for (const [key, p] of this.placed) {
       if (!p.tile) continue;
-      const layers = tileLayers(looks, key, this.themeChosen(p.ref));
+      const layers = tileLayers(bySet.get(key) ?? [], this.themeChosen(p.ref));
       written += layers.length;
       const repr = state.select(
         StateSelection.Generators.byRef(p.ref).subtree().ofType(SO.Particle.Representation3D),
@@ -855,17 +857,29 @@ export class PrismMesoAdapter implements RendererAdapter {
   }
 }
 
+/** The view's looks by set, in order: indexed once a commit, so a tile's are found without a scan of all. */
+function looksBySet(looks: readonly IRLook[]): Map<string, IRLook[]> {
+  const out = new Map<string, IRLook[]>();
+  for (const l of looks) {
+    const of = out.get(l.set);
+    if (of) of.push(l);
+    else out.set(l.set, [l]);
+  }
+  return out;
+}
+
 /**
  * A tile list's looks as layers of its representation (`ParticleRepresentation3DLayers`), as `particles.look` patches
  * them onto an empty cell: by target (a type), a later look of the same targets in the earlier's place, a look that
  * changes nothing dropped. A default color is left out when the person chose the list's color theme (`chosen`).
+ * `looks` are the list's set's, in the view's order (`looksBySet`).
  */
-function tileLayers(looks: readonly IRLook[], key: string, chosen: boolean): ParticleLayerProps[] {
+function tileLayers(looks: readonly IRLook[], chosen: boolean): ParticleLayerProps[] {
   const out: (ParticleLayerProps | undefined)[] = [];
   const at = new Map<string, number>();
   for (const l of looks) {
     // a look on part of a type (copy runs) has no Prism layer selector (renderer-recommendations.md R8)
-    if (l.set !== key || l.runs) continue;
+    if (l.runs) continue;
     const targets = [...new Set(l.types)].sort((a, b) => a - b);
     const layer: ParticleLayerProps = {
       entities: [],
