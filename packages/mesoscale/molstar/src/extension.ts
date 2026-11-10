@@ -26,7 +26,7 @@ import type { Loci } from '@molstar/model/model/loci';
 import { cssColor } from '@molstar/mesoscale-extension/color-file';
 import { registerParticleListOwner } from '@molstar/mesoscale-extension/owner';
 import { Color } from '@molstar/core/util/color';
-import { MesoDocumentModel } from './document-model.js';
+import { type DocumentViews, MesoDocumentModel } from './document-model.js';
 import { blockedResult, DocumentListOwner } from './list-owner.js';
 import { documentVisible, type DocumentGroupBy, type DocumentLooks, type DocumentOutline } from './document-tree.js';
 import { openAddresses } from './prism-viewer.js';
@@ -69,7 +69,12 @@ export interface DocumentTree {
   readonly showsOnly: boolean;
   /** The session's issues (the document row's Issues). */
   readonly issues: readonly Issue[];
+  /** The Views row (prism.md §4.4): views, tours, the view shown, the tour playing. */
+  readonly views: DocumentViews;
 }
+
+/** How long a tour's step holds when it does not say (ms; the semantic camera story's). */
+const TourStepMs = 2000;
 
 /** A state a view reads (Prism's `ReadonlyState`, as `watchedState` gives it). */
 export type ReadonlyState<T> = ReturnType<typeof watchedState<T>>;
@@ -162,6 +167,7 @@ export class MesoViewSpecApi extends ApiArea {
   }
 
   override dispose(): void {
+    this.#stopTour();
     this.#unregisterOwner();
     this.#unregister();
     this.model.dispose();
@@ -184,6 +190,7 @@ export class MesoViewSpecApi extends ApiArea {
           visible: documentVisible(outline, looks),
           showsOnly: model.showsOnly,
           issues: model.issues,
+          views: model.views()!,
         };
       },
       () => (groupBy ? [model.changed, groupBy] : model.changed),
@@ -195,6 +202,7 @@ export class MesoViewSpecApi extends ApiArea {
             a.outline === b.outline &&
             a.looks === b.looks &&
             a.showsOnly === b.showsOnly &&
+            a.views === b.views &&
             sameIssues(a.issues, b.issues)),
       },
     );
@@ -277,6 +285,105 @@ export class MesoViewSpecApi extends ApiArea {
       return ApiResult.ok(`Showing ${label ? `${label} (${id})` : id}.`, { view: true });
     },
   });
+
+  /** The tour playing: stopped by Stop, another tour, Undo or Redo, a close or an open. */
+  #tour: { readonly stop: AbortController; readonly ended: Promise<void> } | undefined;
+
+  /** Resolves when no tour plays (for tests and the app: after a Stop, the tour's end). */
+  async tourEnded(): Promise<void> {
+    while (this.#tour) await this.#tour.ended;
+  }
+
+  /** Stops the tour playing, if one is: the view it showed last stays shown (prism.md §4.4). */
+  #stopTour(): boolean {
+    const t = this.#tour;
+    if (!t) return false;
+    t.stop.abort();
+    return true;
+  }
+
+  /**
+   * Plays a tour (prism.md §4.4, as `snapshot.play`): no step; each of its steps runs as `mesoviewspec.view` with the
+   * caller's origin (no step either: in order with the steps, its looks part of its run), holds for its duration, its
+   * caption the Views row's. The agent asks once for the whole tour (`undoable: false`, agent.md §4); its views are not
+   * asked again. Returns once it plays.
+   */
+  readonly tourPlay = this.operation({
+    id: 'mesoviewspec.tour.play',
+    title: 'Play a tour of the MesoViewSpec document',
+    params: {
+      tour: OptionalParam(PD.Text('', { description: "A tour's id (t.granule); none: the document's own, else its first" })),
+    },
+    history: false,
+    undoable: false,
+    run: async ({ tour }, ctx) => {
+      const doc = this.model.doc;
+      if (!doc) return ApiResult.fail('not-found', 'No document is open.');
+      const tours = doc.tours ?? [];
+      const id = tour?.trim() || doc.session?.tour || tours[0]?.id;
+      const t = tours.find((x) => x.id === id);
+      if (!t) {
+        return ApiResult.fail(
+          'not-found',
+          id ? `The document has no tour '${id}'.` : 'The document has no tour.',
+          tours.length ? `Its tours: ${tours.map((x) => x.id).join(', ')}.` : undefined,
+        );
+      }
+      if (!t.steps.length) return ApiResult.fail('invalid', `The tour ${t.id} has no steps.`);
+      this.#stopTour();
+      const stop = new AbortController();
+      const entry = { stop, ended: Promise.resolve() };
+      entry.ended = this.#play(t, stop.signal, ctx.api).finally(() => {
+        if (this.#tour === entry) this.#tour = undefined;
+      });
+      this.#tour = entry;
+      return ApiResult.ok(`Playing ${t.label ?? t.id} (${t.steps.length} views).`, { view: true });
+    },
+  });
+
+  readonly tourStop = this.operation({
+    id: 'mesoviewspec.tour.stop',
+    title: 'Stop the tour playing',
+    params: {},
+    history: false,
+    run: async () => {
+      if (!this.#stopTour()) return ApiResult.already('No tour is playing.');
+      await this.tourEnded();
+      return ApiResult.ok(`Stopped the tour: ${this.model.shownId ?? 'its last view'} is shown.`, { view: true });
+    },
+  });
+
+  async #play(
+    t: NonNullable<MesoViewSpecDoc['tours']>[number],
+    signal: AbortSignal,
+    api: ApiAreaContextApi,
+  ): Promise<void> {
+    const session = this.model.session;
+    // Undo and Redo bring back another scene: the tour stops (as an animation does on a restore)
+    const history = this.ctx.managers.history;
+    const subs = [history.undone, history.redone].map((e) => e.subscribe(() => this.#stopTour()));
+    try {
+      for (let i = 0; i < t.steps.length && !signal.aborted; i++) {
+        // closed, or another document opened: the tour is the last one's
+        if (this.model.session !== session || !this.model.doc) break;
+        const step = t.steps[i];
+        // a view the document no longer has (an edit while it plays): skipped
+        if (!this.model.doc.views?.some((v) => v.id === step.view)) continue;
+        this.model.playing = {
+          tour: t.id,
+          step: i + 1,
+          of: t.steps.length,
+          ...(step.caption ? { caption: step.caption } : {}),
+        };
+        const r = await api.run('mesoviewspec.view', { view: step.view });
+        if (!r.ok || signal.aborted) break;
+        await holdFor(step.duration ?? TourStepMs, signal);
+      }
+    } finally {
+      for (const s of subs) s.unsubscribe();
+      this.model.playing = undefined;
+    }
+  }
 
   readonly eye = this.operation({
     id: 'mesoviewspec.eye',
@@ -505,6 +612,20 @@ export class MesoViewSpecApi extends ApiArea {
         { value: { blob, filename: saved.filename } as SavedDocument },
       );
     },
+  });
+}
+
+/** Waits `ms`, or less when `signal` aborts. */
+function holdFor(ms: number, signal: AbortSignal): Promise<void> {
+  if (signal.aborted) return Promise.resolve();
+  return new Promise((resolve) => {
+    const done = () => {
+      clearTimeout(timer);
+      signal.removeEventListener('abort', done);
+      resolve();
+    };
+    const timer = setTimeout(done, ms);
+    signal.addEventListener('abort', done);
   });
 }
 

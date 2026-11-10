@@ -69,6 +69,37 @@ export interface SavedMesoViewSpec {
   readonly shown?: string;
 }
 
+/** A tour playing (prism.md §4.4): its id, the step shown (1-based) of how many, the step's caption. */
+export interface TourPlaying {
+  readonly tour: string;
+  readonly step: number;
+  readonly of: number;
+  readonly caption?: string;
+}
+
+/** The Views row's content (prism.md §4.4). */
+export interface DocumentViews {
+  readonly views: readonly { readonly id: string; readonly label: string; readonly description?: string }[];
+  readonly tours: readonly { readonly id: string; readonly label: string; readonly steps: number }[];
+  /** The view shown; none: the document has no view. */
+  readonly shown?: string;
+  /** The view the saved document opens with (`session.view`). */
+  readonly opensWith?: string;
+  readonly playing?: TourPlaying;
+}
+
+function sameViews(a: DocumentViews, b: DocumentViews): boolean {
+  const same = <T>(x: readonly T[], y: readonly T[], eq: (p: T, q: T) => boolean) =>
+    x.length === y.length && x.every((p, i) => eq(p, y[i]));
+  return (
+    a.shown === b.shown &&
+    a.opensWith === b.opensWith &&
+    a.playing === b.playing &&
+    same(a.views, b.views, (p, q) => p.id === q.id && p.label === q.label && p.description === q.description) &&
+    same(a.tours, b.tours, (p, q) => p.id === q.id && p.label === q.label && p.steps === q.steps)
+  );
+}
+
 /** Where a document came from: its address, and the files dropped with it (by name). */
 export interface DocumentSource {
   readonly url?: string;
@@ -467,6 +498,41 @@ export class MesoDocumentModel {
   get shownId(): string | undefined {
     return this.doc ? shownViewOf(this.doc, this.shown)?.id : undefined;
   }
+
+  /** The tour playing and where it is (`mesoviewspec.tour.play`); none: no tour plays. */
+  get playing(): TourPlaying | undefined {
+    return this.#playing;
+  }
+  set playing(p: TourPlaying | undefined) {
+    if (p === this.#playing) return;
+    this.#playing = p;
+    this.changed.next();
+  }
+  #playing: TourPlaying | undefined;
+
+  /**
+   * The Views row (prism.md §4.4): the document's views and tours, the view shown, the one it opens with, the tour
+   * playing. The same object while none of them changed (a look edit makes new views, not new rows).
+   */
+  views(): DocumentViews | undefined {
+    const doc = this.doc;
+    if (!doc) return undefined;
+    const next: DocumentViews = {
+      views: (doc.views ?? []).map((v) => ({
+        id: v.id,
+        label: v.label ?? v.id,
+        ...(v.description ? { description: v.description } : {}),
+      })),
+      tours: (doc.tours ?? []).map((t) => ({ id: t.id, label: t.label ?? t.id, steps: t.steps.length })),
+      ...(this.shownId !== undefined ? { shown: this.shownId } : {}),
+      ...(doc.session?.view !== undefined ? { opensWith: doc.session.view } : {}),
+      ...(this.#playing ? { playing: this.#playing } : {}),
+    };
+    if (this.#views && sameViews(this.#views, next)) return this.#views;
+    this.#views = next;
+    return next;
+  }
+  #views: DocumentViews | undefined;
 
   /** Closes the document: its lists go, its placements stay for an Undo (prism.md §7.3, point 3). */
   async close(api: ViewerApi): Promise<DocumentStep> {

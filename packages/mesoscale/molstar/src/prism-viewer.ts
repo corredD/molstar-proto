@@ -65,6 +65,13 @@ export const MesoViewSpecLazyExtension: LazyViewerExtension = {
         undoable: false,
       },
       { id: 'mesoviewspec.view', title: 'Show a view of the MesoViewSpec document', undoable: false },
+      {
+        id: 'mesoviewspec.tour.play',
+        title: 'Play a tour of the MesoViewSpec document',
+        history: false,
+        undoable: false,
+      },
+      { id: 'mesoviewspec.tour.stop', title: 'Stop the tour playing', history: false },
       { id: 'mesoviewspec.eye', title: 'Show or hide part of the MesoViewSpec document' },
       { id: 'mesoviewspec.showOnly', title: 'Show only part of the MesoViewSpec document' },
       { id: 'mesoviewspec.look', title: 'Style part of the MesoViewSpec document' },

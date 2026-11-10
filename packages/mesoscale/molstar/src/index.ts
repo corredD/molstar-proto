@@ -19,10 +19,12 @@ export {
 export {
   type DocumentSource,
   type DocumentStep,
+  type DocumentViews,
   MesoDocumentModel,
   type MesoDocumentOptions,
   MesoViewSpecStateKey,
   type SavedMesoViewSpec,
+  type TourPlaying,
 } from './document-model.js';
 export { type EditRecord, MesoSession, type SessionOptions } from './session.js';
 export {

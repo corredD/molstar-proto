@@ -287,7 +287,12 @@ describe('a tour (prism.md §4.4)', () => {
     await h.api.tourEnded();
     sub.unsubscribe();
     expect(captions).toEqual(['The slice', 'Red']);
-    expect(h.runs.slice(runs)).toEqual(['mesoviewspec.tour.play', 'mesoviewspec.view', 'mesoviewspec.view']);
+    // (the looks a view writes are runs of its own run: `particles.look`, no step)
+    expect(h.runs.slice(runs).filter((r) => r.startsWith('mesoviewspec.'))).toEqual([
+      'mesoviewspec.tour.play',
+      'mesoviewspec.view',
+      'mesoviewspec.view',
+    ]);
     expect(h.steps().length).toBe(steps);
     noUnsafe(h);
     expect(shownId(h)).toBe('v.red');
@@ -310,7 +315,13 @@ describe('a tour (prism.md §4.4)', () => {
     await h.run('mesoviewspec.eye', { select: '(population p.ribosomes)', visible: false });
     await h.run('mesoviewspec.tour.play', { tour: 't.slow' });
     await until(h, () => h.model.playing?.step === 1);
-    expect((await h.v.managers.history.undo()).ok).toBe(true);
+    // Undo waits for no run in flight (the step's view): it is refused until the view is shown, then the tour holds
+    let undo = await h.v.managers.history.undo();
+    for (let i = 0; !undo.ok && i < 100; i++) {
+      await new Promise((r) => setTimeout(r, 20));
+      undo = await h.v.managers.history.undo();
+    }
+    expect(undo.ok, JSON.stringify(undo)).toBe(true);
     await h.api.tourEnded();
     expect(h.model.playing).toBeUndefined();
   });
