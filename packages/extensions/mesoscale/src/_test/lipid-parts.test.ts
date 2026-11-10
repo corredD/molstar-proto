@@ -55,16 +55,23 @@ function share(table: CutterTable, species: string) {
   return n / table.memberStart[table.members.length];
 }
 
-/** a STAR file's rows without their triangle and hit numbers (a part numbers its triangles from 0), sorted */
-function rows(data: MembraneData) {
-  const out: string[] = [];
-  for (const chunk of membraneStar(data)) {
+/** a STAR file's rows' fields, without the hit number */
+function fields(data: MembraneData, hiddenParts: ReadonlySet<string> = new Set()) {
+  const out: string[][] = [];
+  for (const chunk of membraneStar(data, new Set(), 256, hiddenParts)) {
     for (const line of chunk.split('\n')) {
       const f = line.trim().split(/\s+/);
-      if (f.length === 12) out.push(f.slice(0, 10).join(' '));
+      if (f.length === 12) out.push(f.slice(0, 11));
     }
   }
-  return out.sort();
+  return out;
+}
+
+/** a STAR file's rows, the triangle the whole mesh's (review S1), sorted */
+function rows(data: MembraneData) {
+  return fields(data)
+    .map((f) => f.join(' '))
+    .sort();
 }
 
 describe('a cell’s membranes, a cut leaflet a part (round 7)', () => {
@@ -102,6 +109,18 @@ describe('a cell’s membranes, a cut leaflet a part (round 7)', () => {
     // no SSM out of the PM; DOPC, not POPC, in the endomembranes
     expect(of(1, 'outer')!.species).not.toContain('SSM');
     expect(share(of(1, 'outer')!, 'DOPC')).toBeCloseTo(0.472, 1);
+    // exported (review S1): a class number one species across the parts, the triangles the whole mesh's, a hidden part
+    // left out
+    const all = fields(data);
+    const classes = new Map<string, Set<string>>();
+    for (const f of all) {
+      if (!classes.has(f[6])) classes.set(f[6], new Set());
+      classes.get(f[6])!.add(f[7]);
+    }
+    for (const [c, names] of classes) expect([...names], `class ${c}`).toHaveLength(1);
+    const inPart = (f: string[], p: number) => +f[10] >= parts[p].start && +f[10] < parts[p].end;
+    expect(all.some((f) => inPart(f, 1))).toBe(true);
+    expect(fields(data, new Set(['ER'])).some((f) => inPart(f, 1))).toBe(false);
     // the LD a monolayer: its outer leaflet alone
     expect(data.cut.filter((l) => l.part === 2).map((l) => l.name)).toEqual(['outer']);
   });
