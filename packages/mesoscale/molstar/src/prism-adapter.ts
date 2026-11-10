@@ -104,6 +104,8 @@ export class PrismMesoAdapter implements RendererAdapter {
   private api: ViewerApi | undefined;
   /** The labels drawn for the view's annotations, by annotation id: their state ref and what they say where. */
   private labels = new Map<string, { readonly ref: string; readonly key: string }>();
+  /** What the annotations said at the last label pass (`annotationsKey`): an unbound commit saying the same skips it. */
+  private annotationsSaid: string | undefined;
   /** The placement sets of this viewer, by key. */
   private get store() {
     return placementStore(this.viewer.plugin);
@@ -476,7 +478,9 @@ export class PrismMesoAdapter implements RendererAdapter {
   /**
    * The view's annotations as Prism labels (prism.md §5.2): one `stage.label` an annotation, through the step's API (so
    * part of its run), marked by its node (`md:#an:<id>`); the labels of annotations gone or changed (another view
-   * shown, the view removed, its text edited) deleted. One that cannot be drawn is an issue, never a throw.
+   * shown, the view removed, its text edited) deleted. One that cannot be drawn is an issue, never a throw. An unbound
+   * commit (a stream step's: tiles arriving, no run) whose annotations are those drawn last touches no label, so it
+   * never runs `stage.label` as a top-level run of its own.
    */
   private async drawAnnotations(ir: IR, issues: Issue[]) {
     const state = this.viewer.plugin.state.data;
@@ -485,6 +489,9 @@ export class PrismMesoAdapter implements RendererAdapter {
       if (a.position) want.set(a.id, a);
       else issues.push(issue('annotation.unplaced', 'info', 'render', `${a.id} names no copy here: not drawn`));
     }
+    const said = annotationsKey(ir);
+    if (!this.api && said === this.annotationsSaid) return;
+    this.annotationsSaid = said;
     const b = state.build();
     let gone = false;
     for (const [id, l] of this.labels) {
@@ -636,6 +643,7 @@ export class PrismMesoAdapter implements RendererAdapter {
         key: annotationKey(p.text ?? '', Array.from(p.position)),
       });
     }
+    this.annotationsSaid = annotationsKey(ir);
     this.prev = ir;
     this.index(source);
     return { filled };
@@ -657,6 +665,7 @@ export class PrismMesoAdapter implements RendererAdapter {
   /** Forgets what it drew, writing nothing: the restored state has no lists of its (an Undo of an open). */
   forget() {
     this.unsure = undefined;
+    this.annotationsSaid = undefined;
     this.placed.clear();
     this.labels.clear();
     this.prev = undefined;
@@ -674,6 +683,7 @@ export class PrismMesoAdapter implements RendererAdapter {
     for (const [, p] of this.placed) b.delete(p.ref);
     for (const [, l] of this.labels) if (state.cells.has(l.ref)) b.delete(l.ref);
     this.unsure = undefined;
+    this.annotationsSaid = undefined;
     this.placed.clear();
     this.labels.clear();
     this.prev = undefined;
@@ -784,6 +794,10 @@ const AnnotationNode = 'md:#an:';
 
 /** What a label says where: a changed annotation is drawn again. */
 const annotationKey = (text: string, position: readonly number[]) => `${text}@${position.join(',')}`;
+
+/** What a view's annotations say where, all of them (unplaced ones too): an unbound commit compares it. */
+const annotationsKey = (ir: IR) =>
+  JSON.stringify((ir.view.annotations ?? []).map((a) => [a.id, a.text, a.position ?? null]));
 
 const listLabel = (set: PlacementSet) => `${set.model} · ${set.count.toLocaleString('en-US')} copies`;
 

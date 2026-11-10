@@ -1194,10 +1194,12 @@ export function deriveView(doc: MesoViewSpecDoc, root: IRNode, shown?: Id): IRVi
   const selection = view?.selection
     ? [...materialize(view.selection).copies].map(([set, runs]) => ({ set, runs }))
     : undefined;
-  // the camera reads level 0 of a stream, never the loaded tiles (_spec/streaming.md), through its own loci cache: the
-  // addresses are the same strings, the loci are not (they name the proxy set)
+  // the camera and the annotations read level 0 of a stream, never the loaded tiles (_spec/streaming.md), through their
+  // own loci cache: the addresses are the same strings, the loci are not (they name the proxy set). A tile arriving
+  // then moves neither the camera nor a label.
   const l0 = level0IR(ir);
-  const camera = deriveCamera(doc, view, l0, l0 === ir ? materialize : materializer(doc, l0, issues, false));
+  const at = l0 === ir ? materialize : materializer(doc, l0, issues, false);
+  const camera = deriveCamera(doc, view, l0, at);
   const place = viewFrame(doc, view).place;
   return {
     id: view?.id ?? 'default',
@@ -1207,7 +1209,7 @@ export function deriveView(doc: MesoViewSpecDoc, root: IRNode, shown?: Id): IRVi
     annotations: view?.annotations?.map((a) => ({
       id: a.id,
       text: a.text,
-      position: typeof a.target === 'string' ? lociSphere(materialize(a.target), ir)?.center : place(a.target.position),
+      position: typeof a.target === 'string' ? lociSphere(at(a.target), l0)?.center : place(a.target.position),
     })),
     ...(view?.cutaway ? { cutaway: [...materialize(view.cutaway).copies].map(([set, runs]) => ({ set, runs })) } : {}),
     ...(issues.length ? { issues } : {}),

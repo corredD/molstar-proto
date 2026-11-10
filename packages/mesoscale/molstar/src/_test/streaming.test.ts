@@ -164,15 +164,20 @@ describe('a streamed session over the Prism adapter (headless)', () => {
         .map((p) => Array.from(p!.position ?? []));
     // the opening step draws the label inside a step, as the owner does
     await prism.bound(v.api, () => s.start());
-    const steps = v.managers.history.steps.value.length;
     const at = label();
     expect(at.length).toBe(1);
+    const labels: string[] = [];
+    const sub = v.api.events.started.subscribe((r) => {
+      if (r.operation === 'stage.label') labels.push(r.operation);
+    });
     const n = commits.length;
     await settle();
-    // tiles arrived (stream commits), the label stayed where level 0 put it, and no step was recorded
+    sub.unsubscribe();
+    // tiles arrived (stream commits); the label stayed where level 0 put it, and no stage.label ran (a History step of
+    // its own: a stream commit is in no run)
     expect(commits.slice(n).some((c) => c.report.added.some(isTile))).toBe(true);
     expect(label()).toEqual(at);
-    expect(v.managers.history.steps.value.length).toBe(steps);
+    expect(labels).toEqual([]);
   });
 
   it('a view edit that is a color adds and removes no tile', { tags: ['medium'] }, async () => {
