@@ -96,6 +96,22 @@ describe('the Views row', () => {
     expect(documentAncestorKeys(tree, 'md:#views')).toEqual(['md:', 'c:particles']);
   });
 
+  it('New view from here on the Views row and a view’s ⋯; Update camera on the shown one’s; Open with on the others’', async () => {
+    const h = harness();
+    const tree = treeOf();
+    const ids = (key: string) => documentMenuItems(h.api, tree, documentRowByKey(tree, key)!).map((i) => i.id);
+    expect(ids('md:#views')).toEqual(['new-view']);
+    expect(ids('md:#view:v.granules')).toEqual(['update-camera', 'open-with', 'new-view']);
+    expect(ids('md:#view:v.cell')).toEqual(['show-view', 'new-view']);
+    const items = documentMenuItems(h.api, tree, documentRowByKey(tree, 'md:#view:v.granules')!);
+    await items.find((i) => i.id === 'update-camera')!.run!();
+    expect(h.run).toHaveBeenLastCalledWith('mesoviewspec.updateCamera', {});
+    await items.find((i) => i.id === 'open-with')!.run!();
+    expect(h.run).toHaveBeenLastCalledWith('mesoviewspec.openWith', { view: 'v.granules' });
+    await items.find((i) => i.id === 'new-view')!.run!();
+    expect(h.run).toHaveBeenLastCalledWith('mesoviewspec.newView', {});
+  });
+
   it('a click on a view shows it; a tour is played from its ⋯, stopped while it plays', async () => {
     const h = harness();
     const tree = treeOf();
