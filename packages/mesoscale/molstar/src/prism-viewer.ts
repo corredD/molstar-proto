@@ -28,21 +28,47 @@ function claims(file: { readonly name: string }, content: string | Uint8Array): 
 }
 
 /**
- * What an open reaches (prism.md §3, the agent's policy): the document's address, and every absolute address a
- * document given as data names (its resources), read before anything is fetched. A URL's resources are known only once
- * it is read: its own address is what is judged.
- */
-export function openAddresses(v: { readonly url?: string; readonly data?: string }): string[] {
-  const out = v.url ? [v.url] : [];
-  if (typeof v.data === 'string') for (const m of v.data.matchAll(/https?:\/\/[^\s"'()[\]{}<>\\]+/g)) out.push(m[0]);
-  return out;
-}
-
-/**
  * An address no domain rule allows (not https): a call that names it asks every time. What the stub says for what it
  * cannot read without the format's parser (the chunk's definitions say the addresses themselves).
  */
 export const UnreadAddress = 'mesoviewspec:unread-address';
+
+/**
+ * The absolute addresses a document's resources name, as a fetch reads them (`new URL(uri)`: `HTTPS:`, `https:host`
+ * and backslashes are https too); `fixture://` and relative uris are beside the document, not absolute.
+ */
+export function resourceAddresses(doc: unknown): string[] {
+  const resources = (doc as { resources?: unknown } | null | undefined)?.resources;
+  if (!Array.isArray(resources)) return [];
+  const out: string[] = [];
+  for (const r of resources) {
+    const uri = (r as { uri?: unknown } | null | undefined)?.uri;
+    if (typeof uri !== 'string' || uri.startsWith('fixture://')) continue;
+    try {
+      out.push(new URL(uri).href);
+    } catch {
+      // relative: resolved against the document's address, which data has none of
+    }
+  }
+  return out;
+}
+
+/**
+ * What an open reaches (prism.md §3, the agent's policy), before the chunk loads: the document's address, and the
+ * resources of a document given as JSON, read before anything is fetched (data that does not parse is refused by the
+ * run). An S-expression needs the format's reader: it asks every time. A URL's resources are known only once it is
+ * read: its own address is what is judged.
+ */
+export function openAddresses(v: { readonly url?: string; readonly data?: string }): string[] {
+  const out = v.url ? [v.url] : [];
+  if (typeof v.data !== 'string' || !v.data.trim()) return out;
+  if (!v.data.trimStart().startsWith('{')) return [...out, UnreadAddress];
+  try {
+    return [...out, ...resourceAddresses(JSON.parse(v.data))];
+  } catch {
+    return out;
+  }
+}
 
 /**
  * What an edit reaches, before the chunk loads (it has the patch parser, `patchAddresses`): a patch that may write a

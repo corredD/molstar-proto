@@ -34,7 +34,7 @@ import { type CameraHere, type DocumentViews, MesoDocumentModel, type MesoDocume
 import { editAsTask } from './edit-task.js';
 import { blockedResult, DocumentListOwner } from './list-owner.js';
 import { documentVisible, type DocumentGroupBy, type DocumentLooks, type DocumentOutline } from './document-tree.js';
-import { openAddresses } from './prism-viewer.js';
+import { resourceAddresses } from './prism-viewer.js';
 
 declare module '@molstar/prism-viewer/api' {
   // The `mesoviewspec` area: the open MesoViewSpec document (prism.md §5.3).
@@ -606,7 +606,7 @@ export class MesoViewSpecApi extends ApiArea {
     title: 'Open a MesoViewSpec document',
     params: OpenParams,
     approval: 'network',
-    addresses: openAddresses,
+    addresses: openDocumentAddresses,
     run: async (values, ctx) => {
       const given = [
         values.url?.trim() ? 'url' : '',
@@ -791,6 +791,17 @@ function parseDocument(text: string): { doc: MesoViewSpecDoc } | ApiFailure {
     return ApiResult.fail('invalid', 'This is not a MesoViewSpec document.', 'Its format must be meso_view_spec.');
   }
   return { doc: value as MesoViewSpecDoc };
+}
+
+/**
+ * What an open reaches (agent.md §4): its address; for a document given as data, read as the run reads it (JSON or
+ * S-expression), every absolute address of its resources. Data that does not read reaches nothing: the run refuses it.
+ */
+export function openDocumentAddresses(v: { readonly url?: string; readonly data?: string }): string[] {
+  const out = v.url ? [v.url] : [];
+  if (typeof v.data !== 'string' || !v.data.trim()) return out;
+  const read = parseDocument(v.data);
+  return 'ok' in read ? out : [...out, ...resourceAddresses(read.doc)];
 }
 
 /** The patch in `text`: its S-expression, or its JSON. */
