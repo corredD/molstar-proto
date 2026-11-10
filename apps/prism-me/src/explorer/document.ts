@@ -287,7 +287,12 @@ function viewsMenuItems(api: ViewerApi, tree: DocumentTree | undefined, doc: Doc
   if (doc.tour) {
     items.push(
       views?.playing?.tour === doc.tour
-        ? { id: 'stop-tour', label: 'Stop the tour', icon: 'square', run: () => void api.run('mesoviewspec.tour.stop', {}) }
+        ? {
+            id: 'stop-tour',
+            label: 'Stop the tour',
+            icon: 'square',
+            run: () => void api.run('mesoviewspec.tour.stop', {}),
+          }
         : {
             id: 'play-tour',
             label: 'Play the tour',

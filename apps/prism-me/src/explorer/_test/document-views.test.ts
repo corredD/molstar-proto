@@ -119,7 +119,10 @@ describe('the Views row', () => {
     // the same words as an object row's
     expect(add.label).toBe('Add a label');
     await add.run!();
-    expect(h.run).toHaveBeenLastCalledWith('mesoviewspec.label', { select: '(population p.catalase)', text: 'catalase' });
+    expect(h.run).toHaveBeenLastCalledWith('mesoviewspec.label', {
+      select: '(population p.catalase)',
+      text: 'catalase',
+    });
     // the document's own row has none (its address is everything)
     const root = { label: 'β-cell', doc: { id: '', select: '(all)' } };
     expect(documentMenuItems(h.api, treeOf(), root).some((i) => i.id === 'label')).toBe(false);
@@ -136,9 +139,9 @@ describe('the Views row', () => {
     expect(viewItems.map((i) => i.id)).toContain('show-view');
     // no Focus, Color, Show only or Show all again: a view has no address
     expect(viewItems.map((i) => i.id)).not.toContain('show-all');
-    expect(documentMenuItems(h.api, tree, documentRowByKey(tree, 'md:#view:v.granules')!).map((i) => i.id)).not.toContain(
-      'show-view',
-    );
+    expect(
+      documentMenuItems(h.api, tree, documentRowByKey(tree, 'md:#view:v.granules')!).map((i) => i.id),
+    ).not.toContain('show-view');
 
     const tour = documentRowByKey(tree, 'md:#tour:t.granule')!;
     const play = documentMenuItems(h.api, tree, tour).find((i) => i.id === 'play-tour')!;

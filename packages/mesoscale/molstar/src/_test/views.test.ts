@@ -112,8 +112,7 @@ function ribosomes(h: Harness) {
     for (const child of tree.children.get(repr.transform.ref).toArray()) {
       const tr = tree.transforms.get(child);
       if (tr?.transformer !== ParticleRepresentation3DLayers) continue;
-      const layers = (tr.params as { layers: { targets: number[]; color: number | null; visible: boolean }[] })
-        .layers;
+      const layers = (tr.params as { layers: { targets: number[]; color: number | null; visible: boolean }[] }).layers;
       return layers.find((l) => l.targets.length === 1 && l.targets[0] === t.index);
     }
   }
@@ -255,7 +254,9 @@ describe('showing a view (prism.md §4.4)', () => {
     const h = await open();
     await h.run('mesoviewspec.view', { view: 'v.red' });
     // the tours naming it go with it (no cascade: prism.md §2.1)
-    const r = await h.run('mesoviewspec.edit', { patch: '(patch :ops [(remove t.quick) (remove t.slow) (remove v.red)])' });
+    const r = await h.run('mesoviewspec.edit', {
+      patch: '(patch :ops [(remove t.quick) (remove t.slow) (remove v.red)])',
+    });
     expect(r.ok, JSON.stringify(r)).toBe(true);
     expect(shownId(h)).toBe('v.granules');
     expect(ribosomes(h)?.color).not.toBe(Red);
@@ -303,7 +304,9 @@ describe('New view from here, Update camera, Open with this view (prism.md §4.4
     noUnsafe(h);
   });
 
-  it('Update camera sets the shown view’s camera, one step; Undo puts the old one back', { tags: ['medium'] }, async () => {
+  it('Update camera sets the shown view’s camera, one step; Undo puts the old one back', {
+    tags: ['medium'],
+  }, async () => {
     const h = await open();
     await h.run('mesoviewspec.view', { view: 'v.cell' });
     const was = viewOf(h.model.doc, 'v.cell')!.camera;
@@ -322,7 +325,9 @@ describe('New view from here, Update camera, Open with this view (prism.md §4.4
     expect(viewOf(h.model.doc, 'v.cell')!.camera).toEqual(was);
   });
 
-  it('Open with this view sets session.view, one step: the saved document opens on it', { tags: ['medium'] }, async () => {
+  it('Open with this view sets session.view, one step: the saved document opens on it', {
+    tags: ['medium'],
+  }, async () => {
     const h = await open();
     const steps = h.steps().length;
     const r = await h.run('mesoviewspec.openWith', { view: 'v.red' });
@@ -356,7 +361,9 @@ function annotationLabels(h: Harness): Record<string, string> {
 }
 
 describe('annotations as labels (prism.md §5.2, Add label)', () => {
-  it('a view’s annotations are drawn as labels when it is shown, and go when another is', { tags: ['medium'] }, async () => {
+  it('a view’s annotations are drawn as labels when it is shown, and go when another is', {
+    tags: ['medium'],
+  }, async () => {
     const h = await open();
     expect(annotationLabels(h)).toEqual({});
     const steps = h.steps().length;
@@ -393,7 +400,9 @@ describe('annotations as labels (prism.md §5.2, Add label)', () => {
     noUnsafe(h);
   });
 
-  it('Add label on a row is an annotation of the view shown, one step, drawn and saved', { tags: ['medium'] }, async () => {
+  it('Add label on a row is an annotation of the view shown, one step, drawn and saved', {
+    tags: ['medium'],
+  }, async () => {
     const h = await open();
     await h.run('mesoviewspec.view', { view: 'v.cell' });
     const steps = h.steps().length;

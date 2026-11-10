@@ -494,7 +494,8 @@ export class MesoDocumentModel {
       this.saved = savedOf(doc, this.url, this.shown);
       // the keys a view's expansions add (none today: a view changes looks, not sets) kept with the current state's
       const last = this.held.at(-1);
-      if (last) this.held[this.held.length - 1] = { ...last, sets: [...new Set([...last.sets, ...this.adapter.keys()])] };
+      if (last)
+        this.held[this.held.length - 1] = { ...last, sets: [...new Set([...last.sets, ...this.adapter.keys()])] };
       return { record, issues: session.issues };
     } finally {
       this.changed.next();
@@ -854,9 +855,21 @@ function cameraIn(
     a(0, 2) * (a(1, 0) * a(2, 1) - a(1, 1) * a(2, 0));
   if (!det) return undefined;
   const inv = [
-    [a(1, 1) * a(2, 2) - a(1, 2) * a(2, 1), a(0, 2) * a(2, 1) - a(0, 1) * a(2, 2), a(0, 1) * a(1, 2) - a(0, 2) * a(1, 1)],
-    [a(1, 2) * a(2, 0) - a(1, 0) * a(2, 2), a(0, 0) * a(2, 2) - a(0, 2) * a(2, 0), a(0, 2) * a(1, 0) - a(0, 0) * a(1, 2)],
-    [a(1, 0) * a(2, 1) - a(1, 1) * a(2, 0), a(0, 1) * a(2, 0) - a(0, 0) * a(2, 1), a(0, 0) * a(1, 1) - a(0, 1) * a(1, 0)],
+    [
+      a(1, 1) * a(2, 2) - a(1, 2) * a(2, 1),
+      a(0, 2) * a(2, 1) - a(0, 1) * a(2, 2),
+      a(0, 1) * a(1, 2) - a(0, 2) * a(1, 1),
+    ],
+    [
+      a(1, 2) * a(2, 0) - a(1, 0) * a(2, 2),
+      a(0, 0) * a(2, 2) - a(0, 2) * a(2, 0),
+      a(0, 2) * a(1, 0) - a(0, 0) * a(1, 2),
+    ],
+    [
+      a(1, 0) * a(2, 1) - a(1, 1) * a(2, 0),
+      a(0, 1) * a(2, 0) - a(0, 0) * a(2, 1),
+      a(0, 0) * a(1, 1) - a(0, 1) * a(1, 0),
+    ],
   ].map((row) => row.map((x) => x / det));
   const turn = (v: readonly number[]) => inv.map((row) => row[0] * v[0] + row[1] * v[1] + row[2] * v[2]);
   const place = (p: readonly number[]) => turn([p[0] - M[12], p[1] - M[13], p[2] - M[14]]).map(round);

@@ -418,9 +418,7 @@ function ScenePanel(props: { ctx: ViewerUIContext; area: ExplorerApi; model: Sce
       p.doc &&
       (!document.value ||
         (p.doc.id !== '' &&
-          (isViewsRow(p.doc.id)
-            ? !documentRowByKey(document.value, p.key)
-            : !document.value.outline.row(p.doc.id))));
+          (isViewsRow(p.doc.id) ? !documentRowByKey(document.value, p.key) : !document.value.outline.row(p.doc.id))));
     if (gone || docGone) picked.set(undefined);
   });
   const pickedKey = derive(picked.asReadonly, (p) => p?.key);

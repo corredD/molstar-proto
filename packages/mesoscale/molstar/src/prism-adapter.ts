@@ -485,7 +485,12 @@ export class PrismMesoAdapter implements RendererAdapter {
       if (ref) this.labels.set(a.id, { ref, key: annotationKey(a.text, a.position!) });
       else
         issues.push(
-          issue('annotation.label', 'warning', 'render', `${a.id} is not drawn: ${r && !r.ok ? r.message : 'no labels here'}`),
+          issue(
+            'annotation.label',
+            'warning',
+            'render',
+            `${a.id} is not drawn: ${r && !r.ok ? r.message : 'no labels here'}`,
+          ),
         );
     }
   }

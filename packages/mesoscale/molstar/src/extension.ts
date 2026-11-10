@@ -402,7 +402,9 @@ export class MesoViewSpecApi extends ApiArea {
     id: 'mesoviewspec.tour.play',
     title: 'Play a tour of the MesoViewSpec document',
     params: {
-      tour: OptionalParam(PD.Text('', { description: "A tour's id (t.granule); none: the document's own, else its first" })),
+      tour: OptionalParam(
+        PD.Text('', { description: "A tour's id (t.granule); none: the document's own, else its first" }),
+      ),
     },
     history: false,
     undoable: false,
