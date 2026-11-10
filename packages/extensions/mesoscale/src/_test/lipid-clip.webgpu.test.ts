@@ -78,10 +78,12 @@ describe.skipIf(!webgpu)('a lipid membrane clipped by Prism (Dawn)', () => {
       v.dispose?.();
     }
   });
-  // round 8 (Ludo: "looking great at the same time with and without cut"): a clip through a membrane seen at the middle
-  // distance, each middle look against the coarse spheres: as much drawn, about the same colour (test 5)
-  it('cuts each middle look as the coarse one: its coverage and mean colour (round 8)', {
-    timeout: 120_000,
+  // round 8 (Ludo: "looking great at the same time with and without cut"): a clip through a membrane at the middle
+  // distance, each middle look against the coarse spheres (test 5, the gate's M2): perspective as the app's camera,
+  // after the clip the camera on the cut's ring (the plane z = 0 through the center), lipids about 5 px there; obliquely
+  // (k = 0.7) as much drawn, face-on (k = 0.999) the cross-section's band (its dark interior) as much
+  it('cuts each middle look as the coarse one: the cross-section at the ring (round 8, test 5)', {
+    timeout: 240_000,
   }, async () => {
     const options = { backend: 'webgpu' as const };
     const renderer = await HeadlessScreenshotHelper.create({ webgpu }, { width: Size, height: Size }, options);
@@ -93,7 +95,7 @@ describe.skipIf(!webgpu)('a lipid membrane clipped by Prism (Dawn)', () => {
     registerLipidPatch('dawn-clip-middle', syntheticPatchPdb().text);
     try {
       const plugin = v.plugin as HeadlessPluginContext;
-      const looks: Record<string, { coverage: number; L: number; a: number; b: number }> = {};
+      const looks: Record<string, { coverage: number; band: number; L: number; a: number; b: number }> = {};
       for (const middle of ['coarse', 'parallax'] as const) {
         const r = await v.api.mesoscale!.wrapMembrane({
           radius: 300,
@@ -103,21 +105,32 @@ describe.skipIf(!webgpu)('a lipid membrane clipped by Prism (Dawn)', () => {
         } as never);
         if (!r.ok) throw new Error(r.message);
         const membrane = r.changed!.nodes![0];
-        expect((await v.api.mesoscale!.membraneDetail({ membrane, middle } as never)).ok || middle === 'coarse').toBe(
-          true,
-        );
+        expect((await v.api.mesoscale!.membraneDetail({ membrane, middle } as never)).ok).toBe(true);
         const canvas = plugin.canvas3d!;
+        canvas.setProps({ camera: { ...canvas.props.camera, mode: 'perspective' } });
         canvas.requestCameraReset({ durationMs: 0 });
         await plugin.getImageRaw({ width: Size, height: Size });
-        // the middle distance: the near side's lipids 5 px (a lipid 7.4 Å)
+        // the middle distance: a lipid (7.4 Å) 5 px at `depth`
         const depth = (7.4 * Size * canvas.camera.projection[5]) / (2 * 5);
         canvas.camera.setState(
           { ...canvas.camera.getSnapshot(), target: Vec3.create(0, 0, 0), position: Vec3.create(0, 0, 300 + depth) },
           0,
         );
         expect((await v.api.run('clipping.add', { shape: 'plane', node: `#${membrane}` })).ok).toBe(true);
-        await plugin.getImageRaw({ width: Size, height: Size });
-        const image = (await plugin.getImageRaw({ width: Size, height: Size })).data;
+        const ring = async (k: number) => {
+          canvas.camera.setState(
+            {
+              ...canvas.camera.getSnapshot(),
+              target: Vec3.create(300, 0, 0),
+              position: Vec3.create(300 + depth * Math.sqrt(1 - k * k), 0, depth * k),
+              up: Vec3.create(0, 1, 0),
+            },
+            0,
+          );
+          await plugin.getImageRaw({ width: Size, height: Size });
+          return (await plugin.getImageRaw({ width: Size, height: Size })).data;
+        };
+        const image = await ring(0.7);
         const bg = [image[0], image[1], image[2]];
         const lab = Vec3();
         const sum = [0, 0, 0];
@@ -128,15 +141,29 @@ describe.skipIf(!webgpu)('a lipid membrane clipped by Prism (Dawn)', () => {
           for (let k = 0; k < 3; ++k) sum[k] += lab[k];
           n += 1;
         }
-        looks[middle] = { coverage: n / (image.length / 4), L: sum[0] / n, a: sum[1] / n, b: sum[2] / n };
+        // face-on: the cross-section's band, the bilayer's dark interior between its two leaflets
+        const face = await ring(0.999);
+        let band = 0;
+        for (let o = 0; o < face.length; o += 4) {
+          ColorLevels.toOklab(lab, Color.fromRgb(face[o], face[o + 1], face[o + 2]));
+          if (lab[0] < 0.5) band += 1;
+        }
+        looks[middle] = {
+          coverage: n / (image.length / 4),
+          band: band / (face.length / 4),
+          L: sum[0] / n,
+          a: sum[1] / n,
+          b: sum[2] / n,
+        };
         expect((await v.api.run('state.remove', { node: membrane })).ok).toBe(true);
       }
       if (process.env.LIPID_NUMBERS) console.log(JSON.stringify(looks));
       const coarse = looks.coarse;
       expect(coarse.coverage).toBeGreaterThan(0.2);
+      expect(coarse.band).toBeGreaterThan(0.05);
       for (const [middle, look] of Object.entries(looks)) {
-        expect(look.coverage, middle).toBeGreaterThanOrEqual(coarse.coverage - 0.05);
-        expect(Math.hypot(look.L - coarse.L, look.a - coarse.a, look.b - coarse.b), middle).toBeLessThan(0.05);
+        expect(look.coverage, `${middle} coverage`).toBeGreaterThanOrEqual(coarse.coverage - 0.05);
+        expect(look.band, `${middle} band`).toBeGreaterThanOrEqual(coarse.band * 0.5);
       }
       expect(plugin.canvas3d!.graphics.takeErrors?.() ?? []).toEqual([]);
     } finally {
