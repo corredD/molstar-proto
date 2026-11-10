@@ -262,6 +262,16 @@ For a document row, the sections of ui.md §4 that apply, and three of its own:
   (`watchOutsideChanges` excepts only snapshots playing, animations and the cells behaviors own). For the agent,
   `tour.play` declares its own approval (agent.md §4, operations that run others): it asks once for the whole tour, as
   `show_meso_view` asks once, and its steps are not asked again.
+- **As built (`mvs-views`):** the runtime's `updateView(doc, ir, view?)`, `compile`'s `view` option and `shownViewOf`
+  (picked, else `session.view`, else the first). The session keeps the view shown for every derivation (an edit, a
+  stream step, a restore). `mesoviewspec.view` saves the custom state again with `shown`, so the next checkpoint notes
+  it. A restore of the same document with another view derives only the view and adopts the restored tree. The camera
+  stays where it is on Undo: no checkpoint holds it. A view an edit removes is no longer picked.
+  `mesoviewspec.tour.play` is `history: false, undoable: false`, so the agent asks once a tour. Each step holds its
+  `duration`, 2 s when it has none. Stop, another tour, Undo, Redo, a close and an open end it. Its caption is on the
+  tour's row, not in the canvas: Prism has no caption line yet. New view from here, Update camera and Open with this
+  view are `mesoviewspec.newView` (`v.view.<n>`, shown in the same step), `.updateCamera` and `.openWith`. Their camera
+  is written in the view's frame, or in the document's unit. Open with keeps the view shown as it is.
 
 ### 4.5 Focus and the semantic camera
 
@@ -370,7 +380,11 @@ The `mesoviewspec` area (proposed ids; flags as operations.md):
   (`@molstar/mesoscale-extension/owner`: `registerParticleListOwner`, the owner `DocumentListOwner` in `list-owner.ts`),
   with `themeChanged(lists)` beside `owns`, `info` and `propose` for a theme the person changes (By zoom). A style look
   of the same `select` is set and moved last; one left saying nothing (its color back to the default and nothing else)
-  is removed.
+  is removed. **As built (`mvs-views`):** the eye, Show only and `.look` write the view shown (§4.4), no longer
+  `session.view ?? views[0]`. Add a label is `mesoviewspec.label { select, text }`: an annotation `an.<n>` of the view
+  shown (`v.prism` with none). The adapter draws a shown view's annotations through `stage.label` inside the run, sized
+  to the scene, marked by their node `md:#an:<id>` so a restore adopts them. They go when the view does. Their text
+  edited and their removal as patches wait for a hook in `stage.editLabel` (open).
 - **Which look an edit updates.** A look's `id` says which edit wrote it: `l.style.<n>` (`mesoscale.style`, colors,
   imports), `l.eye.<n>` (an eye), `l.only.<n>` (Show only); other ids are the author's. An edit matches only looks of
   its own kind and `select`, so a Show all again never removes an eye's look or an authored one.
