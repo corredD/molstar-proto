@@ -14,6 +14,7 @@ import type { PrismViewer } from '@molstar/prism-viewer/viewer';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createMesoViewSpecExtension, type MesoViewSpecApi } from '../extension.js';
 import { countPatch, relaxPatch, seedPatch } from '../model-edits.js';
+import { resolverGate } from './resolver-gate.js';
 
 // The model edits of Built by on the exosome (prism.md §4.3, §7.2): each is one `mesoviewspec.edit` of the owner, one
 // step, one Undo, and the session's record says which models resolved again. Resources come from files, no network.
@@ -35,7 +36,8 @@ async function open(doc: MesoViewSpecDoc = exosomeDoc()) {
     spec: { ...spec, extensions: (spec.extensions ?? []).filter((e) => e.id !== 'mesoviewspec') },
   });
   viewers.push(v);
-  await v.extensions.mount(createMesoViewSpecExtension({ fetchText: async () => undefined }));
+  const gate = resolverGate();
+  await v.extensions.mount(createMesoViewSpecExtension({ fetchText: async () => undefined, resolvers: gate.resolvers }));
   const api = (v.api as unknown as { mesoviewspec: MesoViewSpecApi }).mesoviewspec;
   const person = v.api.as({ kind: 'person' });
   const r = await person.run('mesoviewspec.open', { data: JSON.stringify(doc), files: exosomeFiles() });
@@ -54,7 +56,7 @@ async function open(doc: MesoViewSpecDoc = exosomeDoc()) {
     last()
       .models?.filter((m) => m.cached)
       .map((m) => m.model);
-  return { v, api, model, person, steps, edit, last, ran, hit, undo: () => v.managers.history.undo() };
+  return { v, api, model, person, steps, edit, last, ran, hit, gate, undo: () => v.managers.history.undo() };
 }
 type Harness = Awaited<ReturnType<typeof open>>;
 
@@ -206,5 +208,54 @@ describe('Cancel (prism.md §7.2: a cancelled resolution restores the checkpoint
     off.unsubscribe();
     expect(seen).toContain('m.recipe');
     expect(state.value).toBeUndefined();
+  });
+});
+
+describe('a model edit is a Mol* task: the status pill (Ludo, 2026-11-09; prism.md §7.2)', () => {
+  const until = async (check: () => boolean, ms = 10000) => {
+    const t0 = Date.now();
+    while (!check()) {
+      if (Date.now() - t0 > ms) throw new Error('timed out');
+      await new Promise((r) => setTimeout(r, 5));
+    }
+  };
+  const pill = (h: Harness) => h.v.managers.notifications.tasks.value.find((t) => t.label.startsWith('Resolving'));
+
+  it('an edit run through the API shows as a task, its progress per model; the task’s Cancel stops it', async () => {
+    const h = await open();
+    const doc = h.model.doc;
+    const s0 = h.steps();
+    h.gate.hold();
+    const run = h.edit(countPatch(doc!, 'p.catalase', 300).patch);
+    await until(() => /^Resolving m\.recipe \((\d) of (\d)\)/.test(pill(h)?.label ?? ''));
+    const [, at, of] = /\((\d) of (\d)\)/.exec(pill(h)!.label)!;
+    expect(pill(h)!.progress).toBeCloseTo((Number(at) - 1) / Number(of));
+    pill(h)!.abort!();
+    const r = await run;
+    expect((r as { code?: string }).code).toBe('aborted');
+    await until(() => !pill(h));
+    expect(h.steps()).toBe(s0);
+    expect(h.model.doc).toBe(doc);
+    expect(copies(h, 'p.catalase').requested).toBe(506);
+  });
+
+  it('the run’s signal aborts the task: it leaves the pill', async () => {
+    const h = await open();
+    const s0 = h.steps();
+    h.gate.hold();
+    const ctl = new AbortController();
+    const run = h.edit(countPatch(h.model.doc!, 'p.catalase', 300).patch, ctl.signal);
+    await until(() => !!pill(h));
+    ctl.abort();
+    expect((await run).ok).toBe(false);
+    await until(() => !pill(h));
+    expect(h.steps()).toBe(s0);
+  });
+
+  it('an edit that resolves nothing long leaves no task behind', async () => {
+    const h = await open();
+    const r = await h.edit(seedPatch(h.model.doc!, 'm.recipe', 3).patch);
+    expect(r.ok, JSON.stringify(r)).toBe(true);
+    expect(pill(h)).toBeUndefined();
   });
 });
