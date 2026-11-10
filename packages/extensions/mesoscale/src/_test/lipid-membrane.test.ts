@@ -190,6 +190,99 @@ describe('lipid membrane', () => {
     expect(params()).toMatchObject({ speciesColors: {}, color: drawn });
   });
 
+  it('takes its far colour alone by zoom, one step (round 7 item 6)', async () => {
+    const base = DefaultPrismViewerSpec();
+    const v = await createPrismViewerHeadless({
+      spec: { ...base, extensions: [...(base.extensions ?? []), MesoscaleExtension] },
+    });
+    viewers.push(v);
+    const r = await v.api.mesoscale!.wrapMembrane({ radius: 400, edge: 80, patch: 'test-patch' });
+    expectOk(r);
+    const ref = r.changed!.nodes![0];
+    const params = () => v.plugin.state.data.cells.get(ref)!.transform.params as Record<string, unknown>;
+    const levels = () => (params().colorLevels as { name: string; params: Record<string, number> }).params;
+    expectOk(await v.api.run('mesoscale.style', { particles: ref, entities: 'POPC', color: 'gold' }));
+    const species = params().speciesColors;
+    // the far colour alone: its species' kept; one step
+    expectOk(await v.api.run('mesoscale.colorLevels', { particles: ref, far: 'blue' }));
+    expect(params().color).toBe(0x0000ff);
+    expect(params().speciesColors).toEqual(species);
+    expect(Object.keys(levels())).not.toContain('far');
+    expect((await v.api.run('mesoscale.colorLevels', { particles: ref, far: 'nope' })).ok).toBe(false);
+    expectOk(await v.api.history.undo({}));
+    expect(params().color).not.toBe(0x0000ff);
+  });
+
+  it('takes its atoms’ scheme by zoom, one step (round 7 item 6)', async () => {
+    const base = DefaultPrismViewerSpec();
+    const v = await createPrismViewerHeadless({
+      spec: { ...base, extensions: [...(base.extensions ?? []), MesoscaleExtension] },
+    });
+    viewers.push(v);
+    const r = await v.api.mesoscale!.wrapMembrane({ radius: 400, edge: 80, patch: 'test-patch' });
+    expectOk(r);
+    const ref = r.changed!.nodes![0];
+    const params = () => v.plugin.state.data.cells.get(ref)!.transform.params as Record<string, unknown>;
+    const levels = () => (params().colorLevels as { name: string; params: Record<string, number> }).params;
+    // the atoms close up: by element, or their carbons the species'
+    expectOk(await v.api.run('mesoscale.colorLevels', { particles: ref, atoms: 'carbon-species' }));
+    expect(params().atomColors).toBe('carbon-species');
+    expect(Object.keys(levels())).not.toContain('atoms');
+    expect(v.api.mesoscale!.graphicsState(ref).value).toMatchObject({ atomColors: 'carbon-species' });
+    expectOk(await v.api.history.undo({}));
+    expect(params().atomColors).toBe('element');
+    // a particle list takes neither: a membrane's alone
+    expect((await v.api.run('mesoscale.colorLevels', { far: 'blue' })).ok).toBe(false);
+  });
+
+  it('keeps its chain edge between its species and atoms edges, not shown for a membrane (round 7 item 6)', async () => {
+    const base = DefaultPrismViewerSpec();
+    const v = await createPrismViewerHeadless({
+      spec: { ...base, extensions: [...(base.extensions ?? []), MesoscaleExtension] },
+    });
+    viewers.push(v);
+    const r = await v.api.mesoscale!.wrapMembrane({ radius: 400, edge: 80, patch: 'test-patch' });
+    expectOk(r);
+    const ref = r.changed!.nodes![0];
+    const params = () => v.plugin.state.data.cells.get(ref)!.transform.params as Record<string, unknown>;
+    const levels = () => (params().colorLevels as { name: string; params: Record<string, number> }).params;
+    // no chain level shown for a membrane (its chain is its species): an edge past it moves it between its neighbours
+    expectOk(await v.api.run('mesoscale.colorLevels', { particles: ref, on: true }));
+    expect(levels().chain).toBe(2.2);
+    expectOk(await v.api.run('mesoscale.colorLevels', { particles: ref, atom: 2 }));
+    expect(levels().atom).toBe(2);
+    expect(levels().chain).toBeCloseTo(Math.sqrt(0.27 * 2), 6);
+    expectOk(await v.api.run('mesoscale.colorLevels', { particles: ref, entity: 3, atom: 40 }));
+    expect(levels().chain).toBeCloseTo(Math.sqrt(3 * 40), 6);
+    // a chain given out of order is still refused
+    expect((await v.api.run('mesoscale.colorLevels', { particles: ref, chain: 100 })).ok).toBe(false);
+  });
+
+  it('takes a colour theme for several objects (a category’s Color…), as its own colours (round 7 item 6)', async () => {
+    const base = DefaultPrismViewerSpec();
+    const v = await createPrismViewerHeadless({
+      spec: { ...base, extensions: [...(base.extensions ?? []), MesoscaleExtension] },
+    });
+    viewers.push(v);
+    const r = await v.api.mesoscale!.wrapMembrane({ radius: 400, edge: 80, patch: 'test-patch' });
+    expectOk(r);
+    const ref = r.changed!.nodes![0];
+    const params = () => v.plugin.state.data.cells.get(ref)!.transform.params as LipidMembraneProps;
+    const drawn = params().color;
+    expectOk(await v.api.run('mesoscale.theme', { objects: [ref], theme: 'uniform', color: 'tomato' }));
+    expect(params().color).toBe(0xff6347);
+    expect(new Set(Object.values(params().speciesColors))).toEqual(new Set([0xff6347]));
+    expectOk(await v.api.history.undo({}));
+    expect(params().color).toBe(drawn);
+    expectOk(await v.api.run('mesoscale.theme', { objects: [ref], theme: 'generate' }));
+    expect(new Set(Object.values(params().speciesColors)).size).toBeGreaterThan(1);
+    expectOk(await v.api.run('mesoscale.theme', { objects: [ref], theme: 'entity' }));
+    expect(params().speciesColors).toEqual({});
+    expectOk(await v.api.run('mesoscale.theme', { objects: [ref], theme: 'zoom' }));
+    expect(params().colorLevels.name).toBe('on');
+    expect((await v.api.run('mesoscale.theme', { objects: [ref], theme: 'chain' })).ok).toBe(false);
+  });
+
   it('fails its levels change cleanly when the redraw fails: the membrane kept, no step (review M1)', async () => {
     const base = DefaultPrismViewerSpec();
     const v = await createPrismViewerHeadless({

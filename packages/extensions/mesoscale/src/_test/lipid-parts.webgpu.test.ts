@@ -25,7 +25,7 @@ import { icosphere, type TriMesh } from '../lipids/remesh.js';
 import { syntheticPatchPdb } from './lipid-fixtures.js';
 
 // A cell's membranes, each part its eye and colour (lipid-procedural round 7 item 2) and its mix (item 3), on Dawn: a
-// mito IM and an LD side by side.
+// mito IM and an LD side by side. A part's colour by zoom its far level alone (item 6).
 
 const webgpu = await (async () => {
   try {
@@ -151,10 +151,16 @@ describe.skipIf(!webgpu)('a cell’s membranes, each part its eye, colour and mi
           params: { entity: 0.27, chain: 2.2, atom: 28.8, band: 1, chainHue: 90 } as never,
         },
       };
+      // the species' level (an atom 6 px over the IM's heads, its chain's the species' too; the view filled by its
+      // surface, round 7 item 6): kept too, a part's colour its far alone
+      const depth = 3.4 / ((2 / (camera.projection[5] * Size)) * 6);
+      const middle = { ...close, position: Vec3.create(0, 0, 422 + depth) };
       await look(own);
       const atoms = await image(close);
+      const species = await image(middle);
       await look({ ...own, partColors: { MITO_IM: 0x00ff00 } });
       expect(changed(atoms, await image(close))).toBeLessThan(0.1);
+      expect(changed(species, await image(middle))).toBeLessThan(0.05);
       expect(plugin.canvas3d!.graphics.takeErrors?.() ?? []).toEqual([]);
     } finally {
       forgetLipidPatch('dawn-parts');
