@@ -99,25 +99,45 @@ export function isMissingList(list: ParticleList): boolean {
   return !!(list.sourceData as { data?: { missing?: boolean } } | undefined)?.data?.missing;
 }
 
+const PlacementsParams = {
+  key: PD.Text(''),
+  label: PD.Text(''),
+  // raised by the owner when it fills a key a restore found missing: equal params never apply again (mol-state)
+  fill: PD.Numeric(0, {}, { isHidden: true }),
+};
+
+function applyPlacements(params: PD.Values<typeof PlacementsParams>, plugin: PluginContext) {
+  const list = placementStore(plugin).get(params.key);
+  // a restore never fails on a key the store lacks (prism.md §7.3, point 4): an empty list, which its owner fills
+  if (!list) {
+    plugin.log?.warn(`MesoViewSpec: no placements for ${params.key} yet (placements.missing)`);
+    return new SO.Particle.List(missingList(params.key, params.label), { label: params.label || params.key });
+  }
+  return new SO.Particle.List(list, { label: params.label || list.label || params.key });
+}
+
 export const MesoPlacements = PluginStateTransform.BuiltIn({
   name: 'meso-view-spec-placements',
   display: { name: 'MesoViewSpec placements' },
   from: SO.Root,
   to: SO.Particle.List,
-  params: {
-    key: PD.Text(''),
-    label: PD.Text(''),
-    // raised by the owner when it fills a key a restore found missing: equal params never apply again (mol-state)
-    fill: PD.Numeric(0, {}, { isHidden: true }),
-  },
+  params: PlacementsParams,
 })({
-  apply({ params }, plugin: PluginContext) {
-    const list = placementStore(plugin).get(params.key);
-    // a restore never fails on a key the store lacks (prism.md §7.3, point 4): an empty list, which its owner fills
-    if (!list) {
-      plugin.log?.warn(`MesoViewSpec: no placements for ${params.key} yet (placements.missing)`);
-      return new SO.Particle.List(missingList(params.key, params.label), { label: params.label || params.key });
-    }
-    return new SO.Particle.List(list, { label: params.label || list.label || params.key });
-  },
+  apply: ({ params }, plugin: PluginContext) => applyPlacements(params, plugin),
+});
+
+/**
+ * A streamed tile's list (prism.md §9): `MesoPlacements` under another id, which the document's owner registers as
+ * behavior-owned (`registerBehaviorOwned`), so a tile's list and what hangs from it (its representation, its looks) are
+ * no step and no change outside the API, a checkpoint leaves them out and a restore keeps them: the tiles follow the
+ * camera, not the history. The document's own lists stay `MesoPlacements`, in checkpoints (§7.3, point 1).
+ */
+export const MesoTilePlacements = PluginStateTransform.BuiltIn({
+  name: 'meso-view-spec-tiles',
+  display: { name: 'MesoViewSpec streamed tile' },
+  from: SO.Root,
+  to: SO.Particle.List,
+  params: PlacementsParams,
+})({
+  apply: ({ params }, plugin: PluginContext) => applyPlacements(params, plugin),
 });

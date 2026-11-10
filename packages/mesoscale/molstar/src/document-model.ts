@@ -26,6 +26,7 @@ import {
 } from '@molstar/meso-spec/format';
 import {
   evaluateMesoQL,
+  type IR,
   intersectRuns,
   lociSphere,
   type MesoLoci,
@@ -41,6 +42,8 @@ import {
   type ResolveOutput,
   type Resolver,
   shownViewOf,
+  type StreamFocus,
+  type TileProvider,
 } from '@molstar/meso-spec/runtime';
 import { Particle, type ParticleList } from '@molstar/model/model/particles/particle-list';
 import type { PluginContext } from '@molstar/plugin/context';
@@ -56,6 +59,7 @@ import {
 import { placementStore } from './particle-list.js';
 import { type AdapterViewer, PrismMesoAdapter } from './prism-adapter.js';
 import { type EditRecord, type EditRun, MesoSession } from './session.js';
+import { streamingBudget } from './streaming-settings.js';
 
 // The owner of the open MesoViewSpec document in a Prism viewer (prism.md §1.1, §2.3, §7): one document at a time, its
 // session (runtime cache, IR, issues, counts) and its adapter. A viewer proposes, the owner commits: an open, a patch or
@@ -109,10 +113,12 @@ function sameViews(a: DocumentViews, b: DocumentViews): boolean {
   );
 }
 
-/** Where a document came from: its address, and the files dropped with it (by name). */
+/** Where a document came from: its address, the files dropped with it (by name), its tiles' provider. */
 export interface DocumentSource {
   readonly url?: string;
   readonly files?: ReadonlyMap<string, string | Uint8Array>;
+  /** The provider of a streamed model's `meso-tiles` resource, by resource id (prism.md §9; a provider is code). */
+  readonly tiles?: (resource: string) => TileProvider | undefined;
 }
 
 export interface MesoDocumentOptions {
@@ -158,6 +164,11 @@ export class MesoDocumentModel {
    * (prism.md §7.1, Mol* assets: open).
    */
   private readonly filesOf = new WeakMap<MesoViewSpecDoc, ReadonlyMap<string, string | Uint8Array>>();
+  /** The tiles' provider of the document open, and of each document state (as its files, for a restore). */
+  private tiles: DocumentSource['tiles'];
+  private readonly tilesOf = new WeakMap<MesoViewSpecDoc, NonNullable<DocumentSource['tiles']>>();
+  /** The streaming budget setting followed (prism.md §9), while the owner lives. */
+  private readonly unfollowBudget: () => void;
   /** The states Undo can reach, newest last: their keys are kept (prism.md §7.3, point 3). */
   private held: Held[] = [];
   /** The custom state's value while the document is unchanged: one object, so a checkpoint measures it once. */
@@ -187,6 +198,16 @@ export class MesoDocumentModel {
         describe: (t) => this.describe(t),
       },
     });
+    // a new budget in Settings (or its Undo) is a stream step now, no step of the History
+    this.unfollowBudget = streamingBudget(viewer.plugin).subscribe((copies) => void this.session?.setBudget(copies));
+  }
+
+  /**
+   * Where the canvas camera looks (prism.md §9: its target, Å, world): the open document streams around it, a stream
+   * step (no History step). Undefined: around the document's camera.
+   */
+  setFocus(focus: StreamFocus | undefined): Promise<EditRecord | undefined> {
+    return this.session?.setFocus(focus) ?? Promise.resolve(undefined);
   }
 
   // --- the Scene tree (prism.md §4) -----------------------------------------------------------------------------------
@@ -456,8 +477,10 @@ export class MesoDocumentModel {
       if (this.session) await this.closeLists(api);
       this.url = source.url;
       this.files = source.files ?? new Map();
+      this.tiles = source.tiles;
       this.shown = undefined;
       this.filesOf.set(doc, this.files);
+      if (source.tiles) this.tilesOf.set(doc, source.tiles);
       this.session = this.newSession(doc);
       const session = this.session;
       const record = await this.adapter.bound(api, () => session.start());
@@ -484,6 +507,7 @@ export class MesoDocumentModel {
     if (r.issues.length) return { issues: r.issues, inverse: null };
     if (classifyEdit(doc, r.doc) === 'none') return { issues: [], unchanged: true };
     this.filesOf.set(r.doc, this.files);
+    if (this.tiles) this.tilesOf.set(r.doc, this.tiles);
     return this.step(async () => {
       const told = (p: CompileProgress) => {
         this.resolvingNow = p;
@@ -688,21 +712,27 @@ export class MesoDocumentModel {
     const saved = readSaved(value);
     this.dirty = false;
     if (!saved) {
-      this.forget();
+      await this.forget();
       return;
     }
     const same = saved.doc === this.doc && saved.url === this.url && this.session?.ir;
     this.files = this.filesOf.get(saved.doc) ?? new Map();
+    this.tiles = this.tilesOf.get(saved.doc);
     this.url = saved.url;
     this.shown = saved.shown;
     this.session ??= this.newSession(saved.doc);
     // the view noted with the checkpoint shown again (prism.md §7.4): the restored tree already draws its looks; the
-    // camera is view state, which no checkpoint holds, and stays where it is
-    if (!same) await this.session.restore(saved.doc, saved.shown);
-    else if (this.session.view !== saved.shown) await this.session.restoreView(saved.shown);
+    // camera is view state, which no checkpoint holds, and stays where it is. The restored lists are adopted in the
+    // session's turn: a stream step settling between would commit against the IR drawn before the restore.
+    let filled: readonly string[] = [];
+    const adopt = async (ir: IR | undefined) => {
+      filled = ir ? (await this.adapter.adopt(ir)).filled : [];
+    };
+    const session = this.session;
+    if (!same) await session.restore(saved.doc, saved.shown, adopt);
+    else if (session.view !== saved.shown) await session.restoreView(saved.shown, adopt);
+    else await session.exclusive(() => adopt(session.ir));
     this.doc = saved.doc;
-    const ir = this.session.ir;
-    const { filled } = ir ? await this.adapter.adopt(ir) : { filled: [] };
     this.restoreIssues = filled.length
       ? [
           issue(
@@ -720,6 +750,7 @@ export class MesoDocumentModel {
 
   /** Lets go of the session (the owner's viewer goes); the placements go with the plugin. */
   dispose() {
+    this.unfollowBudget();
     this.session?.dispose();
     this.session = undefined;
     this.ev.dispose();
@@ -728,7 +759,14 @@ export class MesoDocumentModel {
   private newSession(doc: MesoViewSpecDoc) {
     return new MesoSession(
       doc,
-      { resolvers: this.options.resolvers ?? DefaultResolvers, load: (id) => this.load(id), cache: this.cache },
+      {
+        resolvers: this.options.resolvers ?? DefaultResolvers,
+        load: (id) => this.load(id),
+        cache: this.cache,
+        // the provider of the document the session holds now (a restore may hand it another's)
+        tiles: (resource) => this.tiles?.(resource),
+        stream: { budget: { copies: streamingBudget(this.viewer.plugin).value } },
+      },
       this.adapter,
     );
   }
@@ -757,16 +795,20 @@ export class MesoDocumentModel {
     this.restoreIssues = [];
   }
 
-  /** The document is gone from the restored state: the owner's too, with no write (the tree has no lists). */
-  private forget() {
+  /**
+   * The document is gone from the restored state: the owner's too, with no write but the tiles' lists the restore kept
+   * (behavior-owned, prism.md §9), which the adapter deletes.
+   */
+  private async forget() {
     this.session?.dispose();
     this.session = undefined;
     this.doc = undefined;
     this.url = undefined;
+    this.tiles = undefined;
     this.shown = undefined;
     this.saved = undefined;
     this.restoreIssues = [];
-    this.adapter.forget();
+    await this.adapter.forget();
     this.changed.next();
   }
 
@@ -786,7 +828,9 @@ export class MesoDocumentModel {
     const sets = new Set(this.held.flatMap((h) => h.sets));
     for (const k of [...this.cache.keys()]) if (!cache.has(k)) this.cache.delete(k);
     const store = placementStore(this.viewer.plugin);
-    for (const k of [...store.keys()]) if (!sets.has(k)) store.delete(k);
+    // the tiles drawn are the adapter's to let go (when their lists go), never held for an Undo
+    const tiles = this.adapter.tileKeys();
+    for (const k of [...store.keys()]) if (!sets.has(k) && !tiles.has(k)) store.delete(k);
   }
 
   /**

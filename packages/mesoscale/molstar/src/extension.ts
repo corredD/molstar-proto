@@ -26,18 +26,15 @@ import type { Loci } from '@molstar/model/model/loci';
 import { cssColor } from '@molstar/mesoscale-extension/color-file';
 import { registerParticleListOwner } from '@molstar/mesoscale-extension/owner';
 import { Color } from '@molstar/core/util/color';
-import { type CompileProgress, isAbort } from '@molstar/meso-spec/runtime';
+import { type CompileProgress, isAbort, type TileProvider } from '@molstar/meso-spec/runtime';
 import { Task } from '@molstar/core/task';
-import {
-  type CameraHere,
-  type DocumentViews,
-  MesoDocumentModel,
-  type MesoDocumentOptions,
-} from './document-model.js';
+import { type CameraHere, type DocumentViews, MesoDocumentModel, type MesoDocumentOptions } from './document-model.js';
 import { editAsTask } from './edit-task.js';
 import { blockedResult, DocumentListOwner } from './list-owner.js';
 import { documentVisible, type DocumentGroupBy, type DocumentLooks, type DocumentOutline } from './document-tree.js';
 import { openAddresses } from './prism-viewer.js';
+import { registerBehaviorOwned } from '@molstar/prism-viewer/sources/checkpoint';
+import { MesoTilePlacements } from './particle-list.js';
 
 declare module '@molstar/prism-viewer/api' {
   // The `mesoviewspec` area: the open MesoViewSpec document (prism.md §5.3).
@@ -105,6 +102,12 @@ const OpenParams = {
   url: OptionalParam(PD.Text('', { description: 'The address of a document (.mesoviewspec.json or .mesoviewspec)' })),
   data: OptionalParam(PD.Text('', { multiline: true, description: 'The document: its JSON or its S-expression' })),
   file: OptionalParam(PD.Value<File | null>(null, { isHidden: true, description: 'A document file' })),
+  example: OptionalParam(
+    PD.Select<'tiled'>('tiled', [['tiled', 'The tiled fixture (streamed)']], {
+      description:
+        'An example made in code: tiled, the streaming fixture (32 tiles of 400 copies, loaded around the camera)',
+    }),
+  ),
   files: OptionalParam(
     PD.Value<readonly File[]>([], {
       isHidden: true,
@@ -177,9 +180,14 @@ export class MesoViewSpecApi extends ApiArea {
     this.#unregister = this.model.register();
     this.owner = new DocumentListOwner(this.model);
     this.#unregisterOwner = registerParticleListOwner(ctx.plugin, this.owner);
+    // streamed tiles are the owner's behavior's cells (prism.md §9): no step, no change outside the API, left out of
+    // checkpoints, kept by a restore
+    this.#unregisterTiles = registerBehaviorOwned(ctx.plugin, [MesoTilePlacements]);
   }
+  readonly #unregisterTiles: () => void;
 
   override dispose(): void {
+    this.#unregisterTiles();
     this.#stopTour();
     this.#unregisterOwner();
     this.#unregister();
@@ -617,11 +625,14 @@ export class MesoViewSpecApi extends ApiArea {
         values.url?.trim() ? 'url' : '',
         values.data?.trim() ? 'data' : '',
         values.file ? 'file' : '',
+        values.example ? 'example' : '',
       ].filter(Boolean);
       if (given.length !== 1) {
         return ApiResult.fail(
           'invalid',
-          given.length ? 'Give one of url, data or file, not several.' : 'Open what? Give url, data or file.',
+          given.length
+            ? 'Give one of url, data, file or example, not several.'
+            : 'Open what? Give url, data, file or example.',
         );
       }
       // One at a time (prism.md §1.1); the agent closes first (§5.3), the person's Open asks in the UI.
@@ -633,14 +644,18 @@ export class MesoViewSpecApi extends ApiArea {
         );
       }
       const url = absolute(values.url?.trim());
-      let text: string | undefined;
-      try {
-        text = url ? await this.model.options.fetchText?.(url) : values.file ? await values.file.text() : values.data;
-      } catch (e) {
-        return ApiResult.fail('failed', `Could not read the document: ${(e as Error).message}`);
+      let read: { doc: MesoViewSpecDoc; tiles?: (resource: string) => TileProvider | undefined } | ApiFailure;
+      if (values.example) read = await exampleDocument(values.example);
+      else {
+        let text: string | undefined;
+        try {
+          text = url ? await this.model.options.fetchText?.(url) : values.file ? await values.file.text() : values.data;
+        } catch (e) {
+          return ApiResult.fail('failed', `Could not read the document: ${(e as Error).message}`);
+        }
+        if (text === undefined) return ApiResult.fail('failed', `Could not read ${url}.`);
+        read = parseDocument(text);
       }
-      if (text === undefined) return ApiResult.fail('failed', `Could not read ${url}.`);
-      const read = parseDocument(text);
       if ('ok' in read) return read;
       const files = new Map<string, string | Uint8Array>();
       for (const f of values.files ?? []) files.set(f.name, new Uint8Array(await f.arrayBuffer()));
@@ -648,7 +663,11 @@ export class MesoViewSpecApi extends ApiArea {
       // a tour of the document open stops now, not after its step's hold (not awaited: its next view may queue behind)
       this.#stopTour();
       try {
-        step = await this.model.open(read.doc, { ...(url ? { url } : {}), files }, ctx.api);
+        step = await this.model.open(
+          read.doc,
+          { ...(url ? { url } : {}), files, ...(read.tiles ? { tiles: read.tiles } : {}) },
+          ctx.api,
+        );
       } catch (e) {
         return ApiResult.fail('failed', `Could not open the document: ${(e as Error).message}`);
       }
@@ -786,6 +805,22 @@ function parseDocument(text: string): { doc: MesoViewSpecDoc } | ApiFailure {
     return ApiResult.fail('invalid', 'This is not a MesoViewSpec document.', 'Its format must be meso_view_spec.');
   }
   return { doc: value as MesoViewSpecDoc };
+}
+
+/** How long the tiled example's provider takes per tile (ms): long enough to see the tiles arrive, nearest first. */
+const ExampleTileMs = 150;
+
+/**
+ * An example made in code (`mesoviewspec.open` `example`): `tiled`, the streaming lane's fixture (streaming.md,
+ * "Fixture"), with its provider. Its module is loaded only then (the examples are large).
+ */
+async function exampleDocument(
+  example: 'tiled',
+): Promise<{ doc: MesoViewSpecDoc; tiles: (resource: string) => TileProvider | undefined } | ApiFailure> {
+  if (example !== 'tiled') return ApiResult.fail('invalid', `No example ${example}.`, 'Give example tiled.');
+  const { tiledFixture } = await import('@molstar/meso-spec/examples');
+  const { doc, provider } = tiledFixture({ delayMs: ExampleTileMs });
+  return { doc, tiles: (resource) => (resource === 'r.tiles' ? provider : undefined) };
 }
 
 /** The patch in `text`: its S-expression, or its JSON. */

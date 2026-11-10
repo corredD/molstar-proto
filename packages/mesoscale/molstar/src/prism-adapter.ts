@@ -30,7 +30,15 @@ import type { PrismViewer } from '@molstar/prism-viewer/viewer';
 // the `particles` API area's types (the feature is lazy: `extensions.load('particles')` before its first use)
 import type {} from '@molstar/prism-viewer/features/particles';
 import type { ParticleList } from '@molstar/model/model/particles/particle-list';
-import { isMissingList, MesoPlacements, placementStore, toParticleList } from './particle-list.js';
+import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
+import type { PluginContext } from '@molstar/plugin/context';
+import {
+  type ParticleLayerProps,
+  ParticleRepresentation3DLayers,
+} from '@molstar/plugin/state/transforms/particles/layers';
+import { ParticlesRepresentation3D } from '@molstar/plugin/state/transforms/particles/representation';
+import { streamNode } from '@molstar/meso-spec/runtime';
+import { isMissingList, MesoPlacements, MesoTilePlacements, placementStore, toParticleList } from './particle-list.js';
 
 // The Prism adapter (design.md §6.5): the IR into a Prism viewer through its operations, as prism-me's rules ask (one
 // representation per list, looks as layers through `particles.look`, never a representation per type). Per commit, by
@@ -42,6 +50,10 @@ import { isMissingList, MesoPlacements, placementStore, toParticleList } from '.
 // step's `api` (`bind`), its tree writes are part of the run, it deletes no placements (the owner lets them go), and a
 // restore is adopted from the restored tree (`adopt`) with nothing through the API. A re-pack's new list is drawn with
 // the representation type and params of the list of the same model it replaces.
+// A streamed tile's list (prism.md §9) is the behavior's, not the person's: it is made, drawn, given its looks and
+// deleted through the state directly (`MesoTilePlacements`, registered behavior-owned by the owner), never through the
+// API, in an edit's step as in a stream step, so tiles are no step and no change outside the API. A commit with no API
+// bound (a stream step) touches only tile lists: a document list's repair and looks wait for the next edit's step.
 
 const now = () => performance.now();
 
@@ -55,6 +67,15 @@ export interface AdapterViewer {
 interface Placed {
   readonly ref: string;
   readonly label: string;
+  /** A streamed tile's list (`MesoTilePlacements`): drawn through the state, never the API. */
+  readonly tile?: true;
+}
+
+/** The keys of an IR's streamed tile sets: the stream node's `placements` children. */
+function tileKeysOf(ir: IR): Set<string> {
+  const out = new Set<string>();
+  for (const c of streamNode(ir)?.children ?? []) if (c.kind === 'placements') out.add(c.params.set.key);
+  return out;
 }
 
 /** How a copy and a type are named on hover (the document's owner: an instance by its id, a type's entity and compartment). */
@@ -118,10 +139,21 @@ export class PrismMesoAdapter implements RendererAdapter {
   listRef(key: string) {
     return this.placed.get(key)?.ref;
   }
-  /** The keys of the sets drawn (the flattened IR's, expanded instances included): what the owner keeps placed. */
+  /**
+   * The keys of the document's sets drawn (the flattened IR's, expanded instances included; no streamed tile): what
+   * the owner keeps placed for Undo. A tile's placements are let go by the adapter when its list goes.
+   */
   keys(): readonly string[] {
-    return this.prev ? [...placementSetKeys(this.prev)] : [];
+    if (!this.prev) return [];
+    return [...placementSetKeys(this.prev)].filter((k) => !this.drawnTiles.has(k));
   }
+
+  /** The keys of the streamed tiles drawn: their placements are the adapter's to let go, not the owner's. */
+  tileKeys(): ReadonlySet<string> {
+    return this.drawnTiles;
+  }
+  /** The tile keys of the last IR drawn or adopted (its stream node's sets). */
+  private drawnTiles: ReadonlySet<string> = new Set();
 
   /** Runs `work` with the API calls going through `api` (an operation's `ctx.api`: part of its step). */
   async bound<T>(api: ViewerApi, work: () => Promise<T>): Promise<T> {
@@ -315,7 +347,10 @@ export class PrismMesoAdapter implements RendererAdapter {
     const plan = planCommit(this.prev, ir);
     const v = this.viewer;
     if (plan.add.length) await v.extensions.load('particles');
-    this.particles(); // inside a step: an API is bound
+    const tiles = tileKeysOf(source);
+    // a commit with no API to call (an owner's stream step: none bound, the owner's viewer has none) writes only tiles,
+    // through the state (prism.md §9)
+    const bound = !!(this.api ?? this.viewer.api);
     const store = this.store;
 
     // the representation of each model's removed list, for the list that replaces it (a re-pack keeps the person's
@@ -328,19 +363,23 @@ export class PrismMesoAdapter implements RendererAdapter {
         const p = this.placed.get(key);
         if (p) {
           const model = prevSets.get(key)?.model;
-          const type = model !== undefined ? this.representationType(p.ref) : undefined;
+          const type = model !== undefined && !p.tile ? this.representationType(p.ref) : undefined;
           if (model !== undefined && type && !drawn.has(model)) drawn.set(model, type);
           b.delete(p.ref);
         }
+        // an evicted tile's placements go with its list: the streamer owns residency (streaming.md, "Ownership")
+        if (p?.tile) store.delete(key);
         this.placed.delete(key);
       }
       await v.plugin.runTask(v.plugin.state.data.updateTree(b));
     }
-    // kept lists that something outside the adapter (Prism's undo) stripped: drawn again, their looks rewritten
+    // kept lists that something outside the adapter (Prism's undo) stripped: drawn again, their looks rewritten; a
+    // document list only inside a step (an unbound commit leaves it for the next edit's)
     const byKey = new Map(placementSets(ir).map((x) => [x.key, x]));
     const relist: PlacementSet[] = [];
     const redraw: PlacementSet[] = [];
     for (const key of plan.keep) {
+      if (!bound && !tiles.has(key)) continue;
       const p = this.placed.get(key);
       const set = byKey.get(key)!;
       if (!p || !v.plugin.state.data.cells.get(p.ref)?.obj) {
@@ -349,7 +388,12 @@ export class PrismMesoAdapter implements RendererAdapter {
       } else if (!this.hasRepresentation(p.ref)) redraw.push(set);
     }
     // an empty set (a model whose input is missing) has nothing Prism can draw: no list (spacefill refuses it)
+    const newTiles: PlacementSet[] = [];
     for (const set of [...plan.add.filter((x) => x.count > 0), ...relist]) {
+      if (tiles.has(set.key)) {
+        newTiles.push(set);
+        continue;
+      }
       const label = listLabel(set);
       if (!store.has(set.key)) store.set(set.key, toParticleList(set, label, this.labelsOf(set.key)));
       const b = v.plugin.state.data.build().toRoot().apply(MesoPlacements, { key: set.key, label });
@@ -359,13 +403,18 @@ export class PrismMesoAdapter implements RendererAdapter {
     }
     for (const set of redraw) {
       const p = this.placed.get(set.key)!;
-      await this.represent(set, p.ref, p.label);
+      if (p.tile) newTiles.push(set);
+      else await this.represent(set, p.ref, p.label);
     }
+    await this.drawTiles(newTiles, plan.looks);
     const repaired = relist.length + redraw.length;
     const t1 = now();
 
     let looksWritten = 0;
-    if (plan.looksChanged || repaired || unsure) looksWritten = await this.writeLooks(plan.looks);
+    if (plan.looksChanged || repaired || unsure) {
+      looksWritten = await this.writeTileLooks(plan.looks);
+      if (bound) looksWritten += await this.writeLooks(plan.looks);
+    }
     const t2 = now();
 
     const canvas = v.plugin.canvas3d;
@@ -428,6 +477,7 @@ export class PrismMesoAdapter implements RendererAdapter {
         ),
       );
     this.prev = ir;
+    this.drawnTiles = tiles;
     this.index(source);
     return {
       added: plan.add.map((s) => s.key),
@@ -450,7 +500,7 @@ export class PrismMesoAdapter implements RendererAdapter {
    */
   private async writeLooks(looks: readonly IRLook[], refs?: ReadonlySet<string>): Promise<number> {
     const lists = [...this.placed]
-      .filter(([, p]) => !refs || refs.has(p.ref))
+      .filter(([, p]) => !p.tile && (!refs || refs.has(p.ref)))
       .map(([key, p]) => {
         const chosen = this.themeChosen(p.ref);
         return {
@@ -473,6 +523,69 @@ export class PrismMesoAdapter implements RendererAdapter {
       if (!r.ok) throw new Error(`Looks: ${r.message}`);
     }
     return lists.reduce((s, l) => s + l.layers.length, 0);
+  }
+
+  /**
+   * Streamed tiles' lists drawn through the state (prism.md §9), all in one update: each list (`MesoTilePlacements`),
+   * its representation (the adapter's type, its defaults) and its looks' layers. A tile drawn again (its
+   * representation stripped) replaces its list.
+   */
+  private async drawTiles(sets: readonly PlacementSet[], looks: readonly IRLook[]) {
+    if (!sets.length) return;
+    const { plugin } = this.viewer;
+    const state = plugin.state.data;
+    const store = this.store;
+    const b = state.build();
+    for (const set of sets) {
+      const was = this.placed.get(set.key);
+      if (was && state.cells.has(was.ref)) b.delete(was.ref);
+      const label = listLabel(set);
+      let list = store.get(set.key);
+      if (!list) store.set(set.key, (list = toParticleList(set, label, this.labelsOf(set.key))));
+      const cell = b.toRoot().apply(MesoTilePlacements, { key: set.key, label });
+      const repr = cell.apply(ParticlesRepresentation3D, tileRepresentationParams(plugin, list, this.tileType()));
+      const layers = tileLayers(looks, set.key, false);
+      if (layers.length) repr.apply(ParticleRepresentation3DLayers, { layers, cuts: [], hidden: [] } as never);
+      this.placed.set(set.key, { ref: cell.ref, label, tile: true });
+    }
+    await plugin.runTask(state.updateTree(b));
+  }
+
+  /** The representation type of a tile's list: the adapter's (spacefill). */
+  private tileType() {
+    return this.options.representation ?? 'spacefill';
+  }
+
+  /** The looks of the tiles' lists as their layers, written through the state where they differ; the layers written. */
+  private async writeTileLooks(looks: readonly IRLook[]): Promise<number> {
+    const state = this.viewer.plugin.state.data;
+    const b = state.build();
+    let written = 0;
+    let changed = false;
+    for (const [key, p] of this.placed) {
+      if (!p.tile) continue;
+      const layers = tileLayers(looks, key, this.themeChosen(p.ref));
+      written += layers.length;
+      const repr = state.select(
+        StateSelection.Generators.byRef(p.ref).subtree().ofType(SO.Particle.Representation3D),
+      )[0];
+      if (!repr) continue;
+      // the layers cell is the representation's child (`particleLookCell`)
+      const looksRef = state.tree.children
+        .get(repr.transform.ref)
+        .toArray()
+        .find((c) => state.tree.transforms.get(c)?.transformer === ParticleRepresentation3DLayers);
+      const cell = looksRef !== undefined ? state.cells.get(looksRef) : undefined;
+      const old = cell?.transform.params as { layers: readonly ParticleLayerProps[] } | undefined;
+      if (old && sameLayers(old.layers, layers)) continue;
+      if (!old && !layers.length) continue;
+      changed = true;
+      if (!cell)
+        b.to(repr.transform.ref).apply(ParticleRepresentation3DLayers, { layers, cuts: [], hidden: [] } as never);
+      else b.to(cell.transform.ref).update({ ...old, layers } as never);
+    }
+    if (changed) await this.viewer.plugin.runTask(state.updateTree(b));
+    return written;
   }
 
   /**
@@ -632,7 +745,23 @@ export class PrismMesoAdapter implements RendererAdapter {
       filled.push(set.key);
       b.to(cell.ref).update((old: { fill?: number }) => ({ ...old, fill: (old.fill ?? 0) + 1 }));
     }
-    if (filled.length) await this.viewer.plugin.runTask(state.updateTree(b));
+    // the tiles' lists the restore kept (behavior-owned, prism.md §9): those of the IR's stream adopted, the others
+    // (another stream key, or no document) deleted with their placements; a tile of the IR without a list is drawn by
+    // the next commit's check
+    const tiles = tileKeysOf(source);
+    let tilesGone = false;
+    for (const c of state.select(StateSelection.Generators.ofTransformer(MesoTilePlacements))) {
+      const p = c.transform.params as { key: string; label: string };
+      if (tiles.has(p.key) && store.has(p.key) && !this.placed.has(p.key)) {
+        this.placed.set(p.key, { ref: c.transform.ref, label: p.label, tile: true });
+        continue;
+      }
+      b.delete(c.transform.ref);
+      if (!tiles.has(p.key)) store.delete(p.key);
+      tilesGone = true;
+    }
+    if (filled.length || tilesGone) await this.viewer.plugin.runTask(state.updateTree(b));
+    this.drawnTiles = tiles;
     // the annotations' labels the restored tree holds (the view noted with it drew them)
     this.labels = new Map();
     for (const c of state.cells.values()) {
@@ -646,6 +775,8 @@ export class PrismMesoAdapter implements RendererAdapter {
     this.annotationsSaid = annotationsKey(ir);
     this.prev = ir;
     this.index(source);
+    // a kept tile's looks are what they were before the restore: the restored view's written over them
+    await this.writeTileLooks(ir.view.looks);
     return { filled };
   }
 
@@ -662,8 +793,22 @@ export class PrismMesoAdapter implements RendererAdapter {
     return particles;
   }
 
-  /** Forgets what it drew, writing nothing: the restored state has no lists of its (an Undo of an open). */
-  forget() {
+  /**
+   * Forgets what it drew (an Undo of an open: the restored state has no lists of its), writing nothing but the tiles'
+   * lists, which the restore kept (behavior-owned): deleted through the state, with their placements.
+   */
+  async forget() {
+    const state = this.viewer.plugin.state.data;
+    const tiles = state.select(StateSelection.Generators.ofTransformer(MesoTilePlacements));
+    if (tiles.length) {
+      const b = state.build();
+      for (const c of tiles) {
+        b.delete(c.transform.ref);
+        this.store.delete((c.transform.params as { key: string }).key);
+      }
+      await this.viewer.plugin.runTask(state.updateTree(b));
+    }
+    this.drawnTiles = new Set();
     this.unsure = undefined;
     this.annotationsSaid = undefined;
     this.placed.clear();
@@ -680,8 +825,13 @@ export class PrismMesoAdapter implements RendererAdapter {
   async clear() {
     const state = this.viewer.plugin.state.data;
     const b = state.build();
-    for (const [, p] of this.placed) b.delete(p.ref);
+    for (const [key, p] of this.placed) {
+      b.delete(p.ref);
+      // a tile's placements are not kept for an Undo (the tiles follow the camera, not the history)
+      if (p.tile) this.store.delete(key);
+    }
     for (const [, l] of this.labels) if (state.cells.has(l.ref)) b.delete(l.ref);
+    this.drawnTiles = new Set();
     this.unsure = undefined;
     this.annotationsSaid = undefined;
     this.placed.clear();
@@ -696,6 +846,79 @@ export class PrismMesoAdapter implements RendererAdapter {
   async dispose() {
     await this.clear();
   }
+}
+
+/**
+ * A tile list's looks as layers of its representation (`ParticleRepresentation3DLayers`), as `particles.look` patches
+ * them onto an empty cell: by target (a type), a later look of the same targets in the earlier's place, a look that
+ * changes nothing dropped. A default color is left out when the person chose the list's color theme (`chosen`).
+ */
+function tileLayers(looks: readonly IRLook[], key: string, chosen: boolean): ParticleLayerProps[] {
+  const out: (ParticleLayerProps | undefined)[] = [];
+  const at = new Map<string, number>();
+  for (const l of looks) {
+    // a look on part of a type (copy runs) has no Prism layer selector (renderer-recommendations.md R8)
+    if (l.set !== key || l.runs) continue;
+    const targets = [...new Set(l.types)].sort((a, b) => a - b);
+    const layer: ParticleLayerProps = {
+      entities: [],
+      compartments: [],
+      targets,
+      visible: l.visible ?? true,
+      color: l.color !== undefined && !(l.colorDefault && chosen) ? Color(l.color) : null,
+      transparency: l.transparency ?? null,
+      emissive: l.emissive ?? null,
+      shown: null,
+    };
+    const noChange = layer.visible && layer.color === null && layer.transparency === null && layer.emissive === null;
+    const id = targets.join(',');
+    const i = at.get(id);
+    if (i !== undefined) out[i] = noChange ? undefined : layer;
+    else if (!noChange) at.set(id, out.push(layer) - 1);
+  }
+  return out.filter((l): l is ParticleLayerProps => !!l);
+}
+
+function sameLayers(a: readonly ParticleLayerProps[], b: readonly ParticleLayerProps[]) {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    const x = a[i];
+    const y = b[i];
+    if (
+      x.visible !== y.visible ||
+      x.color !== y.color ||
+      x.transparency !== y.transparency ||
+      x.emissive !== y.emissive ||
+      (x.shown ?? null) !== (y.shown ?? null) ||
+      x.targets.join(',') !== y.targets.join(',') ||
+      x.entities.length ||
+      x.compartments.length ||
+      y.entities.length ||
+      y.compartments.length
+    )
+      return false;
+  }
+  return true;
+}
+
+/** A tile representation's params: the type's defaults and its default themes, as `particles.representation` makes them. */
+function tileRepresentationParams(plugin: PluginContext, data: ParticleList, type: string): never {
+  const { registry, themes } = plugin.representation.particles;
+  const provider = registry.get(type);
+  const dataCtx = { particles: data };
+  const color = themes.colorThemeRegistry.get(provider.defaultColorTheme.name);
+  const size = themes.sizeThemeRegistry.get(provider.defaultSizeTheme.name);
+  return {
+    type: { name: provider.name, params: PD.getDefaultValues(provider.getParams(themes, data)) },
+    colorTheme: {
+      name: color.name,
+      params: Object.assign(PD.getDefaultValues(color.getParams(dataCtx)), provider.defaultColorTheme.props),
+    },
+    sizeTheme: {
+      name: size.name,
+      params: Object.assign(PD.getDefaultValues(size.getParams(dataCtx)), provider.defaultSizeTheme.props),
+    },
+  } as never;
 }
 
 /** What the camera step needs of Mol*'s Canvas3D. */
