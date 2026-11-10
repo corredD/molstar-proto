@@ -611,30 +611,30 @@ Fibers mock exposed the adapter's `excludeFibers` bug (§11).
 
 **Gaps the prototypes exposed:**
 
-| Gap                                                                         | Layer                | Note                                                                                                          |
-| --------------------------------------------------------------------------- | -------------------- | ------------------------------------------------------------------------------------------------------------- |
-| A helical lattice on a tube (microtubules, 13 protofilaments)               | language             | `fiber` is one copy per rise; MesoCraft's Symmetry Assembly is the model                                      |
-| Distributions for arrangement parameters (MesoCraft's uniform, Gaussian)    | language             | numbers only today                                                                                            |
-| Skeletons that are not compartments; paths between two addresses            | language             | MesoCraft's skeletons and Connection rule (§3.12)                                                             |
-| `branches` and `contacts` relations                                         | resolver             | reported as not reconciled; no resolver grows branches or simulates beads                                     |
-| Superstructure detail per view (LOD)                                        | language / adapter   | `detail` is per population; "depending on context" suggests the view chooses                                  |
-| Partial looks (copy runs)                                                   | adapter              | Prism layers select whole targets (renderer R8)                                                               |
-| Nested instancing                                                           | renderer             | the adapter expands instances × template (renderer R7)                                                        |
-| Membrane proteins overlap lipids (up to 28 Å on the exosome)                | resolver             | the bilayer is drawn without the proteins' footprints; no resolver packs lipids around them                   |
-| `meso.relax` rebuilds sets type by type                                     | resolver             | a refined fiber's CSR would need remapping; the prototype refines packings only                               |
-| Catalogs                                                                    | runtime              | not expanded (§3.6)                                                                                           |
-| Segmentation surface extraction                                             | resolver             | prototype takes meshes only                                                                                   |
-| Mesh inside test is O(triangles)                                            | resolver             | (v0.2) signed distance grids for the relax stage; the packer still uses the exact test                        |
-| Random sequential addition stops at a give-up heuristic                     | resolver             | (v0.2) answered by composition: a `meso.relax` stage reaches 506/506 (§6.7)                                   |
-| `min-distance` constraints and relations are reported, not honoured         | resolver             |                                                                                                               |
-| Representations beyond spheres, clipping, drawn annotations                 | adapter / view state |                                                                                                               |
-| The camera snapshot needs the scene radius                                  | adapter              | fixed: a radius left from a smaller scene clipped the front of a larger one                                   |
-| Particle spacefill hides fiber particles by default                         | adapter              | fixed: the Fibers mock showed an empty view until the adapter set `excludeFibers: false` for sets with fibers |
-| Prism's particles feature is lazy                                           | adapter              | an in-memory list needs `extensions.load('particles')` first                                                  |
-| In-memory data enter `mol-state` only through a side store keyed by a param | plugin API           | renderer-recommendations R6                                                                                   |
-| `cached` is part of the IR                                                  | IR                   | it makes two IRs of the same document differ by history; it should move to the stats                          |
-| `View.frame` is declared but not applied                                    | runtime              | (v0.3) fixed: a numeric camera is placed by its view's frame matrix (§5.1)                                    |
-| Selection and annotations are derived, not drawn                            | adapter              | `IRView.selection` and `.annotations` reach the adapter, which ignores them                                   |
+| Gap                                                                         | Layer                | Note                                                                                                           |
+| --------------------------------------------------------------------------- | -------------------- | -------------------------------------------------------------------------------------------------------------- |
+| A helical lattice on a tube (microtubules, 13 protofilaments)               | language             | `fiber` is one copy per rise; MesoCraft's Symmetry Assembly is the model                                       |
+| Distributions for arrangement parameters (MesoCraft's uniform, Gaussian)    | language             | numbers only today                                                                                             |
+| Skeletons that are not compartments; paths between two addresses            | language             | MesoCraft's skeletons and Connection rule (§3.12)                                                              |
+| `branches` and `contacts` relations                                         | resolver             | reported as not reconciled; no resolver grows branches or simulates beads                                      |
+| Superstructure detail per view (LOD)                                        | language / adapter   | (v0.5) proposed as semantic scale rules ([views.md](views.md#semantic-levels-proposed-v05-for-david-and-ludo)) |
+| Partial looks (copy runs)                                                   | adapter              | Prism layers select whole targets (renderer R8)                                                                |
+| Nested instancing                                                           | renderer             | the adapter expands instances × template (renderer R7)                                                         |
+| Membrane proteins overlap lipids (up to 28 Å on the exosome)                | resolver             | the bilayer is drawn without the proteins' footprints; no resolver packs lipids around them                    |
+| `meso.relax` rebuilds sets type by type                                     | resolver             | a refined fiber's CSR would need remapping; the prototype refines packings only                                |
+| Catalogs                                                                    | runtime              | not expanded (§3.6)                                                                                            |
+| Segmentation surface extraction                                             | resolver             | prototype takes meshes only                                                                                    |
+| Mesh inside test is O(triangles)                                            | resolver             | (v0.2) signed distance grids for the relax stage; the packer still uses the exact test                         |
+| Random sequential addition stops at a give-up heuristic                     | resolver             | (v0.2) answered by composition: a `meso.relax` stage reaches 506/506 (§6.7)                                    |
+| `min-distance` constraints and relations are reported, not honoured         | resolver             |                                                                                                                |
+| Representations beyond spheres, clipping, drawn annotations                 | adapter / view state |                                                                                                                |
+| The camera snapshot needs the scene radius                                  | adapter              | fixed: a radius left from a smaller scene clipped the front of a larger one                                    |
+| Particle spacefill hides fiber particles by default                         | adapter              | fixed: the Fibers mock showed an empty view until the adapter set `excludeFibers: false` for sets with fibers  |
+| Prism's particles feature is lazy                                           | adapter              | an in-memory list needs `extensions.load('particles')` first                                                   |
+| In-memory data enter `mol-state` only through a side store keyed by a param | plugin API           | renderer-recommendations R6                                                                                    |
+| `cached` is part of the IR                                                  | IR                   | it makes two IRs of the same document differ by history; it should move to the stats                           |
+| `View.frame` is declared but not applied                                    | runtime              | (v0.3) fixed: a numeric camera is placed by its view's frame matrix (§5.1)                                     |
+| Selection and annotations are derived, not drawn                            | adapter              | `IRView.selection` and `.annotations` reach the adapter, which ignores them                                    |
 
 **Open decisions for David:**
 
@@ -645,7 +645,9 @@ Fibers mock exposed the adapter's `excludeFibers` bug (§11).
 3. **Derived results as resources.** Store a resolution as a `placements` resource with `derivedFrom: {model, key}`, so
    an expensive procedural result (cellPACKgpu on a GPU) can be shipped and replayed?
 4. **Representation hints.** The hint exists (§5) and falls back to spheres. Which hints must an adapter honour, and
-   should a document be able to state a fallback chain (SeqViewSpec's)?
+   should a document be able to state a fallback chain (SeqViewSpec's)? **(v0.5) Reopened with 8 and 12** as semantic
+   levels: a representation chosen per scale by a rule in the document
+   ([views.md](views.md#semantic-levels-proposed-v05-for-david-and-ludo)).
 5. **L scenes.** Tiles as a first-class IR concept (a set per tile, keyed), or a renderer-side streaming source?
    **(v0.4) Decided for the IR:** one placement set per tile, keyed `<model>@<hash>#<tileId>`, spliced under a `stream`
    node by the session, so `planCommit` commits only the tiles added and removed and every adapter gets streaming for
@@ -660,7 +662,9 @@ Fibers mock exposed the adapter's `excludeFibers` bug (§11).
 7. **Schema.** JSON Schema or OpenAPI published (as MolViewSpec), or reference tables generated from the types (as
    SeqViewSpec)?
 8. **(v0.2) Detail per view.** Is `parts` vs `entity` a population's property (now) or a view's (David's "depending on
-   context")? A view-level choice needs both levels resolved, or resolution on demand.
+   context")? A view-level choice needs both levels resolved, or resolution on demand. **(v0.5) Proposed:** both, per
+   scale: a population's `detail` stays the default, and a scale rule in the document or a view chooses per scale
+   ([views.md](views.md#semantic-levels-proposed-v05-for-david-and-ludo)).
 9. **(v0.2) Derived products.** Should a document declare derived products (a simulated tilt series of the model, for
    training data, Ludo's twin) as activities whose outputs are resources, so the model and its synthetic data share one
    provenance graph?
@@ -678,10 +682,13 @@ Fibers mock exposed the adapter's `excludeFibers` bug (§11).
     top level, or keep the sections and treat the levels as a runtime concept? **(v0.4) The levels are decided as a
     runtime concept:** a stream's manifest declares them; level 0 (counts and envelopes per tile and population) is
     always in the IR and is what the camera reads; level 1 is loaded within a copy budget; level 2 is declared and
-    refused (§6.8). The document's sections do not move. **Still open:** whether to restructure the top level around the
-    organization; level 2 (atoms close up); whether a population or an instance could itself be a stream's level 0
-    (today only a stream model's manifest is). In prism-me the tree is the document's compartments, populations and
-    instances ([prism.md](prism.md) §4.1); a new top level changes those rows only.
+    refused (§6.8). The document's sections do not move. **(v0.5) Reopened in part** (David: "we want to be able to
+    define 'semantic LOD' at the document level"): which level _shows_ what becomes authored, as scale rules in a new
+    `scales` section ([views.md](views.md#semantic-levels-proposed-v05-for-david-and-ludo)); which level is _loaded_
+    stays the runtime's. **Still open:** whether to restructure the top level around the organization; level 2 (atoms
+    close up); whether a population or an instance could itself be a stream's level 0 (today only a stream model's
+    manifest is). In prism-me the tree is the document's compartments, populations and instances ([prism.md](prism.md)
+    §4.1); a new top level changes those rows only.
 
 ## 12. Packaging
 

@@ -78,3 +78,101 @@ where to stand:
 - **Tours** step through views with durations and captions; `session.tour` names one to play.
 
 The _Semantic camera_ story switches views (no resolver reruns; about 10 ms) and plays the tour.
+
+## Semantic levels (proposed, v0.5; for David and Ludo)
+
+David (2026-11-09), on [format.md](format.md#not-in-the-document) leaving "renderer settings: representation types, LOD,
+quality" out of the document: "this not being in the document might be a mistake. we want to be able to define 'semantic
+LOD' at the document level", "different rules/data sources for different levels", and "it needs to be part of both Mol\*
+and the document format".
+
+**Not built.** This section is a proposal: no type in `format/doc.ts` changes until it is agreed. It reopens decisions
+4, 8 and 12 ([design.md](design.md#11-what-held-what-the-prototypes-exposed-what-is-open)), which turn out to be one
+question asked three times.
+
+### Two kinds of level of detail
+
+| Kind         | Says                                                                                   | Where                                          |
+| ------------ | -------------------------------------------------------------------------------------- | ---------------------------------------------- |
+| **Semantic** | what a thing _is_ at a scale: which representation, which detail, which data or recipe | the document (a rule), and the viewer draws it |
+| **Pixel**    | how well it is drawn: quality, impostors, `lodLevels`, pixel presets, point fallback   | the viewer only (session settings)             |
+
+Lipids drawn as the membrane's surface from afar and as molecules close up is semantic. A sphere impostor that becomes a
+point below a pixel is pixel LOD ([renderer R4](renderer-recommendations.md)). Only the first is authored.
+
+### What the document already has
+
+Semantic LOD is not new vocabulary. Three pieces of it exist, each fixed at one value:
+
+- **`Look.representation`** (`spheres | structure | surface`): how a look is drawn, a hint with a fallback to spheres
+  and a `render` issue. One value a look, at every scale.
+- **`detail`** (`parts | entity`) on a population or an instance: a superstructure's copy resolved into its contents or
+  drawn as one body. One value a population, in every view (decision 8 asks whether the view should choose).
+- **Streaming levels** ([streaming.md](streaming.md#streaming)): 0 statistical (counts and envelopes), 1 copies, 2
+  atoms. A runtime concept, chosen by the camera and a budget, never by the document (decision 12).
+
+### Proposal: scale rules
+
+A scale rule says, for an address, what to show over a range of scale. Rules are ordered and the later wins, as looks
+do: field by field, so one rule can set `representation` and a later one `detail` for the same copies, and where two
+`size` ranges overlap the later rule's fields win. The document holds the default rules (`scales[]`, next to `views`;
+not `levels`, a name streaming already uses for `TileManifest.levels`); a view may add its own, which come after.
+
+```lisp
+(scales
+  (scale s.lipids-far  :select (population p.lipids)   :size (< 2)   :show (:representation surface))
+  (scale s.granule-in  :select (population p.granules) :size (> 150) :show (:detail parts))
+  (scale s.ribosome-at :select (entity e.ribosome)     :size (> 40)  :show (:representation structure
+                                                                             :source r.ribosome-4v6x)))
+```
+
+- **`select`** is a MesoQL address, so a rule can name a population, an entity, a compartment's contents or one
+  instance.
+- **`size`** is the range of scale over which the rule holds, measured as the projected diameter of one copy in pixels.
+  The renderer has that measure every frame, it does not depend on the camera's units, and it is what R4 needs. Open: a
+  camera distance in the document's length unit instead or as well; named levels (`cell`, `organelle`, `molecule`) that
+  a view picks.
+- **`show`** reuses the vocabulary above:
+  - `representation`: a hint, as on looks, falling back to spheres with a `render` issue. Open: an `envelope` hint (the
+    population's level-0 envelope, a membrane as one surface) and a fallback chain (decision 4, SeqViewSpec's).
+  - `detail`: `parts` or `entity`, so a granule is one body from afar and its contents close up. This answers decision 8
+    per scale rather than per view.
+  - `source`: a different realization over that range: a model id (another recipe or resolver) or a resource (another
+    structure, such as a coarse model far and the atomic one near). Absent, the copy's own entity and model.
+- **Copies no rule matches** keep today's behaviour: their look's representation and their population's `detail`. A copy
+  a rule matches takes the rule's `representation` over its look's (open question 5).
+
+### What it changes
+
+- **The runtime.** A rule with a `source` or a `detail` needs the other realization too, resolved up front or on demand
+  as the camera crosses the threshold (decision 8's open point). Looks and the camera live in `IRView`, not the tree
+  ([ir.md](ir.md)); proposed, the rules do too, and the alternatives they need are resolved as models, keyed and cached,
+  for every view's rules at compile, so switching views still reruns no resolver (above). A view whose rules add an
+  alternative is then a document edit, not a view edit (open question 6).
+- **Streaming.** Semantic levels say _what_ to show; streaming levels say _what is loaded_. A rule that asks for
+  `structure` close up is what makes level 2 worth loading; a rule that shows an envelope far away is level 0 drawn.
+  Decision 12's "the document's sections do not move" still holds: `scales` is a new section, not a restructuring.
+- **The adapter and Mol\*.** The particle representation has one set of `lodLevels` per representation. A rule needs the
+  representation, detail and source chosen per target by projected size ([renderer R9](renderer-recommendations.md)).
+  Until Mol\* has that, the adapter can draw each rule's alternatives as separate lists and switch their visibility with
+  the camera, or report the rule (`scales.unsupported`) and draw the default.
+- **Prism's graphics.** [prism.md](prism.md) §5.1 keeps representation and LOD viewer-only (`mesoscale.graphics`) and
+  proposes that a remade list take its type, quality and LOD from the list it replaces. Rules would make the type
+  authored where a rule applies. That section is edited after lane 4 (`mvs-drive`), which writes §5, merges.
+- **Patches.** A scale rule has an `id`, as a look does, so the viewer can propose edits to it ([prism.md](prism.md)
+  §2).
+
+### Open for David and Ludo
+
+1. Is `size` measured in projected pixels, as a camera distance, as named levels, or more than one? Pixels depend on the
+   viewport and its pixel ratio (a thumbnail and a 4K render of one view would differ), and a copy at a threshold needs
+   hysteresis so it does not flicker. A rule decides per target (a population), not per copy, until the renderer can
+   choose per copy (R7, R8).
+2. Rules at the document level with view overrides (proposed), or in views only?
+3. Does `source` replace only the entity's structure, or the whole realization (a different model, other copies)? The
+   second lets a far view use a statistical recipe and a near one a packed recipe for the same population, but then copy
+   ids (`<population>#<ordinal>`), picks, selections and patches name copies of one level only.
+4. Is `envelope` a representation hint, and does the document state a fallback chain?
+5. Does a rule override a view's own `Look.representation` (proposed), or a look override a document rule?
+6. May a view's rules add alternatives (a `source`, a `detail`), at the cost of a resolve when that view is first shown,
+   or only choose among the document's?
