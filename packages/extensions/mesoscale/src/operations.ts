@@ -1051,6 +1051,10 @@ export class MesoscaleApi extends ApiArea {
         const levelsGiven = on !== undefined || Object.keys(edges).length > 0;
         const was = old.name === 'on' ? (old.params as ColorLevels.Props) : ColorLevels.defaults;
         const levels = { ...was, ...edges } as ColorLevels.Props;
+        // its chain is its species (no chain edge in its Look): kept between its neighbours where an edge passes it
+        if (edges.chain === undefined && (levels.entity >= levels.chain || levels.chain >= levels.atom)) {
+          levels.chain = Math.sqrt(levels.entity * levels.atom);
+        }
         if (levelsGiven && (levels.entity >= levels.chain || levels.chain >= levels.atom)) {
           return ApiResult.fail('invalid', 'The edges go entity < chain < atom.', 'Nothing was changed.');
         }
