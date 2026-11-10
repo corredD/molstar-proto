@@ -176,7 +176,8 @@ export function pluginPaintHost(
     async paint(brush: PaintBrushTarget, s: PaintSettings, positions, normals, seed, fiber) {
       const r = (await paint({
         ...(brush.structure
-          ? { structure: brush.structure, particles: s.into ?? '' }
+          ? // its list gone since it was chosen: the Painting list (review S3)
+            { structure: brush.structure, particles: s.into && listOf(s.into) ? s.into : '' }
           : { particles: brush.particles, entity: String(brush.entity) }),
         positions,
         normals,

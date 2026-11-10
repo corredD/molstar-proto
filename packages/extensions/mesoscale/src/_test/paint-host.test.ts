@@ -47,10 +47,11 @@ describe('pluginPaintHost, a structure brush (paint-layer round 2)', () => {
   it("paints the structure into the settings' list (empty: the Painting list): no fiber, upright never, its radius", async () => {
     const structure = { boundary: { sphere: { radius: 18 } } };
     const cells = new Map([['s1', { obj: { type: SO.Molecule.Structure.type, data: structure } }]]);
+    const lists: unknown[] = [];
     const plugin = {
       log: { warn: vi.fn() },
       state: { data: { cells } },
-      managers: { particles: { hierarchy: { current: { lists: [] } } } },
+      managers: { particles: { hierarchy: { current: { lists } } } },
     };
     const calls: Record<string, unknown>[] = [];
     const host = pluginPaintHost(plugin as unknown as PluginContext, async (p) => {
@@ -67,7 +68,11 @@ describe('pluginPaintHost, a structure brush (paint-layer round 2)', () => {
     await host.paint(brush, { ...DefaultPaintSettings, into: 'hiv' }, [0, 0, 0], [0, 0, 1], 1, false);
     expect(calls[0]).toMatchObject({ structure: 's1', particles: '' });
     expect(calls[0].entity).toBeUndefined();
-    expect(calls[1]).toMatchObject({ structure: 's1', particles: 'hiv' });
+    // HIV gone since it was chosen: the Painting list
+    expect(calls[1]).toMatchObject({ structure: 's1', particles: '' });
+    lists.push({ cell: { transform: { ref: 'hiv' } } });
+    await host.paint(brush, { ...DefaultPaintSettings, into: 'hiv' }, [0, 0, 0], [0, 0, 1], 1, false);
+    expect(calls[2]).toMatchObject({ structure: 's1', particles: 'hiv' });
   });
 });
 

@@ -233,6 +233,21 @@ describe('a structure painted into a list, after the gate', () => {
     }
   });
 
+  it('takes the target representation a structure stroke added away with its undo', async () => {
+    const v = await viewer();
+    expectOk(await v.api.load.files({ files: [new File([star], 'p.star')] }));
+    const crn = await loadCrn(v);
+    const ref = lists(v)[0].cell.transform.ref;
+    const before = lists(v)[0].representations.length;
+    const s = steps(v);
+    expectOk(await v.api.run('mesoscale.paint', { structure: crn, particles: ref, positions: [0, 50, 0], seed: 1 }));
+    expect(steps(v)).toBe(s + 1);
+    expect(lists(v)[0].representations.length).toBe(before + 1);
+    expectOk(await v.api.run('history.undo', {}));
+    expect(lists(v)[0].representations.length).toBe(before);
+    expect(drawn(v).count).toBe(2);
+  });
+
   it('keeps the copies when the structure is removed from the scene (review M2)', async () => {
     const v = await viewer();
     await v.plugin.build().toRoot().apply(TestModel).commit();
