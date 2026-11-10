@@ -1531,3 +1531,51 @@ skeptic, fixes test-first, the table here and in the PR body; the lane checks; t
 rounds 4–7.
 
 **Then round 8** (its brief below): a second rendering for the middle distance to compare and pick from.
+
+## Round 8 brief (Ludo, 2026-11-09): shell-textured heads in the middle distance, to compare and pick
+
+**Asked.** "can we get some improvement using something like
+https://samdauwe.github.io/webgpu-native-examples/fur.html" (shell fur: the mesh drawn as ~20 instanced shells along
+its normals, each alpha-tested against a noise texture), then "yes" to a round 8 after round 7; "start lane 8, so we
+can have an additional rendering test to compare and pick from."
+
+**Idea.** The lipid heads as shells: the far surface drawn as N shells (6–10) through the head layer (its base to the
+heads' top, ~10 Å), both leaflets; each shell reads the patch top-view texture, which gains a height channel (the
+heads' top per texel, from the patch's head atoms); a fragment is kept where the heads reach that shell's height, its
+normal from the head's profile, its colour the species' (and by zoom, item 6's levels). Far away the shells blur to
+today's texture; closer the heads read as relief with parallax; near, the real atoms.
+
+**To compare and pick (Ludo).** The middle distance gets a choice in the Look, live: `middle: coarse spheres |
+shells | parallax` (today's coarse sphere levels; shells; parallax occlusion mapping, one pass ray-marching the same
+height channel, flat silhouettes). Ludo flies each and picks the default; no images, the comparison is the live switch
+plus the metrics.
+
+**Design at the architect's checkpoint (measure first; stop and report if the graphics change passes ~600 lines).**
+- Shells: one instanced draw of each far surface (instance = shell), offset per shell along the leaflet's normal (the
+  far surface's lift and per-vertex shift kept), alpha-tested in the mesh shader from `dPatchTexture`'s height
+  channel; faded by view angle at grazing and by distance into the flat texture.
+- Parallax: the same texture, ray-marched in the fragment shader of the existing far surface.
+- With the app's look: outline, SSAO, shadows (shells write depth: no banding), picking (a shell picks its membrane),
+  clipping and graded cuts (a cut through a shell stack must look right: Ludo's "with and without cut").
+- Levels: where atoms stop, where the middle look starts and ends, with hysteresis.
+- Scale: the cost at the yeast cell (1.08 M triangles × N shells) and at `model_vertexcolor` ×600; the path to a human
+  cell (~1e10 lipids): what bounds the cost (triangles in view × shells, not lipids).
+
+**Tests.** The height channel equals the patch's head tops (TS, quick); a shell keeps exactly the texels whose height
+passes it (Dawn, a 2-triangle mesh, pixel reads); the zoom sequence's largest step dE across all switches under 0.03
+from outside and inside (round 7's metric), for each middle look; frame time and drawn lipids at whole/middle/close
+on ×600 and the yeast cell, each middle look against the coarse spheres; a cut through the middle look; 0 frames at
+rest.
+
+**Ludo checks.** 1354: the yeast cell and model_vertexcolor ×600, Look › middle: switch coarse spheres / shells /
+parallax while flying in from far, with and without a clip; pick the default.
+
+**Steps (Ludo: the lane system).** Architect (Opus, read-only) → builder (Opus) → lane-reviewer → lane-skeptic →
+fixes test-first; the coordinator runs each.
+
+**Machine care.** The machine restarted three times on 2026-11-09 under load (128–540, several sessions building at
+once): one heavy job at a time, wait while load > 12, abort past 8 GB RSS.
+
+**Size and model.** ~600 production lines (graphics: instanced shells, the height channel, parallax ~350; extension:
+bake, levels, the Look's switch ~250); Opus. The graphics part is a library change: its own lane from master later, on
+Ludo's word.
