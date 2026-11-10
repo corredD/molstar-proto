@@ -114,7 +114,9 @@ export class MesoSession {
 
   /**
    * Shows a view (prism.md §4.4): the same document, its view derived again over the same IR and drawn. The view is
-   * taken when the step's turn comes, so an edit queued before it derives with the view shown then.
+   * taken when the step's turn comes, so an edit queued before it derives with the view shown then. A draw that fails
+   * midway draws the IR before it again (Ludo, 2026-11-09; best effort: a second failure is let go), so the screen
+   * agrees with the session's view.
    */
   show(view: string | undefined): Promise<EditRecord> {
     return this.queue(async () => {
@@ -124,6 +126,7 @@ export class MesoSession {
         return await this.run('view', this.doc, `view ${view ?? '(the document’s)'}`);
       } catch (e) {
         this.view = was;
+        if (this.ir) await this.adapter?.commit(this.ir).catch(() => {});
         throw e;
       }
     });

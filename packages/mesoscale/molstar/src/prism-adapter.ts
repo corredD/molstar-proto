@@ -281,7 +281,29 @@ export class PrismMesoAdapter implements RendererAdapter {
     };
   }
 
+  /**
+   * A commit that threw: what it may have left on screen of its IR, which `prev` (not advanced) does not know. The next
+   * commit writes the looks again, and the camera when the failed one had set it (a failed show drawn back, prism.md
+   * §4.4).
+   */
+  private unsure: { readonly camera: boolean } | undefined;
+  /** The commit in flight has set the camera. */
+  private cameraMoved = false;
+
   async commit(source: IR): Promise<CommitReport> {
+    this.cameraMoved = false;
+    try {
+      const report = await this.draw(source);
+      this.unsure = undefined;
+      return report;
+    } catch (e) {
+      this.unsure = { camera: this.cameraMoved || !!this.unsure?.camera };
+      throw e;
+    }
+  }
+
+  private async draw(source: IR): Promise<CommitReport> {
+    const unsure = this.unsure;
     // superstructure instances expanded into world sets: Prism has no nested instancing (renderer-recommendations R7)
     const flat = flattenInstances(source, this.expansions);
     const ir = flat.ir;
@@ -341,13 +363,15 @@ export class PrismMesoAdapter implements RendererAdapter {
     const t1 = now();
 
     let looksWritten = 0;
-    if (plan.looksChanged || repaired) looksWritten = await this.writeLooks(plan.looks);
+    if (plan.looksChanged || repaired || unsure) looksWritten = await this.writeLooks(plan.looks);
     const t2 = now();
 
     const canvas = v.plugin.canvas3d;
+    const cameraPlan = unsure?.camera ? { ...plan, cameraChanged: true } : plan;
     const cameraSet = canvas
-      ? commitCamera(canvas, ir, plan, () => sceneRadius(placementSets(ir), this.bounds))
+      ? commitCamera(canvas, ir, cameraPlan, () => sceneRadius(placementSets(ir), this.bounds))
       : false;
+    this.cameraMoved = cameraSet;
     const t3 = now();
     // representation hints: spheres drawn; structure and surface fall back to spheres here, said once per hint
     const issues: Issue[] = [];
@@ -632,6 +656,7 @@ export class PrismMesoAdapter implements RendererAdapter {
 
   /** Forgets what it drew, writing nothing: the restored state has no lists of its (an Undo of an open). */
   forget() {
+    this.unsure = undefined;
     this.placed.clear();
     this.labels.clear();
     this.prev = undefined;
@@ -648,6 +673,7 @@ export class PrismMesoAdapter implements RendererAdapter {
     const b = state.build();
     for (const [, p] of this.placed) b.delete(p.ref);
     for (const [, l] of this.labels) if (state.cells.has(l.ref)) b.delete(l.ref);
+    this.unsure = undefined;
     this.placed.clear();
     this.labels.clear();
     this.prev = undefined;
