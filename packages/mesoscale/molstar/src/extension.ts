@@ -23,7 +23,9 @@ import type { ViewerExtension } from '@molstar/prism-viewer/spec';
 import { watchedState } from '@molstar/prism-viewer/sources/watched';
 import { downloadBlob } from '@molstar/prism-viewer/ui/download';
 import type { Loci } from '@molstar/model/model/loci';
+import { registerParticleListOwner } from '@molstar/mesoscale-extension/owner';
 import { MesoDocumentModel } from './document-model.js';
+import { DocumentListOwner } from './list-owner.js';
 import { documentVisible, type DocumentGroupBy, type DocumentLooks, type DocumentOutline } from './document-tree.js';
 import { openAddresses } from './prism-viewer.js';
 
@@ -129,7 +131,10 @@ export class MesoViewSpecApi extends ApiArea {
 
   /** The owner of the open document (for tests and the app's views). */
   readonly model: MesoDocumentModel;
+  /** The document's lists as the mesoscale area sees them (prism.md §1.1): registered on the viewer's plugin. */
+  readonly owner: DocumentListOwner;
   readonly #unregister: () => void;
+  readonly #unregisterOwner: () => void;
 
   constructor(
     readonly ctx: ApiAreaContext,
@@ -150,9 +155,12 @@ export class MesoViewSpecApi extends ApiArea {
       { fetchText: options.fetchText ?? ((url) => fetchWithAssets(ctx, url)) },
     );
     this.#unregister = this.model.register();
+    this.owner = new DocumentListOwner(this.model);
+    this.#unregisterOwner = registerParticleListOwner(ctx.plugin, this.owner);
   }
 
   override dispose(): void {
+    this.#unregisterOwner();
     this.#unregister();
     this.model.dispose();
   }

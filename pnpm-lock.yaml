@@ -3032,6 +3032,9 @@ importers:
       '@molstar/meso-spec':
         specifier: workspace:*
         version: link:../spec
+      '@molstar/mesoscale-extension':
+        specifier: workspace:*
+        version: link:../../extensions/mesoscale
       '@molstar/model':
         specifier: workspace:*
         version: link:../../model

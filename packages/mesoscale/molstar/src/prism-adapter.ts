@@ -7,7 +7,14 @@
 import { Vec3 } from '@molstar/core/math/linear-algebra';
 import { StateSelection } from '@molstar/core/state';
 import { Color } from '@molstar/core/util/color';
-import { type IR, type MesoLoci, type PlacementSet, type PlacementType, placementSets } from '@molstar/meso-spec/ir';
+import {
+  type IR,
+  type IRLook,
+  type MesoLoci,
+  type PlacementSet,
+  type PlacementType,
+  placementSets,
+} from '@molstar/meso-spec/ir';
 import { PluginStateObject as SO } from '@molstar/plugin/state/objects';
 import { type Issue, issue } from '@molstar/meso-spec/format';
 import {
@@ -282,7 +289,7 @@ export class PrismMesoAdapter implements RendererAdapter {
     const plan = planCommit(this.prev, ir);
     const v = this.viewer;
     if (plan.add.length) await v.extensions.load('particles');
-    const particles = this.particles();
+    this.particles(); // inside a step: an API is bound
     const store = this.store;
 
     // the representation of each model's removed list, for the list that replaces it (a re-pack keeps the person's
@@ -332,26 +339,7 @@ export class PrismMesoAdapter implements RendererAdapter {
     const t1 = now();
 
     let looksWritten = 0;
-    if (plan.looksChanged || repaired) {
-      const lists = [...this.placed].map(([key, p]) => ({
-        particles: p.ref,
-        layers: plan.looks
-          // a look on part of a type (copy runs) has no Prism layer selector (renderer-recommendations.md R8)
-          .filter((l) => l.set === key && !l.runs)
-          .map((l) => ({
-            selector: { targets: [...l.types] },
-            color: l.color !== undefined ? Color(l.color) : null,
-            visible: l.visible ?? true,
-            transparency: l.transparency ?? null,
-            emissive: l.emissive ?? null,
-          })),
-      }));
-      looksWritten = lists.reduce((s, l) => s + l.layers.length, 0);
-      if (lists.length) {
-        const r = await particles.look({ lists } as unknown as Parameters<typeof particles.look>[0]);
-        if (!r.ok) throw new Error(`Looks: ${r.message}`);
-      }
-    }
+    if (plan.looksChanged || repaired) looksWritten = await this.writeLooks(plan.looks);
     const t2 = now();
 
     const canvas = v.plugin.canvas3d;
@@ -424,6 +412,77 @@ export class PrismMesoAdapter implements RendererAdapter {
       issues,
       ms: { total: t3 - t0, sets: t1 - t0, looks: t2 - t1, camera: t3 - t2 },
     };
+  }
+
+  /**
+   * The looks as layers of the drawn lists (all of them, or those of `refs`), one `particles.look`; the layers written.
+   * A default color (`colorDefault`, prism.md §5.3) is left out of a list whose color theme the person chose (By zoom
+   * on, or a theme other than its representation's default), so the theme shows; a stated color is always written.
+   */
+  private async writeLooks(looks: readonly IRLook[], refs?: ReadonlySet<string>): Promise<number> {
+    const lists = [...this.placed]
+      .filter(([, p]) => !refs || refs.has(p.ref))
+      .map(([key, p]) => {
+        const chosen = this.themeChosen(p.ref);
+        return {
+          particles: p.ref,
+          layers: looks
+            // a look on part of a type (copy runs) has no Prism layer selector (renderer-recommendations.md R8)
+            .filter((l) => l.set === key && !l.runs)
+            .map((l) => ({
+              selector: { targets: [...l.types] },
+              color: l.color !== undefined && !(l.colorDefault && chosen) ? Color(l.color) : null,
+              visible: l.visible ?? true,
+              transparency: l.transparency ?? null,
+              emissive: l.emissive ?? null,
+            })),
+        };
+      });
+    if (lists.length) {
+      const particles = this.particles();
+      const r = await particles.look({ lists } as unknown as Parameters<typeof particles.look>[0]);
+      if (!r.ok) throw new Error(`Looks: ${r.message}`);
+    }
+    return lists.reduce((s, l) => s + l.layers.length, 0);
+  }
+
+  /**
+   * Draws the looks of some lists (by state ref) again, through `api` (the run's): their color theme changed, so their
+   * default colors are written or left out again (prism.md §5.3).
+   */
+  async redrawLooks(api: ViewerApi, refs: readonly string[]): Promise<void> {
+    if (!this.prev) return;
+    const looks = this.prev.view.looks;
+    await this.bound(api, () => this.writeLooks(looks, new Set(refs)));
+  }
+
+  /** The set key a drawn list (by state ref) is of; undefined for a list this adapter did not make. */
+  keyOf(ref: string): string | undefined {
+    for (const [key, p] of this.placed) if (p.ref === ref) return key;
+    return undefined;
+  }
+
+  /** A drawn set by key (an expansion's too): its types, for the owner's entities. */
+  setOf(key: string): PlacementSet | undefined {
+    return this.sets.get(key) ?? (this.prev ? placementSets(this.prev).find((s) => s.key === key) : undefined);
+  }
+
+  /** Whether the person chose the color theme of a list's representation: By zoom on, or not the type's default. */
+  private themeChosen(ref: string): boolean {
+    const q = StateSelection.Generators.byRef(ref).subtree().ofType(SO.Particle.Representation3D);
+    const params = this.viewer.plugin.state.data.select(q)[0]?.transform.params as
+      | {
+          type?: { name: string; params?: { structure?: { colorLevels?: { name: string } } } };
+          colorTheme?: { name: string };
+        }
+      | undefined;
+    if (!params?.type) return false;
+    if (params.type.params?.structure?.colorLevels?.name === 'on') return true;
+    const provider = this.viewer.plugin.representation.particles.registry.get(params.type.name) as
+      | { defaultColorTheme?: { name: string } }
+      | undefined;
+    const theme = params.colorTheme?.name;
+    return !!theme && !!provider?.defaultColorTheme && theme !== provider.defaultColorTheme.name;
   }
 
   private async represent(set: PlacementSet, ref: string, label: string, was?: Drawn) {
