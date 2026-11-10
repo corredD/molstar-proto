@@ -12,10 +12,9 @@ import {
   type StorageBuffer,
   StorageBufferSpec,
 } from '@molstar/graphics/gl/compute';
-import { workgroupRows } from '@molstar/graphics/gl/compute/cell-cull';
 import { UniformSpec } from '@molstar/graphics/gl/renderable/schema';
 import type { GpuInstanceTarget, GpuInstanceWriter } from '@molstar/graphics/gl/renderable/merged-culler';
-import { InstanceDataVec4s } from '@molstar/graphics/gl/renderable/merged';
+import { dispatchRows } from './cutter-kernel.js';
 import type { TileKinds, TriangleSlots } from './assign.js';
 
 // The assignment on the GPU (progress/2026-11-08-lipid-tiles.md, Design: Assignment): `assign.ts`'s per-triangle
@@ -54,7 +53,7 @@ fn position(i: u32) -> vec3<f32> {
 
 @compute @workgroup_size(WorkgroupSizeX)
 fn main(@builtin(global_invocation_id) id: vec3<u32>, @builtin(num_workgroups) groups: vec3<u32>) {
-    // the workgroups in rows past the dispatch's limit (\`workgroupRows\`)
+    // the workgroups in rows past the dispatch's limit (\`dispatchRows\`)
     let i = id.x + id.y * groups.x * WorkgroupSizeX;
     if (i >= u32(uParams.uCount)) {
         return;
@@ -84,14 +83,11 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>, @builtin(num_workgroups) g
     let r0 = vec4<f32>(cx.x, cy.x, n.x, p0.x);
     let r1 = vec4<f32>(cx.y, cy.y, n.y, p0.y);
     let r2 = vec4<f32>(cx.z, cy.z, n.z, p0.z);
-    let o = (u32(uParams.uInstanceBase) + i) * ${InstanceDataVec4s}u;
-    instanceData[o] = r0;
-    instanceData[o + 1u] = r1;
-    instanceData[o + 2u] = r2;
-    let q = (u32(uParams.uIdentityBase) + u32(uParams.uInstanceBase) + i) * 3u;
-    transforms[q] = r0;
-    transforms[q + 1u] = r1;
-    transforms[q + 2u] = r2;
+    // the culler's \`CulledData\`: three vec4s an instance from 0
+    let o = (u32(uParams.uInstanceBase) + i) * 3u;
+    data[o] = r0;
+    data[o + 1u] = r1;
+    data[o + 2u] = r2;
 }
 `;
 
@@ -106,12 +102,10 @@ export const LipidTileAssignSchema = {
   uStart: UniformSpec('i'),
   uCount: UniformSpec('i'),
   uInstanceBase: UniformSpec('i'),
-  uIdentityBase: UniformSpec('i'),
   positions: StorageBufferSpec('f32', 'read'),
   indices: StorageBufferSpec('u32', 'read'),
   order: StorageBufferSpec('u32', 'read'),
-  instanceData: StorageBufferSpec('vec4<f32>', 'read-write'),
-  transforms: StorageBufferSpec('vec4<f32>', 'read-write'),
+  data: StorageBufferSpec('vec4<f32>', 'read-write'),
   check: StorageBufferSpec('u32', 'read-write'),
 };
 
@@ -155,12 +149,10 @@ export function createLipidTileAssigner(
     uStart: ValueCell.create(0),
     uCount: ValueCell.create(0),
     uInstanceBase: ValueCell.create(0),
-    uIdentityBase: ValueCell.create(0),
     positions: ValueCell.create(positionBuffer),
     indices: ValueCell.create(indexBuffer),
     order: ValueCell.create(orderBuffer),
-    instanceData: ValueCell.create(positionBuffer),
-    transforms: ValueCell.create(positionBuffer),
+    data: ValueCell.create(positionBuffer),
     check: ValueCell.create(check),
   };
   let kernel: ComputeKernel | undefined;
@@ -171,12 +163,10 @@ export function createLipidTileAssigner(
     ValueCell.update(values.uStart, start);
     ValueCell.update(values.uCount, count);
     ValueCell.update(values.uInstanceBase, target.instanceBase);
-    ValueCell.update(values.uIdentityBase, target.identityBase);
-    ValueCell.updateIfChanged(values.instanceData, target.instanceData);
-    ValueCell.updateIfChanged(values.transforms, target.transforms);
+    ValueCell.updateIfChanged(values.data, target.data);
     kernel ??= compute.createKernel(LipidTileAssignKernel, LipidTileAssignSchema, values);
     compute.beginComputePass({ label: 'lipid tiles' });
-    kernel.dispatch(...workgroupRows(count, 64, compute.maxWorkgroupsPerDimension));
+    kernel.dispatch(...dispatchRows(count));
     compute.endComputePass();
   };
   return {

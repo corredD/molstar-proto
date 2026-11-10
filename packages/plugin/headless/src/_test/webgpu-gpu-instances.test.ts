@@ -18,7 +18,6 @@ import { createFrame } from '@molstar/graphics/gl/renderable';
 import { packAffineRows } from '@molstar/graphics/gl/affine-rows';
 import { createMergedRenderObject, createRenderObject } from '@molstar/graphics/gl/render-object';
 import { DeadInstanceTranslation, type GpuInstanceWriter } from '@molstar/graphics/gl/renderable/merged-culler';
-import { InstanceDataVec4s } from '@molstar/graphics/gl/renderable/merged';
 import { Scene } from '@molstar/graphics/gl/scene';
 import { Camera } from '@molstar/graphics/canvas3d/camera';
 import { Viewport } from '@molstar/graphics/canvas3d/camera/util';
@@ -71,20 +70,18 @@ function createMember(offset: Vec3, color: number, gpu: boolean, count = Copies 
     const writer: GpuInstanceWriter = (_compute, target) => {
       calls += 1;
       expect(target.count).toBe(Copies * Copies);
-      for (let i = 0; i < target.count; ++i) {
-        const row = rows.subarray(i * 12, i * 12 + 12);
-        target.instanceData.write(row, (target.instanceBase + i) * InstanceDataVec4s * 16);
-      }
-      target.transforms.write(rows, (target.identityBase + target.instanceBase) * 3 * 16);
+      // the culler's data (\`CulledData\`: three vec4s an instance from 0), read by the culled lists and the identity region
+      target.data.write(rows, target.instanceBase * 3 * 16);
     };
     if (pool) {
-      // a pool made per view: the live ones its rows, the rest zeros in the identity region (views culled on the CPU)
+      // a pool made per view: the live ones its rows, the rest dead (the identity region draws every slot: views culled
+      // on the CPU)
       const write = (target: Parameters<GpuInstanceWriter>[1], live: number) => {
         // dead: zero rows but a translation past any far plane (`DeadInstanceTranslation`)
         const zeros = new Float32Array((target.count - live) * 12);
         for (let i = 3; i < zeros.length; i += 4) zeros[i] = DeadInstanceTranslation;
-        target.transforms.write(rows.subarray(0, live * 12), (target.identityBase + target.instanceBase) * 3 * 16);
-        target.transforms.write(zeros, (target.identityBase + target.instanceBase + live) * 3 * 16);
+        target.data.write(rows.subarray(0, live * 12), target.instanceBase * 3 * 16);
+        target.data.write(zeros, (target.instanceBase + live) * 3 * 16);
       };
       Object.assign(writer, {
         view: (_compute: unknown, target: Parameters<GpuInstanceWriter>[1]) => {
@@ -162,7 +159,7 @@ describe.skipIf(!WebGPU.module)('GPU-written instances of merged render objects'
       const [gpuReference, gpuWritten] = [await frame(scenes[0], true), await frame(scenes[1], true)];
       expect(new Set(gpuReference).size).toBeGreaterThan(2);
       expect(gpuWritten).toEqual(gpuReference);
-      // culled on the CPU: the identity region of the compacted transforms
+      // culled on the CPU: the identity region (every instance by index, the same rows)
       const [cpuReference, cpuWritten] = [await frame(scenes[0], false), await frame(scenes[1], false)];
       expect(cpuWritten).toEqual(cpuReference);
       // the writer member's CPU transforms written again (a member update, `syncMembers`): its rows written again after

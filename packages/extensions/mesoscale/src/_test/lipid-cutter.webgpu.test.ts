@@ -8,7 +8,6 @@ import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { createWebGPUContext, requestWebGPUDevice } from '@molstar/graphics/gl/webgpu/context';
-import { InstanceDataVec4s } from '@molstar/graphics/gl/renderable/merged';
 import { Frustum3D } from '@molstar/core/math/geometry/primitives/frustum3d';
 import { Plane3D } from '@molstar/core/math/geometry/primitives/plane3d';
 import { Mat4 } from '@molstar/core/math/linear-algebra/3d/mat4';
@@ -110,26 +109,22 @@ describe.skipIf(!webgpu)('the lipid cutter on the GPU (Dawn)', () => {
         for (let m = 0; m < M; ++m) all += selection.live[m];
         expect(all).toBeGreaterThan(1000);
         const offset = 5;
-        const identityBase = all + offset;
-        const instanceData = compute.createBuffer((all + offset) * InstanceDataVec4s * 16);
-        const transforms = compute.createBuffer((identityBase + all + offset) * 3 * 16);
+        // the culler's data (\`CulledData\`: three vec4s an instance's rows)
+        const buffer = compute.createBuffer((all + offset) * 3 * 16);
         let base = offset;
         const bases: number[] = [];
         for (let m = 0; m < M; ++m) {
           bases.push(base);
           const live = cutter.writer(m, selection)(compute, {
-            instanceData,
-            transforms,
+            data: buffer,
             instanceBase: base,
-            identityBase,
             count: selection.live[m],
           });
           expect(live).toBe(selection.live[m]);
           base += selection.live[m];
         }
         graphics.flush();
-        const data = new Float32Array(await instanceData.readAsync());
-        const rows = new Float32Array(await transforms.readAsync());
+        const data = new Float32Array(await buffer.readAsync());
         let maxError = 0;
         let dead = 0;
         let edges = 0;
@@ -139,7 +134,7 @@ describe.skipIf(!webgpu)('the lipid cutter on the GPU (Dawn)', () => {
           let s = 0;
           const check = (deadSlot: boolean) => {
             // f32 on the GPU, f64 here: a head on a triangle's edge owned by the other side (one in a million)
-            const gpuDead = data[(bases[m] + s) * InstanceDataVec4s * 4 + 3] === Math.fround(1e30);
+            const gpuDead = data[(bases[m] + s) * 12 + 3] === Math.fround(1e30);
             if (gpuDead !== deadSlot) {
               edges += 1;
               s += 1;
@@ -148,10 +143,9 @@ describe.skipIf(!webgpu)('the lipid cutter on the GPU (Dawn)', () => {
             for (let r = 0; r < 3; ++r) {
               for (let c = 0; c < 4; ++c) {
                 const w = deadSlot ? (c === 3 ? 1e30 : 0) : want[c * 4 + r];
-                const a = data[((bases[m] + s) * InstanceDataVec4s + r) * 4 + c];
-                const b = rows[((identityBase + bases[m] + s) * 3 + r) * 4 + c];
+                const a = data[((bases[m] + s) * 3 + r) * 4 + c];
                 if (deadSlot) maxError = Math.max(maxError, Math.abs(a - w) / (c === 3 ? 1e30 : 1));
-                else maxError = Math.max(maxError, Math.abs(a - w), Math.abs(b - w));
+                else maxError = Math.max(maxError, Math.abs(a - w));
               }
             }
             s += 1;
@@ -179,8 +173,7 @@ describe.skipIf(!webgpu)('the lipid cutter on the GPU (Dawn)', () => {
         // f32 on the GPU, f64 in the reference, positions of up to 2500 Å
         expect(maxError).toBeLessThan(whole ? 2e-3 : 1e-2);
         if (!whole) expect(dead).toBeGreaterThan(0);
-        instanceData.destroy();
-        transforms.destroy();
+        buffer.destroy();
         cutter.destroy();
       }
       expect(graphics.takeErrors?.() ?? []).toEqual([]);
