@@ -15,7 +15,9 @@ import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
 import type { VisualQuality } from '@molstar/graphics/geo/geometry/base';
 import { Spheres } from '@molstar/graphics/geo/geometry/spheres/spheres';
 import { ColorLevels } from '@molstar/graphics/geo/geometry/color-levels';
-import type { ParticleList } from '@molstar/model/model/particles/particle-list';
+import type { ParticleList, ParticleTarget } from '@molstar/model/model/particles/particle-list';
+import type { Structure } from '@molstar/model/model/structure/structure';
+import { ParticlesRepresentation3D } from '@molstar/plugin/state/transforms/particles/representation';
 import { PluginStateObject as SO } from '@molstar/plugin/state/objects';
 import { type State, type StateObjectCell, StateTransform } from '@molstar/core/state';
 import type {
@@ -47,7 +49,12 @@ import {
   fiberSettingsOf,
   type PaintOrient,
   type PaintStroke,
+  MesoscalePaintingList,
   ParticleListPainted,
+  type PaintStructure,
+  paintingList,
+  structureIds,
+  withStructures,
   paintRotations,
   principalAxisOf,
   toListFrame,
@@ -630,6 +637,13 @@ export class MesoscaleApi extends ApiArea {
     title: 'Paint copies of an entity',
     params: {
       entity: PD.Text('', { description: 'The brush: an entity by name or id (a list without entities: a target id)' }),
+      structure: OptionalParam(
+        PD.Text('', {
+          description:
+            'The brush: a structure of the scene by state ref, instead of an entity: a target and an entity of the ' +
+            'list it is painted into (particles; absent: the Painting list, made on the first stroke)',
+        }),
+      ),
       positions: PD.Value<number[]>([], { description: 'Where the copies go: x, y, z per copy (Å, the scene)' }),
       normals: OptionalParam(
         PD.Value<number[]>([], {
@@ -679,7 +693,8 @@ export class MesoscaleApi extends ApiArea {
     },
     async run(values, ctx) {
       const { entity, positions, side, particles } = values;
-      const { normals, orient, spin, seed, fiber, sequence, start, end } = values as typeof values & {
+      const { structure, normals, orient, spin, seed, fiber, sequence, start, end } = values as typeof values & {
+        structure?: string;
         normals?: number[];
         orient?: PaintOrient;
         spin?: number;
@@ -695,26 +710,11 @@ export class MesoscaleApi extends ApiArea {
       if (normals && normals.length !== positions.length) {
         return ApiResult.fail('invalid', 'Give a normal for each position, x, y, z each.');
       }
-      const l = oneList(ctx, particles || undefined);
-      if (isFailure(l)) return l;
-      const data = l.cell.obj?.data;
-      if (!data) return ApiResult.fail('not-found', 'The particle list is not loaded yet.');
-      const ids = selectEntities(ctx, l, entity, '');
-      if (isFailure(ids)) return ids;
-      if (ids.length !== 1 || !entity.trim()) {
-        return ApiResult.fail('invalid', 'Give one entity to paint with.', 'Read them with mesoscale.entities.');
-      }
-      // targets made by a decorator (cryoet's classes) are not the list's own: a copy painted under them would be given
-      // another (review should-fix 2); not built yet
-      if (decoratorUnder(ctx.plugin.state.data, l.cell.transform.ref, ParticleListTargetsFromAttribute)) {
-        return ApiResult.fail(
-          'invalid',
-          'Painting a list whose targets come from a class is not there yet.',
-          'Paint a model entity, or a list drawn by its own targets.',
-        );
-      }
-      const brush = brushOf(data, ids[0]);
-      if (!brush) return ApiResult.fail('not-found', 'No particle of that entity to copy.');
+      // a structure painted into a scene without particles: Mol*'s particles (opt-in) loaded first
+      if (structure) await ctx.extensions.ensureFor({ transformers: ['ms-plugin.particles-representation-3d'] });
+      const into = paintInto(ctx, structure, particles, entity);
+      if (isFailure(into)) return into;
+      const { l, data, brush, name, painting } = into;
       // a range with no letter of the sequence in it (review X1)
       const letters = sequence?.trim() ? cleanSequence(sequence).length : 0;
       if (letters && ((start ?? 1) > letters || (end !== undefined && end < (start ?? 1)))) {
@@ -722,7 +722,7 @@ export class MesoscaleApi extends ApiArea {
       }
       const how: PaintOrient = orient ?? (brush.surface ? 'normal' : 'random');
       const state = ctx.plugin.state.data;
-      const moved = decoratorUnder(state, l.cell.transform.ref, ParticleListTransform);
+      const moved = l && decoratorUnder(state, l.cell.transform.ref, ParticleListTransform);
       const local = [...positions];
       const k = local.length / 3;
       let dirs: number[] | undefined;
@@ -746,7 +746,7 @@ export class MesoscaleApi extends ApiArea {
       const rotations = asFiber
         ? []
         : paintRotations(dirs ?? new Array(k * 3).fill(0), how, drawn, {
-            axis: how === 'axis' ? principalAxisOf(data.targetMapping?.get(brush.target)) : undefined,
+            axis: how === 'axis' ? principalAxisOf(brush.object ?? data.targetMapping?.get(brush.target)) : undefined,
             spin,
           });
       const stroke: PaintStroke = {
@@ -766,11 +766,19 @@ export class MesoscaleApi extends ApiArea {
             }
           : {}),
       };
-      await updatePainted(state, l, (p) => ({ ...p, strokes: [...p.strokes, stroke] }));
-      const name = mesoEntities(dataOf(l) ?? data).find((e) => e.id === ids[0])?.name ?? entity;
+      const withStroke = (p: PaintedParams): PaintedParams => ({
+        ...p,
+        strokes: [...p.strokes, stroke],
+        ...(into.structure && !(p.structures ?? []).some((x) => x.ref === into.structure!.ref)
+          ? { structures: [...(p.structures ?? []), into.structure] }
+          : {}),
+      });
+      const ref = l
+        ? (await updatePainted(ctx, l, withStroke, !!into.structure), l.cell.transform.ref)
+        : await paintNew(ctx, withStroke({ strokes: [], fibers: {}, structures: [] }), painting!);
       return ApiResult.ok(
-        asFiber ? `Painted a fibre of ${name}.` : `Painted ${k} ${k === 1 ? 'copy' : 'copies'} of ${name} (${how}).`,
-        { nodes: [l.cell.transform.ref] },
+        asFiber ? `Painted a fiber of ${name}.` : `Painted ${k} ${k === 1 ? 'copy' : 'copies'} of ${name} (${how}).`,
+        { nodes: [ref] },
         { value: { count: k, orient: asFiber ? 'fiber' : how } },
       );
     },
@@ -865,7 +873,7 @@ export class MesoscaleApi extends ApiArea {
       };
       const same = (Object.keys(next) as (keyof FiberSettingsIn)[]).every((k) => next[k] === now[k]);
       if (same && old?.[id]) return ApiResult.already('The fibres are already so.');
-      await updatePainted(state, l, (p) => ({ ...p, fibers: { ...p.fibers, [id]: next } }));
+      await updatePainted(ctx, l, (p) => ({ ...p, fibers: { ...p.fibers, [id]: next } }));
       const name = mesoEntities(dataOf(l) ?? data).find((e) => e.id === ids[0])?.name ?? entity;
       return ApiResult.ok(
         `${name}'s fibres: ${round1(next.rise)} Å a point, ${round1(next.twist)}°${next.jitter ? ` ± ${round1(next.jitter)}°` : ''}` +
@@ -1729,7 +1737,7 @@ export { cssColor };
 
 const round1 = (x: number) => Math.round(x * 10) / 10;
 
-type PaintedParams = { strokes: PaintStroke[]; fibers: FiberSettingsMap };
+type PaintedParams = { strokes: PaintStroke[]; fibers: FiberSettingsMap; structures?: PaintStructure[] };
 
 /** The fibre settings of a list's painted decorator (none: none painted, no settings) */
 function paintedFibers(state: State, list: string): FiberSettingsMap | undefined {
@@ -1741,17 +1749,130 @@ function paintedFibers(state: State, list: string): FiberSettingsMap | undefined
  * (review must-fix 1): a move or scale of the list (`stage.move`, `stage.scale`) updates the Transform it finds in the
  * chain; one inserted later would go right under the list, above the copies, and leave them behind
  */
-async function updatePainted(state: State, l: ParticleListRef, fn: (p: PaintedParams) => PaintedParams) {
+async function updatePainted(
+  ctx: Pick<ApiContext, 'plugin'>,
+  l: ParticleListRef,
+  fn: (p: PaintedParams) => PaintedParams,
+  structures = false,
+) {
+  const state = ctx.plugin.state.data;
   const painted = decoratorUnder(state, l.cell.transform.ref, ParticleListPainted);
   const b = state.build();
   if (painted) b.to(painted).update((p: PaintedParams) => fn({ ...p, fibers: p.fibers ?? {} }));
   else {
-    const at = b.to(l.cell).insert(ParticleListPainted, fn({ strokes: [], fibers: {} }));
+    const at = b.to(l.cell).insert(ParticleListPainted, fn({ strokes: [], fibers: {}, structures: [] }));
     if (!decoratorUnder(state, l.cell.transform.ref, ParticleListTransform)) {
       at.insert(ParticleListTransform, { transform: Mat4.identity(), scale: 1 });
     }
   }
+  // a structure's copies are drawn as its object: a list drawn without (a RELION list's spheres) is given its target
+  // representation, in the same step
+  const hasTarget = l.representations.some(
+    (r) => (r.cell.transform.params as { type?: { name?: string } })?.type?.name === 'target',
+  );
+  if (structures && !hasTarget && ctx.plugin.representation.particles.registry.has('target')) {
+    b.to(l.cell).apply(ParticlesRepresentation3D, targetRepresentationParams(ctx.plugin, l.cell.obj!.data));
+  }
   await b.commit();
+}
+
+/**
+ * The list a brush paints into (paint-layer round 2): an entity of `particles` (or the one list), or a structure of the
+ * scene into `particles`, else into the Painting list (made by the stroke when the scene has none)
+ */
+function paintInto(ctx: ApiContext, structure: string | undefined, particles: string, entity: string) {
+  const state = ctx.plugin.state.data;
+  if (!structure) {
+    const l = oneList(ctx, particles || undefined);
+    if (isFailure(l)) return l;
+    const data = l.cell.obj?.data;
+    if (!data) return ApiResult.fail('not-found', 'The particle list is not loaded yet.');
+    const ids = selectEntities(ctx, l, entity, '');
+    if (isFailure(ids)) return ids;
+    if (ids.length !== 1 || !entity.trim()) {
+      return ApiResult.fail('invalid', 'Give one entity to paint with.', 'Read them with mesoscale.entities.');
+    }
+    const refused = classTargets(state, l);
+    if (refused) return refused;
+    const brush = brushOf(data, ids[0]);
+    if (!brush) return ApiResult.fail('not-found', 'No particle of that entity to copy.');
+    const name = mesoEntities(dataOf(l) ?? data).find((e) => e.id === ids[0])?.name ?? entity;
+    return { l, data, brush: { ...brush, object: undefined as ParticleTarget | undefined }, name, painting: undefined };
+  }
+  const cell = state.cells.get(structure);
+  if (!cell?.obj || !SO.Molecule.Structure.is(cell.obj)) {
+    return ApiResult.fail('not-found', `'${structure}' is not a structure of the scene.`, 'Load a PDB id or a file.');
+  }
+  // its entry's id (1CRN), else its label: the entity's name
+  const name = cell.obj.data.model?.entryId || cell.obj.label;
+  const entry: PaintStructure = { ref: structure, name };
+  const object: ParticleTarget = { kind: 'structure', structure: cell.obj.data };
+  let l: ParticleListRef | undefined;
+  if (particles) {
+    const one = oneList(ctx, particles);
+    if (isFailure(one)) return one;
+    l = one;
+  } else {
+    l = lists(ctx).find((x) => x.cell.transform.transformer === MesoscalePaintingList);
+  }
+  if (l) {
+    const refused = classTargets(state, l);
+    if (refused) return refused;
+  }
+  // the structure's ids where the decorator's input has them (`withStructures`: after its largest, in its order)
+  const painted = l && decoratorUnder(state, l.cell.transform.ref, ParticleListPainted);
+  const input = (painted ? state.cells.get(painted.transform.parent)?.obj?.data : l?.cell.obj?.data) as
+    | ParticleList
+    | undefined;
+  const base = input ?? paintingList();
+  const known = ((painted?.transform.params as PaintedParams | undefined)?.structures ?? []).map((x) => x.ref);
+  const at = known.indexOf(structure);
+  const ids = structureIds(base, at >= 0 ? at : known.length);
+  const brush = { target: ids.target, entity: ids.entity, compartment: -1, surface: false, object };
+  return { l, data: base, brush, name, painting: l ? undefined : entry, structure: entry };
+}
+
+/** A list whose targets come from a class (cryoet's) is not painted yet (review should-fix 2) */
+function classTargets(state: State, l: ParticleListRef) {
+  if (decoratorUnder(state, l.cell.transform.ref, ParticleListTargetsFromAttribute)) {
+    return ApiResult.fail(
+      'invalid',
+      'Painting a list whose targets come from a class is not there yet.',
+      'Paint a model entity, or a list drawn by its own targets.',
+    );
+  }
+}
+
+/** The Painting list made with its first stroke (`MesoscalePaintingList`, the decorator, its target representation) */
+async function paintNew(ctx: Pick<ApiContext, 'plugin'>, params: PaintedParams, structure: PaintStructure) {
+  const b = ctx.plugin.state.data.build();
+  const list = b.toRoot().apply(MesoscalePaintingList, {});
+  list.apply(ParticleListPainted, params);
+  const cell = ctx.plugin.state.data.cells.get(structure.ref)!;
+  const drawn = withStructures(paintingList(), [structure], [cell.obj!.data as Structure]);
+  list.apply(ParticlesRepresentation3D, targetRepresentationParams(ctx.plugin, drawn));
+  await b.commit();
+  return list.ref;
+}
+
+/** A target representation's params, the type's default themes (as `particles.representation` makes them) */
+function targetRepresentationParams(plugin: ApiContext['plugin'], data: ParticleList): never {
+  const { registry, themes } = plugin.representation.particles;
+  const provider = registry.get('target');
+  const dataCtx = { particles: data };
+  const color = themes.colorThemeRegistry.get(provider.defaultColorTheme.name);
+  const size = themes.sizeThemeRegistry.get(provider.defaultSizeTheme.name);
+  return {
+    type: { name: provider.name, params: PD.getDefaultValues(provider.getParams(themes, data)) },
+    colorTheme: {
+      name: color.name,
+      params: Object.assign(PD.getDefaultValues(color.getParams(dataCtx)), provider.defaultColorTheme.props),
+    },
+    sizeTheme: {
+      name: size.name,
+      params: Object.assign(PD.getDefaultValues(size.getParams(dataCtx)), provider.defaultSizeTheme.props),
+    },
+  } as never;
 }
 
 /** An entity's fibre settings in effect and whether it makes fibres (`MesoscaleApi.fiberState`) */

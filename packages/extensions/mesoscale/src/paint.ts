@@ -22,6 +22,7 @@ import {
   type ParticleList,
   type ParticleTarget,
 } from '@molstar/model/model/particles/particle-list';
+import type { Structure } from '@molstar/model/model/structure/structure';
 import { PluginStateObject as SO, PluginStateTransform } from '@molstar/plugin/state/objects';
 import { isMembranePath } from './pick-surface.js';
 
@@ -481,13 +482,70 @@ function extendAttributes(
 }
 
 /** The list a decorator last took (as plugin core's particle decorators: what is above it may change it) */
-type InputCache = { input?: ParticleList };
+type InputCache = { input?: ParticleList; structures?: readonly unknown[] };
+
+/**
+ * A structure of the scene painted with (paint-layer round 2, Ludo 2026-11-10: "just painting a given PDB id"): by its
+ * state ref (a dependency of the decorator: a session keeps it), named as its entity
+ */
+export interface PaintStructure {
+  readonly ref: string;
+  readonly name: string;
+}
+
+/** The structures' objects, as the decorator's dependencies give them (none for one not in the state) */
+function structureData(structures: readonly PaintStructure[], dependencies?: { [k: string]: { data: unknown } }) {
+  return structures.map((s) => {
+    const obj = dependencies?.[s.ref];
+    return obj && SO.Molecule.Structure.is(obj as never) ? (obj.data as Structure) : undefined;
+  });
+}
+
+/** The ids a list's structures take: after its largest target id, and its largest entity id (where it has entities) */
+export function structureIds(list: ParticleList, k: number) {
+  let target = -1;
+  for (const id of list.targetInfo.keys()) if (id > target) target = id;
+  for (const id of list.targetMapping?.keys() ?? []) if (id > target) target = id;
+  let entity = -1;
+  for (const id of list.entityInfo?.keys() ?? []) if (id > entity) entity = id;
+  return { target: target + 1 + k, entity: list.entityInfo ? entity + 1 + k : -1 };
+}
+
+const withStructuresKept = new WeakMap<ParticleList, { data: readonly unknown[]; out: ParticleList }>();
+/**
+ * `list` with the structures as targets and entities of their own (`structureIds`): a target a structure (`kind:
+ * 'structure'`), its name; the entity of that name (a list without entities: the target is its brush). The same list
+ * for the same structures (the targets' objects kept: what is drawn of them is not made again)
+ */
+export function withStructures(
+  list: ParticleList,
+  structures: readonly PaintStructure[],
+  data: readonly (Structure | undefined)[],
+): ParticleList {
+  if (!structures.length) return list;
+  const kept = withStructuresKept.get(list);
+  if (kept && kept.data.length === data.length && kept.data.every((d, i) => d === data[i])) return kept.out;
+  const targetMapping = new Map(list.targetMapping ?? []);
+  const targetInfo = new Map(list.targetInfo);
+  const entityInfo = list.entityInfo ? new Map(list.entityInfo) : undefined;
+  structures.forEach((s, k) => {
+    const ids = structureIds(list, k);
+    const structure = data[k];
+    if (structure) targetMapping.set(ids.target, { kind: 'structure', structure });
+    targetInfo.set(ids.target, { name: s.name, ...(entityInfo ? { entity: ids.entity } : {}) });
+    entityInfo?.set(ids.entity, { name: s.name });
+  });
+  const out: ParticleList = { ...list, targetMapping, targetInfo, ...(entityInfo ? { entityInfo } : {}) };
+  withStructuresKept.set(list, { data, out });
+  return out;
+}
 
 export { ParticleListPainted };
 type ParticleListPainted = typeof ParticleListPainted;
 /**
  * Copies of a list's targets painted onto a surface (`mesoscale.paint`): each stroke's particles appended to the list,
- * in its frame (under its move and scale). A decorator: what is under it takes the painted list.
+ * in its frame (under its move and scale). A decorator: what is under it takes the painted list. Round 2 of
+ * paint-layer: the structures painted with are the list's targets and entities too (`withStructures`)
  */
 const ParticleListPainted = PluginStateTransform.BuiltIn({
   name: 'mesoscale-particle-list-painted',
@@ -500,32 +558,83 @@ const ParticleListPainted = PluginStateTransform.BuiltIn({
     fibers: PD.Value<FiberSettingsMap>(
       {},
       {
-        description: "The brushes' fibre settings (rise, twist, jitter) by brush id: their fibres made by them",
+        description: "The brushes' fiber settings (rise, twist, jitter) by brush id: their fibers made by them",
         isHidden: true,
       },
     ),
+    structures: PD.Value<PaintStructure[]>([], {
+      description: 'The structures of the scene painted with, each a target and an entity of the list',
+      isHidden: true,
+    }),
   },
 })({
-  apply({ a, params, cache }) {
-    (cache as InputCache).input = a.data;
-    return new SO.Particle.List(paintParticles(a.data, params.strokes, params.fibers), {
+  apply({ a, params, cache, dependencies }) {
+    const data = structureData(params.structures ?? [], dependencies);
+    Object.assign(cache as InputCache, { input: a.data, structures: data });
+    const list = withStructures(a.data, params.structures ?? [], data);
+    return new SO.Particle.List(paintParticles(list, params.strokes, params.fibers), {
       label: a.label,
       description: a.description,
     });
   },
-  update({ a, b, newParams, oldParams, cache }) {
+  update({ a, b, newParams, oldParams, cache, dependencies }) {
     const c = cache as InputCache;
-    const changed = c.input !== a.data;
-    c.input = a.data;
+    const data = structureData(newParams.structures ?? [], dependencies);
+    const changed =
+      c.input !== a.data ||
+      newParams.structures !== oldParams.structures ||
+      c.structures?.length !== data.length ||
+      data.some((d, i) => d !== c.structures![i]);
+    Object.assign(c, { input: a.data, structures: data });
     if (!changed && sameStrokes(newParams.strokes, oldParams.strokes) && newParams.fibers === oldParams.fibers) {
       return StateTransformer.UpdateResult.Unchanged;
     }
-    b.data = paintParticles(a.data, newParams.strokes, newParams.fibers);
+    const list = withStructures(a.data, newParams.structures ?? [], data);
+    b.data = paintParticles(list, newParams.strokes, newParams.fibers);
     b.label = a.label;
     b.description = a.description;
     return StateTransformer.UpdateResult.Updated;
   },
+  getDependencies: (params) => ((params as { structures?: PaintStructure[] }).structures ?? []).map((s) => s.ref),
 });
+
+export { MesoscalePaintingList };
+type MesoscalePaintingList = typeof MesoscalePaintingList;
+/**
+ * The list a scene without one paints into (paint-layer round 2, Ludo 2026-11-10: one "Painting" list): no particle of
+ * its own, entities of its structures (`ParticleListPainted.structures`), its copies the painted decorator's
+ */
+const MesoscalePaintingList = PluginStateTransform.BuiltIn({
+  name: 'mesoscale-painting-list',
+  display: { name: 'Painting', description: 'A particle list of painted copies only.' },
+  from: SO.Root,
+  to: SO.Particle.List,
+  params: {},
+})({
+  apply() {
+    return new SO.Particle.List(paintingList(), { label: 'Painting', description: 'Painted copies' });
+  },
+});
+
+/** A list of no particle, with entities (each structure painted with one) and their compartments none */
+export function paintingList(): ParticleList {
+  return {
+    label: 'Painting',
+    count: 0,
+    keys: new Int32Array(0),
+    targets: new Int32Array(0),
+    entities: new Int32Array(0),
+    targetInfo: new Map(),
+    entityInfo: new Map(),
+    targetMapping: new Map(),
+    coordinates: new Float32Array(0),
+    rotations: new Float32Array(0),
+    getParticleLabel: (i) => `Painted ${i + 1}`,
+    sourceData: { kind: 'mesoscale-painting', name: 'Painting', data: {} },
+    customProperties: new CustomProperties(),
+    _propertyData: Object.create(null),
+  };
+}
 
 /** Whether two stroke lists are the same strokes (a stroke is never edited in place: compared by reference) */
 function sameStrokes(a: readonly PaintStroke[], b: readonly PaintStroke[]) {
