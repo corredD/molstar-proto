@@ -15,6 +15,9 @@ import {
   syntheticPicksStar,
   syntheticVesicleObj,
 } from '../../../../../packages/mesoscale/spec/src/examples/index.js';
+import { DefaultResolvers } from '../../../../../packages/mesoscale/spec/src/resolvers/index.js';
+import type { ResolveJob } from '../../../../../packages/mesoscale/spec/src/runtime/index.js';
+import { createMesoViewSpecExtension } from '../../../../../packages/mesoscale/molstar/src/extension.js';
 import type { MesoViewSpecApi } from '@molstar/meso-molstar';
 import { createMesoscaleExplorerSpec } from '@molstar/prism-me-app/spec';
 import { ShellModel } from '@molstar/prism-ui/shell/shell';
@@ -42,9 +45,49 @@ async function until(check: () => boolean, ms = 60000) {
   }
 }
 
+/**
+ * A gate on `m.recipe`'s resolution: while held, its resolver waits (and stops when the run's signal fires), so what
+ * shows while an edit resolves, and a Cancel, never race the packer. Open, the resolvers run as they are.
+ */
+function gate() {
+  let held = false;
+  let open: (() => void) | undefined;
+  const stopped = () => Object.assign(new Error('stopped'), { name: 'AbortError' });
+  const wait = (signal: AbortSignal | undefined) =>
+    new Promise<void>((resolve, reject) => {
+      if (signal?.aborted) return reject(stopped());
+      open = resolve;
+      signal?.addEventListener('abort', () => reject(stopped()), { once: true });
+    });
+  const resolvers = DefaultResolvers.map((r) => ({
+    ...r,
+    resolve: (input: unknown, job: ResolveJob) =>
+      held && job.model.id === 'm.recipe'
+        ? wait(job.signal).then(() => r.resolve(input as never, job))
+        : r.resolve(input as never, job),
+  })) as typeof DefaultResolvers;
+  return {
+    resolvers,
+    hold: () => {
+      held = true;
+    },
+    release: () => {
+      held = false;
+      open?.();
+    },
+  };
+}
+
 async function mounted() {
-  const v = await createPrismViewerHeadless({ spec: createMesoscaleExplorerSpec('') });
+  const spec = createMesoscaleExplorerSpec('');
+  const v = await createPrismViewerHeadless({
+    spec: { ...spec, extensions: (spec.extensions ?? []).filter((e) => e.id !== 'mesoviewspec') },
+  });
   viewers.push(v);
+  const held = gate();
+  await v.extensions.mount(
+    createMesoViewSpecExtension({ fetchText: async () => undefined, resolvers: held.resolvers }),
+  );
   const r = await v.api.run('mesoviewspec.open', {
     data: JSON.stringify(exosomeDoc()),
     files: [
@@ -62,7 +105,7 @@ async function mounted() {
   const scene = sceneModelOf(api.explorer!)!;
   const owner = (v.api as never as { mesoviewspec: MesoViewSpecApi }).mesoviewspec;
   const steps = () => v.managers.history.steps.value.length;
-  return { v, host, scene, owner, steps };
+  return { v, host, scene, owner, steps, gate: held };
 }
 type Mounted = Awaited<ReturnType<typeof mounted>>;
 
@@ -161,8 +204,9 @@ describe('Built by: the model edits (prism.md §4.3)', () => {
     const cancel = () => buttons(m).find((b) => b.textContent?.trim() === 'Cancel');
     expect(cancel()).toBeUndefined();
 
+    // m.recipe's resolution waits at the gate: the status and Cancel are seen, and Cancel lands before any commit
+    m.gate.hold();
     await enter(field(m, 'Copies asked for')!, '300');
-    // Cancel is there at once; the status follows the models as they start
     await until(() => !!cancel(), 5000);
     await until(() => /Resolving m\.recipe \(\d of \d\)/.test(textOf(m)), 5000);
     cancel()!.click();
@@ -173,6 +217,7 @@ describe('Built by: the model edits (prism.md §4.3)', () => {
     expect(countOf(m)).toBe(506);
 
     // and the same edit goes through after
+    m.gate.release();
     await enter(field(m, 'Copies asked for')!, '300');
     await until(() => countOf(m) === 300);
     expect(m.steps()).toBe(s0 + 1);

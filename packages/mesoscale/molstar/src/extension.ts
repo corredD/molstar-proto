@@ -27,7 +27,7 @@ import { cssColor } from '@molstar/mesoscale-extension/color-file';
 import { registerParticleListOwner } from '@molstar/mesoscale-extension/owner';
 import { Color } from '@molstar/core/util/color';
 import type { CompileProgress } from '@molstar/meso-spec/runtime';
-import { MesoDocumentModel } from './document-model.js';
+import { MesoDocumentModel, type MesoDocumentOptions } from './document-model.js';
 import { blockedResult, DocumentListOwner } from './list-owner.js';
 import { documentVisible, type DocumentGroupBy, type DocumentLooks, type DocumentOutline } from './document-tree.js';
 import { openAddresses } from './prism-viewer.js';
@@ -46,6 +46,8 @@ declare module '@molstar/prism-viewer/api' {
 export interface MesoViewSpecOptions {
   /** A resource's text by absolute address; default: the viewer's asset manager. */
   readonly fetchText?: (url: string) => Promise<string | undefined>;
+  /** The resolvers a document's models are resolved by; default: the runtime's (`DefaultResolvers`). */
+  readonly resolvers?: MesoDocumentOptions['resolvers'];
 }
 
 /** What `mesoviewspec.save` gives. */
@@ -155,7 +157,10 @@ export class MesoViewSpecApi extends ApiArea {
           },
         },
       },
-      { fetchText: options.fetchText ?? ((url) => fetchWithAssets(ctx, url)) },
+      {
+        fetchText: options.fetchText ?? ((url) => fetchWithAssets(ctx, url)),
+        ...(options.resolvers ? { resolvers: options.resolvers } : {}),
+      },
     );
     this.#unregister = this.model.register();
     this.owner = new DocumentListOwner(this.model);
