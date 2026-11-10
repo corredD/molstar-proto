@@ -27,6 +27,7 @@ from outside it.
 | R6  | In-memory data enter the state only through a side store                                                       | plugin API                   | confirmed                                                | sessions holding generated data cannot be saved or restored                              | P2 (plugin, not renderer) |
 | R7  | (v0.2) No nested instancing: a particle list cannot target another list                                        | renderer / model API         | confirmed                                                | every superstructure (granules, virions, pores) is expanded instances × template         | **P1**                    |
 | R8  | (v0.2) Looks select whole targets: no layer for a range of copies                                              | Prism layers / renderer      | confirmed                                                | an address that picks some copies (one granule, copies near the picks) cannot be colored | P2                        |
+| R9  | (v0.5) Level of detail is one set per representation, by pixels only: no per-target choice of what to draw     | renderer / Prism             | proposed (semantic levels, not built)                    | lipids as a surface far and molecules near; a granule one body far, its contents near    | P2                        |
 
 ## R1. A per-type look edit costs O(copies) — confirmed
 
@@ -294,6 +295,27 @@ adapter cannot pass them on and reports `look.partial` (the exosome's _Near the 
 Runs keep it compact: an address over a population is one run.
 
 **What it enables.** Every MesoQL address drawable as a look; selections and annotations drawn on the copies they name.
+
+## R9. Level of detail per target — proposed (v0.5)
+
+**Use case.** Semantic levels ([views.md](views.md#semantic-levels-proposed-v05-for-david-and-ludo)): the document says
+what a population is drawn as over a range of scale, with a different representation, detail or data source per range.
+David: "it needs to be part of both Mol\* and the document format".
+
+**Today.** The particle representation's `lodLevels` are one set per representation, chosen by pixels, and change how
+well a sphere is drawn, not what is drawn. A list has one representation type. LOD is a viewer setting, never the
+document's: [prism.md](prism.md) §5.1 keeps it viewer-only and proposes that a remade list take the params of the one it
+replaces, its LOD among them.
+
+**Recommendation.** A level selector on the particle representation, per target (or per layer, as R8's): a size range in
+projected pixels and what to draw over it (a representation type, or another list standing for the same copies, such as
+a superstructure's contents or a coarse model). Pixel LOD (R4) stays inside each choice.
+
+**Until then.** The adapter can draw each rule's alternatives as separate lists and switch their visibility from the
+camera, at R5's cost per list, or report the rule (`scales.unsupported`) and draw the default.
+
+**What it enables.** One document that reads from the cell to the molecule without per-scene tuning, the same rules in
+every viewer that honours them.
 
 ## Not renderer findings
 

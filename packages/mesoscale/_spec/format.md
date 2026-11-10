@@ -299,7 +299,10 @@ const { doc, issues } = b.build();
 ## Not in the document
 
 - placements and other derived results;
-- renderer settings: representation types, LOD, quality;
+- renderer settings: quality and pixel level of detail (impostors, `lodLevels`, pixel presets). What a thing is drawn as
+  at a scale (its representation, detail or data source) is semantic, and is proposed for the document in
+  [views.md](views.md#semantic-levels-proposed-v05-for-david-and-ludo) (David: "this not being in the document might be
+  a mistake"). A look's `representation` hint is in the document already;
 - transient UI state.
 
 See [views.md](views.md#session-state-what-one-document-restores).
