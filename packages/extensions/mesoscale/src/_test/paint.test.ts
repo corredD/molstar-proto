@@ -6,8 +6,13 @@
 
 import { describe, expect, it } from 'vitest';
 import { Column } from '@molstar/core/data/db';
-import { Quat, Vec3 } from '@molstar/core/math/linear-algebra';
-import { getFiberParticleMask, getParticleTargetGroups } from '@molstar/model/model/particles/particle-list';
+import { Mat4, Quat, Vec3 } from '@molstar/core/math/linear-algebra';
+import {
+  getFiberParticleMask,
+  getParticleTargetGroups,
+  Particle,
+  type ParticleList,
+} from '@molstar/model/model/particles/particle-list';
 import {
   brushIdOf,
   fiberConventionOf,
@@ -18,7 +23,10 @@ import {
   parseRange,
   resamplePath,
   isFiberBrush,
+  listMove,
   type PaintStroke,
+  paintedCopies,
+  paintLayerList,
   paintParticles,
   paintRotations,
 } from '../paint.js';
@@ -517,5 +525,96 @@ describe('the review of rounds 3 to 5', () => {
     expect(parseRange('9-3')).toEqual({});
     expect(parseRange('-9')).toEqual({ end: 9 });
     expect(parseRange('abc')).toEqual({});
+  });
+});
+
+// paint-layer (2026-11-10): the copies a list of their own, moved as their list is
+describe('paintedCopies', () => {
+  const sameAt = (a: ParticleList, i: number, b: ParticleList, j: number) => {
+    expect(b.keys[j]).toBe(a.keys[i]);
+    expect(b.targets[j]).toBe(a.targets[i]);
+    expect(b.entities?.[j]).toBe(a.entities?.[i]);
+    expect(b.compartments?.[j]).toBe(a.compartments?.[i]);
+    expect(Array.from(b.coordinates.slice(j * 3, j * 3 + 3))).toEqual(
+      Array.from(a.coordinates.slice(i * 3, i * 3 + 3)),
+    );
+    expect(Array.from(b.rotations!.slice(j * 4, j * 4 + 4))).toEqual(Array.from(a.rotations!.slice(i * 4, i * 4 + 4)));
+    expect(b.getParticleLabel(j)).toBe(a.getParticleLabel(i));
+  };
+
+  it('is what paintParticles appends, alone: the same keys, targets, frames and labels; the fibres its own', () => {
+    const list = cellpackLike();
+    const strokes = [stroke(), stroke({ target: 2, entity: 2, fiber: true, positions: [0, 0, 0, 40, 0, 0], seed: 3 })];
+    const fibers = { 2: { rise: 10, twist: 30, jitter: 0 } };
+    const all = paintParticles(list, strokes, fibers);
+    const copies = paintedCopies(list, strokes, fibers);
+    expect(copies.count).toBe(all.count - list.count);
+    for (let j = 0; j < copies.count; ++j) sameAt(all, list.count + j, copies, j);
+    // the fibre through the copies, by their own indices
+    expect(copies.fibers!.count).toBe(1);
+    expect(Array.from(copies.fibers!.indices)).toEqual(Array.from({ length: copies.count - 2 }, (_, i) => i + 2));
+    // the list's targets and entities by reference, no attribute of the list's
+    expect(copies.targetMapping).toBe(all.targetMapping);
+    expect(copies.entityInfo).toBe(list.entityInfo);
+    expect(copies.attributes).toBeUndefined();
+  });
+
+  it('is an empty list without a copy', () => {
+    const copies = paintedCopies(cellpackLike(), []);
+    expect(copies.count).toBe(0);
+    expect(copies.fibers).toBeUndefined();
+  });
+});
+
+describe('listMove', () => {
+  const turned = (list: ParticleList) => ({
+    ...list,
+    rotations: Float32Array.from({ length: list.count * 4 }, (_, i) =>
+      i % 4 === 3 ? Math.cos(0.1 * Math.floor(i / 4)) : i % 4 === 1 ? Math.sin(0.1 * Math.floor(i / 4)) : 0,
+    ),
+  });
+
+  it('is none for the list itself and for the same frames', () => {
+    const list = cellpackLike();
+    expect(listMove(list, list)).toBeUndefined();
+    expect(listMove(list, { ...list })).toBeUndefined();
+  });
+
+  it('reads a rigid move and a scale exactly, the copies moved as the list', () => {
+    for (const root of [cellpackLike(), turned(cellpackLike())]) {
+      const m = Mat4.mul(
+        Mat4(),
+        Mat4.fromTranslation(Mat4(), Vec3.create(100, -20, 5)),
+        Mat4.fromRotation(Mat4(), 0.7, Vec3.normalize(Vec3(), Vec3.create(1, 2, 3))),
+      );
+      Mat4.mul(m, m, Mat4.fromScaling(Mat4(), Vec3.create(2, 2, 2)));
+      const moved = Particle.transform(root, m);
+      const move = listMove(root, moved)!;
+      expect(move.exact).toBe(true);
+      // the strokes' copies, in the list's frame, where the list's move puts them
+      const strokes = [stroke()];
+      const at = paintLayerList(root, moved, strokes);
+      const want = Particle.transform(paintedCopies(root, strokes), m);
+      for (let i = 0; i < at.coordinates.length; ++i) expect(at.coordinates[i]).toBeCloseTo(want.coordinates[i], 3);
+      for (let i = 0; i < at.count; ++i) {
+        const q = Quat.fromArray(Quat(), at.rotations!, i * 4);
+        expect(Math.abs(Quat.dot(q, Quat.fromArray(Quat(), want.rotations!, i * 4)))).toBeCloseTo(1, 5);
+      }
+      // kept per pair
+      expect(listMove(root, moved)).toBe(move);
+    }
+  });
+
+  it('is not exact where the particles are moved one by one (offsets), nor for another count', () => {
+    const root = cellpackLike();
+    const offset = { ...root, coordinates: root.coordinates.map((x, i) => (i === 5 ? x + 7 : x)) };
+    expect(listMove(root, offset)?.exact).toBe(false);
+    expect(listMove(root, { ...root, count: 3, coordinates: root.coordinates.slice(0, 9) })?.exact).toBe(false);
+  });
+
+  it('reads a move of a list of one particle (no scale to read: 1)', () => {
+    const one = { ...cellpackLike(), count: 1, coordinates: Float32Array.of(5, 0, 0) };
+    const moved = Particle.transform(one, Mat4.fromTranslation(Mat4(), Vec3.create(0, 10, 0)));
+    expect(listMove(one, moved)).toMatchObject({ exact: true });
   });
 });

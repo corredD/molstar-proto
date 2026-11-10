@@ -85,8 +85,14 @@ function joined(a: ParticleList, b: ParticleList): ParticleList {
     fa.count + fb.count
       ? {
           count: fa.count + fb.count,
-          offsets: cat(fa.offsets, fb.offsets.slice(1).map((o) => o + fa.indices.length)),
-          indices: cat(fa.indices, fb.indices.map((i) => i + a.count)),
+          offsets: cat(
+            fa.offsets,
+            fb.offsets.slice(1).map((o) => o + fa.indices.length),
+          ),
+          indices: cat(
+            fa.indices,
+            fb.indices.map((i) => i + a.count),
+          ),
         }
       : undefined;
   return {
@@ -113,6 +119,65 @@ const zOf = (list: ParticleList, i: number) =>
       list.rotations![i * 4 + 3],
     ),
   );
+
+// paint-layer (2026-11-10): a stroke draws its copies alone, the list's representations left as they are
+describe('the paint layer', () => {
+  const repr = (r: { cell: { obj?: { data: unknown } } }) =>
+    (r.cell.obj!.data as { repr: { renderObjects: readonly unknown[] } }).repr;
+  /** A representation's children's params (its looks' layers) */
+  const childParams = (v: PrismViewer, ref: string) =>
+    v.plugin.state.data.tree.children
+      .get(ref)
+      .toArray()
+      .map((c) => v.plugin.state.data.tree.transforms.get(c)!.params);
+
+  it("draws a stroke's copies in representations of their own: the list's left as they are", async () => {
+    const v = await viewer();
+    const own = entry(v).representations[0];
+    const before = { obj: own.cell.obj, objects: [...repr(own).renderObjects], data: model(v) };
+    expectOk(await v.api.run('mesoscale.paint', { entity: 'CA', positions: [0, 50, 0], normals: [0, 1, 0], seed: 1 }));
+    expectOk(await v.api.run('mesoscale.paint', { entity: 'NC', positions: [0, 60, 0], seed: 2 }));
+    const after = entry(v).representations[0];
+    expect(after.cell.obj).toBe(before.obj);
+    expect(model(v)).toBe(before.data);
+    expect(repr(after).renderObjects).toEqual(before.objects);
+    for (let k = 0; k < before.objects.length; ++k) expect(repr(after).renderObjects[k]).toBe(before.objects[k]);
+    // the copies' own: one a representation of the list, under the layer
+    const layer = painted(v)[0];
+    const theirs = entry(v).representations.filter((r) => r.cell.transform.parent === layer.transform.ref);
+    expect(theirs.length).toBe(1);
+    expect((theirs[0].cell.obj!.data as unknown as { sourceData: ParticleList }).sourceData).toBe(copies(v));
+    expect(copies(v)!.count).toBe(2);
+  });
+
+  it("gives the copies the list's looks: an entity hidden or coloured is so in both, one step", async () => {
+    const v = await viewer();
+    expectOk(await v.api.run('mesoscale.paint', { entity: 'CA', positions: [0, 50, 0], normals: [0, 1, 0], seed: 1 }));
+    const s = steps(v);
+    expectOk(await v.api.run('mesoscale.style', { entities: 'CA', visible: false }));
+    expectOk(await v.api.run('mesoscale.style', { entities: 'NC', color: 'tomato' }));
+    expect(steps(v)).toBe(s + 2);
+    const [own, theirs] = entry(v).representations;
+    expect(childParams(v, theirs.cell.transform.ref)).toEqual(childParams(v, own.cell.transform.ref));
+    expect(JSON.stringify(childParams(v, own.cell.transform.ref))).toContain('false');
+  });
+
+  it('refuses a list whose particles are moved one by one (offsets): its copies would be left behind', async () => {
+    const v = await viewer();
+    const ref = entry(v).cell.transform.ref;
+    await v.plugin
+      .build()
+      .to(ref)
+      .insert(ParticleListOffsets, {
+        offsets: [{ targets: [1], translation: Vec3.create(0, 0, 5), euler: Vec3() }],
+        instances: [],
+      })
+      .commit();
+    const r = await v.api.run('mesoscale.paint', { entity: 'CA', positions: [0, 50, 0], seed: 1 });
+    expect(r).toMatchObject({ ok: false, code: 'invalid' });
+    expect(painted(v).length).toBe(0);
+  });
+});
 
 describe('mesoscale.paint', () => {
   it('paints a stroke as one step: copies drawn, upright on a surface; undo removes it, redo brings it back', async () => {
