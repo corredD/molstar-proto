@@ -97,23 +97,27 @@ are the coordinator's.
   failed first.
 - **The slice yield in Node is `setImmediate`**, not a `MessageChannel` (the brief's fallback): in Node a channel's
   messages posted from their own handler are delivered in the same turn, so the timers never ran and the pack and relax
-  abort tests timed out. In a browser: `scheduler.yield`, else a `MessageChannel`; a timer only where there is neither.
+  abort tests timed out. In a browser a `MessageChannel`, never `scheduler.yield`: in Chromium its continuation runs
+  ahead of the timers (in the app's page a 60 ms timer did not fire during 900 ms of yielded 30 ms slices; with a
+  channel it fired at 90 ms), so an abort sent by a timer, and the Mol\* task's report beat that carries the pill's
+  Cancel, waited for the edit's end. A timer only where there is neither.
 
 ## Review
 
 The gate's findings on the lane's diff; each fixed one has a test that failed first, then its fix.
 
-| Finding                                                                                       | Severity   | Verdict                    | Commit / open               |
-| --------------------------------------------------------------------------------------------- | ---------- | -------------------------- | --------------------------- |
-| Cancel through a Mol\* task (prism.md:166-167): Built by's Cancel only, lost on a pick        | decision   | Ludo: the status pill task | 1a0a2741e (test), 4c819fc44 |
-| S1 `cancel.ts`: the slice yield is `setTimeout(0)` (4 ms clamp, ≥1 s in a background tab)     | should-fix | confirmed                  | 29ed90a04 (test), 9cdbd6378 |
-| S2 Built by: a refused, aborted or dropped value stays in its field; `send` drops silently    | should-fix | confirmed                  | d717b54f7 (test), e369f53ac |
-| S3a `built-by-edits.test.tsx`: the Cancel test races the packer                               | should-fix | confirmed                  | 9b37633ca                   |
-| S3b `cancel.test.ts`: `PlacementBuilder(5_000_000)` allocates ~180 MB before the first yield  | low        | confirmed (skeptic)        | open (below)                |
-| S4 no test aborts mid-packer through `MesoDocumentModel.edit` (only before the resolver)      | low-med    | confirmed (skeptic)        | open (below)                |
-| N1 `runtime.ts`: a non-`AbortError` reason, or a stop in the last model, commits a partial IR | nit        | confirmed                  | 072286300 (test), 9409ba0a9 |
-| N2 `document-model.ts` `dispose()` does not stop an in-flight compile                         | low        | confirmed (skeptic)        | open (below)                |
-| N3 Built by's `number()` takes `Number(text)`: "1e3", "0x10" accepted                         | nit        | confirmed (skeptic)        | open (below)                |
+| Finding                                                                                                                                                                                       | Severity   | Verdict                           | Commit / open               |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- | --------------------------------- | --------------------------- |
+| Cancel through a Mol\* task (prism.md:166-167): Built by's Cancel only, lost on a pick                                                                                                        | decision   | Ludo: the status pill task        | 1a0a2741e (test), 4c819fc44 |
+| S1 `cancel.ts`: the slice yield is `setTimeout(0)` (4 ms clamp, ≥1 s in a background tab)                                                                                                     | should-fix | confirmed                         | 29ed90a04 (test), 9cdbd6378 |
+| S2 Built by: a refused, aborted or dropped value stays in its field; `send` drops silently                                                                                                    | should-fix | confirmed                         | d717b54f7 (test), e369f53ac |
+| S3a `built-by-edits.test.tsx`: the Cancel test races the packer                                                                                                                               | should-fix | confirmed                         | 9b37633ca                   |
+| S3b `cancel.test.ts`: `PlacementBuilder(5_000_000)` allocates ~180 MB before the first yield                                                                                                  | low        | confirmed (skeptic)               | open (below)                |
+| S4 no test aborts mid-packer through `MesoDocumentModel.edit` (only before the resolver)                                                                                                      | low-med    | confirmed (skeptic)               | d2483eb5e (test), 35f871489 |
+| Regression of S1's fix (the coordinator's app check): an abort sent by a timer once the packer ran was ignored and the edit committed; `scheduler.yield` runs ahead of the timers in Chromium | must-fix   | confirmed (run in the app's page) | d2483eb5e (test), 35f871489 |
+| N1 `runtime.ts`: a non-`AbortError` reason, or a stop in the last model, commits a partial IR                                                                                                 | nit        | confirmed                         | 072286300 (test), 9409ba0a9 |
+| N2 `document-model.ts` `dispose()` does not stop an in-flight compile                                                                                                                         | low        | confirmed (skeptic)               | open (below)                |
+| N3 Built by's `number()` takes `Number(text)`: "1e3", "0x10" accepted                                                                                                                         | nit        | confirmed (skeptic)               | open (below)                |
 
 ## Size
 
@@ -127,6 +131,6 @@ runtime plumbing about 130. The gate's fixes add about 120 more: `edit-task.ts` 
 - Step 3, the app check: run by the coordinator through the API before the gate's fixes (2026-11-09: 506 to 300, a seed,
   relax 506 of 506, a refused count, Cancel after 150 ms, Undo each, all pass); the status pill and Built by by hand are
   Ludo's check. Step 4, the gate: run; its S1, S2, S3a, N1 and the Cancel decision fixed (Review).
-- The gate's S3b, S4, N2 and N3, left open by the coordinator (2026-11-09).
+- The gate's S3b, N2 and N3, left open by the coordinator (2026-11-09); S4 fixed with the regression it found.
 - N1 for a label-only edit that keeps the set objects; N2, N3, N5 of lane 4's table.
 - Lattice, fiber and bilayer between models only (above).
