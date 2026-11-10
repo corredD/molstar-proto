@@ -72,7 +72,7 @@ is not built is [../TODO.md](../TODO.md).
     b0f6c2e64; items 1–5 built (82209c184, pushed). Ludo 2026-11-09: goal "best lipid wrapper capable of scaling up to
     human cell size, looking great with and without cut"; item 6 (by zoom to atoms, colour control) added; each step its
     own agent (architect → builder → reviewer → skeptic); no images. Then round 8 (shells/parallax to compare live,
-    brief 481102c20). Item 6 architect running.
+    brief 481102c20). Item 6 built; round 7 gated at ecc2ae79b (pushed; X1: GPU region tables 688 → 105 MB; budget kept fixed shares, ceiling ~15 membranes, Ludo). Round 8 architect running.
   - `merge-master` (`me/merge-master` from `origin/prism-me`, port 1355, [brief](2026-11-09-merge-master.md) on its
     branch): started 2026-11-09 (Ludo: merge master, conflicts favoring master). origin/master dabbf29f9, 59 commits,
     474 files, mostly graphics. Merged at 46aa8cae3 (63 files conflicted, master favoured, prism-me features kept and
