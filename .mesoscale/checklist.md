@@ -9,9 +9,6 @@ drives it is [loop.md](loop.md).
 
 Questions that stop the loop. One line each; move it to Decided with the answer.
 
-- Lane 7 added a library hook, `ViewerExtension.agentState` in `packages/prism/viewer` (`14c430588`), so the agent's
-  turn sees the document's outline (its rows are explorer UI, not scene-tree nodes). AGENTS.md makes a library change
-  its own lane: keep it in lane 7, or split it out?
 - Lane 7: the real-model evals need a key (`ANTHROPIC_API_KEY` or `GEMINI_API_KEY`); none in the lane's worktree. Run
   them, or give one for the worktree?
 - Lane 7 gate, S1: `get_mesoviewspec` with `detail: 'document'` prints the whole document uncapped (prism.md §8 says
@@ -28,6 +25,7 @@ Questions that stop the loop. One line each; move it to Decided with the answer.
 - 2026-11-09: lane 6: a model edit runs as a Mol\* task in the status pill with Cancel (prism.md), not only in Built by.
 - 2026-11-09: lane 5: Undo keeps the camera still; clicking the shown view re-applies its camera; Update camera on a
   semantic view writes a numeric camera (with fov, transition); a failed show redraws the previous view.
+- 2026-11-10: lane 7's library hook `ViewerExtension.agentState` (`14c430588`) stays in lane 7.
 - 2026-11-10: showing a document's view becomes an undoable step (History), so Undo turn puts it back; prism.md §4.4 and
   §7.4 to change with it (done in lane 7, after its gate fixes).
 - 2026-11-09: the semantic levels and MesoLocation draft merged into `me/mesoviewspec` before David's review.
