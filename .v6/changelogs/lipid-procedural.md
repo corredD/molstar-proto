@@ -49,3 +49,7 @@
   step. A membrane's Reset and a category's theme leave its parts' colours and eyes. A cell's membranes upload each
   part's own regions only (about 6× less GPU memory on a cell of nine membranes) and show and fade their surfaces once
   a view, not once a part and leaflet.
+- A cut lipid membrane's middle distance, switched live in its Look (Far › Middle: Coarse or Parallax, Atoms down to;
+  `mesoscale.membraneDetail { middle, middlePx }`): Parallax draws the lipids as atoms down to 11 px, then the far
+  surface's relief from the patch's heads' heights (its texture's alpha), lit by their profile. A patch mesh (WebGPU)
+  gains `dPatchMiddle` (shells, beneath, parallax), `uPatchShells` and `uPatchMiddle`.

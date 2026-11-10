@@ -259,33 +259,37 @@ on a tree row (its right-click or its ⋯), the same menu, in this order:
   by zoom are blended in the shader, per pixel. The membrane's Look switches the far look live (**Far**: Both (default),
   Spheres, Texture; `mesoscale.membraneDetail { far }`): Texture takes lipids from **Lipids from** px (2), Both and
   Spheres down to **Lipids down to** px (0.5), at their sphere levels, Both with the surface beneath, Spheres without it
-  (past the budget, far parts empty); **Lipids at most** the budget; each a slider committed once, never a new cut. Its
-  species are a particle system's entities: in its Look an eye and a colour a species (`mesoscale.membraneSpecies`; a
-  hidden species is not generated, the surface's colour without it), and a particle list's colours (round 4c item 8, the
-  same operations, its species its entities: Look's color for all its species, Generate colors, Reset, By zoom: far its
-  colour, then its species', close its atoms' by element, the tiles' too; when on, its edges Species and Atoms (no
-  Chain: a membrane's chain is its species, kept between them), **Far** its colour alone
-  (`mesoscale.colorLevels { far }`; Look's color sets every species and the far colour) and **Atoms** by element or
-  carbons by species (`mesoscale.colorLevels { atoms }`), one step each, an edge moved without a rebuild (round 7 item
-  6, Ludo 2026-11-09); right-click Color…: the swatches and Generate colors; a Meshes category's color theme colours it
-  too; `mesoscale.style`, `mesoscale.colors`, `mesoscale.colorLevels` with the membrane as `particles`; no opacity or
-  glow), its Object graphics' Quality the levels' preset (no Motion). Its right-click: **Export lipids (full build)**
-  (`mesoscale.exportMembrane`: every lipid of every triangle, a RELION STAR particle list, built only then), and **Add
-  clip…** as on any object (round 4b item 6, both methods: a cut removes the spheres and the far surfaces alike; a
-  handle's drag changes only the drawn objects' clip values). Not yet: a row per species in the tree (the Look holds
-  them), picking a lipid. **One membrane, two generators** (Ludo, 2026-11-08, round 4b): a tiles membrane has the same
-  Look: its species (an eye and a colour; a hidden one's lipids taken out of every tile, a tile mixing species),
-  colorBy, Levels, and Far as Both or Spheres (its surfaces at the heads, coloured as the cutter would cut the patch
-  there: the species' proportions and grain, not each tile's lipids). Not for tiles: Texture and the pool's switches
-  (tiles are built whole, no lipid dropped by its size on screen), Export (the cutter's full build). A wrap is a task on
-  the status line (Ludo, 2026-11-08: its stage, as Remeshing at 42 Å 2/5, Baking lipid tiles (outer) 12/16, Cutting
-  triangles, Uploading lipids, its percentage and Cancel; a cancel leaves no membrane and no step); it yields to the
-  page between stages, but a single stage (the patch's first read, the GPU count pass's readback over the small
-  triangles, the render objects' merge, the far surfaces' build) runs whole. Round 5 (a billion lipids at x600): a large
-  triangle is cut by cells, each made in view only, the leaflet facing the camera; the far look is the patch's top view
-  as a mipmapped texture on the mesh's own triangles, mapped as the cutter maps it (the spheres' look at 2 px, their
-  mean far away); colours by zoom go far colour, species, atoms by element; tiles are refused past 50 M lipids, their
-  menu entry says small objects. Both draw with levels of detail (the membrane's `detail`, balanced by default).
+  (past the budget, far parts empty); **Lipids at most** the budget; each a slider committed once, never a new cut. Past
+  Spheres, the cutter's **Middle** (round 8, to compare and pick; `mesoscale.membraneDetail { middle, middlePx }`):
+  Coarse (default until Ludo picks: the sphere levels to **Lipids down to**) or Parallax (the lipids as their atoms down
+  to **Atoms down to** px, 11, then the far surface marching the heads' heights from the patch texture's alpha, lit by
+  their profile, flat below 2 px). Shells (the heads as instanced shells over a per-view band of triangles) are not
+  offered yet: the operation refuses them. Its species are a particle system's entities: in its Look an eye and a colour
+  a species (`mesoscale.membraneSpecies`; a hidden species is not generated, the surface's colour without it), and a
+  particle list's colours (round 4c item 8, the same operations, its species its entities: Look's color for all its
+  species, Generate colors, Reset, By zoom: far its colour, then its species', close its atoms' by element, the tiles'
+  too; when on, its edges Species and Atoms (no Chain: a membrane's chain is its species, kept between them), **Far**
+  its colour alone (`mesoscale.colorLevels { far }`; Look's color sets every species and the far colour) and **Atoms**
+  by element or carbons by species (`mesoscale.colorLevels { atoms }`), one step each, an edge moved without a rebuild
+  (round 7 item 6, Ludo 2026-11-09); right-click Color…: the swatches and Generate colors; a Meshes category's color
+  theme colours it too; `mesoscale.style`, `mesoscale.colors`, `mesoscale.colorLevels` with the membrane as `particles`;
+  no opacity or glow), its Object graphics' Quality the levels' preset (no Motion). Its right-click: **Export lipids
+  (full build)** (`mesoscale.exportMembrane`: every lipid of every triangle, a RELION STAR particle list, built only
+  then), and **Add clip…** as on any object (round 4b item 6, both methods: a cut removes the spheres and the far
+  surfaces alike; a handle's drag changes only the drawn objects' clip values). Not yet: a row per species in the tree
+  (the Look holds them), picking a lipid. **One membrane, two generators** (Ludo, 2026-11-08, round 4b): a tiles
+  membrane has the same Look: its species (an eye and a colour; a hidden one's lipids taken out of every tile, a tile
+  mixing species), colorBy, Levels, and Far as Both or Spheres (its surfaces at the heads, coloured as the cutter would
+  cut the patch there: the species' proportions and grain, not each tile's lipids). Not for tiles: Texture and the
+  pool's switches (tiles are built whole, no lipid dropped by its size on screen), Export (the cutter's full build). A
+  wrap is a task on the status line (Ludo, 2026-11-08: its stage, as Remeshing at 42 Å 2/5, Baking lipid tiles (outer)
+  12/16, Cutting triangles, Uploading lipids, its percentage and Cancel; a cancel leaves no membrane and no step); it
+  yields to the page between stages, but a single stage (the patch's first read, the GPU count pass's readback over the
+  small triangles, the render objects' merge, the far surfaces' build) runs whole. Round 5 (a billion lipids at x600): a
+  large triangle is cut by cells, each made in view only, the leaflet facing the camera; the far look is the patch's top
+  view as a mipmapped texture on the mesh's own triangles, mapped as the cutter maps it (the spheres' look at 2 px,
+  their mean far away); colours by zoom go far colour, species, atoms by element; tiles are refused past 50 M lipids,
+  their menu entry says small objects. Both draw with levels of detail (the membrane's `detail`, balanced by default).
 - **Remove** (an object: with its file and labels).
 
 On a clip or a label (its guide in 3D, or its row): **Move**, **Rotate**, (a clip: **Size**, **Flip**; a label: **Edit

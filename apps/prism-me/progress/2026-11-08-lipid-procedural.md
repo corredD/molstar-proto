@@ -1798,34 +1798,34 @@ Earlier rounds' gates: their tables in the progress file (`apps/prism-me/progres
 
 **Verdict.** Shells work with the app's look if (a) they are drawn only on the triangles in the middle band, never on
 the whole far surface (round 6: the 36 patch surfaces ~45 ms; ×N over 1.08 M triangles would cost hundreds of ms), and
-(b) their alpha test runs in every render variant. Parallax is one fragment pass on the far surface. Graphics ~165
-lines (stop ~600), extension ~270. No GLSL twin (WebGPU only; add the names to `shader-parity.test.ts:28,46`).
+(b) their alpha test runs in every render variant. Parallax is one fragment pass on the far surface. Graphics ~165 lines
+(stop ~600), extension ~270. No GLSL twin (WebGPU only; add the names to `shader-parity.test.ts:28,46`).
 
 1. **Height channel** (`far-surface.ts`): `patchHeights(table, shown, side, sizeFactor)` = `topGrid` (:129) over all
-   atoms at radius `sizeFactor`; lo = max(min, hi − 12 Å), hi, mean returned with the raster; stored in `tPatch`'s
-   free alpha (A = 255 today, `patchRaster` :494), RGBA8 256², mips by `patch.mipmap()` (membrane.ts:1082) give the
-   mean height far away. Coarse keeps its shaded RGB (option B); shells/parallax bake flat RGB
+   atoms at radius `sizeFactor`; lo = max(min, hi − 12 Å), hi, mean returned with the raster; stored in `tPatch`'s free
+   alpha (A = 255 today, `patchRaster` :494), RGBA8 256², mips by `patch.mipmap()` (membrane.ts:1082) give the mean
+   height far away. Coarse keeps its shaded RGB (option B); shells/parallax bake flat RGB
    (`patchRaster(..., shade=false)`) from the stride-1 top view (`switchSpheres(table, props, middlePx)`).
 2. **Shells.**
    - A band object per cut leaflet, `shellBand`, `instanceCount = N` (8; 6–10): only the band's triangles, copied per
      view change from the far surface's CPU arrays into grow-only arrays, its own small `tPatchTable` (band regions
      renumbered with their keys as `partMesh` :460; the 4,096 cells; the vertices' shifts), uploaded with
      `updateGPUData` (render-item.ts:230). Never a duplicate of the whole far surface (~130 MB on yeast).
-   - The band: per view, walk the part's `triangleTree` (triangle-tree.ts:44, preallocated stack) for triangles in
-     the frustum with nearest px ≥ 0.8·mergePx and farthest px ≤ 2·middlePx; cap 256 k; from the view hook
+   - The band: per view, walk the part's `triangleTree` (triangle-tree.ts:44, preallocated stack) for triangles in the
+     frustum with nearest px ≥ 0.8·mergePx and farthest px ≤ 2·middlePx; cap 256 k; from the view hook
      (`createMembraneViews({fade})`, membrane.ts:1232): nothing at rest.
    - Offsets (WGSL vertex, `dPatchMiddle == shells`): shell k at d_k along +baseNormal (both leaflets: inner normals
      already negated, far-surface.ts:440); d = (mean − L) + j·Δ, Δ = (hi − lo)/(N − 1); instance 0 the opaque base;
      drawn top-down; shift_k = shift·(L + d_k)/L (far-surface.ts:445). Uniforms `uPatchShells: v4` (N, d_lo, d_hi,
      d_mean), `uPatchLift: f`.
-   - Alpha test: `patchFrame()` split out of `patchColor` (mesh.wgsl.ts:70–103); shell k (k ≥ 1) kept where H(s) ≥
-     (h_k − Δ/2 − lo)/(hi − lo); **outside the colour-variant guard (mesh.wgsl.ts:331)**: depth, pick, marking,
-     emissive, tracing and colour alike (deterministic, so the passes agree); the colour stays guarded.
+   - Alpha test: `patchFrame()` split out of `patchColor` (mesh.wgsl.ts:70–103); shell k (k ≥ 1) kept where H(s) ≥ (h_k
+     − Δ/2 − lo)/(hi − lo); **outside the colour-variant guard (mesh.wgsl.ts:331)**: depth, pick, marking, emissive,
+     tracing and colour alike (deterministic, so the passes agree); the colour stays guarded.
    - Normal (colour variants): central differences of A at ±1 texel, back through the cell's spin and region turn onto
      e1/e2, into view space; flat at coarse mips.
-   - Fades: distance by the mip (H → mean); grazing by scaling the gradients by 1/max(|n·v|, 0.25); per-fragment
-     handoff by lipid px (`patchColor` :101): band discards px < mergePx, far surface discards px ≥ mergePx (shells
-     only), coplanar at the mean: exact complements. Lipids' fade: `fadeSurface` (membrane.ts:817), enter = middlePx.
+   - Fades: distance by the mip (H → mean); grazing by scaling the gradients by 1/max(|n·v|, 0.25); per-fragment handoff
+     by lipid px (`patchColor` :101): band discards px < mergePx, far surface discards px ≥ mergePx (shells only),
+     coplanar at the mean: exact complements. Lipids' fade: `fadeSurface` (membrane.ts:817), enter = middlePx.
    - Depth/look: opaque, alpha-tested, depth written; outline, SSAO, shadows read `tDepth` and see the relief.
    - Picking: the pick variant runs the alpha test; ids within groups × N. A far surface picks nothing today
      (`getLoci: EmptyLoci`, membrane.ts:1639): shells keep that parity; "picks its membrane" (~25 lines) is Ludo's call.
@@ -1836,32 +1836,32 @@ lines (stop ~600), extension ~270. No GLSL twin (WebGPU only; add the names to `
    marched hi → lo (entry moved back by (hi − mean)·v/v_n), steps mix(16, 6, |n·v|) plus one secant; the cell hashed
    again per step; only where px ≥ mergePx; colour and normal at the hit. No `frag_depth` (keeps early-z, depth = colour
    pass): flat depth and silhouettes, the look's known limit. A cut: the plane plus the cut band's lipids.
-4. **Levels (lipid px).** coarse: today. shells/parallax: atoms ≥ `middlePx` (kept to 0.8×); middle look from
-   2·middlePx (dither) to `mergePx` (2); flat far below. `middlePx` = the stride-1 → 8 boundary on CHARMM-GUI ÷ Keep
-   (~11 px, measure first), so no coarse level is reached: shells/parallax replace the coarse sphere levels. Colour
-   levels unchanged (species on the middle look, atoms only on lipids, far below the entity edge). Option B stays for
-   coarse and the cut band. Tiles: `middle` ignored, UI disabled.
-5. **The Look's switch.** Params (membrane.ts:671): `middle: 'coarse'|'shells'|'parallax'` ('coarse' until Ludo
-   picks), `middlePx`, `shells` (8), `mergePx` (2, hidden). `mesoscale.membraneDetail` (operations.ts:397) takes them,
-   one history step; `membraneDetailState` (:367) returns them. Fast path `onlyMiddle(before, props)` beside
+4. **Levels (lipid px).** coarse: today. shells/parallax: atoms ≥ `middlePx` (kept to 0.8×); middle look from 2·middlePx
+   (dither) to `mergePx` (2); flat far below. `middlePx` = the stride-1 → 8 boundary on CHARMM-GUI ÷ Keep (~11 px,
+   measure first), so no coarse level is reached: shells/parallax replace the coarse sphere levels. Colour levels
+   unchanged (species on the middle look, atoms only on lipids, far below the entity edge). Option B stays for coarse
+   and the cut band. Tiles: `middle` ignored, UI disabled.
+5. **The Look's switch.** Params (membrane.ts:671): `middle: 'coarse'|'shells'|'parallax'` ('coarse' until Ludo picks),
+   `middlePx`, `shells` (8), `mergePx` (2, hidden). `mesoscale.membraneDetail` (operations.ts:397) takes them, one
+   history step; `membraneDetailState` (:367) returns them. Fast path `onlyMiddle(before, props)` beside
    `onlyClip`/`onlyColorEdges` (membrane.ts:980–990, dispatch :1603): re-raster into the existing `tPatch`, set the
    uniforms, create/release band objects, bump the selection's `enterPx` (:1243); nothing re-cut. UI controls.tsx:286
    under Far: Middle (Coarse spheres / Shells / Parallax), Middle px slider (one commit); hidden when Far = Spheres.
 6. **Scale.** Band vertices tiny (yeast PM middle ~1 k triangles × 8 × 3); fragments: shells ~5–15 ms full screen
-   900×600, parallax ~3–8 ms; the coarse lipids between middlePx and 2 px are gone, so middle frames at or below
-   coarse, drawn lipids several times lower. Toward a human cell: cost = band triangles (bounded by screen) × N plus
-   screen area × N fragments, not lipids or cell triangles. Open bottleneck (today's): far and near surfaces drawn whole
-   (2.16 M triangles each on yeast): per-chunk culling or a decimated far mesh, a later round. Nothing per frame
-   (grow-only arrays, preallocated stack); nothing at rest.
+   900×600, parallax ~3–8 ms; the coarse lipids between middlePx and 2 px are gone, so middle frames at or below coarse,
+   drawn lipids several times lower. Toward a human cell: cost = band triangles (bounded by screen) × N plus screen area
+   × N fragments, not lipids or cell triangles. Open bottleneck (today's): far and near surfaces drawn whole (2.16 M
+   triangles each on yeast): per-chunk culling or a decimated far mesh, a later round. Nothing per frame (grow-only
+   arrays, preallocated stack); nothing at rest.
 7. **Tests, failing first.** (1) TS: A = brute-force max of z + √(r² − d²) normalised, within 1/255 (fails: A is 255).
-   (2) Dawn graphics `plugin/headless/src/_test/webgpu-patch-shells.test.ts`: a 2-triangle quad, 8×8 patch with A in
-   {0, 64, 128, 192, 255}, N = 4, ortho from above: depth per texel = the top passing level; per `instanceCount`,
-   exactly the texels with A ≥ t_k; depth and pick variants discard the same pixels. (3) Zoom-step dE
+   (2) Dawn graphics `plugin/headless/src/_test/webgpu-patch-shells.test.ts`: a 2-triangle quad, 8×8 patch with A in {0,
+   64, 128, 192, 255}, N = 4, ortho from above: depth per texel = the top passing level; per `instanceCount`, exactly
+   the texels with A ≥ t_k; depth and pick variants discard the same pixels. (3) Zoom-step dE
    (`lipid-switch.webgpu.test.ts:151`) per `middle`, 16 → 0.8 px, outside and inside the PM, under 0.03 (fails: unknown
    'shells'). (4) Frame and drawn lipids per look, whole/middle/close on ×600 and the yeast PM: middle ≤ coarse ×1.1,
-   lipids ≤ coarse/2, whole ≤ +10 %; numbers here. (5) Cut (`lipid-clip.webgpu.test.ts`): a clip plane through the middle
-   view per look: coverage in the cross-section band ≥ coarse − 5 %, mean Oklab within 0.05, band lipids > 0 near the
-   plane. (6) At rest per look: no selection, no band write, no frame.
+   lipids ≤ coarse/2, whole ≤ +10 %; numbers here. (5) Cut (`lipid-clip.webgpu.test.ts`): a clip plane through the
+   middle view per look: coverage in the cross-section band ≥ coarse − 5 %, mean Oklab within 0.05, band lipids > 0 near
+   the plane. (6) At rest per look: no selection, no band write, no frame.
 8. **Size.** Graphics ~165 (renderable/mesh.ts:61–72 ~14; geometry/mesh/mesh.ts:875 ~3; mesh.wgsl.ts ~145; parity +1),
    its own library lane from master on Ludo's word. Extension ~270. Fallback if the band object is hard: parallax only
    (~70 WGSL + ~60 extension).
@@ -1873,17 +1873,17 @@ cow's thin-part folding (round 7 option D, open); the band is triangle-granular.
 
 Steps done so far (commits on me/lipid-procedural):
 
-1. Height channel, `a50f94daf`. Test 1 (`lipid-patch-texture.test.ts`, alpha = brute-force top normalised within
-   1/255): failed (A was 255, no lo/hi), passes. `patchRaster(..., shade)`, `HeightSpan` 12 Å.
+1. Height channel, `a50f94daf`. Test 1 (`lipid-patch-texture.test.ts`, alpha = brute-force top normalised within 1/255):
+   failed (A was 255, no lo/hi), passes. `patchRaster(..., shade)`, `HeightSpan` 12 Å.
 2. Graphics, `03625d096` (+ `6cb4e25b8`, the profile normal at every px). `patchAt`/`patchFrame`/`patchRead` split out
-   of `patchColor`; `dPatchMiddle` off | shells | beneath | parallax (a define: coarse compiles as before), `uPatchShells`
-   (N, lo, hi, mean), `uPatchMiddle` (mergePx, end px). Test 2 (`webgpu-patch-shells.test.ts`): failed (no
-   `uPatchShells`), passes: colour, pick and depth per column; parallax and beneath draw with no error. Parity lists
+   of `patchColor`; `dPatchMiddle` off | shells | beneath | parallax (a define: coarse compiles as before),
+   `uPatchShells` (N, lo, hi, mean), `uPatchMiddle` (mergePx, end px). Test 2 (`webgpu-patch-shells.test.ts`): failed
+   (no `uPatchShells`), passes: colour, pick and depth per column; parallax and beneath draw with no error. Parity lists
    `uPatchShells`, `uPatchMiddle`, `uCameraPosition`, `uCameraDir` (the last two on texture-mesh too: one source).
 3. Parallax, `9acb54a54`. Params `middle` (coarse default), `middlePx` 11 (measured: Balanced stride 1 from 8.83 px a
    7.44 Å lipid; ÷ Keep), `shells` 8, `mergePx` 2 hidden; operation and UI (Far › Middle: Coarse / Shells / Parallax,
-   Atoms down to, Shells). Test 3 (zoom 16 → 0.8 px, parallax): failed (no parallax surface), then 0.043 at 6.3 px
-   (the selection keeps lipids below middlePx·Keep, at the stride-8 level), fixed by drawing a cut leaflet's lipids as
-   atoms with a middle look (deviation: the design relied on middlePx alone), now 0.007. UI test failed on HEAD
-   (timed out), passes. Tests 5 (cut: coverage and Oklab vs coarse; parallax 0.709 vs 0.661, dE 0.028) and 6 (at rest)
-   per look pass, but would pass on HEAD too (guards, not failing-first).
+   Atoms down to, Shells). Test 3 (zoom 16 → 0.8 px, parallax): failed (no parallax surface), then 0.043 at 6.3 px (the
+   selection keeps lipids below middlePx·Keep, at the stride-8 level), fixed by drawing a cut leaflet's lipids as atoms
+   with a middle look (deviation: the design relied on middlePx alone), now 0.007. UI test failed on HEAD (timed out),
+   passes. Tests 5 (cut: coverage and Oklab vs coarse; parallax 0.709 vs 0.661, dE 0.028) and 6 (at rest) per look pass,
+   but would pass on HEAD too (guards, not failing-first).

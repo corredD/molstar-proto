@@ -118,6 +118,12 @@ maintainer first (2026-10-25). All are v6 (master); the MRC reader and the parti
     instance's scale (the spheres shader takes the model scale only): a library change.
   - The far texture is flat colour (the heads' heights shaded into it), no normal from the head bumps; it switches from
     the spheres at 2 px by default (round 5): the tube's silhouette is the mesh's there, not lipids'.
+  - Round 8's shells (the heads as N instanced shells over a per-view band): the shader (`dPatchMiddle` shells, beneath)
+    and the band (`shell-band.ts`) are built and tested, the band objects are not: their writes happen in the culler's
+    view hook, mid-frame, and whether they reach the GPU that frame (and a frame after them at rest) is open
+    (`updateGPUData`, the draw order of the objects). Then the band's clip, the cut band (the coarse rule within two
+    lipids of a clip), tests 3-6 for shells, an `onlyMiddle` fast path (a Middle switch rebuilds the look today), and a
+    parallax pixel control (oblique, march on vs off). The default middle look is Ludo's pick.
   - Close views at x600 and x20 alike: about 170-240 ms a frame on the M1 under Dawn (lipids of 8-16 px at atom detail,
     their spheres writing depth: no early-z); not the scale. A lighter close level (fewer, larger spheres from 8 px) is
     the next lever, Ludo's call after Chrome.
