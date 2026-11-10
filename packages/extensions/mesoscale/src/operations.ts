@@ -1056,7 +1056,12 @@ export class MesoscaleApi extends ApiArea {
           levels.chain = Math.sqrt(levels.entity * levels.atom);
         }
         if (levelsGiven && (levels.entity >= levels.chain || levels.chain >= levels.atom)) {
-          return ApiResult.fail('invalid', 'The edges go entity < chain < atom.', 'Nothing was changed.');
+          // named as its Look names them: no Chain edge there (review N3)
+          return ApiResult.fail(
+            'invalid',
+            'A membrane’s edges go Species < Atoms (entity < atom).',
+            'Nothing was changed.',
+          );
         }
         const colorLevels =
           on === false ? { name: 'off' as const, params: {} } : { name: 'on' as const, params: levels };
