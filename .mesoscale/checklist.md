@@ -17,6 +17,9 @@ Questions that stop the loop. One line each; move it to Decided with the answer.
   and defaults are dropped only where the person chose a theme (lane 4).
 - 2026-11-09: lane 4, M1: a theme, By entity or Reset that would clear a color look reaching beyond the selection is
   refused with no step, naming the look (kept as built).
+- 2026-11-09: lane 6: a model edit runs as a Mol\* task in the status pill with Cancel (prism.md), not only in Built by.
+- 2026-11-09: lane 5: Undo keeps the camera still; clicking the shown view re-applies its camera; Update camera on a
+  semantic view writes a numeric camera (with fov, transition); a failed show redraws the previous view.
 - 2026-11-09: the semantic levels and MesoLocation draft merged into `me/mesoviewspec` before David's review.
 
 ## Lanes
@@ -69,17 +72,32 @@ Each lane: brief committed · steps · checks green · gate (reviewer, skeptic, 
 - [ ] Ludo's check by hand (the gestures clicked in the tree and menus; Claude's check called the operations)
 - [x] merged into `me/mesoviewspec` (`4b9d4cd1c`), on Ludo's go-ahead after the Import colors fix
 
-### Small lane: MesoLocation `kind` (after lane 4)
+### `mvs-location`: MesoLocation `kind` ([progress](../apps/prism-me/progress/2026-11-09-mvs-location.md))
 
-- [ ] brief (mesoql.md "MesoLocation as a union", only `copy` built)
+- [x] brief (mesoql.md "MesoLocation as a union", only `copy` built)
+- [x] built (Sonnet), checks green (base failures only)
+- [x] gate: reviewer (Opus); the story's `loci.size` fixed, `lociToLocations` dropped
+- [x] merged into `me/mesoviewspec` (`29d95d6c5`); no app change to check
 
-### 5. `mvs-views` (after lane 4)
+### 5. `mvs-views` ([progress](../apps/prism-me/progress/2026-11-09-mvs-views.md)), port 1359
 
-- [ ] brief · steps · checks · gate · Ludo's check · merged
+- [x] brief committed
+- [x] steps 1–4 (Opus; ~850 lines vs ~400)
+- [x] checks green (base failures only)
+- [x] checked in the app through the API (β-cell): all pass but Open with (no view named) fails; camera moves not
+      verifiable (hidden pane)
+- [ ] gate: reviewer and skeptic done; fixes running (Open with, labels on stream commits, camera in a frame test,
+      Ludo's four decisions)
+- [ ] Ludo's check by hand · merged (before 6)
 
-### 6. `mvs-model-edits` (after lane 4, parallel with 5)
+### 6. `mvs-model-edits` ([progress](../apps/prism-me/progress/2026-11-09-mvs-model-edits.md)), port 1368
 
-- [ ] brief · steps · checks · gate · Ludo's check · merged
+- [x] brief committed
+- [x] steps 1–2 (Sonnet)
+- [x] checks green (base failures only)
+- [x] checked in the app through the API (exosome): count, seed, relax, refused count, Cancel, Undo all pass
+- [ ] gate: reviewer and skeptic done; fixes running (status pill task, yield, fields, abort guard, cancel test)
+- [ ] Ludo's check by hand · merged (after 5)
 
 ### 7. `mvs-agent` (after 4, 5 and `mvs-skill-cli`)
 

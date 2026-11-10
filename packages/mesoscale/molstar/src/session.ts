@@ -77,6 +77,11 @@ export class MesoSession {
   readonly streamer: TileStreamer | undefined;
   /** A stream step is queued and has not started: loads that settle meanwhile join it. */
   private streamQueued = false;
+  /**
+   * The view shown (a person's pick, prism.md §4.4); none, or one the document lacks: its own (`session.view`, else the
+   * first). Every derivation (an edit, a stream step, a restore) takes it, so nothing snaps back to the document's.
+   */
+  view: string | undefined;
 
   constructor(
     doc: MesoViewSpecDoc,
@@ -117,14 +122,36 @@ export class MesoSession {
   }
 
   /**
+   * Shows a view (prism.md §4.4): the same document, its view derived again over the same IR and drawn. The view is
+   * taken when the step's turn comes, so an edit queued before it derives with the view shown then. A draw that fails
+   * midway draws the IR before it again (Ludo, 2026-11-09; best effort: a second failure is let go), so the screen
+   * agrees with the session's view.
+   */
+  show(view: string | undefined): Promise<EditRecord> {
+    return this.queue(async () => {
+      const was = this.view;
+      this.view = view;
+      try {
+        return await this.run('view', this.doc, `view ${view ?? '(the document’s)'}`);
+      } catch (e) {
+        this.view = was;
+        if (this.ir) await this.adapter?.commit(this.ir).catch(() => {});
+        throw e;
+      }
+    });
+  }
+
+  /**
    * A restore (Undo, Redo, a session opened): the document compiled with the cache and taken as the one drawn, with no
    * commit; the caller's adapter adopts the IR from the restored state (prism.md §7.3, point 5). From a state Undo can
-   * reach every model is a cache hit; from a session on a fresh page, a cold resolution.
+   * reach every model is a cache hit; from a session on a fresh page, a cold resolution. `view` is the view shown with
+   * the restored state (prism.md §7.4).
    */
-  restore(doc: MesoViewSpecDoc): Promise<EditRecord> {
+  restore(doc: MesoViewSpecDoc, view: string | undefined): Promise<EditRecord> {
     return this.queue(async () => {
       const t0 = performance.now();
-      const r = await compile(doc, { ...this.options, cache: this.cache });
+      this.view = view;
+      const r = await compile(doc, { ...this.options, cache: this.cache, view });
       this.doc = doc;
       this.ir = r.ir;
       this.counts = r.counts;
@@ -136,6 +163,27 @@ export class MesoSession {
         resolverRuns: r.stats.resolverRuns,
         cacheHits: r.stats.cacheHits,
         compileMs: r.stats.ms,
+        totalMs: performance.now() - t0,
+      };
+      this.history.push(record);
+      return record;
+    });
+  }
+
+  /**
+   * A restore of the same document with another view shown (Undo past a view shown, prism.md §7.4): its view derived
+   * again over the IR, nothing compiled, nothing committed (the caller's adapter adopts it).
+   */
+  restoreView(view: string | undefined): Promise<EditRecord> {
+    return this.queue(async () => {
+      const t0 = performance.now();
+      this.view = view;
+      if (this.ir) this.ir = updateView(this.doc, this.ir, view);
+      const record: EditRecord = {
+        label: 'restore',
+        kind: 'restore',
+        resolverRuns: 0,
+        cacheHits: 0,
         totalMs: performance.now() - t0,
       };
       this.history.push(record);
@@ -163,7 +211,7 @@ export class MesoSession {
     const s = this.streamer?.step(ir);
     // `issues` are all the stream's standing ones (a model edit rebuilds the session's issues), `fresh` the new ones
     return {
-      ir: s ? updateView(doc, s.ir) : ir,
+      ir: s ? updateView(doc, s.ir, this.view) : ir,
       issues: this.streamer?.issues() ?? [],
       fresh: s?.issues ?? [],
       stream: this.streamRecord(s?.plan),
@@ -238,13 +286,13 @@ export class MesoSession {
     let record: EditRecord;
     if (kind === 'none') record = { label, kind, resolverRuns: 0, cacheHits: 0, totalMs: 0 };
     else if (kind === 'view' && this.ir) {
-      const { ir, issues, stream } = this.stream(next, updateView(next, this.ir));
+      const { ir, issues, stream } = this.stream(next, updateView(next, this.ir, this.view));
       const commit = await this.draw(ir);
       this.ir = ir;
       this.issues = [...this.issues.filter(kept), ...issues, ...(commit?.issues ?? [])];
       record = { label, kind, resolverRuns: 0, cacheHits: 0, commit, totalMs: performance.now() - t0, stream };
     } else {
-      const r = await compile(next, { ...this.options, ...run, cache: this.cache });
+      const r = await compile(next, { ...this.options, ...run, cache: this.cache, view: this.view });
       const streamed = r.ir ? this.stream(next, r.ir) : undefined;
       const ir = streamed?.ir;
       const commit = ir ? await this.draw(ir) : undefined;

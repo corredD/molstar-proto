@@ -10,13 +10,16 @@ import { tiledFixture } from '@molstar/meso-spec/examples';
 import type { MesoViewSpecDoc } from '@molstar/meso-spec/format';
 import { type IR, placementSets } from '@molstar/meso-spec/ir';
 import { DefaultResolvers } from '@molstar/meso-spec/resolvers';
-import type { CommitReport, RendererAdapter } from '@molstar/meso-spec/runtime';
+import { type CommitReport, type RendererAdapter, shownViewOf } from '@molstar/meso-spec/runtime';
 import { createMesoscaleExplorerSpec } from '@molstar/prism-me-app/spec';
 import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
 import type { PrismViewer } from '@molstar/prism-viewer/viewer';
 import { afterEach, describe, expect, it } from 'vitest';
 import { PrismMesoAdapter } from '../prism-adapter.js';
 import { MesoSession } from '../session.js';
+import { stubCanvasForLabels } from './canvas.js';
+
+stubCanvasForLabels();
 
 // Streaming through the real Prism viewer (design.md §6.8.7, headless): a session over the fixture's provider plays the
 // tour. What it proves: each step commits only the tiles that arrived and left, a tile kept keeps its list, the resident
@@ -32,8 +35,10 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const isTile = (key: string) => key.startsWith('m.tiles@');
 const tiles = (ir: IR) => placementSets(ir).filter((s) => s.model === 'm.tiles');
 
-async function open() {
-  const { doc, provider } = tiledFixture({ delayMs: 4 });
+async function open(change: (d: MesoViewSpecDoc) => MesoViewSpecDoc = (d) => d) {
+  const fixture = tiledFixture({ delayMs: 4 });
+  const doc = change(fixture.doc);
+  const provider = fixture.provider;
   const v = await createPrismViewerHeadless({ spec: createMesoscaleExplorerSpec('') });
   viewers.push(v);
   const prism = new PrismMesoAdapter(v);
@@ -139,6 +144,40 @@ describe('a streamed session over the Prism adapter (headless)', () => {
     expect(removed.length).toBe(1);
     expect(tiles(s.ir!).map((x) => x.key)).toEqual(keys);
     keys.forEach((k, i) => expect(prism.listObject(k)).toBe(lists[i]));
+  });
+
+  it('a tile arrival neither moves an annotation’s label nor adds a History step', { tags: ['medium'] }, async () => {
+    // an annotation on a streamed population, in the view shown
+    const { v, s, settle, commits, prism } = await open((d) => {
+      const shown = shownViewOf(d)!.id;
+      return {
+        ...d,
+        views: d.views!.map((x) =>
+          x.id === shown ? { ...x, annotations: [{ id: 'an.a', target: '(population p.a)', text: 'A' }] } : x,
+        ),
+      };
+    });
+    const label = () =>
+      [...v.plugin.state.data.cells.values()]
+        .map((c) => c.transform.params as { node?: string; position?: ArrayLike<number> } | undefined)
+        .filter((p) => p?.node === 'md:#an:an.a')
+        .map((p) => Array.from(p!.position ?? []));
+    // the opening step draws the label inside a step, as the owner does
+    await prism.bound(v.api, () => s.start());
+    const at = label();
+    expect(at.length).toBe(1);
+    const labels: string[] = [];
+    const sub = v.api.events.started.subscribe((r) => {
+      if (r.operation === 'stage.label') labels.push(r.operation);
+    });
+    const n = commits.length;
+    await settle();
+    sub.unsubscribe();
+    // tiles arrived (stream commits); the label stayed where level 0 put it, and no stage.label ran (a History step of
+    // its own: a stream commit is in no run)
+    expect(commits.slice(n).some((c) => c.report.added.some(isTile))).toBe(true);
+    expect(label()).toEqual(at);
+    expect(labels).toEqual([]);
   });
 
   it('a view edit that is a color adds and removes no tile', { tags: ['medium'] }, async () => {

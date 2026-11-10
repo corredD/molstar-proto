@@ -72,6 +72,15 @@ the model and Cancel stops it (one step, rolled back), and the edit is a task in
 there whatever row is picked; a value the document would refuse is said under the field, which shows the document's
 value again.
 
+Last under the document, its **Views** row (lane `mvs-views`, prism.md §4.4) lists its views, then its tours. The view
+shown says "shown", the one the saved file opens with "opens with"; a view's description is its tooltip. A click on a
+view shows it: its camera and its looks, no History step (Undo shows again the view noted with the scene it restores). A
+key's move picks the row only. A double click shows a view or plays a tour. A playing tour says where it is ("2 of 3"),
+its caption as its tooltip. The Views row's ⋯: New view from here. A view's ⋯: Show this view, Update camera (the shown
+view's), Open with this view, New view from here. A tour's ⋯: Play the tour, or Stop the tour. The eye, Color… and Show
+only of a document row write the view shown. A document row's ⋯ also has Add a label: an annotation of the view shown,
+drawn as a label in 3D while that view is shown, saved in the document (one step).
+
 A model's groups follow its Group by (§4), a model's own choice: compartments (the dotted names' tree) by default when
 it has some, else functions; switching remakes that model's rows only. A group row stands for its entities (their ids),
 so its eye, Look, Clips and picks are the same under both groupings. A label made at a group the model's grouping does

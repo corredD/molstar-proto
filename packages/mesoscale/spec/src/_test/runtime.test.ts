@@ -10,7 +10,7 @@ import { placementSets } from '../ir/ir.js';
 import { contentHash } from '../ir/hash.js';
 import { BytesPerPlacement, placementBytes, rotateVec } from '../ir/placements.js';
 import { planCommit } from '../runtime/adapter.js';
-import { classifyEdit, compile, defaultColor, updateView } from '../runtime/runtime.js';
+import { classifyEdit, compile, defaultColor, shownViewOf, updateView } from '../runtime/runtime.js';
 import { DefaultResolvers } from '../resolvers/index.js';
 import type { Resolver } from '../runtime/resolver.js';
 import { compileExosome, countingResolvers, editPopulation, exosomeOptions, recolor } from './helpers.js';
@@ -281,6 +281,23 @@ describe('views', () => {
       .sort();
     expect(hinted).toEqual(['p.catalase', 'p.catalase.observed']);
     expect(ir.view.camera?.position).toEqual([0, 0, 1600]);
+  });
+  // prism.md §4.4: the view a person picked is shown without changing the document (`session.view` stays)
+  it('updateView and compile take the view shown; an id the document lacks falls back to session.view, then the first', async () => {
+    const doc = exosomeDoc();
+    const r = await compileExosome(doc);
+    const first = doc.views![0].id;
+    expect(r.ir!.view.id).toBe(first);
+    const lumen = updateView(doc, r.ir!, 'v.lumen');
+    expect(lumen.root).toBe(r.ir!.root);
+    expect(lumen.view.id).toBe('v.lumen');
+    expect(lumen.view).toEqual(updateView({ ...doc, session: { view: 'v.lumen' } }, r.ir!).view);
+    expect(updateView(doc, r.ir!, 'v.gone').view.id).toBe(first);
+    expect(updateView({ ...doc, session: { view: 'v.lumen' } }, r.ir!, 'v.gone').view.id).toBe('v.lumen');
+    const compiled = await compileExosome(doc, { view: 'v.lumen' });
+    expect(compiled.ir!.view).toEqual(lumen.view);
+    expect(shownViewOf(doc, 'v.near-picks')?.id).toBe('v.near-picks');
+    expect(shownViewOf({ ...doc, views: [] }, 'v.lumen')).toBeUndefined();
   });
   // review gate R12: tours and metadata are session state, not scene
   it('a tour or title edit is a view edit, and updateView carries the new title', async () => {
