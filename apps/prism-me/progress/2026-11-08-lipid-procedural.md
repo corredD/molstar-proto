@@ -1393,3 +1393,90 @@ lacks takes the other leaflet's conformers mirrored through the centre). **Confl
   parts state `api.mesoscale.membranePartsState(ref)` beside `membraneSpeciesState`); the eye through `setEyes` (one
   `api.group`), the colour through `colorItems`' part case. Tests as `tree-eyes.test.tsx` (an eye one step, one undo;
   the colour dot) and `lipid-membrane.test.ts`.
+
+## Round 7, the gate (2026-11-09; on the merge's resolutions and the lane's commits after da59ff832)
+
+Reviewer (Opus, read only) on `git show --remerge-diff b0f6c2e64` and the lane's commits; skeptic (Opus) re-ran or
+re-read each: 9 confirmed (one in part), 0 refuted, 2 new. The merge's port: checked item by item, no finding.
+
+| Finding                                                                  | Skeptic                        | Test (fails first) | Fix                           |
+| ------------------------------------------------------------------------ | ------------------------------ | ------------------ | ----------------------------- |
+| M1 `mixTable` reorders a cached table's elements in place                | confirmed, must-fix (latent)   | `b405e6ecf`        | `bf6236da0` (copies)          |
+| S1 a borrowed species levelled to its own height (item 1's pop again)    | confirmed, should-fix (latent) | `b405e6ecf`        | `bf6236da0` (levelled as one) |
+| X2 a second call scrambles again                                         | new, confirmed                 | `b405e6ecf`        | `bf6236da0`                   |
+| S2 the culler's `setLiveCount` allocates a view where a live count moves | confirmed, pre-existing (nit)  |                    | open (TODO)                   |
+| S3 TODO's stale 80 B                                                     | confirmed, nit                 |                    | `412f4cb6b`                   |
+| N1 escaped backticks in a comment                                        | confirmed, nit                 |                    | `412f4cb6b`                   |
+| N2 the spec lacks the writer's `cpuWrites` contract                      | partly, nit                    |                    | `412f4cb6b`                   |
+| N3 a mirrored conformer is the enantiomer                                | confirmed, nit                 |                    | `bf6236da0` (180° about x)    |
+| N4 the heap sort's time not measured                                     | confirmed, nit                 |                    | open (TODO)                   |
+| D1 the design's part colour would turn By zoom off                       | confirmed, should-fix (design) |                    | `a8dee4473` (design)          |
+| X1 a species with no members dealt to member 0                           | new, plausible                 |                    | `bf6236da0` (throws)          |
+
+## Round 7, checks (2026-11-09, after the gate)
+
+`npx tsc -b`, `npx tsc --noEmit -p apps/prism-me`, `pnpm lint`, `pnpm format:check`, `pnpm check:workspace` (after
+removing five stale `lib/` outputs of files the merge deleted), prism-me `styles:check` and `typecheck:storybook`: pass.
+Quick lane with Dawn: graphics 160 files, 1,894 passed (99 skipped); mesoscale, cryoet, stage-tools, prism-me 82 files,
+569 passed (4 skipped); medium mesoscale with Dawn 4 passed (item 1's zoom test passes after the merge). Plugin-headless
+with Dawn: 186 passed, two inherited failures (`webgpu-points` "picks a ring point", failing alone too here;
+`webgpu-device-listener` SIGSEGV), as on origin/prism-me; `webgpu-gpu-culling`'s 4 skips are `it.skip`, the same on
+origin/prism-me. Mesoscale `test:perf`: 15.62 B a view against 15.6 (after `test:perf` and `test:scaling` were moved to
+`@molstar/test-harness`: master moved the harness and neither started). `test:scaling`: 19 of 20 passed; the worker of
+`color-levels.scaling.ts` (not the lane's) was killed (SIGKILL) twice while the machine's load reached 150–180 (another
+session): to rerun at rest.
+
+## Round 7, end (2026-11-09; stopped for context)
+
+**Built.** The merge of origin/prism-me (master v6 #2069) with the lane's graphics ported onto master's culler, and its
+follow-ups (a CPU write tells a pool to write its dead slots again, per segment; a replaced writer is written; the
+harness move). Item 5: 15.6 B a view (from 95.6). Item 1 (option B, before): its test passes after the merge. Item 4:
+the slab is in the meshes' frame, nothing to fix. Item 3: the mixes and the mix tables, tested, **not wired** into a
+membrane. Item 2: **not built** (the design above).
+
+**Decided.** Conflicts by the measurement's publication date (PM sterol 27.5 %, van 't Klooster 2020); a cut leaflet per
+(part, leaflet) on the part's own triangles (changes round 6's one candidate list into a budget share per pool); a
+part's colour tints its surfaces and its far level, By zoom kept.
+
+**Learned.** Master's culler serves both views from one rows buffer: a GPU writer's dead slots must be in it, and any
+CPU write of placeholders undoes them. `coarseLevelOrder` levels in place: anything built from cached tables copies
+first.
+
+**Size.** About 330 production lines against ~650 (the merge's port ~150, item 5 ~30, mixes ~200 minus wiring); the
+merge took the room: items 2 (~200) and 3's wiring (~150) remain.
+
+**Next (precise).** (1) `buildMembraneSteps` cutter path with parts: a `CutLeaflet` per (part, leaflet) on
+`indices.subarray`, `regionOf.subarray`, its table by `mixOf(part.name)`
+(`mixTable(own, other, standIns(mix.outer|inner, mix.plasma), seed)`, the LD's inner none). (2) `procedural.ts`: a
+shared `PartVisibility` (tree, `enclosedBy`) computed once a frustum, each part selection reading its bit;
+`poolCapacities` over all leaflets; update `lipid-cell.test.ts`'s budget case openly; measure wrap time and RSS on the
+yeast meshes and the PM's and a mito's capacities. (3) Far surfaces per cut leaflet from its table. (4) Item 2 as
+designed (`hiddenParts`, `partColors`, `mesoscale.style { parts }`, rows `mp:${ref}:${name}`, tests as
+`tree-eyes.test.tsx`). (5) r7 images (`lipid-tiles-shots/r7/`): the PM outside and inside across the switch, the mito
+IM's cardiolipin, the LD's one leaflet, the slab over the meshes. (6) Gate on that diff; then the PR body below gets
+items 2 and 3's lines.
+
+## PR body (draft; rounds 4 to 7)
+
+**What.** Lipid membranes made per view on the GPU (prism-me's Mesoscale Explorer): a mesh or the yeast cell's nine
+membranes wrapped with lipids cut from a CHARMM-GUI patch where they are seen, a textured far surface past them, one
+budget across membranes; master v6 #2069 merged in.
+
+**Changes.** Rounds 4–6 as in the round 4–6 draft above. Round 7: the merge of origin/prism-me, the lane's GPU instance
+writer, live counts, dead slots, per-level scales and patch texture ported onto master's culler (`CulledData`,
+compaction by index); a CPU write of placeholder rows tells a pool's writer (`GpuInstanceTarget.cpuWrites`, per
+segment); a replaced writer re-syncs; the coarse sphere level shows the finer one's top view (item 1, option B); the
+selection's keys sorted in place (15.6 B a view, from 95.6); the yeast membranes' lipid mixes (data; not wired yet).
+
+**Notes for review.** Graphics changes in a library package (`merged-culler.ts`, `cell-cull.wgsl.ts`, `mesh.wgsl.ts`,
+`mesh.ts`): the writer contract (`GpuInstanceWriter`, `merged-render-objects.md`). The patch texture is WebGPU only
+(listed in `shader-parity.test.ts`). The mixes' sources and the conflict rule in the progress file. Open: items 2 and
+3's wiring, the cow's thin-part strokes, the TODO items.
+
+**Testing.** Quick and medium lanes with Dawn (graphics, mesoscale, cryoet, stage-tools, prism-me, plugin-headless: two
+inherited failures), `test:perf` (15.6 B), `test:scaling` (19/20, one killed under load, not the lane's); the slab's
+frame by a Node script over the BinaryCIF decoder.
+
+**Review.** The round 7 table above.
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
