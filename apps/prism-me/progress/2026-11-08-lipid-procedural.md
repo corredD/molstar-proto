@@ -1624,3 +1624,46 @@ far-only colour, an edges fast path, the UI, and parity gaps.
 
 **Defaults taken by the coordinator (Ludo may change):** tiles get the atom level (not left at species); the element
 scheme offers `carbon-species`; `style`'s one colour keeps setting the far colour too.
+
+## Round 7, item 6: built (2026-11-09)
+
+**Commits** (from 72f8647b7): e3b5ff994 the tests first (failing); e412d4766 the tiles' atom level and the stale comments;
+83360a32c `colorLevels {far}`; 65c1d4eaa `atomColors` through `colorLevels {atoms}` (and `elementColor(code, scheme,
+species)`, `graphicsState` gives `far` and `atomColors`); dfed4e45f the edges fast path (`onlyColorEdges`,
+`setColorEdges`, `patchLevels`; also run at a build's end); a821c96db `mesoscale.theme` on a membrane (the gap was
+real: "There is no object to color"); fcd57780a the chain clamp; a967a1936 the UI (`ZoomColors {membrane}`, Look's Far
+and Atoms); 61e16cb84 specs (ui.md §4, features.md, color-levels.md, the changelog).
+
+**Red before, green after.** Dawn (`lipid-colors.webgpu.test.ts`, a describe of its own, both methods): far blue via
+`{far}` ("Unknown value 'far'"); species in the middle and atoms close (tiles: close `heads 0, green 1`); each control
+its level, one step (the species step a guard, green on HEAD; far and atoms red on their param); edges without a rebuild
+("object 0 kept" false). Quick (`lipid-membrane.test.ts`): far, atoms ("Unknown value"), the clamp ("The edges go
+entity < chain < atom"), the theme ("no object"); `elementColor` per scheme added with its fix. `lipid-parts`: a part's
+colour keeps the species level (a guard, green on HEAD). UI (`zoom-colors.test.tsx`): timed out waiting for the Species
+edge, then green.
+
+**Deviations from the design.**
+- The close view at default edges: an atom must be over 40.7 px, so within ~13 Å of the camera; from above only the
+  heads are that close, the carbons lie 1.5–16 Å under them at the species level. So "close" asserts P/O > 0.1 (over
+  the heads, 120 px) and the carbon grey > 0.3 is read from a fourth view, `tails`, along the mid-plane among the tails.
+- The middle view at 6 px an atom (not ~0.8): a patch surface's level is per fragment, its foreshortened limbs go far;
+  closer, the surface fills the view. A membrane's chain level is its species', so 6 px is still the species.
+- "Each control its level" checks the levels each control must keep, not all: a species' colour also changes the atoms
+  deeper than the close view's first ones (they are at the species level).
+- `far` does not turn the levels on or off: given alone it writes `color` only.
+- Not done: the clip-plane close test (optional in the design); a species' right-click Color… (exists through
+  `membraneSpecies`); a Storybook story for the membrane's Look.
+
+**Checks.** `tsc -b`, `tsc -p apps/prism-me`, lint, check:workspace, styles:check (prism-me, mesoscale),
+typecheck:storybook, quick lane with Dawn (cryoet 138, stage-tools 58, prism-me 208 pass; mesoscale 190 pass, 1 fail),
+mesoscale test:perf: pass. Inherited, not item 6: `lipid-procedural.test.ts:56` (`poolCapacities` expectation from
+before round 7's water-filling: `[[69,207],[275]]` vs `[[55,165],[330]]`, fails alone too) and format:check on
+`import-colors.scaling.ts` and this progress file (neither touched by item 6's code commits).
+
+**Size.** ~242 production lines added (membrane.ts 108, operations.ts 93, properties.tsx 27, controls.tsx 14) against
+~170: the theme's membrane plan (~38, conditional in the brief) and the comments took the room.
+
+**Ludo checks on 1354.** Wrap a sphere (either method), select it, Look › By zoom: edges Species and Atoms (no Chain),
+Far and Atoms below. Far a colour: only the far view changes. Zoom in on a tiles membrane: atoms by element. Atoms ›
+Carbons by species: tails take the species' colours. Drag Species or Atoms: no rebuild (instant). The Meshes category's
+Color… now colours the membrane.
