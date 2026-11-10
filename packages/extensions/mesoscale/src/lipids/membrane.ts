@@ -2203,6 +2203,16 @@ async function shapeMesh(
   return { positions, indices: geometry.indexBuffer.ref.value.slice(0, geometry.triangleCount! * 3) } as TriMesh;
 }
 
+/**
+ * A mesh's name, a part's: its shape's label (a representation given, as the explorer's rows are, is labelled by its
+ * provider's data, `Mesh` for every OBJ-made shape: round 9 found the yeast cell's parts all named so in the app)
+ */
+function meshName(state: State, ref: string) {
+  const cell = state.cells.get(ref);
+  const shape = cell?.transform.transformer === ShapeRepresentation3D ? state.cells.get(cell.transform.parent) : cell;
+  return shape?.obj?.label ?? cell?.obj?.label ?? ref;
+}
+
 /** Whether lipid membranes can be drawn here: WebGPU with GPU culling (not WebGL2) */
 export function canDrawLipidMembranes(plugin: PluginContext) {
   const graphics = plugin.canvas3d?.graphics;
@@ -2234,7 +2244,7 @@ export const LipidMembrane = PluginStateTransform.BuiltIn({
           if (!m) throw new Error(`No mesh at ${ref}.`);
           meshes.push(m);
         }
-        const names = params.meshes.map((ref) => plugin.state.data.cells.get(ref)?.obj?.label ?? ref);
+        const names = params.meshes.map((ref) => meshName(plugin.state.data, ref));
         ({ mesh, parts } = concatMeshes(meshes, names));
       } else if (params.mesh) {
         mesh = await shapeMesh(plugin, params.mesh, runtime);

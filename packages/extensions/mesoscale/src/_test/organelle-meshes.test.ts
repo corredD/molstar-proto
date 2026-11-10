@@ -93,6 +93,23 @@ describe('organelle meshes (the yeast cell viewer’s organelle_meshes.bin)', ()
     for (const ref of refs) expect(plugin.state.data.cells.get(ref)!.state.isHidden).toBe(true);
   });
 
+  it('names each part by its shape when given its representation, as the explorer’s rows are (round 9)', async () => {
+    const base = DefaultPrismViewerSpec();
+    const v = await createPrismViewerHeadless({
+      spec: { ...base, extensions: [...(base.extensions ?? []), MesoscaleExtension] },
+    });
+    viewers.push(v);
+    const plugin = v.plugin;
+    const data = await plugin.builders.data.rawData({ data: two(), label: 'organelle_meshes.bin' });
+    await OrganelleMeshesProvider.visuals!(plugin, await OrganelleMeshesProvider.parse(plugin, data));
+    const reps = plugin.state.data.selectQ((q) => q.ofType(SO.Shape.Representation3D)).map((c) => c.transform.ref);
+    const r = await v.api.mesoscale!.wrapMembrane({ meshes: reps.join(','), patch: 'organelle-patch' });
+    if (!r.ok) expect.fail(r.error.message);
+    const cell = plugin.state.data.cells.get(r.changed!.nodes![0])!;
+    const source = (cell.obj!.data as { sourceData: { parts?: { name: string }[] } }).sourceData;
+    expect(source.parts!.map((p) => p.name)).toEqual(['PM', 'VAC']);
+  });
+
   it('shows, hides and colours each part with a particle list’s operations: one step each, the cut kept (round 7)', async () => {
     const base = DefaultPrismViewerSpec();
     const v = await createPrismViewerHeadless({
