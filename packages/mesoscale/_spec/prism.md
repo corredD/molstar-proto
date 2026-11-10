@@ -232,6 +232,15 @@ For a document row, the sections of ui.md §4 that apply, and three of its own:
   the format has no `description` on an entity, and evidence is where the document keeps why it says what it says.
 - **Built by**: the model that realizes the population, its resolver, its key, cached or not, its time, its issues
   (requested, achieved, the reason: [runtime.md](runtime.md)). The model edits of §12, lane `mvs-model-edits`, go here.
+  **As built (`mvs-model-edits`):** on a population row, three controls, each a patch through `mesoviewspec.edit` (one
+  step, only the models whose projection changed resolve again): **Copies asked for** (`abundance.count` of the
+  population; shown only for a population given by a count: a density or a concentration is the document's to change),
+  **Seed** (the `seed` of the model that built it, 1 when it states none) and **Add relax stage** (inserts a
+  `meso.relax` model that refines the model, `m.relax`; offered when the model has no refiner and is not itself a relax
+  stage). The patches are `countPatch`, `seedPatch` and `relaxPatch` (`meso-molstar`, `model-edits.ts`); a value the
+  document would refuse (a count below 0 or not whole, a second refiner) is said under the field and nothing is sent.
+  While the edit resolves the status names the model (`Resolving m.recipe (1 of 3)…`) with **Cancel**; Cancel aborts the
+  run's signal (§7.2), the step is rolled back and the field says so.
 - **Issues**, on the document's row: the session's issues by phase (`static`, `resolve`, `render`), each with its path.
   A `render` issue is what the adapter could not draw (a partial look, a cutaway, a structure hint).
 
@@ -474,7 +483,12 @@ Prism's one history (sequence.md §7.3) holds every step; the document is part o
 - **Not steps**: `.view` (no undo, §4.4), `.tour.*`, `.focus`, `.highlight` (view); `.get` (read); `.save` (no undo); a
   patch that changes nothing ("it is already so").
 - **A model edit is one step however long its resolution**: the checkpoint is taken when it opens; a failed or cancelled
-  resolution restores it (nothing half-drawn).
+  resolution restores it (nothing half-drawn). **As built (`mvs-model-edits`):** the run's `AbortSignal` (Prism's: the
+  one `api.run(id, values, { signal })` takes, `ctx.signal` in an operation) goes through `MesoDocumentModel.edit` and
+  `MesoSession.edit` to `compile` (`RuntimeOptions.signal`); an abort throws before anything is committed, the operation
+  fails as `aborted` and Prism rolls the step back, as it does a failed commit. No Mol* `Task` is involved: Prism's run
+  already owns the signal and the rollback. `RuntimeOptions.onProgress` is told before each model that has to resolve;
+  the owner passes it on (`resolving`, `progress`, `api.mesoviewspec.progressState()`).
 
 ### 7.3 Lists and checkpoints: the contract
 

@@ -58,6 +58,13 @@ reproducibility and failures. The concepts and terms are in [README.md](README.m
    - A model that avoids a refined model avoids what is drawn: it runs after the refiner and its key follows the
      refiner's. A refiner keeps the `avoid` of every model up its chain, instances included.
    - Constraints are checked against `achieved`, and each shortfall becomes an issue with the resolver's reason.
+   - **Stopping** (`options.signal`, an `AbortSignal`): checked before each model and, for the resolvers that run long
+     (`meso.pack`, `cellpack-gpu`, `meso.relax`), in their loops, which give the event loop back every 30 ms when a
+     signal is given (`runtime/cancel.ts`, `drive`; with no signal they run straight through, synchronously, as before).
+     A stopped compile rejects with an `AbortError` and keeps nothing half-resolved (what finished is the cache's); an
+     abort in a resolver is never filed as `resolver.failed`. The signal rides on `ResolveJob`, not in the projected
+     input, so it is not part of a model's key. `options.onProgress` is told, before each model that has to resolve,
+     which one and how many are done of how many.
 5. **Assemble** the IR, then **derive the view** from the active view.
 
 ## The resolver contract (`runtime/resolver.ts`)
