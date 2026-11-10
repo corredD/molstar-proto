@@ -248,4 +248,64 @@ describe('the patch texture surface', () => {
       if (hidden.array[o] > 0 && hidden.array[o + 1] === 0 && hidden.array[o + 2] === 0) red += 1;
     expect(red).toBe(0);
   });
+  it('carries the heads’ height in alpha: the top over each texel, normalised over [lo, hi] (round 8 §1)', () => {
+    const table = cutterTable(leaflets.outer, 2);
+    const top = { atoms: table.members.map((m) => m.positions), radii: table.members.map(() => 1.5) };
+    for (const side of ['outer', 'inner'] as const) {
+      const t = side === 'outer' ? table : cutterTable(leaflets.inner, 2);
+      const tp = side === 'outer' ? top : { atoms: t.members.map((m) => m.positions), radii: t.members.map(() => 1.5) };
+      const raster = patchRaster(
+        t,
+        () => true,
+        side,
+        () => 0xffffff,
+        tp,
+      );
+      expect(raster.hi).toBeGreaterThan(raster.lo);
+      expect(raster.hi - raster.lo).toBeLessThanOrEqual(12 + 1e-6);
+      expect(raster.mean!).toBeGreaterThanOrEqual(raster.lo);
+      expect(raster.mean!).toBeLessThanOrEqual(raster.hi);
+      // brute force at a sample of texels: the highest sphere top over the texel's center, periodic
+      const [bx, by] = t.box;
+      const n = raster.width;
+      const cell = (bx / n) * (1 + 1e-6);
+      const f = side === 'outer' ? 1 : -1;
+      let worst = 0;
+      let covered = 0;
+      expect(raster.height, side).toBe(Math.ceil(by / cell));
+      // the raster's period: its cells (a box not a whole number of texels wraps at ny cells, as `topGrid` does)
+      const px = n * cell;
+      const py = raster.height * cell;
+      for (let k = 0; k < n * raster.height; k += 97) {
+        const i = k % n;
+        const j = Math.floor(k / n);
+        const x = (i + 0.5) * cell;
+        const y = (j + 0.5) * cell;
+        let h = -Infinity;
+        for (let m = 0; m < t.members.length; ++m) {
+          const atoms = tp.atoms[m];
+          const r = tp.radii[m];
+          for (let l = t.memberStart[m]; l < t.memberStart[m + 1]; ++l) {
+            const c = t.lipids[l * 4 + 2];
+            const s = t.lipids[l * 4 + 3];
+            for (let a = 0; a < atoms.length; a += 3) {
+              const ax = t.lipids[l * 4] + c * atoms[a] - s * atoms[a + 1];
+              const ay = t.lipids[l * 4 + 1] + s * atoms[a] + c * atoms[a + 1];
+              let dx = Math.abs(ax - x) % px;
+              let dy = Math.abs(ay - y) % py;
+              dx = Math.min(dx, px - dx);
+              dy = Math.min(dy, py - dy);
+              const d = r * r - dx * dx - dy * dy;
+              if (d >= 0) h = Math.max(h, f * atoms[a + 2] + Math.sqrt(d));
+            }
+          }
+        }
+        const want = h === -Infinity ? 0 : Math.min(1, Math.max(0, (h - raster.lo) / (raster.hi - raster.lo)));
+        if (h !== -Infinity) covered += 1;
+        worst = Math.max(worst, Math.abs(raster.array[k * 4 + 3] / 255 - want));
+      }
+      expect(covered, side).toBeGreaterThan(100);
+      expect(worst, side).toBeLessThanOrEqual(1 / 255 + 1e-6);
+    }
+  });
 });

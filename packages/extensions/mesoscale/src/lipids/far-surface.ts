@@ -453,14 +453,20 @@ export function patchSurface(mesh: TriMesh, regions: CutterRegions, side: 'outer
   return { positions, normals, groups, indices, shifts };
 }
 
+/** The heads' relief kept in a patch texture's alpha, Å: deeper gaps between them clamp to its floor (round 8 §1) */
+export const HeightSpan = 12;
+
 /** A patch texture's texels a side: a lipid's spacing (~8 Å) about 13 texels on the CHARMM-GUI patch (154 Å) */
 export const PatchTexels = 256;
 
 /**
  * The patch seen from its leaflet's side, a periodic RGBA texture (`PatchTexels` square over the box): each texel the
  * species of the highest sphere of the switch's level over it (`topGrid`; its nearest head where none), its colour
- * shaded by that sphere's height (the heads' bumps); a hidden species' texels the nearest shown head's. With the mean
- * height of the tops (the surface's height)
+ * shaded by that sphere's height (the heads' bumps; flat with `shade` off, as the shells and parallax light the relief
+ * themselves); a hidden species' texels the nearest shown head's. Its alpha the heads' height (round 8 §1): the top over
+ * the texel normalised over [lo, hi], lo = max(the lowest top, hi − `HeightSpan`), 0 where no sphere covers it; mipmaps
+ * average it toward the mean far away. With the mean height of the tops (the surface's height) and lo, hi (Å, from the
+ * bilayer's center out of the leaflet)
  */
 export function patchRaster(
   table: CutterTable,
@@ -468,30 +474,34 @@ export function patchRaster(
   side: 'outer' | 'inner',
   colorOf: (species: number) => number,
   top: SwitchSpheres,
+  shade = true,
 ) {
   const n = PatchTexels;
   const cell = (table.box[0] / n) * (1 + 1e-6);
   const g = headGrid(table, shown, cell);
   const heights = new Float32Array(g.nx * g.ny);
   const mean = topGrid(table, shown, side, g, top, heights);
-  let lo = Infinity;
+  let min = Infinity;
   let hi = -Infinity;
   for (const h of heights) {
     if (h === -Infinity) continue;
-    lo = Math.min(lo, h);
+    min = Math.min(min, h);
     hi = Math.max(hi, h);
   }
+  if (hi === -Infinity) min = hi = 0;
+  const lo = Math.max(min, hi - HeightSpan);
   const array = new Uint8Array(g.nx * g.ny * 4);
   for (let k = 0; k < g.nx * g.ny; ++k) {
     const sp = g.grid[k];
     const c = sp < 0 ? 0x808080 : colorOf(sp);
     const h = heights[k];
+    const a = h === -Infinity || !(hi > lo) ? 0 : Math.min(1, Math.max(0, (h - lo) / (hi - lo)));
     // lit from above: the tops bright, the gaps between spheres darker
-    const shade = h === -Infinity || !(hi > lo) ? 0.6 : 0.65 + 0.35 * ((h - lo) / (hi - lo));
-    array[k * 4] = Math.round(((c >> 16) & 255) * shade);
-    array[k * 4 + 1] = Math.round(((c >> 8) & 255) * shade);
-    array[k * 4 + 2] = Math.round((c & 255) * shade);
-    array[k * 4 + 3] = 255;
+    const light = !shade ? 1 : h === -Infinity || !(hi > min) ? 0.6 : 0.65 + 0.35 * ((h - min) / (hi - min));
+    array[k * 4] = Math.round(((c >> 16) & 255) * light);
+    array[k * 4 + 1] = Math.round(((c >> 8) & 255) * light);
+    array[k * 4 + 2] = Math.round((c & 255) * light);
+    array[k * 4 + 3] = Math.round(a * 255);
   }
-  return { array, width: g.nx, height: g.ny, mean };
+  return { array, width: g.nx, height: g.ny, mean, lo, hi };
 }
