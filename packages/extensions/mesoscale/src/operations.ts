@@ -1283,6 +1283,37 @@ export class MesoscaleApi extends ApiArea {
       for (let i = 0; i < refs.length; i++) {
         const o = byRef.get(refs[i]);
         const mine = one ?? palette[i];
+        const membrane = o ? undefined : membraneCell(ctx, refs[i]);
+        if (membrane) {
+          // a lipid membrane (a Meshes category's row; round 7 item 6): its species as entities, its own colour as an
+          // object's, its levels on By zoom (as `mesoscale.style`, `colors` and `colorLevels` write them)
+          const old = membrane.transform.params as LipidMembraneProps;
+          const names = membraneSpecies((membrane.obj!.data as { sourceData: MembraneData }).sourceData);
+          if (theme === 'chain') return doesNotTake(membrane.obj?.label ?? refs[i], label);
+          const generated =
+            theme === 'generate'
+              ? generateColors({ path: '', label: '', groups: [], entities: names.map((_, k) => k) })
+              : undefined;
+          const next: LipidMembraneProps =
+            theme === 'zoom'
+              ? {
+                  ...old,
+                  colorLevels: {
+                    name: 'on',
+                    params: old.colorLevels.name === 'on' ? old.colorLevels.params : ColorLevels.defaults,
+                  },
+                }
+              : {
+                  ...old,
+                  color: theme === 'entity' || theme === 'generate' ? objectColor(old, true, null) : mine,
+                  speciesColors:
+                    theme === 'entity'
+                      ? {}
+                      : Object.fromEntries(names.map((n, k) => [n, generated ? generated.get(k)! : mine])),
+                };
+          plans.push({ kind: 'membrane', cell: membrane, next });
+          continue;
+        }
         if (!o) {
           // not a structure, a list or a volume: a mesh, as cryoet lists them (by id, read once), else nothing changes
           meshRefs ??= await meshesOf(ctx);
@@ -1399,6 +1430,12 @@ export class MesoscaleApi extends ApiArea {
         nodes.push(w.r.transform.ref);
         changed.add(w.o.cell.transform.ref);
       }
+      for (const p of plans) {
+        if (p.kind !== 'membrane' || JSON.stringify(p.next) === JSON.stringify(p.cell.transform.params)) continue;
+        b.to(p.cell).update(p.next);
+        nodes.push(p.cell.transform.ref);
+        changed.add(p.cell.transform.ref);
+      }
       const looks = plans.flatMap((p) =>
         (p.kind === 'reps' || p.kind === 'look') && p.look?.length
           ? [{ particles: p.o.cell.transform.ref, layers: p.look }]
@@ -1482,6 +1519,7 @@ type ObjectsTheme = (typeof ObjectsThemes)[number][0];
 
 /** What `mesoscale.theme` does to one object */
 type ThemePlan =
+  | { readonly kind: 'membrane'; readonly cell: StateObjectCell; readonly next: LipidMembraneProps }
   | {
       readonly kind: 'reps';
       readonly o: GraphicsObject;
