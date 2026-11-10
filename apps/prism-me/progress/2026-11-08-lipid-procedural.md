@@ -1995,6 +1995,9 @@ webgpu-device-listener did not show. mesoscale test:perf pass (the cut band's se
 21 of 22: `color-levels.scaling.ts` (not touched by the lane) killed by SIGKILL twice, alone too, its worker ~4.9 GB
 then falling, the machine's load at 50-155 (other processes); as in round 8's build: to rerun on a quiet machine.
 
+**After the advisor's read.** S5 follow-up: `onlyMiddle` takes spheresPx and atomsPx under a middle look (`c2a8eb939`
+failing, `e59faf9ce`). The stride-8 pop with a clip, measured (above, open). The S3 claims reworded as measured.
+
 **Next (for the coordinator).** Rerun `color-levels.scaling.ts` alone on a quiet machine. Ludo on 1354: a cut through
 the yeast cell and x600 under Parallax (Add clip…, then a drag), and Middle / Atoms down to switched with and without a
 clip; then the default middle look is his pick.
@@ -2031,7 +2034,9 @@ cross-section shows lipids under either.
 - Numbers (900 × 600, Dawn, M1): the S3 table above. Parallax within 1 ms of coarse or under it everywhere but yeast
   ring 450 Å unclipped (79 vs 70 ms); the cut band at 450 Å takes 13 k (x600) and 72 k (yeast) lipids against coarse's
   93 k and 143 k. Test 4 has no frame bound (one look a run, ±1-2 ms noise at 256²).
-- Open: a face-on cut's sliver between the leaflets, X2, N1, N2, N6 (TODO); the default middle look (Ludo).
+- Open, looking great with a cut: with any clip, every cut member keeps its sphere levels (the band needs them), so a
+  zoom away from the cut pops by 0.041 at 6.7 px (0.023 without a clip; a local probe, not kept): TODO. Also a face-on
+  cut's sliver between the leaflets, X2, N1, N2, N6 (TODO); the default middle look (Ludo).
 
 **Testing.** As the checks above; Dawn tests 3 (outside and inside), 5 (the ring, a drag), the S2 switch, the march
 guard; the measurement `lipid-measure.webgpu.test.ts` (opt-in, heavy) on the yeast cell and x600.

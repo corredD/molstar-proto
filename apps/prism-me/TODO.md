@@ -124,6 +124,11 @@ maintainer first (2026-10-25). All are v6 (master); the MRC reader and the parti
     (`updateGPUData`, the draw order of the objects). Then the band's clip, tests 3-6 for shells; `membraneDetail`
     refuses `middle: shells` and a shells count until then. The shell band's stack and cap (256 nodes, 65,536 triangles;
     the design's 256 k) drop past them silently (gate N6). The default middle look is Ludo's pick.
+  - Parallax with a clip (round 8 gate, measured): every cut member keeps its sphere levels while a clip exists (the cut
+    band needs them), so away from the cut the lipids the hysteresis keeps under 8.8 px show the stride-8 level again: a
+    zoom with a clip far from the path pops by 0.041 at 6.7 px (0.023 without the clip, same probe). A fix: the band's
+    lipids in members of their own (levels on), the rest atoms-only; or the selection keeping no unit below the stride-1
+    px outside the band.
   - Parallax (round 8 gate): the near surface takes the flat raster under a relief but not the profile normal (X2); a
     face-on cut (k ≈ 1) shows a sliver between the leaflets past the cut band (the middle look has nothing between them
     there); no grazing scale of the gradients (N1); test 6 asserts no frame at rest only through the selection (N2). A
