@@ -58,8 +58,9 @@ import {
   wholeTriangles,
 } from './procedural.js';
 import { enclosures, type TrianglePart, triangleTree } from './triangle-tree.js';
+import { createMembraneViews, showPartSurfaces } from './views.js';
 import { type MembraneMix, mixOf, mixTable, standIns } from './mixes.js';
-import type { GpuInstanceView, GpuInstanceWriter } from '@molstar/graphics/gl/renderable/merged-culler';
+import type { GpuInstanceWriter } from '@molstar/graphics/gl/renderable/merged-culler';
 import { farTriangles, icosphere, isotropicRemeshSteps, offsetSurface, type TriMesh } from './remesh.js';
 import { bakeTileSetSteps, type Tile, type TileSet } from './tiles.js';
 
@@ -984,8 +985,8 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
   let cutLipids = 0;
   /** per cut leaflet its selection of a view (`procedural.ts`) */
   let selections: LipidSelection[] = [];
-  /** the selections' views (`selectFor`) */
-  const selectionStats = { selects: 0, regenerations: 0 };
+  /** the selections' views (`views.selectFor`) and the pools' regenerations */
+  const selectionStats = { regenerations: 0 };
   let props = PD.getDefaultValues(LipidMembraneReprParams);
   const state = Representation.createState();
   let groupCount = 0;
@@ -1002,10 +1003,7 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
   let visibility: PartVisibility | undefined;
   /** each part surface visible where the membrane is and its part is shown */
   function showParts() {
-    for (const { object, part } of partSurfaces) {
-      const visible = state.visible && (!visibility || visibility.shown[part] === 1);
-      if (object.state.visible !== visible) Object.assign(object.state, { visible });
-    }
+    showPartSurfaces(partSurfaces, state.visible, visibility);
   }
   /** the colours by zoom's edges on every drawn object: members, merged objects, patch surfaces (round 7 item 6) */
   function setColorEdges() {
@@ -1065,7 +1063,7 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
     cutters = [];
     visibility = undefined;
     selections = [];
-    selectedViews = new WeakMap();
+    views.reset();
     fading = [];
     patches = [];
   }
@@ -1173,7 +1171,7 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
       return write(compute, target);
     }) as GpuInstanceWriter;
     writer.view = (compute, target, view) => {
-      selectFor(selection, view, size);
+      views.selectFor(selection, view, size);
       if (written === selection.version) return undefined;
       written = selection.version;
       selectionStats.regenerations += 1;
@@ -1182,51 +1180,23 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
     return writer;
   }
 
-  /** the view each selection selected for last: its planes and scales (32 numbers) */
-  // weak: a new look's build makes new selections, the old ones let go with their writers (review M2)
-  let selectedViews = new WeakMap<LipidSelection, Float64Array>();
-  /** each selection's last view's CPU time, ms (`pool`) */
-  const selectTimes = new WeakMap<LipidSelection, number>();
-  /** `selection` for `view`, once a view (its members' hooks share it) */
-  function selectFor(selection: LipidSelection, view: GpuInstanceView, size: number) {
-    let key = selectedViews.get(selection);
-    if (!key) {
-      key = new Float64Array(32).fill(NaN);
-      selectedViews.set(selection, key);
-    }
-    let same = key[28] === view.lod.depthScale && key[29] === view.lod.pixelSize;
-    // the surfaces' fade follows the size on screen only (a resize, a camera's projection), not every move
-    if (!same) {
-      lastLod.depthScale = view.lod.depthScale;
-      lastLod.pixelSize = view.lod.pixelSize;
+  /** each selection once a view, the surfaces faded and the parts shown around them (`views.ts`) */
+  const views = createMembraneViews({
+    fade: (depthScale, pixelSize) => {
+      lastLod.depthScale = depthScale;
+      lastLod.pixelSize = pixelSize;
       const enter = enterPx(props.far, props.atomsPx, props.spheresPx);
-      for (const f of fading) fadeSurface(f.values, f.size, enter, f.near, lastLod.depthScale, lastLod.pixelSize);
-    }
-    for (let i = 0; i < 7; ++i) {
-      const { normal, constant } = i < 6 ? view.frustum[i as 0] : view.cameraPlane;
-      const o = i * 4;
-      if (key[o] !== normal[0] || key[o + 1] !== normal[1] || key[o + 2] !== normal[2] || key[o + 3] !== constant) {
-        same = false;
-        key[o] = normal[0];
-        key[o + 1] = normal[1];
-        key[o + 2] = normal[2];
-        key[o + 3] = constant;
-      }
-    }
-    if (same) return;
-    key[28] = view.lod.depthScale;
-    key[29] = view.lod.pixelSize;
-    selectionStats.selects += 1;
-    selectionParams.lipidSize = size;
-    selectionParams.enterPx = builtFor?.method === 'cutter' ? enterPx(props.far, props.atomsPx, props.spheresPx) : 0;
-    // a clip shows the leaflet behind and the far side: every unit then
-    selectionParams.facing = props.clip.objects.length > 0 ? 0 : FacingMargin;
-    const t0 = performance.now();
-    selection.select(view.cameraPlane, view.frustum, view.lod.depthScale, view.lod.pixelSize, selectionParams);
-    showParts();
-    // timed here, not in the selection: its view step allocates nothing (review S3)
-    selectTimes.set(selection, performance.now() - t0);
-  }
+      for (const f of fading) fadeSurface(f.values, f.size, enter, f.near, depthScale, pixelSize);
+    },
+    showParts,
+    params: (size) => {
+      selectionParams.lipidSize = size;
+      selectionParams.enterPx = builtFor?.method === 'cutter' ? enterPx(props.far, props.atomsPx, props.spheresPx) : 0;
+      // a clip shows the leaflet behind and the far side: every unit then
+      selectionParams.facing = props.clip.objects.length > 0 ? 0 : FacingMargin;
+      return selectionParams;
+    },
+  });
   const selectionParams = { lipidSize: 8, enterPx: 2, keep: Keep, facing: FacingMargin };
 
   /** the data the GPU's cutters and assigners were made for: a new look of the same data reuses them (review S5) */
@@ -1587,7 +1557,7 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
           // a clip shows the leaflet behind (`facing` off): where clips come or go the next view selects anew (review M4;
           // a still camera too: the culler's clip change calls the view hooks again, `syncClip`)
           if (before.clip.objects.length > 0 !== props.clip.objects.length > 0) {
-            selectedViews = new WeakMap();
+            views.reset();
             for (const sel of selections) sel.reset();
           }
         } else if (lastData && builtFor === lastData && onlyColorEdges(before, props)) {
@@ -1651,10 +1621,10 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
         for (const n of s.live) live += n;
         triangles += s.count;
         inView += s.inView;
-        selectMs += selectTimes.get(s) ?? 0;
+        selectMs += views.times.get(s) ?? 0;
       }
       // `triangles`: the units taken (a whole triangle or a cell, round 5); `selectMs` the last selection's CPU time
-      return { live, triangles, inView, selectMs, ...selectionStats };
+      return { live, triangles, inView, selectMs, selects: views.stats.selects, ...selectionStats };
     },
   });
   return repr as typeof repr & {
