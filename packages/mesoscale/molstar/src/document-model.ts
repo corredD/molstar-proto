@@ -22,7 +22,15 @@ import {
   type PatchNode,
   printData,
 } from '@molstar/meso-spec/format';
-import { evaluateMesoQL, lociSphere, type MesoLoci, type PlacementType } from '@molstar/meso-spec/ir';
+import {
+  evaluateMesoQL,
+  intersectRuns,
+  lociSphere,
+  type MesoLoci,
+  type PlacementType,
+  subtractRuns,
+  unionRuns,
+} from '@molstar/meso-spec/ir';
 import { DefaultResolvers } from '@molstar/meso-spec/resolvers';
 import { classifyEdit, type ResolveOutput, type Resolver } from '@molstar/meso-spec/runtime';
 import { Particle, type ParticleList } from '@molstar/model/model/particles/particle-list';
@@ -253,12 +261,21 @@ export class MesoDocumentModel {
    * The patch a style makes (prism.md §5.1, §5.3: `mesoscale.style`, colors, imports): on the shown view, one look
    * `l.style.<n>` an address. A style look of the same address is set and moved last (later looks win), else one is
    * inserted last; `null` removes a field (a color back to the default); `reset` removes the look. The eyes', Show
-   * only's and the author's looks are never touched. No view: `v.prism` is inserted. Undefined when nothing changes.
+   * only's and the author's looks are never touched. No view: `v.prism` is inserted. No patch when nothing changes.
+   *
+   * A color back to the default, or a reset, reaches the style looks at other addresses too (§5.1: theme sets "the
+   * looks' color to null"): a look whose copies all lie within the change's (a population's look, under a theme over
+   * its list) loses its color or goes. A look that also reaches other copies (a compartment's, under one list's theme)
+   * is left as it is and named in `blocked`: clearing it would change copies the person did not pick.
    */
-  stylePatch(styles: readonly { readonly select: string; readonly change: LookChange }[]): Patch | undefined {
+  stylePatch(styles: readonly { readonly select: string; readonly change: LookChange }[]): {
+    readonly patch?: Patch;
+    readonly blocked: readonly string[];
+  } {
     const doc = this.doc;
-    if (!doc) return undefined;
-    return lookPatch(doc, (looks, next) => {
+    const blocked: string[] = [];
+    if (!doc) return { blocked };
+    const patch = lookPatch(doc, (looks, next) => {
       const ops: Op[] = [];
       const add: Look[] = [];
       const mine = new Map<string, Look>();
@@ -266,6 +283,7 @@ export class MesoDocumentModel {
       // one change an address: the last given wins
       const bySelect = new Map<string, LookChange>();
       for (const s of styles) bySelect.set(s.select, { ...bySelect.get(s.select), ...s.change });
+      this.clearOthers(mine, bySelect, ops, blocked);
       for (const [select, change] of bySelect) {
         const had = mine.get(select);
         if (change.reset) {
@@ -291,6 +309,61 @@ export class MesoDocumentModel {
       }
       return { ops, add };
     });
+    return blocked.length ? { blocked } : { patch, blocked };
+  }
+
+  /**
+   * The style looks at other addresses a clear reaches (`stylePatch`): those within the cleared copies lose their color
+   * (or go, when nothing else is left) or, under a reset, go; those reaching beyond are `blocked`.
+   */
+  private clearOthers(
+    mine: ReadonlyMap<string, Look>,
+    bySelect: ReadonlyMap<string, LookChange>,
+    ops: Op[],
+    blocked: string[],
+  ) {
+    const cleared = (test: (c: LookChange) => boolean) => {
+      const selects = [...bySelect].filter(([, c]) => test(c)).map(([s]) => s);
+      if (!selects.length) return undefined;
+      const all = new Map<string, number[]>();
+      for (const s of selects)
+        for (const [set, runs] of this.mesoLoci(s) ?? []) all.set(set, unionRuns(all.get(set) ?? [], runs));
+      return all;
+    };
+    const resets = cleared((c) => !!c.reset);
+    const colors = cleared((c) => !c.reset && c.color === null);
+    if (!resets && !colors) return;
+    for (const [select, look] of mine) {
+      if (bySelect.has(select) || !look.id) continue;
+      const reaches = (by: ReadonlyMap<string, readonly number[]> | undefined) => {
+        if (!by) return 'none' as const;
+        const loci = this.mesoLoci(select);
+        if (!loci) return 'none' as const;
+        let some = false;
+        let beyond = false;
+        for (const [set, runs] of loci) {
+          const within = by.get(set) ?? [];
+          if (intersectRuns(runs, within).length) some = true;
+          if (subtractRuns(runs, within).length) beyond = true;
+        }
+        return !some ? ('none' as const) : beyond ? ('beyond' as const) : ('within' as const);
+      };
+      const r = reaches(resets);
+      if (r === 'within') {
+        ops.push({ op: 'remove', id: look.id });
+        continue;
+      }
+      if (r === 'beyond') {
+        blocked.push(select);
+        continue;
+      }
+      if (look.color === undefined) continue;
+      const c = reaches(colors);
+      if (c === 'beyond') blocked.push(select);
+      if (c !== 'within') continue;
+      const left = LookFields.filter((k) => k !== 'color' && (look as unknown as Record<string, unknown>)[k] !== undefined);
+      ops.push(left.length ? { op: 'set', id: look.id, fields: { color: null } } : { op: 'remove', id: look.id });
+    }
   }
 
   /** Whether the shown view has Show-only looks (Show all again is offered). */

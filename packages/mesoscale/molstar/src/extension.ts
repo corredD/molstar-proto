@@ -27,7 +27,7 @@ import { cssColor } from '@molstar/mesoscale-extension/color-file';
 import { registerParticleListOwner } from '@molstar/mesoscale-extension/owner';
 import { Color } from '@molstar/core/util/color';
 import { MesoDocumentModel } from './document-model.js';
-import { DocumentListOwner } from './list-owner.js';
+import { blockedResult, DocumentListOwner } from './list-owner.js';
 import { documentVisible, type DocumentGroupBy, type DocumentLooks, type DocumentOutline } from './document-tree.js';
 import { openAddresses } from './prism-viewer.js';
 
@@ -312,7 +312,9 @@ export class MesoViewSpecApi extends ApiArea {
           'Give a color, defaultColor, visible, transparency or emissive.',
         );
       }
-      return this.applyLooks(this.model.stylePatch([{ select: select.trim(), change }]), ctx.api, 'style');
+      const { patch, blocked } = this.model.stylePatch([{ select: select.trim(), change }]);
+      if (blocked.length) return blockedResult(blocked);
+      return this.applyLooks(patch, ctx.api, 'style');
     },
   });
 

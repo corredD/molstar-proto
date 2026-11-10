@@ -46,7 +46,8 @@ export class DocumentListOwner implements ParticleListOwner {
         if (select) styles.push({ select, change: lookChange(look.change) });
       }
     }
-    const patch = this.model.stylePatch(styles);
+    const { patch, blocked } = this.model.stylePatch(styles);
+    if (blocked.length) return blockedResult(blocked);
     if (!patch) return ApiResult.already('They already look so.');
     let step: Awaited<ReturnType<MesoDocumentModel['edit']>>;
     try {
@@ -186,6 +187,15 @@ function entityLabels(doc: MesoViewSpecDoc) {
   for (const e of [...(doc.superstructures ?? []).flatMap((s) => s.entities ?? []), ...doc.entities])
     out.set(e.id, e.label);
   return out;
+}
+
+/** A clear refused (`stylePatch`'s `blocked`): the looks that reach beyond what was picked, and the way out. */
+export function blockedResult(blocked: readonly string[]) {
+  return ApiResult.fail(
+    'invalid',
+    `The look on ${blocked.join(', ')} styles more than these, so it was left as it is; nothing changed.`,
+    'Change it on its own row (Color… › Default color, or Reset), or over every list it reaches.',
+  );
 }
 
 /** The port's change as a look's: a color as `#rrggbb`. */

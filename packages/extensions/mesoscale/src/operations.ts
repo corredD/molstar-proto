@@ -325,13 +325,9 @@ export class MesoscaleApi extends ApiArea {
             {
               entities: ids,
               ...(group.trim() && !entities.trim() ? { group: group.trim() } : {}),
+              // theme: the colors back to the default; an owner clears its looks within these entities too
               change: { color: uniform ?? null },
             },
-            // the theme's colors back on an owned list: each entity's own look too (an owner keeps a look an
-            // address, so a look of one entity is not the one of them all)
-            ...(scheme === 'theme' && ownerOf(ctx, l)
-              ? ids.map((id) => ({ entities: [id], change: { color: null } }))
-              : []),
           ];
       const changed = await writeLooks(ctx, l, looks, 'colors');
       if (isFailure(changed)) return changed;
@@ -747,9 +743,8 @@ export class MesoscaleApi extends ApiArea {
             const looks: OwnedLookEdit[] = generated
               ? ids.map((id) => ({ entities: [id], change: { color: generated.get(id) ?? null } }))
               : [
+                  // By entity: the colors back to the default (the owner clears its looks within these entities)
                   { entities: ids, change: { color: theme === 'entity' ? null : mine } },
-                  // By entity: each entity's own look back to its default color too
-                  ...(theme === 'entity' ? ids.map((id) => ({ entities: [id], change: { color: null } })) : []),
                 ];
             plans.push({ kind: 'owned', o, owner, looks });
             continue;
