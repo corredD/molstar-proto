@@ -112,8 +112,15 @@ function toolsOfSpec(spec: PrismViewerSpec): {
   return { core: withChange(CoreTools, spec.agent?.core), skills: [...own, ...extensions] };
 }
 
+/** What the extensions of the spec say of their own state each turn, in order (`ViewerExtension.agentState`). */
+function statesOfSpec(spec: PrismViewerSpec) {
+  if (spec.agent === false) return [];
+  return (spec.extensions ?? []).flatMap((e) => (isLazyExtension(e) ? e.stub.agentState : e.agentState) ?? []);
+}
+
 export function createViewerAgent<M extends ModelChoice = ModelChoice>(o: ViewerAgentOptions<M>): ViewerAgent<M> {
   const { viewer } = o;
+  const states = statesOfSpec(viewer.spec);
   let current: string | undefined;
   let last: string | undefined;
   const agentViewer: AgentViewer = {
@@ -251,7 +258,17 @@ export function createViewerAgent<M extends ModelChoice = ModelChoice>(o: Viewer
         {
           prompt: request,
           // Each turn the components' level (agent.md §5); get_scene says more when asked.
-          state: api.account.outline(undefined, 'components'),
+          state: [
+            api.account.outline(undefined, 'components'),
+            // An extension that fails to say its state leaves the turn without it, not without a turn.
+            ...states.flatMap((say) => {
+              try {
+                return say(viewer.api) || [];
+              } catch {
+                return [];
+              }
+            }),
+          ].join('\n'),
           focus,
           ...(said.length ? { notes: said } : {}),
           ...(model ? { model } : {}),

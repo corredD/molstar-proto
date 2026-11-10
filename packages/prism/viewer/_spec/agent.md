@@ -86,6 +86,8 @@ with (`agent/policies.ts`, the tool's `approvedBy`).
 - **State**: the scene tree's outline (`account.outline`): each turn at `components` level (structures, components with
   representations and atoms in a line, volumes, measurements; at most `StateLines` = 24 lines, the rest via
   `get_scene`); `get_scene` takes `summary`, `components` or `full` (default: representations and hidden rows too).
+- **An extension's state** (`ViewerExtension.agentState`, a lazy one's in its stub): lines of its own after the scene's,
+  text from data `quoted()`; none while it has nothing to say (a document not open). One that throws is left out.
 - **Focus**: the selection's and the focus's summaries (`account.focus`); the record keeps it with the turn.
 - **The person's notes**: their own changing runs since the agent's last turn, in the viewer's words, quoted.
 - **Repeated reads** of unchanged state are collapsed (`@molstar/ai`'s `RepeatedReads`).
