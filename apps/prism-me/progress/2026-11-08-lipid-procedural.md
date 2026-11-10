@@ -2099,3 +2099,58 @@ multiplier take it."
 
 Ludo, 2026-11-10, at the checkpoint: normalised multiply; the part dot recolours its mesh; atoms by element not tinted;
 the switch on by default. All as the design recommends.
+
+## Round 9: built (2026-11-10, builder)
+
+Built as the architect's design, with Ludo's decisions (normalised multiply, the part dot writes its mesh, atoms by
+element not tinted, the switch on by default).
+
+- **The state dependency** (`8f89649ac`): `wrapMembrane` adds each mesh's colour cell (`meshColorCell`: the
+  representation given, or its shape's first) to the given refs in `dependsOn` (a union: removal with the shape and a
+  shape's own update keep working). Probe 1 held: a representation's `coloring` update re-runs the membrane's `update`
+  in the same commit, the data kept (`organelle-meshes.test.ts`). The transformer computes `meshTints` in one pass and
+  gives them by `setMeshTints` before `createOrUpdate` (apply and update), never in params.
+- **The multiply**: `meshTint` (colour over its largest channel; grey, white, black, none: no tint) and a local `tint`
+  (Mol*'s `Color` has no multiply; no library change this round). Tinted: far colour, species colours (tColor,
+  tColorNear's species entries), the patch rasters, the surfaces' uColor, carbons under carbon-species; atoms by element
+  not. With the switch on and a mesh wrapped, `partColors` are left out (the mesh is the one source); off is round 7
+  exactly (measured: the arrays equal a build without tints).
+- **`createOrUpdate`**: a no-op path (the same data, the same look, the same tints: nothing, no version; a mesh's
+  opacity no longer rebuilds), and `onlyColors` (keys `color`, `speciesColors`, `partColors`, `meshColors`,
+  `atomColors`, or the tints alone) → `recolor`: each member's colour data again in place (`createColors` into its own
+  values, its levels' near and far), each surface's uColor, and only the leaflets whose colours changed rastered again
+  (a signature a leaflet: its tint and part colour; all where the membrane's or species' colours changed); a member
+  whose granularity flips (uniform ↔ group) builds. Probe 2 held: the merged spheres' parts (`SegmentedArray`) carry the
+  new member arrays and their versions advance (the merged object's `sync` on the repr's update), so the GPU gets them.
+- **Operations and app** (`74ee63ccd`): `mesoscale.style`/`mesoscale.colors` with `parts` write the parts' colours to
+  their meshes by `cryoet.mesh` (one data transaction with the part's eye, `Rollback` as the theme's) when the switch is
+  on, every part's mesh is one cryoet lists and cryoet is in the spec; else round 7's `partColors`. Part Reset and
+  `scheme: theme` keep round 7's behaviour (open). `mesoscale.colorLevels { meshColors }`; `graphicsState().meshColors`
+  only for a membrane with meshes; the Look's toggle "Colours from meshes" (story Explorer › Membrane ›
+  LookColoursFromMeshes). The explorer's part dot reads its mesh's colour. `mesoscale.theme` drops a membrane's own plan
+  when all its meshes are in the plan (not written twice).
+- **A found bug, fixed** (`b517e9b90`, its test failing first): the explorer wraps its mesh rows, representations,
+  labelled by their provider's data (`Mesh` for every OBJ-made shape), so Wrap all named the yeast cell's parts all
+  `Mesh`: a part's dot or eye could not name one. Parts are now named by their shape (`meshName`). A deviation from the
+  brief, needed for the dot to reach its mesh in the app.
+- **Scaling** (`4703c5383`): `lipid-tints.scaling.ts`, `meshTints` over P and 4P meshes (a fake state), with the
+  quadratic control. `recolor` is one pass over the painters and rasters already held (no lookup per item); it needs the
+  GPU, so it has no guard of its own (the Dawn test measures what it does, not its scaling).
+
+Tests: `lipid-tint.test.ts` (quick), `organelle-meshes.test.ts` (dependency, opacity no-op, names),
+`lipid-compartments.webgpu.test.ts` (Dawn: two parts tinted apart, no rebuild, only the changed leaflets rastered, the
+merged data synced, the same look no version, switch off = round 7, round 7's part colour, By zoom far tinted and atoms
+by element not, carbons by species tinted, a sphere unchanged, tiles tinted with their surface),
+`apps/prism-me/src/explorer/_test/membrane-mesh-colors.test.ts` (the dot through `cryoet.mesh`: one step, undo, the dot
+and tints follow; Generate one step; the switch one step and round 7 after; no switch for a sphere; the theme not
+twice). Quick lane mesoscale + prism-me: 57 files, 388 passed. Dawn `lipid-*.webgpu`: 9 files, 35 passed (lipid-measure
+is lane-tagged, not run). `test:perf`: the baseline unchanged (15.62/15.98/-0.02 B). Scaling: lipid-tints, theme pass.
+tsc (app, mesoscale), biome, prettier, `check.mjs`, `test-exports.mjs` pass. Not checked in the app (no browser run this
+round).
+
+Size: about 470 production lines added (about 400 net; membrane.ts +290, operations.ts +128, the app +51) against ~300:
+the room went to the live colour closures and raster records `recolor` needs, the operations' mesh path (`partMeshes`,
+`paintPartMeshes`, `tintedBy`), the naming fix, and comments.
+
+Open (TODO.md): a part's Reset and `scheme: theme` in mesh mode; without cryoet the dot's part colours are left out by
+the switch; saturated multiplies go dark; the raster's texels not read back; `tint` a candidate for core.
