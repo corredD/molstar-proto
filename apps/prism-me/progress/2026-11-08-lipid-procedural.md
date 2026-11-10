@@ -1938,3 +1938,8 @@ Look › Far: Both › Middle: Coarse or Parallax, and Atoms down to (11 px); fl
 
 Findings and verdicts: `~/prism-me-lanes/gate/r8-review.md`. Order: M2 (test 5 rewritten, failing) → M1 (the cut band
 in the selection) → S1 → S2 → S5, S6, M3, X1 → S4 → S3 → checks. Each fix test-first, one commit with its id.
+
+Done so far: M2 `e36090777` (test 5 failing: parallax 0.318 vs coarse 0.435, band 0.008 vs 0.229), M1 `93ff97566`
+(the cut band; 0.405 / 0.212), S1 `55cc3c3cc`, S2 `a6389f4ad` (test `7a…` failing first), S5 `89fceb004`, S6
+`8356b3c1b`, X1 `770eda784`, M3 `cf4e192af`. Next: S4 (march guard, inside run of test 3), S3 (yeast and x600
+numbers), nits X2 N5 N6, the checks, the PR body.
