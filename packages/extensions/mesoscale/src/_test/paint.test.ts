@@ -21,6 +21,7 @@ import {
   paintRotations,
 } from '../paint.js';
 import { cellpackLike } from './fixtures.js';
+import { FiberBankHelix, fiberUnitSites } from '../fiber-units.js';
 
 // The painted decorator's data (progress/2026-11-08-paint.md, Tests: decorator) and the copies' orientations.
 
@@ -330,7 +331,7 @@ describe('fibres by rise and twist (Round 3)', () => {
     expect(own.twist).toBeCloseTo(30, 3);
     expect(own.jitter).toBe(0);
     const given = { rise: 3.4, twist: 34.3, jitter: 0 };
-    expect(fiberSettingsOf(fibered, 2, 2, { 2: given })).toEqual({ ...given, axis: 'auto', offset: 0 });
+    expect(fiberSettingsOf(fibered, 2, 2, { 2: given })).toEqual({ ...given, axis: 'auto', offset: 0, bank: 'none' });
     const none = fiberSettingsOf(list, 1, 1);
     expect(none.twist).toBe(0);
     expect(none.rise).toBeGreaterThan(0);
@@ -392,5 +393,71 @@ describe('fibres by an axis and an offset (Round 4)', () => {
     const s = fiberSettingsOf(list, 1, 1);
     expect(s.axis).toBe('auto');
     expect(s.offset).toBe(0);
+  });
+});
+
+describe('fibres of a bank of units by a sequence (Round 5)', () => {
+  const dna = { 2: { ...FiberBankHelix, jitter: 0, axis: 'z' as const, offset: 0, bank: 'dna' as const } };
+  const rna = { 2: { ...FiberBankHelix, jitter: 0, axis: 'z' as const, offset: 0, bank: 'rna' as const } };
+  /** A path along z of `n` points a rise apart */
+  const path = (n: number) => [0, 0, 0, 0, 0, FiberBankHelix.rise * (n - 1)];
+  const nc = (over: Partial<PaintStroke> = {}) =>
+    stroke({ target: 2, entity: 2, fiber: true, positions: path(4), rotations: [], seed: 5, ...over });
+  /** The painted points' units (their targets' sites' labels), from the input's count on */
+  const unitsOf = (out: ReturnType<typeof paintParticles>, from: number) =>
+    Array.from(out.targets.slice(from)).map((t) => {
+      const target = out.targetMapping?.get(t);
+      return target?.kind === 'sites' ? target.sites.label : `target ${t}`;
+    });
+
+  it("puts a unit a point by the stroke's sequence: DNA's pair of each letter, the entity's own", () => {
+    const list = cellpackLike();
+    const out = paintParticles(list, [nc({ sequence: { residues: 'atgc' } })], dna);
+    expect(unitsOf(out, list.count)).toEqual(['dna:AT', 'dna:TA', 'dna:GC', 'dna:CG']);
+    for (let i = list.count; i < out.count; ++i) {
+      expect(out.targetInfo.get(out.targets[i])?.entity).toBe(2);
+      // the unit's own radius
+      expect(out.radii?.[i] ?? 1).toBeGreaterThan(0);
+    }
+    // the units are sites, the same objects every time
+    expect(out.targetMapping!.get(out.targets[list.count])).toEqual({ kind: 'sites', sites: fiberUnitSites('dna:AT') });
+    // the fibre's points still the entity's: its convention read from them
+    expect(out.fibers!.count).toBe(1);
+  });
+
+  it('repeats a shorter sequence, reads a range of it (1-based, inclusive), and RNA a nucleotide a letter', () => {
+    const list = cellpackLike();
+    const short = paintParticles(list, [nc({ positions: path(5), sequence: { residues: 'GA' } })], dna);
+    expect(unitsOf(short, list.count)).toEqual(['dna:GC', 'dna:AT', 'dna:GC', 'dna:AT', 'dna:GC']);
+    const range = paintParticles(list, [nc({ sequence: { residues: 'GGGAUCGGG', start: 4, end: 7 } })], rna);
+    expect(unitsOf(range, list.count)).toEqual(['rna:A', 'rna:U', 'rna:C', 'rna:G']);
+  });
+
+  it('picks the units at random without a sequence (and for a letter not in the bank), the same for the same seed', () => {
+    const list = cellpackLike();
+    const a = paintParticles(list, [nc({ positions: path(40) })], dna);
+    expect(unitsOf(paintParticles(list, [nc({ positions: path(40) })], dna), list.count)).toEqual(
+      unitsOf(a, list.count),
+    );
+    expect(new Set(unitsOf(a, list.count)).size).toBeGreaterThan(2);
+    const n = unitsOf(paintParticles(list, [nc({ sequence: { residues: 'ANA' } })], dna), list.count);
+    expect(n[0]).toBe('dna:AT');
+    expect(n[1]).toMatch(/^dna:/);
+    expect(n[2]).toBe('dna:AT');
+  });
+
+  it("keeps the list's targets as they are without a bank, and the same map again for the same units", () => {
+    const list = { ...cellpackLike(), targetMapping: new Map() };
+    expect(paintParticles(list, [nc()]).targetMapping).toBe(list.targetMapping);
+    const strokes = [nc({ sequence: { residues: 'AT' } })];
+    const one = paintParticles(list, strokes, dna);
+    expect(paintParticles(list, strokes, dna).targetMapping).toBe(one.targetMapping);
+    expect(paintParticles(list, strokes, dna).targetInfo).toBe(one.targetInfo);
+  });
+
+  it('paints the brush itself on a list without entities (its targets its entities: a unit would leave it)', () => {
+    const list = { ...cellpackLike(), entityInfo: undefined, targetInfo: new Map([[2, {}]]) };
+    const out = paintParticles(list, [nc({ sequence: { residues: 'AT' } })], dna);
+    expect(Array.from(out.targets.slice(list.count))).toEqual([2, 2, 2, 2]);
   });
 });

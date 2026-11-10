@@ -10,6 +10,7 @@ import { hash3 } from '@molstar/core/data/util/hash-functions';
 import { Clipping } from '@molstar/graphics/theme/clipping';
 import { Mat3, Mat4, Quat, Vec3 } from '@molstar/core/math/linear-algebra';
 import { PrincipalAxes } from '@molstar/core/math/linear-algebra/matrix/principal-axes';
+import { type FiberBank, FiberBankLetters, FiberUnitKeys, fiberUnitSites } from './fiber-units.js';
 import { type State, type StateObjectCell, StateTransformer } from '@molstar/core/state';
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
 import { CustomProperties } from '@molstar/model/model/custom-property';
@@ -45,6 +46,18 @@ export interface PaintStroke {
   readonly fiber?: boolean;
   /** A fibre's jitter's seed (Round 3, Decided 2): the same turns each time the fibre is made */
   readonly seed?: number;
+  /**
+   * A fibre's sequence (Round 5): with its entity's bank, point i the unit of letter `start + i` (1-based, `end`
+   * inclusive; the range repeated along a longer fibre). Absent: the bank's units at random (of the seed)
+   */
+  readonly sequence?: PaintSequence;
+}
+
+/** A fibre's sequence or a range of it (Round 5): one-letter codes, 1-based, `end` inclusive */
+export interface PaintSequence {
+  readonly residues: string;
+  readonly start?: number;
+  readonly end?: number;
 }
 
 /** The unit's own axis that follows a fibre's path (Round 4): `auto`, its fibres' axis, else its principal axis */
@@ -63,6 +76,8 @@ export interface FiberSettings {
   readonly jitter: number;
   readonly axis?: FiberAxis;
   readonly offset?: number;
+  /** Round 5: the units its painted fibres switch between by their sequences (`fiber-units.ts`); none without */
+  readonly bank?: FiberBank;
 }
 
 /** A brush's settings in effect: every one set */
@@ -95,10 +110,10 @@ export function fiberSettingsOf(
   given?: FiberSettingsMap,
 ): FiberSettingsIn {
   const set = given?.[id];
-  if (set) return { axis: 'auto', offset: 0, ...set };
+  if (set) return { axis: 'auto', offset: 0, bank: 'none', ...set };
   const c = fiberConventionOf(list, id);
-  if (c && c.step > 0) return { rise: c.step, twist: c.twist, jitter: 0, axis: 'auto', offset: 0 };
-  return { rise: 2 * targetRadius(list, target) || 10, twist: 0, jitter: 0, axis: 'auto', offset: 0 };
+  if (c && c.step > 0) return { rise: c.step, twist: c.twist, jitter: 0, axis: 'auto', offset: 0, bank: 'none' };
+  return { rise: 2 * targetRadius(list, target) || 10, twist: 0, jitter: 0, axis: 'auto', offset: 0, bank: 'none' };
 }
 
 /** Points every `step` along a path (x, y, z each), by arc length from its first point; the path itself for no step */
@@ -189,6 +204,7 @@ export function paintParticles(
   fibers?: FiberSettingsMap,
 ): ParticleList {
   const strokes = makeFibers(list, painted, fibers);
+  const units = withUnits(list, strokes);
   let added = 0;
   for (const s of strokes) added += Math.floor(s.positions.length / 3);
   if (!added) return list;
@@ -223,16 +239,17 @@ export function paintParticles(
     if (s.fiber && k >= 2) newFibers.push(at, k);
     const set = groups?.sets[groups.groupOfTarget.get(s.target) ?? -1];
     const radius = set && OrderedSet.size(set) ? list.radii![OrderedSet.start(set)] : 0;
+    const of = s.units ? units.idOf(s) : undefined;
     for (let j = 0; j < k; ++j, ++at) {
       keys[at] = ++maxKey;
-      targets[at] = s.target;
+      targets[at] = of ? of[j] : s.target;
       coordinates[at * 3] = s.positions[j * 3];
       coordinates[at * 3 + 1] = s.positions[j * 3 + 1];
       coordinates[at * 3 + 2] = s.positions[j * 3 + 2];
       for (let c = 0; c < 4; ++c) rotations[at * 4 + c] = s.rotations[j * 4 + c] ?? (c === 3 ? 1 : 0);
       if (entities) entities[at] = s.entity;
       if (compartments) compartments[at] = s.compartment;
-      if (radii) radii[at] = radius;
+      if (radii) radii[at] = of ? unitRadius(s.units![j]) : radius;
     }
   }
 
@@ -253,7 +270,9 @@ export function paintParticles(
     ...(radii ? { radii } : {}),
     ...(list.attributes ? { attributes: extendAttributes(list.attributes, n, count) } : {}),
     ...(newFibers.length ? { fibers: withFibers(list.fibers, newFibers) } : {}),
-    getParticleLabel: (i) => (i < n ? label(i) : `${name(i)} · painted ${i - n + 1}`),
+    targetMapping: units.targetMapping,
+    targetInfo: units.targetInfo,
+    getParticleLabel: (i) => (i < n ? label(i) : `${name(i)} · painted ${i - n + 1}${units.letterOf(i - n)}`),
     customProperties: new CustomProperties(),
     _propertyData: Object.create(null),
   };
@@ -263,7 +282,7 @@ export function paintParticles(
  * The strokes with each fibre stroke's points made (`makeFiber`) by its brush's settings (`fiberSettingsOf`) about its
  * brush's fibre axis (its own fibres', else its target's principal axis); the others as they are
  */
-function makeFibers(list: ParticleList, strokes: readonly PaintStroke[], given?: FiberSettingsMap): PaintStroke[] {
+function makeFibers(list: ParticleList, strokes: readonly PaintStroke[], given?: FiberSettingsMap): MadeStroke[] {
   const axes = new Map<number, Vec3>();
   return strokes.map((s) => {
     if (!s.fiber || s.positions.length < 6) return s;
@@ -273,8 +292,111 @@ function makeFibers(list: ParticleList, strokes: readonly PaintStroke[], given?:
       axis = fiberConventionOf(list, id)?.axis ?? principalAxisOf(list.targetMapping?.get(s.target));
       axes.set(id, axis);
     }
-    return { ...s, ...makeFiber(s.positions, fiberSettingsOf(list, id, s.target, given), axis, s.seed ?? 0) };
+    const settings = fiberSettingsOf(list, id, s.target, given);
+    const made = makeFiber(s.positions, settings, axis, s.seed ?? 0);
+    // a bank's units only where the brush is an entity (a list without: its targets are its brushes)
+    const bank = list.entityInfo?.size && settings.bank !== 'none' ? settings.bank : undefined;
+    return { ...s, ...made, ...(bank ? fiberUnits(bank, s.sequence, made.positions.length / 3, s.seed ?? 0) : {}) };
   });
+}
+
+/** A made stroke: a fibre's units a point (`fiberUnits`) and their letters */
+type MadeStroke = PaintStroke & { readonly units?: readonly string[]; readonly letters?: string };
+
+/**
+ * A fibre's `count` units of `bank` (Round 5): its sequence's letters from `start` to `end` (1-based, inclusive),
+ * repeated; a letter not in the bank, or no sequence, a unit at random (of the seed and the point)
+ */
+export function fiberUnits(
+  bank: Exclude<FiberBank, 'none'>,
+  sequence: PaintSequence | undefined,
+  count: number,
+  seed: number,
+): { units: string[]; letters: string } {
+  const table = FiberBankLetters[bank];
+  const keys = Object.keys(table);
+  const residues = sequence?.residues.replace(/\s+/g, '').toUpperCase() ?? '';
+  const from = Math.max(0, (sequence?.start ?? 1) - 1);
+  const to = Math.min(residues.length, sequence?.end ?? residues.length);
+  const range = residues.slice(from, Math.max(from, to));
+  const units: string[] = [];
+  let letters = '';
+  for (let i = 0; i < count; ++i) {
+    let letter = range ? range[i % range.length] : '';
+    if (!table[letter]) letter = keys[Math.min(keys.length - 1, Math.floor(paintRandom(seed, i, 5) * keys.length))];
+    units.push(table[letter]);
+    letters += letter;
+  }
+  return { units, letters };
+}
+
+/** A unit's radius: its sites' farthest reach from its origin (a painted point's, for the culling and the picking) */
+const unitRadii = new Map<string, number>();
+function unitRadius(key: string): number {
+  let r = unitRadii.get(key);
+  if (r !== undefined) return r;
+  const sites = fiberUnitSites(key);
+  r = 0;
+  if (sites) {
+    const p = sites.positions;
+    for (let i = 0; i < sites.count; ++i) {
+      r = Math.max(r, Math.hypot(p[i * 3], p[i * 3 + 1], p[i * 3 + 2]) + sites.radii[i]);
+    }
+  }
+  unitRadii.set(key, r);
+  return r;
+}
+
+/** The maps a list's painted units extend, by the input's maps and the units used (the same maps for the same) */
+const unitMaps = new WeakMap<
+  object,
+  { key: string; mapping: ParticleList['targetMapping']; info: ParticleList['targetInfo'] }
+>();
+
+/**
+ * The targets of the strokes' units (Round 5): a target a unit and an entity (`targetInfo` says a target's entity),
+ * its id after the list's largest, of the unit's place and the entity (stable: the same each time the list is made);
+ * the list's own maps without one, the same maps again for the same units
+ */
+function withUnits(list: ParticleList, strokes: readonly MadeStroke[]) {
+  const used = new Map<string, number>();
+  let base = 0;
+  for (const t of list.targetInfo.keys()) if (t >= base) base = t + 1;
+  if (list.targetMapping) for (const t of list.targetMapping.keys()) if (t >= base) base = t + 1;
+  const idOfUnit = (entity: number, key: string) => base + entity * FiberUnitKeys.length + FiberUnitKeys.indexOf(key);
+  for (const s of strokes) {
+    if (!s.units) continue;
+    for (const u of s.units) used.set(`${s.entity}:${u}`, idOfUnit(s.entity, u));
+  }
+  const offsets: number[] = [];
+  let at = 0;
+  for (const s of strokes) {
+    offsets.push(at);
+    at += Math.floor(s.positions.length / 3);
+  }
+  const letterOf = (i: number) => {
+    // a painted point's letter and its place in its fibre (`· A12`)
+    let k = 0;
+    while (k + 1 < offsets.length && offsets[k + 1] <= i) ++k;
+    const letters = strokes[k]?.letters;
+    const j = i - (offsets[k] ?? 0);
+    return letters ? ` · ${letters[j]}${(strokes[k].sequence?.start ?? 1) + j}` : '';
+  };
+  const idOf = (s: MadeStroke) => s.units!.map((u) => idOfUnit(s.entity, u));
+  if (!used.size) return { targetMapping: list.targetMapping, targetInfo: list.targetInfo, idOf, letterOf };
+  const key = [...used.keys()].sort().join(',');
+  const owner = (list.targetMapping ?? list.targetInfo) as object;
+  const kept = unitMaps.get(owner);
+  if (kept?.key === key) return { targetMapping: kept.mapping, targetInfo: kept.info, idOf, letterOf };
+  const mapping = new Map(list.targetMapping ?? []);
+  const info = new Map(list.targetInfo);
+  for (const [k, id] of used) {
+    const [entity, unit] = [Number(k.slice(0, k.indexOf(':'))), k.slice(k.indexOf(':') + 1)];
+    mapping.set(id, { kind: 'sites', sites: fiberUnitSites(unit)! });
+    info.set(id, { name: unit, entity });
+  }
+  unitMaps.set(owner, { key, mapping, info });
+  return { targetMapping: mapping, targetInfo: info, idOf, letterOf };
 }
 
 /** `fibers` (or none) with a polyline per (first, count) pair of `added` after them: its particles in order */

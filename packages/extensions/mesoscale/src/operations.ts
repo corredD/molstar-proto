@@ -51,6 +51,7 @@ import {
   principalAxisOf,
   toListFrame,
 } from './paint.js';
+import { FiberBankHelix, FiberBanks } from './fiber-units.js';
 import {
   findGroup,
   generateColors,
@@ -661,16 +662,31 @@ export class MesoscaleApi extends ApiArea {
             '(mesoscale.fiber; absent: no fibre)',
         }),
       ),
+      sequence: OptionalParam(
+        PD.Text('', {
+          description:
+            "A fibre's sequence, one-letter codes: with its entity's bank (mesoscale.fiber), a unit a letter; absent: at random",
+        }),
+      ),
+      start: OptionalParam(
+        PD.Numeric(1, { min: 1, step: 1 }, { description: "The sequence's first letter used, 1-based" }),
+      ),
+      end: OptionalParam(
+        PD.Numeric(1, { min: 1, step: 1 }, { description: "The sequence's last letter used, inclusive" }),
+      ),
       particles: ListParam(),
     },
     async run(values, ctx) {
       const { entity, positions, side, particles } = values;
-      const { normals, orient, spin, seed, fiber } = values as typeof values & {
+      const { normals, orient, spin, seed, fiber, sequence, start, end } = values as typeof values & {
         normals?: number[];
         orient?: PaintOrient;
         spin?: number;
         seed?: number;
         fiber?: boolean;
+        sequence?: string;
+        start?: number;
+        end?: number;
       };
       if (!positions.length || positions.length % 3) {
         return ApiResult.fail('invalid', "Give the copies' positions, x, y, z each.");
@@ -734,6 +750,15 @@ export class MesoscaleApi extends ApiArea {
         positions: local,
         rotations,
         ...(asFiber ? { fiber: true, seed: drawn } : {}),
+        ...(asFiber && sequence?.trim()
+          ? {
+              sequence: {
+                residues: sequence.trim(),
+                ...(start !== undefined ? { start } : {}),
+                ...(end !== undefined ? { end } : {}),
+              },
+            }
+          : {}),
       };
       await updatePainted(state, l, (p) => ({ ...p, strokes: [...p.strokes, stroke] }));
       const name = mesoEntities(dataOf(l) ?? data).find((e) => e.id === ids[0])?.name ?? entity;
@@ -769,6 +794,12 @@ export class MesoscaleApi extends ApiArea {
           description: "The unit's own axis along the path (auto: its fibres', else its principal axis)",
         }),
       ),
+      bank: OptionalParam(
+        PD.Select('none', PD.arrayToOptions(FiberBanks), {
+          description:
+            'The units its painted fibres switch between by their sequences (dna: a base pair a letter, rna: a nucleotide); its helix unless given',
+        }),
+      ),
       offset: OptionalParam(
         PD.Numeric(
           0,
@@ -786,9 +817,14 @@ export class MesoscaleApi extends ApiArea {
         given.twist === undefined &&
         given.jitter === undefined &&
         given.axis === undefined &&
-        given.offset === undefined
+        given.offset === undefined &&
+        given.bank === undefined
       ) {
-        return ApiResult.fail('invalid', 'Nothing to change.', 'Give a rise, a twist, a jitter, an axis or an offset.');
+        return ApiResult.fail(
+          'invalid',
+          'Nothing to change.',
+          'Give a rise, a twist, a jitter, an axis, an offset or a bank.',
+        );
       }
       if (given.rise !== undefined && !(given.rise > 0)) return ApiResult.fail('invalid', 'The rise is above 0 Å.');
       const l = oneList(ctx, particles || undefined);
@@ -804,12 +840,18 @@ export class MesoscaleApi extends ApiArea {
       const state = ctx.plugin.state.data;
       const old = paintedFibers(state, l.cell.transform.ref);
       const now = fiberSettingsOf(data, id, brush.target, old);
+      // a bank chosen anew: its units' helix (Round 5), what is given kept
+      const helix =
+        given.bank && given.bank !== 'none' && given.bank !== now.bank
+          ? { ...FiberBankHelix, jitter: 0, axis: 'z' as const, offset: 0 }
+          : undefined;
       const next: FiberSettingsIn = {
-        rise: given.rise ?? now.rise,
-        twist: given.twist ?? now.twist,
-        jitter: Math.min(180, Math.max(0, given.jitter ?? now.jitter)),
-        axis: given.axis ?? now.axis,
-        offset: given.offset ?? now.offset,
+        rise: given.rise ?? helix?.rise ?? now.rise,
+        twist: given.twist ?? helix?.twist ?? now.twist,
+        jitter: Math.min(180, Math.max(0, given.jitter ?? helix?.jitter ?? now.jitter)),
+        axis: given.axis ?? helix?.axis ?? now.axis,
+        offset: given.offset ?? helix?.offset ?? now.offset,
+        bank: given.bank ?? now.bank,
       };
       const same = (Object.keys(next) as (keyof FiberSettingsIn)[]).every((k) => next[k] === now[k]);
       if (same && old?.[id]) return ApiResult.already('The fibres are already so.');
@@ -817,7 +859,8 @@ export class MesoscaleApi extends ApiArea {
       const name = mesoEntities(dataOf(l) ?? data).find((e) => e.id === ids[0])?.name ?? entity;
       return ApiResult.ok(
         `${name}'s fibres: ${round1(next.rise)} Å a point, ${round1(next.twist)}°${next.jitter ? ` ± ${round1(next.jitter)}°` : ''}` +
-          `, its ${next.axis} axis along${next.offset ? `, ${round1(next.offset)} Å off` : ''}.`,
+          `, its ${next.axis} axis along${next.offset ? `, ${round1(next.offset)} Å off` : ''}` +
+          `${next.bank !== 'none' ? `, ${next.bank.toUpperCase()} units by sequence` : ''}.`,
         { nodes: [l.cell.transform.ref] },
         { value: next },
       );
