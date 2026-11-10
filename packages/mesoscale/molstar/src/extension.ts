@@ -279,10 +279,11 @@ export class MesoViewSpecApi extends ApiArea {
       } catch (e) {
         return ApiResult.fail('failed', `Could not show ${id}: ${(e as Error).message}`);
       }
-      if (step.unchanged) return ApiResult.already(`${id} is shown.`);
-      if (!step.record) return ApiResult.fail('invalid', issueLines(step.issues).join('; ') || `Could not show ${id}.`);
       const label = this.model.doc.views.find((v) => v.id === id)?.label;
-      return ApiResult.ok(`Showing ${label ? `${label} (${id})` : id}.`, { view: true });
+      const name = label ? `${label} (${id})` : id;
+      if (step.again) return ApiResult.ok(`${name} is shown: its camera is set again.`, { view: true });
+      if (!step.record) return ApiResult.fail('invalid', issueLines(step.issues).join('; ') || `Could not show ${id}.`);
+      return ApiResult.ok(`Showing ${name}.`, { view: true });
     },
   });
 

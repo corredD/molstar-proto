@@ -505,6 +505,19 @@ export class PrismMesoAdapter implements RendererAdapter {
     await this.bound(api, () => this.writeLooks(looks, new Set(refs)));
   }
 
+  /**
+   * The drawn view's camera set again (a click on the view shown, prism.md §4.4), the person's moves undone; nothing
+   * else drawn. False with no canvas or nothing drawn.
+   */
+  applyCamera(): boolean {
+    const canvas = this.viewer.plugin.canvas3d;
+    const ir = this.prev;
+    if (!canvas || !ir) return false;
+    return commitCamera(canvas, ir, { cameraChanged: true, keep: [] }, () =>
+      sceneRadius(placementSets(ir), this.bounds),
+    );
+  }
+
   /** The set key a drawn list (by state ref) is of; undefined for a list this adapter did not make. */
   keyOf(ref: string): string | undefined {
     for (const [key, p] of this.placed) if (p.ref === ref) return key;

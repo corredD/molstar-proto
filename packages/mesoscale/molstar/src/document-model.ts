@@ -129,6 +129,8 @@ export interface DocumentStep {
   readonly issues: readonly Issue[];
   /** Nothing changed ("it is already so"). */
   readonly unchanged?: true;
+  /** The view shown was shown again: its camera set back, nothing else drawn. */
+  readonly again?: true;
 }
 
 /** The keys one state of the document needs to be drawn again: resolved models and placement sets. */
@@ -488,7 +490,11 @@ export class MesoDocumentModel {
     if (!doc || !session) return { issues: [issue('document.none', 'error', 'static', 'No document is open.')] };
     if (!doc.views?.some((v) => v.id === view))
       return { issues: [issue('view.unknown', 'error', 'static', `The document has no view ${view}.`)] };
-    if (this.shownId === view) return { issues: [], unchanged: true };
+    // the view shown, shown again (Ludo, 2026-11-09): its camera set back, the person's moves undone; nothing redrawn
+    if (this.shownId === view) {
+      this.adapter.applyCamera();
+      return { issues: [], again: true };
+    }
     try {
       const record = await this.adapter.bound(api, () => session.show(view));
       this.shown = view;
