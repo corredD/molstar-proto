@@ -9,7 +9,9 @@ drives it is [loop.md](loop.md).
 
 Questions that stop the loop. One line each; move it to Decided with the answer.
 
-- (none)
+- Lane 4, M1: a theme, By entity or Reset that would clear a color look reaching beyond the selection (e.g.
+  `(in c.exosome)` under one list's theme) is refused with no step and names the look. Keep, or clear it anyway?
+- Lane 4: your check in the app on port 1358.
 
 ## Decided
 
@@ -59,7 +61,9 @@ Each lane: brief committed · steps · checks green · gate (reviewer, skeptic, 
 - [x] checks: tsc, format, styles green; `pnpm lint` (2 errors) and `check:workspace` (unbuilt assets) fail on the base
       too; 14 Windows-only path-separator test failures also on the base
 - [ ] 4. checked in the app (Sonnet)
-- [ ] 5. the gate (Opus reviewer, Opus skeptic, a failing test then a fix per confirmed finding)
+- [x] 5. the gate (Opus reviewer, Opus skeptic, a failing test then a fix per confirmed finding): M1, S1–S4 and the §5.2
+      eyes fixed (`b36de7a26`..`ed7fc4ce0`); open: refusing `particles.remove`/`visibility` on a document list through
+      the API (needs a Prism hook), a Representation-form theme change, nits N1–N3, N5
 - [ ] Ludo's check: exosome eyes, color, Generate colors, Show only, Import colors, Save, Undo; a cellPACK `.bcif`
 - [ ] merged into `me/mesoviewspec`
 
