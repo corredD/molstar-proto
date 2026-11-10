@@ -243,6 +243,41 @@ export class MesoViewSpecApi extends ApiArea {
     },
   });
 
+  /**
+   * Shows a view (prism.md §4.4): no step (`undoable: false`, as `snapshot.apply`), in order with the steps and with a
+   * history context, so the looks it writes are part of its run and never steps of their own. The next step's
+   * checkpoint notes the view shown, and Undo shows it again with the scene it restores (§7.4).
+   */
+  readonly view = this.operation({
+    id: 'mesoviewspec.view',
+    title: 'Show a view of the MesoViewSpec document',
+    params: { view: PD.Text('', { description: 'The id of one of the document’s views (v.cell)' }) },
+    undoable: false,
+    quiet: true,
+    run: async ({ view }, ctx) => {
+      if (!this.model.doc) return ApiResult.fail('not-found', 'No document is open.');
+      const id = view.trim();
+      if (!this.model.doc.views?.some((v) => v.id === id)) {
+        const ids = (this.model.doc.views ?? []).map((v) => v.id);
+        return ApiResult.fail(
+          'not-found',
+          `The document has no view '${id}'.`,
+          ids.length ? `Its views: ${ids.join(', ')}.` : 'It has no views.',
+        );
+      }
+      let step: Awaited<ReturnType<MesoDocumentModel['show']>>;
+      try {
+        step = await this.model.show(id, ctx.api);
+      } catch (e) {
+        return ApiResult.fail('failed', `Could not show ${id}: ${(e as Error).message}`);
+      }
+      if (step.unchanged) return ApiResult.already(`${id} is shown.`);
+      if (!step.record) return ApiResult.fail('invalid', issueLines(step.issues).join('; ') || `Could not show ${id}.`);
+      const label = this.model.doc.views.find((v) => v.id === id)?.label;
+      return ApiResult.ok(`Showing ${label ? `${label} (${id})` : id}.`, { view: true });
+    },
+  });
+
   readonly eye = this.operation({
     id: 'mesoviewspec.eye',
     title: 'Show or hide part of the MesoViewSpec document',

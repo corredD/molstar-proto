@@ -32,7 +32,7 @@ import {
   unionRuns,
 } from '@molstar/meso-spec/ir';
 import { DefaultResolvers } from '@molstar/meso-spec/resolvers';
-import { classifyEdit, type ResolveOutput, type Resolver } from '@molstar/meso-spec/runtime';
+import { classifyEdit, type ResolveOutput, type Resolver, shownViewOf } from '@molstar/meso-spec/runtime';
 import { Particle, type ParticleList } from '@molstar/model/model/particles/particle-list';
 import type { PluginContext } from '@molstar/plugin/context';
 import { PluginStateObject as SO } from '@molstar/plugin/state/objects';
@@ -219,7 +219,7 @@ export class MesoDocumentModel {
   eyePatch(selects: readonly string[], visible: boolean): Patch | undefined {
     const doc = this.doc;
     if (!doc) return undefined;
-    return lookPatch(doc, (looks, next) => {
+    return lookPatch(doc, this.shown, (looks, next) => {
       const ops: Op[] = [];
       const add: Look[] = [];
       // the eye looks by address, once (a drag gives many rows)
@@ -243,7 +243,7 @@ export class MesoDocumentModel {
   showOnlyPatch(select: string | undefined): Patch | undefined {
     const doc = this.doc;
     if (!doc) return undefined;
-    return lookPatch(doc, (looks, next) => {
+    return lookPatch(doc, this.shown, (looks, next) => {
       const ops: Op[] = looks
         .filter((l) => l.id?.startsWith('l.only.'))
         .map((l) => ({ op: 'remove', id: l.id! }) as Op);
@@ -275,7 +275,7 @@ export class MesoDocumentModel {
     const doc = this.doc;
     const blocked: string[] = [];
     if (!doc) return { blocked };
-    const patch = lookPatch(doc, (looks, next) => {
+    const patch = lookPatch(doc, this.shown, (looks, next) => {
       const ops: Op[] = [];
       const add: Look[] = [];
       const mine = new Map<string, Look>();
@@ -371,7 +371,7 @@ export class MesoDocumentModel {
   /** Whether the shown view has Show-only looks (Show all again is offered). */
   get showsOnly(): boolean {
     const doc = this.doc;
-    const view = doc && shownView(doc);
+    const view = doc && shownViewOf(doc, this.shown);
     return !!view?.looks?.some((l) => l.id?.startsWith('l.only.'));
   }
 
@@ -437,6 +437,37 @@ export class MesoDocumentModel {
     });
   }
 
+  /**
+   * Shows a view (prism.md §4.4: `mesoviewspec.view`, no step): its looks and camera drawn through `api` (the run's, so
+   * the writes are part of it and no change outside the API), the document unchanged. The saved value is made again
+   * with the view shown, so the next step's checkpoint notes it and Undo shows it again (§7.4). No keys are held: a
+   * show is no step of the window Undo reaches.
+   */
+  async show(view: string, api: ViewerApi): Promise<DocumentStep> {
+    const doc = this.doc;
+    const session = this.session;
+    if (!doc || !session) return { issues: [issue('document.none', 'error', 'static', 'No document is open.')] };
+    if (!doc.views?.some((v) => v.id === view))
+      return { issues: [issue('view.unknown', 'error', 'static', `The document has no view ${view}.`)] };
+    if (this.shownId === view) return { issues: [], unchanged: true };
+    try {
+      const record = await this.adapter.bound(api, () => session.show(view));
+      this.shown = view;
+      this.saved = savedOf(doc, this.url, this.shown);
+      // the keys a view's expansions add (none today: a view changes looks, not sets) kept with the current state's
+      const last = this.held.at(-1);
+      if (last) this.held[this.held.length - 1] = { ...last, sets: [...new Set([...last.sets, ...this.adapter.keys()])] };
+      return { record, issues: session.issues };
+    } finally {
+      this.changed.next();
+    }
+  }
+
+  /** The id of the view shown (prism.md §4.4): the one picked while the document has it, else its own; none: no view. */
+  get shownId(): string | undefined {
+    return this.doc ? shownViewOf(this.doc, this.shown)?.id : undefined;
+  }
+
   /** Closes the document: its lists go, its placements stay for an Undo (prism.md §7.3, point 3). */
   async close(api: ViewerApi): Promise<DocumentStep> {
     if (!this.session) return { issues: [], unchanged: true };
@@ -472,7 +503,10 @@ export class MesoDocumentModel {
     this.url = saved.url;
     this.shown = saved.shown;
     this.session ??= this.newSession(saved.doc);
-    if (!same) await this.session.restore(saved.doc);
+    // the view noted with the checkpoint shown again (prism.md §7.4): the restored tree already draws its looks; the
+    // camera is view state, which no checkpoint holds, and stays where it is
+    if (!same) await this.session.restore(saved.doc, saved.shown);
+    else if (this.session.view !== saved.shown) await this.session.restoreView(saved.shown);
     this.doc = saved.doc;
     const ir = this.session.ir;
     const { filled } = ir ? await this.adapter.adopt(ir) : { filled: [] };
@@ -510,6 +544,11 @@ export class MesoDocumentModel {
   private async step(work: () => Promise<DocumentStep>): Promise<DocumentStep> {
     this.dirty = true;
     const out = await work();
+    // a view picked that the edit removed: none picked, the document's own shown (prism.md §4.4)
+    if (this.shown !== undefined && !this.doc?.views?.some((v) => v.id === this.shown)) {
+      this.shown = undefined;
+      if (this.session) this.session.view = undefined;
+    }
     this.saved = this.doc ? savedOf(this.doc, this.url, this.shown) : undefined;
     this.hold();
     this.dirty = false;
@@ -579,22 +618,17 @@ export class MesoDocumentModel {
   }
 }
 
-/** The view looks are written to: the one the runtime shows (`session.view ?? views[0]`, prism.md §4.4). */
-function shownView(doc: MesoViewSpecDoc) {
-  const id = doc.session?.view;
-  return (id !== undefined ? doc.views?.find((v) => v.id === id) : undefined) ?? doc.views?.[0];
-}
-
 /**
- * A look patch on the shown view: `edit` gives the ops on its looks and the looks to insert last, with fresh ids from
- * `next(prefix)` (`l.eye.3`: past every id of the document's looks). No view: `v.prism` with the looks. Undefined when
- * there is nothing to do.
+ * A look patch on the view shown (prism.md §4.4: `shown` when the document has it, else its own): `edit` gives the ops
+ * on its looks and the looks to insert last, with fresh ids from `next(prefix)` (`l.eye.3`: past every id of the
+ * document's looks). No view: `v.prism` with the looks. Undefined when there is nothing to do.
  */
 function lookPatch(
   doc: MesoViewSpecDoc,
+  shown: string | undefined,
   edit: (looks: readonly Look[], next: (prefix: string) => string) => { ops: Op[]; add: Look[] },
 ): Patch | undefined {
-  const view = shownView(doc);
+  const view = shownViewOf(doc, shown);
   const taken = new Set<string>();
   for (const v of doc.views ?? []) for (const l of v.looks ?? []) if (l.id) taken.add(l.id);
   const counters = new Map<string, number>();

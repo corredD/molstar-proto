@@ -64,6 +64,7 @@ export const MesoViewSpecLazyExtension: LazyViewerExtension = {
         history: false,
         undoable: false,
       },
+      { id: 'mesoviewspec.view', title: 'Show a view of the MesoViewSpec document', undoable: false },
       { id: 'mesoviewspec.eye', title: 'Show or hide part of the MesoViewSpec document' },
       { id: 'mesoviewspec.showOnly', title: 'Show only part of the MesoViewSpec document' },
       { id: 'mesoviewspec.look', title: 'Style part of the MesoViewSpec document' },

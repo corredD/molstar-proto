@@ -120,7 +120,8 @@ describe('showing a view (prism.md §4.4)', () => {
     noUnsafe(h);
     expect(shownId(h)).toBe('v.red');
     expect(h.model.shown).toBe('v.red');
-    expect(h.model.session?.ir?.view.camera?.position).toEqual([0, 0, 9000]);
+    // the document's unit is nm, the IR's camera Å
+    expect(h.model.session?.ir?.view.camera?.position).toEqual([0, 0, 90000]);
     expect(ribosomes(h)?.color).toBe(Red);
     expect(h.model.doc).toBe(before);
     expect((await saved(h)).session?.view).toBeUndefined();
