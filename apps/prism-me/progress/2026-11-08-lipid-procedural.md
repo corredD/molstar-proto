@@ -1480,3 +1480,25 @@ frame by a Node script over the BinaryCIF decoder.
 **Review.** The round 7 table above.
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+## Round 7, items 2 and 3 built (2026-11-09, third session)
+
+`a08cb62e5` mesoscale: a cut leaflet a part and leaflet on the part's own triangles (`partMesh`: its vertex range
+copied, indices rebased, the whole mesh's regions sliced: the same seams), its table the part's mix (`mixTable` over
+`standIns`, a seed a part and leaflet; the LD its outer leaflet alone; the patch as it is where it lacks a species,
+`data.unmixed`, warned at the wrap); `createPartVisibility` (the enclosure test once a view for every selection, keyed
+by the frustum); `hiddenParts`, `partColors` look params (no re-cut: `sourceData` kept); `mesoscale.style` and
+`mesoscale.colors` take `parts` (one step each). `26fcbdc88` prism-me: a row a part under the membrane (`mp:`), its eye
+and colour; a drag's eyes one write a membrane.
+
+**The budget (decided here; Ludo to be told).** A share per pool, water-filled across the pools (`poolCapacities`):
+a leaflet under the level whole, the others the level each (+10 %). Nearest first across parts is gone: a part's
+colour is its objects' far colour, and a mix has its own members, so a part needs its own pools; one pool across parts
+would need several GPU writers into one pool (the graphics writer contract), not a modest cost. Water-filling over a
+share by area because a share by area starves the small membranes (yeast, 2 M: LD ~31 k, PEROX ~15 k lipids, a close
+view of either a disc of spheres); water-filled, each of the 17 leaflets ~129 k (2 M / 17 × 1.1), against round 6's
+live counts (73 k the PM close, one leaflet; 145 k inside a mito, over the IM's and OM's inner leaflets): both held.
+
+**Next (if this session stops).** Dawn test `lipid-parts.webgpu.test.ts` (hide a part: its lipids and surfaces gone;
+a part's colour changes the image with By zoom off (close) and on (far), close species kept; the LD's two surfaces);
+gate on `git diff 89c4f13aa...HEAD`; checks; r7 images; write-up.
