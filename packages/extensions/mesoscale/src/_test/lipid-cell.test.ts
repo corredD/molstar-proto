@@ -72,9 +72,9 @@ describe('a cell’s membranes as one (round 6)', () => {
     const { mesh, parts } = concatMeshes([outer, inner, beside], ['outer', 'inner', 'beside']);
     const tree = triangleTree(mesh.positions, mesh.indices, parts);
     const stack = new Int32Array(128);
-    expect(insidePart(tree, mesh.positions, mesh.indices, 0, 0, 0, 0, stack)).toBe(true);
-    expect(insidePart(tree, mesh.positions, mesh.indices, 0, 3000, 0, 0, stack)).toBe(false);
-    expect(insidePart(tree, mesh.positions, mesh.indices, 1, 1300, 0, 0, stack)).toBe(false);
+    expect(insidePart(tree, mesh.positions, mesh.indices, 0, Float64Array.of(0, 0, 0), 0, stack)).toBe(true);
+    expect(insidePart(tree, mesh.positions, mesh.indices, 0, Float64Array.of(3000, 0, 0), 0, stack)).toBe(false);
+    expect(insidePart(tree, mesh.positions, mesh.indices, 1, Float64Array.of(1300, 0, 0), 0, stack)).toBe(false);
     expect(enclosures(tree, mesh.positions, mesh.indices).map((e) => Array.from(e))).toEqual([[], [0], [0]]);
   });
 

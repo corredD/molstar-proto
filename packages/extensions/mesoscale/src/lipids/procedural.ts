@@ -190,8 +190,7 @@ export function createPartVisibility(
         const outer = e[i];
         if (hiddenPart[outer]) continue;
         if (eyeInside[outer] === 2) {
-          eyeInside[outer] =
-            viewer && insidePart(tree, positions, indices, outer, near[0], near[1], near[2], stack) ? 1 : 0;
+          eyeInside[outer] = viewer && insidePart(tree, positions, indices, outer, near, 0, stack) ? 1 : 0;
         }
         if (eyeInside[outer] === 0) shown[q] = 0;
       }

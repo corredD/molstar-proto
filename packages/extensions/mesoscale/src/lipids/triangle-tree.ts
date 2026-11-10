@@ -187,27 +187,33 @@ function nthElement(order: Uint32Array, start: number, end: number, k: number, c
 const Dx = 0.5731;
 const Dy = 0.6113;
 const Dz = 0.5459;
+// normalized once (review S3: `Math.hypot` a call allocated, 56 B a test)
+const DirL = Math.sqrt(Dx * Dx + Dy * Dy + Dz * Dz);
+const DirX = Dx / DirL;
+const DirY = Dy / DirL;
+const DirZ = Dz / DirL;
 
 /**
- * Whether (x, y, z) is inside part `p` (closed: an odd count of its triangles crossed by a ray from the point); `stack`
- * a scratch of 64 or more. Nothing allocated
+ * Whether the point at `point[at..at + 2]` is inside part `p` (closed: an odd count of its triangles crossed by a ray
+ * from the point); `stack` a scratch of 64 or more. Nothing allocated (`lipid-selection.quick.ts`, round 7 review S3)
  */
 export function insidePart(
   tree: TriangleTree,
   positions: ArrayLike<number>,
   indices: ArrayLike<number>,
   p: number,
-  x: number,
-  y: number,
-  z: number,
+  point: ArrayLike<number>,
+  at: number,
   stack: Int32Array,
 ) {
+  const x = point[at];
+  const y = point[at + 1];
+  const z = point[at + 2];
   const root = tree.roots[p];
   if (root < 0) return false;
-  const l = Math.hypot(Dx, Dy, Dz);
-  const dx = Dx / l;
-  const dy = Dy / l;
-  const dz = Dz / l;
+  const dx = DirX;
+  const dy = DirY;
+  const dz = DirZ;
   const { spheres, a, b, leaf, order } = tree;
   let crossings = 0;
   let top = 0;
@@ -329,7 +335,7 @@ export function enclosures(tree: TriangleTree, positions: ArrayLike<number>, ind
       let all = true;
       for (let i = 0; i < samples.length && all; ++i) {
         const v = samples[i] * 3;
-        all = insidePart(tree, positions, indices, p, positions[v], positions[v + 1], positions[v + 2], stack);
+        all = insidePart(tree, positions, indices, p, positions, v, stack);
       }
       if (all) out[q].push(p);
     }
