@@ -546,6 +546,29 @@ export class MesoDocumentModel {
   }
 
   /**
+   * Add label (prism.md §5.2): an annotation `{id: an.<n>, target: select, text}` inserted last in the view shown's
+   * annotations; no view: `v.prism` with it. Its id past every annotation id of the document's views.
+   */
+  annotationPatch(select: string, text: string): Patch | undefined {
+    const doc = this.doc;
+    if (!doc) return undefined;
+    const taken = new Set((doc.views ?? []).flatMap((v) => (v.annotations ?? []).map((a) => a.id)));
+    let n = 1;
+    while (taken.has(`an.${n}`)) n++;
+    const node = { id: `an.${n}`, target: select, text };
+    const view = shownViewOf(doc, this.shown);
+    const op: Op = view
+      ? { op: 'insert', node, parent: view.id, list: 'annotations', after: 'last' }
+      : {
+          op: 'insert',
+          node: { id: PrismView, label: 'Edited in Prism', annotations: [node] },
+          parent: 'views',
+          after: 'last',
+        };
+    return { format: PatchFormat, ops: [op] };
+  }
+
+  /**
    * The view shown picked as it is, when none is (the document's own shown): an edit of `session.view` then leaves the
    * screen as it is (Open with this view is what the file opens with, not what is shown).
    */

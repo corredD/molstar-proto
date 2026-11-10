@@ -354,6 +354,28 @@ export class MesoViewSpecApi extends ApiArea {
     },
   });
 
+  /**
+   * Add label on a document row (prism.md §5.2): an annotation of the view shown, its target the row's address; a
+   * patch, one step, saved in the document; the adapter draws it as Prism's label while its view is shown.
+   */
+  readonly label = this.operation({
+    id: 'mesoviewspec.label',
+    title: 'Label part of the MesoViewSpec document',
+    params: {
+      select: SelectParam(),
+      text: PD.Text('', { description: 'What it says; none: Label' }),
+    },
+    run: async ({ select, text }, ctx) => {
+      if (!this.model.doc) return ApiResult.fail('not-found', 'No document is open.');
+      const address = select.trim();
+      if (!address) return ApiResult.fail('invalid', 'Label what? Give an address.');
+      if (!this.model.sphereOf(address)) return ApiResult.fail('not-found', `${address} picks no copy here.`);
+      const said = text.trim() || 'Label';
+      const r = await this.applyLooks(this.model.annotationPatch(address, said), ctx.api, 'label');
+      return r.ok && !r.unchanged ? ApiResult.ok(`Added the label "${said}" on ${address}.`) : r;
+    },
+  });
+
   /** The tour playing: stopped by Stop, another tour, Undo or Redo, a close or an open. */
   #tour: { readonly stop: AbortController; readonly ended: Promise<void> } | undefined;
 

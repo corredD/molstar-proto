@@ -75,6 +75,7 @@ export const MesoViewSpecLazyExtension: LazyViewerExtension = {
       { id: 'mesoviewspec.newView', title: 'New view of the MesoViewSpec document from here' },
       { id: 'mesoviewspec.updateCamera', title: "Set the shown view's camera to this one" },
       { id: 'mesoviewspec.openWith', title: 'Open the MesoViewSpec document with this view' },
+      { id: 'mesoviewspec.label', title: 'Label part of the MesoViewSpec document' },
       { id: 'mesoviewspec.eye', title: 'Show or hide part of the MesoViewSpec document' },
       { id: 'mesoviewspec.showOnly', title: 'Show only part of the MesoViewSpec document' },
       { id: 'mesoviewspec.look', title: 'Style part of the MesoViewSpec document' },

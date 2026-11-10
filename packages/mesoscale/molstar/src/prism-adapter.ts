@@ -102,6 +102,8 @@ export class PrismMesoAdapter implements RendererAdapter {
   private readonly bounds = new Map<string, SetBounds>();
   /** The API calls go through: the step's while bound (an owner's operation), else the viewer's. */
   private api: ViewerApi | undefined;
+  /** The labels drawn for the view's annotations, by annotation id: their state ref and what they say where. */
+  private labels = new Map<string, { readonly ref: string; readonly key: string }>();
   /** The placement sets of this viewer, by key. */
   private get store() {
     return placementStore(this.viewer.plugin);
@@ -349,6 +351,7 @@ export class PrismMesoAdapter implements RendererAdapter {
     const t3 = now();
     // representation hints: spheres drawn; structure and surface fall back to spheres here, said once per hint
     const issues: Issue[] = [];
+    await this.drawAnnotations(ir, issues);
     if (ir.view.cutaway?.length)
       issues.push(
         issue(
@@ -447,6 +450,47 @@ export class PrismMesoAdapter implements RendererAdapter {
   }
 
   /**
+   * The view's annotations as Prism labels (prism.md §5.2): one `stage.label` an annotation, through the step's API (so
+   * part of its run), marked by its node (`md:#an:<id>`); the labels of annotations gone or changed (another view
+   * shown, the view removed, its text edited) deleted. One that cannot be drawn is an issue, never a throw.
+   */
+  private async drawAnnotations(ir: IR, issues: Issue[]) {
+    const state = this.viewer.plugin.state.data;
+    const want = new Map<string, NonNullable<IR['view']['annotations']>[number]>();
+    for (const a of ir.view.annotations ?? []) {
+      if (a.position) want.set(a.id, a);
+      else issues.push(issue('annotation.unplaced', 'info', 'render', `${a.id} names no copy here: not drawn`));
+    }
+    const b = state.build();
+    let gone = false;
+    for (const [id, l] of this.labels) {
+      const a = want.get(id);
+      if (a && annotationKey(a.text, a.position!) === l.key && state.cells.has(l.ref)) continue;
+      if (state.cells.has(l.ref)) {
+        b.delete(l.ref);
+        gone = true;
+      }
+      this.labels.delete(id);
+    }
+    if (gone) await this.viewer.plugin.runTask(state.updateTree(b));
+    const todo = [...want.values()].filter((a) => !this.labels.has(a.id));
+    if (!todo.length) return;
+    const api = this.api ?? this.viewer.api;
+    // readable at the scene's scale: a 40th of its radius, at least Prism's 4 Å
+    const size = Math.round(Math.max(4, sceneRadius(placementSets(ir), this.bounds) / 40));
+    for (const a of todo) {
+      const [x, y, z] = a.position!;
+      const r = await api?.run('stage.label', { text: a.text, x, y, z, size, node: `${AnnotationNode}${a.id}` });
+      const ref = r?.ok ? r.changed.nodes?.[0] : undefined;
+      if (ref) this.labels.set(a.id, { ref, key: annotationKey(a.text, a.position!) });
+      else
+        issues.push(
+          issue('annotation.label', 'warning', 'render', `${a.id} is not drawn: ${r && !r.ok ? r.message : 'no labels here'}`),
+        );
+    }
+  }
+
+  /**
    * Draws the looks of some lists (by state ref) again, through `api` (the run's): their color theme changed, so their
    * default colors are written or left out again (prism.md §5.3).
    */
@@ -540,6 +584,16 @@ export class PrismMesoAdapter implements RendererAdapter {
       b.to(cell.ref).update((old: { fill?: number }) => ({ ...old, fill: (old.fill ?? 0) + 1 }));
     }
     if (filled.length) await this.viewer.plugin.runTask(state.updateTree(b));
+    // the annotations' labels the restored tree holds (the view noted with it drew them)
+    this.labels = new Map();
+    for (const c of state.cells.values()) {
+      const p = c.transform.params as { node?: unknown; text?: string; position?: ArrayLike<number> } | undefined;
+      if (typeof p?.node !== 'string' || !p.node.startsWith(AnnotationNode) || !p.position) continue;
+      this.labels.set(p.node.slice(AnnotationNode.length), {
+        ref: c.transform.ref,
+        key: annotationKey(p.text ?? '', Array.from(p.position)),
+      });
+    }
     this.prev = ir;
     this.index(source);
     return { filled };
@@ -561,6 +615,7 @@ export class PrismMesoAdapter implements RendererAdapter {
   /** Forgets what it drew, writing nothing: the restored state has no lists of its (an Undo of an open). */
   forget() {
     this.placed.clear();
+    this.labels.clear();
     this.prev = undefined;
     this.expansions.clear();
     this.bounds.clear();
@@ -571,9 +626,12 @@ export class PrismMesoAdapter implements RendererAdapter {
 
   /** Removes every list this adapter made (their placements stay: the owner lets them go, so Undo finds them). */
   async clear() {
-    const b = this.viewer.plugin.state.data.build();
+    const state = this.viewer.plugin.state.data;
+    const b = state.build();
     for (const [, p] of this.placed) b.delete(p.ref);
+    for (const [, l] of this.labels) if (state.cells.has(l.ref)) b.delete(l.ref);
     this.placed.clear();
+    this.labels.clear();
     this.prev = undefined;
     this.sets.clear();
     this.expansionInfo.clear();
@@ -676,6 +734,12 @@ function mergeRuns(pieces: number[]): number[] {
   }
   return out;
 }
+
+/** The node an annotation's label is made at: `md:#an:<id>` (its mark: a restore finds it by it). */
+const AnnotationNode = 'md:#an:';
+
+/** What a label says where: a changed annotation is drawn again. */
+const annotationKey = (text: string, position: readonly number[]) => `${text}@${position.join(',')}`;
 
 const listLabel = (set: PlacementSet) => `${set.model} · ${set.count.toLocaleString('en-US')} copies`;
 
