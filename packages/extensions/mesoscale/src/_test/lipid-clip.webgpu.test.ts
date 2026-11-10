@@ -203,4 +203,78 @@ describe.skipIf(!webgpu)('a lipid membrane clipped by Prism (Dawn)', () => {
       v.dispose?.();
     }
   });
+  // the gate's S2: a middle look's switch is uniforms, a raster and a selection anew, not a build (`onlyMiddle`): the
+  // Atoms down to px, and with a clip coarse and parallax both (their lipids' levels the same)
+  it('switches a middle look without a build: the same render objects, another image (round 8 gate S2)', {
+    timeout: 240_000,
+  }, async () => {
+    const options = { backend: 'webgpu' as const };
+    const renderer = await HeadlessScreenshotHelper.create({ webgpu }, { width: Size, height: Size }, options);
+    const base = DefaultPrismViewerSpec();
+    const v = await createPrismViewerHeadless({
+      spec: { ...base, extensions: [...(base.extensions ?? []), MesoscaleExtension] },
+      plugin: (spec) => new HeadlessPluginContext({ webgpu }, spec, { width: Size, height: Size }, options, renderer),
+    });
+    registerLipidPatch('dawn-clip-switch', syntheticPatchPdb().text);
+    try {
+      const plugin = v.plugin as HeadlessPluginContext;
+      const r = await v.api.mesoscale!.wrapMembrane({
+        radius: 300,
+        edge: 80,
+        patch: 'dawn-clip-switch',
+        method: 'cutter',
+      } as never);
+      if (!r.ok) throw new Error(r.message);
+      const membrane = r.changed!.nodes![0];
+      const canvas = plugin.canvas3d!;
+      canvas.setProps({ camera: { ...canvas.props.camera, mode: 'perspective' } });
+      canvas.requestCameraReset({ durationMs: 0 });
+      await plugin.getImageRaw({ width: Size, height: Size });
+      // the near side's lipids 12 px: between 11 and 14
+      const depth = (7.4 * Size * canvas.camera.projection[5]) / (2 * 12);
+      canvas.camera.setState(
+        { ...canvas.camera.getSnapshot(), target: Vec3.create(0, 0, 0), position: Vec3.create(0, 0, 300 + depth) },
+        0,
+      );
+      const objects = () =>
+        ((plugin.state.data.cells.get(membrane)?.obj?.data as { repr?: unknown })?.repr as { renderObjects: unknown[] })
+          .renderObjects;
+      const image = async () => {
+        await plugin.getImageRaw({ width: Size, height: Size });
+        return Array.from((await plugin.getImageRaw({ width: Size, height: Size })).data);
+      };
+      const differs = (a: number[], b: number[]) => {
+        let n = 0;
+        for (let o = 0; o < a.length; o += 4) {
+          if (Math.abs(a[o] - b[o]) + Math.abs(a[o + 1] - b[o + 1]) + Math.abs(a[o + 2] - b[o + 2]) > 24) n += 1;
+        }
+        return n / (a.length / 4);
+      };
+      const detail = async (p: object) => {
+        const d = await v.api.mesoscale!.membraneDetail({ membrane, ...p } as never);
+        expect(d.ok, d.message).toBe(true);
+      };
+      await detail({ middle: 'parallax' });
+      const before = objects();
+      const at11 = await image();
+      await detail({ middlePx: 14 });
+      expect(objects(), 'middlePx').toBe(before);
+      expect(differs(at11, await image()), 'middlePx').toBeGreaterThan(0.01);
+      // with a clip both looks keep the levels (the cut band): a switch without a build either way
+      expect((await v.api.run('clipping.add', { shape: 'plane', node: `#${membrane}` })).ok).toBe(true);
+      const clipped = objects();
+      const parallax = await image();
+      await detail({ middle: 'coarse' });
+      expect(objects(), 'coarse').toBe(clipped);
+      const coarse = await image();
+      expect(differs(parallax, coarse), 'coarse').toBeGreaterThan(0.01);
+      await detail({ middle: 'parallax' });
+      expect(objects(), 'parallax').toBe(clipped);
+      expect(differs(parallax, await image()), 'parallax again').toBeLessThan(0.01);
+      expect(plugin.canvas3d!.graphics.takeErrors?.() ?? []).toEqual([]);
+    } finally {
+      forgetLipidPatch('dawn-clip-switch');
+      v.dispose?.();
+    }
+  });
 });
