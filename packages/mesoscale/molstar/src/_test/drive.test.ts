@@ -174,7 +174,9 @@ describe('the other operations on a document list (prism.md §5.1)', () => {
     expect(kindGroups.map((g) => g.path)).toContain('protein');
   });
 
-  it('colors: generate is one look a population, one step; theme removes their colors', { tags: ['medium'] }, async () => {
+  it('colors: generate is one look a population, one step; theme removes their colors', {
+    tags: ['medium'],
+  }, async () => {
     const h = await open();
     const { ref, key } = listOf(h, 'p.catalase');
     const n = h.model.adapter.setOf(key)!.typeTable.length;

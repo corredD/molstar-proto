@@ -6,12 +6,7 @@
 
 import { Color } from '@molstar/core/util/color';
 import type { MesoEntity, MesoGroup, MesoGroupBy } from '@molstar/mesoscale-extension/model';
-import type {
-  OwnedEdit,
-  OwnedListInfo,
-  OwnedLookChange,
-  ParticleListOwner,
-} from '@molstar/mesoscale-extension/owner';
+import type { OwnedEdit, OwnedListInfo, OwnedLookChange, ParticleListOwner } from '@molstar/mesoscale-extension/owner';
 import type { MesoViewSpecDoc } from '@molstar/meso-spec/format';
 import type { PlacementSet } from '@molstar/meso-spec/ir';
 import type { ViewerApi } from '@molstar/prism-viewer/api';
@@ -67,7 +62,10 @@ export class DocumentListOwner implements ParticleListOwner {
   }
 
   async themeChanged(lists: readonly string[], api: ViewerApi): Promise<void> {
-    await this.model.adapter.redrawLooks(api, lists.filter((l) => this.owns(l)));
+    await this.model.adapter.redrawLooks(
+      api,
+      lists.filter((l) => this.owns(l)),
+    );
   }
 
   /**

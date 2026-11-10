@@ -1158,8 +1158,7 @@ export function deriveView(doc: MesoViewSpecDoc, root: IRNode): IRView {
           const { colorDefault, ...was } = whole.get(key)!;
           // a stated color is no longer the default (prism.md §5.3)
           whole.set(key, props.color !== undefined ? { ...was, ...props } : { ...was, colorDefault, ...props });
-        }
-        else partial.push({ set: s.key, types: [t.index], runs: inter, ...props });
+        } else partial.push({ set: s.key, types: [t.index], runs: inter, ...props });
       }
     }
     // copies inside particular superstructure instances (`part`): virtual sets `<instance set>@<i>><template>`, kept as
