@@ -776,9 +776,10 @@ function common<T>(values: readonly T[]): T | undefined {
 /**
  * A lipid membrane's colours as a particle list's Look (round 4c item 8; ui.md §4): one colour for all its species,
  * generated colours, back to its species' own, colours by zoom; the same operations as a list's, its species its
- * entities. By zoom on (round 7 item 6): its far colour alone and its atoms' colours (by element, carbons by species)
+ * entities. By zoom on (round 7 item 6): its far colour alone and its atoms' colours (by element, carbons by species).
+ * Exported for its story (Explorer › Membrane).
  */
-function MembraneLook(props: { api: ViewerApi; membrane: string }) {
+export function MembraneLook(props: { api: ViewerApi; membrane: string }) {
   const { api, membrane } = props;
   const species = api.mesoscale!.membraneSpeciesState(membrane);
   const graphics = api.mesoscale!.graphicsState(membrane);

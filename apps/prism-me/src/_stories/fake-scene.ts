@@ -25,6 +25,7 @@ export type MockKind =
   | 'slice'
   | 'isosurface'
   | 'mesh'
+  | 'membrane part'
   | 'clip'
   | 'label'
   | 'distance';
@@ -215,6 +216,47 @@ export const Membrane: MockNode = {
   visible: true,
   icon: 'box',
 };
+
+/**
+ * A cell's membranes wrapped as one (round 7, ui.md §5 Wrap all): the membrane a mesh row, a part a row under it (`mp:`),
+ * each its eye and its colour dot; the vacuole hidden, the PM coloured, the others their far colour (none)
+ */
+export const CellMembrane: MockNode = {
+  key: 'o:cell',
+  kind: 'mesh',
+  label: 'Lipids (9 membranes)',
+  count: '2,000,000 lipids at most',
+  visible: true,
+  icon: 'box',
+  children: list(
+    ...(
+      [
+        ['PM', 0xff6347, true],
+        ['ER', undefined, true],
+        ['MITO_OM', undefined, true],
+        ['MITO_IM', undefined, true],
+        ['NUCLEUS_OM', undefined, true],
+        ['NUCLEUS_IM', undefined, true],
+        ['VAC', undefined, false],
+        ['PEROX', undefined, true],
+        ['LD', undefined, true],
+      ] as const
+    ).map(
+      ([name, color, visible]): MockNode => ({
+        key: `mp:cell:${name}`,
+        kind: 'membrane part',
+        label: name,
+        ...(color !== undefined ? { color } : {}),
+        visible,
+      }),
+    ),
+  ),
+};
+
+/** A scene of a cell's membranes: the Meshes category, a mesh and the cell's membrane with its parts */
+export function cellScene(): MockNode[] {
+  return categories([Membrane, CellMembrane]);
+}
 
 /** The proposed Clips category (Ludo, 2026-10-28): every clip of the scene, read from the story's book at each rebuild */
 function clipsCategory(): MockNode {
