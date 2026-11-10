@@ -102,8 +102,8 @@ export function pluginStructureCursor(
   if (!plugin.representation.particles.registry.has('target')) return NoCursor;
   const one = withStructures(
     { ...paintingList(), count: 1, keys: Int32Array.of(0), targets: Int32Array.of(0), entities: Int32Array.of(0) },
-    [{ ref: '', name: 'Paint brush' }],
-    [structure],
+    [{ name: 'Paint brush', target: 0, entity: 0, source: { kind: 'url', url: '' } }],
+    [{ kind: 'structure', structure }],
   );
   return copyCursor(plugin, oneCopyOf(one, 0), targetRepresentationParams(plugin, one), false, canvas);
 }

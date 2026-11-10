@@ -22,8 +22,11 @@ import {
   type ParticleList,
   type ParticleTarget,
 } from '@molstar/model/model/particles/particle-list';
-import type { Structure } from '@molstar/model/model/structure/structure';
+import type { PluginContext } from '@molstar/plugin/context';
+import { loadParticleTarget, type ParticleTargetSource } from '@molstar/plugin/state/helpers/particle-targets';
 import { PluginStateObject as SO, PluginStateTransform } from '@molstar/plugin/state/objects';
+import { Asset } from '@molstar/core/util/assets';
+import { type RuntimeContext, Task } from '@molstar/core/task';
 import { isMembranePath } from './pick-surface.js';
 
 // Paint v1 (apps/prism-me/_spec/features.md, "Paint"; progress/2026-11-08-paint.md, Design 1): copies of an existing
@@ -482,62 +485,116 @@ function extendAttributes(
 }
 
 /** The list a decorator last took (as plugin core's particle decorators: what is above it may change it) */
-type InputCache = { input?: ParticleList; structures?: readonly unknown[] };
+type InputCache = {
+  input?: ParticleList;
+  objects?: readonly (ParticleTarget | undefined)[];
+  structures?: StructureCache;
+};
 
 /**
- * A structure of the scene painted with (paint-layer round 2, Ludo 2026-11-10: "just painting a given PDB id"): by its
- * state ref (a dependency of the decorator: a session keeps it), named as its entity
+ * A structure painted with (paint-layer round 2, Ludo 2026-11-10: "just painting a given PDB id"): its name, the
+ * target and entity ids it was given when first painted (kept: a decoration later above the list does not move them),
+ * and where it came from (its file or address: the list loads its own copy, so removing the structure from the scene
+ * leaves the painted copies; a session keeps it)
  */
 export interface PaintStructure {
-  readonly ref: string;
   readonly name: string;
+  readonly target: number;
+  /** -1 in a list without entities (its targets are its brushes) */
+  readonly entity: number;
+  readonly source: ParticleTargetSource;
 }
 
-/** The structures' objects, as the decorator's dependencies give them (none for one not in the state) */
-function structureData(structures: readonly PaintStructure[], dependencies?: { [k: string]: { data: unknown } }) {
-  return structures.map((s) => {
-    const obj = dependencies?.[s.ref];
-    return obj && SO.Molecule.Structure.is(obj as never) ? (obj.data as Structure) : undefined;
-  });
+/** What identifies a structure's source: the same file or address is the same structure (painted again: its ids) */
+export function structureSourceKey(source: ParticleTargetSource): string {
+  return source.kind === 'url' ? `url:${Asset.getUrl(source.url)}` : `file:${source.file.id}`;
 }
 
-/** The ids a list's structures take: after its largest target id, and its largest entity id (where it has entities) */
-export function structureIds(list: ParticleList, k: number) {
+/** The file or address a structure of the scene was read from (its `download` or `read-file` ancestor), if any */
+export function structureSourceOf(state: State, ref: string): ParticleTargetSource | undefined {
+  for (let cell = state.cells.get(ref); cell; cell = state.cells.get(cell.transform.parent)) {
+    const name = cell.transform.transformer.definition.name;
+    const p = cell.transform.params as { url?: string | Asset.Url; file?: Asset.File; isBinary?: boolean };
+    if (name === 'download' && p.url) return { kind: 'url', url: p.url, isBinary: p.isBinary };
+    if (name === 'read-file' && p.file) return { kind: 'file', file: p.file };
+    if (cell.transform.ref === cell.transform.parent) return;
+  }
+}
+
+/** The next ids for a structure in `list`: after its largest target id and entity id, and those of `structures` */
+export function nextStructureIds(list: ParticleList, structures: readonly PaintStructure[]) {
   let target = -1;
   for (const id of list.targetInfo.keys()) if (id > target) target = id;
   for (const id of list.targetMapping?.keys() ?? []) if (id > target) target = id;
   let entity = -1;
   for (const id of list.entityInfo?.keys() ?? []) if (id > entity) entity = id;
-  return { target: target + 1 + k, entity: list.entityInfo ? entity + 1 + k : -1 };
+  for (const s of structures) {
+    target = Math.max(target, s.target);
+    entity = Math.max(entity, s.entity);
+  }
+  return { target: target + 1, entity: list.entityInfo ? entity + 1 : -1 };
 }
 
-const withStructuresKept = new WeakMap<ParticleList, { data: readonly unknown[]; out: ParticleList }>();
+const withStructuresKept = new WeakMap<ParticleList, { objects: readonly unknown[]; out: ParticleList }>();
 /**
- * `list` with the structures as targets and entities of their own (`structureIds`): a target a structure (`kind:
- * 'structure'`), its name; the entity of that name (a list without entities: the target is its brush). The same list
- * for the same structures (the targets' objects kept: what is drawn of them is not made again)
+ * `list` with the structures as targets and entities of their own (their ids): a target its structure (`kind:
+ * 'structure'`, none while it is not loaded), its name; the entity of that name (a list without entities: the target
+ * is its brush). The same list for the same objects (what is drawn of them is not made again)
  */
 export function withStructures(
   list: ParticleList,
   structures: readonly PaintStructure[],
-  data: readonly (Structure | undefined)[],
+  objects: readonly (ParticleTarget | undefined)[],
 ): ParticleList {
   if (!structures.length) return list;
   const kept = withStructuresKept.get(list);
-  if (kept && kept.data.length === data.length && kept.data.every((d, i) => d === data[i])) return kept.out;
+  if (kept && kept.objects.length === objects.length && kept.objects.every((d, i) => d === objects[i])) {
+    return kept.out;
+  }
   const targetMapping = new Map(list.targetMapping ?? []);
   const targetInfo = new Map(list.targetInfo);
   const entityInfo = list.entityInfo ? new Map(list.entityInfo) : undefined;
   structures.forEach((s, k) => {
-    const ids = structureIds(list, k);
-    const structure = data[k];
-    if (structure) targetMapping.set(ids.target, { kind: 'structure', structure });
-    targetInfo.set(ids.target, { name: s.name, ...(entityInfo ? { entity: ids.entity } : {}) });
-    entityInfo?.set(ids.entity, { name: s.name });
+    if (objects[k]) targetMapping.set(s.target, objects[k]!);
+    targetInfo.set(s.target, { name: s.name, ...(entityInfo && s.entity >= 0 ? { entity: s.entity } : {}) });
+    if (entityInfo && s.entity >= 0) entityInfo.set(s.entity, { name: s.name });
   });
   const out: ParticleList = { ...list, targetMapping, targetInfo, ...(entityInfo ? { entityInfo } : {}) };
-  withStructuresKept.set(list, { data, out });
+  withStructuresKept.set(list, { objects, out });
   return out;
+}
+
+/** The structures' objects a decorator loaded, by source (kept across its updates, their assets with them) */
+type StructureCache = Map<string, { target: ParticleTarget; assets: Asset.Wrapper[] }>;
+
+/** The structures' objects: each loaded from its source once (a failure warned, its copies drawn without it) */
+async function loadStructures(
+  plugin: PluginContext,
+  ctx: RuntimeContext,
+  structures: readonly PaintStructure[],
+  cache: { structures?: StructureCache },
+) {
+  const previous = cache.structures ?? new Map();
+  const next: StructureCache = new Map();
+  const objects: (ParticleTarget | undefined)[] = [];
+  for (const s of structures) {
+    const key = structureSourceKey(s.source);
+    let entry = next.get(key) ?? previous.get(key);
+    if (!entry) {
+      const assets: Asset.Wrapper[] = [];
+      try {
+        entry = { target: await loadParticleTarget(plugin, ctx, s.source, assets), assets };
+      } catch (e) {
+        console.error(e);
+        plugin.log.warn(`Could not load ${s.name} to paint with.`);
+      }
+    }
+    if (entry) next.set(key, entry);
+    objects.push(entry?.target);
+  }
+  for (const [key, entry] of previous) if (!next.has(key)) for (const a of entry.assets) a.dispose();
+  cache.structures = next;
+  return objects;
 }
 
 export { ParticleListPainted };
@@ -563,39 +620,46 @@ const ParticleListPainted = PluginStateTransform.BuiltIn({
       },
     ),
     structures: PD.Value<PaintStructure[]>([], {
-      description: 'The structures of the scene painted with, each a target and an entity of the list',
+      description: 'The structures painted with, each a target and an entity of the list (loaded from their source)',
       isHidden: true,
     }),
   },
 })({
-  apply({ a, params, cache, dependencies }) {
-    const data = structureData(params.structures ?? [], dependencies);
-    Object.assign(cache as InputCache, { input: a.data, structures: data });
-    const list = withStructures(a.data, params.structures ?? [], data);
-    return new SO.Particle.List(paintParticles(list, params.strokes, params.fibers), {
-      label: a.label,
-      description: a.description,
+  apply({ a, params, cache }, plugin: PluginContext) {
+    return Task.create('Paint', async (ctx) => {
+      const c = cache as InputCache;
+      const objects = await loadStructures(plugin, ctx, params.structures ?? [], c);
+      Object.assign(c, { input: a.data, objects });
+      const list = withStructures(a.data, params.structures ?? [], objects);
+      return new SO.Particle.List(paintParticles(list, params.strokes, params.fibers), {
+        label: a.label,
+        description: a.description,
+      });
     });
   },
-  update({ a, b, newParams, oldParams, cache, dependencies }) {
-    const c = cache as InputCache;
-    const data = structureData(newParams.structures ?? [], dependencies);
-    const changed =
-      c.input !== a.data ||
-      newParams.structures !== oldParams.structures ||
-      c.structures?.length !== data.length ||
-      data.some((d, i) => d !== c.structures![i]);
-    Object.assign(c, { input: a.data, structures: data });
-    if (!changed && sameStrokes(newParams.strokes, oldParams.strokes) && newParams.fibers === oldParams.fibers) {
-      return StateTransformer.UpdateResult.Unchanged;
-    }
-    const list = withStructures(a.data, newParams.structures ?? [], data);
-    b.data = paintParticles(list, newParams.strokes, newParams.fibers);
-    b.label = a.label;
-    b.description = a.description;
-    return StateTransformer.UpdateResult.Updated;
+  update({ a, b, newParams, oldParams, cache }, plugin: PluginContext) {
+    return Task.create('Paint', async (ctx) => {
+      const c = cache as InputCache;
+      const objects =
+        newParams.structures === oldParams.structures && c.objects
+          ? c.objects
+          : await loadStructures(plugin, ctx, newParams.structures ?? [], c);
+      const changed =
+        c.input !== a.data || objects.length !== c.objects?.length || objects.some((o, i) => o !== c.objects![i]);
+      Object.assign(c, { input: a.data, objects });
+      if (!changed && sameStrokes(newParams.strokes, oldParams.strokes) && newParams.fibers === oldParams.fibers) {
+        return StateTransformer.UpdateResult.Unchanged;
+      }
+      const list = withStructures(a.data, newParams.structures ?? [], objects);
+      b.data = paintParticles(list, newParams.strokes, newParams.fibers);
+      b.label = a.label;
+      b.description = a.description;
+      return StateTransformer.UpdateResult.Updated;
+    });
   },
-  getDependencies: (params) => ((params as { structures?: PaintStructure[] }).structures ?? []).map((s) => s.ref),
+  dispose({ cache }) {
+    for (const entry of (cache as InputCache).structures?.values() ?? []) for (const x of entry.assets) x.dispose();
+  },
 });
 
 export { MesoscalePaintingList };

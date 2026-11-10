@@ -5,6 +5,9 @@
  */
 
 import { readFileSync } from 'node:fs';
+import { Mat4, Vec3 } from '@molstar/core/math/linear-algebra';
+import { CustomProperties } from '@molstar/model/model/custom-property';
+import { PluginStateObject as SO, PluginStateTransform } from '@molstar/plugin/state/objects';
 import { OrderedSet } from '@molstar/core/data/int';
 import { ParticleListPainted } from '@molstar/mesoscale-extension/paint';
 import { Particle, type ParticleList } from '@molstar/model/model/particles/particle-list';
@@ -139,5 +142,124 @@ describe('a structure painted into a list', () => {
     await v.plugin.runTask(v.plugin.state.data.setSnapshot(snapshot));
     expect(drawn(v).count).toBe(1);
     expect(drawn(v).targetMapping?.get(drawn(v).targets[0])?.kind).toBe('structure');
+  });
+});
+
+/** An HIV-like model with entities (CA, NC), made in memory */
+const TestModel = PluginStateTransform.BuiltIn({
+  name: 'prism-me-test-paint-in-list-model',
+  display: { name: 'Test Paint In List Model' },
+  from: SO.Root,
+  to: SO.Particle.List,
+  params: {},
+})({
+  apply() {
+    const data: ParticleList = {
+      label: 'HIV',
+      count: 2,
+      keys: Int32Array.of(0, 1),
+      targets: Int32Array.of(0, 1),
+      entities: Int32Array.of(0, 1),
+      targetInfo: new Map([
+        [0, { entity: 0 }],
+        [1, { entity: 1 }],
+      ]),
+      entityInfo: new Map([
+        [0, { name: 'CA' }],
+        [1, { name: 'NC' }],
+      ]),
+      coordinates: Float32Array.of(0, 0, 0, 10, 0, 0),
+      getParticleLabel: (i) => `${i}`,
+      sourceData: { kind: 'test', name: 'test', data: {} },
+      customProperties: new CustomProperties(),
+      _propertyData: Object.create(null),
+    };
+    return new SO.Particle.List(data, { label: 'HIV' });
+  },
+});
+
+// the gate's findings (round 2): ids kept across a decoration, the structure removable, the Painting list moved, a
+// structure's entity painted with, its copies drawn once
+describe('a structure painted into a list, after the gate', () => {
+  it('adds an entity of its id to a model, painted with again as an entity; ids kept by a decoration above', async () => {
+    const v = await viewer();
+    await v.plugin.build().toRoot().apply(TestModel).commit();
+    expectOk(await v.api.particles.representation({ type: 'spacefill' }));
+    const crn = await loadCrn(v);
+    const ref = lists(v)[0].cell.transform.ref;
+    expectOk(await v.api.run('mesoscale.paint', { structure: crn, particles: ref, positions: [0, 50, 0], seed: 1 }));
+    const d = drawn(v);
+    const entity = d.entities![2];
+    expect(d.entityInfo?.get(entity)?.name).toBe('1CRN');
+    // painted again with that entity (its particles are copies only: review S1); the same structure again: one entity
+    expectOk(await v.api.run('mesoscale.paint', { entity: '1CRN', particles: ref, positions: [0, 60, 0], seed: 2 }));
+    expectOk(await v.api.run('mesoscale.paint', { structure: crn, particles: ref, positions: [0, 70, 0], seed: 3 }));
+    expect(new Set(Array.from(drawn(v).entities!.slice(2)))).toEqual(new Set([entity]));
+    expect([...drawn(v).entityInfo!.values()].filter((e) => e.name === '1CRN').length).toBe(1);
+  });
+
+  it('keeps a structure copy on its target when the list is decorated above it (review M1)', async () => {
+    const v = await viewer();
+    expectOk(await v.api.load.files({ files: [new File([star], 'p.star')] }));
+    const crn = await loadCrn(v);
+    const ref = lists(v)[0].cell.transform.ref;
+    expectOk(await v.api.run('mesoscale.paint', { structure: crn, particles: ref, positions: [0, 50, 0], seed: 1 }));
+    const target = drawn(v).targets[2];
+    expectOk(await v.api.run('cryoet.decorate', { with: 'object', object: crn, targets: '', particles: ref }));
+    const d = drawn(v);
+    expect(d.targets[2]).toBe(target);
+    expect(d.targetInfo.get(target)?.name).toBe('1CRN');
+  });
+
+  it('draws a structure copy once on a list of spheres: the spheres leave its target out (review S2)', async () => {
+    const v = await viewer();
+    expectOk(await v.api.load.files({ files: [new File([star], 'p.star')] }));
+    const crn = await loadCrn(v);
+    const ref = lists(v)[0].cell.transform.ref;
+    expectOk(await v.api.run('mesoscale.paint', { structure: crn, particles: ref, positions: [0, 50, 0], seed: 1 }));
+    const target = drawn(v).targets[2];
+    const tree = v.plugin.state.data.tree;
+    const types = lists(v)[0].representations.map(
+      (r) => (r.cell.transform.params as { type: { name: string } }).type.name,
+    );
+    expect(types).toContain('target');
+    for (const r of lists(v)[0].representations) {
+      if ((r.cell.transform.params as { type: { name: string } }).type.name === 'target') continue;
+      const layers = tree.children
+        .get(r.cell.transform.ref)
+        .toArray()
+        .map((c) => tree.transforms.get(c)!.params as { hidden?: number[] });
+      expect(layers.some((p) => p.hidden?.includes(target))).toBe(true);
+    }
+  });
+
+  it('keeps the copies when the structure is removed from the scene (review M2)', async () => {
+    const v = await viewer();
+    await v.plugin.build().toRoot().apply(TestModel).commit();
+    expectOk(await v.api.particles.representation({ type: 'spacefill' }));
+    const crn = await loadCrn(v);
+    const ref = lists(v)[0].cell.transform.ref;
+    expectOk(await v.api.run('mesoscale.paint', { structure: crn, particles: ref, positions: [0, 50, 0], seed: 1 }));
+    await v.plugin.build().delete(crn).commit();
+    expect(lists(v)[0].representations.length).toBeGreaterThan(0);
+    const d = drawn(v);
+    expect(d.count).toBe(3);
+    expect(d.targetMapping?.get(d.targets[2])?.kind).toBe('structure');
+  });
+
+  it('moves the Painting list with its copies; a later stroke lands where it is painted (review M3)', async () => {
+    const v = await viewer();
+    const crn = await loadCrn(v);
+    expectOk(await v.api.run('mesoscale.paint', { structure: crn, positions: [10, 20, 30], seed: 1 }));
+    const ref = lists(v)[0].cell.transform.ref;
+    expectOk(
+      await v.api.run('stage.move', {
+        target: ref,
+        matrix: Array.from(Mat4.fromTranslation(Mat4(), Vec3.create(100, 0, 0))),
+      }),
+    );
+    expect(xyz(drawn(v), 0)).toEqual([110, 20, 30]);
+    expectOk(await v.api.run('mesoscale.paint', { structure: crn, positions: [10, 20, 30], seed: 2 }));
+    expect(xyz(drawn(v), 1)).toEqual([10, 20, 30]);
   });
 });

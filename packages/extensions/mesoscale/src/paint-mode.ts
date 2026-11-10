@@ -156,6 +156,9 @@ export class PaintMode {
     this.stop();
     const canvas = this.host.canvas();
     if (!canvas) return false;
+    // a structure brush is asked where it paints each time it starts (Ludo, 2026-11-10; review S3): the Painting list
+    // until the Paint section says otherwise
+    if (brush.structure && this.settings.value.into) this.set({ into: '' });
     this.brush.set(brush);
     this.end = createRoot((dispose) => {
       paintLayer(this, this.host, canvas, brush);

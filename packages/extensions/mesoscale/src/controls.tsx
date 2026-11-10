@@ -371,7 +371,7 @@ function PaintInto(props: { area: MesoscaleApi }) {
   const choices = mapState(lists, (ls) => [
     { id: '', label: 'Painting', title: 'The Painting list (made by the first stroke)' },
     ...ls
-      .filter((l) => l.label !== 'Painting')
+      .filter((l) => !l.painting)
       .map((l) => ({ id: l.ref, label: l.label, title: `Into ${l.label}: a new entity of it` })),
   ]);
   return (
