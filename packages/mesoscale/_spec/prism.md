@@ -266,12 +266,19 @@ For a document row, the sections of ui.md §4 that apply, and three of its own:
   (picked, else `session.view`, else the first). The session keeps the view shown for every derivation (an edit, a
   stream step, a restore). `mesoviewspec.view` saves the custom state again with `shown`, so the next checkpoint notes
   it. A restore of the same document with another view derives only the view and adopts the restored tree. The camera
-  stays where it is on Undo: no checkpoint holds it. A view an edit removes is no longer picked.
-  `mesoviewspec.tour.play` is `history: false, undoable: false`, so the agent asks once a tour. Each step holds its
-  `duration`, 2 s when it has none. Stop, another tour, Undo, Redo, a close and an open end it. Its caption is on the
-  tour's row, not in the canvas: Prism has no caption line yet. New view from here, Update camera and Open with this
-  view are `mesoviewspec.newView` (`v.view.<n>`, shown in the same step), `.updateCamera` and `.openWith`. Their camera
-  is written in the view's frame, or in the document's unit. Open with keeps the view shown as it is.
+  stays where it is on Undo, because no checkpoint holds it (Ludo, 2026-11-09). A view an edit removes is no longer
+  picked. Showing the view already shown sets its camera again and draws nothing else (Ludo, 2026-11-09). A show that
+  fails mid-draw draws the view before it again, best effort, so the screen, the adapter and the saved `shown` agree
+  (Ludo, 2026-11-09). `mesoviewspec.tour.play` is `history: false, undoable: false`, so the agent asks once a tour. Each
+  step holds its `duration`, 2 s when it has none. Stop, another tour, Undo, Redo, a close and an open end it; a close
+  or an open ends it at once. A click on a view while a tour plays does not stop it. Its caption is on the tour's row,
+  not in the canvas: Prism has no caption line yet. New view from here, Update camera and Open with this view are
+  `mesoviewspec.newView` (`v.view.<n>`, shown in the same step, its id past every id of the document), `.updateCamera`
+  and `.openWith` (none named: the view shown). Their camera is written in the view's frame, or in the document's unit,
+  with the canvas's `fov`. Update camera writes a whole numeric camera, keeping the view's `transition`; a semantic
+  camera's `focus`, `from` and `framing` are replaced, and the result says so (Ludo, 2026-11-09). Open with keeps the
+  view shown as it is. A view's annotations are placed over level 0 of a stream, like its camera, so a tile arrival
+  moves no label.
 
 ### 4.5 Focus and the semantic camera
 

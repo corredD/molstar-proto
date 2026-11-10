@@ -14,3 +14,8 @@
 - For extensions: the runtime's `updateView(doc, ir, view?)` and `compile`'s `view` option take the view shown, and
   `shownViewOf` resolves it. The `mesoviewspec` area adds `view`, `tour.play`, `tour.stop`, `newView`, `updateCamera`,
   `openWith` and `label`. Its tree state gains `views`.
+- A click on the view already shown moves the camera back to that view's camera. Undo leaves the camera where it is.
+- Update camera saves the whole camera as it is now: position, field of view and the view's transition. It replaces a
+  camera framed on an address, and it says so.
+- A view that fails to show draws the view shown before again. Closing or opening a document stops a tour at once.
+- A label on a streamed population stays put while tiles load.
