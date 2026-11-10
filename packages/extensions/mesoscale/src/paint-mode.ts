@@ -22,6 +22,11 @@ export interface PaintBrushTarget {
   readonly particles: string;
   readonly entity: number;
   readonly name: string;
+  /**
+   * A structure of the scene (its state ref) instead of an entity (paint-layer round 2): painted into the settings'
+   * `into` list, its `particles` and `entity` not read
+   */
+  readonly structure?: string;
 }
 
 /** How the brush paints (apps/prism-me/_spec/ui.md §4, Paint) */
@@ -50,6 +55,11 @@ export interface PaintSettings {
    */
   readonly sequence?: string;
   readonly range?: string;
+  /**
+   * Where a structure brush paints (paint-layer round 2, Ludo 2026-11-10: asked each time): a particle list's state
+   * ref, or empty for the Painting list
+   */
+  readonly into?: string;
 }
 
 export type PaintPlace = 'surface' | 'depth';

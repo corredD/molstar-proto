@@ -34,6 +34,7 @@ import { isFailure, labelOf, pickNamed, pickOne } from '@molstar/prism-viewer/ap
 import { watchedState } from '@molstar/prism-viewer/sources/watched';
 import type { ReadonlyState } from '@molstar/prism-ui/reactive/readonly-state';
 import { cssColor, matchColors, parseColorFile } from './color-file.js';
+import { targetRepresentationParams } from './paint-cursor.js';
 import { pluginPaintHost } from './paint-host.js';
 import { PaintMode } from './paint-mode.js';
 import {
@@ -1771,7 +1772,7 @@ async function updatePainted(
     (r) => (r.cell.transform.params as { type?: { name?: string } })?.type?.name === 'target',
   );
   if (structures && !hasTarget && ctx.plugin.representation.particles.registry.has('target')) {
-    b.to(l.cell).apply(ParticlesRepresentation3D, targetRepresentationParams(ctx.plugin, l.cell.obj!.data));
+    b.to(l.cell).apply(ParticlesRepresentation3D, targetRepresentationParams(ctx.plugin, l.cell.obj!.data) as never);
   }
   await b.commit();
 }
@@ -1850,29 +1851,9 @@ async function paintNew(ctx: Pick<ApiContext, 'plugin'>, params: PaintedParams, 
   list.apply(ParticleListPainted, params);
   const cell = ctx.plugin.state.data.cells.get(structure.ref)!;
   const drawn = withStructures(paintingList(), [structure], [cell.obj!.data as Structure]);
-  list.apply(ParticlesRepresentation3D, targetRepresentationParams(ctx.plugin, drawn));
+  list.apply(ParticlesRepresentation3D, targetRepresentationParams(ctx.plugin, drawn) as never);
   await b.commit();
   return list.ref;
-}
-
-/** A target representation's params, the type's default themes (as `particles.representation` makes them) */
-function targetRepresentationParams(plugin: ApiContext['plugin'], data: ParticleList): never {
-  const { registry, themes } = plugin.representation.particles;
-  const provider = registry.get('target');
-  const dataCtx = { particles: data };
-  const color = themes.colorThemeRegistry.get(provider.defaultColorTheme.name);
-  const size = themes.sizeThemeRegistry.get(provider.defaultSizeTheme.name);
-  return {
-    type: { name: provider.name, params: PD.getDefaultValues(provider.getParams(themes, data)) },
-    colorTheme: {
-      name: color.name,
-      params: Object.assign(PD.getDefaultValues(color.getParams(dataCtx)), provider.defaultColorTheme.props),
-    },
-    sizeTheme: {
-      name: size.name,
-      params: Object.assign(PD.getDefaultValues(size.getParams(dataCtx)), provider.defaultSizeTheme.props),
-    },
-  } as never;
 }
 
 /** An entity's fiber settings in effect and whether it makes fibers (`MesoscaleApi.fiberState`) */

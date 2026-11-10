@@ -6,6 +6,7 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import type { PluginContext } from '@molstar/plugin/context';
+import { PluginStateObject as SO } from '@molstar/plugin/state/objects';
 import { Binding } from '@molstar/core/util/binding';
 import { ButtonsType, ModifiersKeys } from '@molstar/core/util/input/input-observer';
 import { DefaultTrackballBindings } from '@molstar/graphics/canvas3d/controls/trackball';
@@ -39,6 +40,34 @@ describe('pluginPaintHost', () => {
     await host.paint(brush, s, [0, 0, 0], [0, 0, 1], 1, false);
     expect(calls[0]).toMatchObject({ sequence: 'ATGC', start: 2, end: 3, fiber: true });
     expect(calls[1].sequence).toBeUndefined();
+  });
+});
+
+describe('pluginPaintHost, a structure brush (paint-layer round 2)', () => {
+  it("paints the structure into the settings' list (empty: the Painting list): no fiber, upright never, its radius", async () => {
+    const structure = { boundary: { sphere: { radius: 18 } } };
+    const cells = new Map([['s1', { obj: { type: SO.Molecule.Structure.type, data: structure } }]]);
+    const plugin = {
+      log: { warn: vi.fn() },
+      state: { data: { cells } },
+      managers: { particles: { hierarchy: { current: { lists: [] } } } },
+    };
+    const calls: Record<string, unknown>[] = [];
+    const host = pluginPaintHost(plugin as unknown as PluginContext, async (p) => {
+      calls.push(p as Record<string, unknown>);
+      return { ok: true };
+    });
+    const brush = { particles: '', entity: -1, name: '1CRN', structure: 's1' };
+    expect(host.has(brush)).toBe(true);
+    expect(host.has({ ...brush, structure: 'gone' })).toBe(false);
+    expect(host.upright(brush)).toBe(false);
+    expect(host.fiberStep(brush)).toBeUndefined();
+    expect(host.radius(brush)).toBe(18);
+    await host.paint(brush, DefaultPaintSettings, [0, 0, 0], [0, 0, 1], 1, false);
+    await host.paint(brush, { ...DefaultPaintSettings, into: 'hiv' }, [0, 0, 0], [0, 0, 1], 1, false);
+    expect(calls[0]).toMatchObject({ structure: 's1', particles: '' });
+    expect(calls[0].entity).toBeUndefined();
+    expect(calls[1]).toMatchObject({ structure: 's1', particles: 'hiv' });
   });
 });
 

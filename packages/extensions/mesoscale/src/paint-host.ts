@@ -15,6 +15,7 @@ import {
   getParticleTargetGroups,
   Particle,
 } from '@molstar/model/model/particles/particle-list';
+import { PluginStateObject as SO } from '@molstar/plugin/state/objects';
 import type { PluginContext } from '@molstar/plugin/context';
 import type { ParticleListRef } from '@molstar/plugin/state/manager/particles/hierarchy-state';
 import type { PaintBrushTarget, PaintHost, PaintSettings } from './paint-mode.js';
@@ -28,7 +29,7 @@ import {
   isFiberBrush,
   ParticleListPainted,
 } from './paint.js';
-import { pluginPaintCursor } from './paint-cursor.js';
+import { pluginPaintCursor, pluginStructureCursor } from './paint-cursor.js';
 import { membraneFrame } from './pick-surface.js';
 
 // Paint mode's host on the viewer (paint-mode.ts): the plugin's canvas, its picks and camera, and the stroke run as
@@ -82,6 +83,11 @@ export function pluginPaintHost(
 ): PaintHost {
   const listOf = (ref: string) =>
     plugin.managers.particles.hierarchy.current.lists.find((l) => l.cell.transform.ref === ref);
+  /** A structure brush's structure (paint-layer round 2), if it is still in the scene */
+  const structureOf = (brush: PaintBrushTarget) => {
+    const obj = brush.structure ? plugin.state.data.cells.get(brush.structure)?.obj : undefined;
+    return obj && SO.Molecule.Structure.is(obj) ? obj.data : undefined;
+  };
   return {
     canvas: () => plugin.canvas3dContext?.canvas ?? undefined,
     holdCamera() {
@@ -121,6 +127,7 @@ export function pluginPaintHost(
       membraneFrame(loci.particles, OrderedSet.start(loci.indices), point);
     },
     upright(brush) {
+      if (brush.structure) return false;
       const data = listOf(brush.particles)?.cell.obj?.data;
       return !!data && !!brushOf(data, brush.entity)?.surface;
     },
@@ -132,6 +139,7 @@ export function pluginPaintHost(
       return Vec3.set(out, _p4[0] / ratio, _p4[1] / ratio, _p4[2]);
     },
     radius(brush) {
+      if (brush.structure) return structureOf(brush)?.boundary.sphere.radius || 10;
       const data = listOf(brush.particles)?.cell.obj?.data;
       if (!data) return 1;
       // its first particle's (a list without entities: its targets are its entities)
@@ -142,13 +150,19 @@ export function pluginPaintHost(
       return (set && OrderedSet.size(set) && data.radii?.[OrderedSet.start(set)]) || 10;
     },
     cursor(brush) {
+      if (brush.structure) {
+        const structure = structureOf(brush);
+        return structure ? pluginStructureCursor(plugin, structure) : { move() {}, hide() {}, dispose() {} };
+      }
       const list = listOf(brush.particles);
       const data = list?.cell.obj?.data;
       const color = list ? colorOf?.(list, brush.entity) : undefined;
       return pluginPaintCursor(plugin, list, brush, color, !!data && !!brushOf(data, brush.entity)?.surface);
     },
     fiberStep(brush) {
-      // the entity's rise (Round 3): its own settings, else its file's fibers'; none when it makes no fibers
+      // the entity's rise (Round 3): its own settings, else its file's fibers'; none when it makes no fibers (a
+      // structure brush: copies)
+      if (brush.structure) return undefined;
       const list = listOf(brush.particles);
       const data = list?.cell.obj?.data;
       const b = data && brushOf(data, brush.entity);
@@ -161,8 +175,9 @@ export function pluginPaintHost(
     },
     async paint(brush: PaintBrushTarget, s: PaintSettings, positions, normals, seed, fiber) {
       const r = (await paint({
-        particles: brush.particles,
-        entity: String(brush.entity),
+        ...(brush.structure
+          ? { structure: brush.structure, particles: s.into ?? '' }
+          : { particles: brush.particles, entity: String(brush.entity) }),
         positions,
         normals,
         seed,
@@ -181,7 +196,7 @@ export function pluginPaintHost(
       if (r && r.ok === false) plugin.log.warn(`Not painted: ${r.message ?? 'the stroke was refused.'}`);
       return r;
     },
-    has: (brush) => !!listOf(brush.particles),
+    has: (brush) => (brush.structure ? !!structureOf(brush) : !!listOf(brush.particles)),
     changed(fn) {
       const sub = plugin.state.data.events.changed.subscribe(fn);
       return () => sub.unsubscribe();

@@ -220,10 +220,27 @@ const OrientTitles: Record<string, string> = {
  * `mesoscale.paint`) or Stop, and how it paints: the spacing (0: the copies touch), how each copy is turned, the side
  * of the surface, its spin (random, or an angle). The settings are the mode's, not the state's (no step).
  */
-export function PaintBrush(props: { area: MesoscaleApi; particles: string; entity: number; name: string }) {
+export function PaintBrush(props: {
+  area: MesoscaleApi;
+  particles: string;
+  entity: number;
+  name: string;
+  /** A structure of the scene as the brush (paint-layer round 2): painted into a list or the Painting list */
+  structure?: string;
+}) {
   const mode = props.area.paintMode;
-  const on = mapState(mode.brush.asReadonly, (b) => b?.particles === props.particles && b.entity === props.entity);
+  const on = mapState(mode.brush.asReadonly, (b) =>
+    props.structure
+      ? b?.structure === props.structure
+      : !b?.structure && b?.particles === props.particles && b.entity === props.entity,
+  );
   const settings = mode.settings.asReadonly;
+  const brush = () => ({
+    particles: props.particles,
+    entity: props.entity,
+    name: props.name,
+    ...(props.structure ? { structure: props.structure } : {}),
+  });
   return (
     <div class={classes.tight}>
       <div class={classes.line}>
@@ -234,11 +251,7 @@ export function PaintBrush(props: { area: MesoscaleApi; particles: string; entit
             icon={<Icon name="paintbrush" />}
             pressed={on}
             title="Click or drag to paint copies (on a surface or at a depth); Alt moves the camera; Esc stops"
-            onClick={() =>
-              on.value
-                ? mode.stop()
-                : void mode.start({ particles: props.particles, entity: props.entity, name: props.name })
-            }
+            onClick={() => (on.value ? mode.stop() : void mode.start(brush()))}
           >
             {mapState(on, (o) => (o ? 'Stop' : 'Paint'))}
           </Button>
@@ -259,17 +272,20 @@ export function PaintBrush(props: { area: MesoscaleApi; particles: string; entit
         active={mapState(settings, (s) => s.orient)}
         onPick={(id) => mode.set({ orient: id as PaintSettings['orient'] })}
       />
-      <Choices
-        label="Fiber"
-        choices={[
-          { id: 'auto', label: 'Auto', title: 'A new fiber when the entity has fibers, else copies' },
-          { id: 'on', label: 'On', title: 'A stroke is a new fiber: its points a step apart, turned along it' },
-          { id: 'off', label: 'Off', title: 'A stroke is copies' },
-        ]}
-        active={mapState(settings, (s) => s.fiber)}
-        onPick={(id) => mode.set({ fiber: id as PaintSettings['fiber'] })}
-      />
-      <Show when={mapState(settings, (st) => st.fiber !== 'off')}>
+      {props.structure ? <PaintInto area={props.area} /> : null}
+      {props.structure ? null : (
+        <Choices
+          label="Fiber"
+          choices={[
+            { id: 'auto', label: 'Auto', title: 'A new fiber when the entity has fibers, else copies' },
+            { id: 'on', label: 'On', title: 'A stroke is a new fiber: its points a step apart, turned along it' },
+            { id: 'off', label: 'Off', title: 'A stroke is copies' },
+          ]}
+          active={mapState(settings, (s) => s.fiber)}
+          onPick={(id) => mode.set({ fiber: id as PaintSettings['fiber'] })}
+        />
+      )}
+      <Show when={mapState(settings, (st) => !props.structure && st.fiber !== 'off')}>
         {() => (
           <div class={classes.tight}>
             <FiberSettings area={props.area} particles={props.particles} entity={props.entity} />
@@ -342,6 +358,33 @@ export function PaintBrush(props: { area: MesoscaleApi; particles: string; entit
         />
       </div>
     </div>
+  );
+}
+
+/**
+ * Where a structure brush paints (paint-layer round 2, Ludo 2026-11-10: asked each time): a particle list of the scene,
+ * or the Painting list (made by the first stroke); the settings' `into`, no step
+ */
+function PaintInto(props: { area: MesoscaleApi }) {
+  const mode = props.area.paintMode;
+  const lists = props.area.listsState();
+  const choices = mapState(lists, (ls) => [
+    { id: '', label: 'Painting', title: 'The Painting list (made by the first stroke)' },
+    ...ls
+      .filter((l) => l.label !== 'Painting')
+      .map((l) => ({ id: l.ref, label: l.label, title: `Into ${l.label}: a new entity of it` })),
+  ]);
+  return (
+    <Show when={choices}>
+      {(cs) => (
+        <Choices
+          label="Paint into"
+          choices={cs}
+          active={mapState(mode.settings.asReadonly, (s) => s.into ?? '')}
+          onPick={(id) => mode.set({ into: id })}
+        />
+      )}
+    </Show>
   );
 }
 

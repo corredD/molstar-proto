@@ -388,6 +388,15 @@ export const Sections: readonly Section[] = [
     render: ({ api, picked }) => <Labels api={api} stage={api.stage!} at={picked.key} />,
   },
   {
+    // a structure as a brush (paint-layer round 2, Ludo 2026-11-10): Paint with it, into a list or the Painting list
+    id: 'paint-structure',
+    title: 'Paint',
+    when: ({ api, picked }) => !!api.mesoscale && picked.kind === 'structure' && !!picked.node,
+    render: ({ api, picked }) => (
+      <PaintBrush area={api.mesoscale!} particles="" entity={-1} name={picked.label} structure={picked.node!.ref} />
+    ),
+  },
+  {
     // a model's entity as a brush (progress/2026-11-08-paint.md): Paint with it, and how
     id: 'paint',
     title: 'Paint',
