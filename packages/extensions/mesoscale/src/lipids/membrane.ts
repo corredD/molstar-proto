@@ -1289,6 +1289,8 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
     const cutter = data.method === 'cutter';
     const budget = cutter ? props.budget : Infinity;
     const inputs = cuts.map((c) => cutInputs.get(c)!);
+    // a hidden encloser hides nothing inside it (review M1)
+    visibility?.setHidden((q) => hiddenParts.has(data.parts?.[q]?.name ?? ''));
     const capacities = poolCapacities(
       inputs.map((input, c) => (partHidden(data.cut[c]) ? new Uint32Array(input.members) : slotTotals(input, budget))),
       budget,

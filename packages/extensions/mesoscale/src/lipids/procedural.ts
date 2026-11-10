@@ -142,6 +142,11 @@ export interface PartVisibility {
   /** per part, 1 where the last view shows it */
   readonly shown: Uint8Array;
   update: (frustum: Frustum3D, facing: boolean) => void;
+  /**
+   * The parts hidden by the user (round 7 review M1): a hidden encloser hides nothing inside it (one hides the PM to see
+   * the organelles); the next view decides again
+   */
+  setHidden: (hidden: (part: number) => boolean) => void;
 }
 
 export function createPartVisibility(
@@ -156,6 +161,7 @@ export function createPartVisibility(
   const eyeInside = new Uint8Array(P);
   const near = new Float64Array(3);
   const stack = new Int32Array(256);
+  const hiddenPart = new Uint8Array(P);
   // the view last seen: its 6 planes, then facing (NaN: none yet)
   const key = new Float64Array(25).fill(Number.NaN);
   function update(frustum: Frustum3D, facing: boolean) {
@@ -182,6 +188,7 @@ export function createPartVisibility(
       const e: Int32Array = enclosedBy[q];
       for (let i = 0; i < e.length && shown[q]; ++i) {
         const outer = e[i];
+        if (hiddenPart[outer]) continue;
         if (eyeInside[outer] === 2) {
           eyeInside[outer] =
             viewer && insidePart(tree, positions, indices, outer, near[0], near[1], near[2], stack) ? 1 : 0;
@@ -190,7 +197,11 @@ export function createPartVisibility(
       }
     }
   }
-  return { shown, update };
+  function setHidden(hidden: (part: number) => boolean) {
+    for (let q = 0; q < P; ++q) hiddenPart[q] = hidden(q) ? 1 : 0;
+    key.fill(Number.NaN);
+  }
+  return { shown, update, setHidden };
 }
 
 /** A leaflet's selection: its units in view, nearest first within each member's capacity */
