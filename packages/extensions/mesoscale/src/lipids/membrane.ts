@@ -19,7 +19,7 @@ import { createIdentityTransform, createTransform } from '@molstar/graphics/geo/
 import { Mesh } from '@molstar/graphics/geo/geometry/mesh/mesh';
 import { BaseGeometry } from '@molstar/graphics/geo/geometry/base';
 import type { BaseValues } from '@molstar/graphics/gl/renderable/schema';
-import type { Clip } from '@molstar/core/util/clip';
+import { Clip } from '@molstar/core/util/clip';
 import type { GraphicsContext } from '@molstar/graphics/gl/context';
 import { createRenderObject, type GraphicsRenderObject } from '@molstar/graphics/gl/render-object';
 import { canCullOnGpu } from '@molstar/graphics/gl/renderable/merged';
@@ -55,6 +55,7 @@ import type { Texture } from '@molstar/graphics/gl/texture';
 import {
   createLipidSelection,
   createPartVisibility,
+  type CutBand,
   enterPx,
   estimateLipids,
   type LipidSelection,
@@ -799,6 +800,26 @@ function middleOn(props: LipidMembraneReprProps) {
   return props.middle === 'parallax' && props.far !== 'spheres';
 }
 
+/**
+ * Whether a middle look draws a cut band (round 8 §2, the gate's M1): with a clip, the lipids near its boundary taken
+ * as the coarse look takes them (`SelectionParams.band`), their sphere levels kept (a cross-section shows lipids with
+ * tails, not the relief's edge)
+ */
+function cutBandOn(props: LipidMembraneReprProps) {
+  return middleOn(props) && props.clip.objects.length > 0;
+}
+
+/**
+ * The px a cut leaflet's near surface (beneath its lipids) is drawn down to: its lipids', or with a cut band the coarse
+ * rule's (the band's lipids have it beneath them: a cross-section with no gap between the leaflets)
+ */
+function nearPx(props: LipidMembraneReprProps) {
+  return cutBandOn(props) ? enterPx(props.far, props.atomsPx, props.spheresPx) : lipidsPx(props);
+}
+
+/** The cut band's width, lipids: a lipid's length past the boundary and one more */
+const CutBandWidth = 2;
+
 /** A lipid's size in the patch, Å: the side of the area a lipid takes (the selection's size on screen) */
 function lipidSize(table: CutterTable) {
   return Math.sqrt((table.box[0] * table.box[1]) / Math.max(1, table.lipids.length / 4));
@@ -1235,7 +1256,8 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
     // each lipid or tile at its own level by its size on screen (the culler's per-instance levels)
     // round 8: with a middle look a cut lipid is its atoms down to it (the selection keeps a triangle's lipids a little
     // below `middlePx`, measured: no coarse level shows over the relief)
-    const atomsOnly = props.detail === 'off' || (lipidAtomStart === undefined && middleOn(props));
+    // with a clip the cut band's lipids keep the levels (the gate's M1: `cutBandOn`, a build where it comes or goes)
+    const atomsOnly = props.detail === 'off' || (lipidAtomStart === undefined && middleOn(props) && !cutBandOn(props));
     const lod = atomsOnly ? { lodLevels: [], lodPixelSize: 0 } : membraneLevels(props.detail, props.levels);
     // markers by lipid; by atom (a cut member's, a tile's): by group and instance, 40 a lipid past a texture's size
     const p = {
@@ -1293,7 +1315,8 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
       lastLod.depthScale = depthScale;
       lastLod.pixelSize = pixelSize;
       const enter = lipidsPx(props);
-      for (const f of fading) fadeSurface(f.values, f.size, enter, f.near, depthScale, pixelSize);
+      const near = nearPx(props);
+      for (const f of fading) fadeSurface(f.values, f.size, f.near ? near : enter, f.near, depthScale, pixelSize);
     },
     showParts,
     partsVersion: () => visibility?.version,
@@ -1302,10 +1325,29 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
       selectionParams.enterPx = builtFor?.method === 'cutter' ? lipidsPx(props) : 0;
       // a clip shows the leaflet behind and the far side: every unit then
       selectionParams.facing = props.clip.objects.length > 0 ? 0 : FacingMargin;
+      selectionParams.band = builtFor?.method === 'cutter' && cutBandOn(props) ? cutBand(size) : undefined;
       return selectionParams;
     },
   });
-  const selectionParams = { lipidSize: 8, enterPx: 2, keep: Keep, facing: FacingMargin };
+  const selectionParams: {
+    lipidSize: number;
+    enterPx: number;
+    keep: number;
+    facing: number;
+    band: CutBand | undefined;
+  } = { lipidSize: 8, enterPx: 2, keep: Keep, facing: FacingMargin, band: undefined };
+  /** the cut band's (the gate's M1): its clip objects made again where the clip changed, written in place a view */
+  const band = { objects: Clip.getClip(props.clip).objects, width: 0, enterPx: 0 };
+  let bandFor: Clip.Props | undefined;
+  function cutBand(size: number) {
+    if (bandFor !== props.clip) {
+      bandFor = props.clip;
+      band.objects = Clip.getClip(props.clip).objects;
+    }
+    band.width = CutBandWidth * size;
+    band.enterPx = enterPx(props.far, props.atomsPx, props.spheresPx);
+    return band;
+  }
 
   /** the data the GPU's cutters and assigners were made for: a new look of the same data reuses them (review S5) */
   let builtFor: MembraneData | undefined;
@@ -1620,7 +1662,8 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
           if (fade) {
             const values = object.values as BaseValues;
             nextFading.push({ values, size, near: fade === 'near' });
-            fadeSurface(values, size, enter, fade === 'near', lastLod.depthScale, lastLod.pixelSize);
+            const at = fade === 'near' ? nearPx(props) : enter;
+            fadeSurface(values, size, at, fade === 'near', lastLod.depthScale, lastLod.pixelSize);
           }
           if (cut && leaflet.part !== undefined) nextPartSurfaces.push({ object, part: leaflet.part });
           out.push(object);
@@ -1670,7 +1713,9 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
         props = { ...props, ...p };
         if (data) lastData = data;
         // a cut alone (a clip's handle as it goes, its release): the drawn objects' clip values, nothing built again
-        if (lastData && builtFor === lastData && onlyClip(before, props)) {
+        // a middle look's cut band comes or goes with the clip: its lipids' levels built (the gate's M1)
+        const bandChanged = cutBandOn(before) !== cutBandOn(props);
+        if (lastData && builtFor === lastData && onlyClip(before, props) && !bandChanged) {
           for (const v of members) setClip(v, props.clip);
           for (const o of renderObjects) setClip(o.values as never, props.clip);
           // a clip shows the leaflet behind (`facing` off): where clips come or go the next view selects anew (review M4;
@@ -1678,6 +1723,9 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
           if (before.clip.objects.length > 0 !== props.clip.objects.length > 0) {
             views.reset();
             for (const sel of selections) sel.reset();
+          } else if (cutBandOn(props)) {
+            // the band follows the cut (a handle's drag): the next view selects anew, the old units kept until then
+            views.reset();
           }
         } else if (lastData && builtFor === lastData && onlyColorEdges(before, props)) {
           // the colours by zoom's edges alone (round 7 item 6): their uniforms, nothing built again

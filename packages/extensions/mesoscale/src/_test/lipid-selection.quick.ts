@@ -9,6 +9,8 @@
 
 import { expect, it } from 'vitest';
 import { Vec3 } from '@molstar/core/math/linear-algebra/3d/vec3';
+import { Mat4 } from '@molstar/core/math/linear-algebra/3d/mat4';
+import { Clip } from '@molstar/core/util/clip';
 import { quickCase } from '@molstar/test-harness/quick';
 import { concatMeshes } from '../lipids/membrane.js';
 import { createLipidSelection, createPartVisibility } from '../lipids/procedural.js';
@@ -25,6 +27,35 @@ it('a select between two views (cells and whole triangles)', ({ task }) => {
   quickCase(task, 'lipid selection: a select between two views', (i) => {
     const v = views[i & 1];
     if (selection.select(v.plane, v.frustum, v.depthScale, 0, Params)) changed += 1;
+  });
+  expect(changed).toBeGreaterThan(10);
+  expect(selection.count).toBeGreaterThan(0);
+});
+
+it('a select between two views with a cut band (round 8 gate M1: the band tested per node, triangle and cell)', ({
+  task,
+}) => {
+  const large = input(8, 400);
+  const selection = createLipidSelection(large, full(large));
+  const objects = Clip.getClip({
+    variant: 'pixel',
+    objects: [
+      {
+        type: 'plane',
+        invert: false,
+        position: Vec3.create(1350, 0, 0),
+        rotation: { axis: Vec3.create(0, 0, 1), angle: -90 },
+        scale: Vec3.create(1, 1, 1),
+        transform: Mat4.identity(),
+      },
+    ],
+  }).objects;
+  const params = { ...Params, enterPx: 8, band: { objects, width: 16, enterPx: 2 } };
+  const views = [view(Vec3.create(1200, 1200, 300)), view(Vec3.create(1500, 1300, 280))];
+  let changed = 0;
+  quickCase(task, 'lipid selection: a select with a cut band between two views', (i) => {
+    const v = views[i & 1];
+    if (selection.select(v.plane, v.frustum, v.depthScale, 0, params)) changed += 1;
   });
   expect(changed).toBeGreaterThan(10);
   expect(selection.count).toBeGreaterThan(0);

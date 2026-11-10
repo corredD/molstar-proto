@@ -6,6 +6,7 @@
 
 import type { Frustum3D } from '@molstar/core/math/geometry/primitives/frustum3d';
 import type { Plane3D } from '@molstar/core/math/geometry/primitives/plane3d';
+import { Clip } from '@molstar/core/util/clip';
 import { cellEntry, cellSide, type CutterRegions, emptyCut, regionKey, triangleCut } from './cutter.js';
 import { insidePart, type TrianglePart, triangleTree } from './triangle-tree.js';
 
@@ -33,6 +34,19 @@ export interface SelectionParams {
    * hidden), within this margin, Å; 0 off (a clip shows them)
    */
   readonly facing?: number;
+  /**
+   * The cut band (round 8 §2, the gate's M1): the units within `width` Å of a clip object's boundary taken at `enterPx`
+   * (the coarse rule, the far look's switch), so a cross-section shows lipids where a middle look takes the rest at a
+   * larger px; none: no clip, or no middle look
+   */
+  readonly band?: CutBand;
+}
+
+/** The clip objects a cut band follows (`Clip.getClip`'s), its width, Å, and the px its units are taken at */
+export interface CutBand {
+  readonly objects: Clip.Objects;
+  readonly width: number;
+  readonly enterPx: number;
 }
 
 /** The pixel size a far mode takes lipids at: its texture switch, or its spheres' last */
@@ -445,6 +459,59 @@ function nearCenter(frustum: Frustum3D, out: Float64Array) {
 }
 
 /**
+ * 1 where a sphere (`s`: center, radius) meets the boundary of a clip object and none clips all of it, else 0: core's
+ * `Clip.classifySphere` (`Some`), its signed distance (`Clip.getSignedDistance`) written in here, the sphere read from an
+ * array and the answer a small integer: core's returns its distance, a double boxed a call (measured, the selection's
+ * `test:perf` case with a cut band: 5.8 kB a view; the selection allocates nothing a view, review S3)
+ */
+export function nearClipBoundary(objects: Clip.Objects, s: Float64Array) {
+  const { frame, shape, count } = objects;
+  let some = 0;
+  for (let i = 0; i < count; ++i) {
+    const f = i * 16;
+    const o = i * 4;
+    const type = Math.round(Math.abs(shape[o + 3]));
+    if (type === Clip.Type.none) continue;
+    const x = frame[f] * s[0] + frame[f + 4] * s[1] + frame[f + 8] * s[2] + frame[f + 12];
+    const y = frame[f + 1] * s[0] + frame[f + 5] * s[1] + frame[f + 9] * s[2] + frame[f + 13];
+    const z = frame[f + 2] * s[0] + frame[f + 6] * s[1] + frame[f + 10] * s[2] + frame[f + 14];
+    const sx = shape[o];
+    const sy = shape[o + 1];
+    const sz = shape[o + 2];
+    let sd = 0.1;
+    if (type === Clip.Type.plane) sd = -y;
+    else if (type === Clip.Type.sphere) {
+      const ax = Math.max(sx, 1e-6);
+      const ay = Math.max(sy, 1e-6);
+      const az = Math.max(sz, 1e-6);
+      sd = (Math.sqrt((x / ax) ** 2 + (y / ay) ** 2 + (z / az) ** 2) - 1) * Math.min(ax, ay, az);
+    } else if (type === Clip.Type.cube) {
+      const dx = Math.abs(x) - sx;
+      const dy = Math.abs(y) - sy;
+      const dz = Math.abs(z) - sz;
+      const ox = Math.max(dx, 0);
+      const oy = Math.max(dy, 0);
+      const oz = Math.max(dz, 0);
+      sd = Math.min(Math.max(dx, dy, dz), 0) + Math.sqrt(ox * ox + oy * oy + oz * oz);
+    } else if (type === Clip.Type.cylinder) {
+      const ax = Math.max(sx, 1e-6);
+      const az = Math.max(sz, 1e-6);
+      const dx = (Math.sqrt((x / ax) ** 2 + (z / az) ** 2) - 1) * Math.min(ax, az);
+      const dy = Math.abs(y) - sy;
+      const ox = Math.max(dx, 0);
+      const oy = Math.max(dy, 0);
+      sd = Math.min(Math.max(dx, dy), 0) + Math.sqrt(ox * ox + oy * oy);
+    } else if (type === Clip.Type.infiniteCone) sd = sx * Math.sqrt(x * x + y * y) + sy * z;
+    const slope = type === Clip.Type.infiniteCone ? Math.sqrt(sx * sx + sy * sy) : 1;
+    const r = s[3] * frame[f + 3] * slope;
+    const depth = shape[o + 3] < 0 ? sd : -sd;
+    if (depth > r) return 0;
+    if (depth >= -r) some = 1;
+  }
+  return some;
+}
+
+/**
  * The selection of a leaflet's cut (`input`) within each member's `capacity`: per view the triangles in view, nearest
  * first; a whole one a unit, a large one's cells within the frustum and the distance where a lipid is large enough on
  * screen (its plane clipped by them, then its cells' spheres tested), each a unit. CPU time O(units in view)
@@ -554,6 +621,11 @@ export function createLipidSelection(input: SelectionInput, capacity: Uint32Arra
   const live = new Uint32Array(M);
   const used = new Float64Array(M);
   const shown = new Uint8Array(M).fill(1);
+  // the cut band's: a triangle's and a candidate's (taken at the band's px), the sphere tested against the clip
+  const triBand = new Uint8Array(T);
+  const candBand = new Uint8Array(maxCandidates);
+  // a sphere tested against the band's clip (center, radius), passed as an array: no double crosses a call
+  const bandSphere = new Float64Array(4);
   // the clip of a triangle's plane, q (two buffers of up to 3 + 7 corners)
   let polyA = new Float64Array(24);
   let polyB = new Float64Array(24);
@@ -583,11 +655,30 @@ export function createLipidSelection(input: SelectionInput, capacity: Uint32Arra
       depthScale > 0 ? p.lipidSize / (depthScale * Math.max(keepPx, 1e-9)) : flatPx >= keepPx ? Infinity : 0;
     const enterDepth =
       depthScale > 0 ? p.lipidSize / (depthScale * Math.max(p.enterPx, 1e-9)) : flatPx >= p.enterPx ? Infinity : 0;
+    // the cut band (round 8 §2): its units by the band's px, so reached farther; the rest as above
+    const band = p.band !== undefined && p.band.objects.count > 0 ? p.band : undefined;
+    const bandKeepPx = band ? band.enterPx * p.keep : 0;
+    const bandKeepDepth = !band
+      ? -Infinity
+      : depthScale > 0
+        ? p.lipidSize / (depthScale * Math.max(bandKeepPx, 1e-9))
+        : flatPx >= bandKeepPx
+          ? Infinity
+          : 0;
+    const bandEnterDepth = !band
+      ? -Infinity
+      : depthScale > 0
+        ? p.lipidSize / (depthScale * Math.max(band.enterPx, 1e-9))
+        : flatPx >= band.enterPx
+          ? Infinity
+          : 0;
+    const bandWidth = band ? band.width : 0;
     // the leaflet facing the camera: its side of a point w by eye − w (perspective) or −view direction (orthographic,
     // `away`: the same for every point of a triangle)
     const facing = p.facing ?? 0;
     const perspective = facing > 0 && apex(frustum, eye);
     const reach = depthScale > 0 ? keepDepth : Infinity;
+    const bandReach = depthScale > 0 ? bandKeepDepth : Infinity;
     // the part shown (an enclosed one only with the viewer inside each of its enclosers; no clip: `facing`)
     visibility?.update(frustum, facing > 0);
     const partShown = !visibility || visibility.shown[ownPart] === 1;
@@ -609,7 +700,16 @@ export function createLipidSelection(input: SelectionInput, capacity: Uint32Arra
           culled = fn[0] * spheres[no] + fn[1] * spheres[no + 1] + fn[2] * spheres[no + 2] + constant < -nr;
         }
         if (culled) continue;
-        if (cn[0] * spheres[no] + cn[1] * spheres[no + 1] + cn[2] * spheres[no + 2] + cc - nr > keepDepth) continue;
+        const nd = cn[0] * spheres[no] + cn[1] * spheres[no + 1] + cn[2] * spheres[no + 2] + cc - nr;
+        if (nd > keepDepth) {
+          // past the reach, but in the band's reach and near a cut's boundary
+          if (!band || nd > bandKeepDepth) continue;
+          bandSphere[0] = spheres[no];
+          bandSphere[1] = spheres[no + 1];
+          bandSphere[2] = spheres[no + 2];
+          bandSphere[3] = nr + bandWidth;
+          if (!nearClipBoundary(band.objects, bandSphere)) continue;
+        }
         if (!leaf[node]) {
           if (top + 2 > stack.length) continue;
           stack[top++] = childA[node];
@@ -627,7 +727,17 @@ export function createLipidSelection(input: SelectionInput, capacity: Uint32Arra
           const r = tri[o + 26] + (wholeOf[t] >= 0 ? 0 : cellR);
           if (outside(frustum, x, y, z, r)) continue;
           const d = Math.max(cn[0] * x + cn[1] * y + cn[2] * z + cc - r, 1e-3);
-          if (d > keepDepth) continue;
+          // in the cut band: within its width of a clip object's boundary
+          let inBand = 0;
+          if (band && d <= bandKeepDepth) {
+            bandSphere[0] = x;
+            bandSphere[1] = y;
+            bandSphere[2] = z;
+            bandSphere[3] = r + bandWidth;
+            inBand = nearClipBoundary(band.objects, bandSphere);
+          }
+          if (d > (inBand ? Math.max(keepDepth, bandKeepDepth) : keepDepth)) continue;
+          triBand[t] = inBand;
           if (facing > 0) {
             // all three corners turned away: the plane is linear in them
             let most = -Infinity;
@@ -673,9 +783,10 @@ export function createLipidSelection(input: SelectionInput, capacity: Uint32Arra
         // a candidate within reach of the taken ones' size (the others' tested once sorted, `enterDepth`)
         visible += 1;
         const d = triDepth[t];
-        if (d <= keepDepth) {
+        if (d <= (triBand[t] ? Math.max(keepDepth, bandKeepDepth) : keepDepth)) {
           candKey[n] = t * 4294967296 + 4294967295;
           candDepth[n] = d;
+          candBand[n] = triBand[t];
           n += 1;
         }
         continue;
@@ -721,10 +832,10 @@ export function createLipidSelection(input: SelectionInput, capacity: Uint32Arra
           a = fn[0] * ax + fn[1] * ay + fn[2] * az;
           b = fn[0] * vx + fn[1] * vy + fn[2] * vz;
           c = fn[0] * bx + fn[1] * by + fn[2] * bz + constant + rw;
-        } else if (Number.isFinite(reach)) {
+        } else if (Number.isFinite(triBand[t] ? Math.max(reach, bandReach) : reach)) {
           a = -(cn[0] * ax + cn[1] * ay + cn[2] * az);
           b = -(cn[0] * vx + cn[1] * vy + cn[2] * vz);
-          c = reach + rw - (cn[0] * bx + cn[1] * by + cn[2] * bz + cc);
+          c = (triBand[t] ? Math.max(reach, bandReach) : reach) + rw - (cn[0] * bx + cn[1] * by + cn[2] * bz + cc);
         } else break;
         let m = 0;
         for (let i = 0; i < k; ++i) {
@@ -821,9 +932,20 @@ export function createLipidSelection(input: SelectionInput, capacity: Uint32Arra
           // as a whole triangle's (a unit's key: above)
           visible += 1;
           const d = Math.max(cn[0] * wx + cn[1] * wy + cn[2] * wz + cc - spread - height, 1e-3);
-          if (d <= keepDepth) {
+          // a cell of a triangle in the band: in it by its own sphere
+          let cellBand = 0;
+          if (band && triBand[t] && d <= Math.max(keepDepth, bandKeepDepth)) {
+            bandSphere[0] = wx;
+            bandSphere[1] = wy;
+            bandSphere[2] = wz;
+            // the cell's disc (not the lipids' height: the band's width takes them)
+            bandSphere[3] = rw - p.lipidSize * 4 + bandWidth;
+            cellBand = nearClipBoundary(band.objects, bandSphere);
+          }
+          if (d <= (cellBand ? Math.max(keepDepth, bandKeepDepth) : keepDepth)) {
             candKey[n] = t * 4294967296 + (cx + 32768) * 65536 + (cy + 32768);
             candDepth[n] = d;
+            candBand[n] = cellBand;
             n += 1;
           }
         }
@@ -833,7 +955,7 @@ export function createLipidSelection(input: SelectionInput, capacity: Uint32Arra
     let kept = 0;
     for (let i = 0; i < n; ++i) {
       const d = candDepth[i];
-      if (d > enterDepth) {
+      if (d > (candBand[i] ? Math.max(enterDepth, bandEnterDepth) : enterDepth)) {
         // taken before (a binary search of the taken keys, sorted)
         const key = candKey[i];
         let lo = 0;
@@ -847,6 +969,7 @@ export function createLipidSelection(input: SelectionInput, capacity: Uint32Arra
       }
       candKey[kept] = candKey[i];
       candDepth[kept] = d;
+      candBand[kept] = candBand[i];
       kept += 1;
       if (d > far) far = d;
     }

@@ -7,11 +7,14 @@
 import { describe, expect, it } from 'vitest';
 import { Frustum3D } from '@molstar/core/math/geometry/primitives/frustum3d';
 import { Vec3 } from '@molstar/core/math/linear-algebra/3d/vec3';
+import { Mat4 } from '@molstar/core/math/linear-algebra/3d/mat4';
+import { Clip } from '@molstar/core/util/clip';
 import { cellEntry, cellSide, cutterCounts, eachCellHit, eachHit, emptyCut, triangleCut } from '../lipids/cutter.js';
 import {
   createLipidSelection,
   enterPx,
   estimateLipids,
+  nearClipBoundary,
   poolCapacities,
   sortKeys,
   WholeTriangle,
@@ -199,6 +202,91 @@ describe('a membrane made per view: the pool and the selection', () => {
     const fresh = createLipidSelection(i, full(i));
     fresh.select(between.plane, between.frustum, between.depthScale, 0, Params);
     expect(fresh.count).toBe(0);
+  });
+
+  it("takes the units near a clip's boundary at the band's px (the cut band, round 8 gate M1)", () => {
+    // a plane x = 400 across the sheet (its normal +y turned onto +x)
+    const objects = Clip.getClip({
+      variant: 'pixel',
+      objects: [
+        {
+          type: 'plane',
+          invert: false,
+          position: Vec3.create(400, 0, 0),
+          rotation: { axis: Vec3.create(0, 0, 1), angle: -90 },
+          scale: Vec3.create(1, 1, 1),
+          transform: Mat4.identity(),
+        },
+      ],
+    }).objects;
+    const band = { objects, width: 16, enterPx: 1 };
+    for (const [n, edge] of [
+      [16, 50],
+      [2, 40 * cellSide(table.box)],
+    ] as const) {
+      const i = input(n, edge);
+      // lipids under 2 px (the selection's enter), over 1 (the band's): only the band's units
+      const v = view(Vec3.create(400, 400, 5000), Vec3.create(400, 400, 0), 1000);
+      const plain = createLipidSelection(i, full(i));
+      plain.select(v.plane, v.frustum, v.depthScale, 0, Params);
+      expect(plain.count, `${n} plain`).toBe(0);
+      const cut = createLipidSelection(i, full(i));
+      cut.select(v.plane, v.frustum, v.depthScale, 0, { ...Params, band });
+      expect(cut.count, `${n} band`).toBeGreaterThan(0);
+      // each unit near the plane: a whole triangle's center, a cell's center, within the band and its own size
+      const C = cellSide(table.box);
+      const c = emptyCut();
+      for (let k = 0; k < cut.count; ++k) {
+        const t = cut.units[k * 3];
+        let x = 0;
+        for (let j = 0; j < 3; ++j) x += i.positions[i.indices[t * 3 + j] * 3] / 3;
+        let reach = edge;
+        if (cut.units[k * 3 + 1] !== WholeTriangle) {
+          triangleCut(i.positions, i.indices, t, i.regions, table.box, c);
+          const px = (cut.units[k * 3 + 1] + 0.5) * C - c.ox;
+          const py = (cut.units[k * 3 + 2] + 0.5) * C - c.oy;
+          x = c.o[0] + (c.cos * px + c.sin * py) * c.e1[0] + (-c.sin * px + c.cos * py) * c.e2[0];
+          reach = C;
+        }
+        expect(Math.abs(x - 400), `${n} unit ${k}`).toBeLessThanOrEqual(band.width + reach);
+      }
+    }
+  });
+
+  it("tells a sphere at a clip's boundary as core's classifySphere does (every shape, inverted or not)", () => {
+    let seed = 7;
+    const rand = () => {
+      seed = (seed * 16807) % 2147483647;
+      return seed / 2147483647;
+    };
+    const s = new Float64Array(4);
+    const sphere = { center: Vec3(), radius: 0 };
+    let some = 0;
+    for (const type of ['plane', 'sphere', 'cube', 'cylinder', 'infiniteCone'] as const) {
+      for (const invert of [false, true]) {
+        const objects = Clip.getClip({
+          variant: 'pixel',
+          objects: [
+            {
+              type,
+              invert,
+              position: Vec3.create(10, -5, 3),
+              rotation: { axis: Vec3.create(1, 2, 0.5), angle: 33 },
+              scale: Vec3.create(40, 60, 30),
+              transform: Mat4.identity(),
+            },
+          ],
+        }).objects;
+        for (let k = 0; k < 400; ++k) {
+          for (let j = 0; j < 3; ++j) s[j] = sphere.center[j] = (rand() - 0.5) * 160;
+          s[3] = sphere.radius = rand() * 20;
+          const want = Clip.classifySphere(objects, sphere as never) === Clip.SphereClass.Some ? 1 : 0;
+          expect(nearClipBoundary(objects, s), `${type} ${invert} ${k}`).toBe(want);
+          some += want;
+        }
+      }
+    }
+    expect(some).toBeGreaterThan(100);
   });
 
   it('takes the nearest first within each capacity', () => {

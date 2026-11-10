@@ -96,6 +96,7 @@ describe.skipIf(!webgpu)('a lipid membrane clipped by Prism (Dawn)', () => {
     try {
       const plugin = v.plugin as HeadlessPluginContext;
       const looks: Record<string, { coverage: number; band: number; L: number; a: number; b: number }> = {};
+      let dragged = 0;
       for (const middle of ['coarse', 'parallax'] as const) {
         const r = await v.api.mesoscale!.wrapMembrane({
           radius: 300,
@@ -148,6 +149,36 @@ describe.skipIf(!webgpu)('a lipid membrane clipped by Prism (Dawn)', () => {
           ColorLevels.toOklab(lab, Color.fromRgb(face[o], face[o + 1], face[o + 2]));
           if (lab[0] < 0.5) band += 1;
         }
+        // a second clip change (a handle's drag, its commit): the fast path, nothing built again; the band follows the cut
+        if (middle === 'parallax') {
+          const repr = () =>
+            (plugin.state.data.cells.get(membrane)?.obj?.data as { repr?: unknown })?.repr as {
+              renderObjects: unknown[];
+            };
+          const objects = repr().renderObjects;
+          // the camera first, on the ring the cut moves to (a still camera while the handle moves)
+          const x = Math.sqrt(300 * 300 - 30 * 30);
+          canvas.camera.setState(
+            {
+              ...canvas.camera.getSnapshot(),
+              target: Vec3.create(x, 0, -30),
+              position: Vec3.create(x + depth * Math.sqrt(1 - 0.49), 0, -30 + depth * 0.7),
+              up: Vec3.create(0, 1, 0),
+            },
+            0,
+          );
+          await plugin.getImageRaw({ width: Size, height: Size });
+          const moved = await v.api.run('clipping.update', { cut: 1, position: [0, 0, -30] });
+          expect(moved.ok, moved.message).toBe(true);
+          expect(repr().renderObjects).toBe(objects);
+          await plugin.getImageRaw({ width: Size, height: Size });
+          const after = (await plugin.getImageRaw({ width: Size, height: Size })).data;
+          let drawn = 0;
+          for (let o = 0; o < after.length; o += 4) {
+            if (after[o] !== bg[0] || after[o + 1] !== bg[1] || after[o + 2] !== bg[2]) drawn += 1;
+          }
+          dragged = drawn / (after.length / 4);
+        }
         looks[middle] = {
           coverage: n / (image.length / 4),
           band: band / (face.length / 4),
@@ -157,10 +188,11 @@ describe.skipIf(!webgpu)('a lipid membrane clipped by Prism (Dawn)', () => {
         };
         expect((await v.api.run('state.remove', { node: membrane })).ok).toBe(true);
       }
-      if (process.env.LIPID_NUMBERS) console.log(JSON.stringify(looks));
+      if (process.env.LIPID_NUMBERS) console.log(JSON.stringify({ ...looks, dragged }));
       const coarse = looks.coarse;
       expect(coarse.coverage).toBeGreaterThan(0.2);
       expect(coarse.band).toBeGreaterThan(0.05);
+      expect(dragged, 'parallax after the drag').toBeGreaterThanOrEqual(coarse.coverage - 0.05);
       for (const [middle, look] of Object.entries(looks)) {
         expect(look.coverage, `${middle} coverage`).toBeGreaterThanOrEqual(coarse.coverage - 0.05);
         expect(look.band, `${middle} band`).toBeGreaterThanOrEqual(coarse.band * 0.5);
