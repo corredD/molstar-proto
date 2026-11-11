@@ -545,8 +545,8 @@ still completes its distance.
   3, 1; the source's cell counted, so na·nb·nc − 1 copies), each copy turned as the source. Tiling: Hex or Square,
   Spacing (the copy's diameter), Rings (3), in the source's own plane (normal: +z for a membrane protein, else its
   principal axis), each turned as the source. Sphere: Count (50) copies uniform in a ball of Radius (5 × the copy's
-  radius), turned at random or as the source. The source is read as its list's move and scale put it, before the offsets
-  of its kind (its copies take them too); its own instance offset is not its copies'. Round 2: Symmetry.
+  radius), turned at random or as the source. The source is where it is drawn: its list's move and scale and its own
+  move (Move this instance), before the offsets of its kind (its copies take them too). Round 2: Symmetry.
 - Models decorated too (2026-10-23, Ludovic: "why can't we change the target in Simularium"): a model (a list with
   entities: Simularium, cellPACK, PetWorld) has the Decoration section, so each of its targets (an agent, an entity) can
   be drawn as another object of the scene. A particle list's own shape (a Simularium simulation box) is not listed as a

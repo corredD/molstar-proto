@@ -7,6 +7,9 @@
 import { Color } from '@molstar/core/util/color';
 import { Mat4, Quat, Vec3 } from '@molstar/core/math/linear-algebra';
 import {
+  offsetParticles,
+  type ParticleInstanceOffsetProps,
+  ParticleListOffsets,
   ParticleListTargetsFromAttribute,
   ParticleListTransform,
 } from '@molstar/plugin/state/transforms/particles/ops';
@@ -69,6 +72,7 @@ import {
   type GrowMode,
   type GrowPoses,
   type ListMove,
+  offsetPose,
   poseToScene,
   rotationsToListFrame,
   spherePoses,
@@ -1051,12 +1055,14 @@ export class MesoscaleApi extends ApiArea {
       if (refused) return refused;
       const src = growSourceOf(state, l, index);
       if (isFailure(src)) return src;
-      const { data, target, entity, compartment, pose, radius, name } = src;
+      const { data, target, entity, compartment, radius, name, instance } = src;
       const seed = v.seed ?? Math.floor(Math.random() * 2 ** 31);
       const move = decoratorUnder(state, l.cell.transform.ref, ParticleListTransform)?.transform.params as
         | ListMove
         | undefined;
-      const scene = poseToScene(move, pose);
+      // where it is drawn: its own move after the list's (in the scene's Å), in the list's frame for a walk
+      const scene = offsetPose(poseToScene(move, src.pose), instance);
+      const pose = offsetPose(src.pose, instance, move?.scale);
       const diameter = 2 * radius;
       const sizes: Record<string, number> = {};
       let made: GrowPoses | undefined;
@@ -2263,8 +2269,27 @@ export function growSourceOf(state: State, l: ParticleListRef, index: number) {
   const name =
     (entity >= 0 && data.entityInfo?.get(entity)?.name) || data.targetInfo.get(target)?.name || `Target ${target}`;
   const surface = isMembranePath(data.compartmentInfo?.get(compartment)?.name ?? '');
-  return { data, target, entity, compartment, pose, radius, name, surface };
+  // its own move (Move this instance: the offsets' `instances`, in its own frame, in the scene's Å): where it is drawn
+  // (review S1); its kind's offsets are its copies' too, so not read
+  const offsets = decoratorUnder(state, l.cell.transform.ref, ParticleListOffsets)?.transform.params as
+    | { instances?: ParticleInstanceOffsetProps[] }
+    | undefined;
+  const own = (offsets?.instances ?? []).filter((o) => o.index === index).map((o) => ({ ...o, index: 0 }));
+  const moved = own.length ? offsetParticles(OneParticle, [], own) : undefined;
+  const instance = moved && {
+    translation: Vec3.fromArray(Vec3(), moved.coordinates, 0),
+    turn: Quat.fromArray(Quat(), moved.rotations!, 0),
+  };
+  return { data, target, entity, compartment, pose, radius, name, surface, instance };
 }
+
+/** One particle at the origin, unturned: an instance offset read as a pose (`offsetParticles`) */
+const OneParticle = {
+  count: 1,
+  coordinates: new Float32Array(3),
+  targets: new Int32Array(1),
+  targetInfo: new Map(),
+} as unknown as ParticleList;
 
 /** A list whose targets come from a class (cryoet's) is not painted yet (review should-fix 2) */
 function classTargets(state: State, l: ParticleListRef) {

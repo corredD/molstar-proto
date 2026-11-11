@@ -226,6 +226,23 @@ export function poseToScene(move: ListMove | undefined, pose: GrowPose): GrowPos
   return { position, rotation: Quat.multiply(Quat(), moveTurn(move), pose.rotation) };
 }
 
+/**
+ * A pose moved in its own frame by an offset (a particle's Move this instance: along its axes, then turned about them);
+ * the translation divided by `scale` (an offset of the scene's Å on a pose of a scaled list's frame)
+ */
+export function offsetPose(
+  pose: GrowPose,
+  offset: { readonly translation: Vec3; readonly turn: Quat } | undefined,
+  scale = 1,
+): GrowPose {
+  if (!offset) return pose;
+  const shift = Vec3.transformQuat(Vec3(), offset.translation, pose.rotation);
+  return {
+    position: Vec3.scaleAndAdd(Vec3(), pose.position, shift, 1 / scale),
+    rotation: Quat.multiply(Quat(), pose.rotation, offset.turn),
+  };
+}
+
 /** Orientations of the scene in a list's frame, in place (its positions: `toListFrame`) */
 export function rotationsToListFrame(move: ListMove | undefined, rotations: number[]) {
   if (!move) return;
