@@ -57,10 +57,22 @@ export function resourceAddresses(doc: unknown): string[] {
  * What an open reaches (prism.md §3, the agent's policy), before the chunk loads: the document's address, and the
  * resources of a document given as JSON, read before anything is fetched (data that does not parse is refused by the
  * run). An S-expression needs the format's reader: it asks every time. A URL's resources are known only once it is
- * read: its own address is what is judged.
+ * read: its own address is judged, and the resources the call names (the chunk's run refuses an agent's open whose
+ * resources are on hosts it does not name).
  */
-export function openAddresses(v: { readonly url?: string; readonly data?: string }): string[] {
-  const out = v.url ? [v.url] : [];
+export function openAddresses(v: {
+  readonly url?: string;
+  readonly data?: string;
+  readonly resources?: string;
+}): string[] {
+  const named =
+    typeof v.resources === 'string'
+      ? v.resources
+          .split('\n')
+          .map((x) => x.trim())
+          .filter(Boolean)
+      : [];
+  const out = [...(v.url ? [v.url] : []), ...named];
   if (typeof v.data !== 'string' || !v.data.trim()) return out;
   if (!v.data.trimStart().startsWith('{')) return [...out, UnreadAddress];
   try {
@@ -110,7 +122,7 @@ export const MesoViewSpecSkill: ViewerSkill = {
       id: 'open_mesoviewspec',
       operation: 'mesoviewspec.open',
       description: 'Opens a MesoViewSpec document from an address (url) or its text (data: JSON or S-expression).',
-      fields: ['url', 'data'],
+      fields: ['url', 'data', 'resources'],
     },
     {
       id: 'close_mesoviewspec',

@@ -148,6 +148,13 @@ checkpoint, not undone by inverse).
     in a document given as data; a URL's own resource hosts are not known before it is read. A relative URL is made
     absolute against the page; `fixture://x` reads as `fixtures/x` beside the document (the CLI's rule). An accession
     with no `uri` is not resolved yet (the model is unavailable).
+  - **The agent's open asks per resource host** (Ludo, 2026-11-10; lane `mvs-agent`). A document given as data: its
+    resources' absolute addresses, read as the run reads the document (JSON or S-expression) and as a fetch reads a uri
+    (`new URL`), are its `addresses`. A document by URL, from a known service such as zenodo too: its resources are
+    known only once it is read, so the run reads it and, for the agent, fetches none of its resources while one is on a
+    host that is neither the document's nor a known service and that the call does not name in `resources` (one address
+    a line): the call is refused saying which. The call that names them has them in its `addresses`, so the person is
+    asked for a host the agent does not know, as for `mesoviewspec.edit` (§5.3). The person's own open does not ask.
 - **A runtime chunk.** `@molstar/meso-spec` (format, runtime, resolvers) and `@molstar/meso-molstar` (adapter, owner)
   are a lazy viewer extension, `mesoviewspec`, whose stub declares its operations, commands, sniff and skill
   (viewer-spec.md, lazy extensions). Nothing of it loads at start; the first open loads it (sequence.md §2's runtime
@@ -379,19 +386,19 @@ a document's, every row is as today. For a document list:
 
 The `mesoviewspec` area (proposed ids; flags as operations.md):
 
-| Operation                              | Flags               | What                                                                                         |
-| -------------------------------------- | ------------------- | -------------------------------------------------------------------------------------------- |
-| `mesoviewspec.open`                    | network (addresses) | open a document (§3)                                                                         |
-| `mesoviewspec.close`                   | destructive         | close it: its lists and the saved state go                                                   |
-| `mesoviewspec.get`                     | read                | the outline: compartments, populations with counts, models, views, issues; S-expression      |
-| `mesoviewspec.edit`                    |                     | apply a patch (§2); a step                                                                   |
-| `mesoviewspec.look`                    |                     | a look patch on the shown view from `select`, `color`, `visible`, `transparency`, `emissive` |
-| `mesoviewspec.view`                    |                     | show a view (§4.4); a step (Ludo, 2026-11-10)                                                |
-| `mesoviewspec.tour.view`               | no undo             | a tour's view (§4.4): shown as `.view`, no step; run by `.tour.play`                         |
-| `mesoviewspec.tour.play`, `.tour.stop` | view                | play, stop a tour                                                                            |
-| `mesoviewspec.focus`                   | view                | frame an address (§4.5)                                                                      |
-| `mesoviewspec.highlight`               | view                | light an address's copies (§4.6)                                                             |
-| `mesoviewspec.save`                    | view; no undo       | the document as `.mesoviewspec.json` or `.mesoviewspec`, with every patch committed          |
+| Operation                              | Flags               | What                                                                                            |
+| -------------------------------------- | ------------------- | ----------------------------------------------------------------------------------------------- |
+| `mesoviewspec.open`                    | network (addresses) | open a document (§3)                                                                            |
+| `mesoviewspec.close`                   | destructive         | close it: its lists and the saved state go                                                      |
+| `mesoviewspec.get`                     | read                | the outline: compartments, populations with counts, models, views, issues; S-expression         |
+| `mesoviewspec.edit`                    | network (addresses) | apply a patch (§2); a step; its addresses: the resource uris it writes, off the document's host |
+| `mesoviewspec.look`                    |                     | a look patch on the shown view from `select`, `color`, `visible`, `transparency`, `emissive`    |
+| `mesoviewspec.view`                    |                     | show a view (§4.4); a step (Ludo, 2026-11-10)                                                   |
+| `mesoviewspec.tour.view`               | no undo             | a tour's view (§4.4): shown as `.view`, no step; run by `.tour.play`                            |
+| `mesoviewspec.tour.play`, `.tour.stop` | view                | play, stop a tour                                                                               |
+| `mesoviewspec.focus`                   | view                | frame an address (§4.5)                                                                         |
+| `mesoviewspec.highlight`               | view                | light an address's copies (§4.6)                                                                |
+| `mesoviewspec.save`                    | view; no undo       | the document as `.mesoviewspec.json` or `.mesoviewspec`, with every patch committed             |
 
 - **As built (`mvs-tree`):** the eye and Show only are `mesoviewspec.eye { select (one a line), visible }` and
   `mesoviewspec.showOnly { select? }` (none: Show all again), patches on `session.view ?? views[0]` (no view: `v.prism`

@@ -6,6 +6,7 @@
 
 import { describeDocument, documentState, idText, issueLines } from './agent-state.js';
 import { quoted } from '@molstar/prism-viewer/agent/account';
+import { allowedAddress } from '@molstar/prism-viewer/agent/policies';
 import { Asset } from '@molstar/core/util/assets';
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
 import {
@@ -106,7 +107,23 @@ const OpenParams = {
       description: 'The files dropped with it: its relative resources (a recipe, a picks file) by name',
     }),
   ),
+  resources: OptionalParam(
+    PD.Text('', {
+      multiline: true,
+      description:
+        "With url: the addresses of the document's resources on other hosts, one a line, that the open may fetch (the agent's open names them; the person is asked for a host not known)",
+    }),
+  ),
 };
+
+/** The lines of `text` (the addresses an agent's open names): none for none. */
+const linesOf = (text: unknown) =>
+  typeof text === 'string'
+    ? text
+        .split('\n')
+        .map((x) => x.trim())
+        .filter(Boolean)
+    : [];
 
 const GetParams = {
   detail: PD.Select<'summary' | 'outline' | 'document'>(
@@ -658,6 +675,22 @@ export class MesoViewSpecApi extends ApiArea {
       if (text === undefined) return ApiResult.fail('failed', `Could not read ${url}.`);
       const read = parseDocument(text);
       if ('ok' in read) return read;
+      // The agent's open by URL (Ludo, 2026-11-10): its resources' hosts are known only now. Those beside the document
+      // or on a known service are fetched; any other must be named in `resources`, so the call that names them is the
+      // one the person is asked for (its addresses), before anything of it is fetched.
+      if (url && ctx.origin.kind === 'agent') {
+        const named = new Set(linesOf(values.resources).map(originOf));
+        const unasked = foreignAddresses(resourceUris(read.doc), url).filter(
+          (a) => !allowedAddress(a) && !named.has(originOf(a)),
+        );
+        if (unasked.length) {
+          return ApiResult.fail(
+            'blocked',
+            `The document's resources are on hosts not asked for: ${[...new Set(unasked.map(originOf))].join(', ')}. Nothing was fetched from them.`,
+            `Open it again with resources (one a line): ${unasked.join(' ')}. The person is asked for a host the agent does not know.`,
+          );
+        }
+      }
       const files = new Map<string, string | Uint8Array>();
       for (const f of values.files ?? []) files.set(f.name, new Uint8Array(await f.arrayBuffer()));
       let step: Awaited<ReturnType<MesoDocumentModel['open']>>;
@@ -816,10 +849,17 @@ function parseDocument(text: string): { doc: MesoViewSpecDoc } | ApiFailure {
 
 /**
  * What an open reaches (agent.md §4): its address; for a document given as data, read as the run reads it (JSON or
- * S-expression), every absolute address of its resources. Data that does not read reaches nothing: the run refuses it.
+ * S-expression), every absolute address of its resources; the resources an agent's open by URL names (the run
+ * refuses one by URL whose resources are on hosts it does not name). Data that does not read reaches nothing: the run
+ * refuses it.
  */
-export function openDocumentAddresses(v: { readonly url?: string; readonly data?: string }): string[] {
-  const out = v.url ? [v.url] : [];
+export function openDocumentAddresses(v: {
+  readonly url?: string;
+  readonly data?: string;
+  readonly resources?: string;
+}): string[] {
+  // the resources an agent's open by URL names (what it may fetch beside the document's host): asked for here
+  const out = [...(v.url ? [v.url] : []), ...linesOf(v.resources)];
   if (typeof v.data !== 'string' || !v.data.trim()) return out;
   const read = parseDocument(v.data);
   return 'ok' in read ? out : [...out, ...resourceAddresses(read.doc)];
@@ -861,6 +901,22 @@ export function patchAddresses(text: unknown, documentUrl: string | undefined): 
   }
   return foreignAddresses(uris, documentUrl);
 }
+
+/** A document's resource uris, as written. */
+function resourceUris(doc: MesoViewSpecDoc): string[] {
+  const resources: unknown = doc.resources;
+  if (!Array.isArray(resources)) return [];
+  return resources.flatMap((r) => (typeof r?.uri === 'string' ? [r.uri as string] : []));
+}
+
+/** An address's origin (`https://host:port`); the address itself when it is not one. */
+const originOf = (a: string) => {
+  try {
+    return new URL(a).origin;
+  } catch {
+    return a;
+  }
+};
 
 /** Resource uris as the owner fetches them (`MesoDocumentModel.load`), those of the document's origin left out. */
 function foreignAddresses(uris: readonly string[], base: string | undefined): string[] {
