@@ -215,8 +215,26 @@ say "fibre"; the model's stroke speed (the fast-path lanes).
   brush and, once its first stroke made its entity where it paints, its Rise/Twist (`structureBrushState`). Its first
   fiber's rise is its length along its principal axis, written as its own settings (it has no radius; 10 Å stacked the
   copies); the shared default for model entities is unchanged (paint-operation tests pin it). 696e82a7c.
-- Measured in the browser (port 1363), 2PLV by its PDB id, assembly 1: the copy has 420 units, as the scene's; a fiber of it, 321 Å a point, capsids touching. The download path, untested before,
-  works.
+- Measured in the browser (port 1363), 2PLV by its PDB id, assembly 1: the copy has 420 units, as the scene's; a fiber
+  of it, 321 Å a point, capsids touching. The download path, untested before, works.
 - Open: a fiber's path is read 2 × the bounding radius apart on a structure's first stroke (its rise is not known before
-  its entity exists); a structure's other model (`modelIndex` ≠ 0) still paints model 0. The graphics
-  `backend-neutral` test fails with and without the lane's changes.
+  its entity exists); a structure's other model (`modelIndex` ≠ 0) still paints model 0. The graphics `backend-neutral`
+  test fails with and without the lane's changes.
+
+### Review of the follow-up (`ece99ceb9^..696e82a7c`)
+
+| Finding                                                                           | Verdict   | Commit                       |
+| --------------------------------------------------------------------------------- | --------- | ---------------------------- |
+| M1 A fiber setting changed before the first fiber kept rise 10: its units overlap | confirmed | 1045876f1                    |
+| M2 Format; no spec, features or changelog                                         | confirmed | 1045876f1, 377a9a857         |
+| S1 An entry saved without its definition never matched again (skeptic: a nit)     | confirmed | 1045876f1                    |
+| S2 Two builds of one file: two entities of one name                               | confirmed | 1045876f1                    |
+| S3 A bank offered and taken on a structure (1CRN became DNA base pairs)           | confirmed | 1045876f1                    |
+| S4 paint-mode's `into` and the real `structureFiberStep` untested                 | confirmed | 1045876f1                    |
+| S5 The key held the bonds' params: one build, two entities                        | confirmed | 1045876f1                    |
+| N1 The default rise not clamped (538 Å past the slider)                           | confirmed | 1045876f1                    |
+| N2 `touching` evaluated twice                                                     | confirmed | 1045876f1 (gone)             |
+| N3 The structures built not disposed                                              | plausible | 1045876f1                    |
+| N4 The fiber test's bound loose                                                   | confirmed | 1045876f1                    |
+| new N1 The panel read a gone `into`, the strokes the Painting list                | plausible | 1045876f1                    |
+| new N2 A first structure fiber's path read 2 × the radius apart                   | confirmed | open (the preview line only) |
