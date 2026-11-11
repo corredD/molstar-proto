@@ -215,8 +215,7 @@ say "fibre"; the model's stroke speed (the fast-path lanes).
   brush and, once its first stroke made its entity where it paints, its Rise/Twist (`structureBrushState`). Its first
   fiber's rise is its length along its principal axis, written as its own settings (it has no radius; 10 Å stacked the
   copies); the shared default for model entities is unchanged (paint-operation tests pin it). 696e82a7c.
-- Measured in the browser (port 1363), 2PLV by its PDB id, assembly 1: the copy has 420 units as the scene's (it had
-  the asymmetric unit's 4 before); a fiber of it, 321 Å a point, capsids touching. The download path, untested before,
+- Measured in the browser (port 1363), 2PLV by its PDB id, assembly 1: the copy has 420 units, as the scene's; a fiber of it, 321 Å a point, capsids touching. The download path, untested before,
   works.
 - Open: a fiber's path is read 2 × the bounding radius apart on a structure's first stroke (its rise is not known before
   its entity exists); a structure's other model (`modelIndex` ≠ 0) still paints model 0. The graphics
