@@ -9,7 +9,9 @@
   looks.
 - Close, Undo of the open, or another open while a tile is arriving leaves nothing behind: no tile on screen, and the
   next open frames its camera as a first open does.
-- Tiles arriving never move the camera.
+- Tiles arriving or leaving no longer re-center the camera (Mol*'s canvas re-framed the scene when a tile landed at
+  its edge), so after a pan the camera stays where you left it and the tiles load there. Reset camera still frames
+  the whole scene.
 - `mesoviewspec.open` with `example: 'tiled'` opens the streaming fixture (32 tiles of 400 copies).
 - For extensions: the runtime's `TileStreamer.step(ir, focus?)` plans from a focus the viewer gives (its canvas camera)
   instead of the document's camera. `MesoSession.setFocus` and `MesoDocumentModel.setFocus` take it; a new session

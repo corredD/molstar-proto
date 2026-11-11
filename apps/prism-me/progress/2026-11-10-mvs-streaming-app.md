@@ -148,3 +148,56 @@ record as Open came without a verdict or severity (`-`); S1 was not handed to th
   `stepDoc` (the step's document while it runs, set and cleared around it, else `doc`); `load` and `describe` read it.
   `isInstance` keeps `session.doc`: a copy's label is asked for on hover, after the step that drew it. Tests `b8d81efab`
   and `5e0678dd3` (red), fix `cdf62db47`. Not checked in the app.
+- **Ludo's app check (2026-11-10): the camera re-centered by itself, and the tiles did not follow it.** On port 1371,
+  `example: 'tiled'`, a real GPU: a pan re-centered the camera; "the look is really weird and doesn't reflect where the
+  camera looks".
+  - **Cause, confirmed by reading and by the fixture's numbers, not by a frame.** No `gl` in this worktree (the native
+    package is not installed) and no browser pane that draws, so Canvas3D did not run. The adapter sets no camera in a
+    stream commit (gate S2). Mol*'s Canvas3D does: `commitMainScene` (`packages/graphics/src/canvas3d/canvas3d.ts`,
+    ~2261) requests a reset when `!camera.manualReset && (reprCount === 0 || shouldResetCamera())`, and
+    `shouldResetCamera` (~2175) is true when a visible renderable's sphere is outside the old visible bounds (and away
+    from the camera sphere), or the camera sphere overlaps nothing. The open draws only the three landmarks, from (1000,
+    1000, 1000) to (7000, 7000, 3000), a sphere of about 4400 Å around (4000, 4000, 2000); a tile is a 2000 Å cube (its
+    sphere about 1800 Å), and with 2 tiles in z every tile touches a face of the box, so every arrival at the edge pokes
+    out and the next frame re-frames the whole scene. An eviction can leave the camera sphere over nothing (the same
+    reset). The feed (`camera-feed.ts`) then reads the re-centered target and the owner streams around the centre:
+    symptom 2.
+  - **Fix: `keepCamera` (`prism-adapter.ts`), the flag held per write, not per session.** `camera.manualReset` is set
+    for each write of tile lists (a commit's deletions, the tiles' draw, the adoption's deletions) and a synchronous
+    `canvas.commit(true)` of what it added (Canvas3D commits on a later frame otherwise, after the flag is put back:
+    Mol*'s volume streaming toggles the same flag around its update without that commit), then put back; `radiusMax`
+    then follows the scene, as Canvas3D's own commit does when the flag is off. Not the looks' write: an in-place
+    update, no scene commit, no reset. Not held: someone else's `manualReset` (left as it is; Mol*'s headless screenshot
+    and volume streaming set it), and a canvas with no representation yet (its first reset frames a first open).
+  - **Why not the session (the brief's option).** A checkpoint holds the canvas props (`CheckpointParams.canvas3d`), and
+    so does a `.molj`; `PluginState.setSnapshot` applies them after the custom state (the owner's `restore`), so the
+    owner could not put the person's value back over a restore: a `.molj` saved while streaming would reopen with the
+    flag on for good. Held for a session, it would also stop Canvas3D's reset for anything else loaded meanwhile.
+  - **Kept intact.** The open frames (no hold before the first representation; `commitCamera` sets the IR camera after,
+    unchanged); a view shown sets its camera (`commitCamera`, no hold); Reset camera works (`requestCameraReset` sets
+    `cameraResetRequested` whatever the flag, and `resolveCameraReset` never reads it: canvas3d.ts ~2126, ~2864); Undo,
+    Close and a restore leave the canvas props as they were (the flag is off outside a write, so no checkpoint holds it;
+    the test reads one). Nothing in prism-viewer reads `manualReset` (only Mol*'s volume streaming, the headless
+    screenshot, and prism-ui's story and test params). A direct `canvas3d.setProps` emits no `settingsUpdated`, and the
+    outside-change detector watches the data tree only, so the hold is no step and no outside change.
+  - **Tests.** `camera-kept.test.ts` (the hold over a recording canvas: the order, put back on a throw, someone else's
+    flag, none before the first representation, `radiusMax`); `streaming-app.test.ts` (headless, a stand-in canvas that
+    takes the representations as Canvas3D does and re-centers on any scene change committed without the flag, which is
+    stricter than Canvas3D: tiles after a pan, an evicting budget, a look edit and its Undo leave the camera where the
+    person left it, and the checkpoint holds the flag off). Red `d6e84869f` (1 reset; the hold missing), fix
+    `2519b9181`; the gate S2 test's stand-in canvas given what the hold reads, `97a02620b`. Mutations seen red: the
+    commit's deletions unwrapped. Not caught by a test: the adoption's deletions unwrapped (no test restores to another
+    stream key with a canvas).
+  - **Not covered.** Canvas3D's own reset (no WebGL here): the stand-in models its decision. Ludo's check on a GPU is
+    the proof.
+  - **The looks: compared, not changed.** A tile list's representation (`tileRepresentationParams`) and a document
+    list's (`particles.representation`'s `representationParams`) have the same type params, size theme and color theme;
+    only the default palette's kind differs (`set` and `interpolate`, from the data), which no copy shows because every
+    type has a color layer from the IR's looks. A landmark (`i.corner`, entity `e.a`) and a tile's `p.a` copy differ in
+    color because the IR gives each set's types their own default color (an instance is a type of its own), as in a
+    document that does not stream. Nothing in prism-me styles a new list. So "weird" was the resets; level 0 is still
+    not drawn (Open), so before tiles arrive only the landmarks show.
+  - **Open.** A step taken while a tile write is in flight (the write spans a state update) takes a checkpoint with the
+    flag on; Undo or Redo to it would leave it on. The camera's `radius` is the open's (the landmarks', about 4400 Å;
+    the box's half-diagonal is 6000 Å): with far clipping on, now that no reset grows it, tiles more than that beyond
+    the target could be cut by the far plane. Unverified; Ludo's check will show it.
