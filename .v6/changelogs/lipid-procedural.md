@@ -55,7 +55,10 @@
   within two lipid sizes of the cut are taken as Coarse takes them (the cut band, Cut lipids down to), so a
   cross-section shows lipids. The cut band's lipids are members of their own: away from the cut a zoom with a clip is
   as without one (no fall back to the coarse spheres at about 6 px). A switch of Middle or Atoms down to (9 px at least)
-  builds nothing; Coarse ↔ Parallax with a clip builds (the cut band's members). A patch mesh (WebGPU)
+  builds nothing; Coarse ↔ Parallax with a clip builds (the cut band's members). Middle › Shells, an option: the heads
+  as 4 to 12 layers over a band of the far surface's triangles selected each view (16,384 at most a leaflet, those past
+  it counted), `mesoscale.membraneDetail { middle: 'shells', shells }`. A patch mesh's shells draw the first
+  `uPatchMiddle.z` triangles where `uPatchMiddle.w` is 1. A patch mesh (WebGPU)
   gains `dPatchMiddle` (shells, beneath, parallax), `uPatchShells` and `uPatchMiddle`.
 - A cell's lipid membrane takes its colours from its meshes: each part's (the whole membrane's, one mesh) far colour,
   species' colours and patch times its mesh's colour, normalised (the meshes' grey is no tint), atoms by element not.

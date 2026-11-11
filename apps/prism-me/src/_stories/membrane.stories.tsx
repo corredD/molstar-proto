@@ -162,3 +162,17 @@ export const DetailMiddleParallax: StoryObj = {
       />
     )),
 };
+
+/**
+ * ui.md §4 (round 10): Middle Shells: its atoms down to Atoms down to, the heads as Shells layers (4 to 12) over a band
+ * of the far surface's triangles, a cut's lipids down to Cut lipids down to, the budget.
+ */
+export const DetailMiddleShells: StoryObj = {
+  render: () =>
+    story(() => (
+      <Frames
+        height={250}
+        render={() => <MembraneDetailControls area={fakeApi({}, 'shells').mesoscale} membrane={Ref} />}
+      />
+    )),
+};

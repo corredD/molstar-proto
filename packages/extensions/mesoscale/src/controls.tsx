@@ -225,10 +225,11 @@ const FarChoices: { id: MembraneFar; label: string }[] = [
   { id: 'texture', label: 'Texture' },
 ];
 
-/** A cut membrane's middle distance (round 8; Ludo compares them live and picks the default; shells not built yet) */
+/** A cut membrane's middle distance (round 8; Ludo compares them live and picks the default; round 10: shells) */
 const MiddleChoices: { id: MembraneMiddle; label: string }[] = [
   { id: 'coarse', label: 'Coarse' },
   { id: 'parallax', label: 'Parallax' },
+  { id: 'shells', label: 'Shells' },
 ];
 
 const DetailChoices: { id: MembraneDetail; label: string }[] = [
@@ -260,10 +261,11 @@ export function MembraneDetailControls(props: { area: MesoscaleApi; membrane: st
   /** a switch of the far look (lipid-procedural): a slider committing once */
   const viewRow = (
     label: string,
-    key: 'atomsPx' | 'spheresPx' | 'budget' | 'middlePx',
+    key: 'atomsPx' | 'spheresPx' | 'budget' | 'middlePx' | 'shells',
     min: number,
     max: number,
     unit?: string,
+    scale: 'log' | 'linear' = 'log',
   ) => (
     <div class={classes.line}>
       <div class={classes.label}>{label}</div>
@@ -272,9 +274,10 @@ export function MembraneDetailControls(props: { area: MesoscaleApi; membrane: st
         value={mapState(state, (s) => s?.[key] ?? 0)}
         min={min}
         max={max}
-        scale="log"
+        scale={scale}
+        {...(key === 'shells' ? { step: 1 } : {})}
         {...(unit ? { unit } : {})}
-        onCommit={(v) => run({ [key]: v })}
+        onCommit={(v) => run({ [key]: key === 'shells' ? Math.round(v) : v })}
       />
     </div>
   );
@@ -320,11 +323,15 @@ export function MembraneDetailControls(props: { area: MesoscaleApi; membrane: st
                   <Show when={mapState(middle, (m) => m !== 'coarse')}>
                     {() => viewRow('Atoms down to', 'middlePx', MiddlePxMin, 32, 'px')}
                   </Show>
+                  {/* round 10: shells' layers, a build each (their instances) */}
+                  <Show when={mapState(middle, (m) => m === 'shells')}>
+                    {() => viewRow('Shells', 'shells', 4, 12, undefined, 'linear')}
+                  </Show>
                   {/* the gate's M1, S5: a middle look takes the lipids at a cut by the far look's switch (the cut band) */}
-                  <Show when={mapState(state, (s) => s?.middle === 'parallax' && s?.far === 'texture')}>
+                  <Show when={mapState(state, (s) => !!s && s.middle !== 'coarse' && s.far === 'texture')}>
                     {() => viewRow('Cut lipids down to', 'atomsPx', 0.25, 16, 'px')}
                   </Show>
-                  <Show when={mapState(state, (s) => s?.middle === 'parallax' && s?.far === 'both')}>
+                  <Show when={mapState(state, (s) => !!s && s.middle !== 'coarse' && s.far === 'both')}>
                     {() => viewRow('Cut lipids down to', 'spheresPx', 0.05, 8, 'px')}
                   </Show>
                 </div>

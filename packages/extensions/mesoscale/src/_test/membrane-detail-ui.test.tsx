@@ -130,6 +130,7 @@ describe('a membrane’s levels in its properties', () => {
     // nor a middle look: the cutter's far surface (gate X1)
     expect((await area.membraneDetail({ membrane: tm, middle: 'parallax' } as never)).ok).toBe(false);
     expect((await area.membraneDetail({ membrane: tm, middlePx: 14 } as never)).ok).toBe(false);
+    expect((await area.membraneDetail({ membrane: tm, middle: 'shells', shells: 6 } as never)).ok).toBe(false);
     expect((await area.membraneDetail({ membrane: tm, far: 'spheres' } as never)).ok).toBe(true);
     // its species shown and hidden (a per-lipid mask: a tile mixes species), but no export: tiles are built whole
     const tilesSpecies = area.membraneSpeciesState(tm).value?.[0]?.name ?? 'X';
@@ -137,7 +138,7 @@ describe('a membrane’s levels in its properties', () => {
     expect((await area.exportMembrane({ membrane: tm } as never)).ok).toBe(false);
     forgetLipidPatch('ui-patch-far');
   });
-  it('switches a cut membrane’s middle look in one step, its atoms’ px with it, no shells yet (round 8)', async () => {
+  it('switches a cut membrane’s middle look in one step, its atoms’ px with it, shells and their count (round 8, 10)', async () => {
     registerLipidPatch('ui-patch-middle', syntheticPatchPdb().text);
     const base = DefaultPrismViewerSpec();
     const v = await createPrismViewerHeadless({
@@ -185,11 +186,21 @@ describe('a membrane’s levels in its properties', () => {
     expect(host.querySelector('[aria-label="Cut lipids down to"]')).not.toBeNull();
     button('Both').click();
     await until(() => params().far === 'both');
-    // shells are not built this round (round 8: the band object open): not offered, refused
-    expect(button('Shells')).toBeUndefined();
-    expect((await area.membraneDetail({ membrane, middle: 'shells' } as never)).ok).toBe(false);
-    // nor their count: no history step for a look not built (gate S6)
-    expect((await area.membraneDetail({ membrane, shells: 6 } as never)).ok).toBe(false);
+    // round 10 (S6): shells offered, one step, their count's slider and the cut band's with them
+    expect(host.querySelector('[aria-label="Shells"]')).toBeNull();
+    button('Shells').click();
+    await until(() => !!host.querySelector('[aria-label="Shells"]'));
+    expect(params()).toMatchObject({ middle: 'shells', shells: 8 });
+    expect(host.querySelector('[aria-label="Atoms down to"]')).not.toBeNull();
+    expect(host.querySelector('[aria-label="Cut lipids down to"]')).not.toBeNull();
+    expect((await v.api.history.undo({})).ok).toBe(true);
+    await until(() => params().middle === 'parallax' && !host.querySelector('[aria-label="Shells"]'));
+    // the operation takes shells and their count, in its range, one step
+    expect((await area.membraneDetail({ membrane, middle: 'shells', shells: 6 } as never)).ok).toBe(true);
+    expect(area.membraneDetailState(membrane).value).toMatchObject({ middle: 'shells', shells: 6 });
+    expect((await area.membraneDetail({ membrane, shells: 13 } as never)).ok).toBe(false);
+    expect((await v.api.history.undo({})).ok).toBe(true);
+    expect(params()).toMatchObject({ middle: 'parallax', shells: 8 });
     // the operation checks its switches; a valid one is one step
     expect((await area.membraneDetail({ membrane, middlePx: 100 } as never)).ok).toBe(false);
     // atoms only down to the stride-1 px (8.8 a lipid): lower would draw atoms the levels draw as spheres (gate S1)

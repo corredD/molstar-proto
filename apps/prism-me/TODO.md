@@ -134,12 +134,11 @@ maintainer first (2026-10-25). All are v6 (master); the MRC reader and the parti
     instance's scale (the spheres shader takes the model scale only): a library change.
   - The far texture is flat colour (the heads' heights shaded into it), no normal from the head bumps; it switches from
     the spheres at 2 px by default (round 5): the tube's silhouette is the mesh's there, not lipids'.
-  - Round 8's shells (the heads as N instanced shells over a per-view band): the shader (`dPatchMiddle` shells, beneath)
-    and the band (`shell-band.ts`) are built and tested, the band objects are not: their writes happen in the culler's
-    view hook, mid-frame, and whether they reach the GPU that frame (and a frame after them at rest) is open
-    (`updateGPUData`, the draw order of the objects). Then the band's clip, tests 3-6 for shells; `membraneDetail`
-    refuses `middle: shells` and a shells count until then. The shell band's stack and cap (256 nodes, 65,536 triangles;
-    the design's 256 k) drop past them silently (gate N6). Parallax is the default middle look (Ludo, 2026-11-10).
+  - Shells (round 10, an option; parallax the default): built, their Dawn tests (S1-S4) not yet run on the GPU. Open: a
+    band's vertices and table written per changed view allocate (the oct-encoded normals a new array a change, the
+    interleave) and the table's load flushes once a changed view, not measured; a pool the renderer's `prepareCull`
+    skips leaves its band as the last view's; the band's memory (~4 MB a leaflet, ~72 MB for yeast's 18 cut leaflets)
+    not measured; the band only follows views a cut member's hook sees (a leaflet with no lipid capacity none).
   - The clip pop's fix (round 10: the cut band's lipids in members of their own, each at its full capacity) is not yet
     run on the GPU: its Dawn test (P1) and the clip guards wait for Ludo's run (round 8's P1 on the builder's last run
     did not finish: cause unverified). With a clip the cut members are twice as many instances (the band's beside the

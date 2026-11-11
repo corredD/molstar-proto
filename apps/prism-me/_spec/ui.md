@@ -287,8 +287,11 @@ on a tree row (its right-click or its ⋯), the same menu, in this order:
   cross-section shows lipids with tails at a cost set by the cut's length; the band's lipids are members of their own
   (round 10), the rest drawn as without a clip, so away from the cut a zoom does not pop; a handle's drag keeps the
   drawn objects, the band follows). A switch of Middle or Atoms down to builds nothing (a raster and a new selection),
-  but Coarse ↔ Parallax (the cut lipids' levels change; with a clip the cut band's members come or go). Shells (the
-  heads as instanced shells over a per-view band of triangles) are not offered yet: the operation refuses them. Its
+  but Coarse ↔ Parallax (the cut lipids' levels change; with a clip the cut band's members come or go). **Shells**
+  (round 10, an option; `mesoscale.membraneDetail { middle: 'shells', shells }`): the lipids as atoms down to Atoms down
+  to, then the heads as **Shells** layers (4 to 12, 8) over a band of the far surface's triangles where a lipid is
+  between 2 px and twice Atoms down to, selected each view (16,384 triangles at most a leaflet, the rest counted), the
+  far surface beneath it; with a clip the cut band as Parallax's; a switch to or from Shells, or its count, builds. Its
   species are a particle system's entities: in its Look an eye and a colour a species (`mesoscale.membraneSpecies`; a
   hidden species is not generated, the surface's colour without it), and a particle list's colours (round 4c item 8, the
   same operations, its species its entities: Look's color for all its species, Generate colors, Reset, By zoom: far its

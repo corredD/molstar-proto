@@ -464,10 +464,6 @@ export class MesoscaleApi extends ApiArea {
           return ApiResult.fail('invalid', `${k}: from ${min} to ${max}.`);
         }
       }
-      // round 8: the shells' band object is not built yet (its param kept: no schema change when it is)
-      if (view.middle === 'shells' || view.shells !== undefined) {
-        return ApiResult.fail('invalid', 'middle: coarse or parallax (shells are not built yet; no shells count).');
-      }
       const cell = ctx.plugin.state.data.cells.get(membrane);
       if (cell?.transform.transformer !== LipidMembrane) {
         return ApiResult.fail('not-found', `No lipid membrane ${membrane} in the scene.`);
@@ -494,7 +490,7 @@ export class MesoscaleApi extends ApiArea {
       }
       // nor a middle look (the gate's X1): the cutter's far surface; refused, not a step that draws the same
       if (
-        (view.middle !== undefined || view.middlePx !== undefined) &&
+        (view.middle !== undefined || view.middlePx !== undefined || view.shells !== undefined) &&
         (cell.transform.params as LipidMembraneProps).method !== 'cutter'
       ) {
         return ApiResult.fail('invalid', 'Middle needs a membrane made per view (the cutter): tiles are built whole.');
