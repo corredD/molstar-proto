@@ -505,6 +505,53 @@ describe('what the agent’s calls reach: an address it was not given asks first
     agent.dispose();
   });
 
+  // A document on a known service (zenodo goes without asking) whose resources may be elsewhere (Ludo, 2026-11-10).
+  const zenodo = 'https://zenodo.org/records/1/files/exosome.mesoviewspec.json';
+  const withPicksAt = (uri: string) =>
+    JSON.stringify(exosomeDoc()).replace('"fixture://catalase_picks.star"', JSON.stringify(uri));
+
+  it('open_mesoviewspec by URL asks before a resource on a host it does not know, a known service’s document too', {
+    tags: ['medium'],
+  }, async () => {
+    const fetch = stubFetch({ [zenodo]: withPicksAt('https://unknown.example/picks.star') });
+    const { v } = await viewer(false);
+    const { agent } = agentOn(v, [
+      { calls: [disclose] },
+      { calls: [call('open_mesoviewspec', { url: zenodo })] },
+      { calls: [call('open_mesoviewspec', { url: zenodo, resources: 'https://unknown.example/picks.star' })] },
+      { text: 'Opened.' },
+    ]);
+    const r = await agent.turn('open the exosome from zenodo');
+    // the document is read, its resources are not fetched: the call says which hosts to ask for
+    expect(r.tools[1].status).toBe('failed');
+    expect(r.tools[1].text ?? '').toContain('unknown.example');
+    expect(v.api.mesoviewspec?.model.doc).toBeUndefined();
+    // the call that names them asks the person
+    expect(r.status).toBe('awaiting-approval');
+    expect(r.approval?.[0].tool).toBe('open_mesoviewspec');
+    expect(fetched(fetch)).toContain(zenodo);
+    expect(fetched(fetch).some((u) => u.includes('unknown.example'))).toBe(false);
+    await agent.stop();
+    agent.dispose();
+  });
+
+  it('open_mesoviewspec by URL opens a document whose resources are beside it or on known services', {
+    tags: ['medium'],
+  }, async () => {
+    stubFetch({ [zenodo]: withPicksAt('https://files.rcsb.org/picks.star') });
+    const { v } = await viewer(false);
+    const { agent } = agentOn(v, [
+      { calls: [disclose] },
+      { calls: [call('open_mesoviewspec', { url: zenodo })] },
+      { text: 'Opened.' },
+    ]);
+    const r = await agent.turn('open the exosome from zenodo');
+    expect(r.status).toBe('completed');
+    expect(r.tools.at(-1)?.status).toBe('succeeded');
+    expect(v.api.mesoviewspec?.model.doc).toBeDefined();
+    agent.dispose();
+  });
+
   it('edit_mesoviewspec does not ask for a patch that names no address', {
     tags: ['medium'],
   }, async () => {
