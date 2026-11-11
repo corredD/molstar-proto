@@ -307,7 +307,12 @@ export class MesoscaleApi extends ApiArea {
     this._paintMode ??= new PaintMode(
       pluginPaintHost(
         this.ctx.plugin,
-        (params) => this.paint(params as never),
+        // the last copy painted is a grow's source as well (progress/2026-11-11-grow.md)
+        async (params) => {
+          const r = await this.paint(params as never);
+          if (r.ok) this.growFromLast(r.changed?.nodes?.[0]);
+          return r;
+        },
         // the copy under the pointer in the entity's color (its look's)
         (l, entity) => readStyles(this.ctx, l).get(entity)?.color,
         // a structure brush's entity's rise where it paints, when it makes fibers there
@@ -331,6 +336,14 @@ export class MesoscaleApi extends ApiArea {
 
   /** The Grow block's mode and params (view state, no step); a length absent: the source's size */
   readonly growSettings: ObservableState<GrowSettings> = observableState<GrowSettings>(DefaultGrowSettings);
+
+  /** The grow's source: the last particle of a list's painted decorator (a stroke's last copy) */
+  private growFromLast(list: string | undefined) {
+    if (!list) return;
+    const painted = decoratorUnder(this.ctx.plugin.state.data, list, ParticleListPainted);
+    const count = (painted?.obj?.data as ParticleList | undefined)?.count ?? 0;
+    if (count) this.growSource.set({ particles: list, index: count - 1 });
+  }
 
   /**
    * The grow's source as the Grow block names it, following the state tree and the source while watched (a read for
