@@ -147,6 +147,7 @@ signature names is exported by some entry of the two packages).
 | [runtime.md](runtime.md)                                   | the pipeline, the resolver and adapter contracts, the built-in resolvers, refine stages, failures         |
 | [streaming.md](streaming.md)                               | streamed models: the source, the `meso-tiles` manifest, the provider, the planner and budget, the session |
 | [views.md](views.md)                                       | what one document restores: session state, looks, the semantic camera, tours                              |
+| [archive.md](archive.md)                                   | the `.mesoviewx` archive, byte ranges and `meso-placements+f32` (a proposal)                              |
 | [prism.md](prism.md)                                       | how prism-me opens, shows and edits a document (a design)                                                 |
 | [renderer-recommendations.md](renderer-recommendations.md) | what the prototypes showed about Mol\*'s renderer                                                         |
 | [design.md](design.md)                                     | the design record: rationale, measurements, open decisions, packaging, references                         |

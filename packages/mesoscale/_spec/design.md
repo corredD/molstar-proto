@@ -643,7 +643,9 @@ Fibers mock exposed the adapter's `excludeFibers` bug (§11).
    sets, or carry every frame?
 2. **Catalogs.** Runtime expansion into populations, or a resolver input?
 3. **Derived results as resources.** Store a resolution as a `placements` resource with `derivedFrom: {model, key}`, so
-   an expensive procedural result (cellPACKgpu on a GPU) can be shipped and replayed?
+   an expensive procedural result (cellPACKgpu on a GPU) can be shipped and replayed? **(v0.5) Proposed** with the
+   `.mesoviewx` archive (David and Ludo, 2026-11-11: yes to the archive): a `meso-placements+f32` byte range with
+   `derivedFrom`, in Mesoscale Explorer v1's layout ([archive.md](archive.md)).
 4. **Representation hints.** The hint exists (§5) and falls back to spheres. Which hints must an adapter honour, and
    should a document be able to state a fallback chain (SeqViewSpec's)? **(v0.5) Reopened with 8 and 12** as semantic
    levels: a representation chosen per scale by a rule in the document
