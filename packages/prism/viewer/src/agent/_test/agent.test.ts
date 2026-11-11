@@ -245,6 +245,23 @@ describe('the viewer agent: turns, approvals, tools and skills', () => {
     agent.dispose();
   });
 
+  it("puts an extension's state lines after the scene's in each turn", async () => {
+    const lines = (api: unknown) => (api ? 'Probe: 3 things.' : undefined);
+    const v = await headlessViewer({
+      files: [cbs()],
+      extensions: [
+        { id: 'probe', title: 'Probe', agentState: lines },
+        { id: 'silent', title: 'Silent', agentState: () => undefined },
+      ],
+    });
+    const { agent, model } = agentOn(v, [{ text: 'Hi.' }]);
+    await agent.turn('hello');
+    const sent = JSON.stringify(model.projections[0]);
+    expect(sent).toMatch(/structure \\"1CBS\\"/);
+    expect(sent.indexOf('Probe: 3 things.')).toBeGreaterThan(sent.indexOf('structure'));
+    expect(sent).not.toMatch(/Silent/);
+    agent.dispose();
+  });
   it("adds to the viewer's core and skills from the spec, without restating them", async () => {
     const v = await headlessViewer({
       spec: {

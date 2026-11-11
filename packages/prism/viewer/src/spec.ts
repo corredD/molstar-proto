@@ -310,6 +310,11 @@ export interface ViewerExtension {
   /** Its tools, in skills: never core tools, they are disclosed (agent.md §3). */
   readonly skills?: readonly ViewerSkill[];
   /**
+   * What it says of its own state in each agent turn, after the scene's outline (agent.md §5): lines of words, text
+   * from data `quoted()`; none (undefined or empty): it says nothing, as with a document not open.
+   */
+  readonly agentState?: (api: ViewerApi) => string | undefined;
+  /**
    * What it adds to the sequence (sequence.md §3): track providers (the way to add sequence data: a track the person
    * can add, remove and hide per structure) and behaviors (rules that follow the scene), ids `<id>.sequence.<name>`.
    */
@@ -556,6 +561,8 @@ export interface LazyViewerExtensionStub {
   }[];
   /** In the catalog; disclosing one loads the chunk (its tools are over the stub's declared operations). */
   readonly skills?: readonly ViewerSkill[];
+  /** As `ViewerExtension.agentState`: plain code that finds the loaded extension's area and says nothing before it. */
+  readonly agentState?: (api: ViewerApi) => string | undefined;
   /** A session or file that needs one of these loads it first. */
   readonly owns?: {
     readonly transformers?: readonly string[];

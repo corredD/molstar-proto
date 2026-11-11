@@ -4,6 +4,9 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
+import { describeDocument, documentState, idText, issueLines } from './agent-state.js';
+import { quoted } from '@molstar/prism-viewer/agent/account';
+import { allowedAddress } from '@molstar/prism-viewer/agent/policies';
 import { Asset } from '@molstar/core/util/assets';
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
 import {
@@ -28,16 +31,11 @@ import { registerParticleListOwner } from '@molstar/mesoscale-extension/owner';
 import { Color } from '@molstar/core/util/color';
 import { type CompileProgress, isAbort } from '@molstar/meso-spec/runtime';
 import { Task } from '@molstar/core/task';
-import {
-  type CameraHere,
-  type DocumentViews,
-  MesoDocumentModel,
-  type MesoDocumentOptions,
-} from './document-model.js';
+import { type CameraHere, type DocumentViews, MesoDocumentModel, type MesoDocumentOptions } from './document-model.js';
 import { editAsTask } from './edit-task.js';
 import { blockedResult, DocumentListOwner } from './list-owner.js';
 import { documentVisible, type DocumentGroupBy, type DocumentLooks, type DocumentOutline } from './document-tree.js';
-import { openAddresses } from './prism-viewer.js';
+import { resourceAddresses } from './prism-viewer.js';
 
 declare module '@molstar/prism-viewer/api' {
   // The `mesoviewspec` area: the open MesoViewSpec document (prism.md §5.3).
@@ -89,8 +87,6 @@ const TourStepMs = 2000;
 /** A state a view reads (Prism's `ReadonlyState`, as `watchedState` gives it). */
 export type ReadonlyState<T> = ReturnType<typeof watchedState<T>>;
 
-const MaxIssuesListed = 5;
-
 /** The same issues, in order (the owner makes a new list at each step): the tree's Issues need not render again. */
 function sameIssues(a: readonly Issue[], b: readonly Issue[]) {
   if (a.length !== b.length) return false;
@@ -111,7 +107,17 @@ const OpenParams = {
       description: 'The files dropped with it: its relative resources (a recipe, a picks file) by name',
     }),
   ),
+  resources: OptionalParam(
+    PD.Text('', {
+      multiline: true,
+      description:
+        "With url: the addresses of the document's resources on other hosts, one a line, that the open may fetch (the agent's open names them; the person is asked for a host not known)",
+    }),
+  ),
 };
+
+/** The addresses in `text` (an agent's open names them, one a line or split by any space): none for none. */
+const linesOf = (text: unknown) => (typeof text === 'string' ? text.split(/\s+/).filter(Boolean) : []);
 
 const GetParams = {
   detail: PD.Select<'summary' | 'outline' | 'document'>(
@@ -246,7 +252,6 @@ export class MesoViewSpecApi extends ApiArea {
     title: 'Focus the camera on part of the MesoViewSpec document',
     params: { select: SelectParam() },
     history: false,
-    undoable: false,
     run: async ({ select }, ctx) => {
       if (!this.model.doc) return ApiResult.fail('not-found', 'No document is open.');
       const s = this.model.sphereOf(select);
@@ -261,7 +266,6 @@ export class MesoViewSpecApi extends ApiArea {
     title: 'Highlight part of the MesoViewSpec document',
     params: { select: SelectParam() },
     history: false,
-    undoable: false,
     run: async ({ select }, ctx) => {
       if (!this.model.doc) return ApiResult.fail('not-found', 'No document is open.');
       const lights = ctx.plugin.managers.interactivity.lociHighlights;
@@ -275,40 +279,61 @@ export class MesoViewSpecApi extends ApiArea {
   });
 
   /**
-   * Shows a view (prism.md §4.4): no step (`undoable: false`, as `snapshot.apply`), in order with the steps and with a
-   * history context, so the looks it writes are part of its run and never steps of their own. The next step's
-   * checkpoint notes the view shown, and Undo shows it again with the scene it restores (§7.4).
+   * Shows a view (prism.md §4.4): one step (Ludo, 2026-11-10), so Undo shows the view before again, and the agent's
+   * Undo turn takes it back. The looks it writes are part of its run, never steps of their own; its checkpoint notes
+   * the view shown (§7.4). Showing the view shown again sets its camera only: unchanged, no step.
    */
   readonly view = this.operation({
     id: 'mesoviewspec.view',
     title: 'Show a view of the MesoViewSpec document',
     params: { view: PD.Text('', { description: 'The id of one of the document’s views (v.cell)' }) },
+    quiet: true,
+    run: async ({ view }, ctx) => this.#show(view, ctx.api),
+  });
+
+  /**
+   * A tour's view (prism.md §4.4): as `mesoviewspec.view`, but no step (`undoable: false`, as `snapshot.apply`): in
+   * order with the steps, with a history context, so a tour leaves no step a view. Run by `tour.play` only.
+   */
+  readonly tourView = this.operation({
+    id: 'mesoviewspec.tour.view',
+    title: 'Show a view of a MesoViewSpec tour',
+    params: { view: PD.Text('', { description: 'The id of one of the document’s views (v.cell)' }) },
     undoable: false,
     quiet: true,
-    run: async ({ view }, ctx) => {
-      if (!this.model.doc) return ApiResult.fail('not-found', 'No document is open.');
-      const id = view.trim();
-      if (!this.model.doc.views?.some((v) => v.id === id)) {
-        const ids = (this.model.doc.views ?? []).map((v) => v.id);
-        return ApiResult.fail(
-          'not-found',
-          `The document has no view '${id}'.`,
-          ids.length ? `Its views: ${ids.join(', ')}.` : 'It has no views.',
-        );
-      }
-      let step: Awaited<ReturnType<MesoDocumentModel['show']>>;
-      try {
-        step = await this.model.show(id, ctx.api);
-      } catch (e) {
-        return ApiResult.fail('failed', `Could not show ${id}: ${(e as Error).message}`);
-      }
-      const label = this.model.doc.views.find((v) => v.id === id)?.label;
-      const name = label ? `${label} (${id})` : id;
-      if (step.again) return ApiResult.ok(`${name} is shown: its camera is set again.`, { view: true });
-      if (!step.record) return ApiResult.fail('invalid', issueLines(step.issues).join('; ') || `Could not show ${id}.`);
-      return ApiResult.ok(`Showing ${name}.`, { view: true });
-    },
+    run: async ({ view }, ctx) => this.#show(view, ctx.api),
   });
+
+  /** Shows iew through pi (the run's): the model's show, said as a result. */
+  async #show(view: string, api: ApiAreaContextApi) {
+    if (!this.model.doc) return ApiResult.fail('not-found', 'No document is open.');
+    const id = view.trim();
+    if (!this.model.doc.views?.some((v) => v.id === id)) {
+      const ids = (this.model.doc.views ?? []).map((v) => v.id);
+      return ApiResult.fail(
+        'not-found',
+        `The document has no view '${id}'.`,
+        ids.length ? `Its views: ${ids.map((x) => idText(x)).join(', ')}.` : 'It has no views.',
+      );
+    }
+    let step: Awaited<ReturnType<MesoDocumentModel['show']>>;
+    try {
+      step = await this.model.show(id, api);
+    } catch (e) {
+      return ApiResult.fail('failed', `Could not show ${id}: ${(e as Error).message}`);
+    }
+    const label = this.model.doc.views.find((v) => v.id === id)?.label;
+    // the label is the document's text: quoted (data, never instructions)
+    const name = label ? `${quoted(String(label))} (${idText(id)})` : idText(id);
+    // the camera is view state, which no checkpoint holds: nothing for a step to restore
+    if (step.again)
+      return {
+        ...ApiResult.ok(`${name} is shown: its camera is set again.`, { view: true }),
+        unchanged: true as const,
+      };
+    if (!step.record) return ApiResult.fail('invalid', issueLines(step.issues).join('; ') || `Could not show ${id}.`);
+    return ApiResult.ok(`Showing ${name}.`, { view: true });
+  }
 
   /** Where the person stands: `given` (Å, the world frame), else the canvas's camera; none headless without one. */
   #here(given: CameraHere | undefined): CameraHere | undefined {
@@ -432,7 +457,7 @@ export class MesoViewSpecApi extends ApiArea {
   }
 
   /**
-   * Plays a tour (prism.md §4.4, as `snapshot.play`): no step; each of its steps runs as `mesoviewspec.view` with the
+   * Plays a tour (prism.md §4.4, as `snapshot.play`): no step; each of its steps runs as `mesoviewspec.tour.view` with the
    * caller's origin (no step either: in order with the steps, its looks part of its run), holds for its duration, its
    * caption the Views row's. The agent asks once for the whole tour (`undoable: false`, agent.md §4); its views are not
    * asked again. Returns once it plays.
@@ -457,7 +482,7 @@ export class MesoViewSpecApi extends ApiArea {
         return ApiResult.fail(
           'not-found',
           id ? `The document has no tour '${id}'.` : 'The document has no tour.',
-          tours.length ? `Its tours: ${tours.map((x) => x.id).join(', ')}.` : undefined,
+          tours.length ? `Its tours: ${tours.map((x) => idText(x.id)).join(', ')}.` : undefined,
         );
       }
       if (!t.steps.length) return ApiResult.fail('invalid', `The tour ${t.id} has no steps.`);
@@ -468,7 +493,9 @@ export class MesoViewSpecApi extends ApiArea {
         if (this.#tour === entry) this.#tour = undefined;
       });
       this.#tour = entry;
-      return ApiResult.ok(`Playing ${t.label ?? t.id} (${t.steps.length} views).`, { view: true });
+      return ApiResult.ok(`Playing ${t.label ? quoted(String(t.label)) : idText(t.id)} (${t.steps.length} views).`, {
+        view: true,
+      });
     },
   });
 
@@ -506,7 +533,7 @@ export class MesoViewSpecApi extends ApiArea {
           of: t.steps.length,
           ...(step.caption ? { caption: step.caption } : {}),
         };
-        const r = await api.run('mesoviewspec.view', { view: step.view });
+        const r = await api.run('mesoviewspec.tour.view', { view: step.view });
         if (!r.ok || signal.aborted) break;
         await holdFor(step.duration ?? TourStepMs, signal);
       }
@@ -611,7 +638,7 @@ export class MesoViewSpecApi extends ApiArea {
     title: 'Open a MesoViewSpec document',
     params: OpenParams,
     approval: 'network',
-    addresses: openAddresses,
+    addresses: openDocumentAddresses,
     run: async (values, ctx) => {
       const given = [
         values.url?.trim() ? 'url' : '',
@@ -642,6 +669,22 @@ export class MesoViewSpecApi extends ApiArea {
       if (text === undefined) return ApiResult.fail('failed', `Could not read ${url}.`);
       const read = parseDocument(text);
       if ('ok' in read) return read;
+      // The agent's open by URL (Ludo, 2026-11-10): its resources' hosts are known only now. Those beside the document
+      // or on a known service are fetched; any other must be named in `resources`, so the call that names them is the
+      // one the person is asked for (its addresses), before anything of it is fetched.
+      if (url && ctx.origin.kind === 'agent') {
+        const named = new Set(linesOf(values.resources).map(originOf));
+        const unasked = foreignAddresses(resourceUris(read.doc), url).filter(
+          (a) => !allowedAddress(a) && !named.has(originOf(a)),
+        );
+        if (unasked.length) {
+          return ApiResult.fail(
+            'blocked',
+            `The document's resources are on hosts not asked for: ${[...new Set(unasked.map(originOf))].join(', ')}. Nothing was fetched from them.`,
+            `Open it again with resources, one a line:\n${unasked.join('\n')}\nThe person is asked for a host the agent does not know.`,
+          );
+        }
+      }
       const files = new Map<string, string | Uint8Array>();
       for (const f of values.files ?? []) files.set(f.name, new Uint8Array(await f.arrayBuffer()));
       let step: Awaited<ReturnType<MesoDocumentModel['open']>>;
@@ -667,7 +710,7 @@ export class MesoViewSpecApi extends ApiArea {
         ...(stray.length ? [`Not opened (the document names no such resource): ${stray.join(', ')}.`] : []),
       ];
       return ApiResult.ok(
-        `Opened ${title}: ${copies} ${copies === 1 ? 'copy' : 'copies'} in ${lists} ${lists === 1 ? 'list' : 'lists'}.`,
+        `Opened ${quoted(String(title))}: ${copies} ${copies === 1 ? 'copy' : 'copies'} in ${lists} ${lists === 1 ? 'list' : 'lists'}.`,
         {},
         warnings.length ? { warnings } : {},
       );
@@ -688,6 +731,13 @@ export class MesoViewSpecApi extends ApiArea {
     },
   });
 
+  /** What the agent is told of the open document each turn (agent-state.ts); undefined with none open. */
+  agentState(): string | undefined {
+    const { doc, session } = this.model;
+    if (!doc) return undefined;
+    return documentState({ doc, counts: session?.counts ?? {}, shown: this.model.shownId, issues: this.model.issues });
+  }
+
   readonly get = this.operation({
     id: 'mesoviewspec.get',
     title: 'Describe the MesoViewSpec document',
@@ -706,6 +756,9 @@ export class MesoViewSpecApi extends ApiArea {
     id: 'mesoviewspec.edit',
     title: 'Edit the MesoViewSpec document',
     params: EditParams,
+    // a patch that writes a resource's uri makes the document fetch it: the agent asks for a host it does not know
+    approval: 'network',
+    addresses: ({ patch }) => patchAddresses(patch, this.model.url),
     run: async ({ patch }, ctx) => {
       if (!this.model.doc) return ApiResult.fail('not-found', 'No document is open.');
       const read = parsePatch(patch);
@@ -788,6 +841,24 @@ function parseDocument(text: string): { doc: MesoViewSpecDoc } | ApiFailure {
   return { doc: value as MesoViewSpecDoc };
 }
 
+/**
+ * What an open reaches (agent.md §4): its address; for a document given as data, read as the run reads it (JSON or
+ * S-expression), every absolute address of its resources; the resources an agent's open by URL names (the run
+ * refuses one by URL whose resources are on hosts it does not name). Data that does not read reaches nothing: the run
+ * refuses it.
+ */
+export function openDocumentAddresses(v: {
+  readonly url?: string;
+  readonly data?: string;
+  readonly resources?: string;
+}): string[] {
+  // the resources an agent's open by URL names (what it may fetch beside the document's host): asked for here
+  const out = [...(v.url ? [v.url] : []), ...linesOf(v.resources)];
+  if (typeof v.data !== 'string' || !v.data.trim()) return out;
+  const read = parseDocument(v.data);
+  return 'ok' in read ? out : [...out, ...resourceAddresses(read.doc)];
+}
+
 /** The patch in `text`: its S-expression, or its JSON. */
 function parsePatch(text: string): { patch: Patch } | ApiFailure {
   if (!text.trim()) return ApiResult.fail('invalid', 'Edit with what? Give a patch.');
@@ -802,51 +873,66 @@ function parsePatch(text: string): { patch: Patch } | ApiFailure {
   return r.patch ? { patch: r.patch } : ApiResult.fail('invalid', `The patch is not readable: ${r.error?.message}`);
 }
 
-const issueLines = (issues: readonly Issue[]) => {
-  const lines = issues.slice(0, MaxIssuesListed).map((i) => i.message);
-  if (issues.length > MaxIssuesListed) lines.push(`and ${issues.length - MaxIssuesListed} more`);
-  return lines;
-};
-
-/** The summary, and with `outline` the compartments' tree. */
-function describeDocument(
-  doc: MesoViewSpecDoc,
-  counts: DocumentInfo['counts'],
-  issues: readonly Issue[],
-  detail: 'summary' | 'outline',
-): string {
-  const lines = [`${doc.metadata?.title || 'Untitled'} (${doc.format} ${doc.version})`];
-  if (detail === 'outline') {
-    const walk = (parent: string | undefined, depth: number) => {
-      for (const c of doc.compartments.filter((c) => c.parent === parent)) {
-        lines.push(`${'  '.repeat(depth + 1)}${c.id}: ${c.label} (${c.kind})`);
-        for (const p of doc.populations.filter((p) => p.compartment === c.id))
-          lines.push(populationLine(p, counts, depth + 2));
-        walk(c.id, depth + 1);
-      }
-    };
-    lines.push('Compartments:');
-    walk(undefined, 0);
-  } else {
-    lines.push('Populations:');
-    for (const p of doc.populations) lines.push(populationLine(p, counts, 1));
+/**
+ * What an edit reaches (agent.md §4): every resource `uri` the patch writes (a `set`'s fields, an `insert`'s node),
+ * resolved as the owner loads it (`fixture://x` is `fixtures/x` beside the document; the base is the document's
+ * address), those of the document's own origin left out. A patch that does not read reaches nothing: the run refuses it.
+ */
+export function patchAddresses(text: unknown, documentUrl: string | undefined): string[] {
+  const read = typeof text === 'string' ? parsePatch(text) : undefined;
+  if (!read || 'ok' in read || !Array.isArray(read.patch.ops)) return [];
+  const uris: string[] = [];
+  const collect = (x: unknown, depth: number) => {
+    if (!x || typeof x !== 'object' || depth > 8) return;
+    for (const [k, v] of Object.entries(x)) {
+      if (k === 'uri' && typeof v === 'string') uris.push(v);
+      else collect(v, depth + 1);
+    }
+  };
+  for (const op of read.patch.ops as readonly Partial<Record<string, unknown>>[]) {
+    if (op?.op === 'set') collect(op.fields, 0);
+    else if (op?.op === 'insert') collect(op.node, 0);
   }
-  lines.push(
-    `Models: ${doc.models?.length ?? 0}`,
-    `Views: ${doc.views?.length ?? 0}`,
-    `Issues: ${issues.length}${issues.length ? ` (${issueLines(issues).join('; ')})` : ''}`,
-  );
-  return lines.join('\n');
+  return foreignAddresses(uris, documentUrl);
 }
 
-function populationLine(
-  p: MesoViewSpecDoc['populations'][number],
-  counts: DocumentInfo['counts'],
-  depth: number,
-): string {
-  const c = counts[p.id];
-  const n = c ? `${c.achieved}${c.requested !== undefined ? ` of ${c.requested}` : ''}` : 'not placed';
-  return `${'  '.repeat(depth)}${p.id} (${p.entity}): ${n}`;
+/** A document's resource uris, as written. */
+function resourceUris(doc: MesoViewSpecDoc): string[] {
+  const resources: unknown = doc.resources;
+  if (!Array.isArray(resources)) return [];
+  return resources.flatMap((r) => (typeof r?.uri === 'string' ? [r.uri as string] : []));
+}
+
+/** An address's origin (`https://host:port`); the address itself when it is not one. */
+const originOf = (a: string) => {
+  try {
+    return new URL(a).origin;
+  } catch {
+    return a;
+  }
+};
+
+/** Resource uris as the owner fetches them (`MesoDocumentModel.load`), those of the document's origin left out. */
+function foreignAddresses(uris: readonly string[], base: string | undefined): string[] {
+  let origin: string | undefined;
+  try {
+    origin = base ? new URL(base).origin : undefined;
+  } catch {
+    origin = undefined;
+  }
+  const out = new Set<string>();
+  for (const uri of uris) {
+    const path = uri.startsWith('fixture://') ? `fixtures/${uri.slice('fixture://'.length)}` : uri;
+    let href: URL;
+    try {
+      href = new URL(path, base);
+    } catch {
+      continue; // relative, and the document has no address: not fetched
+    }
+    if (origin !== undefined && origin !== 'null' && href.origin === origin) continue;
+    out.add(href.href);
+  }
+  return [...out];
 }
 
 /** A resource's text through the viewer's asset manager; undefined when it cannot be read. */
