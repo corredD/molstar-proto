@@ -215,3 +215,36 @@ record as Open came without a verdict or severity (`-`); S1 was not handed to th
     tile over the document's camera (the tiled fixture has landmarks). Cost: each hold calls `canvas3d.setProps` twice,
     and every `setProps` runs Canvas3D's `prepare` (programs linked for the scene's render items, a frame planned) and
     may hold frames until the new tiles' programs are ready, as a commit does; a tile lands every 150 ms at most.
+
+### Step 5: tiles where the person looks (2026-11-11)
+
+Ludo (2026-11-11): the tiles should follow what is on screen, as culling does, not the camera's orbit point. Built
+(`eda1b5432`..`c55feb2e8`, a red test first each):
+
+- **The planner** (`planStream`): a `StreamFocus.view` (the eye, planes `n·p + c ≥ 0` inside) ranks the tiles: in view
+  first, then by the distance of the tile's centre from the line of sight (eye through target), then by the eye's
+  distance (streaming.md "Order").
+- **The feed** gives the canvas camera's view: the frustum's four side planes (near and far left out: Mol\* fits them to
+  what is drawn) and the plane through the eye facing the target. It fires when the target or a plane moves more than 1
+  Å or a plane turns (an orbit, a zoom, a resize, a fov), once the camera rests.
+- **The app's hysteresis** is 500 Å (`StreamHysteresisA`): a resident tile counts in view up to that far outside, and
+  its sight distance is lessened by it.
+- **A view shown** forgets the fed camera (as before), and the owner feeds the camera again once it rests
+  (`focusDropped`, `refeed`), though it may not move.
+
+Gate (Opus reviewer; Opus skeptic, measuring the real fixture with Mol\*'s camera):
+
+| Finding                                                                                         | Fixed                   |
+| ----------------------------------------------------------------------------------------------- | ----------------------- |
+| Reviewer M1: a box behind the eye wider than its distance counts as in view, and first          | the eye plane           |
+| Reviewer S1, skeptic M1: no hysteresis at the view's edge, the app set none: an orbit swaps 3/7 | plane margin, 500 Å     |
+| Reviewer S2: a resize, a fov, a small orbit close up never fed                                  | the planes compared     |
+| Skeptic S1: whole box on screen, the corner nearest the eye loaded before the screen's centre   | the line of sight ranks |
+| Skeptic M2: a view shown planned by the target alone until the camera moved                     | `refeed` after a show   |
+| Skeptic S2: an orthographic camera's sides are a prism: tiles behind the eye counted in view    | the eye plane           |
+
+Open: skeptic S3 (the eye inside the box: the corner test is loose and tiles beside the eye tie; by its measure no
+better than the old order there); XR (`camera.scale` not read); a continuous spin never feeds (as before); after Undo of
+Close the restored session plans with nothing resident, so a tile the hysteresis kept before the close may be replaced
+(the S4 test allows one); 500 Å suits the fixture's 2000 Å tiles, not every manifest. Checks: medium 130 pass, unit base
+failures only.

@@ -161,8 +161,10 @@ export interface StreamFocus {
 export interface StreamView {
   readonly eye: readonly [number, number, number];
   /**
-   * The side planes of what it sees, `[nx, ny, nz, c]` with `n·p + c ≥ 0` inside (the viewer's left, right, bottom,
-   * top). Near and far are left out: a viewer fits them to what is drawn, so a tile not loaded yet would lie beyond.
+   * The planes of what it sees, `[nx, ny, nz, c]` with `n·p + c ≥ 0` inside: the viewer's left, right, bottom, top,
+   * and one through the eye facing the target (without it, a box behind the eye wider than its distance passes each
+   * side plane on a different corner; an orthographic camera's sides are a prism with no end). Near and far are left
+   * out: a viewer fits them to what is drawn, so a tile not loaded yet would lie beyond.
    */
   readonly planes: readonly (readonly [number, number, number, number])[];
 }
@@ -220,11 +222,15 @@ The algorithm:
    so hysteresis never lets a resident tile push one out; ids compare by UTF-16 code units (`a < b`), never
    `localeCompare`.
    - **With a view** (`focus.view`, Ludo 2026-11-11: tiles come where the person looks, as culling does): `d(t)` is the
-     distance from `view.eye` to the tile's box, and the order is (not in view, `d'`, id): every tile the view sees,
-     nearest the eye first, then the others, nearest the eye first. A tile is in view when its box is not wholly outside
-     one of `view.planes` (its corner farthest along the plane's normal is outside). No plane: every tile is in view. A
-     focus tile is then one in view (`focus` lists them, nearest first). A view with a non-finite number is ignored
-     (planned by `center`).
+     distance from `view.eye` to the tile's box, `s(t)` the distance from the tile box's centre to the line of sight
+     (the half-line from the eye through `focus.center`), and the order is (not in view, `s'`, `d'`, id): every tile the
+     view sees, from the screen's centre out and, along the line, nearest the eye first; then the others alike. By the
+     eye alone the box's corner nearest the eye filled the budget before the screen's centre (the gate's skeptic). A
+     tile is in view when its box is not wholly outside one of `view.planes` (its corner farthest along the plane's
+     normal is outside); a resident tile is in view up to `hysteresis` Å outside, and `s' = max(0, s − hysteresis)` for
+     it, so a slight orbit keeps the tiles at the view's edge. No plane: every tile is in view. A focus tile is then one
+     in view (`focus` lists them, nearest the eye first). A view with a non-finite number is ignored (planned by
+     `center`); an eye on the target has no line of sight (`s = 0`).
 3. **Walk, nearest first.** Add each tile's copies while the total stays at or under `budget.copies`, and stop at the
    first tile that does not fit. The walk never skips ahead to a smaller tile farther out, so the loaded region stays
    one shell around the focus.
