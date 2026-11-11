@@ -14,3 +14,6 @@
 - For extensions: the runtime's `TileStreamer.step(ir, focus?)` plans from a focus the viewer gives (its canvas camera)
   instead of the document's camera. `MesoSession.setFocus` and `MesoDocumentModel.setFocus` take it; a new session
   can start with one (`SessionOptions.focus`).
+- An edit that changes a resource's address (or adds a resource) draws the new resource in that edit, and Undo and
+  Redo load the resources of the document they go back to. A list an edit draws names its new entities and
+  compartments on hover.
