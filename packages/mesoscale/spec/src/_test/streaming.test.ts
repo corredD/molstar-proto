@@ -528,11 +528,12 @@ describe('planStream with a view (tiles where the person looks)', () => {
   });
 
   it('a column in view comes before a nearer tile out of it', () => {
-    // a 3×3 grid, the eye inside the middle tile, a view that sees only x ≥ 250 (the third column)
+    // a 3×3 grid, the eye inside the middle tile looking down +x, a view that sees only x ≥ 250 (the third column)
     const tiles: Tile[] = [];
     for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) tiles.push(box(`${i}${j}`, 100 * i, 100 * j));
     const view = { eye: [150, 150, 50] as [number, number, number], planes: [[1, 0, 0, -250]] as Plane[] };
-    const plan = planStream(manifestOf(tiles), { ...target, view }, none, { copies: 50 });
+    const ahead = { center: [300, 150, 50] as [number, number, number], radius: 0, view };
+    const plan = planStream(manifestOf(tiles), ahead, none, { copies: 50 });
     expect(plan.want).toEqual(['21', '20', '22', '11', '01']);
     expect(plan.focus).toEqual(['21', '20', '22']);
   });
@@ -546,9 +547,19 @@ describe('planStream with a view (tiles where the person looks)', () => {
     expect(plan).toMatchObject({ want: ['b'], request: ['b'], evict: ['c', 'a'] });
   });
 
-  it('no plane: every tile is in view, nearest the eye first', () => {
+  it('no plane: every tile is in view, the line of sight first, then nearest the eye', () => {
+    // b and c are on the line from the eye through the target, a behind the eye, as near as b
     const plan = planStream(row, { ...target, view: { eye, planes: [] } }, none, { copies: 30 });
-    expect(plan.want).toEqual(['a', 'b', 'c']);
+    expect(plan.want).toEqual(['b', 'c', 'a']);
+  });
+
+  // skeptic S1: by the eye alone, the box's corner nearest the eye filled the budget before the screen's centre
+  it('the whole box in view, seen at a slant: the tiles along the line of sight first', () => {
+    const tiles: Tile[] = [];
+    for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) tiles.push(box(`${i}${j}`, 100 * i, 100 * j));
+    const view = { eye: [-500, -500, 50] as [number, number, number], planes: [] };
+    const centre = { center: [150, 150, 50] as [number, number, number], radius: 0, view };
+    expect(planStream(manifestOf(tiles), centre, none, { copies: 30 }).want).toEqual(['00', '11', '22']);
   });
 
   it('a view with a number that is not finite is planned by the centre', () => {
@@ -562,11 +573,12 @@ describe('planStream with a view (tiles where the person looks)', () => {
 
   // gate S1: a resident tile just out of view stays in it by the hysteresis, so a slight orbit does not reload it
   it('hysteresis keeps a resident tile at the edge of the view', () => {
-    // d is in front but 10 Å outside the first side plane, 232 Å from the eye; c is in view, 600 Å away
-    const m = manifestOf([box('c', 500), box('d', 0, 260)]);
+    // d is in front but 10 Å outside the first side plane, its centre 260 Å from the line of sight; a is behind the
+    // eye, out of view, its centre 150 Å from it
+    const m = manifestOf([box('a', -300), box('d', 0, 260)]);
     const view = { eye, planes: frustum };
     const state = { ...none, loaded: new Map([['d', 10]]) };
-    expect(planStream(m, { ...target, view }, state, { copies: 10 })).toMatchObject({ want: ['c'], evict: ['d'] });
+    expect(planStream(m, { ...target, view }, state, { copies: 10 })).toMatchObject({ want: ['a'], evict: ['d'] });
     expect(planStream(m, { ...target, view }, state, { copies: 10, hysteresis: 20 })).toMatchObject({
       want: ['d'],
       evict: [],
