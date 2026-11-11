@@ -7,6 +7,8 @@
 // @module-tag medium
 
 import { StateSelection } from '@molstar/core/state';
+import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
+import { Canvas3DParams } from '@molstar/graphics/canvas3d/canvas3d';
 import { type IR, placementSets } from '@molstar/meso-spec/ir';
 import type { CommitReport } from '@molstar/meso-spec/runtime';
 import { createMesoscaleExplorerSpec } from '@molstar/prism-me-app/spec';
@@ -372,6 +374,92 @@ describe('a streamed document in prism-me (headless)', () => {
     await h.settle();
     expect(residentKeys()).toEqual(far);
     expect(h.errors).toEqual([]);
+  });
+
+  // Ludo's app check (2026-11-10): panned, the camera re-centered by itself, and the tiles loaded around the centre, not
+  // where he looked. Canvas3D resets the camera on a scene commit whose new renderable lies outside the old bounds
+  // (`shouldResetCamera`: a tile at the box's edge, beyond the three landmarks' sphere), unless `camera.manualReset`.
+  // Headless has no Canvas3D (no WebGL here): a stand-in canvas that takes the representations as Canvas3D does and,
+  // as its frame commit would, re-centers the camera on any scene change committed without `manualReset` (stricter
+  // than Canvas3D, which spares a renderable inside the old bounds). What it proves: every tile written in a stream
+  // step, after a pan and on an Undo while tiles stream, reaches the canvas committed under the hold; the camera stays
+  // where the person left it; `manualReset` is the person's again after, and in the checkpoint.
+  it('tiles streamed in after a pan, and an Undo while they stream, leave the camera where the person left it', {
+    tags: ['medium'],
+  }, async () => {
+    const h = await setup();
+    await openTiled(h);
+    const plugin = h.v.plugin as unknown as { canvas3d: unknown };
+    const target = [4000, 4000, 2000];
+    const position = [4000, 4000, 30000];
+    let manualReset = false;
+    let pending = false;
+    let resets = 0;
+    let written = 0;
+    // the canvas props as Canvas3D's (a restore emits `settingsUpdated`, whose readers read them whole)
+    const defaults = PD.getDefaultValues(Canvas3DParams);
+    const canvas = {
+      get props() {
+        return { ...defaults, camera: { ...defaults.camera, manualReset } };
+      },
+      setProps(p: { camera?: { manualReset?: boolean } }) {
+        if (p.camera?.manualReset !== undefined) manualReset = p.camera.manualReset;
+      },
+      add: () => void ((pending = true), written++),
+      remove: () => void ((pending = true), written++),
+      update() {},
+      requestDraw() {},
+      commit() {
+        if (!pending) return;
+        pending = false;
+        if (manualReset) return;
+        resets++;
+        target.splice(0, 3, 4000, 4000, 2000);
+        position.splice(0, 3, 4000, 4000, 30000);
+      },
+      reprCount: { value: 3 },
+      boundingSphere: { center: [4000, 4000, 2000], radius: 6000 },
+      camera: { target, position, setState() {} },
+    };
+    plugin.canvas3d = canvas;
+    try {
+      // the person pans to the far corner: the canvas looks there, and the feed tells the owner
+      target.splice(0, 3, ...Far.center);
+      position.splice(0, 3, Far.center[0], Far.center[1], Far.center[2] + 20000);
+      await h.area().model.setFocus(Far);
+      await h.settle();
+      canvas.commit(); // a frame: Canvas3D commits what is left
+      expect(written, 'tiles reached the canvas').toBeGreaterThan(0);
+      expect(resets, 'camera resets').toBe(0);
+      expect(target).toEqual(Far.center);
+      expect(manualReset).toBe(false);
+      // fewer copies: a stream step that only evicts (Canvas3D resets when the camera is left over nothing)
+      const before = written;
+      const fewer = await h.person.settings.set({ group: 'behaviors', values: { [StreamingBudgetKey]: { budget: 400 } } });
+      expect(fewer.ok).toBe(true);
+      await h.settle();
+      canvas.commit();
+      expect(h.resident()!.resident).toBe(1);
+      expect(written, 'tiles left the canvas').toBeGreaterThan(before);
+      expect(resets, 'camera resets').toBe(0);
+      expect(target).toEqual(Far.center);
+      // a look edit and its Undo while tiles stream (the restore's adoption writes the tiles' looks)
+      expect((await h.person.run('mesoviewspec.look', { select: '(population p.a)', color: 'red' })).ok).toBe(true);
+      await h.settle();
+      expect((await h.v.managers.history.undo()).ok).toBe(true);
+      await h.settle();
+      canvas.commit();
+      expect(resets, 'camera resets').toBe(0);
+      expect(target).toEqual(Far.center);
+      expect(manualReset).toBe(false);
+      const checkpoint = createCheckpointPort(h.v.plugin).checkpoint();
+      expect((checkpoint.plugin.canvas3d?.props as { camera?: { manualReset?: boolean } })?.camera?.manualReset).toBe(
+        false,
+      );
+      expect(h.errors).toEqual([]);
+    } finally {
+      plugin.canvas3d = undefined;
+    }
   });
 
   it('a .molj of a streamed document opens on a new viewer: no tile list comes with it, no error', async () => {
