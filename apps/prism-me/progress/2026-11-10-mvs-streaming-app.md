@@ -163,12 +163,13 @@ record as Open came without a verdict or severity (`-`); S1 was not handed to th
     reset). The feed (`camera-feed.ts`) then reads the re-centered target and the owner streams around the centre:
     symptom 2.
   - **Fix: `keepCamera` (`prism-adapter.ts`), the flag held per write, not per session.** `camera.manualReset` is set
-    for each write of tile lists (a commit's deletions, the tiles' draw, the adoption's deletions) and a synchronous
-    `canvas.commit(true)` of what it added (Canvas3D commits on a later frame otherwise, after the flag is put back:
-    Mol*'s volume streaming toggles the same flag around its update without that commit), then put back; `radiusMax`
-    then follows the scene, as Canvas3D's own commit does when the flag is off. Not the looks' write: an in-place
-    update, no scene commit, no reset. Not held: someone else's `manualReset` (left as it is; Mol*'s headless screenshot
-    and volume streaming set it), and a canvas with no representation yet (its first reset frames a first open).
+    for each write of tile lists (a commit's deletions, a document list's in an edit too, as gate A9 wants; the tiles'
+    draw; the adoption's deletions) and a synchronous `canvas.commit(true)` of what it added (Canvas3D commits on a
+    later frame otherwise, after the flag is put back: Mol*'s volume streaming toggles the same flag around its update
+    without that commit), then put back; `radiusMax` then follows the scene, as Canvas3D's own commit does when the flag
+    is off. Not the looks' write: an in-place update, no scene commit, no reset. Not held: someone else's `manualReset`
+    (left as it is; Mol*'s headless screenshot and volume streaming set it), and a canvas with no representation yet
+    (its first reset frames a first open).
   - **Why not the session (the brief's option).** A checkpoint holds the canvas props (`CheckpointParams.canvas3d`), and
     so does a `.molj`; `PluginState.setSnapshot` applies them after the custom state (the owner's `restore`), so the
     owner could not put the person's value back over a restore: a `.molj` saved while streaming would reopen with the
@@ -198,6 +199,14 @@ record as Open came without a verdict or severity (`-`); S1 was not handed to th
     document that does not stream. Nothing in prism-me styles a new list. So "weird" was the resets; level 0 is still
     not drawn (Open), so before tiles arrive only the landmarks show.
   - **Open.** A step taken while a tile write is in flight (the write spans a state update) takes a checkpoint with the
-    flag on; Undo or Redo to it would leave it on. The camera's `radius` is the open's (the landmarks', about 4400 Å;
-    the box's half-diagonal is 6000 Å): with far clipping on, now that no reset grows it, tiles more than that beyond
-    the target could be cut by the far plane. Unverified; Ludo's check will show it.
+    flag on; Undo or Redo to it would leave it on. The camera's `radius` is the open's (`commitCamera`: the sets
+    resident at the open, here the landmarks', about 4400 Å; the box's half-diagonal is 6000 Å) and no reset grows it
+    now. prism-me turns far clipping off (`look.ts`: `cameraClipping.far: false`), so the far plane follows `radiusMax`,
+    which the hold keeps growing; but the near plane is the camera's distance less `radius`, so zoomed out over the
+    whole box, copies more than about 4400 Å in front of the target could be cut (lane 5's A2, the same failure). The
+    likely fix, not built: the open's radius covers the stream's bounds (the manifest's), not only the sets resident.
+    Unverified; Ludo's check will show it. A document of tiles only (no landmark, a numeric camera, as the gate S2
+    test's) shows no representation when its first tile lands, so that write is not held and Canvas3D frames that one
+    tile over the document's camera (the tiled fixture has landmarks). Cost: each hold calls `canvas3d.setProps` twice,
+    and every `setProps` runs Canvas3D's `prepare` (programs linked for the scene's render items, a frame planned) and
+    may hold frames until the new tiles' programs are ready, as a commit does; a tile lands every 150 ms at most.
