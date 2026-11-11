@@ -28,8 +28,23 @@ stubCanvasForLabels();
 const viewers: PrismViewer[] = [];
 afterEach(async () => {
   for (const v of viewers.splice(0)) await v.dispose();
+  vi.unstubAllGlobals();
 });
 
+// No test reaches the network: a test that may fetch answers each fetch here, and records it.
+const stubFetch = (served: Record<string, string> = {}) => {
+  const fetch = vi.fn(async (input: RequestInfo | URL) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+    const text = served[url];
+    return text === undefined ? new Response('', { status: 404 }) : new Response(text, { status: 200 });
+  });
+  vi.stubGlobal('fetch', fetch);
+  return fetch;
+};
+const fetched = (fetch: ReturnType<typeof stubFetch>) =>
+  fetch.mock.calls.map(([input]) =>
+    typeof input === 'string' ? input : input instanceof URL ? input.href : (input as Request).url,
+  );
 const call = (tool: string, args: Record<string, unknown> = {}) => ({ tool, arguments: args as never });
 const disclose = call('disclose_skills', { skills: ['mesoviewspec'] });
 
@@ -290,6 +305,7 @@ describe('the mesoviewspec tools', () => {
   it('open_mesoviewspec asks for a host it does not know, and goes for one the person wrote', {
     tags: ['medium'],
   }, async () => {
+    const fetch = stubFetch();
     const { v } = await viewer(false);
     const { agent } = agentOn(v, [
       { calls: [disclose] },
@@ -302,11 +318,15 @@ describe('the mesoviewspec tools', () => {
     await agent.stop();
     // The person named the host in the request: the call runs (the document is not there: it fails, it did not ask).
     const next = agentOn(v, [
+      { calls: [disclose] },
       { calls: [call('open_mesoviewspec', { url: 'https://unknown.example/x.mesoviewspec.json' })] },
       { text: 'No.' },
     ]);
     const r2 = await next.agent.turn('open https://unknown.example/x.mesoviewspec.json');
     expect(r2.status).toBe('completed');
+    expect(r2.tools.at(-1)?.status).toBe('failed');
+    expect(r2.tools.at(-1)?.text ?? '').toMatch(/Could not read/);
+    expect(fetched(fetch)).toContain('https://unknown.example/x.mesoviewspec.json');
     agent.dispose();
     next.agent.dispose();
   });
@@ -328,24 +348,6 @@ describe('the mesoviewspec tools', () => {
 });
 
 describe('what the agent’s calls reach: an address it was not given asks first (agent.md §4)', () => {
-  // No test reaches the network: every fetch is answered here, and recorded.
-  const stubFetch = (served: Record<string, string> = {}) => {
-    const fetch = vi.fn(async (input: RequestInfo | URL) => {
-      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
-      const text = served[url];
-      return text === undefined ? new Response('', { status: 404 }) : new Response(text, { status: 200 });
-    });
-    vi.stubGlobal('fetch', fetch);
-    return fetch;
-  };
-  const fetched = (fetch: ReturnType<typeof stubFetch>) =>
-    fetch.mock.calls.map(([input]) =>
-      typeof input === 'string' ? input : input instanceof URL ? input.href : (input as Request).url,
-    );
-  afterEach(() => {
-    vi.unstubAllGlobals();
-  });
-
   const setUri = (uri: string) => `(patch :ops [(set r.picks :fields (:uri ${JSON.stringify(uri)}))])`;
 
   const count = '(patch :ops [(set p.catalase :fields (:abundance (:count 300)))])';
@@ -503,7 +505,7 @@ describe('what the agent’s calls reach: an address it was not given asks first
 describe('what the agent sees of the document each turn (prism.md §8, agent.md §5)', () => {
   // The turn's text as the model gets it (not the tool definitions): the state is in it.
   const sentOf = (model: ReturnType<typeof agentOn>['model']) => {
-    const p = model.projections[0] as { messages: { parts: { kind: string; text?: string }[] }[] };
+    const p = model.projections[0] as unknown as { messages: { parts: { kind: string; text?: string }[] }[] };
     return p.messages.flatMap((m) => m.parts.flatMap((x) => (x.kind === 'text' ? [x.text ?? ''] : []))).join('\n');
   };
 
