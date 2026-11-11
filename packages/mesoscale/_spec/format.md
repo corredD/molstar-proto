@@ -16,6 +16,11 @@ A document is plain JSON:
   custom }                                              // namespaced extensions
 ```
 
+Decided after David's review (2026-11-11), not built: the sections fall into three parts connected by ids
+([stories.md](stories.md#three-parts-connected-by-ids)): the **scene** (every section above but `views` and `session`,
+plus `clocks`), the **views** (`views`, `levels`, `scales`, `session.view`) and the **stories** (`stories`, which
+replace `tours`, and `session.story`). They stay one file.
+
 - **One id namespace for the whole document.** Ids are unique across all sections and match
   `^[A-Za-z][A-Za-z0-9_.:-]*$`. Nodes refer to each other by id only. This is SeqViewSpec's rule (every node has a
   `ref`; `packages/sequences/_spec/format.md`), not MolViewSpec's optional `ref`.
@@ -69,6 +74,9 @@ A `Resource` is `{kind, format, uri | accession, frame, checksum, license, selec
   meshes and tables). A CLI's `--base dir` (repeatable) overrides: it is tried before the document's folder.
 - **Readers** turn raw content into what resolvers use (`runtime/readers.ts`: STAR, OBJ, cellPACKgpu JSON, placement
   JSON). They are pluggable, like resolvers.
+- **Decided (2026-11-11), not built** ([archive.md](archive.md)): `range: {byteOffset, byteLength}` makes a resource a
+  part of its file; `derivedFrom: {model, key}` marks placements a model produced, read instead of rerunning it; the
+  `meso-placements+f32` format; and a `.mesoviewx` archive whose relative `uri`s resolve inside it.
 
 ## Frames and alignment
 
@@ -298,11 +306,12 @@ const { doc, issues } = b.build();
 
 ## Not in the document
 
-- placements and other derived results;
+- placements and other derived results, except as a resource: a derived result saved with `derivedFrom`
+  ([archive.md](archive.md)) is data the document names, not data it holds;
 - renderer settings: quality and pixel level of detail (impostors, `lodLevels`, pixel presets). What a thing is drawn as
-  at a scale (its representation, detail or data source) is semantic, and is proposed for the document in
-  [views.md](views.md#semantic-levels-proposed-v05-for-david-and-ludo) (David: "this not being in the document might be
-  a mistake"). A look's `representation` hint is in the document already;
+  at a scale (its representation, detail or data source) is semantic, and is decided for the document as named levels
+  and scale rules ([views.md](views.md#semantic-levels-proposed-v05-for-david-and-ludo); David: "this not being in the
+  document might be a mistake"). A look's `representation` hint is in the document already;
 - transient UI state.
 
 See [views.md](views.md#session-state-what-one-document-restores).

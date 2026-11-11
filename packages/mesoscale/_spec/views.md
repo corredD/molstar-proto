@@ -37,7 +37,8 @@ are in [README.md](README.md); the reasons and the numbers are in [design.md](de
   [Open decision 4](design.md#11-what-held-what-the-prototypes-exposed-what-is-open) is which hints beyond spheres an
   adapter must honour.
 
-- **Not restored:** clipping, and annotations drawn in the viewer.
+- **Not restored:** clipping (decided for the document, not built:
+  [Clipping](#clipping-decided-ludo-2026-11-11-after-davids-review-not-built)), and annotations drawn in the viewer.
 - **Copy ids are only as stable as the resolution.** A copy id (`p.catalase#12`) is valid only for one resolution key: a
   model edit can renumber copies. Selections that must survive edits should use semantic selectors, or name the copy as
   an instance ([format.md](format.md#instances-copies-stated-one-by-one-instance)).
@@ -75,7 +76,8 @@ where to stand:
 - **`up`** written in the view turns with its frame; unstated, it is the world's y. Either way the runtime makes it
   perpendicular to the view direction, so a camera looking along y (a granule docked below the cell's centre) still has
   a defined roll.
-- **Tours** step through views with durations and captions; `session.tour` names one to play.
+- **Tours** step through views with durations and captions; `session.tour` names one to play. Decided (2026-11-11, not
+  built): tours become stories, whose steps may also patch the scene ([stories.md](stories.md)).
 
 The _Semantic camera_ story switches views (no resolver reruns; about 10 ms) and plays the tour.
 
@@ -86,9 +88,11 @@ quality" out of the document: "this not being in the document might be a mistake
 LOD' at the document level", "different rules/data sources for different levels", and "it needs to be part of both Mol\*
 and the document format".
 
-**Not built.** This section is a proposal: no type in `format/doc.ts` changes until it is agreed. It reopens decisions
-4, 8 and 12 ([design.md](design.md#11-what-held-what-the-prototypes-exposed-what-is-open)), which turn out to be one
-question asked three times.
+**Not built.** This section was a proposal; after David's review (2026-11-11) it is decided, with the rules keyed on
+named levels ([below](#named-levels-decided-ludo-2026-11-11-after-davids-review-not-built)). No type in `format/doc.ts`
+changes until a lane builds it. It reopens decisions 4, 8 and 12
+([design.md](design.md#11-what-held-what-the-prototypes-exposed-what-is-open)), which turn out to be one question asked
+three times.
 
 ### Two kinds of level of detail
 
@@ -177,3 +181,66 @@ not `levels`, a name streaming already uses for `TileManifest.levels`); a view m
 4. `envelope` is a hint, and a representation may be a fallback chain.
 5. A view's look wins over a scale rule.
 6. A view's rules choose among the document's alternatives; they never add one.
+
+### Named levels (decided, Ludo 2026-11-11, after David's review; not built)
+
+David (2026-11-11): "this should be a generic concept, that branches representation kinds depending on 'lod level' … the
+lod level itself should likely be a declarative thing that is part of the 'view spec' and parametrizable". A rule above
+carries its own `size` range, so two rules about the same distance repeat the numbers and a view cannot move the
+threshold for all of them at once. Levels name the ranges once:
+
+```lisp
+(levels
+  (level far  :size (< 2))
+  (level mid  :size (2 40))
+  (level near :size (> 40)))
+
+(scales
+  (scale s.lipids-far  :select (population p.lipids)   :at far  :show (:representation envelope))
+  (scale s.granule-in  :select (population p.granules) :at near :show (:detail parts))
+  (scale s.ribosome-at :select (entity e.ribosome)     :at near :show (:representation [structure surface spheres]
+                                                                       :source r.ribosome-4v6x)))
+
+(view v.overview :levels [(level near :size (> 120))]) ; this view switches to near later
+```
+
+- **`levels[]`** is a views-part section (document level): ordered, ids unique, each `{id, size}` with `size` the same
+  measure as above (projected CSS pixels of one copy, with the viewer's hysteresis). Ranges may not overlap
+  (`levels.overlap`); a gap between them is allowed and no level holds there.
+- **A rule names a level with `:at`** (one id or a list) instead of a `size`. A rule with `size` stays valid: it is a
+  level of its own, unnamed. A rule with both is refused (`scales.shape`).
+- **Parametrizable:** a view's `levels` redefine the thresholds of named levels for that view (same ids, new `size`);
+  they cannot add or remove a level, so every rule's `:at` stays meaningful in every view.
+- **Generic:** any field of `show` branches on the level: `representation`, `detail`, `source`, and any later field. A
+  representation kind is chosen per level, not built into a kind.
+- **Defaults:** a document without `levels` behaves as today.
+- **Touches:** `format/doc.ts` (`Level`, `levels`, `View.levels`, `ScaleRule.at`), `validate.ts`, `IRView` (the
+  thresholds resolved per view).
+
+## Clipping (decided, Ludo 2026-11-11, after David's review; not built)
+
+David (2026-11-11): "also don't see clipping in the spec". A view has `cutaway`, an address for copies to hide; clipping
+by geometry was "not restored" (above). Mol\* clips by planes, boxes, spheres, cylinders and infinite cones, per
+representation (`Clip.Props`: `variant: instance | pixel`, `objects`).
+
+```lisp
+(view v.slice
+  :clip [(plane :frame f.cell :normal [0 0 1] :point [0 0 0])
+         (box :frame f.cell :center [0 0 0] :size [800 800 200] :invert true)]
+  :looks [(look l.membrane :select (population p.lipids) :clip none)])
+```
+
+- **`clip`** on a view is a list of shapes, each in a frame (default the world), in the document's length unit: `plane`
+  (`point`, `normal`), `box` (`center`, `size`, `rotation`), `sphere` (`center`, `radius`), `cylinder` (`center`,
+  `radius`, `height`, `rotation`). `invert` keeps the inside instead of the outside.
+- **Per look:** a look may set `clip: none` (not clipped by the view's shapes) or its own list (clipped by those
+  instead). A copy no look reaches is clipped by the view's list.
+- **By copy or by pixel:** a shape cuts whole copies (Mol\*'s `instance` variant: a copy whose centre is clipped is
+  hidden) unless it says `:cut pixel`. A cross-section through molecules is `pixel`; hiding the copies in front of a
+  focus is `instance`.
+- **`cutaway` stays** as the address form: the copies to hide, chosen by what they are rather than where. The two
+  combine: a copy is hidden if either hides it.
+- **Stories:** a track can animate a shape's `point`, `center` or `radius`
+  ([stories.md](stories.md#time-and-animation)), so a story can cut into a cell.
+- **Touches:** `format/doc.ts` (`ClipShape`, `View.clip`, `Look.clip`), `validate.ts`, `IRView.clip` (shapes in world
+  coordinates), the Prism adapter (`Clip.Props` per list).

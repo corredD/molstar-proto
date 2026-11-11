@@ -92,7 +92,55 @@ interface MesoLoci {
    `(region-of …)`.
 3. `point` replaces `Annotation.target`'s `{position}`.
 
-**Still open:** what `within` gives between a region and copies (distance to the region's surface, or to its centre).
+**Decided (Ludo, 2026-11-11, after David's review; not built):** `within` between a region and copies, below.
+
+#### Down to atoms: `part` and `element` (decided 2026-11-11, not built)
+
+David (2026-11-11): "i think this is missing levels. we should be able to address all the way to atomic level imo. in a
+way this is a superset to mol\*'s Location (but should be its own independent thing)". A copy was the finest location;
+two kinds go below it:
+
+```ts
+type MesoLocation =
+  | … // the six kinds above
+  | { kind: 'part'; set: string; index: number; part: MesoLocation } // inside a superstructure copy
+  | { kind: 'element'; set: string; index: number; atom: number }; // one atom of one copy
+```
+
+- **`part`** is a location inside one copy of a superstructure (a granule): the copy, then a location in the template's
+  own sets (a Vamp2 copy, or deeper). Today such a copy is reached only through the expanded world sets; `part` names it
+  the way the document does, as template and instance, so it survives `detail` switching between `parts` and `entity`.
+- **`element`** is one atom of one copy: `atom` is the atom's id in the entity's structure resource (mmCIF
+  `_atom_site.id`), which does not change when the copy moves or the scene is re-resolved with the same copies. A
+  residue is a set of elements; it has no kind of its own, as in Mol\*.
+- **MesoLoci** gain `elements?: ReadonlyMap<string, readonly {copy: number; atoms: readonly number[]}[]>`: per set, per
+  copy, sorted atom runs. A selection of 10⁵ copies at atom level is refused rather than expanded (`mesoql.too-fine`),
+  as a renderer could not draw it either.
+- **Symbols:** `(residues <copies> :chain A :seq [10 20])`, `(atoms <copies> :name CA)`, and `(part <copy> <address>)`.
+  They take a copy selection and narrow it, so they compose with the rest (David's "monadic"):
+  `(residues (copies p.insulin 3) :chain B)` is chain B of one insulin.
+- **Independent of Mol\*:** the kinds name document things (sets, copies, structure atom ids), not Mol\* units or
+  element indices. The adapter maps an `element` to Mol\*'s `StructureElement.Location` and back; nothing else does.
+- **Static pointers:** `locationToAddress` writes `(atoms (copies p.insulin 3 :key …) :id 1204)` and
+  `(part (copies p.granules 7 :key …) (copies p.Vamp2 12))`.
+- **Touches:** `ir/loci.ts` (the two kinds, `elements` in MesoLoci), `format/mesoql.ts` (the symbols), the Prism adapter
+  (to and from `StructureElement.Location`), `reference/mesoql.md` (generated).
+
+#### `within` between a region and copies (decided 2026-11-11, not built)
+
+David (2026-11-11): "add `:scope` or something like that that allows different 'filters' (e.g. 'closest', 'average') …
+alternatively, allow filtering regions/copies etc before calling within? given the language should be 'monadic' … this
+should be quite easy". Both:
+
+- **Filter first** already works: regions filter copies (above), and `within` takes any copy selection, so
+  `(within (and (population p.ribosomes) (label r.seg 3)) :of (instance i.granule-docked) :distance 250)` narrows before
+  measuring. Every symbol takes a selection and returns one; none needs a special form for regions.
+- **`:to`** says what distance `within` measures when `:of` is a region: `surface` (to the region's boundary; the
+  default, since a copy 10 nm from a membrane is what people ask for), `centre` (to the region's centroid) or `closest`
+  (to its nearest voxel or face, the same as `surface` from outside and 0 inside). Between copies `:to` is ignored: the
+  distance stays centre to centre, as today.
+- **`average`** (David's example) is not a distance: it belongs to a measurement, not a filter, and stays out of MesoQL.
+- **Touches:** `ir/loci.ts` (`within` on regions), `format/mesoql.ts` (the keyword), `reference/mesoql.md`.
 
 ### Static pointers: a location written down (proposed, v0.5; for David and Ludo)
 

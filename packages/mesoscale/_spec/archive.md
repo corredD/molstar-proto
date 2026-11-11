@@ -1,10 +1,10 @@
 # MesoViewSpec: the `.mesoviewx` archive
 
 One file that carries a document and the data it names, as MolViewSpec's `.mvsx` carries an `.mvsj` and its files.
-**Proposed, not built** (first draft, 2026-11-11). David (2026-11-11): "allow .mesoviewX files that correspond to
-molviewspec's mvsx files with resources?"; Ludo: yes. The draft takes its binary layout from Mesoscale Explorer v1's
-generic format (`apps/mesoscale-explorer/src/data/generic/preset.ts`), which already ships placements as byte ranges in
-shared files.
+**Decided, not built** (2026-11-11). David (2026-11-11): "allow .mesoviewX files that correspond to molviewspec's mvsx
+files with resources?"; Ludo: yes, and accepted this draft with the rest of David's review. The draft takes its binary
+layout from Mesoscale Explorer v1's generic format (`apps/mesoscale-explorer/src/data/generic/preset.ts`), which already
+ships placements as byte ranges in shared files.
 
 ## What Mesoscale Explorer v1 holds
 
@@ -79,7 +79,9 @@ A placements format for large sets, read straight into the IR's placement set (i
 ## Open
 
 - Whether `index.mesoview.json` may be the S-expression spelling too (`index.mesoview`).
-- Whether Mesoscale Explorer's `trajectories` (timed frames of instances) are the start of time in the document (David's
-  "time abstraction(s)"), or only an import.
+- Mesoscale Explorer's `trajectories` (timed frames of instances) import as a precomputed model bound to a clock
+  ([stories.md](stories.md#time-and-animation)); their frames are `meso-placements+f32` ranges, one per frame time.
+- Stories may also sit in their own files in the archive, `stories/<id>.mesostory.json`
+  ([stories.md](stories.md#in-the-archive)).
 - Compression of the ranges (Mesoscale Explorer's TODO: BinaryCIF's encoders, such as integer-packed fixed point).
 - msgpack as a second encoding of the index (David: "msgpack might be a good candidate").

@@ -640,34 +640,42 @@ Fibers mock exposed the adapter's `excludeFibers` bug (§11).
 
 1. **Placement frames.** The prototype bakes every placement set into the world frame at resolution, and `frame` nodes
    record the matrices. (v0.2) Superstructure instances already carry their frames to the renderer (§3.9). Bake plain
-   sets, or carry every frame?
+   sets, or carry every frame? **(v0.5) Decided** (David: "both baked and carried depending on context?"; Ludo,
+   2026-11-11): both. A resolver bakes a plain set into the world frame; a frame is carried wherever a set is reused
+   (superstructure templates, instances, stream tiles, a derived result read from an archive), so the renderer can
+   instance it.
 2. **Catalogs.** Runtime expansion into populations, or a resolver input?
 3. **Derived results as resources.** Store a resolution as a `placements` resource with `derivedFrom: {model, key}`, so
-   an expensive procedural result (cellPACKgpu on a GPU) can be shipped and replayed? **(v0.5) Proposed** with the
-   `.mesoviewx` archive (David and Ludo, 2026-11-11: yes to the archive): a `meso-placements+f32` byte range with
-   `derivedFrom`, in Mesoscale Explorer v1's layout ([archive.md](archive.md)).
+   an expensive procedural result (cellPACKgpu on a GPU) can be shipped and replayed? **(v0.5) Decided** (David: "could
+   serialize result of the gpu computation … and be able to load it from file … could work similar as streaming"; Ludo,
+   2026-11-11): a `meso-placements+f32` byte range with `derivedFrom`, in Mesoscale Explorer v1's layout, read through
+   the cache instead of rerunning the model ([archive.md](archive.md)).
 4. **Representation hints.** The hint exists (§5) and falls back to spheres. Which hints must an adapter honour, and
    should a document be able to state a fallback chain (SeqViewSpec's)? **(v0.5) Reopened with 8 and 12** as semantic
    levels: a representation chosen per scale by a rule in the document
    ([views.md](views.md#semantic-levels-proposed-v05-for-david-and-ludo)). Ludo (2026-11-09), for David's review: hints
-   gain `envelope`, and a representation may be a fallback chain.
+   gain `envelope`, and a representation may be a fallback chain. **Decided** (2026-11-11, after David's review): as
+   proposed, with rules keyed on named levels that a view may re-threshold.
 5. **L scenes.** Tiles as a first-class IR concept (a set per tile, keyed), or a renderer-side streaming source?
    **(v0.4) Decided for the IR:** one placement set per tile, keyed `<model>@<hash>#<tileId>`, spliced under a `stream`
    node by the session, so `planCommit` commits only the tiles added and removed and every adapter gets streaming for
    free (§6.8). **Still open:** whether a renderer should hold thousands of tiles as thousands of lists, or one list
    that grows and is culled per tile (renderer-recommendations R5: commit and memory grow per list, about 36 ms and 0.1
-   MB each; frame cost not measured); a tile file format and its network protocol.
+   MB each; frame cost not measured); a tile file format and its network protocol. **(v0.5)** A tile file format is
+   decided with the archive: one `meso-placements+f32` range per tile, read by HTTP `Range` ([archive.md](archive.md)).
 6. **Patches and history.** Patches over one tree for snapshots and undo (SeqViewSpec: `applyPatch`, `diff`, inverses),
    or whole documents with `classifyEdit`, as the prototype does? **Built** (lane `mvs-patch`; [prism.md](prism.md) §2):
    Seq\*'s patches, ops by id (`set`, `remove`, `insert`, `move`), all or nothing, an inverse returned; a viewer
    proposes, the document's owner commits. Looks need an `id` and `emissive` for it. Undo stays Prism's checkpoints,
    which hold the document; inverses are for the record. `classifyEdit` stays for whole documents (an open, an undo).
 7. **Schema.** JSON Schema or OpenAPI published (as MolViewSpec), or reference tables generated from the types (as
-   SeqViewSpec)?
+   SeqViewSpec)? **(v0.5) Decided** (David: "dont need published schema; for storage format, doesn't really matter
+   either currently, msgpack might be a good candidate too"; Ludo, 2026-11-11): reference tables generated from the
+   types, as now; JSON stays the encoding, and msgpack may be added later as a second one.
 8. **(v0.2) Detail per view.** Is `parts` vs `entity` a population's property (now) or a view's (David's "depending on
    context")? A view-level choice needs both levels resolved, or resolution on demand. **(v0.5) Proposed:** both, per
    scale: a population's `detail` stays the default, and a scale rule in the document or a view chooses per scale
-   ([views.md](views.md#semantic-levels-proposed-v05-for-david-and-ludo)).
+   ([views.md](views.md#semantic-levels-proposed-v05-for-david-and-ludo)). **Decided** (2026-11-11), with named levels.
 9. **(v0.2) Derived products.** Should a document declare derived products (a simulated tilt series of the model, for
    training data, Ludo's twin) as activities whose outputs are resources, so the model and its synthetic data share one
    provenance graph?
@@ -695,7 +703,15 @@ Fibers mock exposed the adapter's `excludeFibers` bug (§11).
     stays the runtime's. **Still open:** whether to restructure the top level around the organization; level 2 (atoms
     close up); whether a population or an instance could itself be a stream's level 0 (today only a stream model's
     manifest is). In prism-me the tree is the document's compartments, populations and instances ([prism.md](prism.md)
-    §4.1); a new top level changes those rows only.
+    §4.1); a new top level changes those rows only. **(v0.5)** Atoms are addressable (`element` and `part`,
+    [mesoql.md](mesoql.md#down-to-atoms-part-and-element-decided-2026-11-11-not-built)); level 2 is still refused.
+13. **(v0.5) Scene, views and stories.** David (2026-11-11): the scene description, a list of snapshots in a parent
+    container, and views should be "separate but connected", with "a sequence of things, perhaps with patches … so you
+    can tell 'stories' on top of changing scenes"; for a prototype, "up to your judgement". **Decided:** three parts of
+    one document connected by ids; `tours` become `stories`, whose steps name a view and may carry a patch over the
+    scene; a snapshot is materialized per step, never stored; time is steps, tracks within a step, and clocks a model
+    can be resolved at ([stories.md](stories.md)). Clipping by geometry joins the view
+    ([views.md](views.md#clipping-decided-ludo-2026-11-11-after-davids-review-not-built)).
 
 ## 12. Packaging
 
