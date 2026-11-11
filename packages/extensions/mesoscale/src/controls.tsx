@@ -659,7 +659,7 @@ export function GrowBlock(props: { area: MesoscaleApi; particles: string }) {
                     number(k, label, `The angle between ${between}`, { min: 1, max: 179, step: 0.1, unit: '°' }),
                   )}
                   {(['na', 'nb', 'nc'] as const).map((k) =>
-                    number(k, k, `Cells along ${k.slice(1)}, the source's counted`, { min: 1, max: 30, step: 1 }),
+                    number(k, k, `Cells along ${k.slice(1)}, the source's counted`, { min: 1, max: 20, step: 1 }),
                   )}
                 </div>
               )}
