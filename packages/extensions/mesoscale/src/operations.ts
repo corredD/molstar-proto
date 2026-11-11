@@ -346,7 +346,10 @@ export class MesoscaleApi extends ApiArea {
     if (!list) return;
     const painted = decoratorUnder(this.ctx.plugin.state.data, list, ParticleListPainted);
     const count = (painted?.obj?.data as ParticleList | undefined)?.count ?? 0;
-    if (count) this.growSource.set({ particles: list, index: count - 1 });
+    const l = lists({ plugin: this.ctx.plugin }).find((x) => x.cell.transform.ref === list);
+    // a copy that is no source (a unit of a bank's fiber: review S3) leaves the source as it was
+    if (!count || !l || isFailure(growSourceOf(this.ctx.plugin.state.data, l, count - 1))) return;
+    this.growSource.set({ particles: list, index: count - 1 });
   }
 
   /**
