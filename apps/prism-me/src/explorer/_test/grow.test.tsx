@@ -175,6 +175,8 @@ describe('Grow settings', () => {
     m.setGrowSource({ particles: hiv, index: 0 });
     expect(m.growSettings.value.a).toBe(30);
     m.setGrowSource({ particles: hiv, index: 2 });
-    expect(m.growSettings.value).toMatchObject({ a: undefined, spacing: undefined, na: 5 });
+    expect(m.growSettings.value.a).toBeUndefined();
+    expect(m.growSettings.value.spacing).toBeUndefined();
+    expect(m.growSettings.value.na).toBe(5);
   });
 });
