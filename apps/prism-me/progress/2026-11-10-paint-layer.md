@@ -204,3 +204,20 @@ The structure's own copy (its source, loader and cache) and the gate's leave-out
 
 Open: a structure loaded by PDB id (a download) is not tested (no network in the tests); TODO.md's older entries still
 say "fibre"; the model's stroke speed (the fast-path lanes).
+
+## After round 2: Ludo's checks (2026-11-10)
+
+- "I loaded 2PLV assembly, but it only paint the ASU, it should paint the assembly." The list reloaded the structure's
+  file and took its first model (`Structure.ofModel`). A painted structure now keeps the scene's `structure-from-model`
+  definition (`PaintStructure.definition`) and is built again with `RootStructureDefinition.create`; the definition is
+  part of its key (the assembly and the model of one file are two structures). ece99ceb9.
+- "also from a pdb structure I want the Fiber option as well in painting." The Paint section shows Fiber for a structure
+  brush and, once its first stroke made its entity where it paints, its Rise/Twist (`structureBrushState`). Its first
+  fiber's rise is its length along its principal axis, written as its own settings (it has no radius; 10 Å stacked the
+  copies); the shared default for model entities is unchanged (paint-operation tests pin it). 696e82a7c.
+- Measured in the browser (port 1363), 2PLV by its PDB id, assembly 1: the copy has 420 units as the scene's (it had
+  the asymmetric unit's 4 before); a fiber of it, 321 Å a point, capsids touching. The download path, untested before,
+  works.
+- Open: a fiber's path is read 2 × the bounding radius apart on a structure's first stroke (its rise is not known before
+  its entity exists); a structure's other model (`modelIndex` ≠ 0) still paints model 0. The graphics
+  `backend-neutral` test fails with and without the lane's changes.
