@@ -7,6 +7,7 @@
 import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { Mat4 } from '@molstar/core/math/linear-algebra/3d/mat4';
 import { Vec3 } from '@molstar/core/math/linear-algebra/3d/vec3';
 import { Color } from '@molstar/core/util/color';
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
@@ -300,4 +301,97 @@ describe.skipIf(!webgpu)('the switch between a membrane’s spheres and its far 
       }
     });
   }
+  // round 10 (Ludo, 2026-11-10, "clippop"): with a clip only the cut band's lipids keep their sphere levels; away from
+  // the cut a zoom across the parallax look is as without a clip. Before, every cut member kept its levels with a clip,
+  // so past the cut a lipid fell back to the stride-8 level at about 6.7 px (round 8's probe: 0.041 against 0.023)
+  it('zooms across parallax with a clip far from the path as without it (round 10, P1)', {
+    timeout: 480_000,
+  }, async () => {
+    const plugin = await HeadlessPluginContext.create(
+      { webgpu },
+      DefaultPluginSpec(),
+      { width: Size, height: Size },
+      { backend: 'webgpu' },
+    );
+    try {
+      await plugin.init();
+      const canvas = plugin.canvas3d!;
+      canvas.setProps({ camera: { ...canvas.props.camera, mode: 'perspective' } });
+      registerLipidPatch('dawn-clip-pop', syntheticPatchPdb(12, 14, { POPC: 27, CHL1: 17 }).text);
+      // a plane across y = −1450, the cap below it cut away: its boundary on the sphere's side, never in the zoom's view at
+      // a lipid over 2 px
+      const plane = {
+        type: 'plane' as const,
+        invert: true,
+        position: Vec3.create(0, -1450, 0),
+        rotation: { axis: Vec3.create(1, 0, 0), angle: 0 },
+        scale: Vec3.create(1, 1, 1),
+        transform: Mat4.identity(),
+      };
+      const runs: Record<string, { largest: number; at: number; bandLive: number; n: number }> = {};
+      for (const clipped of [false, true]) {
+        const params = {
+          ...PD.getDefaultValues(LipidMembraneParams),
+          method: 'cutter' as const,
+          radius: Radius,
+          edge: 100,
+          leaflets: 'outer' as const,
+          patch: 'dawn-clip-pop',
+          center: Vec3.zero(),
+          middle: 'parallax' as const,
+          ...(clipped ? { clip: { variant: 'pixel' as const, objects: [plane] } } : {}),
+        };
+        const node = await plugin.build().toRoot().apply(LipidMembrane, params).commit();
+        const repr = () =>
+          plugin.state.data.cells.get(node.ref)!.obj!.data.repr as unknown as { pool: { bandLive?: number } };
+        const camera = canvas.camera;
+        canvas.requestCameraReset({ durationMs: 0 });
+        await plugin.getImageRaw({ width: Size, height: Size });
+        const top = Radius + 20;
+        const lipid = Math.sqrt((12 * 8 * (14 * 8 * 0.866)) / (12 * 14));
+        const steps: { px: number; L: number; a: number; b: number; n: number }[] = [];
+        let bandLive = 0;
+        for (let px = 16; px > 0.8; px /= 1.06) {
+          const depth = (lipid * Size * camera.projection[5]) / (2 * px);
+          camera.setState(
+            {
+              ...camera.getSnapshot(),
+              target: Vec3.create(0, 0, top),
+              position: Vec3.create(0, 0, top + depth),
+              up: Vec3.create(0, 1, 0),
+            },
+            0,
+          );
+          await plugin.getImageRaw({ width: Size, height: Size });
+          const image = (await plugin.getImageRaw({ width: Size, height: Size })).data;
+          if (process.env.LIPID_SHOTS) {
+            const name = `r10-clip-pop-${clipped ? 'clipped' : 'whole'}-${px.toFixed(2)}`;
+            await writePng(`${process.env.LIPID_SHOTS}/${name}.png`, Size, Size, image);
+          }
+          if (px > 2) bandLive = Math.max(bandLive, repr().pool.bandLive ?? 0);
+          steps.push({ px, ...meanOklab(image) });
+        }
+        let largest = 0;
+        let at = 0;
+        for (let i = 1; i < steps.length; ++i) {
+          const [p, q] = [steps[i - 1], steps[i]];
+          const d = Math.hypot(q.L - p.L, q.a - p.a, q.b - p.b);
+          if (d > largest) [largest, at] = [d, q.px];
+        }
+        runs[clipped ? 'clipped' : 'whole'] = { largest, at, bandLive, n: Math.min(...steps.map((s) => s.n)) };
+        await plugin.build().delete(node.ref).commit();
+      }
+      if (process.env.LIPID_NUMBERS) console.log(JSON.stringify(runs));
+      const { whole, clipped } = runs;
+      // the clip cuts nothing the path sees (the plane's kept side)
+      expect(clipped.n).toBeGreaterThan(whole.n * 0.9);
+      expect(clipped.bandLive, 'no band lipid on the path').toBe(0);
+      expect(clipped.largest, `clipped at ${clipped.at.toFixed(2)} px`).toBeLessThanOrEqual(whole.largest + 0.003);
+      expect(clipped.largest, `clipped at ${clipped.at.toFixed(2)} px`).toBeLessThan(0.03);
+      expect(canvas.graphics.takeErrors?.() ?? []).toEqual([]);
+    } finally {
+      forgetLipidPatch('dawn-clip-pop');
+      plugin.dispose();
+    }
+  });
 });
