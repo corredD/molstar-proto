@@ -16,7 +16,7 @@ import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
 import type { PrismViewer } from '@molstar/prism-viewer/viewer';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createMesoViewSpecExtension, type MesoViewSpecApi } from '../extension.js';
-import { MesoPlacements } from '../particle-list.js';
+import { MesoPlacements, placementStore } from '../particle-list.js';
 import { MesoViewSpecLazyExtension } from '../prism-viewer.js';
 
 // The `mesoviewspec` extension in the real Prism viewer (prism.md §3, §5.3): open from data, a URL and files, edit,
@@ -253,13 +253,48 @@ describe('mesoviewspec.edit, save, close', () => {
     expect(observed()).toBe(10);
     expect(drawn()).toBe(10);
 
+    // a restore compiles too (every compile loads its resources: a model's key hashes their content), and before the
+    // session takes the restored document: it reads the restored one's, not those of the document drawn before it
+    fake.asked.length = 0;
     await v.managers.history.undo();
     expect(api.model.doc!.resources!.find((x) => x.id === 'r.picks')?.uri).toBe('fixture://catalase_picks.star');
+    expect(fake.asked).toContain(`${Base}fixtures/catalase_picks.star`);
+    expect(fake.asked).not.toContain(`${Base}fixtures/other_picks.star`);
     expect(observed()).toBe(24);
     expect(drawn()).toBe(24);
+    fake.asked.length = 0;
     await v.managers.history.redo();
+    expect(fake.asked).toContain(`${Base}fixtures/other_picks.star`);
+    expect(fake.asked).not.toContain(`${Base}fixtures/catalase_picks.star`);
     expect(observed()).toBe(10);
     expect(drawn()).toBe(10);
+  });
+
+  // the same cause: a list drawn by an edit was described (its entity, its compartment) by the document before it
+  it('a list an edit draws is described by the edited document: a new entity’s label', {
+    tags: ['medium'],
+  }, async () => {
+    const { api, v, run } = await open();
+    expect((await run('mesoviewspec.open', { url: `${Base}exosome.mesoviewspec.json` })).ok).toBe(true);
+    const r = await run('mesoviewspec.edit', {
+      patch: JSON.stringify({
+        format: 'meso_view_spec_patch',
+        ops: [
+          {
+            op: 'insert',
+            node: { id: 'e.other', label: 'other thing', kind: 'protein', radius: { value: 40, unit: 'A' } },
+            parent: 'entities',
+            after: 'last',
+          },
+          { op: 'set', id: 'p.catalase.observed', fields: { entity: 'e.other' } },
+        ],
+      }),
+    });
+    expect(r.ok, JSON.stringify(r)).toBe(true);
+    const key = api.model.adapter.keys().find((k) => k.startsWith('m.picks@'))!;
+    const list = placementStore(v.plugin).get(key)!;
+    const descriptions = [...list.entityInfo!.values()].map((e) => (e as { description?: string }).description);
+    expect(descriptions.some((d) => d?.includes('other thing'))).toBe(true);
   });
 });
 
