@@ -182,12 +182,9 @@ export class MesoViewSpecApi extends ApiArea {
     this.owner = new DocumentListOwner(this.model);
     this.#unregisterOwner = registerParticleListOwner(ctx.plugin, this.owner);
     // streamed tiles are the owner's behavior's cells (prism.md §9): no step, no change outside the API, left out of
-    // checkpoints, kept by a restore; they load where the canvas camera looks (its target, once it rests)
+    // checkpoints, kept by a restore; they load where the canvas camera looks (its view, once it rests)
     this.#unregisterTiles = registerBehaviorOwned(ctx.plugin, [MesoTilePlacements]);
-    this.#unfeed = feedCanvasCamera(
-      ctx.plugin,
-      (x, y, z) => void this.model.setFocus({ center: [x, y, z], radius: 0 }),
-    );
+    this.#unfeed = feedCanvasCamera(ctx.plugin, (focus) => void this.model.setFocus(focus));
   }
   readonly #unregisterTiles: () => void;
   readonly #unfeed: () => void;
