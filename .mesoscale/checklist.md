@@ -13,6 +13,8 @@ Questions that stop the loop. One line each; move it to Decided with the answer.
 
 ## Decided
 
+- 2026-11-11: `me/mesoviewspec` pushed to the fork (`35e2fa52d`); `origin/prism-me` merged in (`e7151e37f`, colors by
+  zoom on sites and prism-me notes; one conflict in `progress/current.md`, both sides kept).
 - 2026-11-10: the stale resource on edit (an edit writing a resource's `uri` draws the old one; `document-model.ts`
   `load()` reads `session.doc`, set only after the compile), found by lane 7, is fixed in lane 8 before it merges.
 
