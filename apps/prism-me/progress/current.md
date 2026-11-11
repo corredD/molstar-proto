@@ -9,12 +9,18 @@ is not built is [../TODO.md](../TODO.md).
 - **Mesoscale building** (Ludo, 2026-11-07 night → 2026-11-08; engine `~/prism-me-lanes/mesobuild`, local git, its
   report `NIGHT-2026-11-08.md`). Ludo looked at the exosome-in-plasma model: ok. Decided 2026-11-08: a recipe entry's
   count is a count of objects (its biological assembly, or what its file holds: a nuclear pore is one), never rescaled
-  by mass.
-  - **#60** (GPU culling past 65,535 workgroups) and **#61** (cellPACK fibres as tubes) merged by Ludo 2026-11-08; lanes
-    closed, worktrees removed (and `meso-showcase`'s). Master ports kept as local branches only
-    (`fix/cull-dispatch-rows` a3d8c396d, `fix/fibers-targeted` bb2dbced6); Ludo: the fixes go to prism-me, not upstream.
-  - `paint` (`me/paint`, port 1352, [brief](2026-11-08-paint.md) on its branch): Paint v1, approved 2026-11-08 (the
-    mesoscale extension, random orientation, no collisions in v1).
+  by mass. Master ports kept as local branches only (`fix/cull-dispatch-rows` a3d8c396d, `fix/fibers-targeted`
+  bb2dbced6); Ludo: the fixes go to prism-me, not upstream.
+- **Paint round 2** (Ludo, 2026-11-09, after trying v1 on 1352): `me/paint` with #62 merged in, worktree
+  `~/prism-me-lanes/paint-live`, dev server 1352 ([progress](2026-11-08-paint.md), Round 2). Built: the camera on Alt,
+  soluble copies at the pointer's depth (the wheel), the brush's copy under the pointer, fibres. Review gate running;
+  not checked in a browser (the Chrome extension was not connected): Ludo's check.
+- **Other lanes on the fork, no PR**: `me/lipid-tiles` (round 3, Ludo testing on 1353), `me/lipid-procedural` (rounds
+  4-7; rebases on #62 before its PR), `me/mesoviewspec` (MesoViewSpec v0.3, #62 merged in; its lanes 0-8 merged and
+  pushed 2026-11-11, tracked in [../../../.mesoscale/checklist.md](../../../.mesoscale/checklist.md); prism-me merged in
+  2026-11-11).
+- **Merged 2026-11-08/09**: #60 (GPU culling dispatched in rows), #61 (targeted cellPACK fibres without tubes), #62
+  (master v6 #2069 in, conflicts favoring master; [progress](2026-11-09-merge-master.md)).
 
 - **Fast particle drag** (Ludo, 2026-11-05, on the workstation: MG lags on a handle's drag, the release blocks): **PR
   #59 merged 2026-11-06** ([progress](2026-11-05-fast-particle-drag.md)). The handle previews by writing the moved
