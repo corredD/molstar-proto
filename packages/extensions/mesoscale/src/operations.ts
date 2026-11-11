@@ -53,6 +53,7 @@ import {
   paintingList,
   nextStructureIds,
   structureSourceKey,
+  structureDefinitionOf,
   structureSourceOf,
   paintRotations,
   principalAxisOf,
@@ -772,11 +773,11 @@ export class MesoscaleApi extends ApiArea {
             }
           : {}),
       };
-      const key = into.structure && structureSourceKey(into.structure.source);
+      const key = into.structure && structureSourceKey(into.structure);
       const withStroke = (p: PaintedParams): PaintedParams => ({
         ...p,
         strokes: [...p.strokes, stroke],
-        ...(into.structure && !(p.structures ?? []).some((x) => structureSourceKey(x.source) === key)
+        ...(into.structure && !(p.structures ?? []).some((x) => structureSourceKey(x) === key)
           ? { structures: [...(p.structures ?? []), into.structure] }
           : {}),
       });
@@ -1868,11 +1869,13 @@ function paintInto(ctx: ApiContext, structure: string | undefined, particles: st
     | undefined;
   const base = input ?? paintingList();
   const known = (painted?.transform.params as PaintedParams | undefined)?.structures ?? [];
-  const key = structureSourceKey(source);
-  const entry: PaintStructure = known.find((x) => structureSourceKey(x.source) === key) ?? {
+  const definition = structureDefinitionOf(state, structure);
+  const key = structureSourceKey({ source, definition });
+  const entry: PaintStructure = known.find((x) => structureSourceKey(x) === key) ?? {
     name,
     ...nextStructureIds(base, known),
     source,
+    ...(definition ? { definition } : {}),
   };
   const brush = { target: entry.target, entity: entry.entity, compartment: -1, surface: false, object };
   return { l, data: base, brush, name: entry.name, structure: entry };

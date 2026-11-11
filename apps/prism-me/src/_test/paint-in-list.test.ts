@@ -10,7 +10,7 @@ import { CustomProperties } from '@molstar/model/model/custom-property';
 import { PluginStateObject as SO, PluginStateTransform } from '@molstar/plugin/state/objects';
 import { OrderedSet } from '@molstar/core/data/int';
 import { ParticleListPainted } from '@molstar/mesoscale-extension/paint';
-import { Particle, type ParticleList } from '@molstar/model/model/particles/particle-list';
+import { Particle, type ParticleList, type ParticleTarget } from '@molstar/model/model/particles/particle-list';
 import type { ApiResult } from '@molstar/prism-viewer/api/area';
 import { DefaultPrismViewerSpec } from '@molstar/prism-viewer/default-spec';
 import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
@@ -276,5 +276,40 @@ describe('a structure painted into a list, after the gate', () => {
     expect(xyz(drawn(v), 0)).toEqual([110, 20, 30]);
     expectOk(await v.api.run('mesoscale.paint', { structure: crn, positions: [10, 20, 30], seed: 2 }));
     expect(xyz(drawn(v), 1)).toEqual([10, 20, 30]);
+  });
+});
+
+// Ludo, 2026-11-10: "I loaded 2PLV assembly, but it only paint the ASU, it should paint the assembly": a structure
+// paints as the scene built it from its model (its assembly, its symmetry), not as the model's asymmetric unit
+describe('a structure painted as the scene built it', () => {
+  it('paints the structure’s assembly or symmetry, not its asymmetric unit; the model of the same file apart', async () => {
+    const v = await viewer();
+    const crn = await loadCrn(v);
+    const cell = () => v.plugin.state.data.cells.get(crn)!;
+    const units = (t: ParticleTarget | undefined) => (t?.kind === 'structure' ? t.structure.units.length : -1);
+    await v.plugin
+      .build()
+      .to(crn)
+      .update({
+        ...(cell().transform.params as object),
+        type: { name: 'symmetry', params: { ijkMin: Vec3.create(-1, -1, -1), ijkMax: Vec3.create(0, 0, 0) } },
+      })
+      .commit();
+    const sceneUnits = (cell().obj!.data as { units: unknown[] }).units.length;
+    expect(sceneUnits).toBeGreaterThan(1);
+    expectOk(await v.api.run('mesoscale.paint', { structure: crn, positions: [0, 0, 0], seed: 1 }));
+    const d = drawn(v);
+    expect(units(d.targetMapping?.get(d.targets[0]))).toBe(sceneUnits);
+    // built again as its model: painted with, a structure of its own (its asymmetric unit), the first kept
+    await v.plugin
+      .build()
+      .to(crn)
+      .update({ ...(cell().transform.params as object), type: { name: 'model', params: {} } })
+      .commit();
+    expectOk(await v.api.run('mesoscale.paint', { structure: crn, positions: [30, 0, 0], seed: 2 }));
+    const e = drawn(v);
+    expect(e.targets[1]).not.toBe(e.targets[0]);
+    expect(units(e.targetMapping?.get(e.targets[0]))).toBe(sceneUnits);
+    expect(units(e.targetMapping?.get(e.targets[1]))).toBe(1);
   });
 });

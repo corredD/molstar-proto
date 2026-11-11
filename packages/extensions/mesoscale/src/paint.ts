@@ -24,6 +24,7 @@ import {
 } from '@molstar/model/model/particles/particle-list';
 import type { PluginContext } from '@molstar/plugin/context';
 import { loadParticleTarget, type ParticleTargetSource } from '@molstar/plugin/state/helpers/particle-targets';
+import { RootStructureDefinition } from '@molstar/plugin/state/helpers/root-structure';
 import { PluginStateObject as SO, PluginStateTransform } from '@molstar/plugin/state/objects';
 import { Asset } from '@molstar/core/util/assets';
 import { type RuntimeContext, Task } from '@molstar/core/task';
@@ -503,11 +504,30 @@ export interface PaintStructure {
   /** -1 in a list without entities (its targets are its brushes) */
   readonly entity: number;
   readonly source: ParticleTargetSource;
+  /**
+   * How the scene built it from its model: its assembly, its symmetry (Ludo, 2026-11-10: "it should paint the
+   * assembly"). None: the model (a session saved before it)
+   */
+  readonly definition?: RootStructureDefinition.Params;
 }
 
-/** What identifies a structure's source: the same file or address is the same structure (painted again: its ids) */
-export function structureSourceKey(source: ParticleTargetSource): string {
-  return source.kind === 'url' ? `url:${Asset.getUrl(source.url)}` : `file:${source.file.id}`;
+/**
+ * What identifies a painted structure: its file or address and how it is built (painted again: its ids; the assembly
+ * and the model of the same file are two structures)
+ */
+export function structureSourceKey(s: Pick<PaintStructure, 'source' | 'definition'>): string {
+  const source = s.source.kind === 'url' ? `url:${Asset.getUrl(s.source.url)}` : `file:${s.source.file.id}`;
+  return s.definition ? `${source} ${JSON.stringify(s.definition)}` : source;
+}
+
+/** How a structure of the scene was built from its model (its `structure-from-model` ancestor's type), if it was */
+export function structureDefinitionOf(state: State, ref: string): RootStructureDefinition.Params | undefined {
+  for (let cell = state.cells.get(ref); cell; cell = state.cells.get(cell.transform.parent)) {
+    if (cell.transform.transformer.definition.name === 'structure-from-model') {
+      return (cell.transform.params as { type?: RootStructureDefinition.Params }).type;
+    }
+    if (cell.transform.ref === cell.transform.parent) return;
+  }
 }
 
 /** The file or address a structure of the scene was read from (its `download` or `read-file` ancestor), if any */
@@ -578,12 +598,17 @@ async function loadStructures(
   const next: StructureCache = new Map();
   const objects: (ParticleTarget | undefined)[] = [];
   for (const s of structures) {
-    const key = structureSourceKey(s.source);
+    const key = structureSourceKey(s);
     let entry = next.get(key) ?? previous.get(key);
     if (!entry) {
       const assets: Asset.Wrapper[] = [];
       try {
-        entry = { target: await loadParticleTarget(plugin, ctx, s.source, assets), assets };
+        let target = await loadParticleTarget(plugin, ctx, s.source, assets);
+        if (s.definition && target.kind === 'structure') {
+          const built = await RootStructureDefinition.create(plugin, ctx, target.structure.model, s.definition);
+          target = { kind: 'structure', structure: built.data };
+        }
+        entry = { target, assets };
       } catch (e) {
         console.error(e);
         plugin.log.warn(`Could not load ${s.name} to paint with.`);
