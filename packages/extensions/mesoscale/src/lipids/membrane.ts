@@ -49,7 +49,7 @@ import {
   kindCounts,
   regionKey,
 } from './cutter.js';
-import { createLipidCutter, type LipidCutter } from './cutter-kernel.js';
+import { createLipidCutter, type LipidCutter, type LipidSelectionPart } from './cutter-kernel.js';
 import { ElementSymbolColors, elementSymbolColor } from '@molstar/graphics/theme/color/element-symbol';
 import type { ElementSymbol } from '@molstar/model/model/structure/model/types';
 import { headOffset, patchRaster, patchSurface, type SwitchSpheres } from './far-surface.js';
@@ -1149,9 +1149,12 @@ function onlyColorEdges(a: LipidMembraneReprProps, b: LipidMembraneReprProps) {
   return true;
 }
 
-/** Whether a cut member draws its atoms only, no sphere levels (round 8: a middle look without a cut band) */
+/**
+ * Whether a cut member draws its atoms only, no sphere levels (round 8: a middle look; round 10, the clip pop: with a
+ * clip too, the cut band's lipids in members of their own keeping the levels, `cutBandOn`)
+ */
 function cutAtomsOnly(props: LipidMembraneReprProps) {
-  return props.detail === 'off' || (middleOn(props) && !cutBandOn(props));
+  return props.detail === 'off' || middleOn(props);
 }
 
 /**
@@ -1170,7 +1173,8 @@ function onlyMiddle(a: LipidMembraneReprProps, b: LipidMembraneReprProps) {
     if (!keys(k)) return false;
     changed = true;
   }
-  return changed && cutAtomsOnly(a) === cutAtomsOnly(b);
+  // the cut band's members come or go with it (round 10): a build
+  return changed && cutAtomsOnly(a) === cutAtomsOnly(b) && cutBandOn(a) === cutBandOn(b);
 }
 
 /** Whether `b` differs from `a` by its clip alone */
@@ -1383,6 +1387,8 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
      * its mesh's tint (round 9). Read when painted: a recolour paints again (`recolor`)
      */
     look: MemberLook = NoLook,
+    /** a cut band's member (round 10): its lipids' sphere levels kept where the rest's draw atoms only */
+    bandMember = false,
   ) {
     const atoms = positions.length / 3;
     // with `elements` (a cut member, one lipid; a tile's lipids, round 7 item 6): its atoms its groups, each coloured
@@ -1437,8 +1443,9 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
     // each lipid or tile at its own level by its size on screen (the culler's per-instance levels)
     // round 8: with a middle look a cut lipid is its atoms down to it (the selection keeps a triangle's lipids a little
     // below `middlePx`, measured: no coarse level shows over the relief)
-    // with a clip the cut band's lipids keep the levels (the gate's M1: `cutBandOn`, a build where it comes or goes)
-    const atomsOnly = lipidAtomStart === undefined ? cutAtomsOnly(props) : props.detail === 'off';
+    // with a clip the cut band's lipids keep the levels (the gate's M1: `cutBandOn`, a build where it comes or goes), in
+    // members of their own (round 10: the rest atoms only, as without a clip)
+    const atomsOnly = lipidAtomStart === undefined && !bandMember ? cutAtomsOnly(props) : props.detail === 'off';
     const lod = atomsOnly ? { lodLevels: [], lodPixelSize: 0 } : membraneLevels(props.detail, props.levels);
     // markers by lipid; by atom (a cut member's, a tile's): by group and instance, 40 a lipid past a texture's size
     const p = {
@@ -1486,8 +1493,14 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
    * hook, called by the culler where the view changed), its live count returned; nothing written where the selection
    * stayed (a still camera, the pyramid's rounds)
    */
-  function poolWriter(cutter: LipidCutter, m: number, selection: LipidSelection, size: number): GpuInstanceWriter {
-    const write = cutter.writer(m, selection);
+  function poolWriter(
+    cutter: LipidCutter,
+    m: number,
+    selection: LipidSelection,
+    size: number,
+    part: LipidSelectionPart = 'rest',
+  ): GpuInstanceWriter {
+    const write = cutter.writer(m, selection, part);
     let written = -1;
     const writer = ((compute, target) => {
       written = selection.version;
@@ -1700,8 +1713,13 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
       budget,
     );
     // a hidden part's none (its selection's arrays, a few MB, never selecting: review N2)
+    // with a cut band (round 10) its units a part of their own, each member at its full capacity again (Ludo,
+    // 2026-11-10): the band's members beside the rest's
+    const banded = cutter && cutBandOn(props);
     const pools = inputs.map((input, c) =>
-      partHidden(data.cut[c]) ? undefined : createLipidSelection(input, capacities[c]),
+      partHidden(data.cut[c])
+        ? undefined
+        : createLipidSelection(input, capacities[c], banded ? capacities[c] : undefined),
     );
     for (let c = 0; c < pools.length; ++c) {
       const { table } = data.cut[c];
@@ -1712,7 +1730,7 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
       }
     }
     let instances = 0;
-    for (const c of capacities) for (const n of c) instances += n;
+    for (const c of capacities) for (const n of c) instances += banded ? 2 * n : n;
     for (const l of data.leaflets) instances += l.slots.variant.length;
     const levels = props.detail === 'off' ? 0 : membraneLevels(props.detail, props.levels).lodLevels.length;
     checkInstances(instances, levels, graphics.compute.maxStorageBufferSize, !!graphics.capabilities.atomicMinMax64);
@@ -1749,6 +1767,24 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
             colorOf,
             member.elements,
             { part: () => partColor(leaflet), tint: () => tintOf(leaflet.part), apart },
+          ),
+        });
+        if (!banded) continue;
+        // the cut band's (round 10): its lipids' levels kept, merged apart from the rest's (their levels differ)
+        entries.push({
+          visual: visual++,
+          renderObject: memberObject(
+            member.positions,
+            undefined,
+            species,
+            table.species,
+            n,
+            b,
+            poolWriter(cutter, m, pool, lipidSize(table), 'band'),
+            colorOf,
+            member.elements,
+            { part: () => partColor(leaflet), tint: () => tintOf(leaflet.part), apart },
+            true,
           ),
         });
       }
@@ -2090,17 +2126,28 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
   Object.defineProperty(repr, 'pool', {
     get: () => {
       let live = 0;
+      let bandLive = 0;
       let triangles = 0;
       let inView = 0;
       let selectMs = 0;
       for (const s of selections) {
         for (const n of s.live) live += n;
+        for (const n of s.bandLive) bandLive += n;
         triangles += s.count;
         inView += s.inView;
         selectMs += views.times.get(s) ?? 0;
       }
       // `triangles`: the units taken (a whole triangle or a cell, round 5); `selectMs` the last selection's CPU time
-      return { live, triangles, inView, selectMs, selects: views.stats.selects, ...selectionStats };
+      // `live` both parts', `bandLive` the cut band's alone (round 10)
+      return {
+        live: live + bandLive,
+        bandLive,
+        triangles,
+        inView,
+        selectMs,
+        selects: views.stats.selects,
+        ...selectionStats,
+      };
     },
   });
   return repr as typeof repr & {
@@ -2109,6 +2156,7 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
     readonly cutLipids: number;
     readonly pool: {
       live: number;
+      bandLive: number;
       triangles: number;
       inView: number;
       selectMs: number;

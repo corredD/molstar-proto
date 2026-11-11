@@ -28,6 +28,11 @@ export interface TriangleTree {
   /** per part its root, -1 where it has no triangle */
   readonly roots: Int32Array;
   readonly parts: readonly TrianglePart[];
+  /**
+   * its deepest node's depth (a root's 0): a descent's stack holds depth + 2 nodes at most (round 10, the gate's N6: a
+   * fixed stack dropped nodes silently)
+   */
+  readonly depth: number;
 }
 
 /** A leaf's triangles at most */
@@ -83,13 +88,15 @@ function buildTree(positions: ArrayLike<number>, indices: ArrayLike<number>, par
   const leaf = new Uint8Array(most);
   const roots = new Int32Array(parts.length).fill(-1);
   let nodes = 0;
-  // work: node, start, end
+  let depth = 0;
+  // work: node, start, end, depth
   const work: number[] = [];
   for (let p = 0; p < parts.length; ++p) {
     if (parts[p].end <= parts[p].start) continue;
     roots[p] = nodes;
-    work.push(nodes++, parts[p].start, parts[p].end);
+    work.push(nodes++, parts[p].start, parts[p].end, 0);
     while (work.length) {
+      const level = work.pop()!;
       const end = work.pop()!;
       const start = work.pop()!;
       const node = work.pop()!;
@@ -129,6 +136,7 @@ function buildTree(positions: ArrayLike<number>, indices: ArrayLike<number>, par
       spheres[node * 4 + 1] = (y0 + y1) / 2;
       spheres[node * 4 + 2] = (z0 + z1) / 2;
       spheres[node * 4 + 3] = Math.hypot(x1 - x0, y1 - y0, z1 - z0) / 2;
+      if (level > depth) depth = level;
       if (end - start <= Leaf) {
         leaf[node] = 1;
         na[node] = start;
@@ -143,8 +151,8 @@ function buildTree(positions: ArrayLike<number>, indices: ArrayLike<number>, par
       nthElement(order, start, end, mid, c, axis);
       na[node] = nodes;
       nb[node] = nodes + 1;
-      work.push(nodes++, start, mid);
-      work.push(nodes++, mid, end);
+      work.push(nodes++, start, mid, level + 1);
+      work.push(nodes++, mid, end, level + 1);
     }
   }
   return {
@@ -155,6 +163,7 @@ function buildTree(positions: ArrayLike<number>, indices: ArrayLike<number>, par
     order,
     roots,
     parts,
+    depth,
   };
 }
 

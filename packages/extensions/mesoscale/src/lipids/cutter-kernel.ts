@@ -292,17 +292,19 @@ fn writeHit(slot: u32, k: Cut, cell: Cell, l: u32, q: vec2<f32>) {
 
 @compute @workgroup_size(WorkgroupSizeX)
 fn main(@builtin(global_invocation_id) id: vec3<u32>, @builtin(num_workgroups) groups: vec3<u32>) {
-    // the selected units of a view (\`procedural.ts\`): the i-th, its first slot the member's base of it
+    // the selected units of a view (\`procedural.ts\`): the i-th of its part (round 10: the cut band's from 0, the
+    // rest's from \`bandCount\`), its first slot the member's base of it
     let i = triangleIndex(id, groups);
     if (i >= u32(uParams.uSelected)) {
         return;
     }
-    let t = u32(units[i * 3u]);
-    let ucx = units[i * 3u + 1u];
-    let ucy = units[i * 3u + 2u];
+    let u = i + u32(uParams.uUnitStart);
+    let t = u32(units[u * 3u]);
+    let ucx = units[u * 3u + 1u];
+    let ucy = units[u * 3u + 2u];
     let k = triangleCut(t);
     let m = u32(uParams.uMember);
-    var slot = bases[m * u32(uParams.uMaxUnits) + i];
+    var slot = bases[m * u32(uParams.uMaxUnits) + u];
     let end = u32(uParams.uCount);
     if (ucx != WholeTriangle) {
         // a cell: its kind's slots, the lipids the triangle does not own (or f32 misses) dead
@@ -423,6 +425,7 @@ export const LipidCutWriteSchema = {
   uMember: UniformSpec('i'),
   uCount: UniformSpec('i'),
   uSelected: UniformSpec('i'),
+  uUnitStart: UniformSpec('i'),
   uMaxUnits: UniformSpec('i'),
   uInstanceBase: UniformSpec('i'),
   ...Inputs,
@@ -450,9 +453,13 @@ function regionsAndCells(regions: CutterRegions) {
  * A leaflet cut on the GPU: its whole triangles' counts per member (`m * W + w`, the count pass read back once at the
  * wrap; none for a mesh of large triangles), a writer a member over a selection's units
  */
+/** A part of a selection (round 10): its cut band's units (their lipids' levels kept), or the rest */
+export type LipidSelectionPart = 'rest' | 'band';
+
 export interface LipidCutter {
   readonly counts: Uint32Array;
-  writer: (m: number, selection: LipidSelection) => GpuInstanceWriter;
+  /** member `m`'s writer of a part of the selection (round 10): the cut band's units, or the rest */
+  writer: (m: number, selection: LipidSelection, part?: LipidSelectionPart) => GpuInstanceWriter;
   destroy: () => void;
 }
 
@@ -542,6 +549,7 @@ export async function createLipidCutter(
     uMember: ValueCell.create(0),
     uCount: ValueCell.create(0),
     uSelected: ValueCell.create(0),
+    uUnitStart: ValueCell.create(0),
     uMaxUnits: ValueCell.create(0),
     uInstanceBase: ValueCell.create(0),
     ...inputs,
@@ -580,14 +588,18 @@ export async function createLipidCutter(
     data: ValueCell.create(inputs.positions.ref.value),
   };
   let deadKernel: ComputeKernel | undefined;
-  /** per member what its rows hold: its buffer, base, the CPU's writes and live slots (the rest dead rows) */
-  const cleared = Array.from({ length: M }, () => ({ buffer: -1, base: -1, cpuWrites: -1, live: 0 }));
-  const write = (m: number, target: GpuInstanceTarget, selection: LipidSelection) => {
+  /**
+   * per member and part (`m * 2`: the rest, `+ 1` the band) what its rows hold: its buffer, base, the CPU's writes and
+   * live slots (the rest dead rows)
+   */
+  const cleared = Array.from({ length: M * 2 }, () => ({ buffer: -1, base: -1, cpuWrites: -1, live: 0 }));
+  const write = (m: number, target: GpuInstanceTarget, selection: LipidSelection, band: boolean) => {
     upload(selection);
-    const count = Math.min(target.count, selection.live[m]);
+    // both parts share the upload: each reads its own range of the units (round 10)
+    const count = Math.min(target.count, band ? selection.bandLive[m] : selection.live[m]);
     // the slots past the live ones: zeros where views culled on the CPU read them; only those live before (review S3:
     // the whole rest a frame), all of them in a new buffer or place or after the CPU wrote its placeholders
-    const last = cleared[m];
+    const last = cleared[m * 2 + (band ? 1 : 0)];
     const fresh =
       last.buffer !== target.data.id || last.base !== target.instanceBase || last.cpuWrites !== target.cpuWrites;
     const end = fresh ? target.count : Math.min(target.count, last.live);
@@ -606,10 +618,11 @@ export async function createLipidCutter(
     last.cpuWrites = target.cpuWrites;
     last.live = count;
     if (count === 0) return 0;
-    const n = selection.count;
+    const n = band ? selection.bandCount : selection.count - selection.bandCount;
     ValueCell.update(values.uMember, m);
     ValueCell.update(values.uCount, count);
     ValueCell.update(values.uSelected, n);
+    ValueCell.update(values.uUnitStart, band ? 0 : selection.bandCount);
     ValueCell.update(values.uInstanceBase, target.instanceBase);
     ValueCell.updateIfChanged(values.data, target.data);
     kernel ??= compute.createKernel(LipidCutWriteKernel, LipidCutWriteSchema, values);
@@ -620,7 +633,10 @@ export async function createLipidCutter(
   };
   return {
     counts,
-    writer: (m, selection) => (_compute, target) => write(m, target, selection),
+    writer:
+      (m, selection, part = 'rest') =>
+      (_compute, target) =>
+        write(m, target, selection, part === 'band'),
     destroy: () => {
       kernel?.destroy();
       deadKernel?.destroy();

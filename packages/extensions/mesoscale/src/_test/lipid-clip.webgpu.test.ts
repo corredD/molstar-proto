@@ -204,7 +204,8 @@ describe.skipIf(!webgpu)('a lipid membrane clipped by Prism (Dawn)', () => {
     }
   });
   // the gate's S2: a middle look's switch is uniforms, a raster and a selection anew, not a build (`onlyMiddle`): the
-  // Atoms down to px, and with a clip coarse and parallax both (their lipids' levels the same)
+  // Atoms down to px. With a clip, round 10: parallax's cut band is members of their own, coarse has none (its every
+  // lipid keeps the levels), so a switch between them is a build; their switches of px under a clip are not
   it('switches a middle look without a build: the same render objects, another image (round 8 gate S2)', {
     timeout: 240_000,
   }, async () => {
@@ -272,17 +273,23 @@ describe.skipIf(!webgpu)('a lipid membrane clipped by Prism (Dawn)', () => {
       expect(objects(), 'spheresPx').toBe(before);
       await detail({ atomsPx: 3 });
       expect(objects(), 'atomsPx').toBe(before);
-      // with a clip both looks keep the levels (the cut band): a switch without a build either way
+      // with a clip: parallax's px a switch without a build, its band's members kept; to coarse and back a build (round
+      // 10: the band's members go and come), the same image again
       expect((await v.api.run('clipping.add', { shape: 'plane', node: `#${membrane}` })).ok).toBe(true);
       const clipped = objects();
       const parallax = await image();
+      await detail({ middlePx: 11 });
+      expect(objects(), 'middlePx under a clip').toBe(clipped);
+      await detail({ spheresPx: 2 });
+      expect(objects(), 'spheresPx under a clip').toBe(clipped);
+      expect(differs(parallax, await image()), 'px under a clip').toBeGreaterThan(0.01);
+      const back = await image();
       await detail({ middle: 'coarse' });
-      expect(objects(), 'coarse').toBe(clipped);
+      expect(objects(), 'coarse').not.toBe(clipped);
       const coarse = await image();
-      expect(differs(parallax, coarse), 'coarse').toBeGreaterThan(0.01);
+      expect(differs(back, coarse), 'coarse').toBeGreaterThan(0.01);
       await detail({ middle: 'parallax' });
-      expect(objects(), 'parallax').toBe(clipped);
-      expect(differs(parallax, await image()), 'parallax again').toBeLessThan(0.01);
+      expect(differs(back, await image()), 'parallax again').toBeLessThan(0.01);
       expect(plugin.canvas3d!.graphics.takeErrors?.() ?? []).toEqual([]);
     } finally {
       forgetLipidPatch('dawn-clip-switch');

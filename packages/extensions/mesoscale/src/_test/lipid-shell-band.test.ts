@@ -10,7 +10,8 @@ import { Plane3D } from '@molstar/core/math/geometry/primitives/plane3d';
 import { Vec3 } from '@molstar/core/math/linear-algebra/3d/vec3';
 import { cutterRegions, regionKey } from '../lipids/cutter.js';
 import { patchSurface } from '../lipids/far-surface.js';
-import { createShellBand } from '../lipids/shell-band.js';
+import { BandCap, createShellBand } from '../lipids/shell-band.js';
+import { triangleTree } from '../lipids/triangle-tree.js';
 import { flatMesh } from './lipid-fixtures.js';
 
 // A cut leaflet's shell band (lipid-procedural round 8 §2): per view the far surface's triangles where a lipid is in
@@ -75,5 +76,34 @@ describe('a leaflet’s shell band', () => {
     expect(band.count).toBe(T);
     expect(band.select(camera, frustum, 0, size / 8, 1, 4)).toBe(true);
     expect(band.count).toBe(0);
+  });
+
+  // round 10 (the gate's N6: the stack and the cap dropped triangles silently): the stack from the tree's depth, every
+  // triangle in the px reached; past `BandCap` the rest counted in `dropped`, the band full; the same view writes nothing
+  it('reaches every triangle of a large mesh, and counts those past its cap (round 10, S5)', () => {
+    const camera = Plane3D.create(Vec3.create(0, 1, 0), 100);
+    const frustum = Array.from({ length: 6 }, () => Plane3D.create(Vec3.create(1, 0, 0), 1e9)) as unknown as Frustum3D;
+    const all = (mesh: { positions: Float32Array; indices: Uint32Array }) => {
+      const regions = cutterRegions(mesh.positions, mesh.indices, 1);
+      return createShellBand(mesh, regions, patchSurface(mesh, regions, 'outer', 10), 8);
+    };
+    // under the cap: 2 × 80² = 12,800 triangles, all of them in the px (orthographic, one px for all)
+    const under = flatMesh(10, 80);
+    const tree = triangleTree(under.positions, under.indices);
+    expect(tree.depth).toBeGreaterThan(8);
+    const a = all(under);
+    expect(a.select(camera, frustum, 0, 4, 1, 8)).toBe(true);
+    expect(a.count).toBe(under.indices.length / 3);
+    expect(a.dropped).toBe(0);
+    // past it: 2 × 100² = 20,000, the band full and the rest counted
+    const over = flatMesh(10, 100);
+    const b = all(over);
+    expect(b.select(camera, frustum, 0, 4, 1, 8)).toBe(true);
+    expect(b.count).toBe(BandCap);
+    expect(b.dropped).toBe(over.indices.length / 3 - BandCap);
+    const version = b.version;
+    expect(b.select(camera, frustum, 0, 4, 1, 8)).toBe(false);
+    expect(b.version).toBe(version);
+    expect(b.dropped).toBe(over.indices.length / 3 - BandCap);
   });
 });

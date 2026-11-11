@@ -13,10 +13,14 @@ import { triangleTree } from './triangle-tree.js';
 // A cut leaflet's shell band (lipid-procedural round 8 §2; Ludo, 2026-11-09: "the best lipid wrapper capable of scaling
 // up to human cell size"): the far surface's triangles where a lipid is between the middle look's px, per view, drawn
 // as N shells (an instance each). Only those triangles: the cost is the screen's, not the cell's (a whole far surface ×
-// N was hundreds of ms on the yeast cell). Grow-only arrays, a preallocated stack: nothing allocated a view.
+// N was hundreds of ms on the yeast cell). Round 10: arrays at the cap from the start (the band's object is drawn at a
+// fixed size, written in place a view), a stack sized from the tree's depth: nothing allocated a view.
 
-/** The band's triangles at most (its groups, the band's regions, as many: the object's marker texture sized once) */
-export const BandCap = 65536;
+/**
+ * The band's triangles at most (its groups, the band's regions, as many: the object's marker texture sized once). Ludo,
+ * 2026-11-10: 16,384, about 4 MB a band; past it the ones the descent reaches last are dropped and counted (`dropped`)
+ */
+export const BandCap = 16384;
 
 /** A patch surface (`patchSurface`): three vertices a triangle, its region its group, its vertices' shifts */
 export interface BandSource {
@@ -28,7 +32,9 @@ export interface BandSource {
 export interface ShellBand {
   /** the band's triangles, by the far surface's */
   readonly count: number;
-  /** the arrays, `count` triangles written (grow-only: their length the capacity) */
+  /** the triangles the last view had past `BandCap`, not drawn (round 10, the gate's N6: counted, not silent) */
+  readonly dropped: number;
+  /** the arrays, `count` triangles written (at `BandCap` from the start: their length the capacity) */
   readonly positions: Float32Array;
   readonly normals: Float32Array;
   readonly groups: Float32Array;
@@ -61,40 +67,32 @@ export function createShellBand(mesh: TriMesh, regions: CutterRegions, source: B
   const { spheres, a: childA, b: childB, leaf, order, roots } = tree;
   const p = mesh.positions;
   const ix = mesh.indices;
-  const stack = new Int32Array(256);
+  // a descent holds the tree's depth + 2 nodes at most: none dropped (round 10, the gate's N6)
+  const stack = new Int32Array(tree.depth + 2);
   // the triangles chosen this view and the last
-  let chosen = new Uint32Array(1024);
-  let last = new Uint32Array(1024);
+  let chosen = new Uint32Array(BandCap);
+  let last = new Uint32Array(BandCap);
   let lastCount = -1;
   // per region its band index (-1: none), the regions used
   const regionMap = new Int32Array(regions.count).fill(-1);
   const used = new Int32Array(BandCap);
   const cells = regions.cells;
-  let capacity = 0;
+  const capacity = BandCap;
+  // the regions (as many as triangles at most), the 4,096 cells, two shifts a texel
+  const texels = capacity * 4 + cells.length / 4 + Math.ceil((capacity * 6) / 4);
   const band = {
     count: 0,
-    positions: new Float32Array(0),
-    normals: new Float32Array(0),
-    groups: new Float32Array(0),
-    indices: new Uint32Array(0),
-    table: new Float32Array(0),
+    dropped: 0,
+    positions: new Float32Array(capacity * 9),
+    normals: new Float32Array(capacity * 9),
+    groups: new Float32Array(capacity * 3),
+    indices: new Uint32Array(capacity * 3),
+    table: new Float32Array(TableWidth * Math.ceil(texels / TableWidth) * 4),
     cellsTexel: 0,
     version: 0,
     select,
   };
-
-  function grow(n: number) {
-    if (n <= capacity) return;
-    capacity = Math.max(1024, 2 ** Math.ceil(Math.log2(n)));
-    band.positions = new Float32Array(capacity * 9);
-    band.normals = new Float32Array(capacity * 9);
-    band.groups = new Float32Array(capacity * 3);
-    band.indices = new Uint32Array(capacity * 3);
-    for (let i = 0; i < capacity * 3; ++i) band.indices[i] = i;
-    // the regions (as many as triangles at most), the 4,096 cells, two shifts a texel
-    const texels = capacity * 4 + cells.length / 4 + Math.ceil((capacity * 6) / 4);
-    band.table = new Float32Array(TableWidth * Math.ceil(texels / TableWidth) * 4);
-  }
+  for (let i = 0; i < capacity * 3; ++i) band.indices[i] = i;
 
   function select(
     cameraPlane: Plane3D,
@@ -112,6 +110,7 @@ export function createShellBand(mesh: TriMesh, regions: CutterRegions, source: B
     const far =
       depthScale > 0 ? size / (depthScale * Math.max(loPx, 1e-9)) : flat >= loPx && flat < hiPx ? Infinity : -1;
     let n = 0;
+    let dropped = 0;
     if (roots[0] >= 0 && far > near) {
       let top = 0;
       stack[top++] = roots[0];
@@ -128,12 +127,11 @@ export function createShellBand(mesh: TriMesh, regions: CutterRegions, source: B
         const d = cn[0] * spheres[o] + cn[1] * spheres[o + 1] + cn[2] * spheres[o + 2] + cc;
         if (d - r > far || d + r < near) continue;
         if (!leaf[node]) {
-          if (top + 2 > stack.length) continue;
           stack[top++] = childA[node];
           stack[top++] = childB[node];
           continue;
         }
-        for (let li = childA[node]; li < childB[node] && n < BandCap; ++li) {
+        for (let li = childA[node]; li < childB[node]; ++li) {
           const t = order[li];
           // the triangle's depths: its corners'
           let lo = Infinity;
@@ -145,15 +143,12 @@ export function createShellBand(mesh: TriMesh, regions: CutterRegions, source: B
             if (dv > hi) hi = dv;
           }
           if (lo > far || hi < near) continue;
-          if (n >= chosen.length) {
-            const next = new Uint32Array(chosen.length * 2);
-            next.set(chosen);
-            chosen = next;
-          }
-          chosen[n++] = t;
+          if (n < BandCap) chosen[n++] = t;
+          else dropped += 1;
         }
       }
     }
+    band.dropped = dropped;
     // the same triangles as the last view: nothing written
     if (n === lastCount) {
       let same = true;
@@ -161,13 +156,14 @@ export function createShellBand(mesh: TriMesh, regions: CutterRegions, source: B
       if (same) return false;
     }
     write(n);
-    [chosen, last] = [last, chosen];
+    const swap = chosen;
+    chosen = last;
+    last = swap;
     lastCount = n;
     return true;
   }
 
   function write(n: number) {
-    grow(n);
     const { positions, normals, groups, table } = band;
     const rt = regions.table;
     let regionCount = 0;
