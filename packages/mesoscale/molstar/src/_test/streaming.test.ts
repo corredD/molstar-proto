@@ -15,7 +15,7 @@ import { createMesoscaleExplorerSpec } from '@molstar/prism-me-app/spec';
 import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
 import type { PrismViewer } from '@molstar/prism-viewer/viewer';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { type CameraCanvas, PrismMesoAdapter } from '../prism-adapter.js';
+import { type CameraCanvas, type KeepCanvas, PrismMesoAdapter } from '../prism-adapter.js';
 import { MesoSession } from '../session.js';
 import { stubCanvasForLabels } from './canvas.js';
 
@@ -196,7 +196,18 @@ describe('a streamed session over the Prism adapter (headless)', () => {
     // a canvas the adapter's camera step sees (the plugin's own stays none, headless), recording it
     const camera = { setState: vi.fn() };
     const resets = vi.fn();
-    const canvas: CameraCanvas = { camera, commit: () => {}, requestCameraReset: resets } as unknown as CameraCanvas;
+    // and what the tiles' writes hold (`keepCamera`): its props, its scene, its representations
+    const canvas: CameraCanvas & KeepCanvas = {
+      camera,
+      commit: () => {},
+      requestCameraReset: resets,
+      props: { camera: { manualReset: false }, sceneRadiusFactor: 1 },
+      setProps: () => {},
+      reprCount: { value: 1 },
+      boundingSphere: { center: [0, 0, 0], radius: 5000 },
+    } as unknown as CameraCanvas & KeepCanvas;
+    /** The camera set other than `radiusMax` (which follows the scene after a tile write, as Canvas3D's commit). */
+    const cameraSet = () => camera.setState.mock.calls.filter(([s]) => Object.keys(s).some((k) => k !== 'radiusMax'));
     const plugin = new Proxy(v.plugin, {
       get: (t, p) => (p === 'canvas3d' ? canvas : Reflect.get(t, p)),
     });
@@ -226,7 +237,7 @@ describe('a streamed session over the Prism adapter (headless)', () => {
       expect(streamed.length).toBeGreaterThan(1);
       for (const r of streamed) expect(r.commit!.kept).toEqual([]);
       for (const r of streamed) expect(r.commit!.cameraSet, 'a stream commit set the camera').toBe(false);
-      expect(camera.setState).toHaveBeenCalledTimes(1);
+      expect(cameraSet()).toHaveLength(1);
       expect(resets).not.toHaveBeenCalled();
     } finally {
       s.dispose();
