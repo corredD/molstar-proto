@@ -2196,3 +2196,26 @@ Checks (at HEAD): quick lane mesoscale + prism-me 57 files, 396 passed; Dawn `li
 cases in `lipid-compartments`); `test:perf` mesoscale at the baseline (15.62, 15.98, -0.02 B; not raised); `tsc` (app,
 mesoscale), biome, prettier pass. Not checked in the app. After: `5cd583e7a` (an OBJ's part and a VTP's coloured in one
 step: the split S2 makes, tested), `b7a5db7e3` (TODO true again).
+
+## Round 10 brief: the clip pop and shells as an option (Ludo, 2026-11-10)
+
+Ludo: "clippop, shells (as an option ?) at the same time".
+
+1. **The clip pop.** With a clip, every cut member keeps its sphere levels (the cut band needs them), so away from the
+   cut a zoom pops back to the stride-8 level at 6.7 px (0.041, against 0.023 without a clip, same probe). Fix: only
+   the lipids in the cut band keep their levels; the rest select as without a clip (the TODO's two candidates: the
+   band's lipids in members of their own, or the selection keeping no unit below the stride-1 px outside the band; the
+   architect picks). Proof: the round 8 probe reads ≤ 0.023 with the clip far from the path (a Dawn test, failing
+   first); the cut band's look unchanged (its existing tests).
+2. **Shells, the third middle look, as an option.** `middle: coarse | parallax | shells`, parallax stays the default.
+   The shader and `shell-band.ts` exist; the band objects are not built (their writes happen in the culler's view hook
+   mid-frame: whether they reach the GPU that frame, and nothing at rest, is the open question). Build the band
+   objects, their clip, the round 8 tests 3-6 for shells; `membraneDetail` stops refusing `middle: shells`; the Look's
+   Middle select offers it. The band's stack and cap drop silently (gate N6): report it instead (a count, or a test).
+   Idle is idle: no frame at rest with shells.
+
+Order: the architect (Opus, read-only) designs both, says where they touch the same code (the selection, the cut
+band) and in which order to build; one builder (Opus) builds both, the clip pop first (smaller, and shells' clip may
+reuse it). Then the gate (lane-reviewer, lane-skeptic), fixes with failing tests first. No pictures. Size: clip pop
+~100-200 lines, shells ~300-500. Over that: record it and keep going; stop and report if shells need a library change
+the lane cannot make (the culler hook).
