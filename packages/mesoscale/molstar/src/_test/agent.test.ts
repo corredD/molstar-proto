@@ -535,6 +535,42 @@ describe('what the agent’s calls reach: an address it was not given asks first
     agent.dispose();
   });
 
+  it('open_mesoviewspec by URL opens once the call names its resources’ hosts, however it separates them', {
+    tags: ['medium'],
+  }, async () => {
+    const two = withPicksAt('https://unknown.example/picks.star').replace(
+      '"fixture://tilts.mrc"',
+      '"https://other.example/tilts.mrc"',
+    );
+    const fetch = stubFetch({ [zenodo]: two });
+    const { v } = await viewer(false);
+    const { agent } = agentOn(v, [
+      { calls: [disclose] },
+      { calls: [call('open_mesoviewspec', { url: zenodo })] },
+      // the hint's addresses copied on one line
+      {
+        calls: [
+          call('open_mesoviewspec', {
+            url: zenodo,
+            resources: 'https://unknown.example/picks.star https://other.example/tilts.mrc',
+          }),
+        ],
+      },
+      { text: 'Opened.' },
+    ]);
+    // the person wrote both hosts: the turn may reach them without asking
+    const r = await agent.turn(
+      'open the exosome from zenodo; its picks are on https://unknown.example/ and its tilts on https://other.example/',
+    );
+    expect(r.tools[1].status).toBe('failed');
+    expect(r.tools[1].text ?? '').toContain('other.example');
+    expect(r.status).toBe('completed');
+    expect(r.tools.at(-1)?.status, r.tools.at(-1)?.text).toBe('succeeded');
+    expect(v.api.mesoviewspec?.model.doc).toBeDefined();
+    expect(fetched(fetch)).toContain('https://unknown.example/picks.star');
+    agent.dispose();
+  });
+
   it('open_mesoviewspec by URL opens a document whose resources are beside it or on known services', {
     tags: ['medium'],
   }, async () => {
