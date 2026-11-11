@@ -1106,11 +1106,16 @@ export class MesoscaleApi extends ApiArea {
         // a fiber of two points or more (a point alone would be a copy unturned; review N1)
         if (!(p.steps >= 2)) return ApiResult.fail('invalid', 'Give 2 steps or more.');
         if (p.steps > MaxGrown) return tooMany(p.steps);
-        // a fiber of the source's: its rise and axis (its own fibers', else its principal axis), in the list's frame
+        // a fiber of the source's: its rise and axis (its Fiber Axis, else its own fibers', else its principal axis;
+        // as `makeFiber` turns its units, review S6), in the list's frame
         const id = brushIdOf(data, { target, entity });
         const structures = paintedStructures(state, l.cell.transform.ref);
-        const rise = fiberSettingsOf(data, id, target, paintedFibers(state, l.cell.transform.ref), structures).rise;
-        const axis = fiberConventionOf(data, id)?.axis ?? principalAxisOf(data.targetMapping?.get(target));
+        const fiber = fiberSettingsOf(data, id, target, paintedFibers(state, l.cell.transform.ref), structures);
+        const rise = fiber.rise;
+        const axis =
+          fiber.axis !== 'auto'
+            ? Vec3.create(fiber.axis === 'x' ? 1 : 0, fiber.axis === 'y' ? 1 : 0, fiber.axis === 'z' ? 1 : 0)
+            : (fiberConventionOf(data, id)?.axis ?? principalAxisOf(data.targetMapping?.get(target)));
         path = walkPath(pose, axis, rise, p, seed);
         Object.assign(sizes, p);
       }
