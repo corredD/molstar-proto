@@ -543,6 +543,31 @@ describe('what the agent sees of the document each turn (prism.md §8, agent.md 
     after.agent.dispose();
   });
 
+  it('is said for an unlabelled compartment and a number as the title, and get reads its outline', {
+    tags: ['medium'],
+  }, async () => {
+    const doc = exosomeDoc();
+    const odd = {
+      ...doc,
+      metadata: { ...doc.metadata, title: 42 },
+      compartments: doc.compartments.map(({ label, ...c }, i) => (i === 0 ? c : { ...c, label })),
+    };
+    const { v } = await viewer(false);
+    const person = v.api.as({ kind: 'person' });
+    const opened = await person.run('mesoviewspec.open', { data: JSON.stringify(odd), files: files() });
+    expect(opened.ok, JSON.stringify(opened)).toBe(true);
+    const { agent, model } = agentOn(v, [
+      { calls: [disclose] },
+      { calls: [call('get_mesoviewspec', { detail: 'outline' })] },
+      { text: 'Read.' },
+    ]);
+    const r = await agent.turn('what is in it?');
+    expect(r.tools.at(-1)?.status).toBe('succeeded');
+    expect(r.tools.at(-1)?.text ?? '').toContain('"42"');
+    expect(sentOf(model)).toMatch(/MesoViewSpec document "42"/);
+    agent.dispose();
+  });
+
   it('quotes the document’s own text: a title or a label is data, never instructions', {
     tags: ['medium'],
   }, async () => {

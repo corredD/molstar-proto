@@ -44,6 +44,33 @@ describe('the document state of an agent turn', () => {
   });
 });
 
+describe('a document with fields missing or of another type', () => {
+  const odd = () => {
+    const doc = exosomeDoc();
+    return {
+      ...doc,
+      metadata: { ...doc.metadata, title: 42 },
+      compartments: doc.compartments.map((c, i) => {
+        if (i !== 0) return c;
+        const { label: _, ...rest } = c as typeof c & { label?: string };
+        return rest;
+      }),
+    } as unknown as MesoViewSpecDoc;
+  };
+
+  it('says the state and the outline: an unlabelled compartment, a number as the title', () => {
+    expect(state(odd())).toContain('"42"');
+    for (const detail of ['outline', 'summary'] as const) expect(describeDocument(odd(), {}, [], detail)).toContain('"42"');
+  });
+
+  it('says the state and the outline with no compartments or populations', () => {
+    const bare = { format: 'meso_view_spec', version: '0.4' } as unknown as MesoViewSpecDoc;
+    expect(state(bare)).toMatch(/- issues 0$/);
+    expect(describeDocument(bare, {}, [], 'outline')).toMatch(/Issues: 0$/);
+    expect(describeDocument(bare, {}, [], 'summary')).toMatch(/Issues: 0$/);
+  });
+});
+
 describe('the state’s room', () => {
   // the cap of a state line and of the whole state (agent-state.ts)
   const LineChars = 800;
