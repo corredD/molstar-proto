@@ -177,9 +177,11 @@ export function explorerUI(ctx: ViewerUIContext): ViewerExtensionUI {
           },
         ];
         const grow = growMenuItem(ctx.api, particle, () => {
-          // its Grow section open under the row picked (the source's list's)
+          // its Grow section open under the row picked (the source's list's): the properties made again to open it
           model.sections.setSectionOpen(PropertiesSlot, 'grow', true);
-          if (p) model.reveal({ ...p });
+          if (!p) return;
+          model.picked.set(undefined);
+          model.reveal(p);
         });
         if (grow) local.push(grow);
         // the part's own move is not there: these are
