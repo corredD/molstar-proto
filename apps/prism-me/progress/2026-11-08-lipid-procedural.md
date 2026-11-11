@@ -2202,52 +2202,124 @@ step: the split S2 makes, tested), `b7a5db7e3` (TODO true again).
 Ludo: "clippop, shells (as an option ?) at the same time".
 
 1. **The clip pop.** With a clip, every cut member keeps its sphere levels (the cut band needs them), so away from the
-   cut a zoom pops back to the stride-8 level at 6.7 px (0.041, against 0.023 without a clip, same probe). Fix: only
-   the lipids in the cut band keep their levels; the rest select as without a clip (the TODO's two candidates: the
-   band's lipids in members of their own, or the selection keeping no unit below the stride-1 px outside the band; the
+   cut a zoom pops back to the stride-8 level at 6.7 px (0.041, against 0.023 without a clip, same probe). Fix: only the
+   lipids in the cut band keep their levels; the rest select as without a clip (the TODO's two candidates: the band's
+   lipids in members of their own, or the selection keeping no unit below the stride-1 px outside the band; the
    architect picks). Proof: the round 8 probe reads ≤ 0.023 with the clip far from the path (a Dawn test, failing
    first); the cut band's look unchanged (its existing tests).
 2. **Shells, the third middle look, as an option.** `middle: coarse | parallax | shells`, parallax stays the default.
    The shader and `shell-band.ts` exist; the band objects are not built (their writes happen in the culler's view hook
-   mid-frame: whether they reach the GPU that frame, and nothing at rest, is the open question). Build the band
-   objects, their clip, the round 8 tests 3-6 for shells; `membraneDetail` stops refusing `middle: shells`; the Look's
-   Middle select offers it. The band's stack and cap drop silently (gate N6): report it instead (a count, or a test).
-   Idle is idle: no frame at rest with shells.
+   mid-frame: whether they reach the GPU that frame, and nothing at rest, is the open question). Build the band objects,
+   their clip, the round 8 tests 3-6 for shells; `membraneDetail` stops refusing `middle: shells`; the Look's Middle
+   select offers it. The band's stack and cap drop silently (gate N6): report it instead (a count, or a test). Idle is
+   idle: no frame at rest with shells.
 
-Order: the architect (Opus, read-only) designs both, says where they touch the same code (the selection, the cut
-band) and in which order to build; one builder (Opus) builds both, the clip pop first (smaller, and shells' clip may
-reuse it). Then the gate (lane-reviewer, lane-skeptic), fixes with failing tests first. No pictures. Size: clip pop
-~100-200 lines, shells ~300-500. Over that: record it and keep going; stop and report if shells need a library change
-the lane cannot make (the culler hook).
+Order: the architect (Opus, read-only) designs both, says where they touch the same code (the selection, the cut band)
+and in which order to build; one builder (Opus) builds both, the clip pop first (smaller, and shells' clip may reuse
+it). Then the gate (lane-reviewer, lane-skeptic), fixes with failing tests first. No pictures. Size: clip pop ~100-200
+lines, shells ~300-500. Over that: record it and keep going; stop and report if shells need a library change the lane
+cannot make (the culler hook).
 
 ## Round 10: architect's design (2026-11-10, read-only, at f42ab1d15)
 
 - **Clip pop: candidate A**, the band's lipids in members of their own (levels on), the rest atoms-only, selected as
-  without a clip. B rejected: a unit is taken by its nearest point, so its far lipids still cross 8.8 px (round 8: 0.043).
-  One select pass: band units carry a negated key (−key−1), sort first; `bandCapacity` beside `capacity`;
+  without a clip. B rejected: a unit is taken by its nearest point, so its far lipids still cross 8.8 px (round 8:
+  0.043). One select pass: band units carry a negated key (−key−1), sort first; `bandCapacity` beside `capacity`;
   `LipidSelection` gains `bandCount`, `bandLive` (preallocated). Cutter: `writer(m, sel, 'rest' | 'band')`, one upload,
-  `uUnitStart`, `cleared` per (m, part). membrane.ts: `cutAtomsOnly = detail === 'off' || middleOn`; band members (levels
-  on, `poolWriter(..., 'band')`) where `cutBandOn`; they merge apart (`lodLevels` in the merge key); `onlyMiddle` also
-  needs `cutBandOn` equal. Tests: P1 (Dawn, test 3 outside loop with a clip far from the path: step ≤ unclipped + 0.003
-  and < 0.03, `bandLive` 0; new code, tune the fixture until HEAD fails), P2 (TS split), P3 (perf ~16 B). Guards:
-  lipid-clip:37, :85, :208, membrane-detail-ui:140, lipid-procedural.webgpu:47, numbers recorded first. ~150 lines.
+  `uUnitStart`, `cleared` per (m, part). membrane.ts: `cutAtomsOnly = detail === 'off' || middleOn`; band members
+  (levels on, `poolWriter(..., 'band')`) where `cutBandOn`; they merge apart (`lodLevels` in the merge key);
+  `onlyMiddle` also needs `cutBandOn` equal. Tests: P1 (Dawn, test 3 outside loop with a clip far from the path: step ≤
+  unclipped + 0.003 and < 0.03, `bandLive` 0; new code, tune the fixture until HEAD fails), P2 (TS split), P3 (perf ~16
+  B). Guards: lipid-clip:37, :85, :208, membrane-detail-ui:140, lipid-procedural.webgpu:47, numbers recorded first. ~150
+  lines.
 - **Shells: in the lane, no library change.** Hook writes reach the GPU that frame only through what is read at bind
   (attributes, object uniforms, in-place texture loads at a fixed size); `drawCount`, `instanceCount`, defines and
   swapped textures only through `update()` (render-item.ts:1271), not called per frame. So the band object is built at a
   fixed cap C (draw count 3C, instances = shells, bounding sphere the leaflet's); each view writes the used subarray and
   the live count into `uPatchMiddle.z`; the shells WGSL sends vertices past 3·z to clip space (as texture-mesh). Band
-  selected from `createMembraneViews` once per view (`bands(view)`); same triangles write nothing; at rest the hook
-  does not run: idle stays idle. Overflow: stack sized from the tree depth; `band.dropped` summed into
-  `pool.bandDropped`. `middleOn` = parallax or shells; shells' clip is item 1's band members; a switch to or from
-  shells is a build. Operation drops the refusal (shells 4-12); Look offers Shells, a Shells slider. Tests S1 (test 3
-  for shells), S2 (first frame after a move = second, parallax as control), S3 (test 5), S4 (test 6 at rest), S5 (TS
-  cap, deep tree, no rewrite), S6 (UI, one history step). ~380 lines.
-- **Order:** P1 failing → split, cutter, members, guards → `middleOn` shells → shell-band cap → band objects and
-  cutoff → clip → operation and UI. Tests ~500 lines.
-- **Risks:** band members at full capacity +⅓ instance memory with a clip; shells ~4 MB a band at C = 16,384 (~72 MB
-  for yeast's 18 cut leaflets); per-moving-frame allocations in `octNormalsCell`/`interleave`; a pool skipped by
+  selected from `createMembraneViews` once per view (`bands(view)`); same triangles write nothing; at rest the hook does
+  not run: idle stays idle. Overflow: stack sized from the tree depth; `band.dropped` summed into `pool.bandDropped`.
+  `middleOn` = parallax or shells; shells' clip is item 1's band members; a switch to or from shells is a build.
+  Operation drops the refusal (shells 4-12); Look offers Shells, a Shells slider. Tests S1 (test 3 for shells), S2
+  (first frame after a move = second, parallax as control), S3 (test 5), S4 (test 6 at rest), S5 (TS cap, deep tree, no
+  rewrite), S6 (UI, one history step). ~380 lines.
+- **Order:** P1 failing → split, cutter, members, guards → `middleOn` shells → shell-band cap → band objects and cutoff
+  → clip → operation and UI. Tests ~500 lines.
+- **Risks:** band members at full capacity +⅓ instance memory with a clip; shells ~4 MB a band at C = 16,384 (~72 MB for
+  yeast's 18 cut leaflets); per-moving-frame allocations in `octNormalsCell`/`interleave`; a pool skipped by
   `prepareCull` leaves the band stale; subarray uploads vs bounds; the table load flushes once per changed view.
-- **For Ludo:** C and its memory; band members' capacity with a clip; the cutoff in the lane's WGSL or a 5-line
-  library change so `drawCount` is read at render.
+- **For Ludo:** C and its memory; band members' capacity with a clip; the cutoff in the lane's WGSL or a 5-line library
+  change so `drawCount` is read at render.
 - **Ludo's decisions (2026-11-10):** C = 16,384 triangles a band (overflow counted, not grown); band members at full
   capacity, as each member; the draw-count cutoff in the lane's shells WGSL, no library change.
+
+## Round 10: built (2026-11-10/11, builder; the Dawn tests not run, by Ludo's word)
+
+**Built.** Item 1, the clip pop (candidate A): the selection splits the cut band's units into a part of their own
+(`bandCapacity`, keys negated so they sort first, `bandCount`, `bandLive`); the cutter writes a part (`uUnitStart`,
+`cleared` per member and part, one upload); with a clip each cut member has a band member beside it (levels on, at full
+capacity, Ludo's decision), the rest atoms-only as without a clip; `onlyMiddle` needs `cutBandOn` equal. Item 2, shells
+as an option: `middleOn` takes shells; a band object a cut leaflet (built through `patchObject` at `BandCap` = 16,384
+triangles, its shells as instances, bounds the far surface's, fading as it); `views.ts` calls a `bands(view)` hook once
+a distinct view (from the first selection's hook), which selects each band and writes the used vertices (subarrays), the
+table at its fixed size, `uPatch.w` and `uPatchMiddle.z`; the shells WGSL clips vertices past 3·z where `uPatchMiddle.w`
+is 1 (w 0, the library default, draws all: the headless shells test unchanged); the band's stack sized from
+`triangleTree`'s new `depth`, its cap counted (`dropped`, `pool.bandDropped`); operation takes shells (4-12, tiles
+refused), the Look offers Shells and a Shells slider, story DetailMiddleShells.
+
+**Numbers.** P1 on HEAD (failing first): clipped largest 0.0433 at 6.30 px, unclipped 0.0069 at 14.24 px (n 7344 vs
+7369). Guards before the change (HEAD, all green, 12 passed 2 skipped): test 5 coarse coverage 0.435 band 0.229,
+parallax 0.405 / 0.212, after the drag 0.392; test 6 close live coarse 8491, parallax 811, regenerations +12 a step.
+test:perf after the split: the cut band's select 15.98 B a view (baseline 16.00), the plain select 15.62. After the
+change: **not measured on the GPU** (P1, guards, bandLive, bandDropped, memory): see below.
+
+**P1 hang (open, unverified).** After the split, the builder's one P1 run did not finish in minutes (CPU ~26 %: waiting
+on the GPU, not a JS loop); then the GPU was off limits. Reading the code found no out-of-range dispatch or index: each
+part dispatches `bandCount` or `count − bandCount` units from `uUnitStart`, bases are per part from 0 and uploaded for
+all `count` units, `cleared` is indexed `m·2 + part`, a zero part returns before its dispatch. Suspects left: the band
+members' extra instances (with a clip twice the cut instances: a buffer or texture past a device limit, an error that
+leaves a readback waiting), a second levels culler. P1's timeout is now 120 s so a hang is a red result.
+
+**Deviations.** lipid-clip's S2 guard: a switch coarse ↔ parallax under a clip is now a build (the band's members come
+or go, the design's own `onlyMiddle` rule); its px switches under a clip are still asserted no build. The cutoff's flag
+`uPatchMiddle.w = 1` (z alone would hide every patch mesh at its default 0). `checkInstances` counts the band members as
+if all had levels (an upper bound). The views' `bands` hook is always wired (no bands: an empty loop). S2 asserts shells
+against its parallax control (+0.002), not an absolute bound. The Dawn test edits are parsed by Biome only (the package
+tsconfig excludes `_test`): their types are unchecked until they run.
+
+**Size.** Production (no tests, no md): clip pop and the band's cap ~204 + / 88 −, shells ~209 + / 19 −; tests ~354 +.
+Under the brief (~150 + ~380).
+
+**Checks run** (one at a time, `nice -n 10`, `--maxWorkers=1 --no-file-parallelism`):
+`tsc --noEmit -p packages/extensions/mesoscale`, `-p apps/prism-me`; biome on the changed files; prettier on the changed
+md; lipid-procedural.test.ts (14), lipid-shell-band.test.ts (2), lipid-membrane.test.ts (26),
+membrane-detail-ui.test.tsx (4). Not run: `tsc -b`, the quick lane, test:perf after item 2, any Dawn test.
+
+**For Ludo to run** (in order, from the lane's root; stop at the first that hangs or fails and report it):
+
+1. `NODE_PATH=.cache/native/node_modules LIPID_NUMBERS=1 node_modules/.bin/vitest run packages/extensions/mesoscale/src/_test/lipid-switch.webgpu.test.ts -t "P1" --maxWorkers=1 --no-file-parallelism`
+   — P1: clipped largest ≤ unclipped + 0.003 and < 0.03, bandLive 0. If it fails only the + 0.003 while under 0.023: the
+   clip's facing 0 (both sides selected), not the pop: Ludo's call. If it times out: run 2 and 3 to bisect.
+2. `NODE_PATH=.cache/native/node_modules node_modules/.bin/vitest run packages/extensions/mesoscale/src/_test/lipid-cutter.webgpu.test.ts --maxWorkers=1 --no-file-parallelism`
+   — the kernel with `uUnitStart` alone (no band members): passes as before.
+3. `NODE_PATH=.cache/native/node_modules node_modules/.bin/vitest run packages/extensions/mesoscale/src/_test/lipid-switch.webgpu.test.ts -t "parallax middle look with no pop, outside" --maxWorkers=1 --no-file-parallelism`
+   — no clip: the rest part only. 2 or 3 hangs: the kernel or its uniform; both pass and P1 hangs: the band members.
+4. `NODE_PATH=.cache/native/node_modules LIPID_NUMBERS=1 node_modules/.bin/vitest run packages/extensions/mesoscale/src/_test/lipid-clip.webgpu.test.ts --maxWorkers=1 --no-file-parallelism`
+   — guards: test 5 coarse ≈ 0.435 / 0.229, parallax ≈ 0.405 / 0.212, after the drag ≈ 0.392; S3 shells coverage ≥
+   coarse − 0.05, Oklab within 0.05 of coarse, cut band lipids > 0; S2 guard (builds under a clip, px switches not).
+5. `NODE_PATH=.cache/native/node_modules LIPID_NUMBERS=1 node_modules/.bin/vitest run packages/extensions/mesoscale/src/_test/lipid-procedural.webgpu.test.ts --maxWorkers=1 --no-file-parallelism`
+   — test 6: close live coarse 8491, parallax 811 (as before), regenerations +12 a step; S4 shells: 6 surfaces, 2 bands,
+   nothing selected or written at rest, bandDropped 0.
+6. `NODE_PATH=.cache/native/node_modules LIPID_NUMBERS=1 node_modules/.bin/vitest run packages/extensions/mesoscale/src/_test/lipid-switch.webgpu.test.ts --maxWorkers=1 --no-file-parallelism`
+   — S1: test 3 for shells outside and inside, largest step < 0.03; S2: shells' first frame after a move within
+   parallax's + 0.002 (if parallax alone is large, the bound is wrong, not shells); the rest as before.
+7. `NODE_PATH=.cache/native/node_modules node_modules/.bin/vitest run packages/plugin/headless/src/_test/webgpu-patch-shells.test.ts --maxWorkers=1 --no-file-parallelism`
+   — the library's shells unchanged with `uPatchMiddle.w` 0.
+8. Test 4 for the record (medium/heavy as before): `LIPID_MIDDLE=shells LIPID_NUMBERS=1` on its test in
+   lipid-procedural.webgpu.test.ts (bandTriangles, bandDropped in its numbers).
+9. `cd packages/extensions/mesoscale && ../../../node_modules/.bin/vitest run --config vitest.perf.config.ts` — the cut
+   band's select ~16 B a view (15.98 measured after item 1).
+
+**Open.** The P1 hang; the band members' memory with a clip on yeast (×2 cut instances, not measured); shells'
+per-change allocations (oct normals, interleave) and the table's flush per changed view, not measured; a pool skipped by
+`prepareCull` leaves its band stale; `tsc -b` and the quick lane not run this round.
