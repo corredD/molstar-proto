@@ -36,7 +36,8 @@ it('a select between two views with a cut band (round 8 gate M1: the band tested
   task,
 }) => {
   const large = input(8, 400);
-  const selection = createLipidSelection(large, full(large));
+  // round 10: the band a part of its own (its capacity beside the rest's), as the membrane selects with a clip
+  const selection = createLipidSelection(large, full(large), full(large));
   const objects = Clip.getClip({
     variant: 'pixel',
     objects: [
@@ -58,7 +59,8 @@ it('a select between two views with a cut band (round 8 gate M1: the band tested
     if (selection.select(v.plane, v.frustum, v.depthScale, 0, params)) changed += 1;
   });
   expect(changed).toBeGreaterThan(10);
-  expect(selection.count).toBeGreaterThan(0);
+  expect(selection.count).toBeGreaterThan(selection.bandCount);
+  expect(selection.bandCount).toBeGreaterThan(0);
 });
 
 it('a cell’s parts shown between two views (round 7: once a view for every part’s selection; review S3)', ({

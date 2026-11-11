@@ -241,6 +241,12 @@ export interface LipidSelection {
   readonly bases: Uint32Array;
   /** per member its live slots (a cell's dead ones among them) */
   readonly live: Uint32Array;
+  /**
+   * the cut band's units (round 10: its lipids in members of their own, their levels kept), the first `bandCount` of
+   * `units`, each part's bases from 0: per member the band's live slots (`live` the rest's)
+   */
+  readonly bandCount: number;
+  readonly bandLive: Uint32Array;
   /** per member whether it is shown (hidden: none generated) */
   readonly shown: Uint8Array;
   /** advances where the selection changed */
@@ -363,6 +369,18 @@ export function estimateLipids(input: SelectionInput) {
     }
   }
   return Math.round(sum);
+}
+
+/** Whether `key` is among the first `n` of `a`, sorted (a binary search) */
+function takenAt(a: Float64Array, n: number, key: number) {
+  let lo = 0;
+  let hi = n - 1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (a[mid] < key) lo = mid + 1;
+    else hi = mid - 1;
+  }
+  return lo < n && a[lo] === key;
 }
 
 /**
@@ -516,7 +534,15 @@ export function nearClipBoundary(objects: Clip.Objects, s: Float64Array) {
  * first; a whole one a unit, a large one's cells within the frustum and the distance where a lipid is large enough on
  * screen (its plane clipped by them, then its cells' spheres tested), each a unit. CPU time O(units in view)
  */
-export function createLipidSelection(input: SelectionInput, capacity: Uint32Array): LipidSelection {
+export function createLipidSelection(
+  input: SelectionInput,
+  capacity: Uint32Array,
+  /**
+   * round 10 (the clip pop): with it the cut band's units are a part of their own within it (its members keep their
+   * levels; `bandCount`, `bandLive`), the rest within `capacity` as without a clip; without it one part
+   */
+  bandCapacity?: Uint32Array,
+): LipidSelection {
   const { positions, indices, regions, box, kinds, wholeOf, wholeCounts } = input;
   const T = indices.length / 3;
   const M = capacity.length;
@@ -620,6 +646,9 @@ export function createLipidSelection(input: SelectionInput, capacity: Uint32Arra
   const bases = new Uint32Array(M * maxUnits);
   const live = new Uint32Array(M);
   const used = new Float64Array(M);
+  const bandLive = new Uint32Array(M);
+  const bandUsed = new Float64Array(M);
+  let bandCount = 0;
   const shown = new Uint8Array(M).fill(1);
   // the cut band's: a triangle's and a candidate's (taken at the band's px), the sphere tested against the clip
   const triBand = new Uint8Array(T);
@@ -956,16 +985,9 @@ export function createLipidSelection(input: SelectionInput, capacity: Uint32Arra
     for (let i = 0; i < n; ++i) {
       const d = candDepth[i];
       if (d > (candBand[i] ? Math.max(enterDepth, bandEnterDepth) : enterDepth)) {
-        // taken before (a binary search of the taken keys, sorted)
+        // taken before, in either part (a band unit's key negated: `takenAt`)
         const key = candKey[i];
-        let lo = 0;
-        let hi = takenCount - 1;
-        while (lo <= hi) {
-          const mid = (lo + hi) >> 1;
-          if (taken[mid] < key) lo = mid + 1;
-          else hi = mid - 1;
-        }
-        if (!(lo < takenCount && taken[lo] === key)) continue;
+        if (!takenAt(taken, takenCount, key) && !takenAt(taken, takenCount, -key - 1)) continue;
       }
       candKey[kept] = candKey[i];
       candDepth[kept] = d;
@@ -984,30 +1006,43 @@ export function createLipidSelection(input: SelectionInput, capacity: Uint32Arra
     }
     for (let b = 0; b < Buckets; ++b) bucketStart[b + 1] += bucketStart[b];
     for (let i = 0; i < n; ++i) order[bucketStart[candBucket[i]]++] = i;
-    // within each member's capacity, nearest first; the first that does not fit ends the selection
+    // within each member's capacity, nearest first; the first that does not fit ends its part (round 10: the band's
+    // units within `bandCapacity`, their keys negated, −key − 1; the rest within `capacity`), both full end the selection
     used.fill(0);
+    bandUsed.fill(0);
+    const split = band !== undefined && bandCapacity !== undefined;
+    let restFull = false;
+    let bandFull = !split;
     let k = 0;
     for (let i = 0; i < n && k < maxUnits; ++i) {
+      const inBand = split && candBand[order[i]] === 1;
+      if (inBand ? bandFull : restFull) continue;
+      const cap = inBand ? bandCapacity! : capacity;
+      const u = inBand ? bandUsed : used;
       const key = candKey[order[i]];
       const t = Math.floor(key / 4294967296);
       const low = key - t * 4294967296;
       let fits = true;
       if (low === 4294967295) {
         const w = wholeOf[t];
-        for (let m = 0; m < M && fits; ++m) if (shown[m]) fits = used[m] + wholeCounts[m * W + w] <= capacity[m];
-        if (!fits) break;
-        for (let m = 0; m < M; ++m) if (shown[m]) used[m] += wholeCounts[m * W + w];
+        for (let m = 0; m < M && fits; ++m) if (shown[m]) fits = u[m] + wholeCounts[m * W + w] <= cap[m];
+        if (fits) for (let m = 0; m < M; ++m) if (shown[m]) u[m] += wholeCounts[m * W + w];
       } else {
         const kind =
           cellEntry(regionKey(regions, regions.regionOf[t]), Math.floor(low / 65536) - 32768, (low % 65536) - 32768) *
           M;
-        for (let m = 0; m < M && fits; ++m) if (shown[m]) fits = used[m] + kinds[kind + m] <= capacity[m];
-        if (!fits) break;
-        for (let m = 0; m < M; ++m) if (shown[m]) used[m] += kinds[kind + m];
+        for (let m = 0; m < M && fits; ++m) if (shown[m]) fits = u[m] + kinds[kind + m] <= cap[m];
+        if (fits) for (let m = 0; m < M; ++m) if (shown[m]) u[m] += kinds[kind + m];
       }
-      next[k++] = key;
+      if (!fits) {
+        if (inBand) bandFull = true;
+        else restFull = true;
+        if (restFull && bandFull) break;
+        continue;
+      }
+      next[k++] = inBand ? -key - 1 : key;
     }
-    // in key order: slots the same for the same set
+    // in key order (the band's first): slots the same for the same set
     sortKeys(next, k);
     let same = k === takenCount && version > 0 && !forced;
     for (let i = 0; i < k && same; ++i) same = next[i] === taken[i];
@@ -1019,9 +1054,15 @@ export function createLipidSelection(input: SelectionInput, capacity: Uint32Arra
     for (let i = 0; i < k; ++i) taken[i] = next[i];
     takenCount = k;
     count = k;
+    bandCount = 0;
+    while (bandCount < k && taken[bandCount] < 0) bandCount += 1;
     for (let m = 0; m < M; ++m) live[m] = 0;
+    for (let m = 0; m < M; ++m) bandLive[m] = 0;
     for (let i = 0; i < count; ++i) {
-      const key = taken[i];
+      // each part's slots from 0: the band's (its keys negated) in `bandLive`, the rest's in `live`
+      const inBand = i < bandCount;
+      const slots = inBand ? bandLive : live;
+      const key = inBand ? -taken[i] - 1 : taken[i];
       const t = Math.floor(key / 4294967296);
       const low = key - t * 4294967296;
       units[i * 3] = t;
@@ -1030,8 +1071,8 @@ export function createLipidSelection(input: SelectionInput, capacity: Uint32Arra
         units[i * 3 + 2] = 0;
         const w = wholeOf[t];
         for (let m = 0; m < M; ++m) {
-          bases[m * maxUnits + i] = live[m];
-          if (shown[m]) live[m] += wholeCounts[m * W + w];
+          bases[m * maxUnits + i] = slots[m];
+          if (shown[m]) slots[m] += wholeCounts[m * W + w];
         }
       } else {
         const cx = Math.floor(low / 65536) - 32768;
@@ -1040,8 +1081,8 @@ export function createLipidSelection(input: SelectionInput, capacity: Uint32Arra
         units[i * 3 + 2] = cy;
         const kind = cellEntry(regionKey(regions, regions.regionOf[t]), cx, cy) * M;
         for (let m = 0; m < M; ++m) {
-          bases[m * maxUnits + i] = live[m];
-          if (shown[m]) live[m] += kinds[kind + m];
+          bases[m * maxUnits + i] = slots[m];
+          if (shown[m]) slots[m] += kinds[kind + m];
         }
       }
     }
@@ -1060,6 +1101,10 @@ export function createLipidSelection(input: SelectionInput, capacity: Uint32Arra
     maxUnits,
     bases,
     live,
+    get bandCount() {
+      return bandCount;
+    },
+    bandLive,
     shown,
     get version() {
       return version;
@@ -1070,7 +1115,9 @@ export function createLipidSelection(input: SelectionInput, capacity: Uint32Arra
       // nothing, not the old live slots without their units (review X1)
       takenCount = 0;
       count = 0;
+      bandCount = 0;
       live.fill(0);
+      bandLive.fill(0);
       version += 1;
       forced = true;
     },

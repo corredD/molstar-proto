@@ -253,6 +253,89 @@ describe('a membrane made per view: the pool and the selection', () => {
     }
   });
 
+  it("splits the cut band's units into a part of their own: first, each part's slots from 0, none lost (round 10, P2)", () => {
+    const plane = (x: number) =>
+      Clip.getClip({
+        variant: 'pixel',
+        objects: [
+          {
+            type: 'plane',
+            invert: false,
+            position: Vec3.create(x, 0, 0),
+            rotation: { axis: Vec3.create(0, 0, 1), angle: -90 },
+            scale: Vec3.create(1, 1, 1),
+            transform: Mat4.identity(),
+          },
+        ],
+      }).objects;
+    const key = (s: { units: Int32Array }, k: number) =>
+      `${s.units[k * 3]},${s.units[k * 3 + 1]},${s.units[k * 3 + 2]}`;
+    for (const [n, edge] of [
+      [16, 50],
+      [2, 40 * cellSide(table.box)],
+    ] as const) {
+      const i = input(n, edge);
+      const W = i.wholeCounts.length / i.members;
+      const C = cellSide(table.box);
+      const slotsOf = (s: { units: Int32Array }, k: number, m: number) => {
+        const t = s.units[k * 3];
+        if (s.units[k * 3 + 1] === WholeTriangle) return i.wholeCounts[m * W + i.wholeOf[t]];
+        const c = emptyCut();
+        triangleCut(i.positions, i.indices, t, i.regions, table.box, c);
+        return i.kinds[cellEntry(c.key, s.units[k * 3 + 1], s.units[k * 3 + 2]) * i.members + m];
+      };
+      // lipids over 2 px: every unit taken, the band's near the plane x = 400
+      const band = { objects: plane(400), width: 16, enterPx: 1 };
+      const v = view(Vec3.create(400, 400, 2500), Vec3.create(400, 400, 0), 1000);
+      const one = createLipidSelection(i, full(i));
+      one.select(v.plane, v.frustum, v.depthScale, 0, { ...Params, band });
+      const split = createLipidSelection(i, full(i), full(i));
+      expect(split.select(v.plane, v.frustum, v.depthScale, 0, { ...Params, band })).toBe(true);
+      expect(split.bandCount, `${n} band`).toBeGreaterThan(0);
+      expect(split.count - split.bandCount, `${n} rest`).toBeGreaterThan(0);
+      // the same units, none drawn twice
+      const all = new Set<string>();
+      for (let k = 0; k < one.count; ++k) all.add(key(one, k));
+      const taken = new Set<string>();
+      for (let k = 0; k < split.count; ++k) taken.add(key(split, k));
+      expect(taken.size).toBe(split.count);
+      expect([...taken].sort()).toEqual([...all].sort());
+      // the band's first, each part's bases from 0, its live slots their sum; the two parts' as one part's
+      for (let m = 0; m < i.members; ++m) {
+        let band = 0;
+        let rest = 0;
+        for (let k = 0; k < split.count; ++k) {
+          const b = k < split.bandCount;
+          expect(split.bases[m * split.maxUnits + k], `${n} base ${k}`).toBe(b ? band : rest);
+          if (b) band += slotsOf(split, k, m);
+          else rest += slotsOf(split, k, m);
+        }
+        expect(split.bandLive[m]).toBe(band);
+        expect(split.live[m]).toBe(rest);
+        expect(split.live[m] + split.bandLive[m]).toBe(one.live[m]);
+      }
+      // the band's units near the plane, the rest's not all of them
+      for (let k = 0; k < split.bandCount; ++k) {
+        const t = split.units[k * 3];
+        let x = 0;
+        for (let j = 0; j < 3; ++j) x += i.positions[i.indices[t * 3 + j] * 3] / 3;
+        expect(Math.abs(x - 400), `${n} band unit ${k}`).toBeLessThanOrEqual(band.width + Math.max(edge, C) * 2);
+      }
+      // the cut moved: the same units, some into the band and out of it, a new version
+      const version = split.version;
+      const moved = { objects: plane(200), width: 16, enterPx: 1 };
+      expect(split.select(v.plane, v.frustum, v.depthScale, 0, { ...Params, band: moved })).toBe(true);
+      expect(split.version).toBeGreaterThan(version);
+      const again = new Set<string>();
+      for (let k = 0; k < split.count; ++k) again.add(key(split, k));
+      expect([...again].sort()).toEqual([...all].sort());
+      // and a reset holds nothing in either part
+      split.reset();
+      expect(split.bandCount).toBe(0);
+      expect(split.bandLive.every((x) => x === 0)).toBe(true);
+    }
+  });
+
   it("tells a sphere at a clip's boundary as core's classifySphere does (every shape, inverted or not)", () => {
     let seed = 7;
     const rand = () => {
