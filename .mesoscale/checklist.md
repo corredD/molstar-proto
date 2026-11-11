@@ -174,5 +174,7 @@ Lanes 7 and 8 run in parallel (Ludo, 2026-11-10): their files do not meet (7: `p
       app with the real camera (hidden pane, a draw signalled by hand): pan to a corner loads the corner (6 in, 6 out),
       the camera stays; a 5° orbit changes no tile; the eye inside looking down a row loads that row; a view shown is
       fed again with no draw
-- [ ] Ludo's check again
-- [ ] merged
+- [x] Ludo's check again (2026-11-11): passes
+- [x] merged into `me/mesoviewspec` (`165ec9cf4`, Ludo 2026-11-11; two conflicts with lane 7, both sides kept:
+      `features.md`'s rows, `extension.ts`'s imports and `openDocumentAddresses` beside `exampleDocument`; medium 181
+      pass, unit base failures only)
