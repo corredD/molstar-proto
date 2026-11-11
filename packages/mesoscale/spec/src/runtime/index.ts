@@ -34,6 +34,7 @@ export {
   type TileProvider,
   type TilePayload,
   type StreamFocus,
+  type StreamView,
   type StreamState,
   type StreamBudget,
   type StreamPlan,

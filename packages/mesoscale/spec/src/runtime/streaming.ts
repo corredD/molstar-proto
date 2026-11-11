@@ -36,10 +36,33 @@ export interface TilePayload {
   readonly types: Int32Array;
 }
 
-/** A sphere in world Å: the camera's target and its focus radius (0 for a numeric camera). */
+/** A sphere in world Å: the camera's target and its focus radius (0 for a numeric camera); a viewer adds its view. */
 export interface StreamFocus {
   readonly center: readonly [number, number, number];
   readonly radius: number;
+  /** What a viewer's camera sees: when given, tiles are planned by the view, not by `center` (streaming.md "Order"). */
+  readonly view?: StreamView;
+}
+
+/** A viewer's camera, world Å. */
+export interface StreamView {
+  readonly eye: readonly [number, number, number];
+  /**
+   * The side planes of what it sees, `[nx, ny, nz, c]` with `n·p + c ≥ 0` inside. Near and far are left out: a viewer
+   * fits them to what is drawn, so a tile not loaded yet would lie beyond.
+   */
+  readonly planes: readonly (readonly [number, number, number, number])[];
+}
+
+/** A box is in view unless it is wholly outside one plane (its corner farthest along the normal is outside). */
+function inView(view: StreamView, b: Box): boolean {
+  for (const [nx, ny, nz, c] of view.planes) {
+    const x = nx > 0 ? b.max[0] : b.min[0];
+    const y = ny > 0 ? b.max[1] : b.min[1];
+    const z = nz > 0 ? b.max[2] : b.min[2];
+    if (nx * x + ny * y + nz * z + c < 0) return false;
+  }
+  return true;
 }
 
 export interface StreamState {
@@ -67,7 +90,7 @@ export interface StreamPlan {
   readonly evict: readonly string[];
   /** Pending loads to abort. */
   readonly cancel: readonly string[];
-  /** The tiles the focus sphere touches (distance ≤ radius). */
+  /** The tiles the focus sphere touches (distance ≤ radius), or with a view the tiles in it; nearest first. */
   readonly focus: readonly string[];
   /** Tiles shown at level 0 only once the plan is done: every tile not in `want`, in id order. */
   readonly level0: readonly string[];
@@ -112,13 +135,23 @@ export function planStream(
       : (manifest.bounds.min.map((x, k) => (x + manifest.bounds.max[k]) / 2) as [number, number, number]),
     radius: centred && Number.isFinite(focus.radius) ? focus.radius : 0,
   };
-  const tiles = new Map<string, { t: TileEntry; d: number; dr: number }>();
+  // a view (a viewer's camera) plans by the eye: the tiles it sees first; one with a number not finite is ignored
+  const view =
+    focus.view &&
+    focus.view.eye.every(Number.isFinite) &&
+    focus.view.planes.every((p) => p.every(Number.isFinite))
+      ? focus.view
+      : undefined;
+  const from = view ? view.eye : at.center;
+  const tiles = new Map<string, { t: TileEntry; d: number; dr: number; focus: boolean }>();
   for (const t of manifest.tiles) {
-    const d = boxDistance(at.center, t.box);
-    tiles.set(t.id, { t, d, dr: state.loaded.has(t.id) ? Math.max(0, d - hysteresis) : d });
+    const d = boxDistance(from, t.box);
+    const dr = state.loaded.has(t.id) ? Math.max(0, d - hysteresis) : d;
+    tiles.set(t.id, { t, d, dr, focus: view ? inView(view, t.box) : d <= at.radius });
   }
-  // the tiles the focus touches come first, so hysteresis never lets a resident tile push one out
-  const touched = (x: { d: number }) => (x.d <= at.radius ? 0 : 1);
+  // the focus tiles (the ones the focus touches, or in view) come first, so hysteresis never lets a resident tile push
+  // one out
+  const touched = (x: { focus: boolean }) => (x.focus ? 0 : 1);
   const order = [...tiles.values()]
     .filter((x) => !state.failed.has(x.t.id))
     .sort((a, b) => touched(a) - touched(b) || a.dr - b.dr || byId(a.t.id, b.t.id));
@@ -144,7 +177,7 @@ export function planStream(
     evict: [...state.loaded.keys()].filter((id) => !wanted.has(id) && tiles.has(id)).sort(far),
     cancel: [...state.pending].filter((id) => !wanted.has(id) && tiles.has(id)).sort(far),
     focus: [...tiles.values()]
-      .filter((x) => x.d <= at.radius)
+      .filter((x) => x.focus)
       .sort((a, b) => a.d - b.d || byId(a.t.id, b.t.id))
       .map((x) => x.t.id),
     level0: [...tiles.keys()].filter((id) => !wanted.has(id)).sort(byId),
