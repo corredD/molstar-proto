@@ -65,13 +65,7 @@ export function openAddresses(v: {
   readonly data?: string;
   readonly resources?: string;
 }): string[] {
-  const named =
-    typeof v.resources === 'string'
-      ? v.resources
-          .split('\n')
-          .map((x) => x.trim())
-          .filter(Boolean)
-      : [];
+  const named = typeof v.resources === 'string' ? v.resources.split(/\s+/).filter(Boolean) : [];
   const out = [...(v.url ? [v.url] : []), ...named];
   if (typeof v.data !== 'string' || !v.data.trim()) return out;
   if (!v.data.trimStart().startsWith('{')) return [...out, UnreadAddress];

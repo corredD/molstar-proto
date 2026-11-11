@@ -116,14 +116,8 @@ const OpenParams = {
   ),
 };
 
-/** The lines of `text` (the addresses an agent's open names): none for none. */
-const linesOf = (text: unknown) =>
-  typeof text === 'string'
-    ? text
-        .split('\n')
-        .map((x) => x.trim())
-        .filter(Boolean)
-    : [];
+/** The addresses in `text` (an agent's open names them, one a line or split by any space): none for none. */
+const linesOf = (text: unknown) => (typeof text === 'string' ? text.split(/\s+/).filter(Boolean) : []);
 
 const GetParams = {
   detail: PD.Select<'summary' | 'outline' | 'document'>(
@@ -687,7 +681,7 @@ export class MesoViewSpecApi extends ApiArea {
           return ApiResult.fail(
             'blocked',
             `The document's resources are on hosts not asked for: ${[...new Set(unasked.map(originOf))].join(', ')}. Nothing was fetched from them.`,
-            `Open it again with resources (one a line): ${unasked.join(' ')}. The person is asked for a host the agent does not know.`,
+            `Open it again with resources, one a line:\n${unasked.join('\n')}\nThe person is asked for a host the agent does not know.`,
           );
         }
       }
