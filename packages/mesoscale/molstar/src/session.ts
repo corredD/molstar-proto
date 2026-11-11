@@ -72,6 +72,14 @@ export type SessionOptions = Omit<RuntimeOptions, 'cache'> & {
 
 export class MesoSession {
   doc: MesoViewSpecDoc;
+  /**
+   * The document the step in flight compiles and draws (an edit's next, a restore's), until the step ends: `doc` is
+   * set only once it has succeeded, so a resource loaded or a list described meanwhile reads this one.
+   */
+  get stepDoc(): MesoViewSpecDoc {
+    return this.inFlight ?? this.doc;
+  }
+  private inFlight: MesoViewSpecDoc | undefined;
   ir: IR | undefined;
   issues: readonly Issue[] = [];
   counts: CompileResult['counts'] = {};
@@ -174,7 +182,7 @@ export class MesoSession {
     return this.queue(async () => {
       const t0 = performance.now();
       this.view = view;
-      const r = await compile(doc, { ...this.options, cache: this.cache, view });
+      const r = await this.within(doc, () => compile(doc, { ...this.options, cache: this.cache, view }));
       // the resident tiles spliced in: the restore keeps their lists (behavior-owned, prism.md §9), so the IR the
       // adapter adopts names them; a changed stream key drops them (the adapter deletes their lists)
       const streamed = r.ir ? this.stream(doc, r.ir) : undefined;
@@ -307,9 +315,23 @@ export class MesoSession {
     return record;
   }
 
+  /** `work` with `next` as the step's document (`stepDoc`): none once it ends, done, failed or stopped. */
+  private async within<T>(next: MesoViewSpecDoc, work: () => Promise<T>): Promise<T> {
+    this.inFlight = next;
+    try {
+      return await work();
+    } finally {
+      this.inFlight = undefined;
+    }
+  }
+
+  private run(kind: EditRecord['kind'], next: MesoViewSpecDoc, label: string, run?: EditRun): Promise<EditRecord> {
+    return this.within(next, () => this.runStep(kind, next, label, run));
+  }
+
   // The session's state (ir, doc, issues, counts, history) changes only once the commit has succeeded: an edit that
   // fails leaves the session as it was, consistent with what the viewer last drew.
-  private async run(
+  private async runStep(
     kind: EditRecord['kind'],
     next: MesoViewSpecDoc,
     label: string,

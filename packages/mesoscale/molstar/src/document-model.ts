@@ -452,14 +452,16 @@ export class MesoDocumentModel {
   }
 
   private isInstance(id: string) {
-    // the session's document: an open draws its lists before `doc` is set
+    // the session's document: an open draws its lists before `doc` is set. A copy's label is asked for on hover, after
+    // the step that drew it, so the session's `doc` is the one drawn (an edit in flight has not drawn yet)
     const doc = this.session?.doc ?? this.doc;
     return !!doc && indexOf(doc).instances.has(id);
   }
 
   /** A type's entity and compartment, by their labels: the hover label's second line (prism.md §4.6). */
   private describe(t: PlacementType): string | undefined {
-    const doc = this.session?.doc ?? this.doc;
+    // asked for while a list is built, in the step's draw: the document that step draws, not the one before it
+    const doc = this.session?.stepDoc ?? this.doc;
     if (!doc) return undefined;
     const index = indexOf(doc);
     const parts = [index.entities.get(t.entity), index.compartments.get(t.compartment)].filter(Boolean);
@@ -856,7 +858,8 @@ export class MesoDocumentModel {
    * resolved here: unavailable, the model fails with its cause and the rest is drawn.
    */
   private async load(id: string): Promise<unknown> {
-    const doc = this.session?.doc ?? this.doc;
+    // the document being compiled (an edit's next, a restore's): the session's `doc` is still the one before it
+    const doc = this.session?.stepDoc ?? this.doc;
     const uri = doc?.resources?.find((r) => r.id === id)?.uri;
     if (!uri) return undefined;
     const path = uri.startsWith('fixture://') ? `fixtures/${uri.slice('fixture://'.length)}` : uri;
