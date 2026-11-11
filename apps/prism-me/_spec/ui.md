@@ -252,6 +252,8 @@ on a tree row (its right-click or its ⋯), the same menu, in this order:
   in the scene, depth-tested (round 4); the wheel's depth stays inside the camera's near and far planes. Round 5: Bank
   (None, DNA, RNA: the units the fibers switch between, a letter each), and in Paint a Sequence (one-letter codes;
   empty: at random) and its Range (`3-120`).
+- **Grow from this instance…** (lane `grow`, 2026-11-11), on a particle, after Move this instance and Offset all like
+  it: the particle the source of the next grow, its row's Grow section opened (§4; the rules in Status, Grow).
 - **Remove** (an object: with its file and labels).
 
 On a clip or a label (its guide in 3D, or its row): **Move**, **Rotate**, (a clip: **Size**, **Flip**; a label: **Edit
@@ -540,13 +542,14 @@ still completes its distance.
   (Random walk, Crystal, Tiling, Sphere), each mode's own params, a **Seed** (empty: at random each time) and **Grow**:
   one step (`mesoscale.grow`), the copies the source's list's painted copies (its target, entity and compartment; saved
   in sessions). Copies go exactly where the rule says, overlaps allowed (Ludo, 2026-11-11). Random walk: a new fiber of
-  Steps points (20) a rise apart (the entity's Fiber rise), the first a rise from the source along its fiber axis, each
-  step turned at most Persistence (30°). Crystal: a, b, c (Å; unset: the copy's diameter), α, β, γ (90°), na, nb, nc (3,
-  3, 1; the source's cell counted, so na·nb·nc − 1 copies), each copy turned as the source. Tiling: Hex or Square,
-  Spacing (the copy's diameter), Rings (3), in the source's own plane (normal: +z for a membrane protein, else its
-  principal axis), each turned as the source. Sphere: Count (50) copies uniform in a ball of Radius (5 × the copy's
-  radius), turned at random or as the source. The source is where it is drawn: its list's move and scale and its own
-  move (Move this instance), before the offsets of its kind (its copies take them too). Round 2: Symmetry.
+  Steps points (20) a rise apart (the entity's Fiber rise, in the list's units: on a scaled list, its scale × that in Å,
+  as paint's fibers), the first a rise from the source along its fiber axis, each step turned at most Persistence (30°).
+  Crystal: a, b, c (Å; unset: the copy's diameter), α, β, γ (90°), na, nb, nc (3, 3, 1; the source's cell counted, so
+  na·nb·nc − 1 copies), each copy turned as the source. Tiling: Hex or Square, Spacing (the copy's diameter), Rings (3),
+  in the source's own plane (normal: +z for a membrane protein, else its principal axis), each turned as the source.
+  Sphere: Count (50) copies uniform in a ball of Radius (5 × the copy's radius), turned at random or as the source. The
+  source is where it is drawn: its list's move and scale and its own move (Move this instance), before the offsets of
+  its kind (its copies take them too). Round 2: Symmetry.
 - Models decorated too (2026-10-23, Ludovic: "why can't we change the target in Simularium"): a model (a list with
   entities: Simularium, cellPACK, PetWorld) has the Decoration section, so each of its targets (an agent, an entity) can
   be drawn as another object of the scene. A particle list's own shape (a Simularium simulation box) is not listed as a
