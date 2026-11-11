@@ -76,12 +76,23 @@ A placements format for large sets, read straight into the IR's placement set (i
   and a population with a `meso.precomputed` model reading its ranges; `roots` and `groups` become compartments of kind
   `group` (no geometry) or labels only, a choice left open; `sizeFactor` becomes a look's size; `color`, a look.
 
-## Open
+## Decided with the stories (2026-11-11, not built)
 
-- Whether `index.mesoview.json` may be the S-expression spelling too (`index.mesoview`).
 - Mesoscale Explorer's `trajectories` (timed frames of instances) import as a precomputed model bound to a clock
   ([stories.md](stories.md#time-and-animation)); their frames are `meso-placements+f32` ranges, one per frame time.
 - Stories may also sit in their own files in the archive, `stories/<id>.mesostory.json`
   ([stories.md](stories.md#in-the-archive)).
+
+## What building it touches
+
+- `format/doc.ts`: `Resource.range`, `Resource.derivedFrom`.
+- `runtime/readers.ts`: `meso-placements+f32`; `resolvers/precomputed.ts` lists it.
+- `runtime/runtime.ts`: a model whose key matches a `derivedFrom` resource reads it instead of resolving.
+- `format/issues.ts`: `resource.format`.
+- The CLIs and prism-me's open: `.mesoviewx` (a zip, its index, URIs resolved inside it); "Save as archive".
+
+## Open
+
+- Whether `index.mesoview.json` may be the S-expression spelling too (`index.mesoview`).
 - Compression of the ranges (Mesoscale Explorer's TODO: BinaryCIF's encoders, such as integer-packed fixed point).
 - msgpack as a second encoding of the index (David: "msgpack might be a good candidate").

@@ -459,7 +459,8 @@ export function tiledFixture(o?: TiledFixtureOptions): {
 - prefetch, and priorities by camera velocity or view direction;
 - a distance cap or a load radius beyond the budget;
 - GPU culling per tile, and a list that grows by appending tiles (R5's recommendation);
-- a network protocol or a tile file format: a provider is code, and a `meso-tiles` reader for HTTP comes later;
+- a network protocol: a provider is code. The tile file format is decided (2026-11-11, not built): one
+  `meso-placements+f32` range per tile ([archive.md](archive.md));
 - more than one stream model, and streams in rotated frames;
 - streamed superstructures, and streamed models in `avoid` or `refines`;
 - a CPU cache of evicted tiles;

@@ -83,13 +83,16 @@ The _Semantic camera_ story switches views (no resolver reruns; about 10 ms) and
 
 ## Semantic levels (proposed, v0.5; for David and Ludo)
 
+Decided 2026-11-11, after David's review: see
+[Named bands](#named-bands-decided-ludo-2026-11-11-after-davids-review-not-built).
+
 David (2026-11-09), on [format.md](format.md#not-in-the-document) leaving "renderer settings: representation types, LOD,
 quality" out of the document: "this not being in the document might be a mistake. we want to be able to define 'semantic
 LOD' at the document level", "different rules/data sources for different levels", and "it needs to be part of both Mol\*
 and the document format".
 
 **Not built.** This section was a proposal; after David's review (2026-11-11) it is decided, with the rules keyed on
-named levels ([below](#named-levels-decided-ludo-2026-11-11-after-davids-review-not-built)). No type in `format/doc.ts`
+named bands ([below](#named-bands-decided-ludo-2026-11-11-after-davids-review-not-built)). No type in `format/doc.ts`
 changes until a lane builds it. It reopens decisions 4, 8 and 12
 ([design.md](design.md#11-what-held-what-the-prototypes-exposed-what-is-open)), which turn out to be one question asked
 three times.
@@ -182,18 +185,19 @@ not `levels`, a name streaming already uses for `TileManifest.levels`); a view m
 5. A view's look wins over a scale rule.
 6. A view's rules choose among the document's alternatives; they never add one.
 
-### Named levels (decided, Ludo 2026-11-11, after David's review; not built)
+### Named bands (decided, Ludo 2026-11-11, after David's review; not built)
 
 David (2026-11-11): "this should be a generic concept, that branches representation kinds depending on 'lod level' … the
 lod level itself should likely be a declarative thing that is part of the 'view spec' and parametrizable". A rule above
 carries its own `size` range, so two rules about the same distance repeat the numbers and a view cannot move the
-threshold for all of them at once. Levels name the ranges once:
+threshold for all of them at once. Bands name the ranges once. (Not `levels`: that word is streaming's levels 0, 1 and
+2, and `TileManifest.levels`, above.)
 
 ```lisp
-(levels
-  (level far  :size (< 2))
-  (level mid  :size (2 40))
-  (level near :size (> 40)))
+(bands
+  (band far  :size [0 2])
+  (band mid  :size [2 40])
+  (band near :size [40 inf]))
 
 (scales
   (scale s.lipids-far  :select (population p.lipids)   :at far  :show (:representation envelope))
@@ -201,46 +205,55 @@ threshold for all of them at once. Levels name the ranges once:
   (scale s.ribosome-at :select (entity e.ribosome)     :at near :show (:representation [structure surface spheres]
                                                                        :source r.ribosome-4v6x)))
 
-(view v.overview :levels [(level near :size (> 120))]) ; this view switches to near later
+; this view switches to near later; between 40 and 120 no band holds, so the rules' defaults apply
+(view v.overview :bands [(band near :size [120 inf])])
 ```
 
-- **`levels[]`** is a views-part section (document level): ordered, ids unique, each `{id, size}` with `size` the same
-  measure as above (projected CSS pixels of one copy, with the viewer's hysteresis). Ranges may not overlap
-  (`levels.overlap`); a gap between them is allowed and no level holds there.
-- **A rule names a level with `:at`** (one id or a list) instead of a `size`. A rule with `size` stays valid: it is a
-  level of its own, unnamed. A rule with both is refused (`scales.shape`).
-- **Parametrizable:** a view's `levels` redefine the thresholds of named levels for that view (same ids, new `size`);
-  they cannot add or remove a level, so every rule's `:at` stays meaningful in every view.
-- **Generic:** any field of `show` branches on the level: `representation`, `detail`, `source`, and any later field. A
-  representation kind is chosen per level, not built into a kind.
-- **Defaults:** a document without `levels` behaves as today.
-- **Touches:** `format/doc.ts` (`Level`, `levels`, `View.levels`, `ScaleRule.at`), `validate.ts`, `IRView` (the
-  thresholds resolved per view).
+- **`bands[]`** is a views-part section ([stories.md](stories.md#three-parts-connected-by-ids)): ordered, ids unique,
+  each `{id, size: [lo, hi)}`, half-open, in the measure above (projected CSS pixels of one copy; `inf` for no upper
+  bound). Bands may not overlap (`bands.overlap`), checked in the document and again in each view after its overrides; a
+  gap is allowed and no band holds there. The viewer's hysteresis applies at each bound, as for a rule's `size`.
+- **A rule names a band with `:at`** (one id or a list) instead of a `size`. A rule with `size` stays valid: an unnamed
+  band of its own. A rule with both is refused (`scales.shape`).
+- **Parametrizable:** a view's `bands` redefine the bounds of named bands for that view (same ids, new `size`); they
+  cannot add or remove one, so every rule's `:at` means something in every view.
+- **Generic:** any field of `show` branches on the band: `representation`, `detail`, `source`, and any later field. A
+  representation kind is chosen per band, not built into a kind.
+- **Defaults:** a document without `bands` behaves as today.
+- **Touches:** `format/doc.ts` (`Band`, `bands`, `View.bands`, `ScaleRule.at`), `validate.ts` (`bands.overlap`,
+  `scales.shape`), `format/issues.ts` (the two codes), `IRView` (the bounds resolved per view), `classifyEdit` (a band
+  edit is a view edit; a scale rule with `source` or `detail` is not view-only).
 
 ## Clipping (decided, Ludo 2026-11-11, after David's review; not built)
 
 David (2026-11-11): "also don't see clipping in the spec". A view has `cutaway`, an address for copies to hide; clipping
-by geometry was "not restored" (above). Mol\* clips by planes, boxes, spheres, cylinders and infinite cones, per
-representation (`Clip.Props`: `variant: instance | pixel`, `objects`).
+by geometry was "not restored" (above). Mol\* clips per representation with one `Clip`
+(`packages/core/src/util/clip.ts`: `{variant: instance | pixel, objects}`), at most 16 objects, each a plane, cube,
+sphere, cylinder or infinite cone with an axis-angle rotation.
 
 ```lisp
 (view v.slice
-  :clip [(plane :frame f.cell :normal [0 0 1] :point [0 0 0])
-         (box :frame f.cell :center [0 0 0] :size [800 800 200] :invert true)]
+  :clip (:cut pixel
+         :shapes [(plane cl.front :frame f.cell :normal [0 0 1] :point [0 0 0])
+                  (box cl.core :frame f.cell :center [0 0 0] :size [800 800 200] :invert true)])
   :looks [(look l.membrane :select (population p.lipids) :clip none)])
 ```
 
-- **`clip`** on a view is a list of shapes, each in a frame (default the world), in the document's length unit: `plane`
-  (`point`, `normal`), `box` (`center`, `size`, `rotation`), `sphere` (`center`, `radius`), `cylinder` (`center`,
-  `radius`, `height`, `rotation`). `invert` keeps the inside instead of the outside.
-- **Per look:** a look may set `clip: none` (not clipped by the view's shapes) or its own list (clipped by those
-  instead). A copy no look reaches is clipped by the view's list.
-- **By copy or by pixel:** a shape cuts whole copies (Mol\*'s `instance` variant: a copy whose centre is clipped is
-  hidden) unless it says `:cut pixel`. A cross-section through molecules is `pixel`; hiding the copies in front of a
-  focus is `instance`.
+- **`clip`** on a view is `{cut, shapes}`. `cut` is `copy` (the default; Mol\*'s `instance`: a copy whose centre is
+  clipped is hidden whole) or `pixel` (a cross-section through molecules). It holds for the whole list, as Mol\*'s
+  `variant` does. Each shape has an `id` and a frame (default the world), in the document's length unit: `plane`
+  (`point`, `normal`), `box` (`center`, `size`, `rotation`; Mol\*'s `cube`), `sphere` (`center`, `radius`), `cylinder`
+  (`center`, `radius`, `height`, `rotation`). Rotations are quaternions, as the document's poses. `invert` keeps the
+  inside instead of the outside. More than 16 shapes reach a list: the adapter uses the first 16 and reports it
+  (`clip.limit`, `render`).
+- **Per look:** a look may set `clip: none` (not clipped by the view's list) or its own `{cut, shapes}` (clipped by that
+  instead). Where two looks with different `clip` reach a copy, the later look wins, as for its other fields; a partial
+  look's clip is reported like its other fields (R8). A copy no look reaches is clipped by the view's list.
 - **`cutaway` stays** as the address form: the copies to hide, chosen by what they are rather than where. The two
   combine: a copy is hidden if either hides it.
-- **Stories:** a track can animate a shape's `point`, `center` or `radius`
-  ([stories.md](stories.md#time-and-animation)), so a story can cut into a cell.
-- **Touches:** `format/doc.ts` (`ClipShape`, `View.clip`, `Look.clip`), `validate.ts`, `IRView.clip` (shapes in world
-  coordinates), the Prism adapter (`Clip.Props` per list).
+- **Stories:** a track can move a shape by its id (`point`, `center`, `radius`;
+  [stories.md](stories.md#time-and-animation)), so a story can cut into a cell.
+- **Prism-me:** the viewer's own clipping (`clipping.*`, prism.md §5) stays viewer-only until a lane maps a view's
+  `clip` into it.
+- **Touches:** `format/doc.ts` (`Clip`, `ClipShape`, `View.clip`, `Look.clip`), `validate.ts`, `format/issues.ts`
+  (`clip.limit`), `IRView.clip` (shapes in world coordinates), the Prism adapter (one `Clip` per list).

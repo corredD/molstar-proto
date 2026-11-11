@@ -94,53 +94,73 @@ interface MesoLoci {
 
 **Decided (Ludo, 2026-11-11, after David's review; not built):** `within` between a region and copies, below.
 
-#### Down to atoms: `part` and `element` (decided 2026-11-11, not built)
+#### Down to atoms (decided 2026-11-11, not built)
 
 David (2026-11-11): "i think this is missing levels. we should be able to address all the way to atomic level imo. in a
-way this is a superset to mol\*'s Location (but should be its own independent thing)". A copy was the finest location;
-two kinds go below it:
+way this is a superset to mol\*'s Location (but should be its own independent thing)". Two levels lie below a copy of a
+population: a copy inside a superstructure copy, and an atom of a copy.
 
-```ts
-type MesoLocation =
-  | … // the six kinds above
-  | { kind: 'part'; set: string; index: number; part: MesoLocation } // inside a superstructure copy
-  | { kind: 'element'; set: string; index: number; atom: number }; // one atom of one copy
-```
+- **Inside a superstructure copy: already a `copy`.** `(part (copies p.granules 7) p.Vamp2)` (`format/mesoql.ts`)
+  evaluates to virtual sets keyed `<set>@<instance>><template set>` (`ir/loci.ts`), so one Vamp2 in granule 7 is a
+  `copy` location whose `set` is that key; deeper nesting chains the keys. No new kind. Under `detail: entity` the
+  address still names the template's copies but draws nothing, and says so (`render` issue), so a pointer survives the
+  switch.
+- **`element`**, a new kind: one atom of one copy.
 
-- **`part`** is a location inside one copy of a superstructure (a granule): the copy, then a location in the template's
-  own sets (a Vamp2 copy, or deeper). Today such a copy is reached only through the expanded world sets; `part` names it
-  the way the document does, as template and instance, so it survives `detail` switching between `parts` and `entity`.
-- **`element`** is one atom of one copy: `atom` is the atom's id in the entity's structure resource (mmCIF
-  `_atom_site.id`), which does not change when the copy moves or the scene is re-resolved with the same copies. A
-  residue is a set of elements; it has no kind of its own, as in Mol\*.
-- **MesoLoci** gain `elements?: ReadonlyMap<string, readonly {copy: number; atoms: readonly number[]}[]>`: per set, per
-  copy, sorted atom runs. A selection of 10⁵ copies at atom level is refused rather than expanded (`mesoql.too-fine`),
-  as a renderer could not draw it either.
-- **Symbols:** `(residues <copies> :chain A :seq [10 20])`, `(atoms <copies> :name CA)`, and `(part <copy> <address>)`.
-  They take a copy selection and narrow it, so they compose with the rest (David's "monadic"):
-  `(residues (copies p.insulin 3) :chain B)` is chain B of one insulin.
-- **Independent of Mol\*:** the kinds name document things (sets, copies, structure atom ids), not Mol\* units or
-  element indices. The adapter maps an `element` to Mol\*'s `StructureElement.Location` and back; nothing else does.
-- **Static pointers:** `locationToAddress` writes `(atoms (copies p.insulin 3 :key …) :id 1204)` and
-  `(part (copies p.granules 7 :key …) (copies p.Vamp2 12))`.
-- **Touches:** `ir/loci.ts` (the two kinds, `elements` in MesoLoci), `format/mesoql.ts` (the symbols), the Prism adapter
-  (to and from `StructureElement.Location`), `reference/mesoql.md` (generated).
+  ```ts
+  | { kind: 'element'; set: string; index: number; chain: string; seq: number; atom: string; operator?: string }
+  ```
+
+  `chain`, `seq` and `atom` are the mmCIF `label_asym_id`, `label_seq_id` and `label_atom_id` in **the entity's own
+  structure** (`Entity.structure`), never a scale rule's `source`; `operator` names the assembly operator when the
+  entity's structure is an assembly whose chains share ids. These do not change when the copy moves or the scene is
+  re-resolved with the same copies (`_atom_site.id` would not do: operator copies share it). A residue is the elements
+  with one `chain`, `seq` and `operator`; it has no kind of its own, as in Mol\*.
+
+- **MesoLoci** gain `elements?: ReadonlyMap<string, readonly {copy: number; atoms: readonly ElementKey[]}[]>`: per set,
+  per copy, the elements picked. An address whose elements would exceed 10⁶ is refused, not expanded (`mesoql.too-fine`,
+  a new code).
+- **Symbols, extending what exists.** `residues` today takes an entity and returns the `residues` type (a site's `at`, a
+  contact's `a` and `b`); that form stays. It gains a second form whose first argument is a copy selection, with the
+  same keywords (`:chain`, `:range`): `(residues (copies p.insulin 3) :chain B :range 1-30)` is those residues of one
+  insulin. A new `(atoms <selection> :name CA :id 1204)` narrows to atoms, of copies or of residues. Both return a new
+  type, `elements`, accepted where a selection is (a look's `select`, a view's `selection`, a camera's `focus`), so they
+  compose with the rest (David's "monadic").
+- **Independent of Mol\*:** the kind names document things (sets, copies, mmCIF labels), not Mol\* units or element
+  indices. Where a copy is drawn as a structure (a `structure` look or scale rule), the adapter maps an `element` to
+  Mol\*'s `StructureElement.Location` and back. Where it is drawn as a particle, an element selects its whole copy and a
+  `render` issue says so.
+- **Static pointers:** `locationToAddress` writes
+  `(atoms (residues (copies p.insulin 3 :key …) :chain B :range 12-12) :name CA)`, and a part copy as
+  `(copies <virtual set> 12 :key …)` printed back as `(part …)`.
+- **Touches:** `ir/loci.ts` (`element`, `elements` in MesoLoci), `format/mesoql.ts` (the `residues` copies form,
+  `atoms`, the `elements` type), `format/issues.ts` (`mesoql.too-fine`), the Prism adapter (to and from
+  `StructureElement.Location`), `reference/mesoql.md` (generated).
 
 #### `within` between a region and copies (decided 2026-11-11, not built)
 
 David (2026-11-11): "add `:scope` or something like that that allows different 'filters' (e.g. 'closest', 'average') …
 alternatively, allow filtering regions/copies etc before calling within? given the language should be 'monadic' … this
-should be quite easy". Both:
+should be quite easy". Today `within`'s `:of` is a copy selection and the distance is centre to centre. The region kinds
+(`label`, `voxels`, `faces`, above) are declared and not built, so none of this works yet; it is the rule they are built
+to.
 
-- **Filter first** already works: regions filter copies (above), and `within` takes any copy selection, so
+- **Filter first.** Once regions exist they filter copies (above), and `within` takes any copy selection, so
   `(within (and (population p.ribosomes) (label r.seg 3)) :of (instance i.granule-docked) :distance 250)` narrows before
-  measuring. Every symbol takes a selection and returns one; none needs a special form for regions.
-- **`:to`** says what distance `within` measures when `:of` is a region: `surface` (to the region's boundary; the
-  default, since a copy 10 nm from a membrane is what people ask for), `centre` (to the region's centroid) or `closest`
-  (to its nearest voxel or face, the same as `surface` from outside and 0 inside). Between copies `:to` is ignored: the
-  distance stays centre to centre, as today.
-- **`average`** (David's example) is not a distance: it belongs to a measurement, not a filter, and stays out of MesoQL.
-- **Touches:** `ir/loci.ts` (`within` on regions), `format/mesoql.ts` (the keyword), `reference/mesoql.md`.
+  measuring. No symbol needs a special form for regions.
+- **`:of` a region.** `:of` takes a selection or a region. A region symbol alone in `:of` is the region; inside `and`
+  with copies it filters them, as above. `(within (population p.ribosomes) :of (label r.seg 3) :distance 100)` is the
+  ribosomes within 100 Å of label 3.
+- **`:to`** says where the distance is measured to when `:of` is a region: `surface` (its boundary: 0 inside; the
+  default, since "within 10 nm of a membrane" is what people ask) or `centre` (its centroid). Between copies `:to` is
+  refused (`mesoql.keyword`): the distance stays centre to centre.
+- **Picking the closest:** David's "closest" as a filter is a new symbol,
+  `(nearest <selection> :to <selection or region> :count n)`, the `n` copies nearest to it (ties by copy id). It
+  composes like the others.
+- **`average`** is a measurement of a selection (a mean distance), not a filter of it. It is left to the measuring tools
+  and stays out of MesoQL.
+- **Touches:** `ir/loci.ts` (`within` on regions, `nearest`), `format/mesoql.ts` (`:of` typed selection or region,
+  `:to`, `nearest`), `reference/mesoql.md`.
 
 ### Static pointers: a location written down (proposed, v0.5; for David and Ludo)
 

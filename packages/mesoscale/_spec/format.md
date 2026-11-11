@@ -12,14 +12,17 @@ A document is plain JSON:
   frames, alignments, resources,                       // where things are and what data exist
   entities, compartments, populations, catalogs, relations,  // the biology
   models, evidence, activities,                         // how the biology was realized and why we believe it
-  views, session,                                       // persistent view state
+  views, tours, session,                                // persistent view state
   custom }                                              // namespaced extensions
+
+// decided 2026-11-11, not built: clocks (scene); bands, scales (views); stories replacing tours, session.story
 ```
 
 Decided after David's review (2026-11-11), not built: the sections fall into three parts connected by ids
-([stories.md](stories.md#three-parts-connected-by-ids)): the **scene** (every section above but `views` and `session`,
-plus `clocks`), the **views** (`views`, `levels`, `scales`, `session.view`) and the **stories** (`stories`, which
-replace `tours`, and `session.story`). They stay one file.
+([stories.md](stories.md#three-parts-connected-by-ids)): the **scene** (`metadata`, `units`, the data, the biology, the
+models and their provenance, plus `clocks`), the **views** (`views`, `bands`, `scales`, `session.view`) and the
+**stories** (`stories`, which replace `tours`, and `session.story`). They stay one file. `custom` stays on any node, as
+today, in whichever part the node is.
 
 - **One id namespace for the whole document.** Ids are unique across all sections and match
   `^[A-Za-z][A-Za-z0-9_.:-]*$`. Nodes refer to each other by id only. This is SeqViewSpec's rule (every node has a
@@ -309,8 +312,8 @@ const { doc, issues } = b.build();
 - placements and other derived results, except as a resource: a derived result saved with `derivedFrom`
   ([archive.md](archive.md)) is data the document names, not data it holds;
 - renderer settings: quality and pixel level of detail (impostors, `lodLevels`, pixel presets). What a thing is drawn as
-  at a scale (its representation, detail or data source) is semantic, and is decided for the document as named levels
-  and scale rules ([views.md](views.md#semantic-levels-proposed-v05-for-david-and-ludo); David: "this not being in the
+  at a scale (its representation, detail or data source) is semantic, and is decided for the document as named bands and
+  scale rules ([views.md](views.md#semantic-levels-proposed-v05-for-david-and-ludo); David: "this not being in the
   document might be a mistake"). A look's `representation` hint is in the document already;
 - transient UI state.
 

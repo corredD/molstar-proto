@@ -14,11 +14,11 @@ views as 'separate but connected' things … should definitely be able to have a
 `multiple` file lists snapshots) and no third: a snapshot's camera is inside its tree. A MesoViewSpec document had the
 third and a weak second: `views[]`, and `tours` that step through views over one unchanging scene.
 
-| Part      | Says                                                      | Sections                                                           | Refers to                              |
-| --------- | --------------------------------------------------------- | ------------------------------------------------------------------ | -------------------------------------- |
-| **Scene** | what exists: biology, data, how it was realized, and why  | everything but the two rows below                                  | itself                                 |
-| **Views** | how to look at the scene, without changing it             | `views`, `levels`, `scales` ([views.md](views.md)), `session.view` | the scene, by MesoQL addresses and ids |
-| **Story** | a sequence of steps, each a view and maybe a scene change | `stories` (replaces `tours`), `session.story`                      | views by id; the scene by patches      |
+| Part      | Says                                                      | Sections                                                          | Refers to                              |
+| --------- | --------------------------------------------------------- | ----------------------------------------------------------------- | -------------------------------------- |
+| **Scene** | what exists: biology, data, how it was realized, and why  | everything but the two rows below                                 | itself                                 |
+| **Views** | how to look at the scene, without changing it             | `views`, `bands`, `scales` ([views.md](views.md)), `session.view` | the scene, by MesoQL addresses and ids |
+| **Story** | a sequence of steps, each a view and maybe a scene change | `stories` (replaces `tours`), `session.story`                     | views by id; the scene by patches      |
 
 - **Separate:** a part never holds another's nodes. A view does not create copies; a story step does not hold a camera
   of its own (it names a view) and does not hold a whole scene (it holds a patch).

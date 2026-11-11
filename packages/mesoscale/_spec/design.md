@@ -642,8 +642,8 @@ Fibers mock exposed the adapter's `excludeFibers` bug (§11).
    record the matrices. (v0.2) Superstructure instances already carry their frames to the renderer (§3.9). Bake plain
    sets, or carry every frame? **(v0.5) Decided** (David: "both baked and carried depending on context?"; Ludo,
    2026-11-11): both. A resolver bakes a plain set into the world frame; a frame is carried wherever a set is reused
-   (superstructure templates, instances, stream tiles, a derived result read from an archive), so the renderer can
-   instance it.
+   (superstructure templates, instances, stream tiles, a derived result, stored in its model's frame as its resource's
+   `frame`), so the renderer can instance it.
 2. **Catalogs.** Runtime expansion into populations, or a resolver input?
 3. **Derived results as resources.** Store a resolution as a `placements` resource with `derivedFrom: {model, key}`, so
    an expensive procedural result (cellPACKgpu on a GPU) can be shipped and replayed? **(v0.5) Decided** (David: "could
@@ -655,7 +655,7 @@ Fibers mock exposed the adapter's `excludeFibers` bug (§11).
    levels: a representation chosen per scale by a rule in the document
    ([views.md](views.md#semantic-levels-proposed-v05-for-david-and-ludo)). Ludo (2026-11-09), for David's review: hints
    gain `envelope`, and a representation may be a fallback chain. **Decided** (2026-11-11, after David's review): as
-   proposed, with rules keyed on named levels that a view may re-threshold.
+   proposed, with rules keyed on named bands that a view may re-threshold.
 5. **L scenes.** Tiles as a first-class IR concept (a set per tile, keyed), or a renderer-side streaming source?
    **(v0.4) Decided for the IR:** one placement set per tile, keyed `<model>@<hash>#<tileId>`, spliced under a `stream`
    node by the session, so `planCommit` commits only the tiles added and removed and every adapter gets streaming for
@@ -675,7 +675,7 @@ Fibers mock exposed the adapter's `excludeFibers` bug (§11).
 8. **(v0.2) Detail per view.** Is `parts` vs `entity` a population's property (now) or a view's (David's "depending on
    context")? A view-level choice needs both levels resolved, or resolution on demand. **(v0.5) Proposed:** both, per
    scale: a population's `detail` stays the default, and a scale rule in the document or a view chooses per scale
-   ([views.md](views.md#semantic-levels-proposed-v05-for-david-and-ludo)). **Decided** (2026-11-11), with named levels.
+   ([views.md](views.md#semantic-levels-proposed-v05-for-david-and-ludo)). **Decided** (2026-11-11), with named bands.
 9. **(v0.2) Derived products.** Should a document declare derived products (a simulated tilt series of the model, for
    training data, Ludo's twin) as activities whose outputs are resources, so the model and its synthetic data share one
    provenance graph?
@@ -703,8 +703,10 @@ Fibers mock exposed the adapter's `excludeFibers` bug (§11).
     stays the runtime's. **Still open:** whether to restructure the top level around the organization; level 2 (atoms
     close up); whether a population or an instance could itself be a stream's level 0 (today only a stream model's
     manifest is). In prism-me the tree is the document's compartments, populations and instances ([prism.md](prism.md)
-    §4.1); a new top level changes those rows only. **(v0.5)** Atoms are addressable (`element` and `part`,
-    [mesoql.md](mesoql.md#down-to-atoms-part-and-element-decided-2026-11-11-not-built)); level 2 is still refused.
+    §4.1); a new top level changes those rows only. **(v0.5, 2026-11-11)** Which level _shows_ what is decided as scale
+    rules keyed on named bands (views.md); atoms are addressable (the `element` location,
+    [mesoql.md](mesoql.md#down-to-atoms-decided-2026-11-11-not-built)); level 2 is still refused, and the top level is
+    not restructured: the document splits into scene, views and stories instead (decision 13).
 13. **(v0.5) Scene, views and stories.** David (2026-11-11): the scene description, a list of snapshots in a parent
     container, and views should be "separate but connected", with "a sequence of things, perhaps with patches … so you
     can tell 'stories' on top of changing scenes"; for a prototype, "up to your judgement". **Decided:** three parts of
