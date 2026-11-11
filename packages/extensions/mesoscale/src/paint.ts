@@ -121,6 +121,33 @@ export function fiberSettingsOf(
   return { rise: 2 * targetRadius(list, target) || 10, twist: 0, jitter: 0, axis: 'auto', offset: 0, bank: 'none' };
 }
 
+const lengths = new WeakMap<object, number>();
+/**
+ * A structure target's length along its principal axis (`principalAxisOf`), Å: a structure painted with's first fiber's
+ * rise (its units touching); 0 for any other kind
+ */
+export function lengthAlongAxis(target: ParticleTarget | undefined): number {
+  if (target?.kind !== 'structure') return 0;
+  const s = target.structure;
+  const kept = lengths.get(s);
+  if (kept !== undefined) return kept;
+  const axis = principalAxisOf(target);
+  const p = Vec3();
+  let min = Infinity;
+  let max = -Infinity;
+  for (const u of s.units) {
+    const { elements, conformation } = u;
+    for (let i = 0; i < elements.length; ++i) {
+      const d = Vec3.dot(conformation.position(elements[i], p), axis);
+      if (d < min) min = d;
+      if (d > max) max = d;
+    }
+  }
+  const length = max > min ? max - min : 0;
+  lengths.set(s, length);
+  return length;
+}
+
 /** Points every `step` along a path (x, y, z each), by arc length from its first point; the path itself for no step */
 export function resamplePath(path: ArrayLike<number>, step: number): number[] {
   const k = Math.floor(path.length / 3);

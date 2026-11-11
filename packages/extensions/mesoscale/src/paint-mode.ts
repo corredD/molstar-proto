@@ -99,8 +99,11 @@ export interface PaintHost {
   project(out: Vec3, p: Vec3): Vec3;
   /** A copy's radius, Å (its spacing's default and the preview's disc) */
   radius(brush: PaintBrushTarget): number;
-  /** The brush's fibers' rise, Å, when it makes fibers (its own settings or its file's fibers; Round 3) */
-  fiberStep(brush: PaintBrushTarget): number | undefined;
+  /**
+   * The brush's fibers' rise, Å, when it makes fibers (its own settings or its file's fibers; Round 3); a structure
+   * brush's, its entity's in `into` (the settings' list it paints into)
+   */
+  fiberStep(brush: PaintBrushTarget, into?: string): number | undefined;
   /**
    * Paints a stroke: one operation (`mesoscale.paint`); `seed`, its random turns' (the copy under the pointer's);
    * `fiber`, the stroke a new fiber
@@ -254,7 +257,7 @@ function paintLayer(mode: PaintMode, host: PaintHost, canvas: HTMLElement, brush
   // the focus too (review N2)
   depth = inRange(depth);
   /** The brush's fibers' rise (Round 3): undefined when it makes none; read again at each stroke's start */
-  let fiberStep = host.fiberStep(brush);
+  let fiberStep = host.fiberStep(brush, mode.settings.value.into);
   /** Whether the stroke is a new fiber (the settings' Fiber, or the brush's own: `auto`, when it has fibers) */
   const fiberOf = (s: PaintSettings) => s.fiber === 'on' || (s.fiber === 'auto' && fiberStep !== undefined);
   let fiber = fiberOf(mode.settings.value);
@@ -443,7 +446,7 @@ function paintLayer(mode: PaintMode, host: PaintHost, canvas: HTMLElement, brush
       upright = host.upright(brush);
       where = placeOf(settings, upright);
       // the entity's rise as it is now (its settings changed since the mode started)
-      fiberStep = host.fiberStep(brush);
+      fiberStep = host.fiberStep(brush, settings.into);
       fiber = fiberOf(settings);
       // a fiber's path read a rise apart (the entity's: the points the decorator makes), else copies that touch
       spacing = settings.spacing > 0 ? settings.spacing : fiber && fiberStep ? fiberStep : 2 * radius;

@@ -313,3 +313,26 @@ describe('a structure painted as the scene built it', () => {
     expect(units(e.targetMapping?.get(e.targets[1]))).toBe(1);
   });
 });
+
+// Ludo, 2026-11-10: "also form a pdb structure I want the Fiber option as well in painitng": a structure brush paints a
+// fiber, its units touching along their principal axis, its rise and twist set on its entity of the list it is in
+describe('a fiber of a structure', () => {
+  const gap = (l: ParticleList, i: number) => Math.hypot(...xyz(l, i + 1).map((x, k) => x - xyz(l, i)[k]));
+  it('paints a fiber of touching units; its rise and twist set on its entity, found from the structure', async () => {
+    const v = await viewer();
+    const crn = await loadCrn(v);
+    const radius = (v.plugin.state.data.cells.get(crn)!.obj!.data as { boundary: { sphere: { radius: number } } })
+      .boundary.sphere.radius;
+    expectOk(await v.api.run('mesoscale.paint', { structure: crn, positions: [0, 0, 0, 200, 0, 0], fiber: true, seed: 1 }));
+    const d = drawn(v);
+    // not 10 Å (a structure has no radius): its length along its principal axis, at most its diameter
+    expect(gap(d, 0)).toBeGreaterThan(15);
+    expect(gap(d, 0)).toBeLessThanOrEqual(2 * radius);
+    // the brush's entity in the list it paints into (the Painting list here)
+    const brush = v.api.mesoscale!.structureBrushState(crn, '').value;
+    expect(brush).toEqual({ particles: lists(v)[0].cell.transform.ref, entity: d.entities![0] });
+    expect(v.api.mesoscale!.fiberState(brush!.particles, brush!.entity).value?.fibers).toBe(true);
+    expectOk(await v.api.run('mesoscale.fiber', { particles: brush!.particles, entity: String(brush!.entity), rise: 50 }));
+    expect(gap(drawn(v), 0)).toBeCloseTo(50, 1);
+  });
+});

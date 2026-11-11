@@ -54,6 +54,7 @@ import {
   nextStructureIds,
   structureSourceKey,
   structureDefinitionOf,
+  lengthAlongAxis,
   structureSourceOf,
   paintRotations,
   principalAxisOf,
@@ -189,6 +190,12 @@ export class MesoscaleApi extends ApiArea {
         (params) => this.paint(params as never),
         // the copy under the pointer in the entity's color (its look's)
         (l, entity) => readStyles(this.ctx, l).get(entity)?.color,
+        // a structure brush's entity's rise where it paints, when it makes fibers there
+        (structure, into) => {
+          const b = structureBrushOf(this.ctx, structure, into);
+          const f = b && fiberInfo(this.ctx.plugin.state.data, this.ctx, b.particles, b.entity);
+          return f?.fibers ? f.rise : undefined;
+        },
       ),
     );
     return this._paintMode;
@@ -253,6 +260,23 @@ export class MesoscaleApi extends ApiArea {
     const plugin = this.ctx.plugin;
     return watchedState(
       () => fiberInfo(plugin.state.data, { plugin }, particles, entity),
+      () => plugin.state.data.events.changed,
+      { compare: (a, b) => JSON.stringify(a) === JSON.stringify(b) },
+    );
+  }
+
+  /**
+   * A structure brush's entity in the list it paints into (`into`, else the Painting list): what its fiber settings are
+   * set on (`fiberState`, `mesoscale.fiber`); undefined before its first stroke there. Following the state tree while
+   * watched: a read for views
+   */
+  structureBrushState(
+    structure: string,
+    into: string,
+  ): ReadonlyState<{ readonly particles: string; readonly entity: number } | undefined> {
+    const plugin = this.ctx.plugin;
+    return watchedState(
+      () => structureBrushOf({ plugin }, structure, into),
       () => plugin.state.data.events.changed,
       { compare: (a, b) => JSON.stringify(a) === JSON.stringify(b) },
     );
@@ -774,8 +798,16 @@ export class MesoscaleApi extends ApiArea {
           : {}),
       };
       const key = into.structure && structureSourceKey(into.structure);
+      // a structure's first fiber: its rise its length along its axis, its units touching (it has no radius; Ludo
+      // 2026-11-10, "the Fiber option as well"), set as its own (shown, changed by mesoscale.fiber)
+      const fiberId = into.structure && (into.structure.entity >= 0 ? into.structure.entity : into.structure.target);
+      const touching = (p: PaintedParams): FiberSettingsMap | undefined =>
+        asFiber && fiberId !== undefined && !p.fibers?.[fiberId]
+          ? { ...p.fibers, [fiberId]: { rise: lengthAlongAxis(brush.object) || 10, twist: 0, jitter: 0 } }
+          : undefined;
       const withStroke = (p: PaintedParams): PaintedParams => ({
         ...p,
+        ...(touching(p) ? { fibers: touching(p)! } : {}),
         strokes: [...p.strokes, stroke],
         ...(into.structure && !(p.structures ?? []).some((x) => structureSourceKey(x) === key)
           ? { structures: [...(p.structures ?? []), into.structure] }
@@ -854,13 +886,12 @@ export class MesoscaleApi extends ApiArea {
       if (given.rise !== undefined && !(given.rise > 0)) return ApiResult.fail('invalid', 'The rise is above 0 Å.');
       const l = oneList(ctx, particles || undefined);
       if (isFailure(l)) return l;
-      const data = l.cell.obj?.data;
-      if (!data) return ApiResult.fail('not-found', 'The particle list is not loaded yet.');
+      if (!l.cell.obj?.data) return ApiResult.fail('not-found', 'The particle list is not loaded yet.');
       const ids = selectEntities(ctx, l, entity, '');
       if (isFailure(ids)) return ids;
       if (ids.length !== 1 || !entity.trim()) return ApiResult.fail('invalid', 'Give one entity.');
-      const brush = brushOf(data, ids[0]);
-      if (!brush) return ApiResult.fail('not-found', 'No particle of that entity.');
+      const { data, brush } = fiberBrushOf(ctx.plugin.state.data, l, ids[0]);
+      if (!data || !brush) return ApiResult.fail('not-found', 'No particle of that entity.');
       const id = brushIdOf(data, brush);
       // a bank is an entity's (review S3, M2): a list with entities, an entity of its own
       if (given.bank && given.bank !== 'none' && !(data.entityInfo?.size && ids[0] >= 0)) {
@@ -1904,12 +1935,44 @@ async function paintNew(ctx: Pick<ApiContext, 'plugin'>, params: PaintedParams) 
   return list.ref;
 }
 
+/**
+ * The list whose fiber settings an entity's are read on and its brush there: the list's own, else (an entity a structure
+ * added: copies only) its painted decorator's
+ */
+function fiberBrushOf(state: State, l: ParticleListRef, entity: number) {
+  const own = l.cell.obj?.data;
+  const brush = own && brushOf(own, entity);
+  if (brush) return { data: own, brush };
+  const painted = decoratorUnder(state, l.cell.transform.ref, ParticleListPainted)?.obj?.data as
+    | ParticleList
+    | undefined;
+  return { data: painted, brush: painted && brushOf(painted, entity) };
+}
+
+/** A structure brush's entity in the list it paints into (`MesoscaleApi.structureBrushState`) */
+function structureBrushOf(ctx: Pick<ApiContext, 'plugin'>, structure: string, into: string) {
+  const state = ctx.plugin.state.data;
+  const source = structureSourceOf(state, structure);
+  if (!source) return undefined;
+  const all = lists(ctx);
+  const l = into
+    ? all.find((x) => x.cell.transform.ref === into)
+    : all.find((x) => x.cell.transform.transformer === MesoscalePaintingList);
+  if (!l) return undefined;
+  const painted = decoratorUnder(state, l.cell.transform.ref, ParticleListPainted);
+  const key = structureSourceKey({ source, definition: structureDefinitionOf(state, structure) });
+  const s = (painted?.transform.params as PaintedParams | undefined)?.structures?.find(
+    (x) => structureSourceKey(x) === key,
+  );
+  // its entity, or its target in a list without entities (`brushIdOf`)
+  return s ? { particles: l.cell.transform.ref, entity: s.entity >= 0 ? s.entity : s.target } : undefined;
+}
+
 /** An entity's fiber settings in effect and whether it makes fibers (`MesoscaleApi.fiberState`) */
 function fiberInfo(state: State, ctx: Pick<ApiContext, 'plugin'>, particles: string, entity: number) {
   const l = oneList(ctx, particles || undefined);
   if (isFailure(l)) return undefined;
-  const data = l.cell.obj?.data;
-  const brush = data && brushOf(data, entity);
+  const { data, brush } = fiberBrushOf(state, l, entity);
   if (!data || !brush) return undefined;
   const id = brushIdOf(data, brush);
   const own = paintedFibers(state, l.cell.transform.ref);

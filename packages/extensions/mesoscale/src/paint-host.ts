@@ -74,12 +74,13 @@ export function withAltCamera(bindings: TrackballBindings): TrackballBindings {
 
 /**
  * The host of a paint mode on `plugin`; `paint` runs the operation, `colorOf` reads an entity's color from its look
- * (the copy under the pointer's)
+ * (the copy under the pointer's), `structureFiberStep` a structure brush's fibers' rise in a list (none: it makes none)
  */
 export function pluginPaintHost(
   plugin: PluginContext,
   paint: (params: Record<string, unknown>) => Promise<unknown>,
   colorOf?: (list: ParticleListRef, entity: number) => number | undefined,
+  structureFiberStep?: (structure: string, into: string) => number | undefined,
 ): PaintHost {
   const listOf = (ref: string) =>
     plugin.managers.particles.hierarchy.current.lists.find((l) => l.cell.transform.ref === ref);
@@ -159,10 +160,10 @@ export function pluginPaintHost(
       const color = list ? colorOf?.(list, brush.entity) : undefined;
       return pluginPaintCursor(plugin, list, brush, color, !!data && !!brushOf(data, brush.entity)?.surface);
     },
-    fiberStep(brush) {
+    fiberStep(brush, into) {
       // the entity's rise (Round 3): its own settings, else its file's fibers'; none when it makes no fibers (a
-      // structure brush: copies)
-      if (brush.structure) return undefined;
+      // structure brush: its entity's in the list it paints into, its list gone: the Painting list's)
+      if (brush.structure) return structureFiberStep?.(brush.structure, into && listOf(into) ? into : '');
       const list = listOf(brush.particles);
       const data = list?.cell.obj?.data;
       const b = data && brushOf(data, brush.entity);

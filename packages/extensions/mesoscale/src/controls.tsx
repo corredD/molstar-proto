@@ -273,18 +273,25 @@ export function PaintBrush(props: {
         onPick={(id) => mode.set({ orient: id as PaintSettings['orient'] })}
       />
       {props.structure ? <PaintInto area={props.area} /> : null}
-      {props.structure ? null : (
-        <Choices
+      <Choices
           label="Fiber"
           choices={[
-            { id: 'auto', label: 'Auto', title: 'A new fiber when the entity has fibers, else copies' },
+            {
+              id: 'auto',
+              label: 'Auto',
+              title: props.structure
+                ? 'A new fiber when the structure has fibers where it paints, else copies'
+                : 'A new fiber when the entity has fibers, else copies',
+            },
             { id: 'on', label: 'On', title: 'A stroke is a new fiber: its points a step apart, turned along it' },
             { id: 'off', label: 'Off', title: 'A stroke is copies' },
           ]}
           active={mapState(settings, (s) => s.fiber)}
           onPick={(id) => mode.set({ fiber: id as PaintSettings['fiber'] })}
         />
-      )}
+      <Show when={mapState(settings, (st) => !!props.structure && st.fiber !== 'off')}>
+        {() => <StructureFiberSettings area={props.area} structure={props.structure!} />}
+      </Show>
       <Show when={mapState(settings, (st) => !props.structure && st.fiber !== 'off')}>
         {() => (
           <div class={classes.tight}>
@@ -358,6 +365,34 @@ export function PaintBrush(props: {
         />
       </div>
     </div>
+  );
+}
+
+/**
+ * A structure brush's fiber settings (Ludo, 2026-11-10: "from a pdb structure I want the Fiber option as well"): its
+ * entity's in the list it paints into (`structureBrushState`), once its first stroke made it; no bank (its units are the
+ * structure itself), so no sequence
+ */
+function StructureFiberSettings(props: { area: MesoscaleApi; structure: string }) {
+  const into = mapState(props.area.paintMode.settings.asReadonly, (s) => ({ into: s.into ?? '' }));
+  return (
+    <Show when={into}>
+      {({ into }) => (
+        <Show
+          when={props.area.structureBrushState(props.structure, into)}
+          fallback={() => (
+            <div class={classes.line}>
+              <div class={classes.label} title="Its rise and twist are set once a stroke has painted it here">
+                Rise, twist
+              </div>
+              <div class={classes.label}>after its first fiber; its units touch</div>
+            </div>
+          )}
+        >
+          {(b) => <FiberSettings area={props.area} particles={b.particles} entity={b.entity} />}
+        </Show>
+      )}
+    </Show>
   );
 }
 

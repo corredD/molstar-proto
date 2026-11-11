@@ -74,6 +74,28 @@ describe('pluginPaintHost, a structure brush (paint-layer round 2)', () => {
     await host.paint(brush, { ...DefaultPaintSettings, into: 'hiv' }, [0, 0, 0], [0, 0, 1], 1, false);
     expect(calls[2]).toMatchObject({ structure: 's1', particles: 'hiv' });
   });
+
+  it('reads a structure brush’s fiber rise in the list it paints into (gone: the Painting list’s)', () => {
+    const cells = new Map([['s1', { obj: { type: SO.Molecule.Structure.type, data: {} } }]]);
+    const lists: unknown[] = [{ cell: { transform: { ref: 'hiv' } } }];
+    const plugin = { state: { data: { cells } }, managers: { particles: { hierarchy: { current: { lists } } } } };
+    const asked: string[][] = [];
+    const host = pluginPaintHost(
+      plugin as unknown as PluginContext,
+      async () => undefined,
+      undefined,
+      (structure, into) => (asked.push([structure, into]), into === 'hiv' ? 30 : undefined),
+    );
+    const brush = { particles: '', entity: -1, name: '1CRN', structure: 's1' };
+    expect(host.fiberStep(brush, 'hiv')).toBe(30);
+    expect(host.fiberStep(brush, 'gone')).toBeUndefined();
+    expect(host.fiberStep(brush)).toBeUndefined();
+    expect(asked).toEqual([
+      ['s1', 'hiv'],
+      ['s1', ''],
+      ['s1', ''],
+    ]);
+  });
 });
 
 describe('withAltCamera', () => {
