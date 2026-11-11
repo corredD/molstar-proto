@@ -59,7 +59,7 @@ import {
 import { placementStore } from './particle-list.js';
 import { type AdapterViewer, PrismMesoAdapter } from './prism-adapter.js';
 import { type EditRecord, type EditRun, MesoSession } from './session.js';
-import { streamingBudget } from './streaming-settings.js';
+import { StreamHysteresisA, streamingBudget } from './streaming-settings.js';
 
 // The owner of the open MesoViewSpec document in a Prism viewer (prism.md §1.1, §2.3, §7): one document at a time, its
 // session (runtime cache, IR, issues, counts) and its adapter. A viewer proposes, the owner commits: an open, a patch or
@@ -178,6 +178,11 @@ export class MesoDocumentModel {
   private readonly ev = RxEventHelper.create();
   /** The document, its counts or its looks changed (a step ended, a restore, a close): the tree reads them again. */
   readonly changed = this.ev<void>();
+  /**
+   * A view was shown: the session forgot the fed camera (it streams by the view's camera), so the viewer feeds the
+   * canvas camera again once it rests, though it may not move (New view from here) or draw.
+   */
+  readonly focusDropped = this.ev<void>();
   /**
    * The edit in flight: told as it starts each model that has to resolve, `undefined` when the edit ends (done,
    * refused or stopped). What the explorer's Built by shows while a resolution runs.
@@ -558,6 +563,8 @@ export class MesoDocumentModel {
     }
     try {
       const record = await this.adapter.bound(api, () => session.show(view));
+      this.focus = undefined;
+      this.focusDropped.next();
       this.shown = view;
       this.saved = savedOf(doc, this.url, this.shown);
       // the keys a view's expansions add (none today: a view changes looks, not sets) kept with the current state's
@@ -775,7 +782,7 @@ export class MesoDocumentModel {
         cache: this.cache,
         // the provider of the document the session holds now (a restore may hand it another's)
         tiles: (resource) => this.tiles?.(resource),
-        stream: { budget: { copies: streamingBudget(this.viewer.plugin).value } },
+        stream: { budget: { copies: streamingBudget(this.viewer.plugin).value, hysteresis: StreamHysteresisA } },
       },
       this.adapter,
     );

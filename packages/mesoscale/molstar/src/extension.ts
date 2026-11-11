@@ -184,7 +184,13 @@ export class MesoViewSpecApi extends ApiArea {
     // streamed tiles are the owner's behavior's cells (prism.md §9): no step, no change outside the API, left out of
     // checkpoints, kept by a restore; they load where the canvas camera looks (its view, once it rests)
     this.#unregisterTiles = registerBehaviorOwned(ctx.plugin, [MesoTilePlacements]);
-    this.#unfeed = feedCanvasCamera(ctx.plugin, (focus) => void this.model.setFocus(focus));
+    const feed = feedCanvasCamera(ctx.plugin, (focus) => void this.model.setFocus(focus));
+    // a view shown forgets the fed camera: fed again once it rests, though it may not move
+    const dropped = this.model.focusDropped.subscribe(() => feed.refeed());
+    this.#unfeed = () => {
+      dropped.unsubscribe();
+      feed();
+    };
   }
   readonly #unregisterTiles: () => void;
   readonly #unfeed: () => void;

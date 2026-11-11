@@ -24,8 +24,11 @@ export const TurnedN = 1e-3;
 
 const Planes = 5;
 
+/** A feed's removal, and `refeed`: feed the camera again once it rests, though it neither moves nor draws. */
+export type CameraFeed = (() => void) & { refeed(): void };
+
 /** Feeds `feed` the canvas camera of `plugin` while it lives; returns its removal. */
-export function feedCanvasCamera(plugin: PluginContext, feed: (focus: StreamFocus) => void): () => void {
+export function feedCanvasCamera(plugin: PluginContext, feed: (focus: StreamFocus) => void): CameraFeed {
   const frustum = Frustum3D();
   // the target, then each plane's [nx, ny, nz, c]: now and as last fed (NaN: nothing fed yet, counts as moved)
   const now = new Float64Array(3 + 4 * Planes);
@@ -104,11 +107,21 @@ export function feedCanvasCamera(plugin: PluginContext, feed: (focus: StreamFocu
   // a canvas made after the document's owner (or never, headless: the promise does not settle)
   plugin.canvas3dInitialized.then(attach, () => {});
   attach();
-  return () => {
-    stopped = true;
+  const refeed = () => {
+    if (stopped) return;
+    // as if nothing was fed: the next draw counts as moved, and with no draw the timer fires anyway
+    last.fill(Number.NaN);
     if (timer !== undefined) clearTimeout(timer);
-    timer = undefined;
-    draws?.unsubscribe();
-    draws = undefined;
+    timer = setTimeout(fire, RestMs);
   };
+  return Object.assign(
+    () => {
+      stopped = true;
+      if (timer !== undefined) clearTimeout(timer);
+      timer = undefined;
+      draws?.unsubscribe();
+      draws = undefined;
+    },
+    { refeed },
+  );
 }
