@@ -21,7 +21,9 @@ describe('the document state of an agent turn', () => {
     const tampered = {
       ...doc,
       compartments: doc.compartments.map((c, i) => (i === 0 ? { ...c, id: bad } : c)),
-      populations: doc.populations.map((p) => (p.compartment === doc.compartments[0].id ? { ...p, compartment: bad } : p)),
+      populations: doc.populations.map((p) =>
+        p.compartment === doc.compartments[0].id ? { ...p, compartment: bad } : p,
+      ),
     } as MesoViewSpecDoc;
     const lines = state(tampered).split('\n');
     expect(lines.filter((l) => l.startsWith('- issues'))).toHaveLength(1);
@@ -60,7 +62,8 @@ describe('a document with fields missing or of another type', () => {
 
   it('says the state and the outline: an unlabelled compartment, a number as the title', () => {
     expect(state(odd())).toContain('"42"');
-    for (const detail of ['outline', 'summary'] as const) expect(describeDocument(odd(), {}, [], detail)).toContain('"42"');
+    for (const detail of ['outline', 'summary'] as const)
+      expect(describeDocument(odd(), {}, [], detail)).toContain('"42"');
   });
 
   it('says the state and the outline with no compartments or populations', () => {
@@ -119,7 +122,11 @@ describe('get_mesoviewspec’s outline and the issues', () => {
       version: `0.4\n${bad}`,
       compartments: doc.compartments.map((c, i) => (i === 0 ? { ...c, id: bad, kind: bad } : c)),
       populations: doc.populations.map((p, i) =>
-        i === 0 ? { ...p, id: `p${bad}`, entity: bad } : p.compartment === doc.compartments[0].id ? { ...p, compartment: bad } : p,
+        i === 0
+          ? { ...p, id: `p${bad}`, entity: bad }
+          : p.compartment === doc.compartments[0].id
+            ? { ...p, compartment: bad }
+            : p,
       ),
     } as MesoViewSpecDoc;
   };

@@ -16,9 +16,14 @@ import type { Counts } from './document-tree.js';
 
 const MaxStateLines = 24;
 
+/** A field of the document as text: a string as it is, else what it says (`42`); none: empty. */
+export function textOf(x: unknown): string {
+  return typeof x === 'string' ? x : String(x ?? '');
+}
+
 /** An id as written, when it is one (a MesoQL address names it so); else quoted, as any text from the document. */
 export function idText(x: unknown, pattern: RegExp = IdPattern): string {
-  return typeof x === 'string' && pattern.test(x) ? x : quoted(String(x));
+  return typeof x === 'string' && pattern.test(x) ? x : quoted(textOf(x));
 }
 
 /** A version as written (`0.4`), else quoted. */
@@ -41,8 +46,7 @@ export const MaxStateChars = 4000;
 /** Nesting said by indentation, at most (deeper compartments are said at this depth). */
 const MaxDepthShown = 8;
 
-const capped = (line: string) =>
-  line.length > MaxStateLineChars ? `${line.slice(0, MaxStateLineChars - 1)}…` : line;
+const capped = (line: string) => (line.length > MaxStateLineChars ? `${line.slice(0, MaxStateLineChars - 1)}…` : line);
 
 /**
  * `head` and `count` items after it (`first` before the first, `, ` between) while the line has room; the rest counted
@@ -78,13 +82,15 @@ function groupBy<T>(items: readonly T[], key: (x: T) => unknown): Map<unknown, T
 
 export function documentState({ doc, counts, shown, issues }: DocumentStateInput, max = MaxStateLines): string {
   const copies = Object.values(counts).reduce((n, c) => n + c.achieved, 0);
-  const head = capped(`MesoViewSpec document ${quoted(doc.metadata?.title || 'Untitled')}: ${copies} copies drawn.`);
+  const head = capped(
+    `MesoViewSpec document ${quoted(textOf(doc.metadata?.title) || 'Untitled')}: ${copies} copies drawn.`,
+  );
   const views = doc.views ?? [];
   const view = views.find((v) => v.id === shown) ?? views[0];
   const tail = [
     view
       ? listLine(
-          `- shown view ${idText(view.id)}${view.label ? ` ${quoted(view.label)}` : ''}; views`,
+          `- shown view ${idText(view.id)}${view.label ? ` ${quoted(textOf(view.label))}` : ''}; views`,
           ' ',
           views.length,
           (i) => idText(views[i].id),
@@ -95,8 +101,8 @@ export function documentState({ doc, counts, shown, issues }: DocumentStateInput
   ];
 
   // indexed once by compartment; the compartments in tree order (each once, whatever their parents say)
-  const children = groupBy(doc.compartments, (c) => c.parent);
-  const populations = groupBy(doc.populations, (p) => p.compartment);
+  const children = groupBy(doc.compartments ?? [], (c) => c.parent);
+  const populations = groupBy(doc.populations ?? [], (p) => p.compartment);
   const instances = groupBy(doc.instances ?? [], (i) => i.compartment);
   const order: { readonly c: Compartment; readonly depth: number }[] = [];
   const seen = new Set<Compartment>();
@@ -123,7 +129,7 @@ export function documentState({ doc, counts, shown, issues }: DocumentStateInput
       return `${idText(p.id)} (${idText(p.entity)}) ${n ? `${n.achieved}${n.requested !== undefined ? ` of ${n.requested}` : ''}` : 'not placed'}`;
     };
     return listLine(
-      `${'  '.repeat(Math.min(depth, MaxDepthShown))}- compartment ${idText(c.id)} ${quoted(c.label)}`,
+      `${'  '.repeat(Math.min(depth, MaxDepthShown))}- compartment ${idText(c.id)} ${quoted(textOf(c.label))}`,
       ': ',
       pops.length + insts.length,
       item,
@@ -163,12 +169,14 @@ export function describeDocument(
   issues: readonly Issue[],
   detail: 'summary' | 'outline',
 ): string {
-  const lines = [`${quoted(doc.metadata?.title || 'Untitled')} (${idText(doc.format)} ${idText(doc.version, VersionPattern)})`];
+  const lines = [
+    `${quoted(textOf(doc.metadata?.title) || 'Untitled')} (${idText(doc.format)} ${idText(doc.version, VersionPattern)})`,
+  ];
   if (detail === 'outline') {
     const walk = (parent: string | undefined, depth: number) => {
-      for (const c of doc.compartments.filter((c) => c.parent === parent)) {
-        lines.push(`${'  '.repeat(depth + 1)}${idText(c.id)}: ${quoted(c.label)} (${idText(c.kind)})`);
-        for (const p of doc.populations.filter((p) => p.compartment === c.id))
+      for (const c of (doc.compartments ?? []).filter((c) => c.parent === parent)) {
+        lines.push(`${'  '.repeat(depth + 1)}${idText(c.id)}: ${quoted(textOf(c.label))} (${idText(c.kind)})`);
+        for (const p of (doc.populations ?? []).filter((p) => p.compartment === c.id))
           lines.push(populationLine(p, counts, depth + 2));
         walk(c.id, depth + 1);
       }
@@ -177,7 +185,7 @@ export function describeDocument(
     walk(undefined, 0);
   } else {
     lines.push('Populations:');
-    for (const p of doc.populations) lines.push(populationLine(p, counts, 1));
+    for (const p of doc.populations ?? []) lines.push(populationLine(p, counts, 1));
   }
   lines.push(
     `Models: ${doc.models?.length ?? 0}`,

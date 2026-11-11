@@ -462,7 +462,9 @@ export class MesoViewSpecApi extends ApiArea {
         if (this.#tour === entry) this.#tour = undefined;
       });
       this.#tour = entry;
-      return ApiResult.ok(`Playing ${t.label ? quoted(String(t.label)) : idText(t.id)} (${t.steps.length} views).`, { view: true });
+      return ApiResult.ok(`Playing ${t.label ? quoted(String(t.label)) : idText(t.id)} (${t.steps.length} views).`, {
+        view: true,
+      });
     },
   });
 
