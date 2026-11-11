@@ -28,6 +28,7 @@ import { RootStructureDefinition } from '@molstar/plugin/state/helpers/root-stru
 import { PluginStateObject as SO, PluginStateTransform } from '@molstar/plugin/state/objects';
 import { Asset } from '@molstar/core/util/assets';
 import { type RuntimeContext, Task } from '@molstar/core/task';
+import type { GrowRecord } from './grow.js';
 import { isMembranePath } from './pick-surface.js';
 
 // Paint v1 (apps/prism-me/_spec/features.md, "Paint"; progress/2026-11-08-paint.md, Design 1): copies of an existing
@@ -56,6 +57,8 @@ export interface PaintStroke {
    * inclusive; the range repeated along a longer fiber). Absent: the bank's units at random (of the seed)
    */
   readonly sequence?: PaintSequence;
+  /** The grow that made the stroke (`mesoscale.grow`, grow.ts): its mode, params, seed and source; none for a paint */
+  readonly grow?: GrowRecord;
 }
 
 /** A fiber's sequence or a range of it (Round 5): one-letter codes, 1-based, `end` inclusive */

@@ -5,7 +5,7 @@
  */
 
 import { Color } from '@molstar/core/util/color';
-import { Mat4, Vec3 } from '@molstar/core/math/linear-algebra';
+import { Mat4, Quat, Vec3 } from '@molstar/core/math/linear-algebra';
 import {
   ParticleListTargetsFromAttribute,
   ParticleListTransform,
@@ -15,7 +15,7 @@ import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
 import type { VisualQuality } from '@molstar/graphics/geo/geometry/base';
 import { Spheres } from '@molstar/graphics/geo/geometry/spheres/spheres';
 import { ColorLevels } from '@molstar/graphics/geo/geometry/color-levels';
-import type { ParticleList, ParticleTarget } from '@molstar/model/model/particles/particle-list';
+import { Particle, type ParticleList, type ParticleTarget } from '@molstar/model/model/particles/particle-list';
 import { PluginStateObject as SO } from '@molstar/plugin/state/objects';
 import { type State, type StateObjectCell, StateTransform } from '@molstar/core/state';
 import type {
@@ -39,6 +39,7 @@ import {
   brushIdOf,
   cleanSequence,
   decoratorUnder,
+  fiberConventionOf,
   isFiberBrush,
   FiberAxes,
   type FiberSettings,
@@ -62,6 +63,17 @@ import {
   toListFrame,
 } from './paint.js';
 import { FiberBankHelix, FiberBanks } from './fiber-units.js';
+import {
+  crystalPoses,
+  type GrowPoses,
+  type ListMove,
+  poseToScene,
+  rotationsToListFrame,
+  spherePoses,
+  tilingPoses,
+  walkPath,
+} from './grow.js';
+import { isMembranePath } from './pick-surface.js';
 import {
   findGroup,
   generateColors,
@@ -150,6 +162,46 @@ export interface MesoscaleInfo {
 
 const ListParam = () =>
   PD.Text('', { description: 'A particle list by label or state ref; empty: the only one loaded' });
+
+/** A grow's crystal cell (`mesoscale.grow`): its lengths (absent: the copy's diameter), angles and cells a side */
+const CellParams = {
+  a: OptionalParam(
+    PD.Numeric(0, { min: 0, step: 0.1 }, { description: "Crystal: the cell's a, Å; absent: the copy's diameter" }),
+  ),
+  b: OptionalParam(
+    PD.Numeric(0, { min: 0, step: 0.1 }, { description: "Crystal: the cell's b, Å; absent: the copy's diameter" }),
+  ),
+  c: OptionalParam(
+    PD.Numeric(0, { min: 0, step: 0.1 }, { description: "Crystal: the cell's c, Å; absent: the copy's diameter" }),
+  ),
+  alpha: OptionalParam(
+    PD.Numeric(90, { min: 1, max: 179, step: 0.1 }, { description: 'Crystal: the angle between b and c, °' }),
+  ),
+  beta: OptionalParam(
+    PD.Numeric(90, { min: 1, max: 179, step: 0.1 }, { description: 'Crystal: the angle between a and c, °' }),
+  ),
+  gamma: OptionalParam(
+    PD.Numeric(90, { min: 1, max: 179, step: 0.1 }, { description: 'Crystal: the angle between a and b, °' }),
+  ),
+  na: OptionalParam(
+    PD.Numeric(3, { min: 1, max: 100, step: 1 }, { description: "Crystal: cells along a, the source's counted" }),
+  ),
+  nb: OptionalParam(
+    PD.Numeric(3, { min: 1, max: 100, step: 1 }, { description: "Crystal: cells along b, the source's counted" }),
+  ),
+  nc: OptionalParam(
+    PD.Numeric(1, { min: 1, max: 100, step: 1 }, { description: "Crystal: cells along c, the source's counted" }),
+  ),
+};
+
+/** The most copies one grow makes */
+const MaxGrown = 20000;
+const tooMany = (n: number) =>
+  ApiResult.fail(
+    'invalid',
+    `That is ${n} copies: a grow makes ${MaxGrown} at most.`,
+    'Fewer cells, rings, copies or steps.',
+  );
 
 const GroupByParam = () =>
   PD.Select('compartment', [
@@ -816,6 +868,149 @@ export class MesoscaleApi extends ApiArea {
         asFiber ? `Painted a fiber of ${name}.` : `Painted ${k} ${k === 1 ? 'copy' : 'copies'} of ${name} (${how}).`,
         { nodes: [ref] },
         { value: { count: k, orient: asFiber ? 'fiber' : how } },
+      );
+    },
+  });
+
+  /**
+   * Grow (progress/2026-11-11-grow.md; Ludo, 2026-11-11): copies of a particle (its index in the list as drawn) by a
+   * rule from its pose, one stroke of the list's painted copies (one step). The copies go exactly where the rule says,
+   * overlaps allowed. Crystal, Tiling and Sphere grow in the scene's Å from the source as its list's move and scale put
+   * it (before the offsets of its kind, which its copies take too); Random walk is a new fiber, in the list's frame.
+   */
+  readonly grow = this.operation({
+    id: 'mesoscale.grow',
+    title: 'Grow copies from an instance',
+    params: {
+      particles: ListParam(),
+      index: PD.Numeric(0, { min: 0, step: 1 }, { description: 'The source: a particle by its index in the list' }),
+      mode: PD.Select(
+        'crystal',
+        [
+          ['walk', 'Random walk: a new fiber from the source'],
+          ['crystal', "Crystal: a lattice in the source's frame"],
+          ['tiling', "Tiling: a plane of copies in the source's own plane"],
+          ['sphere', 'Sphere: copies at random in a ball about the source'],
+        ] as const,
+        { description: 'The rule' },
+      ),
+      seed: OptionalParam(PD.Numeric(0, { step: 1 }, { description: 'The random draws’ seed (repeatable)' })),
+      steps: OptionalParam(PD.Numeric(20, { min: 1, max: 1000, step: 1 }, { description: 'Random walk: its points' })),
+      persistence: OptionalParam(
+        PD.Numeric(30, { min: 0, max: 180, step: 1 }, { description: 'Random walk: the most it turns a step, °' }),
+      ),
+      ...CellParams,
+      pattern: OptionalParam(
+        PD.Select('hex', [
+          ['hex', 'Hexagonal'],
+          ['square', 'Square'],
+        ] as const),
+      ),
+      spacing: OptionalParam(
+        PD.Numeric(0, { min: 0, step: 0.1 }, { description: "Tiling: between copies, Å; absent: the copy's diameter" }),
+      ),
+      rings: OptionalParam(
+        PD.Numeric(3, { min: 0, max: 50, step: 1 }, { description: 'Tiling: rings about the source' }),
+      ),
+      count: OptionalParam(PD.Numeric(50, { min: 1, step: 1 }, { description: 'Sphere: its copies' })),
+      radius: OptionalParam(
+        PD.Numeric(0, { min: 0, step: 0.1 }, { description: "Sphere: its radius, Å; absent: 5 × the copy's radius" }),
+      ),
+      turn: OptionalParam(
+        PD.Select('random', [
+          ['random', 'At random'],
+          ['source', 'As the source'],
+        ] as const),
+      ),
+    },
+    async run(values, ctx) {
+      const v = values as typeof values &
+        Partial<Record<string, number>> & { pattern?: 'hex' | 'square'; turn?: 'random' | 'source' };
+      const { particles, index, mode } = values;
+      const l = oneList(ctx, particles || undefined);
+      if (isFailure(l)) return l;
+      const state = ctx.plugin.state.data;
+      const refused = classTargets(state, l);
+      if (refused) return refused;
+      const src = growSourceOf(state, l, index);
+      if (isFailure(src)) return src;
+      const { data, target, entity, compartment, pose, radius, name } = src;
+      const seed = v.seed ?? Math.floor(Math.random() * 2 ** 31);
+      const move = decoratorUnder(state, l.cell.transform.ref, ParticleListTransform)?.transform.params as
+        | ListMove
+        | undefined;
+      const scene = poseToScene(move, pose);
+      const diameter = 2 * radius;
+      const sizes: Record<string, number> = {};
+      let made: GrowPoses | undefined;
+      let path: number[] | undefined;
+      if (mode === 'crystal') {
+        const p = {
+          a: v.a ?? diameter,
+          b: v.b ?? diameter,
+          c: v.c ?? diameter,
+          alpha: v.alpha ?? 90,
+          beta: v.beta ?? 90,
+          gamma: v.gamma ?? 90,
+          na: Math.floor(v.na ?? 3),
+          nb: Math.floor(v.nb ?? 3),
+          nc: Math.floor(v.nc ?? 1),
+        };
+        if (!(p.a > 0 && p.b > 0 && p.c > 0)) return ApiResult.fail('invalid', 'The cell’s a, b and c are above 0 Å.');
+        if (!(p.na >= 1 && p.nb >= 1 && p.nc >= 1)) return ApiResult.fail('invalid', 'Give 1 cell or more a side.');
+        if (p.na * p.nb * p.nc - 1 > MaxGrown) return tooMany(p.na * p.nb * p.nc - 1);
+        made = crystalPoses(scene, p);
+        if (!made) return ApiResult.fail('invalid', 'Those angles make no cell.', 'α, β and γ of a real cell.');
+        Object.assign(sizes, p);
+      } else if (mode === 'tiling') {
+        const p = { pattern: v.pattern ?? 'hex', spacing: v.spacing ?? diameter, rings: Math.floor(v.rings ?? 3) };
+        if (!(p.spacing > 0)) return ApiResult.fail('invalid', 'The spacing is above 0 Å.');
+        const total = p.pattern === 'hex' ? 3 * p.rings * (p.rings + 1) : (2 * p.rings + 1) ** 2 - 1;
+        if (total > MaxGrown) return tooMany(total);
+        // its plane: a membrane protein's +z is its normal, anything else's its principal axis
+        const normal = src.surface ? Vec3.create(0, 0, 1) : principalAxisOf(data.targetMapping?.get(target));
+        made = tilingPoses(scene, normal, p);
+        Object.assign(sizes, p);
+      } else if (mode === 'sphere') {
+        const p = { count: Math.floor(v.count ?? 50), radius: v.radius ?? 5 * radius, turn: v.turn ?? 'random' };
+        if (!(p.radius > 0)) return ApiResult.fail('invalid', 'The radius is above 0 Å.');
+        if (!(p.count >= 1)) return ApiResult.fail('invalid', 'Give 1 copy or more.');
+        if (p.count > MaxGrown) return tooMany(p.count);
+        made = spherePoses(scene, p, seed);
+        Object.assign(sizes, p);
+      } else {
+        const p = { steps: Math.floor(v.steps ?? 20), persistence: v.persistence ?? 30 };
+        if (!(p.steps >= 1)) return ApiResult.fail('invalid', 'Give 1 step or more.');
+        if (p.steps > MaxGrown) return tooMany(p.steps);
+        // a fiber of the source's: its rise and axis (its own fibers', else its principal axis), in the list's frame
+        const id = brushIdOf(data, { target, entity });
+        const structures = paintedStructures(state, l.cell.transform.ref);
+        const rise = fiberSettingsOf(data, id, target, paintedFibers(state, l.cell.transform.ref), structures).rise;
+        const axis = fiberConventionOf(data, id)?.axis ?? principalAxisOf(data.targetMapping?.get(target));
+        path = walkPath(pose, axis, rise, p, seed);
+        Object.assign(sizes, p);
+      }
+      if (made) {
+        toListFrame(move, made.positions, undefined);
+        rotationsToListFrame(move, made.rotations);
+      }
+      const stroke: PaintStroke = {
+        target,
+        entity,
+        compartment,
+        positions: path ?? made!.positions,
+        rotations: path ? [] : made!.rotations,
+        ...(path ? { fiber: true, seed } : {}),
+        grow: { mode, params: sizes, seed, source: { index, key: data.keys[index] } },
+      };
+      const count = stroke.positions.length / 3;
+      await updatePainted(ctx, l, (p) => ({ ...p, strokes: [...p.strokes, stroke] }));
+      return ApiResult.ok(
+        path
+          ? `Grew a fiber of ${name} from #${index}.`
+          : `Grew ${count} ${count === 1 ? 'copy' : 'copies'} of ${name} from #${index} (${mode}).`,
+        { nodes: [l.cell.transform.ref] },
+        { value: { count, mode } },
       );
     },
   });
@@ -1916,6 +2111,42 @@ function paintInto(ctx: ApiContext, structure: string | undefined, particles: st
   };
   const brush = { target: entry.target, entity: entry.entity, compartment: -1, surface: false, object };
   return { l, data: base, brush, name: entry.name, structure: entry };
+}
+
+/**
+ * A grow's source (`mesoscale.grow`): particle `index` of a list as drawn, read where the painted copies are (the
+ * painted decorator's output, else the list's own; the decorators after it keep the particles' order): in the list's
+ * frame, before its move and its offsets. Its target, entity and compartment; its radius, Å (its own, else its
+ * structure's, else 10); its name (its entity's, else its target's)
+ */
+export function growSourceOf(state: State, l: ParticleListRef, index: number) {
+  const painted = decoratorUnder(state, l.cell.transform.ref, ParticleListPainted);
+  const data = (painted?.obj?.data as ParticleList | undefined) ?? l.cell.obj?.data;
+  if (!data) return ApiResult.fail('not-found', 'The particle list is not loaded yet.');
+  if (!Number.isInteger(index) || index < 0 || index >= data.count) {
+    return ApiResult.fail('not-found', `No particle #${index} in ${l.cell.obj?.label ?? 'the list'}.`);
+  }
+  const target = data.targets[index];
+  // a unit of a fiber's bank (made by the decorator, its id not kept) is no target of the list's to copy
+  const input = painted && (state.cells.get(painted.transform.parent)?.obj?.data as ParticleList | undefined);
+  const structures = (painted?.transform.params as PaintedParams | undefined)?.structures ?? [];
+  if (input && !input.targetInfo.has(target) && !structures.some((s) => s.target === target)) {
+    return ApiResult.fail('invalid', "A unit of a fiber's bank is not grown from.", "Grow from the entity's copies.");
+  }
+  const entity = data.entityInfo?.size ? Particle.entityOf(data, index) : -1;
+  const compartment = data.compartments?.[index] ?? -1;
+  const rotation = data.rotations ? Quat.fromArray(Quat(), data.rotations, index * 4) : Quat.identity();
+  const pose = {
+    position: Vec3.fromArray(Vec3(), data.coordinates, index * 3),
+    rotation: Quat.normalize(rotation, rotation),
+  };
+  const object = data.targetMapping?.get(target);
+  const radius =
+    data.radii?.[index] || (object?.kind === 'structure' ? object.structure.boundary.sphere.radius : 0) || 10;
+  const name =
+    (entity >= 0 && data.entityInfo?.get(entity)?.name) || data.targetInfo.get(target)?.name || `Target ${target}`;
+  const surface = isMembranePath(data.compartmentInfo?.get(compartment)?.name ?? '');
+  return { data, target, entity, compartment, pose, radius, name, surface };
 }
 
 /** A list whose targets come from a class (cryoet's) is not painted yet (review should-fix 2) */

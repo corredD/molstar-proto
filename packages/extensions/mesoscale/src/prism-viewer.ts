@@ -91,6 +91,12 @@ export const MesoscaleSkill: ViewerSkill = {
         'Paints copies of an entity at points of the scene (a stroke, one step): a membrane protein upright along the normals given, anything else turned at random.',
     },
     {
+      id: 'grow_mesoscale_copies',
+      operation: 'mesoscale.grow',
+      description:
+        'Grows copies of a particle (its index in a list) by a rule, one step: a random walk (a new fiber), a crystal lattice, a planar tiling or a sphere of copies about it; overlaps allowed.',
+    },
+    {
       id: 'set_mesoscale_graphics',
       operation: 'mesoscale.graphics',
       description:
@@ -160,6 +166,12 @@ export const MesoscaleExtension: ViewerExtension = {
         icon: 'paintbrush',
         alias: ['paint', 'cellpaint', 'paint copies', 'brush'],
         action: 'Paint',
+      }),
+      operationCommand(api, m.grow, {
+        category,
+        icon: 'paintbrush',
+        alias: ['grow', 'crystal', 'lattice', 'tiling', 'random walk', 'grow copies'],
+        action: 'Grow',
       }),
       operationCommand(api, m.entities, { category, icon: 'info', alias: ['mesoscale entities', 'compartments'] }),
     ];
