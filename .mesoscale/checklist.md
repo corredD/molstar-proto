@@ -150,4 +150,8 @@ Lanes 7 and 8 run in parallel (Ludo, 2026-11-10): their files do not meet (7: `p
 - [x] gate: reviewer, skeptic; fixed (`384e322be`..`45b3692d8`, tests `040e68960`): M1 Close/Undo-of-open wait for the
       stream commit in flight, S4 a restored session streams where the camera was fed, S2 a stream commit never sets the
       camera, S5 tests; open: S3 and nits. Rechecked live: Close and Undo of the open mid-stream leave no list
+- [x] the stale resource on edit fixed (`b8d81efab`..`6f4b6d21c`: red tests, then `session.stepDoc`, the document the
+      step compiles, read by `load` and `describe`; it also made Undo/Redo load the document they left). Medium 129
+      pass, unit base failures only. Checked in the app (β-cell): an edit of `r.isg-recipe`'s uri fetches the new recipe
+      in that step and compiles a different IR; Undo fetches the old one and gives the same IR as before; Redo the new
 - [ ] Ludo's check · merged
