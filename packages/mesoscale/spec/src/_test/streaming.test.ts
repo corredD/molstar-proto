@@ -559,6 +559,19 @@ describe('planStream with a view (tiles where the person looks)', () => {
     ])
       expect(planStream(row, { ...target, view }, none, { copies: 20 })).toEqual(plain);
   });
+
+  // gate S1: a resident tile just out of view stays in it by the hysteresis, so a slight orbit does not reload it
+  it('hysteresis keeps a resident tile at the edge of the view', () => {
+    // d is in front but 10 Å outside the first side plane, 232 Å from the eye; c is in view, 600 Å away
+    const m = manifestOf([box('c', 500), box('d', 0, 260)]);
+    const view = { eye, planes: frustum };
+    const state = { ...none, loaded: new Map([['d', 10]]) };
+    expect(planStream(m, { ...target, view }, state, { copies: 10 })).toMatchObject({ want: ['c'], evict: ['d'] });
+    expect(planStream(m, { ...target, view }, state, { copies: 10, hysteresis: 20 })).toMatchObject({
+      want: ['d'],
+      evict: [],
+    });
+  });
 });
 
 // ---- sets and the camera ----

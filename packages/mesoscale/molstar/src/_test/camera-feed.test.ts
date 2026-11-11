@@ -38,7 +38,7 @@ function fakeCanvas() {
   const draw = () => {
     for (const f of draws) f();
   };
-  return { plugin, target, position, draw, draws };
+  return { plugin, target, position, projectionView, draw, draws };
 }
 
 describe('feedCanvasCamera', () => {
@@ -52,12 +52,14 @@ describe('feedCanvasCamera', () => {
     vi.advanceTimersByTime(RestMs);
     expect(fed.length).toBe(1);
     expect(fed[0]).toMatchObject({ center: [0, 0, 0], radius: 0, view: { eye: [0, 0, 100] } });
-    // the four side planes, no near or far: x ≤ 1, x ≥ -1, y ≥ -1, y ≤ 1 (n·p + c ≥ 0 inside)
+    // the four side planes, no near or far: x ≤ 1, x ≥ -1, y ≥ -1, y ≤ 1 (n·p + c ≥ 0 inside); then, gate M1, the
+    // plane through the eye facing the target (z ≤ 100), so nothing behind the eye is in view
     expect(fed[0].view!.planes).toEqual([
       [-1, 0, 0, 1],
       [1, 0, 0, 1],
       [0, 1, 0, 1],
       [0, -1, 0, 1],
+      [0, 0, -1, 100],
     ]);
     // a drag: many draws, one feed at its end
     for (let i = 1; i <= 10; i++) {
@@ -87,5 +89,29 @@ describe('feedCanvasCamera', () => {
     vi.advanceTimersByTime(2 * RestMs);
     expect(fed.length).toBe(3);
     expect(c.draws.size).toBe(0);
+  });
+
+  // gate S2: a view that turns or narrows with the target and the eye kept (a small orbit close up, a resize, a fov)
+  it('feeds a view that changes with the target and the eye kept, or turns by less than 1 Å', () => {
+    vi.useFakeTimers();
+    const c = fakeCanvas();
+    c.position[2] = 10;
+    const fed: StreamFocus[] = [];
+    const stop = feedCanvasCamera(c.plugin, (f) => fed.push(f));
+    c.draw();
+    vi.advanceTimersByTime(RestMs);
+    expect(fed.length).toBe(1);
+    // an orbit 10 Å from the target: the eye moves 0.8 Å, the view turns 4.6°
+    c.position[0] = 0.8;
+    c.draw();
+    vi.advanceTimersByTime(RestMs);
+    expect(fed.length).toBe(2);
+    // a resize: the projection alone changes
+    c.projectionView[0] = 0.5;
+    c.draw();
+    vi.advanceTimersByTime(RestMs);
+    expect(fed.length).toBe(3);
+    expect(fed[2].view!.planes[0]).toEqual([-1, 0, 0, 2]);
+    stop();
   });
 });
