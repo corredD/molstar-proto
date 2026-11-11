@@ -313,12 +313,15 @@ describe('a streamed document in prism-me (headless)', () => {
   it('the canvas camera, once it rests, is where the open document streams', { tags: ['medium'] }, async () => {
     const h = await setup();
     const plugin = h.v.plugin as unknown as { canvas3d: unknown };
-    // a canvas the feed reads (its draws and its camera's target), there only while the feed attaches and fires: the
-    // representations' sync would draw into it
+    // a canvas the feed reads (its draws and its camera), there only while the feed attaches and fires: the
+    // representations' sync would draw into it. Its view sees the whole box (|x|, |y|, |z| ≤ 10⁴ Å), so the tiles go by
+    // their distance from the eye
     const draws = new Set<() => void>();
     const target = [0, 0, 0];
+    const position = [0, 0, 0];
+    const projectionView = [1e-4, 0, 0, 0, 0, 1e-4, 0, 0, 0, 0, 1e-4, 0, 0, 0, 0, 1];
     const canvas = {
-      camera: { target },
+      camera: { target, position, projectionView },
       didDraw: {
         subscribe(f: () => void) {
           draws.add(f);
@@ -342,12 +345,14 @@ describe('a streamed document in prism-me (headless)', () => {
       return setFocus(focus);
     };
     plugin.canvas3d = canvas;
-    target.splice(0, 3, ...Far.center);
+    // the target in the middle, the eye at the far corner: the tiles come by the eye
+    target.splice(0, 3, 4000, 4000, 2000);
+    position.splice(0, 3, ...Far.center);
     for (const f of draws) f();
     await sleep(RestMs + 100);
     plugin.canvas3d = undefined;
-    expect(fed).toEqual([Far]);
-    expect((session as unknown as { focus: unknown }).focus).toEqual(Far);
+    expect(fed).toMatchObject([{ center: [4000, 4000, 2000], radius: 0, view: { eye: Far.center } }]);
+    expect((session as unknown as { focus: unknown }).focus).toBe(fed[0]);
     await h.settle();
     const resident = placementSets(session.ir!).filter((s) => s.model === 'm.tiles');
     expect(resident.some((s) => s.key.endsWith('#t.3.3.1'))).toBe(true);
