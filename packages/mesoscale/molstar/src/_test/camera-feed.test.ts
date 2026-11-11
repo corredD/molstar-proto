@@ -107,11 +107,11 @@ describe('feedCanvasCamera', () => {
     vi.advanceTimersByTime(RestMs);
     expect(fed.length).toBe(2);
     // a resize: the projection alone changes
-    c.projectionView[0] = 0.5;
+    c.projectionView[0] = 0.25;
     c.draw();
     vi.advanceTimersByTime(RestMs);
     expect(fed.length).toBe(3);
-    expect(fed[2].view!.planes[0]).toEqual([-1, 0, 0, 2]);
+    expect(fed[2].view!.planes[0]).toEqual([-1, 0, 0, 4]);
     stop();
   });
 });
