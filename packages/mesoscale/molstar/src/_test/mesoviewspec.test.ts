@@ -30,6 +30,8 @@ afterEach(async () => {
 const Base = 'https://example.org/d/';
 const Recipe = JSON.stringify(ExosomeRecipe);
 const Picks = syntheticPicksStar();
+/** Other picks, fewer: what a resource whose `uri` an edit changes reads instead. */
+const OtherPicks = syntheticPicksStar(10, 3);
 const Membrane = syntheticVesicleObj();
 const RecipeName = 'exosome.cellpack-gpu.json';
 
@@ -38,6 +40,7 @@ function fakeResources() {
   const served = new Map([
     [`https://example.org/spec/src/examples/fixtures/${RecipeName}`, Recipe],
     [`${Base}fixtures/catalase_picks.star`, Picks],
+    [`${Base}fixtures/other_picks.star`, OtherPicks],
     [`${Base}fixtures/membrane.obj`, Membrane],
     [`${Base}exosome.mesoviewspec.json`, JSON.stringify(exosomeDoc())],
   ]);
@@ -221,6 +224,42 @@ describe('mesoviewspec.edit, save, close', () => {
     expect(lists(v)).toBeGreaterThan(0);
     expect((await run('mesoviewspec.close', {})).ok).toBe(true);
     expect(lists(v)).toBe(0);
+  });
+
+  // lane 7's find (Ludo, 2026-11-10): the loader read the session's document, still the one before the edit while the
+  // edit compiles, so an edit of a resource's address drew the old resource
+  it('an edit of a resource’s uri reads and draws the new resource in that edit; Undo and Redo', {
+    tags: ['medium'],
+  }, async () => {
+    const { api, fake, run, v } = await open();
+    expect((await run('mesoviewspec.open', { url: `${Base}exosome.mesoviewspec.json` })).ok).toBe(true);
+    const observed = () => api.model.session!.counts['p.catalase.observed']?.achieved;
+    const drawn = () => {
+      const key = api.model.adapter.keys().find((k) => k.startsWith('m.picks@'));
+      return key ? api.model.adapter.setOf(key)?.count : undefined;
+    };
+    expect(observed()).toBe(24);
+    expect(drawn()).toBe(24);
+    fake.asked.length = 0;
+    const r = await run('mesoviewspec.edit', {
+      patch: JSON.stringify({
+        format: 'meso_view_spec_patch',
+        ops: [{ op: 'set', id: 'r.picks', fields: { uri: 'fixture://other_picks.star' } }],
+      }),
+    });
+    expect(r.ok, JSON.stringify(r)).toBe(true);
+    expect(fake.asked).toContain(`${Base}fixtures/other_picks.star`);
+    expect(fake.asked).not.toContain(`${Base}fixtures/catalase_picks.star`);
+    expect(observed()).toBe(10);
+    expect(drawn()).toBe(10);
+
+    await v.managers.history.undo();
+    expect(api.model.doc!.resources!.find((x) => x.id === 'r.picks')?.uri).toBe('fixture://catalase_picks.star');
+    expect(observed()).toBe(24);
+    expect(drawn()).toBe(24);
+    await v.managers.history.redo();
+    expect(observed()).toBe(10);
+    expect(drawn()).toBe(10);
   });
 });
 
