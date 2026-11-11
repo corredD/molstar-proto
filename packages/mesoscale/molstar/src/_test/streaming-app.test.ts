@@ -21,7 +21,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { MesoViewSpecApi } from '../extension.js';
 import { RestMs } from '../camera-feed.js';
 import { MesoPlacements, MesoTilePlacements, placementStore } from '../particle-list.js';
-import { StreamingBudgetKey } from '../streaming-settings.js';
+import { StreamHysteresisA, StreamingBudgetKey } from '../streaming-settings.js';
 import { stubCanvasForLabels } from './canvas.js';
 
 stubCanvasForLabels();
@@ -356,7 +356,22 @@ describe('a streamed document in prism-me (headless)', () => {
     await h.settle();
     const resident = placementSets(session.ir!).filter((s) => s.model === 'm.tiles');
     expect(resident.some((s) => s.key.endsWith('#t.3.3.1'))).toBe(true);
-    expect(resident.some((s) => s.key.endsWith('#t.0.0.0'))).toBe(false);
+    // the eye's tile, then along the line of sight (to t.0.0.0, the opposite corner); a corner off it waits
+    expect(resident.some((s) => s.key.endsWith('#t.3.0.0'))).toBe(false);
+    // skeptic M1: the app's planner keeps a resident tile by a margin, so a slight orbit does not reload it
+    expect((session as unknown as { streamer: { budget: { hysteresis?: number } } }).streamer.budget.hysteresis).toBe(
+      StreamHysteresisA,
+    );
+    // skeptic M2: a view shown forgets the fed camera, and the camera is fed again once it rests, though it did not move
+    // (New view from here) and the canvas drew nothing
+    expect((await h.person.run('mesoviewspec.view', { view: 'v.far' })).ok).toBe(true);
+    expect((session as unknown as { focus: unknown }).focus).toBeUndefined();
+    plugin.canvas3d = canvas;
+    await sleep(RestMs + 100);
+    plugin.canvas3d = undefined;
+    expect(fed.length).toBe(2);
+    expect((session as unknown as { focus: unknown }).focus).toBe(fed[1]);
+    await h.settle();
     expect(h.errors).toEqual([]);
   });
 

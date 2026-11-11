@@ -20,6 +20,12 @@ export const StreamingBudgetKey = 'mesoviewspec-streaming';
 /** Copies resident at once by default: 7 of the tiled fixture's 32 tiles (its story's budget). */
 export const DefaultStreamingBudget = 3000;
 
+/**
+ * The margin (Å) by which a resident tile keeps its place (streaming.md, `StreamBudget.hysteresis`), so a slight orbit
+ * or pan does not drop a tile at the view's edge and load it again (a quarter of the tiled fixture's 2000 Å tiles).
+ */
+export const StreamHysteresisA = 500;
+
 /** A viewer's budget: its value, and who to tell when it changes. */
 export interface StreamingBudget {
   readonly value: number;
@@ -81,7 +87,7 @@ export const MesoViewSpecStreaming = PluginBehavior.create<Params>({
       {
         label: 'Streamed copies',
         description:
-          'The copies of a streamed document loaded at once, nearest the camera first (0: none, level 0 only)',
+          'The copies of a streamed document loaded at once, the ones in view first (0: none, level 0 only)',
       },
     ),
   }),
