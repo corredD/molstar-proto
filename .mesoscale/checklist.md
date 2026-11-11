@@ -158,6 +158,12 @@ Lanes 7 and 8 run in parallel (Ludo, 2026-11-10): their files do not meet (7: `p
       pass, unit base failures only. Checked in the app (β-cell): an edit of `r.isg-recipe`'s uri fetches the new recipe
       in that step and compiles a different IR; Undo fetches the old one and gives the same IR as before; Redo the new
 - [ ] Ludo's check (2026-11-10): fails. What streams in looks wrong and does not follow where the camera looks; a pan
-      re-centers the camera by itself. Likely Canvas3D's own reset (`shouldResetCamera`) when a tile lands outside the
-      old bounds, then the feed sends the re-centered target. Being fixed (Opus)
+      re-centers the camera by itself. Cause: Canvas3D's own reset (`shouldResetCamera`) when a tile lands outside the
+      old bounds or an eviction leaves the camera over nothing; the feed then sent the re-centered target. Fixed
+      (`d6e84869f`..`7e7f39aae`): `keepCamera` holds `camera.manualReset` for each tile write and its synchronous
+      commit, then puts it back (not for the session: checkpoints and `.molj` save canvas props). The looks do not
+      differ (checked). Medium 130 pass, unit base failures only. Checked through the API: a stream to a corner (6 in, 6
+      out) leaves the camera where set and the flag off. Not seen on a GPU (no WebGL here). Open: the near plane when
+      zoomed out over the whole box, a checkpoint taken mid-write, a tiles-only document's first tile
+- [ ] Ludo's check again
 - [ ] merged
