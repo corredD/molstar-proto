@@ -628,6 +628,27 @@ where it plugs:
 - **The alternative, tiles as steps:** every camera move would fill the history, and Undo would unload what the person
   is looking at.
 - **The budget** is a viewer setting (Settings), never the document's.
+- **As built (`mvs-streaming-app`):**
+  - The camera: `feedCanvasCamera` (`molstar/src/camera-feed.ts`) feeds the owner the canvas camera once it rests (250
+    ms, its target or a plane moved more than 1 Å, or a plane turned): its target as a focus of radius 0, with its view
+    (the eye, the frustum's four side planes and the plane through the eye facing the target);
+    `TileStreamer.step(ir, focus)` plans from it, not from the document's camera: the tiles in view first, from the
+    screen's centre out, nearest the eye along the line of sight (streaming.md, Ludo 2026-11-11), with a hysteresis of
+    500 Å (`StreamHysteresisA`). A view shown forgets it, and the canvas camera is fed again once it rests
+    (`focusDropped`, `refeed`), though it may not move.
+  - The tiles' transformer is `MesoTilePlacements` (`ms-plugin.meso-view-spec-tiles`), registered behavior-owned by the
+    `mesoviewspec` area. The adapter makes, draws, styles and deletes tile lists through the state, never the API, in an
+    edit's step as in a stream step; a commit with no API to call touches only tiles. A restore's `adopt` keeps the
+    tiles of the restored stream, deletes the others, and writes the restored looks over the kept ones (so Undo of a
+    look edit while tiles stream undoes their looks too); Undo of the open deletes them. An evicted tile's placements go
+    with its list; the owner holds only the document's for Undo.
+  - The budget: Prism's Settings has no group of an extension's (`ViewerExtension.settings` is reserved, not read), so
+    the budget is the one param of an eager plugin behavior in prism-me's spec, `mesoviewspec-streaming` ("Streamed
+    copies", 3000 by default), which Settings lists under Behaviors; a change is `settings.set`'s step, and Undo
+    restores it. Eager, because a behavior the lazy chunk added would go on Undo of a step before it.
+  - The tiled fixture opens in prism-me by `mesoviewspec.open` with `example: 'tiled'` (its provider is code).
+  - Not yet: level 0 drawn (the adapter draws no envelopes, streaming.md "Not yet"): before tiles arrive only the
+    document's own lists (the fixture's three landmarks) are on screen.
 
 ## 10. No MesoViewerContext (decision 7)
 

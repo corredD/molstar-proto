@@ -14,8 +14,8 @@ import { type CommitReport, type RendererAdapter, shownViewOf } from '@molstar/m
 import { createMesoscaleExplorerSpec } from '@molstar/prism-me-app/spec';
 import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
 import type { PrismViewer } from '@molstar/prism-viewer/viewer';
-import { afterEach, describe, expect, it } from 'vitest';
-import { PrismMesoAdapter } from '../prism-adapter.js';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { type CameraCanvas, type KeepCanvas, PrismMesoAdapter } from '../prism-adapter.js';
 import { MesoSession } from '../session.js';
 import { stubCanvasForLabels } from './canvas.js';
 
@@ -178,6 +178,70 @@ describe('a streamed session over the Prism adapter (headless)', () => {
     expect(commits.slice(n).some((c) => c.report.added.some(isTile))).toBe(true);
     expect(label()).toEqual(at);
     expect(labels).toEqual([]);
+  });
+
+  // gate S2: a stream commit keeps no set when the only sets are tiles and one is swapped; it set the IR camera again
+  it('a stream commit with no set kept leaves the camera alone', { tags: ['medium'] }, async () => {
+    const fixture = tiledFixture({ delayMs: 4 });
+    // tiles only (no landmark instance), a numeric camera over the first tiles
+    const doc: MesoViewSpecDoc = {
+      ...fixture.doc,
+      instances: [],
+      views: [{ id: 'v.n', camera: { position: [1000, 1000, 20000], target: [1000, 1000, 1000], up: [0, 1, 0] } }],
+      session: { view: 'v.n' },
+      tours: undefined,
+    };
+    const v = await createPrismViewerHeadless({ spec: createMesoscaleExplorerSpec('') });
+    viewers.push(v);
+    // a canvas the adapter's camera step sees (the plugin's own stays none, headless), recording it
+    const camera = { setState: vi.fn() };
+    const resets = vi.fn();
+    // and what the tiles' writes hold (`keepCamera`): its props, its scene, its representations
+    const canvas: CameraCanvas & KeepCanvas = {
+      camera,
+      commit: () => {},
+      requestCameraReset: resets,
+      props: { camera: { manualReset: false }, sceneRadiusFactor: 1 },
+      setProps: () => {},
+      reprCount: { value: 1 },
+      boundingSphere: { center: [0, 0, 0], radius: 5000 },
+    } as unknown as CameraCanvas & KeepCanvas;
+    /** The camera set other than `radiusMax` (which follows the scene after a tile write, as Canvas3D's commit). */
+    const cameraSet = () => camera.setState.mock.calls.filter(([s]) => Object.keys(s).some((k) => k !== 'radiusMax'));
+    const plugin = new Proxy(v.plugin, {
+      get: (t, p) => (p === 'canvas3d' ? canvas : Reflect.get(t, p)),
+    });
+    // no viewer API: a commit outside `bound` is the owner's stream step
+    const prism = new PrismMesoAdapter({ plugin, extensions: { load: (id) => v.extensions.load(id) } });
+    const s = new MesoSession(
+      doc,
+      { resolvers: DefaultResolvers, tiles: () => fixture.provider, stream: { budget: { copies: 400 } } },
+      prism,
+    );
+    const settle = async () => {
+      do {
+        await sleep(12);
+        await s.exclusive(async () => {});
+      } while (s.streamer!.stats().inFlight > 0);
+    };
+    try {
+      await prism.bound(v.api, () => s.start());
+      await settle();
+      expect(s.streamer!.stats().resident).toBe(1);
+      const first = tiles(s.ir!).map((x) => x.key);
+      // the only tile swapped for one at the far corner
+      await s.setFocus({ center: [7000, 7000, 3000], radius: 0 });
+      await settle();
+      expect(tiles(s.ir!).map((x) => x.key)).not.toEqual(first);
+      const streamed = s.history.filter((r) => r.kind === 'stream' && r.commit);
+      expect(streamed.length).toBeGreaterThan(1);
+      for (const r of streamed) expect(r.commit!.kept).toEqual([]);
+      for (const r of streamed) expect(r.commit!.cameraSet, 'a stream commit set the camera').toBe(false);
+      expect(cameraSet()).toHaveLength(1);
+      expect(resets).not.toHaveBeenCalled();
+    } finally {
+      s.dispose();
+    }
   });
 
   it('a view edit that is a color adds and removes no tile', { tags: ['medium'] }, async () => {

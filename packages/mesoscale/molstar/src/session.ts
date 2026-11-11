@@ -15,9 +15,11 @@ import {
   type RendererAdapter,
   type ResolveOutput,
   type RuntimeOptions,
+  type StreamFocus,
   type StreamOptions,
   type StreamPlan,
   type StreamStats,
+  streamNode,
   TileStreamer,
   updateView,
 } from '@molstar/meso-spec/runtime';
@@ -50,6 +52,9 @@ export interface EditRecord {
 /** An issue a step carries over: not the adapter's (it reports again) and not the streamer's (it lists all it holds). */
 const kept = (i: Issue) => i.phase !== 'render' && i.code !== 'stream.tile' && i.code !== 'stream.budget';
 
+/** A caller's adoption of a restored IR (the adapter's, from the restored tree). */
+export type Adopt = (ir: IR | undefined) => Promise<unknown>;
+
 /** What one edit can be given beyond the document: a signal that stops its resolution, and who to tell as it goes. */
 export type EditRun = Pick<RuntimeOptions, 'signal' | 'onProgress'>;
 
@@ -61,10 +66,20 @@ export type SessionOptions = Omit<RuntimeOptions, 'cache'> & {
    * opens it again from them) and lets them go itself (prism.md §7.3, point 3). Absent: the session's own.
    */
   readonly cache?: Map<string, ResolveOutput>;
+  /** Where the viewer's camera looks when the session starts (`setFocus`): a session a restore made streams there. */
+  readonly focus?: StreamFocus;
 };
 
 export class MesoSession {
   doc: MesoViewSpecDoc;
+  /**
+   * The document the step in flight compiles and draws (an edit's next, a restore's), until the step ends: `doc` is
+   * set only once it has succeeded, so a resource loaded or a list described meanwhile reads this one.
+   */
+  get stepDoc(): MesoViewSpecDoc {
+    return this.inFlight ?? this.doc;
+  }
+  private inFlight: MesoViewSpecDoc | undefined;
   ir: IR | undefined;
   issues: readonly Issue[] = [];
   counts: CompileResult['counts'] = {};
@@ -89,9 +104,10 @@ export class MesoSession {
     private readonly adapter?: RendererAdapter,
   ) {
     this.doc = doc;
-    const { stream, cache, ...rest } = options;
+    const { stream, cache, focus, ...rest } = options;
     this.options = rest;
     this.cache = cache ?? new Map();
+    this.focus = focus;
     if (stream && options.tiles) this.streamer = new TileStreamer(options.tiles, stream, () => this.onSettled());
   }
 
@@ -104,6 +120,19 @@ export class MesoSession {
     this.streamer?.setBudget(copies);
     return this.queue(() => this.runStream());
   }
+
+  /**
+   * Where the viewer's camera looks (prism.md §9: its target, Å, world), planned from by every stream step after it
+   * instead of the document's camera, and a stream step now. Undefined: the document's camera again. A view shown
+   * forgets it: the canvas goes to the view's camera, and the viewer feeds it again once there.
+   */
+  setFocus(focus: StreamFocus | undefined): Promise<EditRecord | undefined> {
+    this.focus = focus;
+    // a document with no stream: nothing to plan (no view derived again at each camera rest)
+    if (!this.streamer || (this.ir && !streamNode(this.ir))) return Promise.resolve(undefined);
+    return this.queue(() => this.runStream());
+  }
+  private focus: StreamFocus | undefined;
 
   start(): Promise<EditRecord> {
     return this.queue(() => this.run('initial', this.doc, 'open'));
@@ -131,6 +160,7 @@ export class MesoSession {
     return this.queue(async () => {
       const was = this.view;
       this.view = view;
+      this.focus = undefined;
       try {
         return await this.run('view', this.doc, `view ${view ?? '(the document’s)'}`);
       } catch (e) {
@@ -145,17 +175,21 @@ export class MesoSession {
    * A restore (Undo, Redo, a session opened): the document compiled with the cache and taken as the one drawn, with no
    * commit; the caller's adapter adopts the IR from the restored state (prism.md §7.3, point 5). From a state Undo can
    * reach every model is a cache hit; from a session on a fresh page, a cold resolution. `view` is the view shown with
-   * the restored state (prism.md §7.4).
+   * the restored state (prism.md §7.4). `adopt` is the caller's adoption of the IR, run in the same turn of the queue,
+   * so no stream step commits between the restore and it.
    */
-  restore(doc: MesoViewSpecDoc, view: string | undefined): Promise<EditRecord> {
+  restore(doc: MesoViewSpecDoc, view: string | undefined, adopt?: Adopt): Promise<EditRecord> {
     return this.queue(async () => {
       const t0 = performance.now();
       this.view = view;
-      const r = await compile(doc, { ...this.options, cache: this.cache, view });
+      const r = await this.within(doc, () => compile(doc, { ...this.options, cache: this.cache, view }));
+      // the resident tiles spliced in: the restore keeps their lists (behavior-owned, prism.md §9), so the IR the
+      // adapter adopts names them; a changed stream key drops them (the adapter deletes their lists)
+      const streamed = r.ir ? this.stream(doc, r.ir) : undefined;
       this.doc = doc;
-      this.ir = r.ir;
+      this.ir = streamed?.ir;
       this.counts = r.counts;
-      this.issues = r.issues;
+      this.issues = [...r.issues, ...(streamed?.issues ?? [])];
       this.cacheKeys = r.stats.models.map((m) => m.key);
       const record: EditRecord = {
         label: 'restore',
@@ -166,19 +200,21 @@ export class MesoSession {
         totalMs: performance.now() - t0,
       };
       this.history.push(record);
+      await adopt?.(this.ir);
       return record;
     });
   }
 
   /**
    * A restore of the same document with another view shown (Undo past a view shown, prism.md §7.4): its view derived
-   * again over the IR, nothing compiled, nothing committed (the caller's adapter adopts it).
+   * again over the IR, nothing compiled, nothing committed (the caller's adapter adopts it, `adopt`, in the same turn).
    */
-  restoreView(view: string | undefined): Promise<EditRecord> {
+  restoreView(view: string | undefined, adopt?: Adopt): Promise<EditRecord> {
     return this.queue(async () => {
       const t0 = performance.now();
       this.view = view;
       if (this.ir) this.ir = updateView(this.doc, this.ir, view);
+      await adopt?.(this.ir);
       const record: EditRecord = {
         label: 'restore',
         kind: 'restore',
@@ -189,6 +225,11 @@ export class MesoSession {
       this.history.push(record);
       return record;
     });
+  }
+
+  /** `work` in the queue's turn: no edit or stream step runs while it does (an adoption of the IR drawn). */
+  exclusive<T>(work: () => Promise<T>): Promise<T> {
+    return this.queue(work);
   }
 
   private queue<T>(step: () => Promise<T>): Promise<T> {
@@ -208,7 +249,7 @@ export class MesoSession {
 
   /** The streamer's step over `ir` (compiled or view-updated), the views derived again for the sets it spliced in. */
   private stream(doc: MesoViewSpecDoc, ir: IR) {
-    const s = this.streamer?.step(ir);
+    const s = this.streamer?.step(ir, this.focus);
     // `issues` are all the stream's standing ones (a model edit rebuilds the session's issues), `fresh` the new ones
     return {
       ir: s ? updateView(doc, s.ir, this.view) : ir,
@@ -274,9 +315,23 @@ export class MesoSession {
     return record;
   }
 
+  /** `work` with `next` as the step's document (`stepDoc`): none once it ends, done, failed or stopped. */
+  private async within<T>(next: MesoViewSpecDoc, work: () => Promise<T>): Promise<T> {
+    this.inFlight = next;
+    try {
+      return await work();
+    } finally {
+      this.inFlight = undefined;
+    }
+  }
+
+  private run(kind: EditRecord['kind'], next: MesoViewSpecDoc, label: string, run?: EditRun): Promise<EditRecord> {
+    return this.within(next, () => this.runStep(kind, next, label, run));
+  }
+
   // The session's state (ir, doc, issues, counts, history) changes only once the commit has succeeded: an edit that
   // fails leaves the session as it was, consistent with what the viewer last drew.
-  private async run(
+  private async runStep(
     kind: EditRecord['kind'],
     next: MesoViewSpecDoc,
     label: string,
