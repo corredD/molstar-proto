@@ -2219,3 +2219,33 @@ band) and in which order to build; one builder (Opus) builds both, the clip pop 
 reuse it). Then the gate (lane-reviewer, lane-skeptic), fixes with failing tests first. No pictures. Size: clip pop
 ~100-200 lines, shells ~300-500. Over that: record it and keep going; stop and report if shells need a library change
 the lane cannot make (the culler hook).
+
+## Round 10: architect's design (2026-11-10, read-only, at f42ab1d15)
+
+- **Clip pop: candidate A**, the band's lipids in members of their own (levels on), the rest atoms-only, selected as
+  without a clip. B rejected: a unit is taken by its nearest point, so its far lipids still cross 8.8 px (round 8: 0.043).
+  One select pass: band units carry a negated key (−key−1), sort first; `bandCapacity` beside `capacity`;
+  `LipidSelection` gains `bandCount`, `bandLive` (preallocated). Cutter: `writer(m, sel, 'rest' | 'band')`, one upload,
+  `uUnitStart`, `cleared` per (m, part). membrane.ts: `cutAtomsOnly = detail === 'off' || middleOn`; band members (levels
+  on, `poolWriter(..., 'band')`) where `cutBandOn`; they merge apart (`lodLevels` in the merge key); `onlyMiddle` also
+  needs `cutBandOn` equal. Tests: P1 (Dawn, test 3 outside loop with a clip far from the path: step ≤ unclipped + 0.003
+  and < 0.03, `bandLive` 0; new code, tune the fixture until HEAD fails), P2 (TS split), P3 (perf ~16 B). Guards:
+  lipid-clip:37, :85, :208, membrane-detail-ui:140, lipid-procedural.webgpu:47, numbers recorded first. ~150 lines.
+- **Shells: in the lane, no library change.** Hook writes reach the GPU that frame only through what is read at bind
+  (attributes, object uniforms, in-place texture loads at a fixed size); `drawCount`, `instanceCount`, defines and
+  swapped textures only through `update()` (render-item.ts:1271), not called per frame. So the band object is built at a
+  fixed cap C (draw count 3C, instances = shells, bounding sphere the leaflet's); each view writes the used subarray and
+  the live count into `uPatchMiddle.z`; the shells WGSL sends vertices past 3·z to clip space (as texture-mesh). Band
+  selected from `createMembraneViews` once per view (`bands(view)`); same triangles write nothing; at rest the hook
+  does not run: idle stays idle. Overflow: stack sized from the tree depth; `band.dropped` summed into
+  `pool.bandDropped`. `middleOn` = parallax or shells; shells' clip is item 1's band members; a switch to or from
+  shells is a build. Operation drops the refusal (shells 4-12); Look offers Shells, a Shells slider. Tests S1 (test 3
+  for shells), S2 (first frame after a move = second, parallax as control), S3 (test 5), S4 (test 6 at rest), S5 (TS
+  cap, deep tree, no rewrite), S6 (UI, one history step). ~380 lines.
+- **Order:** P1 failing → split, cutter, members, guards → `middleOn` shells → shell-band cap → band objects and
+  cutoff → clip → operation and UI. Tests ~500 lines.
+- **Risks:** band members at full capacity +⅓ instance memory with a clip; shells ~4 MB a band at C = 16,384 (~72 MB
+  for yeast's 18 cut leaflets); per-moving-frame allocations in `octNormalsCell`/`interleave`; a pool skipped by
+  `prepareCull` leaves the band stale; subarray uploads vs bounds; the table load flushes once per changed view.
+- **For Ludo:** C and its memory; band members' capacity with a clip; the cutoff in the lane's WGSL or a 5-line
+  library change so `drawCount` is read at render.
