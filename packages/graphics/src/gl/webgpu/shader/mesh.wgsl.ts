@@ -295,6 +295,13 @@ fn vertexMain(in: VertexInput) -> VertexOutput {
             out.position = vec4<f32>(0.0, 0.0, 2.0, 1.0);
         }
     #endif
+    #if defined(dPatchMiddle_shells)
+        // a band written in place at a fixed size (round 10, \`uPatchMiddle.w\` 1): its triangles past the live count
+        // (\`uPatchMiddle.z\`) outside the clip volume, as the iso chunks' above (the draw count is read at update only)
+        if (uObject.uPatchMiddle.w == 1.0 && f32(in.vertexIndex) >= 3.0 * uObject.uPatchMiddle.z) {
+            out.position = vec4<f32>(0.0, 0.0, 2.0, 1.0);
+        }
+    #endif
 
     // after the positions: grid data (smoothed colors) is read at the vertex position
     let gridPosition = basePosition;

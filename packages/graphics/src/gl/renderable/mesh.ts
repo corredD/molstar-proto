@@ -78,7 +78,10 @@ export const MeshSchema = {
   dPatchMiddle: DefineSpec('string', ['off', 'shells', 'beneath', 'parallax']),
   /** the shells' count, the heads' lo and hi (`tPatch`'s alpha 0 and 1) and the surface's height, Å out of the leaflet */
   uPatchShells: UniformSpec('v4'),
-  /** the lipid's px where the middle look starts and ends (shells drawn, `beneath` discarded, parallax marched) */
+  /**
+   * the lipid's px where the middle look starts and ends (shells drawn, `beneath` discarded, parallax marched); shells:
+   * with w 1 only the first z triangles drawn (a band written in place at a fixed size, its live count), w 0 all
+   */
   uPatchMiddle: UniformSpec('v4'),
   /** Å toward the camera, in depth only (`Mesh.Params.depthOffset`) */
   uDepthOffset: UniformSpec('f'),
