@@ -149,10 +149,22 @@ arguments, never on the order of `manifest.tiles`.
 
 ```ts
 // runtime/streaming.ts
-/** A sphere in world Å: the camera's target and its focus radius (0 for a numeric camera). */
+/** A sphere in world Å: the camera's target and its focus radius (0 for a numeric camera); a viewer adds its view. */
 export interface StreamFocus {
   readonly center: readonly [number, number, number];
   readonly radius: number;
+  /** What a viewer's camera sees: when given, tiles are planned by the view, not by `center` (step 2). */
+  readonly view?: StreamView;
+}
+
+/** A viewer's camera, world Å. */
+export interface StreamView {
+  readonly eye: readonly [number, number, number];
+  /**
+   * The side planes of what it sees, `[nx, ny, nz, c]` with `n·p + c ≥ 0` inside (the viewer's left, right, bottom,
+   * top). Near and far are left out: a viewer fits them to what is drawn, so a tile not loaded yet would lie beyond.
+   */
+  readonly planes: readonly (readonly [number, number, number, number])[];
 }
 
 export interface StreamState {
@@ -207,6 +219,12 @@ The algorithm:
 2. **Order.** Sort by (not a focus tile, `d'`, id) ascending, a focus tile being one with `d ≤ focus.radius` (step 4),
    so hysteresis never lets a resident tile push one out; ids compare by UTF-16 code units (`a < b`), never
    `localeCompare`.
+   - **With a view** (`focus.view`, Ludo 2026-11-11: tiles come where the person looks, as culling does): `d(t)` is the
+     distance from `view.eye` to the tile's box, and the order is (not in view, `d'`, id): every tile the view sees,
+     nearest the eye first, then the others, nearest the eye first. A tile is in view when its box is not wholly outside
+     one of `view.planes` (its corner farthest along the plane's normal is outside). No plane: every tile is in view. A
+     focus tile is then one in view (`focus` lists them, nearest first). A view with a non-finite number is ignored
+     (planned by `center`).
 3. **Walk, nearest first.** Add each tile's copies while the total stays at or under `budget.copies`, and stop at the
    first tile that does not fit. The walk never skips ahead to a smaller tile farther out, so the loaded region stays
    one shell around the focus.

@@ -19,6 +19,11 @@ port 1370), which edits `prism-viewer.ts` and the evals. Keep off those.
   (coordinator) 4. the gate (Opus).
 - **Base:** after lanes 0 and 2 and the streaming lane merged (all are).
 - **Known from lane 5 (open):** streamed tile lists may record steps (latent); this lane's history rule settles it.
+- **Step 5, tiles where the person looks (Ludo, 2026-11-11, after the first hand check):** the feed gives the canvas
+  camera's view (eye, the frustum's side planes), and the planner wants the tiles in view first, nearest the eye first,
+  then the others (streaming.md "Order"). Tests: the planner's order with a view (in view first, a tile behind the eye
+  last, no plane, a non-finite view); the feed fires on an orbit or a zoom, not only a pan; the session plans by the fed
+  view. Touches: `spec/src/runtime/streaming.ts`, `molstar/src/camera-feed.ts`, `extension.ts`. ~60 lines.
 
 ## Built
 

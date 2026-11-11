@@ -617,9 +617,11 @@ where it plugs:
   is looking at.
 - **The budget** is a viewer setting (Settings), never the document's.
 - **As built (`mvs-streaming-app`):**
-  - The camera: `feedCanvasCamera` (`molstar/src/camera-feed.ts`) feeds the owner the canvas camera's target once it
-    rests (250 ms, moved more than 1 Å), as a focus of radius 0; `TileStreamer.step(ir, focus)` plans from it, not from
-    the document's camera (streaming.md). A view shown forgets it until the canvas has gone there.
+  - The camera: `feedCanvasCamera` (`molstar/src/camera-feed.ts`) feeds the owner the canvas camera once it rests (250
+    ms, its target or eye moved more than 1 Å): its target as a focus of radius 0, with its view (the eye and the
+    frustum's four side planes); `TileStreamer.step(ir, focus)` plans from it, not from the document's camera: the tiles
+    in view first, nearest the eye first (streaming.md, Ludo 2026-11-11). A view shown forgets it until the canvas has
+    gone there.
   - The tiles' transformer is `MesoTilePlacements` (`ms-plugin.meso-view-spec-tiles`), registered behavior-owned by the
     `mesoviewspec` area. The adapter makes, draws, styles and deletes tile lists through the state, never the API, in an
     edit's step as in a stream step; a commit with no API to call touches only tiles. A restore's `adopt` keeps the
