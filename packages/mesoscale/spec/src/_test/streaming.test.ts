@@ -495,6 +495,72 @@ describe('planStream', () => {
   });
 });
 
+describe('planStream with a view (tiles where the person looks)', () => {
+  const box = (id: string, x: number, y = 0): Tile => ({
+    id,
+    box: { min: [x, y, 0], max: [x + 100, y + 100, 100] },
+    counts: { 'p.a': 10 },
+  });
+  const manifestOf = (tiles: Tile[]): TileManifest => ({
+    format: 'meso-tiles',
+    levels: [0, 1],
+    bounds: { min: [-300, 0, 0], max: [600, 300, 100] },
+    populations: ['p.a'],
+    tiles,
+  });
+  type Plane = [number, number, number, number];
+  // the eye at x = -100 looking down +x, 90° each way: four side planes, n·p + c ≥ 0 inside
+  const eye = [-100, 50, 50] as [number, number, number];
+  const frustum: Plane[] = [
+    [1, -1, 0, 150],
+    [1, 1, 0, 50],
+    [1, 0, -1, 150],
+    [1, 0, 1, 50],
+  ];
+  // a behind the eye (100 Å), b in front (100 Å), c in front (600 Å)
+  const row = manifestOf([box('a', -300), box('b', 0), box('c', 500)]);
+  const target = { center: [50, 50, 50] as [number, number, number], radius: 0 };
+
+  it('wants the tiles in view first, nearest the eye first, a tile behind the eye last', () => {
+    const plan = planStream(row, { ...target, view: { eye, planes: frustum } }, none, { copies: 30 });
+    expect(plan.want).toEqual(['b', 'c', 'a']);
+    expect(plan.focus).toEqual(['b', 'c']);
+  });
+
+  it('a column in view comes before a nearer tile out of it', () => {
+    // a 3×3 grid, the eye inside the middle tile, a view that sees only x ≥ 250 (the third column)
+    const tiles: Tile[] = [];
+    for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) tiles.push(box(`${i}${j}`, 100 * i, 100 * j));
+    const view = { eye: [150, 150, 50] as [number, number, number], planes: [[1, 0, 0, -250]] as Plane[] };
+    const plan = planStream(manifestOf(tiles), { ...target, view }, none, { copies: 50 });
+    expect(plan.want).toEqual(['21', '20', '22', '11', '01']);
+    expect(plan.focus).toEqual(['21', '20', '22']);
+  });
+
+  it('evicts the farthest from the eye first', () => {
+    const loaded = new Map([
+      ['a', 10],
+      ['c', 10],
+    ]);
+    const plan = planStream(row, { ...target, view: { eye, planes: frustum } }, { ...none, loaded }, { copies: 10 });
+    expect(plan).toMatchObject({ want: ['b'], request: ['b'], evict: ['c', 'a'] });
+  });
+
+  it('no plane: every tile is in view, nearest the eye first', () => {
+    const plan = planStream(row, { ...target, view: { eye, planes: [] } }, none, { copies: 30 });
+    expect(plan.want).toEqual(['a', 'b', 'c']);
+  });
+
+  it('a view with a number that is not finite is planned by the centre', () => {
+    const plain = planStream(row, target, none, { copies: 20 });
+    for (const view of [
+      { eye: [Number.NaN, 0, 0] as [number, number, number], planes: frustum },
+      { eye, planes: [[1, 0, Number.POSITIVE_INFINITY, 0]] as Plane[] },
+    ])
+      expect(planStream(row, { ...target, view }, none, { copies: 20 })).toEqual(plain);
+  });
+});
+
 // ---- sets and the camera ----
 
 const payloads = async (ids: readonly string[]) =>
