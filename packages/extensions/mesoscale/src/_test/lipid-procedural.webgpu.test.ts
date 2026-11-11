@@ -44,7 +44,8 @@ const Size = 256;
 
 describe.skipIf(!webgpu)('a lipid membrane made per view (Dawn)', () => {
   // round 8: each middle look as the coarse one (test 6: at rest, nothing selected or written)
-  for (const middle of ['coarse', 'parallax'] as const) {
+  // round 10 (S4): shells too, at rest their bands not written either
+  for (const middle of ['coarse', 'parallax', 'shells'] as const) {
     it(`generates what the view shows: whole → close → whole, nothing again at rest, the same path the same lipids (middle: ${middle})`, async () => {
       const plugin = await HeadlessPluginContext.create(
         { webgpu },
@@ -70,7 +71,16 @@ describe.skipIf(!webgpu)('a lipid membrane made per view (Dawn)', () => {
           .commit();
         const repr = plugin.state.data.cells.get(node.ref)!.obj!.data.repr as unknown as {
           cutLipids: number;
-          pool: { live: number; triangles: number; inView: number; selects: number; regenerations: number };
+          pool: {
+            live: number;
+            triangles: number;
+            inView: number;
+            selects: number;
+            regenerations: number;
+            bands: number;
+            bandVersion: number;
+            bandDropped: number;
+          };
         };
         const canvas = plugin.canvas3d!;
         const camera = canvas.camera;
@@ -130,8 +140,9 @@ describe.skipIf(!webgpu)('a lipid membrane made per view (Dawn)', () => {
         const surfaces = (
           plugin.state.data.cells.get(node.ref)!.obj!.data.repr as { renderObjects: { type: string }[] }
         ).renderObjects.filter((o) => o.type === 'mesh');
-        // and beneath the lipids, near, one a leaflet (round 4c)
-        expect(surfaces.length).toBe(4);
+        // and beneath the lipids, near, one a leaflet (round 4c); shells: a band over each far one (round 10)
+        expect(surfaces.length).toBe(middle === 'shells' ? 6 : 4);
+        expect(repr.pool.bands).toBe(middle === 'shells' ? 2 : 0);
         const colors = new Set<string>();
         for (let o = 0; o < a.image.length; o += 4 * 97)
           colors.add(`${a.image[o]},${a.image[o + 1]},${a.image[o + 2]}`);
@@ -150,6 +161,8 @@ describe.skipIf(!webgpu)('a lipid membrane made per view (Dawn)', () => {
         for (let i = 0; i < 3; ++i) await plugin.getImageRaw({ width: Size, height: Size });
         expect(repr.pool.selects).toBe(rest.selects);
         expect(repr.pool.regenerations).toBe(rest.regenerations);
+        expect(repr.pool.bandVersion).toBe(rest.bandVersion);
+        expect(repr.pool.bandDropped).toBe(0);
         expect(canvas.graphics.takeErrors?.() ?? []).toEqual([]);
       } finally {
         plugin.dispose();
@@ -396,7 +409,7 @@ describe.skipIf(!webgpu)('a lipid membrane made per view (Dawn)', () => {
           patch: 'dawn-x600',
           center: Vec3.zero(),
           // round 8: LIPID_MIDDLE=parallax measures the middle look (test 4's numbers)
-          middle: (process.env.LIPID_MIDDLE as 'coarse' | 'parallax' | undefined) ?? 'coarse',
+          middle: (process.env.LIPID_MIDDLE as 'coarse' | 'parallax' | 'shells' | undefined) ?? 'coarse',
         })
         .commit();
       const wrapMs = performance.now() - t0;
@@ -442,7 +455,7 @@ describe.skipIf(!webgpu)('a lipid membrane made per view (Dawn)', () => {
       const a = await at('whole', whole);
       const b = await at('middle', above(20000));
       // a middle look draws lipids from 11 px, not 2: its close view nearer (round 8)
-      const closeAt = process.env.LIPID_MIDDLE === 'parallax' ? 60 : 300;
+      const closeAt = process.env.LIPID_MIDDLE === 'parallax' || process.env.LIPID_MIDDLE === 'shells' ? 60 : 300;
       const c = await at('close', above(closeAt));
       const d = await at('whole again', whole);
       const e = await at('close again', above(closeAt));

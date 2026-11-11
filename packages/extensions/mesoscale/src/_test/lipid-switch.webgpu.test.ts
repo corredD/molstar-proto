@@ -217,9 +217,12 @@ describe.skipIf(!webgpu)('the switch between a membrane’s spheres and its far 
   // round 8 (Ludo, 2026-11-09: "to compare and pick"): each middle look zoomed from a lipid at 16 px (its atoms) to 0.8
   // px (the flat texture) with no pop, outside the leaflet and inside (the gate's S4: the inner leaflet seen from the
   // center, across to the far wall): the largest step's Oklab under 0.03, as round 7's coarse
+  // round 10 (S1): shells too, its band objects drawn over the far surface beneath
   for (const [middle, side] of [
     ['parallax', 'outside'],
     ['parallax', 'inside'],
+    ['shells', 'outside'],
+    ['shells', 'inside'],
   ] as const) {
     it(`zooms across the ${middle} middle look with no pop, ${side} (16 to 0.8 px, the largest step's Oklab under 0.03)`, {
       timeout: 240_000,
@@ -254,6 +257,7 @@ describe.skipIf(!webgpu)('the switch between a membrane’s spheres and its far 
         ).data.repr.renderObjects;
         const define = middle === 'parallax' ? 'parallax' : 'beneath';
         expect(objects.some((o) => o.values.dPatchMiddle?.ref.value === define)).toBe(true);
+        if (middle === 'shells') expect(objects.some((o) => o.values.dPatchMiddle?.ref.value === 'shells')).toBe(true);
         const camera = canvas.camera;
         canvas.requestCameraReset({ durationMs: 0 });
         await plugin.getImageRaw({ width: Size, height: Size });
@@ -297,6 +301,75 @@ describe.skipIf(!webgpu)('the switch between a membrane’s spheres and its far 
         expect(canvas.graphics.takeErrors?.() ?? []).toEqual([]);
       } finally {
         forgetLipidPatch('dawn-middle');
+        plugin.dispose();
+      }
+    });
+  }
+  // round 10 (S2): the shell band is selected in the culler's view hook, mid-frame, and written in place (its vertices,
+  // table, uniforms read at bind): the first frame after a move draws it for that view, as the second does. Parallax
+  // (no band) the control
+  for (const middle of ['parallax', 'shells'] as const) {
+    it(`draws the ${middle} look in the frame of its view: the first frame after a move as the second (round 10, S2)`, {
+      timeout: 240_000,
+    }, async () => {
+      const plugin = await HeadlessPluginContext.create(
+        { webgpu },
+        DefaultPluginSpec(),
+        { width: Size, height: Size },
+        { backend: 'webgpu' },
+      );
+      try {
+        await plugin.init();
+        const canvas = plugin.canvas3d!;
+        canvas.setProps({ camera: { ...canvas.props.camera, mode: 'perspective' } });
+        registerLipidPatch('dawn-band-frame', syntheticPatchPdb(12, 14, { POPC: 27, CHL1: 17 }).text);
+        const params = {
+          ...PD.getDefaultValues(LipidMembraneParams),
+          method: 'cutter' as const,
+          radius: Radius,
+          edge: 100,
+          leaflets: 'outer' as const,
+          patch: 'dawn-band-frame',
+          center: Vec3.zero(),
+          middle,
+        };
+        const node = await plugin.build().toRoot().apply(LipidMembrane, params).commit();
+        const repr = () =>
+          plugin.state.data.cells.get(node.ref)!.obj!.data.repr as unknown as {
+            pool: { bandTriangles: number; bandVersion: number };
+          };
+        const camera = canvas.camera;
+        canvas.requestCameraReset({ durationMs: 0 });
+        await plugin.getImageRaw({ width: Size, height: Size });
+        const top = Radius + 20;
+        const lipid = Math.sqrt((12 * 8 * (14 * 8 * 0.866)) / (12 * 14));
+        let largest = 0;
+        // a lipid at 6, then 4 px, then 3 (the band's range, 2 to 22 px), each first frame against its second
+        for (const px of [6, 4, 3]) {
+          const depth = (lipid * Size * camera.projection[5]) / (2 * px);
+          camera.setState(
+            {
+              ...camera.getSnapshot(),
+              target: Vec3.create(px * 10, 0, top),
+              position: Vec3.create(px * 10, 0, top + depth),
+              up: Vec3.create(0, 1, 0),
+            },
+            0,
+          );
+          const first = meanOklab((await plugin.getImageRaw({ width: Size, height: Size })).data);
+          const version = repr().pool.bandVersion;
+          const second = meanOklab((await plugin.getImageRaw({ width: Size, height: Size })).data);
+          // the second frame wrote nothing again (the same view)
+          expect(repr().pool.bandVersion).toBe(version);
+          if (middle === 'shells') expect(repr().pool.bandTriangles, `${px} px`).toBeGreaterThan(0);
+          largest = Math.max(largest, Math.hypot(second.L - first.L, second.a - first.a, second.b - first.b));
+        }
+        if (process.env.LIPID_NUMBERS) console.log(JSON.stringify({ middle, largest }));
+        expect(largest).toBeLessThan(0.002);
+        await plugin.build().delete(node.ref).commit();
+        expect(canvas.graphics.takeErrors?.() ?? []).toEqual([]);
+      } finally {
+        forgetLipidPatch('dawn-band-frame');
         plugin.dispose();
       }
     });

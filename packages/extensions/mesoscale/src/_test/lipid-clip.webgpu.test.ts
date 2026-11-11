@@ -95,9 +95,11 @@ describe.skipIf(!webgpu)('a lipid membrane clipped by Prism (Dawn)', () => {
     registerLipidPatch('dawn-clip-middle', syntheticPatchPdb().text);
     try {
       const plugin = v.plugin as HeadlessPluginContext;
-      const looks: Record<string, { coverage: number; band: number; L: number; a: number; b: number }> = {};
+      const looks: Record<string, { coverage: number; band: number; L: number; a: number; b: number; cut: number }> =
+        {};
       let dragged = 0;
-      for (const middle of ['coarse', 'parallax'] as const) {
+      // round 10 (S3): shells too, the cut band's lipids drawn over the clip
+      for (const middle of ['coarse', 'parallax', 'shells'] as const) {
         const r = await v.api.mesoscale!.wrapMembrane({
           radius: 300,
           edge: 80,
@@ -132,6 +134,12 @@ describe.skipIf(!webgpu)('a lipid membrane clipped by Prism (Dawn)', () => {
           return (await plugin.getImageRaw({ width: Size, height: Size })).data;
         };
         const image = await ring(0.7);
+        // the cut band's lipids at the ring (a middle look's own members; coarse: none apart)
+        const cut = (
+          (plugin.state.data.cells.get(membrane)?.obj?.data as { repr?: unknown })?.repr as {
+            pool: { bandLive: number };
+          }
+        ).pool.bandLive;
         const bg = [image[0], image[1], image[2]];
         const lab = Vec3();
         const sum = [0, 0, 0];
@@ -185,6 +193,7 @@ describe.skipIf(!webgpu)('a lipid membrane clipped by Prism (Dawn)', () => {
           L: sum[0] / n,
           a: sum[1] / n,
           b: sum[2] / n,
+          cut,
         };
         expect((await v.api.run('state.remove', { node: membrane })).ok).toBe(true);
       }
@@ -196,6 +205,11 @@ describe.skipIf(!webgpu)('a lipid membrane clipped by Prism (Dawn)', () => {
       for (const [middle, look] of Object.entries(looks)) {
         expect(look.coverage, `${middle} coverage`).toBeGreaterThanOrEqual(coarse.coverage - 0.05);
         expect(look.band, `${middle} band`).toBeGreaterThanOrEqual(coarse.band * 0.5);
+        if (middle === 'coarse') continue;
+        expect(look.cut, `${middle} cut band's lipids`).toBeGreaterThan(0);
+        expect(Math.hypot(look.L - coarse.L, look.a - coarse.a, look.b - coarse.b), `${middle} Oklab`).toBeLessThan(
+          0.05,
+        );
       }
       expect(plugin.canvas3d!.graphics.takeErrors?.() ?? []).toEqual([]);
     } finally {
