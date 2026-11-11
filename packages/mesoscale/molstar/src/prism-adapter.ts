@@ -54,6 +54,8 @@ import { isMissingList, MesoPlacements, MesoTilePlacements, placementStore, toPa
 // deleted through the state directly (`MesoTilePlacements`, registered behavior-owned by the owner), never through the
 // API, in an edit's step as in a stream step, so tiles are no step and no change outside the API. A commit with no API
 // bound (a stream step) touches only tile lists: a document list's repair and looks wait for the next edit's step.
+// Every write of tile lists keeps the camera the person's (`keepCamera`): Canvas3D would re-center it on tiles that
+// arrive at the scene's edge or leave it over nothing.
 
 const now = () => performance.now();
 
@@ -371,7 +373,7 @@ export class PrismMesoAdapter implements RendererAdapter {
         if (p?.tile) store.delete(key);
         this.placed.delete(key);
       }
-      await v.plugin.runTask(v.plugin.state.data.updateTree(b));
+      await keepCamera(v.plugin.canvas3d, () => v.plugin.runTask(v.plugin.state.data.updateTree(b)));
     }
     // kept lists that something outside the adapter (Prism's undo) stripped: drawn again, their looks rewritten; a
     // document list only inside a step (an unbound commit leaves it for the next edit's)
@@ -552,7 +554,7 @@ export class PrismMesoAdapter implements RendererAdapter {
       if (layers.length) repr.apply(ParticleRepresentation3DLayers, { layers, cuts: [], hidden: [] } as never);
       this.placed.set(set.key, { ref: cell.ref, label, tile: true });
     }
-    await plugin.runTask(state.updateTree(b));
+    await keepCamera(plugin.canvas3d, () => plugin.runTask(state.updateTree(b)));
   }
 
   /** The representation type of a tile's list: the adapter's (spacefill). */
@@ -589,6 +591,7 @@ export class PrismMesoAdapter implements RendererAdapter {
         b.to(repr.transform.ref).apply(ParticleRepresentation3DLayers, { layers, cuts: [], hidden: [] } as never);
       else b.to(cell.transform.ref).update({ ...old, layers } as never);
     }
+    // an in-place update of the representations (no scene commit, so no camera reset: not held)
     if (changed) await this.viewer.plugin.runTask(state.updateTree(b));
     return written;
   }
@@ -765,7 +768,8 @@ export class PrismMesoAdapter implements RendererAdapter {
       if (!tiles.has(p.key)) store.delete(p.key);
       tilesGone = true;
     }
-    if (filled.length || tilesGone) await this.viewer.plugin.runTask(state.updateTree(b));
+    const { plugin } = this.viewer;
+    if (filled.length || tilesGone) await keepCamera(plugin.canvas3d, () => plugin.runTask(state.updateTree(b)));
     this.drawnTiles = tiles;
     // the annotations' labels the restored tree holds (the view noted with it drew them)
     this.labels = new Map();
@@ -985,6 +989,36 @@ export function commitCamera(
     cam.transition ?? 0,
   );
   return true;
+}
+
+/** What the camera's hold needs of Mol*'s Canvas3D. */
+export type KeepCanvas = Pick<
+  NonNullable<PrismViewer['plugin']['canvas3d']>,
+  'props' | 'setProps' | 'commit' | 'camera' | 'boundingSphere' | 'reprCount'
+>;
+
+/**
+ * Runs `work` (a write of tile lists) with the camera the person's (prism.md §9). Canvas3D resets the camera on a scene
+ * commit whose new renderable lies outside the old bounds or leaves the camera over nothing (`shouldResetCamera`): a
+ * tile streamed in at the edge, or evicted after a pan, re-centered the camera, and the feed then streamed around the
+ * centre (Ludo's app check, 2026-11-10). So `camera.manualReset` is set for the write and a synchronous commit of what
+ * it added (Canvas3D commits on a later frame otherwise, after the flag is put back), then put back, and `radiusMax`
+ * follows the scene as Canvas3D's own commit would. Held for the write only, not the session: a checkpoint holds the
+ * canvas props (a `.molj` too), so a flag held while a document is open would be undone, saved and restored with them.
+ * Left alone: someone else's `manualReset` (put back by them), and a canvas with no representation yet (its first
+ * reset frames the scene). An explicit reset (`requestCameraReset`: Reset camera, a view with no camera) is not held.
+ */
+export async function keepCamera<T>(canvas: KeepCanvas | undefined, work: () => Promise<T>): Promise<T> {
+  if (!canvas || canvas.props.camera.manualReset || canvas.reprCount.value === 0) return work();
+  canvas.setProps({ camera: { manualReset: true } }, true);
+  try {
+    return await work();
+  } finally {
+    canvas.commit(true);
+    canvas.setProps({ camera: { manualReset: false } }, true);
+    const radius = canvas.boundingSphere.radius * canvas.props.sceneRadiusFactor;
+    if (radius > 0) canvas.camera.setState({ radiusMax: radius }, 0);
+  }
 }
 
 /** A set's box (min, max) and its largest copy radius. */
