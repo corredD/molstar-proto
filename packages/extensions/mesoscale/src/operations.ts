@@ -1016,7 +1016,7 @@ export class MesoscaleApi extends ApiArea {
         { description: 'The rule' },
       ),
       seed: OptionalParam(PD.Numeric(0, { step: 1 }, { description: 'The random draws’ seed (repeatable)' })),
-      steps: OptionalParam(PD.Numeric(20, { min: 1, max: 1000, step: 1 }, { description: 'Random walk: its points' })),
+      steps: OptionalParam(PD.Numeric(20, { min: 2, max: 1000, step: 1 }, { description: 'Random walk: its points' })),
       persistence: OptionalParam(
         PD.Numeric(30, { min: 0, max: 180, step: 1 }, { description: 'Random walk: the most it turns a step, °' }),
       ),
@@ -1103,7 +1103,8 @@ export class MesoscaleApi extends ApiArea {
         Object.assign(sizes, p);
       } else {
         const p = { steps: Math.floor(v.steps ?? 20), persistence: v.persistence ?? 30 };
-        if (!(p.steps >= 1)) return ApiResult.fail('invalid', 'Give 1 step or more.');
+        // a fiber of two points or more (a point alone would be a copy unturned; review N1)
+        if (!(p.steps >= 2)) return ApiResult.fail('invalid', 'Give 2 steps or more.');
         if (p.steps > MaxGrown) return tooMany(p.steps);
         // a fiber of the source's: its rise and axis (its own fibers', else its principal axis), in the list's frame
         const id = brushIdOf(data, { target, entity });
@@ -1127,6 +1128,8 @@ export class MesoscaleApi extends ApiArea {
         grow: { mode, params: sizes, seed, source: { index, key: data.keys[index] } },
       };
       const count = stroke.positions.length / 3;
+      // no copy, no step (review S2): one cell, no ring
+      if (!count) return ApiResult.fail('invalid', 'That rule makes no copy.', 'More cells or rings.');
       await updatePainted(ctx, l, (p) => ({ ...p, strokes: [...p.strokes, stroke] }));
       return ApiResult.ok(
         path

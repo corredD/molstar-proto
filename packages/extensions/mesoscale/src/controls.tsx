@@ -622,7 +622,7 @@ export function GrowBlock(props: { area: MesoscaleApi; particles: string }) {
             <Show when={mode('walk')}>
               {() => (
                 <div class={classes.tight}>
-                  {number('steps', 'Steps', "The fiber's points, a rise apart", { min: 1, max: 500, step: 1 })}
+                  {number('steps', 'Steps', "The fiber's points, a rise apart", { min: 2, max: 500, step: 1 })}
                   {number('persistence', 'Persistence', 'The most the fiber turns a step', {
                     min: 0,
                     max: 180,
