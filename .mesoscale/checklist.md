@@ -9,11 +9,12 @@ drives it is [loop.md](loop.md).
 
 Questions that stop the loop. One line each; move it to Decided with the answer.
 
-- Lane 7 found: an edit that writes a resource's `uri` still draws the old resource (`document-model.ts` `load()` reads
-  `session.doc`, set only after the compile); the next model edit fetches the new one. Fix in lane 8 (its file) or a
-  lane of its own?
+- (none)
 
 ## Decided
+
+- 2026-11-10: the stale resource on edit (an edit writing a resource's `uri` draws the old one; `document-model.ts`
+  `load()` reads `session.doc`, set only after the compile), found by lane 7, is fixed in lane 8 before it merges.
 
 - 2026-11-09: default colors, option A. Today's per-population palette stays; the IR tells stated colors from defaults,
   and defaults are dropped only where the person chose a theme (lane 4).
