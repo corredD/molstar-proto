@@ -139,7 +139,8 @@ Lanes 7 and 8 run in parallel (Ludo, 2026-11-10): their files do not meet (7: `p
       unchanged
 - [x] Ludo's check in the app, with a real model (2026-11-10)
 - [ ] real-model evals (Ludo)
-- [ ] merged
+- [x] merged into `me/mesoviewspec` (`cc3a7a69f`, Ludo 2026-11-10; no conflict; medium 166 pass, unit base failures
+      only; the main checkout needed `pnpm install --offline` for `@molstar/ai/testing`)
 
 ### 8. `mvs-streaming-app` ([progress](../apps/prism-me/progress/2026-11-10-mvs-streaming-app.md)), port 1371
 
@@ -157,5 +158,6 @@ Lanes 7 and 8 run in parallel (Ludo, 2026-11-10): their files do not meet (7: `p
       pass, unit base failures only. Checked in the app (β-cell): an edit of `r.isg-recipe`'s uri fetches the new recipe
       in that step and compiles a different IR; Undo fetches the old one and gives the same IR as before; Redo the new
 - [ ] Ludo's check (2026-11-10): fails. What streams in looks wrong and does not follow where the camera looks; a pan
-      re-centers the camera by itself. Being fixed
+      re-centers the camera by itself. Likely Canvas3D's own reset (`shouldResetCamera`) when a tile lands outside the
+      old bounds, then the feed sends the re-centered target. Being fixed (Opus)
 - [ ] merged
