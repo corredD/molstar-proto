@@ -25,6 +25,11 @@ export interface MembraneViewHost {
   partsVersion: () => number | undefined;
   /** the selections' params for the next view (written in place) */
   params: (size: number) => SelectionParams;
+  /**
+   * the shell bands selected for a view (round 10, shells): once a distinct view, from the first selection's hook that
+   * sees it (none: no bands)
+   */
+  bands?: (view: SelectionView) => void;
 }
 
 /**
@@ -41,9 +46,37 @@ export function createMembraneViews(host: MembraneViewHost) {
   /** the size on screen the surfaces were last faded for, and the parts' version last shown (review S1: once a view) */
   const fadedFor = new Float64Array(2).fill(Number.NaN);
   let shownVersion: number | undefined;
+  /** the view the shell bands were selected for last: its planes and scales (30 numbers) */
+  const bandsFor = new Float64Array(30).fill(Number.NaN);
+
+  /** the shell bands for `view`, once a view (round 10) */
+  function bandsOnce(view: SelectionView) {
+    let same = bandsFor[28] === view.lod.depthScale && bandsFor[29] === view.lod.pixelSize;
+    for (let i = 0; i < 7; ++i) {
+      const { normal, constant } = i < 6 ? view.frustum[i as 0] : view.cameraPlane;
+      const o = i * 4;
+      if (
+        bandsFor[o] !== normal[0] ||
+        bandsFor[o + 1] !== normal[1] ||
+        bandsFor[o + 2] !== normal[2] ||
+        bandsFor[o + 3] !== constant
+      ) {
+        same = false;
+        bandsFor[o] = normal[0];
+        bandsFor[o + 1] = normal[1];
+        bandsFor[o + 2] = normal[2];
+        bandsFor[o + 3] = constant;
+      }
+    }
+    if (same) return;
+    bandsFor[28] = view.lod.depthScale;
+    bandsFor[29] = view.lod.pixelSize;
+    host.bands!(view);
+  }
 
   /** `selection` for `view`, once a view */
   function selectFor(selection: LipidSelection, view: SelectionView, size: number) {
+    if (host.bands) bandsOnce(view);
     let key = keys.get(selection);
     if (!key) {
       key = new Float64Array(32).fill(Number.NaN);
@@ -93,6 +126,7 @@ export function createMembraneViews(host: MembraneViewHost) {
     /** every selection selects anew at the next view (a clip came or went: review M4) */
     reset() {
       keys = new WeakMap();
+      bandsFor.fill(Number.NaN);
     },
   };
 }

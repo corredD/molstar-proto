@@ -11,6 +11,7 @@ import { distinctColors } from '@molstar/core/util/color/distinct';
 import { ValueCell } from '@molstar/core/util/value-cell';
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
 import { Vec3 } from '@molstar/core/math/linear-algebra/3d/vec3';
+import { Mat4 } from '@molstar/core/math/linear-algebra/3d/mat4';
 import { Vec4 } from '@molstar/core/math/linear-algebra/3d/vec4';
 import { Sphere3D } from '@molstar/core/math/geometry/primitives/sphere3d';
 import { type State, type StateObjectCell, StateTransform, StateTransformer } from '@molstar/core/state';
@@ -53,6 +54,7 @@ import { createLipidCutter, type LipidCutter, type LipidSelectionPart } from './
 import { ElementSymbolColors, elementSymbolColor } from '@molstar/graphics/theme/color/element-symbol';
 import type { ElementSymbol } from '@molstar/model/model/structure/model/types';
 import { headOffset, patchRaster, patchSurface, type SwitchSpheres } from './far-surface.js';
+import { BandCap, createShellBand, type ShellBand } from './shell-band.js';
 import type { Texture } from '@molstar/graphics/gl/texture';
 import {
   createLipidSelection,
@@ -69,7 +71,7 @@ import {
   wholeTriangles,
 } from './procedural.js';
 import { enclosures, type TrianglePart, triangleTree } from './triangle-tree.js';
-import { createMembraneViews, showPartSurfaces } from './views.js';
+import { createMembraneViews, type SelectionView, showPartSurfaces } from './views.js';
 import { type MembraneMix, mixOf, mixTable, standIns } from './mixes.js';
 import type { GpuInstanceWriter } from '@molstar/graphics/gl/renderable/merged-culler';
 import { farTriangles, icosphere, isotropicRemeshSteps, offsetSurface, type TriMesh } from './remesh.js';
@@ -807,9 +809,9 @@ function lipidsPx(props: LipidMembraneReprProps) {
   return middleOn(props) ? props.middlePx : enterPx(props.far, props.atomsPx, props.spheresPx);
 }
 
-/** Whether a middle look is drawn: parallax, past the spheres (round 8: shells, their band not built, draw as coarse) */
+/** Whether a middle look is drawn: parallax or shells (round 10: their band built), past the spheres */
 function middleOn(props: LipidMembraneReprProps) {
-  return props.middle === 'parallax' && props.far !== 'spheres';
+  return (props.middle === 'parallax' || props.middle === 'shells') && props.far !== 'spheres';
 }
 
 /**
@@ -948,6 +950,8 @@ function patchObject(
   fade: boolean,
   /** its part's colour (round 7): the surface's far colour, the membrane's otherwise */
   far: Color,
+  /** a shell band's (round 10): its shells as instances, its groups (`BandCap`: the band's regions at most) */
+  band?: { shells: number; groups: number },
 ) {
   const n = f.positions.length / 3;
   const m = Mesh.create(f.positions, f.indices, f.normals, f.groups, n, f.indices.length / 3);
@@ -960,8 +964,17 @@ function patchObject(
     // from the start, the values set at once from the last view seen (none yet: as orthographic, px unbounded)
     lod: fade ? Vec3.create(0, NoFade, 1) : defaults.lod,
   };
-  const transform = createIdentityTransform();
-  const locationIterator = LocationIterator(Math.max(1, regions.count), 1, 1, () => ({ kind: 'membrane' }) as never);
+  // a band's shells: an identity transform each (the vertex stage lifts shell k by its instance, `uPatchShells`)
+  const instances = band ? band.shells : 1;
+  const transforms = new Float32Array(instances * 16);
+  for (let k = 0; k < instances; ++k) Mat4.toArray(Mat4.identity(), transforms, k * 16);
+  const transform = band ? createTransform(transforms, instances, undefined, 0, -1) : createIdentityTransform();
+  const locationIterator = LocationIterator(
+    band ? band.groups : Math.max(1, regions.count),
+    instances,
+    1,
+    () => ({ kind: 'membrane' }) as never,
+  );
   const color = {
     granularity: 'uniform',
     color: () => far,
@@ -1005,6 +1018,23 @@ function setMiddle(
     v.uPatchMiddle,
     Vec4.create(props.mergePx, middle === 'parallax' ? NoFade : 2 * props.middlePx, 0, 0),
   );
+}
+
+/**
+ * A shell band's look (round 10, `dPatchMiddle` shells): its shells over the heads' heights between `mergePx` and twice
+ * the atoms' px (where its far surface, beneath, is discarded), its first `count` triangles drawn (`uPatchMiddle.w` 1:
+ * the band written in place at a fixed size)
+ */
+function setBandMiddle(
+  values: object,
+  props: LipidMembraneReprProps,
+  raster: { lo: number; hi: number; mean?: number },
+  count: number,
+) {
+  const v = values as { dPatchMiddle: ValueCell<string>; uPatchShells: ValueCell<Vec4>; uPatchMiddle: ValueCell<Vec4> };
+  ValueCell.updateIfChanged(v.dPatchMiddle, 'shells');
+  ValueCell.update(v.uPatchShells, Vec4.create(props.shells, raster.lo, raster.hi, raster.mean ?? raster.hi));
+  ValueCell.update(v.uPatchMiddle, Vec4.set(v.uPatchMiddle.ref.value, props.mergePx, 2 * props.middlePx, count, 1));
 }
 
 /** Whether a membrane's colours follow the zoom: on, and not one colour (as a list's uniform theme) */
@@ -1173,8 +1203,9 @@ function onlyMiddle(a: LipidMembraneReprProps, b: LipidMembraneReprProps) {
     if (!keys(k)) return false;
     changed = true;
   }
-  // the cut band's members come or go with it (round 10): a build
-  return changed && cutAtomsOnly(a) === cutAtomsOnly(b) && cutBandOn(a) === cutBandOn(b);
+  // the cut band's members come or go with it (round 10): a build; shells' band objects come or go too
+  const shells = (p: LipidMembraneReprProps) => middleOn(p) && p.middle === 'shells';
+  return changed && cutAtomsOnly(a) === cutAtomsOnly(b) && cutBandOn(a) === cutBandOn(b) && shells(a) === shells(b);
 }
 
 /** Whether `b` differs from `a` by its clip alone */
@@ -1298,10 +1329,17 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
     cut: boolean;
     patch: Texture;
     far: BaseValues[];
+    /** its shell bands' (round 10, shells) */
+    bands: BaseValues[];
     surfaces: BaseValues[];
   }[] = [];
   /** every patch surface drawn and its lipids' size: its levels set where only the edges move (`setColorEdges`) */
   let patches: { values: BaseValues; size: number }[] = [];
+  /**
+   * the shell bands (round 10, `middle: shells`): a cut leaflet's far surface's triangles in the middle look's px, per
+   * view (`views`' `bands`), written in place into their object's arrays and table
+   */
+  let shellBands: { band: ShellBand; values: BaseValues; table: Texture }[] = [];
   /** the far surfaces of a membrane's parts (round 6): shown while their part is (`showParts`) */
   let partSurfaces: { object: GraphicsRenderObject; part: number }[] = [];
   /** which parts of a cell's membranes the last view showed (round 7: one for all its selections), kept with the cutters */
@@ -1366,6 +1404,7 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
     views.reset();
     fading = [];
     patches = [];
+    shellBands = [];
   }
 
   /**
@@ -1535,7 +1574,37 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
       selectionParams.band = builtFor?.method === 'cutter' && cutBandOn(props) ? cutBand(size) : undefined;
       return selectionParams;
     },
+    bands: (view) => {
+      for (const b of shellBands) writeBand(b, view);
+    },
   });
+
+  /**
+   * A shell band for `view` (round 10): its triangles where a lipid is from `mergePx` to twice the atoms' px, written in
+   * place where they changed: the vertices' used part, the table at its fixed size, the cells' texel and the live count
+   * (all read at bind: the same frame); nothing where they stayed
+   */
+  function writeBand(b: (typeof shellBands)[number], view: SelectionView) {
+    const { band, values } = b;
+    const { depthScale, pixelSize } = view.lod;
+    if (!band.select(view.cameraPlane, view.frustum, depthScale, pixelSize, props.mergePx, 2 * props.middlePx)) return;
+    const n = band.count;
+    const v = values as unknown as {
+      aPosition: ValueCell<Float32Array>;
+      aNormal: ValueCell<Float32Array>;
+      aGroup: ValueCell<Float32Array>;
+      uPatch: ValueCell<Vec4>;
+      uPatchMiddle: ValueCell<Vec4>;
+    };
+    ValueCell.update(v.aPosition, band.positions.subarray(0, n * 9));
+    ValueCell.update(v.aNormal, band.normals.subarray(0, n * 9));
+    ValueCell.update(v.aGroup, band.groups.subarray(0, n * 3));
+    const u = v.uPatch.ref.value;
+    ValueCell.update(v.uPatch, Vec4.set(u, u[0], u[1], u[2], band.cellsTexel));
+    const middle = v.uPatchMiddle.ref.value;
+    ValueCell.update(v.uPatchMiddle, Vec4.set(middle, middle[0], middle[1], n, 1));
+    b.table.load({ array: band.table, width: PatchTableWidth, height: band.table.length / 4 / PatchTableWidth });
+  }
   const selectionParams: {
     lipidSize: number;
     enterPx: number;
@@ -1843,6 +1912,7 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
     // (round 4b); a tiles leaflet's on its surface (at its mid-plane: the heads past it), coloured as the cutter cuts the
     // patch there (the species' proportions and grain, not each tile's lipids)
     const nextFading: typeof fading = [];
+    const nextBands: typeof shellBands = [];
     const nextRasters: typeof rasters = [];
     const nextPatches: typeof patches = [];
     const nextPartSurfaces: typeof partSurfaces = [];
@@ -1890,6 +1960,7 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
           cut,
           patch,
           far: [] as BaseValues[],
+          bands: [] as BaseValues[],
           surfaces: [] as BaseValues[],
         };
         nextRasters.push(rastered);
@@ -1911,6 +1982,41 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
           nextTextures.push(patchShifts);
           const object = patchObject(f, [patch, patchShifts], table, leaflet.regions, size, props, !!fade, farColor());
           if (relief && fade === 'far') setMiddle(object.values, middle, props, raster);
+          if (relief && fade === 'far' && middle === 'shells') {
+            // round 10: the shell band over the far surface (beneath it), its object drawn at `BandCap` triangles, the
+            // band's live ones written per view (`writeBand`); its bounds the surface's (an empty band draws nothing)
+            const band = createShellBand(leaflet.mesh, leaflet.regions, f, size);
+            const bandTable = graphics.resources.texture('image-float32', 'rgba', 'float', 'nearest');
+            const height = band.table.length / 4 / PatchTableWidth;
+            bandTable.load({ array: band.table, width: PatchTableWidth, height });
+            made.push(bandTable);
+            nextTextures.push(bandTable);
+            const { positions, normals, groups, indices } = band;
+            const shells = patchObject(
+              { positions, normals, groups, indices, shifts: f.shifts } as ReturnType<typeof patchSurface>,
+              [patch, bandTable],
+              table,
+              leaflet.regions,
+              size,
+              props,
+              true,
+              farColor(),
+              { shells: props.shells, groups: BandCap },
+            );
+            const sv = shells.values as BaseValues;
+            const fv = object.values as BaseValues;
+            ValueCell.update(sv.boundingSphere, Sphere3D.clone(fv.boundingSphere.ref.value));
+            ValueCell.update(sv.invariantBoundingSphere, Sphere3D.clone(fv.invariantBoundingSphere.ref.value));
+            setBandMiddle(sv, props, raster, 0);
+            nextBands.push({ band, values: sv, table: bandTable });
+            rastered.bands.push(sv);
+            rastered.surfaces.push(sv);
+            nextPatches.push({ values: sv, size });
+            nextFading.push({ values: sv, size, near: false });
+            fadeSurface(sv, size, enter, false, lastLod.depthScale, lastLod.pixelSize);
+            if (leaflet.part !== undefined) nextPartSurfaces.push({ object: shells, part: leaflet.part });
+            out.push(shells);
+          }
           if (cut && fade === 'far') rastered.far.push(object.values as BaseValues);
           rastered.surfaces.push(object.values as BaseValues);
           nextPatches.push({ values: object.values as BaseValues, size });
@@ -1926,6 +2032,7 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
       }
     }
     fading = nextFading;
+    shellBands = nextBands;
     rasters = nextRasters;
     patches = nextPatches;
     partSurfaces = nextPartSurfaces;
@@ -1965,6 +2072,11 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
       for (const values of r.far) {
         if (relief) setMiddle(values, middle, props, raster);
         else ValueCell.updateIfChanged((values as unknown as { dPatchMiddle: ValueCell<string> }).dPatchMiddle, 'off');
+      }
+      // shells' bands (round 10; a switch to or from shells is a build): the new px and heights, the live count kept
+      for (const values of r.bands) {
+        const z = (values as unknown as { uPatchMiddle: ValueCell<Vec4> }).uPatchMiddle.ref.value[2];
+        setBandMiddle(values, props, raster, z);
       }
     }
     const near = nearPx(props);
@@ -2138,6 +2250,15 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
         selectMs += views.times.get(s) ?? 0;
       }
       // `triangles`: the units taken (a whole triangle or a cell, round 5); `selectMs` the last selection's CPU time
+      // shells' bands (round 10): their triangles, versions (a write a change) and those past the cap (the gate's N6)
+      let bandTriangles = 0;
+      let bandVersion = 0;
+      let bandDropped = 0;
+      for (const b of shellBands) {
+        bandTriangles += b.band.count;
+        bandVersion += b.band.version;
+        bandDropped += b.band.dropped;
+      }
       // `live` both parts', `bandLive` the cut band's alone (round 10)
       return {
         live: live + bandLive,
@@ -2146,6 +2267,10 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
         inView,
         selectMs,
         selects: views.stats.selects,
+        bands: shellBands.length,
+        bandTriangles,
+        bandVersion,
+        bandDropped,
         ...selectionStats,
       };
     },
@@ -2157,6 +2282,10 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
     readonly pool: {
       live: number;
       bandLive: number;
+      bands: number;
+      bandTriangles: number;
+      bandVersion: number;
+      bandDropped: number;
       triangles: number;
       inView: number;
       selectMs: number;
