@@ -9,7 +9,9 @@ drives it is [loop.md](loop.md).
 
 Questions that stop the loop. One line each; move it to Decided with the answer.
 
-- (none)
+- Lane 7 found: an edit that writes a resource's `uri` still draws the old resource (`document-model.ts` `load()` reads
+  `session.doc`, set only after the compile); the next model edit fetches the new one. Fix in lane 8 (its file) or a
+  lane of its own?
 
 ## Decided
 
@@ -123,9 +125,18 @@ Lanes 7 and 8 run in parallel (Ludo, 2026-11-10): their files do not meet (7: `p
       and highlight no longer ask; checks green (base failures only; medium 128 pass)
 - [x] step 3, evals (Opus; `68e410db1`..`c10dc5ca7`): three tasks on outcomes (document, layers, camera, Undo turn),
       near misses rejected; scripted 23/23, medium 151 pass; real model not run (no key)
-- [ ] gate: reviewer and skeptic done (M1 edit fetches any host unasked, M2 open-data URL scan bypass, M3 raw ids in the
-      turn state, all confirmed; S2, S3, S4, S6, S7 to fix; S1, S5, S8 and nits Open); fixes (Opus) running
-- [ ] checks green · checked in the app with a real model · gate · Ludo's check · merged
+- [x] gate: reviewer and skeptic (M1 edit fetches any host unasked, M2 open-data URL scan bypass, M3 raw ids in the turn
+      state); fixed, a red test first each (`11f53ec59`..`2bb74ec59`): M1–M3, S2, S3 (line cap 800, not 240: the
+      exosome's line), S4, S6, S7; open: S1 (decided), S5, S8, nits
+- [x] Ludo's decisions built (`f9b8a20ff`..`18e325647`): showing a view is a step (a tour's views are not:
+      `mesoviewspec.tour.view`); an agent's open by URL refuses resources on unasked hosts, `resources` names them;
+      prism.md §3, §4.4, §5.3, §7.4, §8 updated
+- [x] checks green (base failures only; quick 613 pass, medium 165 pass)
+- [x] checked in the app through the API (Claude, port 1370, β-cell): a view is one step, Undo and Undo turn put the one
+      before back, the view shown again is no step, a tour leaves no step; an agent's open of a document with a resource
+      on example.org is refused naming the host, nothing fetched, and opens with `resources`; the person's open is
+      unchanged
+- [ ] real-model evals (Ludo) · Ludo's check · merged
 
 ### 8. `mvs-streaming-app` ([progress](../apps/prism-me/progress/2026-11-10-mvs-streaming-app.md)), port 1371
 
