@@ -2249,3 +2249,5 @@ the lane cannot make (the culler hook).
   `prepareCull` leaves the band stale; subarray uploads vs bounds; the table load flushes once per changed view.
 - **For Ludo:** C and its memory; band members' capacity with a clip; the cutoff in the lane's WGSL or a 5-line
   library change so `drawCount` is read at render.
+- **Ludo's decisions (2026-11-10):** C = 16,384 triangles a band (overflow counted, not grown); band members at full
+  capacity, as each member; the draw-count cutoff in the lane's shells WGSL, no library change.
