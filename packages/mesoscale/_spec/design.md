@@ -642,8 +642,9 @@ Fibers mock exposed the adapter's `excludeFibers` bug (§11).
    record the matrices. (v0.2) Superstructure instances already carry their frames to the renderer (§3.9). Bake plain
    sets, or carry every frame? **(v0.5) Decided** (David: "both baked and carried depending on context?"; Ludo,
    2026-11-11): both. A resolver bakes a plain set into the world frame; a frame is carried wherever a set is reused
-   (superstructure templates, instances, stream tiles, a derived result, stored in its model's frame as its resource's
-   `frame`), so the renderer can instance it.
+   (superstructure templates, instances, a derived result stored in its model's frame as its resource's `frame`), so the
+   renderer can instance it. Stream tiles stay baked in the world frame (streams in rotated frames are refused,
+   streaming.md).
 2. **Catalogs.** Runtime expansion into populations, or a resolver input?
 3. **Derived results as resources.** Store a resolution as a `placements` resource with `derivedFrom: {model, key}`, so
    an expensive procedural result (cellPACKgpu on a GPU) can be shipped and replayed? **(v0.5) Decided** (David: "could

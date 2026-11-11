@@ -239,16 +239,26 @@ sphere, cylinder or infinite cone with an axis-angle rotation.
   :looks [(look l.membrane :select (population p.lipids) :clip none)])
 ```
 
-- **`clip`** on a view is `{cut, shapes}`. `cut` is `copy` (the default; Mol\*'s `instance`: a copy whose centre is
-  clipped is hidden whole) or `pixel` (a cross-section through molecules). It holds for the whole list, as Mol\*'s
-  `variant` does. Each shape has an `id` and a frame (default the world), in the document's length unit: `plane`
-  (`point`, `normal`), `box` (`center`, `size`, `rotation`; Mol\*'s `cube`), `sphere` (`center`, `radius`), `cylinder`
-  (`center`, `radius`, `height`, `rotation`). Rotations are quaternions, as the document's poses. `invert` keeps the
-  inside instead of the outside. More than 16 shapes reach a list: the adapter uses the first 16 and reports it
+- **`clip`** on a view is `{cut, shapes}`. `cut` is `copy` (the default: a copy whose centre is clipped is hidden whole)
+  or `pixel` (a cross-section through molecules); it holds for the whole list. Each shape has an `id` and a frame
+  (default the world), in the document's length unit: `plane` (`point`, `normal`), `box` (`center`, `size`, `rotation`;
+  Mol\*'s `cube`), `sphere` (`center`, `radius`), `cylinder` (`center`, `radius`, `height`, `rotation`). Rotations are
+  quaternions, as the document's poses (the adapter converts to Mol\*'s axis-angle). `invert` keeps the inside instead
+  of the outside. Shapes combine as a union: a point is clipped if any shape clips it, as in Mol\*.
+- **How the adapter draws `cut`**, per representation, since Mol\*'s `instance` variant tests a whole Mol\* instance's
+  bounding sphere and Prism draws a population as one non-instanced spacefill list:
+  - spheres (particle lists): `copy` is the `pixel` variant with `clipPrimitive` (each sphere kept or dropped whole);
+    `pixel` is the `pixel` variant without it;
+  - instanced representations (a copy drawn as a structure instance, as Mesoscale Explorer v1 draws every copy): `copy`
+    is the `instance` variant.
+- **Limits:** Mol\* holds 16 clip objects per representation, and Prism's particle layers 15 cut objects
+  (`MaxParticleCutIndex`) over at most 256 tag rows. Shapes past a limit are dropped from the end and reported
   (`clip.limit`, `render`).
 - **Per look:** a look may set `clip: none` (not clipped by the view's list) or its own `{cut, shapes}` (clipped by that
-  instead). Where two looks with different `clip` reach a copy, the later look wins, as for its other fields; a partial
-  look's clip is reported like its other fields (R8). A copy no look reaches is clipped by the view's list.
+  instead). The adapter draws a look's clip as tagged cut objects on its target's layer (Prism's particle cuts), so two
+  looks on one list may clip differently; a look whose `cut` differs from the rest of its list is drawn with the list's
+  and reported (`clip.mixed`). Where two looks with different `clip` reach a copy, the later wins, as for other fields.
+  A partial look is not drawn by Prism (R8), nor is its clip. A copy no look reaches is clipped by the view's list.
 - **`cutaway` stays** as the address form: the copies to hide, chosen by what they are rather than where. The two
   combine: a copy is hidden if either hides it.
 - **Stories:** a track can move a shape by its id (`point`, `center`, `radius`;
@@ -256,4 +266,5 @@ sphere, cylinder or infinite cone with an axis-angle rotation.
 - **Prism-me:** the viewer's own clipping (`clipping.*`, prism.md §5) stays viewer-only until a lane maps a view's
   `clip` into it.
 - **Touches:** `format/doc.ts` (`Clip`, `ClipShape`, `View.clip`, `Look.clip`), `validate.ts`, `format/issues.ts`
-  (`clip.limit`), `IRView.clip` (shapes in world coordinates), the Prism adapter (one `Clip` per list).
+  (`clip.limit`, `clip.mixed`), `IRView.clip` (shapes in world coordinates), the Prism adapter (the per-representation
+  mapping, look clips as particle cuts).

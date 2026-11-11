@@ -108,14 +108,17 @@ population: a copy inside a superstructure copy, and an atom of a copy.
 - **`element`**, a new kind: one atom of one copy.
 
   ```ts
-  | { kind: 'element'; set: string; index: number; chain: string; seq: number; atom: string; operator?: string }
+  | { kind: 'element'; set: string; index: number; chain: string; seq?: number; authSeq?: string; atom: string;
+      alt?: string; operator?: string }
   ```
 
   `chain`, `seq` and `atom` are the mmCIF `label_asym_id`, `label_seq_id` and `label_atom_id` in **the entity's own
-  structure** (`Entity.structure`), never a scale rule's `source`; `operator` names the assembly operator when the
-  entity's structure is an assembly whose chains share ids. These do not change when the copy moves or the scene is
-  re-resolved with the same copies (`_atom_site.id` would not do: operator copies share it). A residue is the elements
-  with one `chain`, `seq` and `operator`; it has no kind of its own, as in Mol\*.
+  structure** (`Entity.structure`), never a scale rule's `source`. A non-polymer or water has no `label_seq_id` (`.`):
+  `seq` is absent and `authSeq` (`auth_seq_id` with its insertion code) names the residue. `alt` is `label_alt_id` where
+  there is one; `operator` names the assembly operator when the entity's structure is an assembly whose chains share
+  ids. These do not change when the copy moves or the scene is re-resolved with the same copies (`_atom_site.id` would
+  not do: operator copies share it). A residue is the elements with one `chain`, `seq` (or `authSeq`) and `operator`; it
+  has no kind of its own, as in Mol\*.
 
 - **MesoLoci** gain `elements?: ReadonlyMap<string, readonly {copy: number; atoms: readonly ElementKey[]}[]>`: per set,
   per copy, the elements picked. An address whose elements would exceed 10⁶ is refused, not expanded (`mesoql.too-fine`,
@@ -123,9 +126,9 @@ population: a copy inside a superstructure copy, and an atom of a copy.
 - **Symbols, extending what exists.** `residues` today takes an entity and returns the `residues` type (a site's `at`, a
   contact's `a` and `b`); that form stays. It gains a second form whose first argument is a copy selection, with the
   same keywords (`:chain`, `:range`): `(residues (copies p.insulin 3) :chain B :range 1-30)` is those residues of one
-  insulin. A new `(atoms <selection> :name CA :id 1204)` narrows to atoms, of copies or of residues. Both return a new
-  type, `elements`, accepted where a selection is (a look's `select`, a view's `selection`, a camera's `focus`), so they
-  compose with the rest (David's "monadic").
+  insulin. A new `(atoms <selection> :name CA :alt A)` narrows to atoms by `label_atom_id` (and `label_alt_id`), of
+  copies or of residues. Both return a new type, `elements`, accepted where a selection is (a look's `select`, a view's
+  `selection`, a camera's `focus`), so they compose with the rest (David's "monadic").
 - **Independent of Mol\*:** the kind names document things (sets, copies, mmCIF labels), not Mol\* units or element
   indices. Where a copy is drawn as a structure (a `structure` look or scale rule), the adapter maps an `element` to
   Mol\*'s `StructureElement.Location` and back. Where it is drawn as a particle, an element selects its whole copy and a
@@ -151,16 +154,20 @@ to.
 - **`:of` a region.** `:of` takes a selection or a region. A region symbol alone in `:of` is the region; inside `and`
   with copies it filters them, as above. `(within (population p.ribosomes) :of (label r.seg 3) :distance 100)` is the
   ribosomes within 100 Å of label 3.
-- **`:to`** says where the distance is measured to when `:of` is a region: `surface` (its boundary: 0 inside; the
-  default, since "within 10 nm of a membrane" is what people ask) or `centre` (its centroid). Between copies `:to` is
-  refused (`mesoql.keyword`): the distance stays centre to centre.
+- **A compartment's boundary is a region too:** `(membrane c.cell)`, a new region symbol, is the compartment's geometry
+  as a surface (sphere, ellipsoid, box, mesh or segmentation label), so "within 10 nm of the plasma membrane" is
+  `(within (population p.granules) :of (membrane c.cell) :distance 100)`.
+- **`:to`** says where the distance is measured to when `:of` is a region: `surface` (the unsigned distance to its
+  boundary, from inside or outside; the default) or `centre` (its centroid). A shell inside a membrane is the `and` of
+  `within … :to surface` and `(in c.cell)`. Between copies `:to` is refused (`mesoql.keyword`): the distance stays
+  centre to centre.
 - **Picking the closest:** David's "closest" as a filter is a new symbol,
   `(nearest <selection> :to <selection or region> :count n)`, the `n` copies nearest to it (ties by copy id). It
   composes like the others.
 - **`average`** is a measurement of a selection (a mean distance), not a filter of it. It is left to the measuring tools
   and stays out of MesoQL.
-- **Touches:** `ir/loci.ts` (`within` on regions, `nearest`), `format/mesoql.ts` (`:of` typed selection or region,
-  `:to`, `nearest`), `reference/mesoql.md`.
+- **Touches:** `ir/loci.ts` (`within` on regions, `membrane`, `nearest`), `format/mesoql.ts` (`:of` typed selection or
+  region, `:to`, `membrane`, `nearest`), `reference/mesoql.md`.
 
 ### Static pointers: a location written down (proposed, v0.5; for David and Ludo)
 
