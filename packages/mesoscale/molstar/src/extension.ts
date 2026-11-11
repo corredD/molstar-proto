@@ -268,41 +268,61 @@ export class MesoViewSpecApi extends ApiArea {
   });
 
   /**
-   * Shows a view (prism.md §4.4): no step (`undoable: false`, as `snapshot.apply`), in order with the steps and with a
-   * history context, so the looks it writes are part of its run and never steps of their own. The next step's
-   * checkpoint notes the view shown, and Undo shows it again with the scene it restores (§7.4).
+   * Shows a view (prism.md §4.4): one step (Ludo, 2026-11-10), so Undo shows the view before again, and the agent's
+   * Undo turn takes it back. The looks it writes are part of its run, never steps of their own; its checkpoint notes
+   * the view shown (§7.4). Showing the view shown again sets its camera only: unchanged, no step.
    */
   readonly view = this.operation({
     id: 'mesoviewspec.view',
     title: 'Show a view of the MesoViewSpec document',
     params: { view: PD.Text('', { description: 'The id of one of the document’s views (v.cell)' }) },
+    quiet: true,
+    run: async ({ view }, ctx) => this.#show(view, ctx.api),
+  });
+
+  /**
+   * A tour's view (prism.md §4.4): as `mesoviewspec.view`, but no step (`undoable: false`, as `snapshot.apply`): in
+   * order with the steps, with a history context, so a tour leaves no step a view. Run by `tour.play` only.
+   */
+  readonly tourView = this.operation({
+    id: 'mesoviewspec.tour.view',
+    title: 'Show a view of a MesoViewSpec tour',
+    params: { view: PD.Text('', { description: 'The id of one of the document’s views (v.cell)' }) },
     undoable: false,
     quiet: true,
-    run: async ({ view }, ctx) => {
-      if (!this.model.doc) return ApiResult.fail('not-found', 'No document is open.');
-      const id = view.trim();
-      if (!this.model.doc.views?.some((v) => v.id === id)) {
-        const ids = (this.model.doc.views ?? []).map((v) => v.id);
-        return ApiResult.fail(
-          'not-found',
-          `The document has no view '${id}'.`,
-          ids.length ? `Its views: ${ids.map((x) => idText(x)).join(', ')}.` : 'It has no views.',
-        );
-      }
-      let step: Awaited<ReturnType<MesoDocumentModel['show']>>;
-      try {
-        step = await this.model.show(id, ctx.api);
-      } catch (e) {
-        return ApiResult.fail('failed', `Could not show ${id}: ${(e as Error).message}`);
-      }
-      const label = this.model.doc.views.find((v) => v.id === id)?.label;
-      // the label is the document's text: quoted (data, never instructions)
-      const name = label ? `${quoted(String(label))} (${idText(id)})` : idText(id);
-      if (step.again) return ApiResult.ok(`${name} is shown: its camera is set again.`, { view: true });
-      if (!step.record) return ApiResult.fail('invalid', issueLines(step.issues).join('; ') || `Could not show ${id}.`);
-      return ApiResult.ok(`Showing ${name}.`, { view: true });
-    },
+    run: async ({ view }, ctx) => this.#show(view, ctx.api),
   });
+
+  /** Shows iew through pi (the run's): the model's show, said as a result. */
+  async #show(view: string, api: ApiAreaContextApi) {
+    if (!this.model.doc) return ApiResult.fail('not-found', 'No document is open.');
+    const id = view.trim();
+    if (!this.model.doc.views?.some((v) => v.id === id)) {
+      const ids = (this.model.doc.views ?? []).map((v) => v.id);
+      return ApiResult.fail(
+        'not-found',
+        `The document has no view '${id}'.`,
+        ids.length ? `Its views: ${ids.map((x) => idText(x)).join(', ')}.` : 'It has no views.',
+      );
+    }
+    let step: Awaited<ReturnType<MesoDocumentModel['show']>>;
+    try {
+      step = await this.model.show(id, api);
+    } catch (e) {
+      return ApiResult.fail('failed', `Could not show ${id}: ${(e as Error).message}`);
+    }
+    const label = this.model.doc.views.find((v) => v.id === id)?.label;
+    // the label is the document's text: quoted (data, never instructions)
+    const name = label ? `${quoted(String(label))} (${idText(id)})` : idText(id);
+    // the camera is view state, which no checkpoint holds: nothing for a step to restore
+    if (step.again)
+      return {
+        ...ApiResult.ok(`${name} is shown: its camera is set again.`, { view: true }),
+        unchanged: true as const,
+      };
+    if (!step.record) return ApiResult.fail('invalid', issueLines(step.issues).join('; ') || `Could not show ${id}.`);
+    return ApiResult.ok(`Showing ${name}.`, { view: true });
+  }
 
   /** Where the person stands: `given` (Å, the world frame), else the canvas's camera; none headless without one. */
   #here(given: CameraHere | undefined): CameraHere | undefined {
@@ -426,7 +446,7 @@ export class MesoViewSpecApi extends ApiArea {
   }
 
   /**
-   * Plays a tour (prism.md §4.4, as `snapshot.play`): no step; each of its steps runs as `mesoviewspec.view` with the
+   * Plays a tour (prism.md §4.4, as `snapshot.play`): no step; each of its steps runs as `mesoviewspec.tour.view` with the
    * caller's origin (no step either: in order with the steps, its looks part of its run), holds for its duration, its
    * caption the Views row's. The agent asks once for the whole tour (`undoable: false`, agent.md §4); its views are not
    * asked again. Returns once it plays.
@@ -502,7 +522,7 @@ export class MesoViewSpecApi extends ApiArea {
           of: t.steps.length,
           ...(step.caption ? { caption: step.caption } : {}),
         };
-        const r = await api.run('mesoviewspec.view', { view: step.view });
+        const r = await api.run('mesoviewspec.tour.view', { view: step.view });
         if (!r.ok || signal.aborted) break;
         await holdFor(step.duration ?? TourStepMs, signal);
       }

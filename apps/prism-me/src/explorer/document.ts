@@ -235,7 +235,7 @@ export function documentLoci(api: ViewerApi, ref: DocumentRef): readonly Loci[] 
 }
 
 /**
- * What a click or a double click on a Views row does (prism.md §4.4): a view's shows it (no step), a tour's plays it;
+ * What a click or a double click on a Views row does (prism.md §4.4): a view's shows it (a step), a tour's plays it;
  * none for the Views row itself. Undefined when the row is no view's or tour's.
  */
 export function activateViewsRow(api: ViewerApi, doc: DocumentRef): Promise<unknown> | undefined {

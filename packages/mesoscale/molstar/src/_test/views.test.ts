@@ -21,8 +21,8 @@ import { stubCanvasForLabels } from './canvas.js';
 
 stubCanvasForLabels();
 
-// The document's views (prism.md §4.4, §7.4) on a headless Prism viewer: showing one is no step (`undoable: false`, as
-// `snapshot.apply`), look edits go to the view shown, a checkpoint notes the view shown with it and Undo shows it again
+// The document's views (prism.md §4.4, §7.4) on a headless Prism viewer: showing one is a step (Ludo, 2026-11-10; a
+// tour's views are not), look edits go to the view shown, a checkpoint notes the view shown with it and Undo shows it again
 // with the scene it restores. Resources come from the dropped files, never the network.
 
 const viewers: PrismViewer[] = [];
@@ -526,7 +526,8 @@ describe('annotations as labels (prism.md §5.2, Add label)', () => {
     expect(annotationLabels(h)).toEqual({ 'an.g12': 'Granule 12: its VAMP2' });
     await h.run('mesoviewspec.view', { view: 'v.cell' });
     expect(annotationLabels(h)).toEqual({});
-    expect(h.steps().length).toBe(steps);
+    // a step a view shown (Ludo, 2026-11-10)
+    expect(h.steps().length).toBe(steps + 3);
     noUnsafe(h);
   });
 

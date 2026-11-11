@@ -252,11 +252,13 @@ For a document row, the sections of ui.md §4 that apply, and three of its own:
   `session.view`, else the first, else none (the runtime's default looks). Today `deriveView` reads only
   `session.view ?? views[0]` and `updateView(doc, ir)` takes no view; the runtime gains a view argument
   (`updateView(doc, ir, view?)`, lane `mvs-views`).
-- **Showing a view** is `mesoviewspec.view { view }`, `undoable: false`: in order with the steps, no checkpoint, the
-  steps before it stay undoable, and a checkpoint notes the view shown with it, so Undo makes it shown again with the
-  scene it restores. The precedent is `snapshot.apply` (sequence.md §7.3 "Showing a snapshot is no step", David
-  2026-10-20); the alternative, a `set` of `session.view` (a step), would make browsing views fill the history and
-  change what the saved document opens with. As in Seq\* (format.md § Snapshots, "a view the reader picked stays"),
+- **Showing a view** is `mesoviewspec.view { view }`, **a History step** (Ludo, 2026-11-10): its checkpoint notes the
+  view shown, so Undo shows the view before it again with the scene it restores, and the agent's Undo turn takes a
+  `show_meso_view` back. The document is not changed: what is saved is the view shown, beside the document (§7.4), not a
+  `set` of `session.view`, which would change what the saved document opens with. Showing the view already shown sets
+  its camera only: unchanged, no step. Before 2026-11-10 it was `undoable: false`, no step, after `snapshot.apply`
+  (sequence.md §7.3 "Showing a snapshot is no step"); that made the agent ask every time and left Undo turn unable to
+  take a shown view back (lane `mvs-agent`). As in Seq\* (format.md § Snapshots, "a view the reader picked stays"),
   `session.view` changes only by **Open with this view** (a patch), from the view's ⋯.
 - **Look edits go to the shown view.** Switching to another view shows that view's looks; switching back shows the
   edits, which are that view's. With no view at all, the first look edit inserts `v.prism` ("Edited in Prism"), the
@@ -265,14 +267,14 @@ For a document row, the sections of ui.md §4 that apply, and three of its own:
   `up`, in Å, the world frame) and the shown view's looks copied with new ids. **Update camera** sets the shown view's
   `camera` to the current one. Both are patches, one step each.
 - **A tour plays** (`mesoviewspec.tour.play`, `history: false`, as `snapshot.play`): it runs each step as a
-  `mesoviewspec.view` with the caller's origin (the person's or the agent's; `undoable: false`: in order, with a history
-  context, no checkpoint), so the adapter's look writes are inside that run, never steps of their own and never changes
-  outside the API; the caption in the canvas's caption line. Stopping leaves the last view shown. The alternative,
-  writing each step from a `history: false` run, fails in the code: such a run has no history context (`api/run.ts`), so
-  each `particles.look` would be a recorded step, and direct tree writes would mark every checkpoint unsafe
-  (`watchOutsideChanges` excepts only snapshots playing, animations and the cells behaviors own). For the agent,
-  `tour.play` declares its own approval (agent.md §4, operations that run others): it asks once for the whole tour, as
-  `show_meso_view` asks once, and its steps are not asked again.
+  `mesoviewspec.tour.view` (a view shown as `mesoviewspec.view` does, but `undoable: false`: a tour leaves no step a
+  view) with the caller's origin (the person's or the agent's; in order, with a history context, no checkpoint), so the
+  adapter's look writes are inside that run, never steps of their own and never changes outside the API; the caption in
+  the canvas's caption line. Stopping leaves the last view shown. The alternative, writing each step from a
+  `history: false` run, fails in the code: such a run has no history context (`api/run.ts`), so each `particles.look`
+  would be a recorded step, and direct tree writes would mark every checkpoint unsafe (`watchOutsideChanges` excepts
+  only snapshots playing, animations and the cells behaviors own). For the agent, `tour.play` declares its own approval
+  (agent.md §4, operations that run others): it asks once for the whole tour, and its steps are not asked again.
 - **As built (`mvs-views`):** the runtime's `updateView(doc, ir, view?)`, `compile`'s `view` option and `shownViewOf`
   (picked, else `session.view`, else the first). The session keeps the view shown for every derivation (an edit, a
   stream step, a restore). `mesoviewspec.view` saves the custom state again with `shown`, so the next checkpoint notes
@@ -384,7 +386,8 @@ The `mesoviewspec` area (proposed ids; flags as operations.md):
 | `mesoviewspec.get`                     | read                | the outline: compartments, populations with counts, models, views, issues; S-expression      |
 | `mesoviewspec.edit`                    |                     | apply a patch (§2); a step                                                                   |
 | `mesoviewspec.look`                    |                     | a look patch on the shown view from `select`, `color`, `visible`, `transparency`, `emissive` |
-| `mesoviewspec.view`                    | no undo             | show a view (§4.4)                                                                           |
+| `mesoviewspec.view`                    |                     | show a view (§4.4); a step (Ludo, 2026-11-10)                                                |
+| `mesoviewspec.tour.view`               | no undo             | a tour's view (§4.4): shown as `.view`, no step; run by `.tour.play`                         |
 | `mesoviewspec.tour.play`, `.tour.stop` | view                | play, stop a tour                                                                            |
 | `mesoviewspec.focus`                   | view                | frame an address (§4.5)                                                                      |
 | `mesoviewspec.highlight`               | view                | light an address's copies (§4.6)                                                             |
@@ -558,8 +561,10 @@ undo; the canvas props of `mesoscale.graphics` do not (ui.md §4).
 
 ### 7.4 The shown view
 
-The checkpoint notes the view shown; Undo shows it again with the document it restores (§4.4, the `snapshot.apply`
-rule). A view removed by the undone document falls back as §4.4 says.
+The checkpoint notes the view shown; Undo shows it again with the document it restores. Showing a view is a step of its
+own (Ludo, 2026-11-10, §4.4): its Undo shows the view before it, the document unchanged; the camera is view state, which
+no checkpoint holds, and stays where it is. A tour's views are no steps. A view removed by the undone document falls
+back as §4.4 says.
 
 ### 7.5 Large scenes
 
@@ -585,8 +590,8 @@ The status says so once when it passes the history's size budget (proposed: the 
 - **What it sees each turn**: the document's outline joins the scene outline (agent.md §5) as one line a compartment
   (populations and counts), the shown view, and the issues' count.
 - **Policies** (agent.md §4): edits are preauthorized while the turn can be undone; `open` asks for unknown hosts (§3);
-  `close` asks (destructive); `save` asks (no undo, a file for the person); `show_meso_view` asks every time, as
-  `snapshot.apply` does (`undoable: false` asks, `agent/policies.ts`): showing a view is what no undo takes back. A
+  `close` asks (destructive); `save` asks (no undo, a file for the person); `show_meso_view` goes without asking: a
+  step, which Undo turn takes back (Ludo, 2026-11-10; it asked every time while showing a view was `undoable: false`). A
   model edit's resolution can take seconds: the tool's result says what ran (resolver runs, cache hits, time).
 - **Untrusted text**: labels, titles, evidence notes and annotations are the document's: `quoted()`.
 - **Evals** (agent.md §6): a task's prompts on the exosome headless: "hide the lipids", "color catalase red", "focus on
@@ -640,7 +645,7 @@ where it plugs:
 | 8   | Showing a view is no step; `session.view` set only by Open with this view (§4.4)                              | yes (the `snapshot.apply` rule) | David                                                                                                                           |
 | 9   | Annotations as Prism labels; Add label writes an annotation (§5.2)                                            | yes                             | David                                                                                                                           |
 | 10  | The undo contract for lists (§7.3)                                                                            | as written                      | ours                                                                                                                            |
-| 11  | `show_meso_view` asks the agent every time (`undoable: false`, §8); or a policy that lets showing a view pass | ask, as `snapshot.apply`        | Ludo, 2026-11-08: ask                                                                                                           |
+| 11  | `show_meso_view` asks the agent every time (`undoable: false`, §8); or a policy that lets showing a view pass | ask, as `snapshot.apply`        | Ludo, 2026-11-08: ask; 2026-11-10: a step, no ask                                                                               |
 | 12  | Part rows read-only in 3D until Prism layers select copy runs (§4.1); lane 3's β-cell check depends on it     | yes                             | Ludo                                                                                                                            |
 | 13  | Look ids carry the edit's kind (`l.style.<n>`, `l.eye.<n>`, `l.only.<n>`, §5.3): a document convention        | yes                             | David                                                                                                                           |
 

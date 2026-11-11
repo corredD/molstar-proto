@@ -18,7 +18,7 @@ import {
 
 // The Views row (prism.md §4.1, §4.4; ui.md §3): last under the document, its views (the one shown and the one the
 // saved document opens with said so) and its tours (where one is while it plays, its caption muted). A click on a view
-// shows it (`mesoviewspec.view`, no step); a tour's ⋯ plays or stops it.
+// shows it (`mesoviewspec.view`, a step); a tour's ⋯ plays or stops it.
 
 function treeOf(views: Partial<DocumentViews> = {}): DocumentTree {
   return {
