@@ -10,7 +10,13 @@ import { Button, Choices, Icon, Select, type SelectOption, Show, Slider, TextInp
 import { mapState } from '@molstar/prism-ui/reactive/map-state';
 import type { ReadonlyState } from '@molstar/prism-ui/reactive/readonly-state';
 import { classes } from './_generated/controls.module.css.js';
-import type { GraphicsInfo, GraphicsMode, MesoscaleApi } from './operations.js';
+import {
+  type GraphicsInfo,
+  type GraphicsMode,
+  type GrowSettings,
+  growParams,
+  type MesoscaleApi,
+} from './operations.js';
 import type { PaintSettings } from './paint-mode.js';
 
 // The mesoscale controls, shown by the extension's Entities tab and by a host's panels (prism-me's properties): the
@@ -540,3 +546,198 @@ const FiberAxisOptions: readonly SelectOption[] = [
   ['y', 'Y'],
   ['z', 'Z'],
 ];
+
+const GrowModeChoices = [
+  { id: 'walk', label: 'Random walk', title: 'A new fiber from the source: a persistent random walk, a rise a step' },
+  { id: 'crystal', label: 'Crystal', title: "A lattice in the source's frame, each copy turned as the source" },
+  { id: 'tiling', label: 'Tiling', title: "A plane of copies in the source's own plane, ring by ring" },
+  { id: 'sphere', label: 'Sphere', title: 'Copies at random in a ball about the source' },
+];
+
+/**
+ * The Grow block (progress/2026-11-11-grow.md; Ludo, 2026-11-11): copies of a source particle of the list by a rule,
+ * one step a Grow (`mesoscale.grow`). It names its source (set by a particle's right-click, Grow from this instance…,
+ * or by a paint, its last copy), its mode, the mode's params (a length unset: the source's size), a seed (none: at
+ * random) and Grow. The settings are the area's (`growSettings`), no step.
+ */
+export function GrowBlock(props: { area: MesoscaleApi; particles: string }) {
+  const area = props.area;
+  const source = mapState(area.growSourceState(), (s) => (s?.particles === props.particles ? s : undefined));
+  const settings = area.growSettings.asReadonly;
+  const set = (patch: Partial<GrowSettings>) => area.growSettings.set({ ...area.growSettings.value, ...patch });
+  const line = (label: string, title: string, control: Node) => (
+    <div class={classes.line}>
+      <div class={classes.label} title={title}>
+        {label}
+      </div>
+      {control}
+    </div>
+  );
+  const number = (
+    key: keyof GrowSettings,
+    label: string,
+    title: string,
+    range: { min: number; max: number; step?: number; unit?: string; scale?: 'log' },
+    fallback?: () => number,
+  ) =>
+    line(
+      label,
+      title,
+      <Slider
+        aria-label={`Grow ${label}`}
+        value={mapState(settings, (s) => (s[key] as number | undefined) ?? fallback?.())}
+        min={range.min}
+        max={range.max}
+        step={range.step}
+        scale={range.scale}
+        unit={range.unit}
+        onCommit={(v) => set({ [key]: v })}
+      />,
+    );
+  const mode = (m: GrowSettings['mode']) => mapState(settings, (s) => s.mode === m);
+  return (
+    <Show
+      when={source}
+      fallback={() => (
+        <div class={classes.line}>
+          <div class={classes.label}>Right-click a particle: Grow from this instance…, or paint a copy</div>
+        </div>
+      )}
+    >
+      {(src) => {
+        const diameter = () => Math.round(2 * src.radius * 10) / 10;
+        return (
+          <div class={classes.tight}>
+            {line(
+              'From',
+              'The source: its copies go by the rule from its pose',
+              <div class={classes.label}>{src.name}</div>,
+            )}
+            <Choices
+              label="Mode"
+              choices={GrowModeChoices}
+              active={mapState(settings, (s) => s.mode)}
+              onPick={(id) => set({ mode: id as GrowSettings['mode'] })}
+            />
+            <Show when={mode('walk')}>
+              {() => (
+                <div class={classes.tight}>
+                  {number('steps', 'Steps', "The fiber's points, a rise apart", { min: 1, max: 500, step: 1 })}
+                  {number('persistence', 'Persistence', 'The most the fiber turns a step', {
+                    min: 0,
+                    max: 180,
+                    step: 1,
+                    unit: '°',
+                  })}
+                  {line(
+                    'Rise',
+                    "The entity's fiber rise (its Fiber settings)",
+                    <div class={classes.label}>{`${Math.round(src.rise * 10) / 10} Å`}</div>,
+                  )}
+                </div>
+              )}
+            </Show>
+            <Show when={mode('crystal')}>
+              {() => (
+                <div class={classes.tight}>
+                  {(['a', 'b', 'c'] as const).map((k) =>
+                    number(
+                      k,
+                      k,
+                      `The cell's ${k}, Å (unset: the copy's diameter)`,
+                      { min: 1, max: 1000, scale: 'log', unit: 'Å' },
+                      diameter,
+                    ),
+                  )}
+                  {(
+                    [
+                      ['alpha', 'α', 'b and c'],
+                      ['beta', 'β', 'a and c'],
+                      ['gamma', 'γ', 'a and b'],
+                    ] as const
+                  ).map(([k, label, between]) =>
+                    number(k, label, `The angle between ${between}`, { min: 1, max: 179, step: 0.1, unit: '°' }),
+                  )}
+                  {(['na', 'nb', 'nc'] as const).map((k) =>
+                    number(k, k, `Cells along ${k.slice(1)}, the source's counted`, { min: 1, max: 30, step: 1 }),
+                  )}
+                </div>
+              )}
+            </Show>
+            <Show when={mode('tiling')}>
+              {() => (
+                <div class={classes.tight}>
+                  <Choices
+                    label="Pattern"
+                    choices={[
+                      { id: 'hex', label: 'Hex', title: 'Hexagonal: six neighbours a copy' },
+                      { id: 'square', label: 'Square', title: 'Square: four neighbours a copy' },
+                    ]}
+                    active={mapState(settings, (s) => s.pattern)}
+                    onPick={(id) => set({ pattern: id as GrowSettings['pattern'] })}
+                  />
+                  {number(
+                    'spacing',
+                    'Spacing',
+                    "Between copies, Å (unset: the copy's diameter)",
+                    { min: 1, max: 1000, scale: 'log', unit: 'Å' },
+                    diameter,
+                  )}
+                  {number('rings', 'Rings', 'Rings about the source', { min: 1, max: 30, step: 1 })}
+                </div>
+              )}
+            </Show>
+            <Show when={mode('sphere')}>
+              {() => (
+                <div class={classes.tight}>
+                  {number('count', 'Count', 'The copies', { min: 1, max: 2000, step: 1 })}
+                  {number(
+                    'radius',
+                    'Radius',
+                    "The ball's, Å (unset: 5 × the copy's radius)",
+                    { min: 1, max: 5000, scale: 'log', unit: 'Å' },
+                    () => Math.round(5 * src.radius * 10) / 10,
+                  )}
+                  <Choices
+                    label="Turn"
+                    choices={[
+                      { id: 'random', label: 'Random', title: 'Each copy turned at random' },
+                      { id: 'source', label: 'As the source', title: 'Each copy turned as the source' },
+                    ]}
+                    active={mapState(settings, (s) => s.turn)}
+                    onPick={(id) => set({ turn: id as GrowSettings['turn'] })}
+                  />
+                </div>
+              )}
+            </Show>
+            {line(
+              'Seed',
+              'The random draws (the same seed, the same copies); empty: at random each Grow',
+              <TextInput
+                size="sm"
+                aria-label="Grow seed"
+                placeholder="at random"
+                value={mapState(settings, (s) => (s.seed === undefined ? '' : String(s.seed)))}
+                onInput={(t) => {
+                  const n = Number.parseInt(t, 10);
+                  set({ seed: Number.isFinite(n) ? n : undefined });
+                }}
+              />,
+            )}
+            <div class={classes.line}>
+              <Button
+                size="xs"
+                variant="ghost"
+                icon={<Icon name="sparkles" />}
+                title="Grow the copies by the rule: one step"
+                onClick={() => void area.grow(growParams(src, settings.value) as never)}
+              >
+                Grow
+              </Button>
+            </div>
+          </div>
+        );
+      }}
+    </Show>
+  );
+}

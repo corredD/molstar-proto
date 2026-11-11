@@ -30,6 +30,7 @@ import { type ApiContext, ApiArea, type ApiFailure, ApiResult } from '@molstar/p
 import { OptionalParam } from '@molstar/prism-viewer/api/params';
 import { isFailure, labelOf, pickNamed, pickOne } from '@molstar/prism-viewer/api/scope';
 import { watchedState } from '@molstar/prism-viewer/sources/watched';
+import { type ObservableState, observableState } from '@molstar/prism-ui/reactive/observable-state';
 import type { ReadonlyState } from '@molstar/prism-ui/reactive/readonly-state';
 import { cssColor, matchColors, parseColorFile } from './color-file.js';
 import { pluginPaintHost } from './paint-host.js';
@@ -65,6 +66,7 @@ import {
 import { FiberBankHelix, FiberBanks } from './fiber-units.js';
 import {
   crystalPoses,
+  type GrowMode,
   type GrowPoses,
   type ListMove,
   poseToScene,
@@ -194,6 +196,71 @@ const CellParams = {
   ),
 };
 
+/** A grow's source (`MesoscaleApi.growSource`): a list by state ref and a particle's index there as drawn */
+export interface GrowSource {
+  readonly particles: string;
+  readonly index: number;
+}
+
+/** A grow's source as named (`MesoscaleApi.growSourceState`) */
+export interface GrowSourceInfo extends GrowSource {
+  readonly name: string;
+  readonly radius: number;
+  readonly rise: number;
+}
+
+/** The Grow block's settings (`mesoscale.grow`'s params); a length absent: the source's size; no seed: at random */
+export interface GrowSettings {
+  readonly mode: GrowMode;
+  readonly seed?: number;
+  readonly steps: number;
+  readonly persistence: number;
+  readonly a?: number;
+  readonly b?: number;
+  readonly c?: number;
+  readonly alpha: number;
+  readonly beta: number;
+  readonly gamma: number;
+  readonly na: number;
+  readonly nb: number;
+  readonly nc: number;
+  readonly pattern: 'hex' | 'square';
+  readonly spacing?: number;
+  readonly rings: number;
+  readonly count: number;
+  readonly radius?: number;
+  readonly turn: 'random' | 'source';
+}
+
+export const DefaultGrowSettings: GrowSettings = {
+  mode: 'crystal',
+  steps: 20,
+  persistence: 30,
+  alpha: 90,
+  beta: 90,
+  gamma: 90,
+  na: 3,
+  nb: 3,
+  nc: 1,
+  pattern: 'hex',
+  rings: 3,
+  count: 50,
+  turn: 'random',
+};
+
+/** `mesoscale.grow`'s params of a source and the settings: the mode's own only */
+export function growParams(source: GrowSource, s: GrowSettings) {
+  const own: Record<GrowMode, readonly (keyof GrowSettings)[]> = {
+    walk: ['steps', 'persistence'],
+    crystal: ['a', 'b', 'c', 'alpha', 'beta', 'gamma', 'na', 'nb', 'nc'],
+    tiling: ['pattern', 'spacing', 'rings'],
+    sphere: ['count', 'radius', 'turn'],
+  };
+  const out: Record<string, unknown> = { particles: source.particles, index: source.index, mode: s.mode };
+  for (const k of [...own[s.mode], 'seed' as const]) if (s[k] !== undefined) out[k] = s[k];
+  return out;
+}
+
 /** The most copies one grow makes */
 const MaxGrown = 20000;
 const tooMany = (n: number) =>
@@ -252,6 +319,43 @@ export class MesoscaleApi extends ApiArea {
       ),
     );
     return this._paintMode;
+  }
+
+  /**
+   * The source of the next grow (progress/2026-11-11-grow.md): a particle of a list as drawn, set by its right-click
+   * (Grow from this instance…) or by a paint (its last copy); view state, no step
+   */
+  readonly growSource: ObservableState<GrowSource | undefined> = observableState<GrowSource | undefined>(undefined, {
+    compare: (a, b) => a?.particles === b?.particles && a?.index === b?.index,
+  });
+
+  /** The Grow block's mode and params (view state, no step); a length absent: the source's size */
+  readonly growSettings: ObservableState<GrowSettings> = observableState<GrowSettings>(DefaultGrowSettings);
+
+  /**
+   * The grow's source as the Grow block names it, following the state tree and the source while watched (a read for
+   * views): its list and index, its name ("CA #1204"), its radius (Å) and its fibers' rise; undefined without one or
+   * when it is gone
+   */
+  growSourceState(): ReadonlyState<GrowSourceInfo | undefined> {
+    const plugin = this.ctx.plugin;
+    return watchedState(
+      () => {
+        const s = this.growSource.value;
+        if (!s) return undefined;
+        const ctx = { plugin };
+        const l = lists(ctx).find((x) => x.cell.transform.ref === s.particles);
+        const src = l && growSourceOf(plugin.state.data, l, s.index);
+        if (!src || isFailure(src)) return undefined;
+        const id = brushIdOf(src.data, src);
+        const structures = paintedStructures(plugin.state.data, s.particles);
+        const fibers = paintedFibers(plugin.state.data, s.particles);
+        const rise = fiberSettingsOf(src.data, id, src.target, fibers, structures).rise;
+        return { ...s, name: `${src.name} #${s.index}`, radius: src.radius, rise };
+      },
+      () => [plugin.state.data.events.changed, this.growSource.asReadonly],
+      { compare: (a, b) => JSON.stringify(a) === JSON.stringify(b) },
+    );
   }
 
   /** The paint mode ends with the viewer: its layer, its keys and its subscription go (review should-fix 5) */

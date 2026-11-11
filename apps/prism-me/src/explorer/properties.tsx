@@ -15,6 +15,7 @@ import { Decorations, MeshControls, ObliqueSlice, Slice, VolumeData } from '@mol
 import type { CryoetApi, DecorationsInfo, TargetDecoration } from '@molstar/cryoet-extension/operations';
 import {
   FiberSettings,
+  GrowBlock,
   ImportColors,
   ObjectGraphics,
   PaintBrush,
@@ -417,6 +418,17 @@ export const Sections: readonly Section[] = [
         />
       );
     },
+  },
+  {
+    // a grow from an instance (progress/2026-11-11-grow.md): on a list, its model, its entities and targets; its source
+    // the particle right-clicked (Grow from this instance…) or the last painted
+    id: 'grow',
+    title: 'Grow',
+    when: ({ api, picked }) =>
+      !!api.mesoscale &&
+      !!picked.node &&
+      ('particles' in picked.node || picked.kind === 'mesoscale model' || picked.kind === 'particle list'),
+    render: ({ api, picked }) => <GrowBlock area={api.mesoscale!} particles={picked.node!.ref} />,
   },
   {
     // a model's entity's fibers (progress/2026-11-08-paint.md, Round 3): its painted fibers' rise, twist and jitter

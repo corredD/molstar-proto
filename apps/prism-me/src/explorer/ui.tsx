@@ -41,6 +41,7 @@ import { distancePicker, selectionModeHint } from './measure.js';
 import { colorItems, nodeMenuItems, showClipHandles, useItems } from './menu.js';
 import type { CanvasClick, ExplorerApi, PickedNode } from './operations.js';
 import { type Picked, Properties } from './properties.js';
+import { PropertiesSlot } from './properties-view.js';
 import {
   ancestorKeys,
   Categories,
@@ -175,6 +176,12 @@ export function explorerUI(ctx: ViewerUIContext): ViewerExtensionUI {
             run: () => void handles.show({ ...particle, edit: { kind: 'offset', targets: kind } }),
           },
         ];
+        const grow = growMenuItem(ctx.api, particle, () => {
+          // its Grow section open under the row picked (the source's list's)
+          model.sections.setSectionOpen(PropertiesSlot, 'grow', true);
+          if (p) model.reveal({ ...p });
+        });
+        if (grow) local.push(grow);
         // the part's own move is not there: these are
         items.splice(0, items.length, ...local, ...items.filter((i) => i.id !== 'move'));
       }
@@ -202,6 +209,28 @@ export function explorerUI(ctx: ViewerUIContext): ViewerExtensionUI {
  */
 export function particleBehind(area: ExplorerApi, picked: PickedNode | undefined, loci: Loci) {
   return picked?.kind === 'label' ? undefined : area.particleOf(loci);
+}
+
+/**
+ * A particle's Grow from this instance… (progress/2026-11-11-grow.md): the particle the next grow's source (the
+ * mesoscale area's `growSource`), then `opened` shows its Grow block; none without the mesoscale area
+ */
+export function growMenuItem(
+  api: ViewerApi,
+  particle: { readonly list: string; readonly index: number },
+  opened: () => void,
+): ContextMenuItem | undefined {
+  const m = api.mesoscale;
+  if (!m) return undefined;
+  return {
+    id: 'grow-instance',
+    label: 'Grow from this instance…',
+    icon: 'sparkles',
+    run: () => {
+      m.growSource.set({ particles: particle.list, index: particle.index });
+      opened();
+    },
+  };
 }
 
 /** The tree's state of each explorer area (its viewer's): for tests */
