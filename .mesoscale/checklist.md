@@ -13,6 +13,10 @@ Questions that stop the loop. One line each; move it to Decided with the answer.
 
 ## Decided
 
+- 2026-11-11: David's review received (semantic levels generic and declared, MesoLocation down to atoms, `within`'s
+  scope, animations and time, clipping, placement frames both ways, derived results as resources, no published schema,
+  `.mesoviewx`). Ludo: yes to `.mesoviewx` (an archive of the document and its resources, as MolViewSpec's `.mvsx`). The
+  other eight wait on Ludo; proposed answers in the status doc. Not yet in the spec.
 - 2026-11-11: `me/mesoviewspec` pushed to the fork (`35e2fa52d`); `origin/prism-me` merged in (`e7151e37f`, colors by
   zoom on sites and prism-me notes; one conflict in `progress/current.md`, both sides kept).
 - 2026-11-10: the stale resource on edit (an edit writing a resource's `uri` draws the old one; `document-model.ts`
@@ -65,7 +69,7 @@ Each lane: brief committed · steps · checks green · gate (reviewer, skeptic, 
       region and copies
 - [x] David's 2026-11-10 comments proposed: drawing as `meso.paint` models (runtime.md), static pointers as
       `locationToAddress` and `:key` (mesoql.md); design.md decision 11 points to both
-- [ ] David's review
+- [x] David's review (2026-11-11); his answers to be written into the spec after Ludo decides
 - [ ] prism.md §5.1 (representation and LOD viewer-only) reconciled, after lane 4
 
 ### 4. `mvs-drive` ([progress](../apps/prism-me/progress/2026-11-09-mvs-drive.md)), port 1358
