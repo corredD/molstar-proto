@@ -6,3 +6,6 @@
 - Painted copies are their list's particles: a copy moved alone (Move this instance) or with its kind (Offset all like
   it) as the file's are (cryoet's offsets read the deepest decorator's particles); a list's row counts them.
 - Fiber, not fibre, in paint's labels, messages and docs.
+- A structure paints as the scene built it: an assembly (2PLV assembly 1) or a symmetry, not the asymmetric unit.
+- A structure paints fibers: Fiber in its Paint section, its Rise and Twist after its first stroke; its units touch by
+  default (its length along its principal axis a point).
