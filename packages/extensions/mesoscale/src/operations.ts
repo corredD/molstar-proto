@@ -341,6 +341,18 @@ export class MesoscaleApi extends ApiArea {
   /** The Grow block's mode and params (view state, no step); a length absent: the source's size */
   readonly growSettings: ObservableState<GrowSettings> = observableState<GrowSettings>(DefaultGrowSettings);
 
+  /**
+   * Sets the grow's source; another than the one before also unsets the lengths (a, b, c, spacing, radius): the new
+   * source's size again (review G1)
+   */
+  setGrowSource(source: GrowSource) {
+    const old = this.growSource.value;
+    if (old?.particles === source.particles && old.index === source.index) return;
+    const { a: _a, b: _b, c: _c, spacing: _s, radius: _r, ...kept } = this.growSettings.value;
+    this.growSettings.set(kept);
+    this.growSource.set(source);
+  }
+
   /** The grow's source: the last particle of a list's painted decorator (a stroke's last copy) */
   private growFromLast(list: string | undefined) {
     if (!list) return;
@@ -349,7 +361,7 @@ export class MesoscaleApi extends ApiArea {
     const l = lists({ plugin: this.ctx.plugin }).find((x) => x.cell.transform.ref === list);
     // a copy that is no source (a unit of a bank's fiber: review S3) leaves the source as it was
     if (!count || !l || isFailure(growSourceOf(this.ctx.plugin.state.data, l, count - 1))) return;
-    this.growSource.set({ particles: list, index: count - 1 });
+    this.setGrowSource({ particles: list, index: count - 1 });
   }
 
   /**

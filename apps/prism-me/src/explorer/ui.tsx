@@ -229,7 +229,7 @@ export function growMenuItem(
     label: 'Grow from this instance…',
     icon: 'sparkles',
     run: () => {
-      m.growSource.set({ particles: particle.list, index: particle.index });
+      m.setGrowSource({ particles: particle.list, index: particle.index });
       opened();
     },
   };

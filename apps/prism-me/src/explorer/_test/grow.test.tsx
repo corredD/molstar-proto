@@ -165,3 +165,16 @@ describe('Grow from this instance', () => {
     expect(v.api.mesoscale!.growSource.value).toEqual({ particles: hiv, index: 4 });
   });
 });
+
+describe('Grow settings', () => {
+  it("leave a length set for one source to the next source's size (review G1)", async () => {
+    const { v, hiv } = await viewer();
+    const m = v.api.mesoscale!;
+    m.setGrowSource({ particles: hiv, index: 0 });
+    m.growSettings.set({ ...m.growSettings.value, a: 30, spacing: 12, na: 5 });
+    m.setGrowSource({ particles: hiv, index: 0 });
+    expect(m.growSettings.value.a).toBe(30);
+    m.setGrowSource({ particles: hiv, index: 2 });
+    expect(m.growSettings.value).toMatchObject({ a: undefined, spacing: undefined, na: 5 });
+  });
+});
