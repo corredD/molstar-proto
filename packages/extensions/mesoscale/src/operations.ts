@@ -54,7 +54,8 @@ import {
   nextStructureIds,
   structureSourceKey,
   structureDefinitionOf,
-  lengthAlongAxis,
+  paintedStructureOf,
+  structureBuildName,
   structureSourceOf,
   paintRotations,
   principalAxisOf,
@@ -798,16 +799,8 @@ export class MesoscaleApi extends ApiArea {
           : {}),
       };
       const key = into.structure && structureSourceKey(into.structure);
-      // a structure's first fiber: its rise its length along its axis, its units touching (it has no radius; Ludo
-      // 2026-11-10, "the Fiber option as well"), set as its own (shown, changed by mesoscale.fiber)
-      const fiberId = into.structure && (into.structure.entity >= 0 ? into.structure.entity : into.structure.target);
-      const touching = (p: PaintedParams): FiberSettingsMap | undefined =>
-        asFiber && fiberId !== undefined && !p.fibers?.[fiberId]
-          ? { ...p.fibers, [fiberId]: { rise: lengthAlongAxis(brush.object) || 10, twist: 0, jitter: 0 } }
-          : undefined;
       const withStroke = (p: PaintedParams): PaintedParams => ({
         ...p,
-        ...(touching(p) ? { fibers: touching(p)! } : {}),
         strokes: [...p.strokes, stroke],
         ...(into.structure && !(p.structures ?? []).some((x) => structureSourceKey(x) === key)
           ? { structures: [...(p.structures ?? []), into.structure] }
@@ -898,8 +891,13 @@ export class MesoscaleApi extends ApiArea {
         return ApiResult.fail('invalid', 'A bank of units is for an entity of a list with entities.');
       }
       const state = ctx.plugin.state.data;
+      const structures = paintedStructures(state, l.cell.transform.ref);
+      // a structure's fibers are of the structure itself (follow-up review S3)
+      if (given.bank && given.bank !== 'none' && paintedStructureOf(structures, id)) {
+        return ApiResult.fail('invalid', 'A structure painted with has no bank of units: its fibers are of itself.');
+      }
       const old = paintedFibers(state, l.cell.transform.ref);
-      const now = fiberSettingsOf(data, id, brush.target, old);
+      const now = fiberSettingsOf(data, id, brush.target, old, structures);
       // a bank chosen anew: its units' helix (Round 5), what is given kept
       const helix =
         given.bank && given.bank !== 'none' && given.bank !== now.bank
@@ -1786,6 +1784,11 @@ function paintedFibers(state: State, list: string): FiberSettingsMap | undefined
   return (decoratorUnder(state, list, ParticleListPainted)?.transform.params as PaintedParams | undefined)?.fibers;
 }
 
+/** The structures painted with in a list (none: none) */
+function paintedStructures(state: State, list: string): readonly PaintStructure[] | undefined {
+  return (decoratorUnder(state, list, ParticleListPainted)?.transform.params as PaintedParams | undefined)?.structures;
+}
+
 /**
  * Updates a list's painted decorator, one step; made on first use, right under the list, with the move under it
  * (review must-fix 1): a move or scale of the list (`stage.move`, `stage.scale`) updates the Transform it finds in the
@@ -1902,8 +1905,11 @@ function paintInto(ctx: ApiContext, structure: string | undefined, particles: st
   const known = (painted?.transform.params as PaintedParams | undefined)?.structures ?? [];
   const definition = structureDefinitionOf(state, structure);
   const key = structureSourceKey({ source, definition });
+  // a new entity's name: its own, else (another build of it painted here already) with its build (review S2)
+  const taken =
+    known.some((x) => x.name === name) || [...(base.entityInfo?.values() ?? [])].some((e) => e.name === name);
   const entry: PaintStructure = known.find((x) => structureSourceKey(x) === key) ?? {
-    name,
+    name: taken ? structureBuildName(name, definition) : name,
     ...nextStructureIds(base, known),
     source,
     ...(definition ? { definition } : {}),
@@ -1955,9 +1961,10 @@ function structureBrushOf(ctx: Pick<ApiContext, 'plugin'>, structure: string, in
   const source = structureSourceOf(state, structure);
   if (!source) return undefined;
   const all = lists(ctx);
-  const l = into
-    ? all.find((x) => x.cell.transform.ref === into)
-    : all.find((x) => x.cell.transform.transformer === MesoscalePaintingList);
+  // where its strokes go: its list, gone the Painting list (as the host's `paint`; follow-up review new N1)
+  const l =
+    (into && all.find((x) => x.cell.transform.ref === into)) ||
+    all.find((x) => x.cell.transform.transformer === MesoscalePaintingList);
   if (!l) return undefined;
   const painted = decoratorUnder(state, l.cell.transform.ref, ParticleListPainted);
   const key = structureSourceKey({ source, definition: structureDefinitionOf(state, structure) });
@@ -1976,10 +1983,11 @@ function fiberInfo(state: State, ctx: Pick<ApiContext, 'plugin'>, particles: str
   if (!data || !brush) return undefined;
   const id = brushIdOf(data, brush);
   const own = paintedFibers(state, l.cell.transform.ref);
+  const structures = paintedStructures(state, l.cell.transform.ref);
   return {
-    ...fiberSettingsOf(data, id, brush.target, own),
-    // whether it can have a bank (review S3)
-    banks: !!data.entityInfo?.size && entity >= 0,
+    ...fiberSettingsOf(data, id, brush.target, own, structures),
+    // whether it can have a bank (review S3): not a structure painted with (follow-up review S3)
+    banks: !!data.entityInfo?.size && entity >= 0 && !paintedStructureOf(structures, id),
     fibers: !!own?.[id] || isFiberBrush(data, id),
   };
 }

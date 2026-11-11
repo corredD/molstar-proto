@@ -113,12 +113,30 @@ export function fiberSettingsOf(
   id: number,
   target: number,
   given?: FiberSettingsMap,
+  structures?: readonly PaintStructure[],
 ): FiberSettingsIn {
   const set = given?.[id];
   if (set) return { axis: 'auto', offset: 0, bank: 'none', ...set };
   const c = fiberConventionOf(list, id);
   if (c && c.step > 0) return { rise: c.step, twist: c.twist, jitter: 0, axis: 'auto', offset: 0, bank: 'none' };
-  return { rise: 2 * targetRadius(list, target) || 10, twist: 0, jitter: 0, axis: 'auto', offset: 0, bank: 'none' };
+  // a structure painted with (it has no radius): its units touching along its principal axis (Ludo, 2026-11-10: "the
+  // Fiber option as well"; review M1: read here, so shown, changed and painted alike), within the Rise slider's 500 Å
+  const length = paintedStructureOf(structures, id)
+    ? Math.min(lengthAlongAxis(list.targetMapping?.get(target)), MaxStructureRise)
+    : 0;
+  const rise = length || 2 * targetRadius(list, target) || 10;
+  return { rise, twist: 0, jitter: 0, axis: 'auto', offset: 0, bank: 'none' };
+}
+
+/** A painted structure's default rise at most this, Å (the Rise slider's end; review N1) */
+const MaxStructureRise = 500;
+
+/** The painted structure a brush id is (its entity, else its target in a list without entities: `brushIdOf`), if any */
+export function paintedStructureOf(
+  structures: readonly PaintStructure[] | undefined,
+  id: number,
+): PaintStructure | undefined {
+  return structures?.find((s) => (s.entity >= 0 ? s.entity : s.target) === id);
 }
 
 const lengths = new WeakMap<object, number>();
@@ -234,8 +252,9 @@ export function paintParticles(
   list: ParticleList,
   painted: readonly PaintStroke[],
   fibers?: FiberSettingsMap,
+  structures?: readonly PaintStructure[],
 ): ParticleList {
-  const strokes = makeFibers(list, painted, fibers);
+  const strokes = makeFibers(list, painted, fibers, structures);
   const units = withUnits(list, strokes);
   let added = 0;
   for (const s of strokes) added += Math.floor(s.positions.length / 3);
@@ -316,7 +335,12 @@ export function paintParticles(
  * The strokes with each fiber stroke's points made (`makeFiber`) by its brush's settings (`fiberSettingsOf`) about its
  * brush's fiber axis (its own fibers', else its target's principal axis); the others as they are
  */
-function makeFibers(list: ParticleList, strokes: readonly PaintStroke[], given?: FiberSettingsMap): MadeStroke[] {
+function makeFibers(
+  list: ParticleList,
+  strokes: readonly PaintStroke[],
+  given?: FiberSettingsMap,
+  structures?: readonly PaintStructure[],
+): MadeStroke[] {
   const axes = new Map<number, Vec3>();
   return strokes.map((s) => {
     if (!s.fiber || s.positions.length < 6) return s;
@@ -326,7 +350,7 @@ function makeFibers(list: ParticleList, strokes: readonly PaintStroke[], given?:
       axis = fiberConventionOf(list, id)?.axis ?? principalAxisOf(list.targetMapping?.get(s.target));
       axes.set(id, axis);
     }
-    const settings = fiberSettingsOf(list, id, s.target, given);
+    const settings = fiberSettingsOf(list, id, s.target, given, structures);
     const made = makeFiber(s.positions, settings, axis, s.seed ?? 0);
     // a bank's units only where the brush is an entity (a list without: its targets are its brushes)
     // and an entity of its own (review M2: -1, none, would give ids below the list's)
@@ -533,7 +557,7 @@ export interface PaintStructure {
   readonly source: ParticleTargetSource;
   /**
    * How the scene built it from its model: its assembly, its symmetry (Ludo, 2026-11-10: "it should paint the
-   * assembly"). None: the model (a session saved before it)
+   * assembly"). None: the model (a session saved before it; matched as the model, review S1)
    */
   readonly definition?: RootStructureDefinition.Params;
 }
@@ -544,7 +568,39 @@ export interface PaintStructure {
  */
 export function structureSourceKey(s: Pick<PaintStructure, 'source' | 'definition'>): string {
   const source = s.source.kind === 'url' ? `url:${Asset.getUrl(s.source.url)}` : `file:${s.source.file.id}`;
-  return s.definition ? `${source} ${JSON.stringify(s.definition)}` : source;
+  const build = buildKey(s.definition);
+  return build ? `${source} ${build}` : source;
+}
+
+/**
+ * What a definition builds, by what changes it (review S5): its kind and the assembly id, the cells, the radius or the
+ * generators; not its bonds' params (written or not by each loader). The model (or none): ''
+ */
+function buildKey(d: RootStructureDefinition.Params | undefined): string {
+  if (!d || d.name === 'model') return '';
+  switch (d.name) {
+    case 'auto':
+      return 'auto';
+    case 'assembly':
+      return `assembly ${d.params?.id ?? ''}`;
+    case 'symmetry':
+      return `symmetry ${Array.from(d.params?.ijkMin ?? [])} ${Array.from(d.params?.ijkMax ?? [])}`;
+    case 'symmetry-mates':
+      return `symmetry-mates ${d.params?.radius ?? ''}`;
+    case 'symmetry-assembly':
+      return `symmetry-assembly ${JSON.stringify(d.params?.generators ?? [])}`;
+  }
+  return JSON.stringify(d);
+}
+
+/**
+ * A painted structure's name when another build of its file is painted in the list already (review S2: one name an
+ * entity): its build after its name, "2PLV (assembly 1)"
+ */
+export function structureBuildName(name: string, d: RootStructureDefinition.Params | undefined): string {
+  if (!d || d.name === 'model') return `${name} (model)`;
+  if (d.name === 'assembly') return `${name} (assembly ${d.params?.id || 'default'})`;
+  return `${name} (${d.name.replace('-', ' ')})`;
 }
 
 /** How a structure of the scene was built from its model (its `structure-from-model` ancestor's type), if it was */
@@ -614,6 +670,12 @@ export function withStructures(
 /** The structures' objects a decorator loaded, by source (kept across its updates, their assets with them) */
 type StructureCache = Map<string, { target: ParticleTarget; assets: Asset.Wrapper[] }>;
 
+/** A structure loaded to paint with let go: its assets and its structure's properties (as `structure-from-model`) */
+function disposeStructure(entry: { target: ParticleTarget; assets: Asset.Wrapper[] }) {
+  for (const a of entry.assets) a.dispose();
+  if (entry.target.kind === 'structure') entry.target.structure.customPropertyDescriptors.dispose();
+}
+
 /** The structures' objects: each loaded from its source once (a failure warned, its copies drawn without it) */
 async function loadStructures(
   plugin: PluginContext,
@@ -632,7 +694,10 @@ async function loadStructures(
       try {
         let target = await loadParticleTarget(plugin, ctx, s.source, assets);
         if (s.definition && target.kind === 'structure') {
-          const built = await RootStructureDefinition.create(plugin, ctx, target.structure.model, s.definition);
+          const model = target.structure;
+          const built = await RootStructureDefinition.create(plugin, ctx, model.model, s.definition);
+          // the model's structure only built from (review N3)
+          if (built.data !== model) model.customPropertyDescriptors.dispose();
           target = { kind: 'structure', structure: built.data };
         }
         entry = { target, assets };
@@ -644,7 +709,7 @@ async function loadStructures(
     if (entry) next.set(key, entry);
     objects.push(entry?.target);
   }
-  for (const [key, entry] of previous) if (!next.has(key)) for (const a of entry.assets) a.dispose();
+  for (const [key, entry] of previous) if (!next.has(key)) disposeStructure(entry);
   cache.structures = next;
   return objects;
 }
@@ -683,7 +748,7 @@ const ParticleListPainted = PluginStateTransform.BuiltIn({
       const objects = await loadStructures(plugin, ctx, params.structures ?? [], c);
       Object.assign(c, { input: a.data, objects });
       const list = withStructures(a.data, params.structures ?? [], objects);
-      return new SO.Particle.List(paintParticles(list, params.strokes, params.fibers), {
+      return new SO.Particle.List(paintParticles(list, params.strokes, params.fibers, params.structures), {
         label: a.label,
         description: a.description,
       });
@@ -703,14 +768,14 @@ const ParticleListPainted = PluginStateTransform.BuiltIn({
         return StateTransformer.UpdateResult.Unchanged;
       }
       const list = withStructures(a.data, newParams.structures ?? [], objects);
-      b.data = paintParticles(list, newParams.strokes, newParams.fibers);
+      b.data = paintParticles(list, newParams.strokes, newParams.fibers, newParams.structures);
       b.label = a.label;
       b.description = a.description;
       return StateTransformer.UpdateResult.Updated;
     });
   },
   dispose({ cache }) {
-    for (const entry of (cache as InputCache).structures?.values() ?? []) for (const x of entry.assets) x.dispose();
+    for (const entry of (cache as InputCache).structures?.values() ?? []) disposeStructure(entry);
   },
 });
 

@@ -32,6 +32,8 @@ function setup(
   root.append(canvas);
   document.body.append(root);
   const strokes: { positions: number[]; normals: number[] }[] = [];
+  /** the list each fiber step was read for (`into`) */
+  const intos: (string | undefined)[] = [];
   const listeners = new Set<() => void>();
   let lists = true;
   let reads = pending;
@@ -81,7 +83,7 @@ function setup(
         copy.disposed = true;
       },
     }),
-    fiberStep: () => options.fiberStep,
+    fiberStep: (_b, into) => (intos.push(into), options.fiberStep),
     paint: async (_b, _s, positions, normals, seed, fiber) => {
       strokes.push({ positions, normals });
       seeds.push(seed);
@@ -114,6 +116,7 @@ function setup(
     copy,
     seeds,
     fibers,
+    intos,
     removeList: () => (lists = false),
   };
 }
@@ -121,6 +124,19 @@ function setup(
 const brush = { particles: 'list', entity: 1, name: 'CD9' };
 
 describe('paint mode', () => {
+  it('reads the fiber step for the list the brush paints into, at its start and at each stroke (follow-up review S4)', () => {
+    const { mode, layer, intos } = setup();
+    mode.set({ into: 'hiv' });
+    expect(mode.start(brush)).toBe(true);
+    expect(intos).toEqual(['hiv']);
+    mode.set({ into: 'model' });
+    const el = layer();
+    el.dispatchEvent(pointer('pointerdown', { x: 10, y: 10 }));
+    el.dispatchEvent(pointer('pointerup', { x: 10, y: 10 }));
+    expect(intos.at(-1)).toBe('model');
+    mode.stop();
+  });
+
   it('a stroke: lost releases leave no listener and paint nothing; a whole stroke paints once, a copy a spacing', () => {
     const { mode, layer, strokes } = setup();
     expect(mode.start(brush)).toBe(true);

@@ -27,6 +27,7 @@ import {
   fiberSettingsOf,
   parseRange,
   isFiberBrush,
+  type PaintStructure,
   ParticleListPainted,
 } from './paint.js';
 import { pluginPaintCursor, pluginStructureCursor } from './paint-cursor.js';
@@ -170,9 +171,10 @@ export function pluginPaintHost(
       if (!list || !data || !b) return undefined;
       const id = brushIdOf(data, b);
       const painted = decoratorUnder(plugin.state.data, list.cell.transform.ref, ParticleListPainted);
-      const own = (painted?.transform.params as { fibers?: FiberSettingsMap } | undefined)?.fibers;
+      const p = painted?.transform.params as { fibers?: FiberSettingsMap; structures?: PaintStructure[] } | undefined;
+      const own = p?.fibers;
       if (!own?.[id] && !isFiberBrush(data, id)) return undefined;
-      return fiberSettingsOf(data, id, b.target, own).rise;
+      return fiberSettingsOf(data, id, b.target, own, p?.structures).rise;
     },
     async paint(brush: PaintBrushTarget, s: PaintSettings, positions, normals, seed, fiber) {
       const r = (await paint({

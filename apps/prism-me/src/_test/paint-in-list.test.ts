@@ -9,8 +9,9 @@ import { Mat4, Vec3 } from '@molstar/core/math/linear-algebra';
 import { CustomProperties } from '@molstar/model/model/custom-property';
 import { PluginStateObject as SO, PluginStateTransform } from '@molstar/plugin/state/objects';
 import { OrderedSet } from '@molstar/core/data/int';
-import { ParticleListPainted } from '@molstar/mesoscale-extension/paint';
+import { lengthAlongAxis, ParticleListPainted } from '@molstar/mesoscale-extension/paint';
 import { Particle, type ParticleList, type ParticleTarget } from '@molstar/model/model/particles/particle-list';
+import type { PaintHost } from '@molstar/mesoscale-extension/paint-mode';
 import type { ApiResult } from '@molstar/prism-viewer/api/area';
 import { DefaultPrismViewerSpec } from '@molstar/prism-viewer/default-spec';
 import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
@@ -323,16 +324,137 @@ describe('a fiber of a structure', () => {
     const crn = await loadCrn(v);
     const radius = (v.plugin.state.data.cells.get(crn)!.obj!.data as { boundary: { sphere: { radius: number } } })
       .boundary.sphere.radius;
-    expectOk(await v.api.run('mesoscale.paint', { structure: crn, positions: [0, 0, 0, 200, 0, 0], fiber: true, seed: 1 }));
+    expectOk(
+      await v.api.run('mesoscale.paint', { structure: crn, positions: [0, 0, 0, 200, 0, 0], fiber: true, seed: 1 }),
+    );
     const d = drawn(v);
-    // not 10 Å (a structure has no radius): its length along its principal axis, at most its diameter
-    expect(gap(d, 0)).toBeGreaterThan(15);
+    // not 10 Å (a structure has no radius): its length along its principal axis (review N4: the rule itself)
+    const target = d.targetMapping!.get(d.targets[0])!;
+    expect(gap(d, 0)).toBeCloseTo(lengthAlongAxis(target), 1);
     expect(gap(d, 0)).toBeLessThanOrEqual(2 * radius);
     // the brush's entity in the list it paints into (the Painting list here)
     const brush = v.api.mesoscale!.structureBrushState(crn, '').value;
     expect(brush).toEqual({ particles: lists(v)[0].cell.transform.ref, entity: d.entities![0] });
     expect(v.api.mesoscale!.fiberState(brush!.particles, brush!.entity).value?.fibers).toBe(true);
-    expectOk(await v.api.run('mesoscale.fiber', { particles: brush!.particles, entity: String(brush!.entity), rise: 50 }));
+    expectOk(
+      await v.api.run('mesoscale.fiber', { particles: brush!.particles, entity: String(brush!.entity), rise: 50 }),
+    );
     expect(gap(drawn(v), 0)).toBeCloseTo(50, 1);
+  });
+});
+
+// the follow-up's gate (the assembly, a structure's fibers): the structure's rise wherever it is read, no bank, one
+// entity per build of a structure (named apart), its brush where its strokes go
+describe('a structure painted with, after the follow-up gate', () => {
+  const gap = (l: ParticleList, i: number) => Math.hypot(...xyz(l, i + 1).map((x, k) => x - xyz(l, i)[k]));
+  const structureOf = (v: PrismViewer, crn: string) =>
+    ({ kind: 'structure', structure: v.plugin.state.data.cells.get(crn)!.obj!.data }) as ParticleTarget;
+  const retype = async (v: PrismViewer, crn: string, type: object) => {
+    const cell = v.plugin.state.data.cells.get(crn)!;
+    await v.plugin
+      .build()
+      .to(crn)
+      .update({ ...(cell.transform.params as object), type })
+      .commit();
+  };
+
+  it('keeps its touching rise when its fiber settings change before its first fiber (review M1)', async () => {
+    const v = await viewer();
+    const crn = await loadCrn(v);
+    const length = lengthAlongAxis(structureOf(v, crn));
+    expectOk(await v.api.run('mesoscale.paint', { structure: crn, positions: [0, 0, 0], seed: 1 }));
+    const brush = v.api.mesoscale!.structureBrushState(crn, '').value!;
+    expect(v.api.mesoscale!.fiberState(brush.particles, brush.entity).value?.rise).toBeCloseTo(length, 3);
+    expectOk(
+      await v.api.run('mesoscale.fiber', { particles: brush.particles, entity: String(brush.entity), twist: 20 }),
+    );
+    expectOk(
+      await v.api.run('mesoscale.paint', { structure: crn, positions: [0, 50, 0, 200, 50, 0], fiber: true, seed: 2 }),
+    );
+    expect(gap(drawn(v), 1)).toBeCloseTo(length, 1);
+  });
+
+  it('offers and takes no bank of units for a structure (review S3)', async () => {
+    const v = await viewer();
+    const crn = await loadCrn(v);
+    expectOk(
+      await v.api.run('mesoscale.paint', { structure: crn, positions: [0, 0, 0, 200, 0, 0], fiber: true, seed: 1 }),
+    );
+    const brush = v.api.mesoscale!.structureBrushState(crn, '').value!;
+    expect(v.api.mesoscale!.fiberState(brush.particles, brush.entity).value?.banks).toBe(false);
+    const r = await v.api.run('mesoscale.fiber', {
+      particles: brush.particles,
+      entity: String(brush.entity),
+      bank: 'dna',
+    });
+    expect(r.ok).toBe(false);
+  });
+
+  it('is one entity for one build however its params are written; another build named apart (S1, S2, S5)', async () => {
+    const v = await viewer();
+    const crn = await loadCrn(v);
+    await retype(v, crn, { name: 'model', params: {} });
+    expectOk(await v.api.run('mesoscale.paint', { structure: crn, positions: [0, 0, 0], seed: 1 }));
+    await retype(v, crn, { name: 'model', params: { dynamicBonds: false, mergeBySymmetry: false } });
+    expectOk(await v.api.run('mesoscale.paint', { structure: crn, positions: [30, 0, 0], seed: 2 }));
+    await retype(v, crn, {
+      name: 'symmetry',
+      params: { ijkMin: Vec3.create(-1, -1, -1), ijkMax: Vec3.create(0, 0, 0) },
+    });
+    expectOk(await v.api.run('mesoscale.paint', { structure: crn, positions: [60, 0, 0], seed: 3 }));
+    const d = drawn(v);
+    expect(d.entities![1]).toBe(d.entities![0]);
+    expect(d.entities![2]).not.toBe(d.entities![0]);
+    const names = [...d.entityInfo!.values()].map((e) => e.name);
+    expect(new Set(names).size).toBe(names.length);
+    expect(d.entityInfo!.get(d.entities![0])?.name).toBe('1CRN');
+  });
+
+  it('matches an entry saved without its build as the model (S1)', async () => {
+    const v = await viewer();
+    const crn = await loadCrn(v);
+    await retype(v, crn, { name: 'model', params: {} });
+    expectOk(await v.api.run('mesoscale.paint', { structure: crn, positions: [0, 0, 0], seed: 1 }));
+    const painted = [...v.plugin.state.data.cells.values()].find(
+      (c) => c.transform.transformer === ParticleListPainted,
+    )!;
+    const p = painted.transform.params as { structures: { definition?: unknown }[] };
+    await v.plugin
+      .build()
+      .to(painted.transform.ref)
+      .update({ ...p, structures: p.structures.map(({ definition: _, ...x }) => x) })
+      .commit();
+    expectOk(await v.api.run('mesoscale.paint', { structure: crn, positions: [30, 0, 0], seed: 2 }));
+    const d = drawn(v);
+    expect(d.entities![1]).toBe(d.entities![0]);
+  });
+
+  it('makes fibers on Auto once it has one where it paints: the host reads its rise there (S4)', async () => {
+    const v = await viewer();
+    const crn = await loadCrn(v);
+    const host = (v.api.mesoscale!.paintMode as unknown as { host: PaintHost }).host;
+    const brush = { particles: '', entity: -1, name: '1CRN', structure: crn };
+    expect(host.fiberStep(brush, '')).toBeUndefined();
+    expectOk(await v.api.run('mesoscale.paint', { structure: crn, positions: [0, 0, 0], seed: 1 }));
+    // copies only: no fiber on Auto
+    expect(host.fiberStep(brush, '')).toBeUndefined();
+    expectOk(
+      await v.api.run('mesoscale.paint', { structure: crn, positions: [0, 50, 0, 200, 50, 0], fiber: true, seed: 2 }),
+    );
+    expect(host.fiberStep(brush, '')).toBeCloseTo(lengthAlongAxis(structureOf(v, crn)), 3);
+    // a list it has not painted into: none there
+    await v.plugin.build().toRoot().apply(TestModel).commit();
+    expect(
+      host.fiberStep(brush, lists(v).find((l) => l.cell.transform.transformer === TestModel)!.cell.transform.ref),
+    ).toBeUndefined();
+  });
+
+  it('reads its brush where its strokes go: a list gone, the Painting list (new N1)', async () => {
+    const v = await viewer();
+    const crn = await loadCrn(v);
+    expectOk(await v.api.run('mesoscale.paint', { structure: crn, positions: [0, 0, 0], seed: 1 }));
+    expect(v.api.mesoscale!.structureBrushState(crn, 'gone').value).toEqual(
+      v.api.mesoscale!.structureBrushState(crn, '').value,
+    );
   });
 });
