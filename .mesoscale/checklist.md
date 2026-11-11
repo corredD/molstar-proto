@@ -39,22 +39,22 @@ Each lane: brief committed · steps · checks green · gate (reviewer, skeptic, 
 ### 0. `checkpoint-owned-cells` ([progress](../apps/prism-me/progress/2026-11-08-checkpoint-owned-cells.md))
 
 - [x] built, gated, merged
-- [ ] Ludo's check confirmed
+- [x] Ludo's check confirmed (2026-11-10)
 
 ### 1. `mvs-patch` ([progress](../apps/prism-me/progress/2026-11-08-mvs-patch.md))
 
 - [x] built, gated, merged
-- [ ] Ludo's check confirmed
+- [ ] Ludo's check confirmed (in Storybook, not running on 2026-11-10)
 
 ### 2. `mvs-open` ([progress](../apps/prism-me/progress/2026-11-08-mvs-open.md))
 
 - [x] built, gated, merged
-- [ ] Ludo's check confirmed
+- [x] Ludo's check confirmed (2026-11-10)
 
 ### 3. `mvs-tree` ([progress](../apps/prism-me/progress/2026-11-09-mvs-tree.md))
 
 - [x] built, gated, merged
-- [ ] Ludo's check confirmed
+- [x] Ludo's check confirmed (2026-11-10)
 
 ### Spec: `mvs-levels-spec` ([progress](../apps/prism-me/progress/2026-11-09-mvs-levels-spec.md))
 
@@ -81,7 +81,7 @@ Each lane: brief committed · steps · checks green · gate (reviewer, skeptic, 
 - [x] 5. the gate (Opus reviewer, Opus skeptic, a failing test then a fix per confirmed finding): M1, S1–S4 and the §5.2
       eyes fixed (`b36de7a26`..`ed7fc4ce0`); open: refusing `particles.remove`/`visibility` on a document list through
       the API (needs a Prism hook), a Representation-form theme change, nits N1–N3, N5
-- [ ] Ludo's check by hand (the gestures clicked in the tree and menus; Claude's check called the operations)
+- [x] Ludo's check by hand (2026-11-10)
 - [x] merged into `me/mesoviewspec` (`4b9d4cd1c`), on Ludo's go-ahead after the Import colors fix
 
 ### `mvs-location`: MesoLocation `kind` ([progress](../apps/prism-me/progress/2026-11-09-mvs-location.md))
@@ -100,7 +100,7 @@ Each lane: brief committed · steps · checks green · gate (reviewer, skeptic, 
       verifiable (hidden pane)
 - [x] gate: reviewer and skeptic; fixed: Open with, labels on stream commits, camera in a frame test, Ludo's four
       decisions; open: S5 (serial label runs), `pin()` order, tour caption, a click during a tour
-- [ ] Ludo's check by hand
+- [x] Ludo's check by hand (2026-11-10)
 - [x] merged into `me/mesoviewspec` (`3e42733f9`)
 
 ### 6. `mvs-model-edits` ([progress](../apps/prism-me/progress/2026-11-09-mvs-model-edits.md)), port 1368
@@ -112,7 +112,7 @@ Each lane: brief committed · steps · checks green · gate (reviewer, skeptic, 
 - [x] gate: reviewer and skeptic; fixed: status pill task, yield (MessageChannel, not `scheduler.yield`, which starved
       the abort in Chromium; Cancel at 20, 60 and 300 ms checked live), fields, abort guard, cancel test; open: S3b, N2,
       N3
-- [ ] Ludo's check by hand
+- [x] Ludo's check by hand (2026-11-10)
 - [x] merged with 4–5 in its worktree (`df2a671e8`; medium 115 pass, unit base failures only), then into
       `me/mesoviewspec` (`1bf3bd49e`)
 
@@ -137,7 +137,9 @@ Lanes 7 and 8 run in parallel (Ludo, 2026-11-10): their files do not meet (7: `p
       before back, the view shown again is no step, a tour leaves no step; an agent's open of a document with a resource
       on example.org is refused naming the host, nothing fetched, and opens with `resources`; the person's open is
       unchanged
-- [ ] real-model evals (Ludo) · Ludo's check · merged
+- [x] Ludo's check in the app, with a real model (2026-11-10)
+- [ ] real-model evals (Ludo)
+- [ ] merged
 
 ### 8. `mvs-streaming-app` ([progress](../apps/prism-me/progress/2026-11-10-mvs-streaming-app.md)), port 1371
 
@@ -154,4 +156,6 @@ Lanes 7 and 8 run in parallel (Ludo, 2026-11-10): their files do not meet (7: `p
       step compiles, read by `load` and `describe`; it also made Undo/Redo load the document they left). Medium 129
       pass, unit base failures only. Checked in the app (β-cell): an edit of `r.isg-recipe`'s uri fetches the new recipe
       in that step and compiles a different IR; Undo fetches the old one and gives the same IR as before; Redo the new
-- [ ] Ludo's check · merged
+- [ ] Ludo's check (2026-11-10): fails. What streams in looks wrong and does not follow where the camera looks; a pan
+      re-centers the camera by itself. Being fixed
+- [ ] merged
