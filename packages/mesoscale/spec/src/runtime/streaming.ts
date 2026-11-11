@@ -54,13 +54,16 @@ export interface StreamView {
   readonly planes: readonly (readonly [number, number, number, number])[];
 }
 
-/** A box is in view unless it is wholly outside one plane (its corner farthest along the normal is outside). */
-function inView(view: StreamView, b: Box): boolean {
+/**
+ * A box is in view unless it is wholly outside one plane (its corner farthest along the normal is outside), by more
+ * than `margin` Å (a resident tile's hysteresis).
+ */
+function inView(view: StreamView, b: Box, margin: number): boolean {
   for (const [nx, ny, nz, c] of view.planes) {
     const x = nx > 0 ? b.max[0] : b.min[0];
     const y = ny > 0 ? b.max[1] : b.min[1];
     const z = nz > 0 ? b.max[2] : b.min[2];
-    if (nx * x + ny * y + nz * z + c < 0) return false;
+    if (nx * x + ny * y + nz * z + c + margin < 0) return false;
   }
   return true;
 }
@@ -114,8 +117,34 @@ function boxDistance(p: readonly number[], b: Box): number {
   return Math.sqrt(s);
 }
 
+interface Sight {
+  readonly eye: readonly number[];
+  /** Unit, from the eye to the target. */
+  readonly dir: readonly number[];
+}
+
+/** The line of sight from `eye` through `target`; none when they coincide. */
+function sightOf(eye: readonly number[], target: readonly number[]): Sight | undefined {
+  const v = [0, 1, 2].map((k) => target[k] - eye[k]);
+  const l = Math.hypot(v[0], v[1], v[2]);
+  return l > 0 ? { eye, dir: v.map((x) => x / l) } : undefined;
+}
+
 /**
- * The tiles to hold at level 1: nearest to the focus first, as many as the budget allows, never skipping ahead to a
+ * How far a box's centre lies from the line of sight (a half-line from the eye): it ranks the tiles from the screen's
+ * centre out, and boxes the line passes through alike stay apart by how near it passes.
+ */
+function sightDistance(s: Sight, b: Box): number {
+  const c = [0, 1, 2].map((k) => (b.min[k] + b.max[k]) / 2);
+  let t = 0;
+  for (let k = 0; k < 3; k++) t += (c[k] - s.eye[k]) * s.dir[k];
+  t = Math.max(0, t);
+  return Math.hypot(...[0, 1, 2].map((k) => c[k] - s.eye[k] - t * s.dir[k]));
+}
+
+/**
+ * The tiles to hold at level 1: nearest to the focus first (with a view: in view first, the line of sight first, then
+ * nearest the eye), as many as the budget allows, never skipping ahead to a
  * smaller tile once one does not fit (the loaded region stays one shell). Pure: the output depends on the arguments,
  * never on the order of `manifest.tiles`.
  */
@@ -143,18 +172,23 @@ export function planStream(
       ? focus.view
       : undefined;
   const from = view ? view.eye : at.center;
-  const tiles = new Map<string, { t: TileEntry; d: number; dr: number; focus: boolean }>();
+  // with a view, the line of sight (from the eye through the target) ranks the tiles: the screen's centre first (gate
+  // S1: by the eye alone, the box's corner nearest the eye came before the centre)
+  const sight = view ? sightOf(view.eye, at.center) : undefined;
+  const tiles = new Map<string, { t: TileEntry; d: number; dr: number; rr: number; focus: boolean }>();
   for (const t of manifest.tiles) {
     const d = boxDistance(from, t.box);
-    const dr = state.loaded.has(t.id) ? Math.max(0, d - hysteresis) : d;
-    tiles.set(t.id, { t, d, dr, focus: view ? inView(view, t.box) : d <= at.radius });
+    const h = state.loaded.has(t.id) ? hysteresis : 0;
+    const dr = Math.max(0, d - h);
+    const rr = sight ? Math.max(0, sightDistance(sight, t.box) - h) : 0;
+    tiles.set(t.id, { t, d, dr, rr, focus: view ? inView(view, t.box, h) : d <= at.radius });
   }
   // the focus tiles (the ones the focus touches, or in view) come first, so hysteresis never lets a resident tile push
   // one out
   const touched = (x: { focus: boolean }) => (x.focus ? 0 : 1);
   const order = [...tiles.values()]
     .filter((x) => !state.failed.has(x.t.id))
-    .sort((a, b) => touched(a) - touched(b) || a.dr - b.dr || byId(a.t.id, b.t.id));
+    .sort((a, b) => touched(a) - touched(b) || a.rr - b.rr || a.dr - b.dr || byId(a.t.id, b.t.id));
   const want: string[] = [];
   let copies = 0;
   let overBudget: string | undefined;
