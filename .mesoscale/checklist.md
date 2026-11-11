@@ -165,5 +165,14 @@ Lanes 7 and 8 run in parallel (Ludo, 2026-11-10): their files do not meet (7: `p
       differ (checked). Medium 130 pass, unit base failures only. Checked through the API: a stream to a corner (6 in, 6
       out) leaves the camera where set and the flag off. Not seen on a GPU (no WebGL here). Open: the near plane when
       zoomed out over the whole box, a checkpoint taken mid-write, a tiles-only document's first tile
+- [x] step 5, tiles where the person looks (Ludo 2026-11-11, "like culling"; `eda1b5432`..`a0bf8024c`): the feed gives
+      the canvas camera's view (side planes and one through the eye); the planner wants the tiles in view first, from
+      the screen's centre out along the line of sight, then nearest the eye; app hysteresis 500 Å; a view shown feeds
+      the camera again. Gate: reviewer and skeptic (the skeptic measured the real fixture); fixed M1 (behind the eye in
+      view), the orbit churn, the corner before the centre, the view shown, resize/fov; open: the eye inside the box
+      (loose test, ties), XR, a spin never feeds, 500 Å fixed. Medium 130 pass, unit base failures only. Checked in the
+      app with the real camera (hidden pane, a draw signalled by hand): pan to a corner loads the corner (6 in, 6 out),
+      the camera stays; a 5° orbit changes no tile; the eye inside looking down a row loads that row; a view shown is
+      fed again with no draw
 - [ ] Ludo's check again
 - [ ] merged
