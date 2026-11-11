@@ -14,8 +14,8 @@ import { stubCanvasForLabels } from './canvas.js';
 
 // The agent's evals (agent-eval.tasks.ts) with scripted models: the graders themselves under test. Each task passes
 // done right by two routes (other tools or other addresses: the outcome is checked, not the calls), and fails each near
-// miss on the check meant to catch it. Showing one of the document's views is a right outcome Undo turn cannot take
-// back (`mesoviewspec.view` is `undoable: false`): its run passes every outcome check and fails the undo one.
+// miss on the check meant to catch it. Showing one of the document's views is a right outcome, and a step Undo turn
+// takes back (Ludo, 2026-11-10): its run passes every check, the undo ones included.
 
 stubCanvasForLabels();
 
@@ -191,31 +191,21 @@ describe('the agent evals (prism.md §8), graded with scripted models', () => {
       });
   }
 
-  it('shows the document’s own "Lumen only" view: every outcome check passes, Undo turn cannot take it back', {
+  it('shows the document’s own "Lumen only" view: every check passes, Undo turn takes it back, nothing asked', {
     tags: ['medium'],
     timeout: 60_000,
   }, async () => {
     const r = await run('lumen-only', doing(call('show_meso_view', { view: 'v.lumen' })));
-    expect(r.turns[0].approvals).toBe(1);
-    expect(failed(r), evalReport(r)).toEqual(
-      expect.arrayContaining(['Undo turn restores the document', 'Undo turn restores the layers']),
-    );
-    expect(
-      failed(r).filter((n) => !n.startsWith('Undo turn')),
-      evalReport(r),
-    ).toEqual([]);
+    expect(r.turns[0].approvals).toBe(0);
+    expect(failed(r), evalReport(r)).toEqual([]);
   });
 
-  it('shows the β-cell’s docked view: framed on the granule, and Undo turn cannot take it back', {
+  it('shows the β-cell’s docked view: framed on the granule, and Undo turn takes it back', {
     tags: ['medium'],
     timeout: 60_000,
   }, async () => {
     const r = await run('frame-docked-granule', doing(call('show_meso_view', { view: 'v.docked' })));
-    expect(
-      failed(r).filter((n) => !n.startsWith('Undo turn')),
-      evalReport(r),
-    ).toEqual([]);
-    expect(failed(r)).toContain('Undo turn restores the document');
+    expect(failed(r), evalReport(r)).toEqual([]);
   });
 
   it('reads the drawn layers as Prism draws them: the overview’s colors and transparency, before any turn', {

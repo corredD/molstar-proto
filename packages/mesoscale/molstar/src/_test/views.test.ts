@@ -141,7 +141,7 @@ async function saved(h: Harness): Promise<MesoViewSpecDoc> {
 }
 
 describe('showing a view (prism.md §4.4)', () => {
-  it('is no step: its looks and camera drawn, the History as it was, the document unchanged', {
+  it('is one step (Ludo, 2026-11-10): its looks and camera drawn, the document unchanged; Undo shows the one before', {
     tags: ['medium'],
   }, async () => {
     const h = await open();
@@ -150,7 +150,7 @@ describe('showing a view (prism.md §4.4)', () => {
     const before = h.model.doc;
     const r = await h.run('mesoviewspec.view', { view: 'v.red' });
     expect(r.ok, JSON.stringify(r)).toBe(true);
-    expect(h.steps().length).toBe(steps);
+    expect(h.steps().length).toBe(steps + 1);
     noUnsafe(h);
     expect(shownId(h)).toBe('v.red');
     expect(h.model.shown).toBe('v.red');
@@ -158,11 +158,23 @@ describe('showing a view (prism.md §4.4)', () => {
     expect(h.model.session?.ir?.view.camera?.position).toEqual([0, 0, 90000]);
     expect(ribosomes(h)?.color).toBe(Red);
     expect(h.model.doc).toBe(before);
+    // the view shown is not what the file opens with: Save has no session.view
     expect((await saved(h)).session?.view).toBeUndefined();
 
     const gone = await h.run('mesoviewspec.view', { view: 'v.nowhere' });
     expect(gone.ok).toBe(false);
-    expect(h.steps().length).toBe(steps);
+    expect(h.steps().length).toBe(steps + 1);
+
+    const undo = await h.v.managers.history.undo();
+    expect(undo.ok, JSON.stringify(undo)).toBe(true);
+    expect(shownId(h)).toBe('v.granules');
+    expect(ribosomes(h)?.color).not.toBe(Red);
+    expect(h.model.doc).toBe(before);
+    noUnsafe(h);
+    const redo = await h.v.managers.history.redo();
+    expect(redo.ok, JSON.stringify(redo)).toBe(true);
+    expect(shownId(h)).toBe('v.red');
+    expect(ribosomes(h)?.color).toBe(Red);
   });
 
   it('showing the view shown again moves the camera back to it (Ludo, 2026-11-09), no step', {
@@ -177,7 +189,8 @@ describe('showing a view (prism.md §4.4)', () => {
     const camera = vi.spyOn(adapter, 'applyCamera');
     const r = await h.run('mesoviewspec.view', { view: 'v.red' });
     expect(r.ok, JSON.stringify(r)).toBe(true);
-    expect((r as { unchanged?: boolean }).unchanged).toBeUndefined();
+    // the camera is view state: nothing a step restores (unchanged, so no step is recorded)
+    expect((r as { unchanged?: boolean }).unchanged).toBe(true);
     expect(camera).toHaveBeenCalledTimes(1);
     expect(h.steps().length).toBe(steps);
     expect(h.runs.slice(runs)).toEqual(['mesoviewspec.view']);
@@ -240,9 +253,14 @@ describe('showing a view (prism.md §4.4)', () => {
     await h.run('mesoviewspec.eye', { select: '(population p.ribosomes)', visible: false });
     expect(h.steps().length).toBe(steps + 1);
     await h.run('mesoviewspec.view', { view: 'v.cell' });
-    expect(h.steps().length).toBe(steps + 1);
+    expect(h.steps().length).toBe(steps + 2);
 
     const runs = h.runs.length;
+    // the show is undone first: the view before it, with the edit made in it
+    const undoShow = await h.v.managers.history.undo();
+    expect(undoShow.ok, JSON.stringify(undoShow)).toBe(true);
+    expect(h.model.shown).toBe('v.red');
+    expect(ribosomes(h)).toMatchObject({ visible: false, color: Red });
     const undo = await h.v.managers.history.undo();
     expect(undo.ok, JSON.stringify(undo)).toBe(true);
     expect(h.runs.slice(runs)).toEqual([]);
@@ -255,6 +273,9 @@ describe('showing a view (prism.md §4.4)', () => {
     expect(viewOf(h.model.doc, 'v.red')?.looks?.some((l) => l.id?.startsWith('l.eye.'))).toBe(false);
     noUnsafe(h);
 
+    expect((await h.v.managers.history.redo()).ok).toBe(true);
+    expect(h.model.shown).toBe('v.red');
+    expect(ribosomes(h)).toMatchObject({ visible: false, color: Red });
     const redo = await h.v.managers.history.redo();
     expect(redo.ok, JSON.stringify(redo)).toBe(true);
     expect(h.model.shown).toBe('v.cell');
@@ -569,11 +590,12 @@ describe('a tour (prism.md §4.4)', () => {
     await h.api.tourEnded();
     sub.unsubscribe();
     expect(captions).toEqual(['The slice', 'Red']);
-    // (the looks a view writes are runs of its own run: `particles.look`, no step)
+    // (the looks a view writes are runs of its own run: `particles.look`, no step). A tour's view is no step, unlike a
+    // view shown by itself (Ludo, 2026-11-10): the tour is asked for once and leaves no step a view
     expect(h.runs.slice(runs).filter((r) => r.startsWith('mesoviewspec.'))).toEqual([
       'mesoviewspec.tour.play',
-      'mesoviewspec.view',
-      'mesoviewspec.view',
+      'mesoviewspec.tour.view',
+      'mesoviewspec.tour.view',
     ]);
     expect(h.steps().length).toBe(steps);
     noUnsafe(h);

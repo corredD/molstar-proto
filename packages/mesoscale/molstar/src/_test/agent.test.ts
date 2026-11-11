@@ -284,11 +284,30 @@ describe('the mesoviewspec tools', () => {
     agent.dispose();
   });
 
-  it('show_meso_view, save_mesoviewspec and close_mesoviewspec ask: what no undo takes back', {
+  it('show_meso_view goes without asking: one step of the turn, and Undo turn shows the view before (Ludo, 2026-11-10)', {
+    tags: ['medium'],
+  }, async () => {
+    const { v, person } = await viewer();
+    const api = v.api.mesoviewspec!;
+    expect(api.model.shownId).toBe('v.overview');
+    const { agent } = agentOn(v, [
+      { calls: [disclose] },
+      { calls: [call('show_meso_view', { view: 'v.lumen' })] },
+      { text: 'Shown.' },
+    ]);
+    const r = await agent.turn('show me the lumen view');
+    expect(r.status).toBe('completed');
+    expect(r.tools.at(-1)?.status).toBe('succeeded');
+    expect(api.model.shownId).toBe('v.lumen');
+    expect((await person.history.undoTurn({ turn: agent.lastTurn! })).ok).toBe(true);
+    expect(api.model.shownId).toBe('v.overview');
+    agent.dispose();
+  });
+
+  it('save_mesoviewspec and close_mesoviewspec ask: what no undo takes back', {
     tags: ['medium'],
   }, async () => {
     for (const [tool, args] of [
-      ['show_meso_view', { view: 'v.lumen' }],
       ['save_mesoviewspec', {}],
       ['close_mesoviewspec', {}],
     ] as const) {
