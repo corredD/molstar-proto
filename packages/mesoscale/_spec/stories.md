@@ -42,6 +42,7 @@ third and a weak second: `views[]`, and `tours` that step through views over one
            :patch (patch :ops [(set p.granules :fields (:abundance (:count 240)))]))
           (:view v.docked :duration 5000 :caption "One docked at the membrane"
            :tracks [(track l.docked :emissive [0 0] [0.5 0.8])])])
+; l.docked: v.docked's look of the docked granule, once the writer has given looks ids (below)
 ```
 
 - **A step** is `{id?, view, duration?, caption?, transition?, patch?, tracks?, clock?}`. `view` names a view;
@@ -142,6 +143,7 @@ archive may also hold stories told by someone else about that scene, without edi
 - `format/patch.ts`: `Sections`, `DocOrder` and `ViewSections` gain `stories`, `bands`, `scales`, `clocks`; step patches
   applied without `base` and without validation between steps.
 - `format/sexpr.ts`: the story, step, track and clock codecs.
+- The writer and the builder: every look gets an `id` (`l.<view>-<n>` when none is given), so tracks can name it.
 - `runtime/runtime.ts`: `classifyEdit` strips `stories` and `bands`; a clocked model's frames keyed without the time.
 - `molstar/src`: the tour player becomes a story player (patches, tracks, clocks, its own held keys, read-only while a
   patched step shows); "Keep this step"; positions updated in place per frame.
