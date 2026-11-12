@@ -1,10 +1,10 @@
 # MesoViewSpec: the `.mesoviewx` archive
 
 One file that carries a document and the data it names, as MolViewSpec's `.mvsx` carries an `.mvsj` and its files.
-**Proposed, not built** (first draft, 2026-11-11). David (2026-11-11): "allow .mesoviewX files that correspond to
-molviewspec's mvsx files with resources?"; Ludo: yes. The draft takes its binary layout from Mesoscale Explorer v1's
-generic format (`apps/mesoscale-explorer/src/data/generic/preset.ts`), which already ships placements as byte ranges in
-shared files.
+**Decided, not built** (2026-11-11). David (2026-11-11): "allow .mesoviewX files that correspond to molviewspec's mvsx
+files with resources?"; Ludo: yes, and accepted this draft with the rest of David's review. The draft takes its binary
+layout from Mesoscale Explorer v1's generic format (`apps/mesoscale-explorer/src/data/generic/preset.ts`), which already
+ships placements as byte ranges in shared files.
 
 ## What Mesoscale Explorer v1 holds
 
@@ -26,7 +26,9 @@ STAR), and a tile's payload has no file format (streaming.md: "a network protoco
 ## The archive
 
 - **A zip** whose root holds `index.mesoview.json`, the document as it is stored today. Other files sit anywhere in the
-  zip. The name `.mesoviewx` and the index file follow `.mvsx` and `index.mvsj`.
+  zip. The name `.mesoviewx` and the index file follow `.mvsx` and `index.mvsj`. A file a `range` resource reads is
+  stored uncompressed (zip method 0), so a range is a range of the archive itself and an HTTP `Range` request on the
+  archive reaches it; the writer stores such files so, and a reader refuses a compressed one (`resource.format`).
 - **Relative `uri`s resolve inside the zip,** from the index's folder, before the document's own location (format.md,
   Resources). An absolute `uri` or an `accession` is fetched as today, so an archive may hold some resources and point
   at others. A resource whose relative `uri` is not in the zip is `resource.unavailable`, as a file not found is.
@@ -67,19 +69,39 @@ A placements format for large sets, read straight into the IR's placement set (i
 
 - **Derived results as resources** (design.md open decision 3; David: "serialize result of the gpu computation … load it
   from file … similar as streaming"): a resolver's output is written into the archive as a `meso-placements+f32` range
-  with `derivedFrom: {model, key}` (a new field of `Resource`). Opened again, the model's cache key matches and the
-  runtime reads the range instead of running the resolver.
+  with `derivedFrom: {model, key, resolver}` (a new field of `Resource`; `resolver` its id and version). Opened again,
+  the runtime matches on the stored `key` without computing it: a viewer without that resolver (no cellPACKgpu) cannot
+  compute the key, so it trusts the stored one while the model's own fields and the resources it reads (by checksum) are
+  unchanged, and reruns or reports `model.unrealized` otherwise. What a range does not hold travels beside it, in a JSON
+  sidecar resource named by `derivedFrom.sidecar`: the type table, fibres and the resolver's report.
 - **A tile file format** (streaming.md): a `meso-tiles` manifest whose tiles name ranges of `meso-placements+f32` with
   `types` is a static stream: one binary file, one range per tile, loaded on demand by HTTP `Range` or from the zip. A
   provider for it is the first provider that is not code.
 - **Mesoscale Explorer v1 files open** through a converter: each entity becomes an entity with a `structure` resource
-  and a population with a `meso.precomputed` model reading its ranges; `roots` and `groups` become compartments of kind
-  `group` (no geometry) or labels only, a choice left open; `sizeFactor` becomes a look's size; `color`, a look.
+  and a population with a `meso.precomputed` model reading its ranges; `color` becomes a look. Open: `roots` and
+  `groups` have no home yet (no compartment kind is a plain group); `sizeFactor` (1 atomic, 2 C-alpha, 1.5 Martini) has
+  no field (a look has no size).
+
+## Decided with the stories (2026-11-11, not built)
+
+- Mesoscale Explorer's `trajectories` (timed frames of instances) import as a precomputed model bound to a clock
+  ([stories.md](stories.md#time-and-animation)). A frame's positions and rotations may be two ranges in different files,
+  as Mesoscale Explorer writes them, so `meso-placements+f32` takes `positions` and `rotations` ranges separately as
+  well as one range for both. A clock needs a fixed count and copy order: frames whose counts differ do not import as
+  one clocked model. The clock's unit is asked on import (Mesoscale Explorer's `time` has none).
+- Stories may also sit in their own files in the archive, `stories/<id>.mesostory.json`
+  ([stories.md](stories.md#in-the-archive)).
+
+## What building it touches
+
+- `format/doc.ts`: `Resource.range`, `Resource.derivedFrom`.
+- `runtime/readers.ts`: `meso-placements+f32`; `resolvers/precomputed.ts` lists it.
+- `runtime/runtime.ts`: a model whose key matches a `derivedFrom` resource reads it instead of resolving.
+- `format/issues.ts`: `resource.format`.
+- The CLIs and prism-me's open: `.mesoviewx` (a zip, its index, URIs resolved inside it); "Save as archive".
 
 ## Open
 
 - Whether `index.mesoview.json` may be the S-expression spelling too (`index.mesoview`).
-- Whether Mesoscale Explorer's `trajectories` (timed frames of instances) are the start of time in the document (David's
-  "time abstraction(s)"), or only an import.
 - Compression of the ranges (Mesoscale Explorer's TODO: BinaryCIF's encoders, such as integer-packed fixed point).
 - msgpack as a second encoding of the index (David: "msgpack might be a good candidate").
