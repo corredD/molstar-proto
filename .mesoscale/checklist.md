@@ -72,15 +72,15 @@ Each lane: brief committed · steps · checks green · gate (reviewer, skeptic, 
 - [x] David's review (2026-11-11); his answers to be written into the spec after Ludo decides
 - [ ] prism.md §5.1 (representation and LOD viewer-only) reconciled, after lane 4
 
-### Spec: `mvs-review-spec` ([progress](../apps/prism-me/progress/2026-11-11-mvs-review-spec.md)), worktree only
+### Spec: `mvs-review-spec` ([progress](../apps/prism-me/progress/2026-11-11-mvs-review-spec.md))
 
 - [x] brief (`d4fd9fc06`): David's nine answers as Ludo accepted them, and his tenth (scene, views, stories), our call
 - [x] written (`4000bc5d8`): views.md (bands, clipping), mesoql.md (atoms, `within`), stories.md (new), format.md,
       archive.md, design.md §11
 - [x] gate: reviewer and skeptic (Opus); fixed (`dfe0dd0e0`, `c77a34769`, `4ffe79543`); the second round of fixes not
       re-reviewed
-- [ ] Ludo's check: re-decide the rows the gate changed (1–7, 9) and row 10 in the status doc
-- [ ] merged into `me/mesoviewspec`
+- [x] Ludo's check (2026-11-12): all ten rows accepted in the status doc after the gate's changes, no notes
+- [x] merged into `me/mesoviewspec` (`c27a6ba55`), not pushed
 
 ### 4. `mvs-drive` ([progress](../apps/prism-me/progress/2026-11-09-mvs-drive.md)), port 1358
 
