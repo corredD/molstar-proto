@@ -80,6 +80,9 @@ is not built is [../TODO.md](../TODO.md).
     "Colours from meshes" on; Ludo 2026-11-10) built and gated at 0fa72ac06, pushed: parts named by file, de-duplicated,
     mapped by index; a part's own colour where its mesh gives no tint (coordinator's call, Ludo to confirm). Next on
     Ludo’s word: shells, the clip pop, the PR (rounds 4–9).
+  - `paint-refine` (`me/paint-refine` from `prism-me` at eb77182ab; brief on its branch): started 2026-11-13. The copy at
+    the pointer from the first moment; the standard camera in Paint (left paints, Alt+wheel the depth, the picked
+    depth); Undo after Grow; a grown fiber's Rise and Twist, live on the last grow.
 - **Merged 2026-11-13**: `grow-mesh` (merged into prism-me directly, Ludo's word): paint on an OBJ/PLY/VTP mesh;
   Grow › On a mesh: Tiling over it (Count, 0.8 × Spacing apart), Random walk on it, Sphere by area within Radius;
   [progress](2026-11-13-grow-mesh.md). Open: Tiling on the main thread (~0.5 ms a copy on 1.3 M triangles), the spin
