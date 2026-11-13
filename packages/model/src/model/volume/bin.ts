@@ -54,7 +54,7 @@ export async function binGrid(grid: Grid, factor: number, ctx?: RuntimeContext):
   const length = [0, 1, 2].map((a) =>
     Int32Array.from({ length: out[a] }, (_, i) => Math.min(by[a], dims[a] - i * by[a])),
   );
-  const values = binned.create() as Float32Array;
+  const values = binned.create();
   let min = Infinity;
   let max = -Infinity;
   let sum = 0;
