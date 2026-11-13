@@ -70,6 +70,7 @@ import { FiberBankHelix, FiberBanks } from './fiber-units.js';
 import {
   crystalPoses,
   type GrowMode,
+  type GrowOn,
   type GrowPoses,
   type ListMove,
   offsetPose,
@@ -77,8 +78,10 @@ import {
   rotationsToListFrame,
   spherePoses,
   tilingPoses,
+  tilingTotal,
   walkPath,
 } from './grow.js';
+import { sceneMesh, sceneMeshSurface } from './mesh-surface.js';
 import { isMembranePath } from './pick-surface.js';
 import {
   findGroup,
@@ -1013,6 +1016,8 @@ export class MesoscaleApi extends ApiArea {
    * rule from its pose, one stroke of the list's painted copies (one step). The copies go exactly where the rule says,
    * overlaps allowed. Crystal, Tiling and Sphere grow in the scene's Å from the source as its list's move and scale put
    * it (before the offsets of its kind, which its copies take too); Random walk is a new fiber, in the list's frame.
+   * On a mesh (progress/2026-11-13-grow-mesh.md): Tiling, Random walk and Sphere grow on its surface in the scene (a
+   * walk's rise the list's times its scale, as drawn), each copy's axis along its normal; Crystal is refused.
    */
   readonly grow = this.operation({
     id: 'mesoscale.grow',
@@ -1048,7 +1053,16 @@ export class MesoscaleApi extends ApiArea {
       rings: OptionalParam(
         PD.Numeric(3, { min: 0, max: 50, step: 1 }, { description: 'Tiling: rings about the source' }),
       ),
-      count: OptionalParam(PD.Numeric(50, { min: 1, step: 1 }, { description: 'Sphere: its copies' })),
+      count: OptionalParam(
+        PD.Numeric(
+          50,
+          { min: 1, step: 1 },
+          {
+            description:
+              "Sphere: its copies; Tiling on a mesh: its points, the source's counted (absent: the plane's for Rings)",
+          },
+        ),
+      ),
       radius: OptionalParam(
         PD.Numeric(0, { min: 0, step: 0.1 }, { description: "Sphere: its radius, Å; absent: 5 × the copy's radius" }),
       ),
@@ -1058,10 +1072,20 @@ export class MesoscaleApi extends ApiArea {
           ['source', 'As the source'],
         ] as const),
       ),
+      mesh: OptionalParam(
+        PD.Text('', {
+          description:
+            'Grow on a mesh of the scene (OBJ, PLY, VTP) by state ref or file name: Tiling, Random walk, Sphere; absent: in space',
+        }),
+      ),
     },
     async run(values, ctx) {
       const v = values as typeof values &
-        Partial<Record<string, number>> & { pattern?: 'hex' | 'square'; turn?: 'random' | 'source' };
+        Partial<Record<string, number>> & {
+          pattern?: 'hex' | 'square';
+          turn?: 'random' | 'source';
+          mesh?: string;
+        };
       const { particles, index, mode } = values;
       const l = oneList(ctx, particles || undefined);
       if (isFailure(l)) return l;
@@ -1079,6 +1103,20 @@ export class MesoscaleApi extends ApiArea {
       const scene = offsetPose(poseToScene(move, src.pose), instance);
       const pose = offsetPose(src.pose, instance, move?.scale);
       const diameter = 2 * radius;
+      // on a mesh: its surface in the scene, the source within two diameters of it
+      const mesh = v.mesh?.trim() ? sceneMesh(state, v.mesh.trim()) : undefined;
+      if (mesh && mode === 'crystal') {
+        return ApiResult.fail('invalid', 'A crystal is a 3D lattice: it grows in space, not on a mesh.', 'Tiling.');
+      }
+      if (isFailure(mesh)) return mesh;
+      const reach = 2 * diameter;
+      const on: GrowOn | undefined = mesh && { surface: sceneMeshSurface(mesh), reach };
+      const offMesh = () =>
+        ApiResult.fail(
+          'invalid',
+          `${name} #${index} is not on ${mesh!.label} (none of it within ${Math.round(reach)} Å).`,
+          'Grow from a copy painted on the mesh.',
+        );
       const sizes: Record<string, number> = {};
       let made: GrowPoses | undefined;
       let path: number[] | undefined;
@@ -1101,20 +1139,29 @@ export class MesoscaleApi extends ApiArea {
         if (!made) return ApiResult.fail('invalid', 'Those angles make no cell.', 'α, β and γ of a real cell.');
         Object.assign(sizes, p);
       } else if (mode === 'tiling') {
-        const p = { pattern: v.pattern ?? 'hex', spacing: v.spacing ?? diameter, rings: Math.floor(v.rings ?? 3) };
+        const p = {
+          pattern: v.pattern ?? 'hex',
+          spacing: v.spacing ?? diameter,
+          rings: Math.floor(v.rings ?? 3),
+          // on a mesh, Count points (the plane's for Rings when absent)
+          ...(on && v.count !== undefined ? { count: Math.floor(v.count) } : {}),
+        };
         if (!(p.spacing > 0)) return ApiResult.fail('invalid', 'The spacing is above 0 Å.');
-        const total = p.pattern === 'hex' ? 3 * p.rings * (p.rings + 1) : (2 * p.rings + 1) ** 2 - 1;
+        const total = (p.count ?? tilingTotal(p.pattern, p.rings)) - 1;
         if (total > MaxGrown) return tooMany(total);
         // its plane: a membrane protein's +z is its normal, anything else's its principal axis
         const normal = src.surface ? Vec3.create(0, 0, 1) : principalAxisOf(data.targetMapping?.get(target));
-        made = tilingPoses(scene, normal, p);
+        made = tilingPoses(scene, normal, p, on);
+        if (!made) return offMesh();
         Object.assign(sizes, p);
       } else if (mode === 'sphere') {
         const p = { count: Math.floor(v.count ?? 50), radius: v.radius ?? 5 * radius, turn: v.turn ?? 'random' };
         if (!(p.radius > 0)) return ApiResult.fail('invalid', 'The radius is above 0 Å.');
         if (!(p.count >= 1)) return ApiResult.fail('invalid', 'Give 1 copy or more.');
         if (p.count > MaxGrown) return tooMany(p.count);
-        made = spherePoses(scene, p, seed);
+        const axis = src.surface ? Vec3.create(0, 0, 1) : principalAxisOf(data.targetMapping?.get(target));
+        made = spherePoses(scene, p, seed, on && { ...on, axis });
+        if (!made) return offMesh();
         Object.assign(sizes, p);
       } else {
         const p = { steps: Math.floor(v.steps ?? 20), persistence: v.persistence ?? 30 };
@@ -1131,7 +1178,14 @@ export class MesoscaleApi extends ApiArea {
           fiber.axis !== 'auto'
             ? Vec3.create(fiber.axis === 'x' ? 1 : 0, fiber.axis === 'y' ? 1 : 0, fiber.axis === 'z' ? 1 : 0)
             : (fiberConventionOf(data, id)?.axis ?? principalAxisOf(data.targetMapping?.get(target)));
-        path = walkPath(pose, axis, rise, p, seed);
+        if (on) {
+          // on a mesh, in the scene: the rise as drawn (the list's units times its scale), then back in the list's frame
+          path = walkPath(scene, axis, rise * (move?.scale ?? 1), p, seed, on);
+          if (!path) return offMesh();
+          toListFrame(move, path, undefined);
+        } else {
+          path = walkPath(pose, axis, rise, p, seed);
+        }
         Object.assign(sizes, p);
       }
       if (made) {
@@ -1145,7 +1199,13 @@ export class MesoscaleApi extends ApiArea {
         positions: path ?? made!.positions,
         rotations: path ? [] : made!.rotations,
         ...(path ? { fiber: true, seed } : {}),
-        grow: { mode, params: sizes, seed, source: { index, key: data.keys[index] } },
+        grow: {
+          mode,
+          params: sizes,
+          seed,
+          source: { index, key: data.keys[index] },
+          ...(mesh ? { mesh: { ref: mesh.ref, label: mesh.label } } : {}),
+        },
       };
       const count = stroke.positions.length / 3;
       // no copy, no step (review S2): one cell, no ring
@@ -1154,7 +1214,7 @@ export class MesoscaleApi extends ApiArea {
       return ApiResult.ok(
         path
           ? `Grew a fiber of ${name} from #${index}.`
-          : `Grew ${count} ${count === 1 ? 'copy' : 'copies'} of ${name} from #${index} (${mode}).`,
+          : `Grew ${count} ${count === 1 ? 'copy' : 'copies'} of ${name} from #${index} (${mode}${mesh ? ` on ${mesh.label}` : ''}).`,
         { nodes: [l.cell.transform.ref] },
         { value: { count, mode } },
       );

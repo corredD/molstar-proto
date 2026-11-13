@@ -6,12 +6,17 @@
 
 import { Ray3D } from '@molstar/core/math/geometry/primitives/ray3d';
 import { Mat3, Mat4, Vec3 } from '@molstar/core/math/linear-algebra';
+import { type State, StateTransform } from '@molstar/core/state';
 import type { Mesh } from '@molstar/graphics/geo/geometry/mesh/mesh';
+import { Shape } from '@molstar/model/model/shape';
 import {
   closestPointOnTriangle,
   getMeshTriangleLookup,
   MeshTrianglePick,
 } from '@molstar/graphics/geo/geometry/mesh/triangle-pick';
+import { PluginStateObject as SO } from '@molstar/plugin/state/objects';
+import type { ApiFailure } from '@molstar/prism-viewer/api/area';
+import { pickNamed } from '@molstar/prism-viewer/api/scope';
 import type { GrowSurface, SurfaceHit } from './grow.js';
 
 // A file mesh as a surface to paint and grow on (progress/2026-11-13-grow-mesh.md): the triangle lookup of its picks
@@ -95,4 +100,56 @@ export function meshSurface(mesh: Mesh, transform: Mat4 = Mat4.identity()): Grow
       return { positions, normals };
     },
   };
+}
+
+// --- The scene's meshes --------------------------------------------------------------------------------------------------
+
+/** A file mesh of the scene (OBJ, PLY, VTP): its representation (state ref), its file's name and its shape */
+export interface SceneMesh {
+  readonly ref: string;
+  readonly label: string;
+  readonly shape: Shape<Mesh>;
+}
+
+/** The shape a representation draws when it is a file's mesh (a mesh shape picked by triangle: OBJ, PLY, VTP opt in) */
+export function fileMeshShape(obj: unknown): Shape<Mesh> | undefined {
+  if (!SO.Shape.Representation3D.is(obj as never)) return undefined;
+  for (const l of (obj as SO.Shape.Representation3D).data.repr.getAllLoci()) {
+    if (Shape.isLoci(l) && l.shape.geometry.kind === 'mesh' && l.shape.getTriangleLoci) return l.shape as Shape<Mesh>;
+  }
+  return undefined;
+}
+
+/** The file meshes of the scene, named by their file (the data at the root of their branch) */
+export function sceneMeshes(state: State): SceneMesh[] {
+  const out: SceneMesh[] = [];
+  for (const cell of state.cells.values()) {
+    if (cell.state.isGhost) continue;
+    const shape = fileMeshShape(cell.obj);
+    if (!shape) continue;
+    let root = cell.transform.ref;
+    for (;;) {
+      const parent = state.tree.transforms.get(root)?.parent;
+      if (!parent || parent === StateTransform.RootRef) break;
+      root = parent;
+    }
+    out.push({ ref: cell.transform.ref, label: state.cells.get(root)?.obj?.label ?? cell.obj!.label, shape });
+  }
+  return out;
+}
+
+/** A file mesh of the scene by its state ref or its file's name */
+export function sceneMesh(state: State, name: string): SceneMesh | ApiFailure {
+  return pickNamed(sceneMeshes(state), name, {
+    what: 'mesh',
+    ids: (m) => [m.ref],
+    names: (m) => [m.label],
+    describe: (m) => `${m.label} (${m.ref})`,
+    none: { message: 'No mesh is loaded.', hint: 'Open an OBJ, PLY or VTP mesh.' },
+  });
+}
+
+/** A scene mesh as a surface in the scene (its shape's first instance: a file mesh has one) */
+export function sceneMeshSurface(mesh: SceneMesh): GrowSurface {
+  return meshSurface(mesh.shape.geometry, mesh.shape.transforms[0]);
 }

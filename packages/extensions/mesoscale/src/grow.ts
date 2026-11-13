@@ -71,6 +71,8 @@ export interface GrowRecord {
   readonly seed: number;
   /** The source's index in the list as drawn and its key */
   readonly source: { readonly index: number; readonly key: number };
+  /** The mesh it grew on (its representation's state ref and file name), for the report: the copies stay without it */
+  readonly mesh?: { readonly ref: string; readonly label: string };
 }
 
 /**
