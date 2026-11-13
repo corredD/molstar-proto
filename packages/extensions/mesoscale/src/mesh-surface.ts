@@ -61,6 +61,16 @@ export function meshSurface(mesh: Mesh, transform: Mat4 = Mat4.identity()): Grow
     }
     return out;
   };
+  /** Whether triangle t's box is further than `r` from `p` along an axis (the mesh's space) */
+  const outsideBox = (t: number, p: Vec3, r: number) => {
+    for (let c = 0; c < 3; ++c) {
+      const x0 = vb[ib[3 * t] * 3 + c];
+      const x1 = vb[ib[3 * t + 1] * 3 + c];
+      const x2 = vb[ib[3 * t + 2] * 3 + c];
+      if (Math.min(x0, x1, x2) > p[c] + r || Math.max(x0, x1, x2) < p[c] - r) return true;
+    }
+    return false;
+  };
   /** A normal of the mesh's space in the scene's, unit */
   const toScene = (n: Vec3) => Vec3.normalize(n, Vec3.transformMat3(n, n, normalTurn));
 
@@ -91,6 +101,8 @@ export function meshSurface(mesh: Mesh, transform: Mat4 = Mat4.identity()): Grow
       const local = radius / scale;
       const n = Vec3();
       for (let t = 0; t < mesh.triangleCount; ++t) {
+        // its box first (review S5): most of a large mesh is far from the ball
+        if (outsideBox(t, near, local)) continue;
         closestPointOnTriangle(_q, _uv, near, vertex(_a, t, 0), vertex(_b, t, 1), vertex(_c, t, 2));
         if (!(Vec3.distance(_q, near) <= local)) continue;
         for (let k = 0; k < 3; ++k) {
