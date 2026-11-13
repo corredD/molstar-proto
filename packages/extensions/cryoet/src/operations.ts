@@ -4,9 +4,10 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import { Mat4, Vec3 } from '@molstar/core/math/linear-algebra';
+import { Mat4, Tensor, Vec3 } from '@molstar/core/math/linear-algebra';
 import { type StateObjectCell, type StateObjectSelector, StateTransform } from '@molstar/core/state';
 import { Color } from '@molstar/core/util/color';
+import { ColorListOptionsScale } from '@molstar/core/util/color/lists';
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
 import type { ParticleList, ParticleTarget } from '@molstar/model/model/particles/particle-list';
 import { Grid, Volume } from '@molstar/model/model/volume';
@@ -32,6 +33,8 @@ import {
 import { VolumeRepresentation3D } from '@molstar/plugin/state/transforms/volume/representation';
 import { omeZarrLevelNeeds, VolumeFromOmeZarr } from '@molstar/plugin/state/formats/volume/ome-zarr';
 import type { OmeZarrFormat } from '@molstar/model/formats/volume/ome-zarr';
+import { Ccp4Format } from '@molstar/model/formats/volume/ccp4';
+import { VolumeFromCcp4 } from '@molstar/plugin/state/formats/volume/ccp4';
 import { gridText, volumeStats, voxelText } from '@molstar/prism-viewer/api/volume';
 import { type ApiContext, ApiArea, type ApiFailure, ApiResult } from '@molstar/prism-viewer/api/area';
 import { OptionalParam } from '@molstar/prism-viewer/api/params';
@@ -157,9 +160,31 @@ export interface MeshInfo {
   readonly opacity: number;
   /** Its uniform color, when it has one */
   readonly color?: number;
+  /** The point and cell arrays it can be colored by (a VTP's), by key ("cell:Labels") */
+  readonly arrays?: readonly MeshArray[];
+  /** Its color by an array, when it is so colored */
+  readonly colorBy?: MeshColorBy;
   /** Its scale (1: as in the file; a mesh in pixels: the pixel size, Å) */
   readonly scale: number;
 }
+
+/** A point or cell array of a mesh, by key ("point:Curvature") and as its color theme names it ("Point: Curvature") */
+export interface MeshArray {
+  readonly key: string;
+  readonly label: string;
+  /** Its values' range (a vector's: its length's), when the file is read */
+  readonly range?: readonly [number, number];
+}
+
+/** A mesh colored by an array: its key, its color scale (a color list: viridis…), its range (auto: the array's) */
+export interface MeshColorBy {
+  readonly array: string;
+  readonly colorList: string;
+  readonly range: 'auto' | readonly [number, number];
+}
+
+/** The color scales an array is colored with (a color list's name: viridis, plasma…) */
+export const MeshColorLists: readonly (readonly [string, string])[] = ColorListOptionsScale.map(([k, l]) => [k, l]);
 
 const ListParam = () =>
   PD.Text('', { description: 'A particle list by label or state ref; empty: the only one loaded' });
@@ -276,16 +301,56 @@ export class CryoetApi extends ApiArea {
           },
         ),
       ),
+      array: OptionalParam(
+        PD.Text('', {
+          description:
+            'Colors it by a point or cell array of its file (a VTP): "cell:Labels", "point:Curvature", or a name',
+        }),
+      ),
+      colorList: OptionalParam(
+        PD.Text('', { description: "The color scale of its array's colors: viridis, plasma, red-white-blue…" }),
+      ),
+      range: OptionalParam(
+        PD.Value<'auto' | [number, number]>('auto', {
+          description: "The values its array's colors span: auto (the array's), or [min, max]",
+        }),
+      ),
     },
     async run(values, ctx) {
-      const { mesh, visible, visuals, opacity, color, colors, scale } = values as typeof values & {
-        scale?: number;
-        visible?: boolean;
-        visuals?: 'mesh' | 'wireframe' | 'both';
-        opacity?: number;
-        color?: string;
-        colors?: { mesh: string; color: string }[];
-      };
+      const { mesh, visible, visuals, opacity, color, colors, scale, array, colorList, range } =
+        values as typeof values & {
+          scale?: number;
+          visible?: boolean;
+          visuals?: 'mesh' | 'wireframe' | 'both';
+          opacity?: number;
+          color?: string;
+          colors?: { mesh: string; color: string }[];
+          array?: string;
+          colorList?: string;
+          range?: 'auto' | [number, number];
+        };
+      const byArray = array !== undefined || colorList !== undefined || range !== undefined;
+      if (byArray && (color !== undefined || colors !== undefined)) {
+        return ApiResult.fail(
+          'invalid',
+          'A color or an array, not both.',
+          'Give color for one color, array for an array.',
+        );
+      }
+      if (colorList !== undefined && !MeshColorLists.some(([k]) => k === colorList)) {
+        return ApiResult.fail(
+          'invalid',
+          `'${colorList}' is not a color scale.`,
+          `Scales: ${MeshColorLists.map(([k]) => k).join(', ')}.`,
+        );
+      }
+      if (
+        range !== undefined &&
+        range !== 'auto' &&
+        !(Array.isArray(range) && range.length === 2 && range.every(Number.isFinite) && range[0] < range[1])
+      ) {
+        return ApiResult.fail('invalid', 'range: auto, or [min, max] with min under max.');
+      }
       const all = meshes(ctx);
       // the meshes indexed once, by ref and by name (lowercased): an entry of `colors` found without a scan
       const byRef = new Map(all.map((m) => [m.ref, m]));
@@ -338,18 +403,39 @@ export class CryoetApi extends ApiArea {
         for (const m of find(mesh)) picked.push({ ...m, color: parsed });
         if (!picked.length) return missing(mesh);
       }
+      // each mesh's theme by an array, all checked before the write
+      const themes = new Map<string, unknown>();
+      if (byArray) {
+        for (const m of picked) {
+          const cell = ctx.plugin.state.data.cells.get(m.ref)!;
+          const theme = arrayTheme(cell, { array, colorList, range });
+          if (theme === 'none') {
+            return ApiResult.fail(
+              'invalid',
+              `${m.label} has no arrays to color by.`,
+              'A VTP with point or cell arrays has them; give its color.',
+            );
+          }
+          if (typeof theme === 'string') {
+            return ApiResult.fail('not-found', `${m.label} has no array '${array}'.`, `Arrays: ${theme}.`);
+          }
+          themes.set(m.ref, theme.value);
+        }
+      }
       const b = ctx.plugin.state.data.build();
       const nodes: string[] = [];
       for (const m of picked) {
         const cell = ctx.plugin.state.data.cells.get(m.ref)!;
         const old = cell.transform.params as any;
+        const uniform = m.color !== undefined ? { name: 'uniform', params: { color: m.color } } : undefined;
         const next = {
           ...old,
           ...(visuals ? { visuals: visuals === 'both' ? ['mesh', 'wireframe'] : [visuals] } : {}),
           ...(opacity !== undefined ? { alpha: opacity } : {}),
-          ...(m.color !== undefined && old.coloring
-            ? { coloring: { name: 'uniform', params: { color: m.color } } }
-            : {}),
+          // an OBJ's and a PLY's color is their `coloring`, a VTP's its `colorTheme`
+          ...(uniform && old.coloring ? { coloring: uniform } : {}),
+          ...(uniform && old.colorTheme ? { colorTheme: uniform } : {}),
+          ...(themes.has(m.ref) ? { colorTheme: themes.get(m.ref) } : {}),
         };
         if (JSON.stringify(next) !== JSON.stringify(old)) {
           b.to(cell).update(next);
@@ -828,10 +914,13 @@ export class CryoetApi extends ApiArea {
 
   readonly level = this.operation({
     id: 'cryoet.level',
-    title: 'Read a volume at another resolution (an OME-Zarr level)',
+    title: 'Read a volume at another resolution (an OME-Zarr level, an MRC binned)',
     params: {
       volume: PD.Text('', { description: 'A volume by label or state ref; empty: the only one loaded' }),
-      level: PD.Text('', { description: 'The level by its path ("0": the finest, 1× binning)' }),
+      level: PD.Text('', {
+        description:
+          'The level by its path: an OME-Zarr\'s ("0": the finest, 1× binning); an MRC\'s binning ("1", "2", "4")',
+      }),
       large: PD.Boolean(false, { description: "Read a level over the volume's size guard (asked first)" }),
     },
     async run({ volume, level, large }, ctx) {
@@ -839,7 +928,19 @@ export class CryoetApi extends ApiArea {
       if (isFailure(v)) return v;
       const zarr = zarrOf(v);
       const name = v.cell.obj?.label ?? 'The volume';
-      if (!zarr) return ApiResult.fail('invalid', `${name} has one resolution.`, 'Only an OME-Zarr volume has levels.');
+      if (!zarr) {
+        const mrc = ccp4Of(v);
+        if (mrc && binLevels(mrc).length > 1) return binTo(ctx, v, mrc, level);
+        return ApiResult.fail(
+          'invalid',
+          `${name} has one resolution.`,
+          mrc?.stack
+            ? 'A tilt series or an image stack: its images are not binned together.'
+            : mrc
+              ? `It is too small to bin (its longest side under ${2 * MinBinnedSide} voxels).`
+              : 'Only an OME-Zarr volume or an MRC map has levels.',
+        );
+      }
       const levels = levelViews(zarr);
       const to = zarr.file.levels.find((l) => l.path === level);
       if (!to) {
@@ -869,16 +970,7 @@ export class CryoetApi extends ApiArea {
         level: to.path,
         maxSizeMB: large ? Math.max(zarr.maxSizeMB, Math.ceil(needs / 1e6)) : zarr.maxSizeMB,
       });
-      for (const axis of Axes) {
-        const r = sliceRepresentation(v, axis);
-        if (!r) continue;
-        const p = r.cell.transform.params as any;
-        const index = sameIndex(p.type.params.dimension.params, AxisIndex[axis], zarr.level, to);
-        b.to(r.cell).update({
-          ...p,
-          type: { ...p.type, params: { ...p.type.params, dimension: { name: axis, params: index } } },
-        });
-      }
+      moveSlices(b, v, zarr.level, to);
       const failure = await commitWatched(ctx, v.cell.transform.ref, b);
       const read = ctx.plugin.state.data.cells.get(v.cell.transform.ref)?.obj?.data as Volume | undefined;
       if (failure || (read?.sourceData as OmeZarrFormat | undefined)?.data.level.path !== to.path) {
@@ -1048,8 +1140,6 @@ function sliceOf(ctx: Pick<ApiContext, 'plugin'>, v: VolumeRef): SliceInfo | und
 
 // --- a volume's data and its levels (cryoet.level) -------------------------------------------------------------------
 
-type ZarrLevel = OmeZarrFormat['data']['level'];
-
 /** An OME-Zarr volume's file, its level read now and its size guard; undefined: not an OME-Zarr read by its transform */
 function zarrOf(v: VolumeRef) {
   const data = v.cell.obj?.data;
@@ -1084,19 +1174,139 @@ function volumeDataOf(v: VolumeRef): VolumeDataInfo | undefined {
   if (!data) return;
   const stats = volumeStats(data);
   const zarr = zarrOf(v);
-  const levels = zarr && zarr.file.levels.length > 1 ? levelViews(zarr) : [];
+  const mrc = zarr ? undefined : ccp4Of(v);
+  const levels = zarr && zarr.file.levels.length > 1 ? levelViews(zarr) : mrc ? binLevels(mrc) : [];
+  const several = levels.length > 1;
   return {
     source: data.sourceData.kind.toUpperCase(),
     grid: gridText(stats),
     voxel: voxelText(stats),
     bytes: (data.grid.cells.data as unknown as ArrayBufferView).byteLength ?? 0,
-    levels,
-    ...(levels.length ? { level: zarr!.level.path } : {}),
+    levels: several ? levels : [],
+    ...(several ? { level: zarr ? zarr.level.path : String(mrc!.bin) } : {}),
   };
 }
 
+/** Each grid slice of a volume moved to the index at its place (Å) in another level's grid (an index past it fails) */
+function moveSlices(b: ReturnType<ApiContext['plugin']['build']>, v: VolumeRef, from: LevelFrame, to: LevelFrame) {
+  for (const axis of Axes) {
+    const r = sliceRepresentation(v, axis);
+    if (!r) continue;
+    const p = r.cell.transform.params as any;
+    const index = sameIndex(p.type.params.dimension.params, AxisIndex[axis], from, to);
+    b.to(r.cell).update({
+      ...p,
+      type: { ...p.type, params: { ...p.type.params, dimension: { name: axis, params: index } } },
+    });
+  }
+}
+
+// --- an MRC binned (its levels: VolumeFromCcp4's `bin`) ---------------------------------------------------------------
+
+/** The binnings an MRC map can be read at; 8× only over 1000 voxels a side */
+const Binnings = [1, 2, 4, 8] as const;
+/** A binning is listed while the map's longest side keeps this many voxels */
+const MinBinnedSide = 8;
+
+type Ccp4Read = NonNullable<ReturnType<typeof ccp4Of>>;
+
+/** An MRC (CCP4) map read by its transform: its grid at 1× (from the file), the bytes of its type, its binning now */
+function ccp4Of(v: VolumeRef) {
+  const data = v.cell.obj?.data;
+  if (v.cell.transform.transformer !== VolumeFromCcp4 || !data || !Ccp4Format.is(data.sourceData)) return undefined;
+  const bin = (v.cell.transform.params as { bin?: number } | undefined)?.bin ?? 1;
+  const { header, values } = data.sourceData.data;
+  const order = Tensor.convertToCanonicalAxisIndicesFastToSlow([header.MAPC - 1, header.MAPR - 1, header.MAPS - 1]);
+  const size = order([header.NC, header.NR, header.NS]);
+  // the grid read now, back to 1×: binned by its binning along each side, by its length along a shorter one
+  const g = Grid.getGridToCartesianTransform(data.grid);
+  const scale: number[] = [];
+  const translation: number[] = [];
+  for (let a = 0; a < 3; a++) {
+    const by = Math.max(1, Math.min(bin, size[a]));
+    scale[a] = g[5 * a] / by;
+    translation[a] = g[12 + a] - ((by - 1) / 2) * scale[a];
+  }
+  // a tilt series or an image stack (as Ccp4Provider names them): its images along z are not binned together
+  const stack = /\.(st|ali|mrcs)$/i.test(v.cell.obj?.label ?? '');
+  return { bin, one: { translation, scale, size } as LevelFrame, bytes: values.BYTES_PER_ELEMENT, stack };
+}
+
+/** An MRC's grid binned by `f` (as `binGrid`): voxel 0 at its block's center, the voxel `f` times (a side's length) */
+function binnedFrame(one: LevelFrame, f: number): LevelFrame {
+  const translation: number[] = [];
+  const scale: number[] = [];
+  const size: number[] = [];
+  for (let a = 0; a < 3; a++) {
+    const by = Math.max(1, Math.min(f, one.size[a]));
+    translation[a] = one.translation[a] + ((by - 1) / 2) * one.scale[a];
+    scale[a] = one.scale[a] * by;
+    size[a] = Math.ceil(one.size[a] / by);
+  }
+  return { translation, scale, size };
+}
+
+/** An MRC's levels, coarsest to finest: 1× as read (its type's bytes), each binning a Float32 grid */
+function binLevels(mrc: Ccp4Read): VolumeLevelView[] {
+  const longest = Math.max(...Array.from(mrc.one.size));
+  return Binnings.filter((f) => f === 1 || (!mrc.stack && longest / f >= MinBinnedSide && (f < 8 || longest > 1000)))
+    .reverse()
+    .map((f) => {
+      const frame = binnedFrame(mrc.one, f);
+      const size = [frame.size[0], frame.size[1], frame.size[2]] as const;
+      const bytes = size[0] * size[1] * size[2] * (f === 1 ? mrc.bytes : 4);
+      const spacing = frame.scale[0];
+      return {
+        path: String(f),
+        binning: f,
+        spacing,
+        size,
+        bytes,
+        large: false,
+        label: `${f}× · ${+spacing.toFixed(1)} Å · ${mb(bytes)}`,
+      };
+    });
+}
+
+/**
+ * An MRC read at another binning, as `cryoet.level` reads an OME-Zarr's level: one write (its `bin`, each slice at its
+ * place in Å), then its windows and transfer functions refit in σ
+ */
+async function binTo(ctx: ApiContext, v: VolumeRef, mrc: Ccp4Read, level: string) {
+  const name = v.cell.obj?.label ?? 'The volume';
+  const levels = binLevels(mrc);
+  const view = levels.find((l) => l.path === level.trim().replace(/×$/, ''));
+  if (!view) {
+    return ApiResult.fail(
+      'not-found',
+      `${name} has no level '${level}'.`,
+      `Levels: ${levels.map((l) => `${l.path} (${l.label})`).join(', ')}.`,
+    );
+  }
+  if (view.binning === mrc.bin) return ApiResult.already(`${name} is read at ${view.label}.`);
+  const stats = { ...v.cell.obj!.data.grid.stats };
+  const windows = windowsOf(v, stats);
+  const b = ctx.plugin.state.data.build();
+  b.to(v.cell).update({ ...(v.cell.transform.params as object), bin: view.binning });
+  moveSlices(b, v, binnedFrame(mrc.one, mrc.bin), binnedFrame(mrc.one, view.binning));
+  const failure = await commitWatched(ctx, v.cell.transform.ref, b);
+  const read = ctx.plugin.state.data.cells.get(v.cell.transform.ref);
+  if (failure || ((read?.transform.params as { bin?: number } | undefined)?.bin ?? 1) !== view.binning) {
+    return ApiResult.fail('failed', failure ?? `Could not read ${name} at ${view.label}.`, 'It stays at its level.');
+  }
+  await refit(ctx, v.cell.transform.ref, windows, stats);
+  return ApiResult.ok(`Reading ${name} at ${view.label}.`, { nodes: [v.cell.transform.ref] });
+}
+
+/** A level's grid along x, y and z: voxel i at translation + i·scale (Å), `size` voxels */
+interface LevelFrame {
+  readonly translation: ArrayLike<number>;
+  readonly scale: ArrayLike<number>;
+  readonly size: ArrayLike<number>;
+}
+
 /** A grid slice's index at one level, the index at the same place (Å) at another: voxel i at translation + i·scale */
-function sameIndex(index: number, axis: number, from: ZarrLevel, to: ZarrLevel) {
+function sameIndex(index: number, axis: number, from: LevelFrame, to: LevelFrame) {
   const at = from.translation[axis] + index * from.scale[axis];
   const i = Math.round((at - to.translation[axis]) / to.scale[axis]);
   return Math.max(0, Math.min(to.size[axis] - 1, i));
@@ -1295,10 +1505,25 @@ export function particleListData(ctx: Pick<ApiContext, 'plugin'>, ref: string): 
 
 /** The list as the representations get it: with its decorations */
 
+/**
+ * The particles the list's offsets apply to: its deepest decorator's but its offsets' (its targets, their names and
+ * objects, and its particles: a decorator that adds particles, mesoscale's painted copies, adds them here too, so an
+ * instance or a kind of them is offset as the file's are; paint-layer, 2026-11-10)
+ */
 function dataOf(ctx: Pick<ApiContext, 'plugin'>, l: ParticleListRef): ParticleList | undefined {
-  const deepest =
-    decoratorCell(ctx, l, ParticleListWithTargets) ?? decoratorCell(ctx, l, ParticleListTargetsFromAttribute);
-  return (deepest?.obj?.data as ParticleList | undefined) ?? l.cell.obj?.data;
+  const { tree, cells } = ctx.plugin.state.data;
+  let data = l.cell.obj?.data as ParticleList | undefined;
+  for (let ref: StateTransform.Ref = l.cell.transform.ref; ; ) {
+    const decorator = tree.children
+      .get(ref)
+      .toArray()
+      .map((c) => tree.transforms.get(c))
+      .find((t) => t?.transformer.definition.isDecorator);
+    if (!decorator) return data;
+    if (decorator.transformer !== ParticleListOffsets)
+      data = (cells.get(decorator.ref)?.obj?.data as ParticleList) ?? data;
+    ref = decorator.ref;
+  }
 }
 
 function describe(ctx: Pick<ApiContext, 'plugin'>, l: ParticleListRef): DecorationsInfo {
@@ -1388,6 +1613,7 @@ function meshes(ctx: Pick<ApiContext, 'plugin'>): MeshInfo[] {
     const data = cells.get(root)?.obj;
     if (!SO.Data.String.is(data) && !SO.Data.Binary.is(data) && !SO.Data.Response.is(data)) continue;
     const p = cell.transform.params as any;
+    const arrays = arraysOf(cell, shapeCellOf(ctx, cell.transform.ref));
     out.push({
       ref: cell.transform.ref,
       label: data.label,
@@ -1395,10 +1621,106 @@ function meshes(ctx: Pick<ApiContext, 'plugin'>): MeshInfo[] {
       visuals: Array.isArray(p?.visuals) ? p.visuals : ['mesh'],
       opacity: p?.alpha ?? 1,
       ...(p?.coloring?.name === 'uniform' ? { color: p.coloring.params.color } : {}),
+      ...(p?.colorTheme?.name === 'uniform' ? { color: p.colorTheme.params.color } : {}),
+      ...(arrays.length ? { arrays } : {}),
+      ...(arrays.length && p?.colorTheme?.name === 'attribute' ? { colorBy: colorByOf(p.colorTheme.params) } : {}),
       scale: scaleOf(shapeCellOf(ctx, cell.transform.ref)),
     });
   }
   return out;
+}
+
+/** The definition of a mesh's color theme by an array (a VTP's `colorTheme`, its `attribute` choice), if it has one */
+function arrayThemeParams(cell: StateObjectCell): PD.Params | undefined {
+  const def = cell.params?.definition?.colorTheme as PD.Any | undefined;
+  if (def?.type !== 'mapped' || !def.select.options.some(([name]) => name === 'attribute')) return undefined;
+  const group = def.map('attribute');
+  return group.type === 'group' ? group.params : undefined;
+}
+
+/** A VTP's point or cell array as its file holds it (io's `VtpScalarArray`) */
+type FileArray = { readonly numberOfComponents: number; readonly values: { toArray(): ArrayLike<number> } };
+type FileArrays = {
+  readonly pointData: ReadonlyMap<string, FileArray>;
+  readonly cellData: ReadonlyMap<string, FileArray>;
+};
+
+/** The arrays a mesh can be colored by: its color theme's (a VTP's point and cell arrays), each its range from its file */
+function arraysOf(cell: StateObjectCell, shape?: StateObjectCell): MeshArray[] {
+  const name = arrayThemeParams(cell)?.name;
+  if (name?.type !== 'select') return [];
+  const file = (shape?.obj?.data as { data?: { source?: FileArrays } } | undefined)?.data?.source;
+  return name.options
+    .filter(([key]) => key !== '')
+    .map(([key, label]) => {
+      const [kind, array] = [String(key).split(':')[0], String(key).slice(String(key).indexOf(':') + 1)];
+      const values =
+        kind === 'point' ? file?.pointData?.get(array) : kind === 'cell' ? file?.cellData?.get(array) : undefined;
+      const range = values && rangeOf(values);
+      return { key: String(key), label, ...(range ? { range } : {}) };
+    });
+}
+
+/** The range of an array's values (a vector's: its length's), once per array */
+const ranges = new WeakMap<FileArray, readonly [number, number] | undefined>();
+function rangeOf(a: FileArray): readonly [number, number] | undefined {
+  if (ranges.has(a)) return ranges.get(a);
+  const values = a.values.toArray();
+  const n = Math.max(1, a.numberOfComponents);
+  let min = Infinity;
+  let max = -Infinity;
+  for (let i = 0; i + n <= values.length; i += n) {
+    let v = values[i];
+    if (n > 1) {
+      let sq = 0;
+      for (let c = 0; c < n; c++) sq += values[i + c] * values[i + c];
+      v = Math.sqrt(sq);
+    }
+    if (v < min) min = v;
+    if (v > max) max = v;
+  }
+  const range = min <= max ? ([min, max] as const) : undefined;
+  ranges.set(a, range);
+  return range;
+}
+
+function colorByOf(p: { name: string; colors: string; domain: { name: string; params: unknown } }): MeshColorBy {
+  const range = p.domain.name === 'custom' ? (p.domain.params as [number, number]) : 'auto';
+  return { array: p.name, colorList: p.colors, range };
+}
+
+/**
+ * A mesh's color theme by an array, its array, colors or range changed (its others kept, or as the theme opens);
+ * 'none': it has no arrays; a string: the array is none of them (its arrays, listed)
+ */
+function arrayTheme(
+  cell: StateObjectCell,
+  change: { array?: string; colorList?: string; range?: 'auto' | [number, number] },
+): { value: unknown } | string {
+  const params = arrayThemeParams(cell);
+  const arrays = arraysOf(cell);
+  if (!params || !arrays.length) return 'none';
+  const old = (cell.transform.params as any)?.colorTheme;
+  const base = old?.name === 'attribute' ? old.params : PD.getDefaultValues(params);
+  let name = base.name;
+  if (change.array !== undefined) {
+    const a = change.array.trim();
+    const found =
+      arrays.find((x) => x.key === a) ??
+      arrays.find((x) => x.key.replace(/^(point|cell):/, '').toLowerCase() === a.toLowerCase());
+    if (!found) return arrays.map((x) => x.key).join(', ');
+    name = found.key;
+  }
+  const symmetric = base.domain?.name === 'auto' ? !!base.domain.params?.symmetric : false;
+  // another array without a range: Auto (the last array's custom range is not this one's)
+  const range = change.range ?? (name !== base.name && base.domain?.name === 'custom' ? 'auto' : undefined);
+  const domain =
+    range === undefined
+      ? base.domain
+      : range === 'auto'
+        ? { name: 'auto', params: { symmetric } }
+        : { name: 'custom', params: [range[0], range[1]] };
+  return { value: { name: 'attribute', params: { ...base, name, colors: change.colorList ?? base.colors, domain } } };
 }
 
 /** The shape a mesh representation draws (its `transforms` param: the OBJ, PLY, VTP shapes') */

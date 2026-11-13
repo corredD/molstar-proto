@@ -5,14 +5,22 @@
  */
 
 import { Color } from '@molstar/core/util/color';
+import { Mat4, Quat, Vec3 } from '@molstar/core/math/linear-algebra';
+import {
+  offsetParticles,
+  type ParticleInstanceOffsetProps,
+  ParticleListOffsets,
+  ParticleListTargetsFromAttribute,
+  ParticleListTransform,
+} from '@molstar/plugin/state/transforms/particles/ops';
 import { distinctColors } from '@molstar/core/util/color/distinct';
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
 import type { VisualQuality } from '@molstar/graphics/geo/geometry/base';
 import { Spheres } from '@molstar/graphics/geo/geometry/spheres/spheres';
 import { ColorLevels } from '@molstar/graphics/geo/geometry/color-levels';
-import type { ParticleList } from '@molstar/model/model/particles/particle-list';
+import { Particle, type ParticleList, type ParticleTarget } from '@molstar/model/model/particles/particle-list';
 import { PluginStateObject as SO } from '@molstar/plugin/state/objects';
-import { type StateObjectCell, StateTransform } from '@molstar/core/state';
+import { type State, type StateObjectCell, StateTransform } from '@molstar/core/state';
 import type {
   ParticleListRef,
   ParticleRepresentationRef,
@@ -25,8 +33,53 @@ import { type ApiContext, ApiArea, type ApiFailure, ApiResult } from '@molstar/p
 import { OptionalParam } from '@molstar/prism-viewer/api/params';
 import { isFailure, labelOf, pickNamed, pickOne } from '@molstar/prism-viewer/api/scope';
 import { watchedState } from '@molstar/prism-viewer/sources/watched';
+import { type ObservableState, observableState } from '@molstar/prism-ui/reactive/observable-state';
 import type { ReadonlyState } from '@molstar/prism-ui/reactive/readonly-state';
 import { cssColor, matchColors, parseColorFile } from './color-file.js';
+import { pluginPaintHost } from './paint-host.js';
+import { PaintMode } from './paint-mode.js';
+import {
+  brushOf,
+  brushIdOf,
+  cleanSequence,
+  decoratorUnder,
+  fiberConventionOf,
+  isFiberBrush,
+  FiberAxes,
+  type FiberSettings,
+  type FiberSettingsIn,
+  type FiberSettingsMap,
+  fiberSettingsOf,
+  type PaintOrient,
+  type PaintStroke,
+  MesoscalePaintingList,
+  ParticleListPainted,
+  type PaintStructure,
+  paintingList,
+  nextStructureIds,
+  structureSourceKey,
+  structureDefinitionOf,
+  paintedStructureOf,
+  structureBuildName,
+  structureSourceOf,
+  paintRotations,
+  principalAxisOf,
+  toListFrame,
+} from './paint.js';
+import { FiberBankHelix, FiberBanks } from './fiber-units.js';
+import {
+  crystalPoses,
+  type GrowMode,
+  type GrowPoses,
+  type ListMove,
+  offsetPose,
+  poseToScene,
+  rotationsToListFrame,
+  spherePoses,
+  tilingPoses,
+  walkPath,
+} from './grow.js';
+import { isMembranePath } from './pick-surface.js';
 import {
   findGroup,
   generateColors,
@@ -116,6 +169,111 @@ export interface MesoscaleInfo {
 const ListParam = () =>
   PD.Text('', { description: 'A particle list by label or state ref; empty: the only one loaded' });
 
+/** A grow's crystal cell (`mesoscale.grow`): its lengths (absent: the copy's diameter), angles and cells a side */
+const CellParams = {
+  a: OptionalParam(
+    PD.Numeric(0, { min: 0, step: 0.1 }, { description: "Crystal: the cell's a, Å; absent: the copy's diameter" }),
+  ),
+  b: OptionalParam(
+    PD.Numeric(0, { min: 0, step: 0.1 }, { description: "Crystal: the cell's b, Å; absent: the copy's diameter" }),
+  ),
+  c: OptionalParam(
+    PD.Numeric(0, { min: 0, step: 0.1 }, { description: "Crystal: the cell's c, Å; absent: the copy's diameter" }),
+  ),
+  alpha: OptionalParam(
+    PD.Numeric(90, { min: 1, max: 179, step: 0.1 }, { description: 'Crystal: the angle between b and c, °' }),
+  ),
+  beta: OptionalParam(
+    PD.Numeric(90, { min: 1, max: 179, step: 0.1 }, { description: 'Crystal: the angle between a and c, °' }),
+  ),
+  gamma: OptionalParam(
+    PD.Numeric(90, { min: 1, max: 179, step: 0.1 }, { description: 'Crystal: the angle between a and b, °' }),
+  ),
+  na: OptionalParam(
+    PD.Numeric(3, { min: 1, max: 100, step: 1 }, { description: "Crystal: cells along a, the source's counted" }),
+  ),
+  nb: OptionalParam(
+    PD.Numeric(3, { min: 1, max: 100, step: 1 }, { description: "Crystal: cells along b, the source's counted" }),
+  ),
+  nc: OptionalParam(
+    PD.Numeric(1, { min: 1, max: 100, step: 1 }, { description: "Crystal: cells along c, the source's counted" }),
+  ),
+};
+
+/** A grow's source (`MesoscaleApi.growSource`): a list by state ref and a particle's index there as drawn */
+export interface GrowSource {
+  readonly particles: string;
+  readonly index: number;
+}
+
+/** A grow's source as named (`MesoscaleApi.growSourceState`) */
+export interface GrowSourceInfo extends GrowSource {
+  readonly name: string;
+  readonly radius: number;
+  readonly rise: number;
+}
+
+/** The Grow block's settings (`mesoscale.grow`'s params); a length absent: the source's size; no seed: at random */
+export interface GrowSettings {
+  readonly mode: GrowMode;
+  readonly seed?: number;
+  readonly steps: number;
+  readonly persistence: number;
+  readonly a?: number;
+  readonly b?: number;
+  readonly c?: number;
+  readonly alpha: number;
+  readonly beta: number;
+  readonly gamma: number;
+  readonly na: number;
+  readonly nb: number;
+  readonly nc: number;
+  readonly pattern: 'hex' | 'square';
+  readonly spacing?: number;
+  readonly rings: number;
+  readonly count: number;
+  readonly radius?: number;
+  readonly turn: 'random' | 'source';
+}
+
+export const DefaultGrowSettings: GrowSettings = {
+  mode: 'crystal',
+  steps: 20,
+  persistence: 30,
+  alpha: 90,
+  beta: 90,
+  gamma: 90,
+  na: 3,
+  nb: 3,
+  nc: 1,
+  pattern: 'hex',
+  rings: 3,
+  count: 50,
+  turn: 'random',
+};
+
+/** `mesoscale.grow`'s params of a source and the settings: the mode's own only */
+export function growParams(source: GrowSource, s: GrowSettings) {
+  const own: Record<GrowMode, readonly (keyof GrowSettings)[]> = {
+    walk: ['steps', 'persistence'],
+    crystal: ['a', 'b', 'c', 'alpha', 'beta', 'gamma', 'na', 'nb', 'nc'],
+    tiling: ['pattern', 'spacing', 'rings'],
+    sphere: ['count', 'radius', 'turn'],
+  };
+  const out: Record<string, unknown> = { particles: source.particles, index: source.index, mode: s.mode };
+  for (const k of [...own[s.mode], 'seed' as const]) if (s[k] !== undefined) out[k] = s[k];
+  return out;
+}
+
+/** The most copies one grow makes */
+const MaxGrown = 20000;
+const tooMany = (n: number) =>
+  ApiResult.fail(
+    'invalid',
+    `That is ${n} copies: a grow makes ${MaxGrown} at most.`,
+    'Fewer cells, rings, copies or steps.',
+  );
+
 const GroupByParam = () =>
   PD.Select('compartment', [
     ['compartment', 'Compartment'],
@@ -143,6 +301,99 @@ const SelectionGroupByParam = () =>
 
 export class MesoscaleApi extends ApiArea {
   readonly id = 'mesoscale';
+  private _paintMode?: PaintMode;
+
+  /**
+   * Paint mode (paint-mode.ts; apps/prism-me/_spec/ui.md §5, Paint with …): a mode of the canvas, not an operation; its
+   * strokes are `mesoscale.paint`, one step each
+   */
+  get paintMode(): PaintMode {
+    this._paintMode ??= new PaintMode(
+      pluginPaintHost(
+        this.ctx.plugin,
+        // the last copy painted is a grow's source as well (progress/2026-11-11-grow.md)
+        async (params) => {
+          const r = await this.paint(params as never);
+          if (r.ok) this.growFromLast(r.changed?.nodes?.[0]);
+          return r;
+        },
+        // the copy under the pointer in the entity's color (its look's)
+        (l, entity) => readStyles(this.ctx, l).get(entity)?.color,
+        // a structure brush's entity's rise where it paints, when it makes fibers there
+        (structure, into) => {
+          const b = structureBrushOf(this.ctx, structure, into);
+          const f = b && fiberInfo(this.ctx.plugin.state.data, this.ctx, b.particles, b.entity);
+          return f?.fibers ? f.rise : undefined;
+        },
+      ),
+    );
+    return this._paintMode;
+  }
+
+  /**
+   * The source of the next grow (progress/2026-11-11-grow.md): a particle of a list as drawn, set by its right-click
+   * (Grow from this instance…) or by a paint (its last copy); view state, no step
+   */
+  readonly growSource: ObservableState<GrowSource | undefined> = observableState<GrowSource | undefined>(undefined, {
+    compare: (a, b) => a?.particles === b?.particles && a?.index === b?.index,
+  });
+
+  /** The Grow block's mode and params (view state, no step); a length absent: the source's size */
+  readonly growSettings: ObservableState<GrowSettings> = observableState<GrowSettings>(DefaultGrowSettings);
+
+  /**
+   * Sets the grow's source; another than the one before also unsets the lengths (a, b, c, spacing, radius): the new
+   * source's size again (review G1)
+   */
+  setGrowSource(source: GrowSource) {
+    const old = this.growSource.value;
+    if (old?.particles === source.particles && old.index === source.index) return;
+    const { a: _a, b: _b, c: _c, spacing: _s, radius: _r, ...kept } = this.growSettings.value;
+    this.growSettings.set(kept);
+    this.growSource.set(source);
+  }
+
+  /** The grow's source: the last particle of a list's painted decorator (a stroke's last copy) */
+  private growFromLast(list: string | undefined) {
+    if (!list) return;
+    const painted = decoratorUnder(this.ctx.plugin.state.data, list, ParticleListPainted);
+    const count = (painted?.obj?.data as ParticleList | undefined)?.count ?? 0;
+    const l = lists({ plugin: this.ctx.plugin }).find((x) => x.cell.transform.ref === list);
+    // a copy that is no source (a unit of a bank's fiber: review S3) leaves the source as it was
+    if (!count || !l || isFailure(growSourceOf(this.ctx.plugin.state.data, l, count - 1))) return;
+    this.setGrowSource({ particles: list, index: count - 1 });
+  }
+
+  /**
+   * The grow's source as the Grow block names it, following the state tree and the source while watched (a read for
+   * views): its list and index, its name ("CA #1204"), its radius (Å) and its fibers' rise; undefined without one or
+   * when it is gone
+   */
+  growSourceState(): ReadonlyState<GrowSourceInfo | undefined> {
+    const plugin = this.ctx.plugin;
+    return watchedState(
+      () => {
+        const s = this.growSource.value;
+        if (!s) return undefined;
+        const ctx = { plugin };
+        const l = lists(ctx).find((x) => x.cell.transform.ref === s.particles);
+        const src = l && growSourceOf(plugin.state.data, l, s.index);
+        if (!src || isFailure(src)) return undefined;
+        const id = brushIdOf(src.data, src);
+        const structures = paintedStructures(plugin.state.data, s.particles);
+        const fibers = paintedFibers(plugin.state.data, s.particles);
+        const rise = fiberSettingsOf(src.data, id, src.target, fibers, structures).rise;
+        return { ...s, name: `${src.name} #${s.index}`, radius: src.radius, rise };
+      },
+      () => [plugin.state.data.events.changed, this.growSource.asReadonly],
+      { compare: (a, b) => JSON.stringify(a) === JSON.stringify(b) },
+    );
+  }
+
+  /** The paint mode ends with the viewer: its layer, its keys and its subscription go (review should-fix 5) */
+  dispose() {
+    this._paintMode?.stop();
+  }
 
   /**
    * What the Entities view shows of a list (by state ref, the only one when empty), its groups by `groupBy` (the view's
@@ -186,12 +437,53 @@ export class MesoscaleApi extends ApiArea {
     );
   }
 
+  /**
+   * An entity's fiber settings in effect (`mesoscale.fiber`; its own, else its file's fibers', else touching points
+   * without a twist) and whether it has fibers or settings of its own, following the state tree while watched: a read
+   * for views; undefined without the list or the entity
+   */
+  fiberState(
+    particles: string,
+    entity: number,
+  ): ReadonlyState<(FiberSettingsIn & { readonly banks: boolean; readonly fibers: boolean }) | undefined> {
+    const plugin = this.ctx.plugin;
+    return watchedState(
+      () => fiberInfo(plugin.state.data, { plugin }, particles, entity),
+      () => plugin.state.data.events.changed,
+      { compare: (a, b) => JSON.stringify(a) === JSON.stringify(b) },
+    );
+  }
+
+  /**
+   * A structure brush's entity in the list it paints into (`into`, else the Painting list): what its fiber settings are
+   * set on (`fiberState`, `mesoscale.fiber`); undefined before its first stroke there. Following the state tree while
+   * watched: a read for views
+   */
+  structureBrushState(
+    structure: string,
+    into: string,
+  ): ReadonlyState<{ readonly particles: string; readonly entity: number } | undefined> {
+    const plugin = this.ctx.plugin;
+    return watchedState(
+      () => structureBrushOf({ plugin }, structure, into),
+      () => plugin.state.data.events.changed,
+      { compare: (a, b) => JSON.stringify(a) === JSON.stringify(b) },
+    );
+  }
+
   /** The particle lists (state ref and label), following the state tree while watched: a read for views */
-  listsState(): ReadonlyState<readonly { readonly ref: string; readonly label: string }[]> {
+  listsState(): ReadonlyState<
+    readonly { readonly ref: string; readonly label: string; readonly painting?: boolean }[]
+  > {
     const plugin = this.ctx.plugin;
     return watchedState(
       () =>
-        lists({ plugin }).map((l) => ({ ref: l.cell.transform.ref, label: l.cell.obj?.label ?? l.cell.transform.ref })),
+        lists({ plugin }).map((l) => ({
+          ref: l.cell.transform.ref,
+          label: l.cell.obj?.label ?? l.cell.transform.ref,
+          // the Painting list (paint-layer round 2), by what made it, not its label
+          ...(l.cell.transform.transformer === MesoscalePaintingList ? { painting: true } : {}),
+        })),
       () => plugin.state.data.events.changed,
       { compare: (a, b) => JSON.stringify(a) === JSON.stringify(b) },
     );
@@ -550,6 +842,427 @@ export class MesoscaleApi extends ApiArea {
       const painted = (one ? [one] : lists(ctx)).some((l) => !!clearedColors(ctx, l));
       const note = painted ? ' A color set in Look is that color until the atoms, and By zoom stays on.' : '';
       return ApiResult.ok(`Colors follow the zoom.${note}`, { nodes });
+    },
+  });
+
+  /**
+   * Paint v1 (progress/2026-11-08-paint.md, Design 2): copies of an entity (a target of a list without entities)
+   * painted at points of the scene, one stroke a run (one commit, one history step: an undo removes the stroke). The
+   * copies go in the list's `ParticleListPainted` (made on the first stroke, right under the list: a later move carries
+   * them), in the list's frame. Orientation (Decided 2): a membrane protein's +z along the normal (its compartment a
+   * surface), anything else at random; `axis` and `view` on request. No collision checks (Decided 3).
+   */
+  readonly paint = this.operation({
+    id: 'mesoscale.paint',
+    title: 'Paint copies of an entity',
+    params: {
+      entity: PD.Text('', { description: 'The brush: an entity by name or id (a list without entities: a target id)' }),
+      structure: OptionalParam(
+        PD.Text('', {
+          description:
+            'The brush: a structure of the scene by state ref, instead of an entity: a target and an entity of the ' +
+            'list it is painted into (particles; absent: the Painting list, made on the first stroke)',
+        }),
+      ),
+      positions: PD.Value<number[]>([], { description: 'Where the copies go: x, y, z per copy (Å, the scene)' }),
+      normals: OptionalParam(
+        PD.Value<number[]>([], {
+          description: "The surface's normal at each point, x, y, z per copy (the scene); absent: toward the viewer",
+        }),
+      ),
+      orient: OptionalParam(
+        PD.Select(
+          'normal',
+          [
+            ['normal', 'Its +z along the normal (a membrane protein)'],
+            ['axis', 'Its principal axis along the normal'],
+            ['view', 'Its +z toward the viewer'],
+            ['random', 'At random'],
+          ] as const,
+          { description: 'How each copy is turned; absent: normal for a surface compartment, else random' },
+        ),
+      ),
+      side: PD.Select('out', [
+        ['out', 'Along the normal'],
+        ['in', 'Against the normal'],
+      ] as const),
+      spin: OptionalParam(
+        PD.Numeric(0, { min: 0, max: 360, step: 1 }, { description: 'Turn about that axis, °; absent: at random' }),
+      ),
+      seed: OptionalParam(PD.Numeric(0, { step: 1 }, { description: "The random orientations' seed (repeatable)" })),
+      fiber: OptionalParam(
+        PD.Boolean(false, {
+          description:
+            "The positions are a new fiber's path: its points made every rise along it, turned by the entity's twist " +
+            '(mesoscale.fiber; absent: no fiber)',
+        }),
+      ),
+      sequence: OptionalParam(
+        PD.Text('', {
+          description:
+            "A fiber's sequence, one-letter codes: with its entity's bank (mesoscale.fiber), a unit a letter; absent: at random",
+        }),
+      ),
+      start: OptionalParam(
+        PD.Numeric(1, { min: 1, step: 1 }, { description: "The sequence's first letter used, 1-based" }),
+      ),
+      end: OptionalParam(
+        PD.Numeric(1, { min: 1, step: 1 }, { description: "The sequence's last letter used, inclusive" }),
+      ),
+      particles: ListParam(),
+    },
+    async run(values, ctx) {
+      const { entity, positions, side, particles } = values;
+      const { structure, normals, orient, spin, seed, fiber, sequence, start, end } = values as typeof values & {
+        structure?: string;
+        normals?: number[];
+        orient?: PaintOrient;
+        spin?: number;
+        seed?: number;
+        fiber?: boolean;
+        sequence?: string;
+        start?: number;
+        end?: number;
+      };
+      if (!positions.length || positions.length % 3) {
+        return ApiResult.fail('invalid', "Give the copies' positions, x, y, z each.");
+      }
+      if (normals && normals.length !== positions.length) {
+        return ApiResult.fail('invalid', 'Give a normal for each position, x, y, z each.');
+      }
+      // a structure painted into a scene without particles: Mol*'s particles (opt-in) loaded first
+      if (structure) await ctx.extensions.ensureFor({ transformers: ['ms-plugin.particles-representation-3d'] });
+      const into = paintInto(ctx, structure, particles, entity);
+      if (isFailure(into)) return into;
+      const { l, data, brush, name } = into;
+      // a range with no letter of the sequence in it (review X1)
+      const letters = sequence?.trim() ? cleanSequence(sequence).length : 0;
+      if (letters && ((start ?? 1) > letters || (end !== undefined && end < (start ?? 1)))) {
+        return ApiResult.fail('invalid', `The range has no letter of the sequence (${letters} letters).`);
+      }
+      const how: PaintOrient = orient ?? (brush.surface ? 'normal' : 'random');
+      const state = ctx.plugin.state.data;
+      const moved = l && decoratorUnder(state, l.cell.transform.ref, ParticleListTransform);
+      const local = [...positions];
+      const k = local.length / 3;
+      let dirs: number[] | undefined;
+      if (how === 'view' || (!normals && how !== 'random')) {
+        const camera = ctx.plugin.canvas3d?.camera.state;
+        const d = camera
+          ? Vec3.normalize(Vec3(), Vec3.sub(Vec3(), camera.position, camera.target))
+          : Vec3.create(0, 0, 1);
+        dirs = new Array(k * 3);
+        for (let i = 0; i < k; ++i) for (let c = 0; c < 3; ++c) dirs[i * 3 + c] = d[c];
+      } else if (normals) {
+        dirs = [...normals];
+      }
+      if (dirs && side === 'in') for (let i = 0; i < dirs.length; ++i) dirs[i] = -dirs[i];
+      toListFrame(moved?.transform.params as { transform: Mat4; scale?: number } | undefined, local, dirs);
+      // a fiber stroke keeps its path and a seed: its points are made by the decorator from the entity's fiber settings
+      // (progress/2026-11-08-paint.md, Round 3); a click (one point) is a copy, turned as the one shown under the pointer
+      // (review S4)
+      const asFiber = !!fiber && k >= 2;
+      const drawn = seed ?? Math.floor(Math.random() * 2 ** 31);
+      const rotations = asFiber
+        ? []
+        : paintRotations(dirs ?? new Array(k * 3).fill(0), how, drawn, {
+            axis: how === 'axis' ? principalAxisOf(brush.object ?? data.targetMapping?.get(brush.target)) : undefined,
+            spin,
+          });
+      const stroke: PaintStroke = {
+        target: brush.target,
+        entity: brush.entity,
+        compartment: brush.compartment,
+        positions: local,
+        rotations,
+        ...(asFiber ? { fiber: true, seed: drawn } : {}),
+        ...(asFiber && sequence?.trim()
+          ? {
+              sequence: {
+                residues: sequence.trim(),
+                ...(start !== undefined ? { start } : {}),
+                ...(end !== undefined ? { end } : {}),
+              },
+            }
+          : {}),
+      };
+      const key = into.structure && structureSourceKey(into.structure);
+      const withStroke = (p: PaintedParams): PaintedParams => ({
+        ...p,
+        strokes: [...p.strokes, stroke],
+        ...(into.structure && !(p.structures ?? []).some((x) => structureSourceKey(x) === key)
+          ? { structures: [...(p.structures ?? []), into.structure] }
+          : {}),
+      });
+      const ref = l
+        ? (await updatePainted(ctx, l, withStroke), l.cell.transform.ref)
+        : await paintNew(ctx, withStroke({ strokes: [], fibers: {}, structures: [] }));
+      // a structure's copies drawn as its object: the list given a target representation if it has none, its other
+      // representations leaving that target out (as cryoet's decorations; one step with the stroke)
+      if (into.structure) await drawStructure(ctx, ref, into.structure.target);
+      return ApiResult.ok(
+        asFiber ? `Painted a fiber of ${name}.` : `Painted ${k} ${k === 1 ? 'copy' : 'copies'} of ${name} (${how}).`,
+        { nodes: [ref] },
+        { value: { count: k, orient: asFiber ? 'fiber' : how } },
+      );
+    },
+  });
+
+  /**
+   * Grow (progress/2026-11-11-grow.md; Ludo, 2026-11-11): copies of a particle (its index in the list as drawn) by a
+   * rule from its pose, one stroke of the list's painted copies (one step). The copies go exactly where the rule says,
+   * overlaps allowed. Crystal, Tiling and Sphere grow in the scene's Å from the source as its list's move and scale put
+   * it (before the offsets of its kind, which its copies take too); Random walk is a new fiber, in the list's frame.
+   */
+  readonly grow = this.operation({
+    id: 'mesoscale.grow',
+    title: 'Grow copies from an instance',
+    params: {
+      particles: ListParam(),
+      index: PD.Numeric(0, { min: 0, step: 1 }, { description: 'The source: a particle by its index in the list' }),
+      mode: PD.Select(
+        'crystal',
+        [
+          ['walk', 'Random walk: a new fiber from the source'],
+          ['crystal', "Crystal: a lattice in the source's frame"],
+          ['tiling', "Tiling: a plane of copies in the source's own plane"],
+          ['sphere', 'Sphere: copies at random in a ball about the source'],
+        ] as const,
+        { description: 'The rule' },
+      ),
+      seed: OptionalParam(PD.Numeric(0, { step: 1 }, { description: 'The random draws’ seed (repeatable)' })),
+      steps: OptionalParam(PD.Numeric(20, { min: 2, max: 1000, step: 1 }, { description: 'Random walk: its points' })),
+      persistence: OptionalParam(
+        PD.Numeric(30, { min: 0, max: 180, step: 1 }, { description: 'Random walk: the most it turns a step, °' }),
+      ),
+      ...CellParams,
+      pattern: OptionalParam(
+        PD.Select('hex', [
+          ['hex', 'Hexagonal'],
+          ['square', 'Square'],
+        ] as const),
+      ),
+      spacing: OptionalParam(
+        PD.Numeric(0, { min: 0, step: 0.1 }, { description: "Tiling: between copies, Å; absent: the copy's diameter" }),
+      ),
+      rings: OptionalParam(
+        PD.Numeric(3, { min: 0, max: 50, step: 1 }, { description: 'Tiling: rings about the source' }),
+      ),
+      count: OptionalParam(PD.Numeric(50, { min: 1, step: 1 }, { description: 'Sphere: its copies' })),
+      radius: OptionalParam(
+        PD.Numeric(0, { min: 0, step: 0.1 }, { description: "Sphere: its radius, Å; absent: 5 × the copy's radius" }),
+      ),
+      turn: OptionalParam(
+        PD.Select('random', [
+          ['random', 'At random'],
+          ['source', 'As the source'],
+        ] as const),
+      ),
+    },
+    async run(values, ctx) {
+      const v = values as typeof values &
+        Partial<Record<string, number>> & { pattern?: 'hex' | 'square'; turn?: 'random' | 'source' };
+      const { particles, index, mode } = values;
+      const l = oneList(ctx, particles || undefined);
+      if (isFailure(l)) return l;
+      const state = ctx.plugin.state.data;
+      const refused = classTargets(state, l);
+      if (refused) return refused;
+      const src = growSourceOf(state, l, index);
+      if (isFailure(src)) return src;
+      const { data, target, entity, compartment, radius, name, instance } = src;
+      const seed = v.seed ?? Math.floor(Math.random() * 2 ** 31);
+      const move = decoratorUnder(state, l.cell.transform.ref, ParticleListTransform)?.transform.params as
+        | ListMove
+        | undefined;
+      // where it is drawn: its own move after the list's (in the scene's Å), in the list's frame for a walk
+      const scene = offsetPose(poseToScene(move, src.pose), instance);
+      const pose = offsetPose(src.pose, instance, move?.scale);
+      const diameter = 2 * radius;
+      const sizes: Record<string, number> = {};
+      let made: GrowPoses | undefined;
+      let path: number[] | undefined;
+      if (mode === 'crystal') {
+        const p = {
+          a: v.a ?? diameter,
+          b: v.b ?? diameter,
+          c: v.c ?? diameter,
+          alpha: v.alpha ?? 90,
+          beta: v.beta ?? 90,
+          gamma: v.gamma ?? 90,
+          na: Math.floor(v.na ?? 3),
+          nb: Math.floor(v.nb ?? 3),
+          nc: Math.floor(v.nc ?? 1),
+        };
+        if (!(p.a > 0 && p.b > 0 && p.c > 0)) return ApiResult.fail('invalid', 'The cell’s a, b and c are above 0 Å.');
+        if (!(p.na >= 1 && p.nb >= 1 && p.nc >= 1)) return ApiResult.fail('invalid', 'Give 1 cell or more a side.');
+        if (p.na * p.nb * p.nc - 1 > MaxGrown) return tooMany(p.na * p.nb * p.nc - 1);
+        made = crystalPoses(scene, p);
+        if (!made) return ApiResult.fail('invalid', 'Those angles make no cell.', 'α, β and γ of a real cell.');
+        Object.assign(sizes, p);
+      } else if (mode === 'tiling') {
+        const p = { pattern: v.pattern ?? 'hex', spacing: v.spacing ?? diameter, rings: Math.floor(v.rings ?? 3) };
+        if (!(p.spacing > 0)) return ApiResult.fail('invalid', 'The spacing is above 0 Å.');
+        const total = p.pattern === 'hex' ? 3 * p.rings * (p.rings + 1) : (2 * p.rings + 1) ** 2 - 1;
+        if (total > MaxGrown) return tooMany(total);
+        // its plane: a membrane protein's +z is its normal, anything else's its principal axis
+        const normal = src.surface ? Vec3.create(0, 0, 1) : principalAxisOf(data.targetMapping?.get(target));
+        made = tilingPoses(scene, normal, p);
+        Object.assign(sizes, p);
+      } else if (mode === 'sphere') {
+        const p = { count: Math.floor(v.count ?? 50), radius: v.radius ?? 5 * radius, turn: v.turn ?? 'random' };
+        if (!(p.radius > 0)) return ApiResult.fail('invalid', 'The radius is above 0 Å.');
+        if (!(p.count >= 1)) return ApiResult.fail('invalid', 'Give 1 copy or more.');
+        if (p.count > MaxGrown) return tooMany(p.count);
+        made = spherePoses(scene, p, seed);
+        Object.assign(sizes, p);
+      } else {
+        const p = { steps: Math.floor(v.steps ?? 20), persistence: v.persistence ?? 30 };
+        // a fiber of two points or more (a point alone would be a copy unturned; review N1)
+        if (!(p.steps >= 2)) return ApiResult.fail('invalid', 'Give 2 steps or more.');
+        if (p.steps > MaxGrown) return tooMany(p.steps);
+        // a fiber of the source's: its rise and axis (its Fiber Axis, else its own fibers', else its principal axis;
+        // as `makeFiber` turns its units, review S6), in the list's frame
+        const id = brushIdOf(data, { target, entity });
+        const structures = paintedStructures(state, l.cell.transform.ref);
+        const fiber = fiberSettingsOf(data, id, target, paintedFibers(state, l.cell.transform.ref), structures);
+        const rise = fiber.rise;
+        const axis =
+          fiber.axis !== 'auto'
+            ? Vec3.create(fiber.axis === 'x' ? 1 : 0, fiber.axis === 'y' ? 1 : 0, fiber.axis === 'z' ? 1 : 0)
+            : (fiberConventionOf(data, id)?.axis ?? principalAxisOf(data.targetMapping?.get(target)));
+        path = walkPath(pose, axis, rise, p, seed);
+        Object.assign(sizes, p);
+      }
+      if (made) {
+        toListFrame(move, made.positions, undefined);
+        rotationsToListFrame(move, made.rotations);
+      }
+      const stroke: PaintStroke = {
+        target,
+        entity,
+        compartment,
+        positions: path ?? made!.positions,
+        rotations: path ? [] : made!.rotations,
+        ...(path ? { fiber: true, seed } : {}),
+        grow: { mode, params: sizes, seed, source: { index, key: data.keys[index] } },
+      };
+      const count = stroke.positions.length / 3;
+      // no copy, no step (review S2): one cell, no ring
+      if (!count) return ApiResult.fail('invalid', 'That rule makes no copy.', 'More cells or rings.');
+      await updatePainted(ctx, l, (p) => ({ ...p, strokes: [...p.strokes, stroke] }));
+      return ApiResult.ok(
+        path
+          ? `Grew a fiber of ${name} from #${index}.`
+          : `Grew ${count} ${count === 1 ? 'copy' : 'copies'} of ${name} from #${index} (${mode}).`,
+        { nodes: [l.cell.transform.ref] },
+        { value: { count, mode } },
+      );
+    },
+  });
+
+  /**
+   * An entity's fiber settings (progress/2026-11-08-paint.md, Round 3): its painted fibers' points every rise along
+   * their paths, each turned by the twist from the one before, plus a random amount within ±jitter (a DNA: 3.4 Å and
+   * 34.3° a base pair, no jitter; an RNA: its rise, jitter 180). Round 4: the unit's axis along the path and an offset
+   * off it, along a perpendicular of that axis turned with the unit (a helix about the path with a twist). Every
+   * painted fiber of the entity is made again; the fibers the file has stay as they are. One step.
+   */
+  readonly fiber = this.operation({
+    id: 'mesoscale.fiber',
+    title: "Set an entity's fiber rise and twist",
+    params: {
+      entity: PD.Text('', { description: 'An entity by name or id (a list without entities: a target id)' }),
+      rise: OptionalParam(PD.Numeric(3.4, { min: 0.1, max: 1000, step: 0.1 }, { description: 'Between points, Å' })),
+      twist: OptionalParam(
+        PD.Numeric(0, { min: -360, max: 360, step: 0.1 }, { description: 'The turn from one point to the next, °' }),
+      ),
+      jitter: OptionalParam(
+        PD.Numeric(0, { min: 0, max: 180, step: 1 }, { description: 'A random turn within ± this a point, °' }),
+      ),
+      axis: OptionalParam(
+        PD.Select('auto', PD.arrayToOptions(FiberAxes), {
+          description: "The unit's own axis along the path (auto: its fibers', else its principal axis)",
+        }),
+      ),
+      bank: OptionalParam(
+        PD.Select('none', PD.arrayToOptions(FiberBanks), {
+          description:
+            'The units its painted fibers switch between by their sequences (dna: a base pair a letter, rna: a nucleotide); its helix unless given',
+        }),
+      ),
+      offset: OptionalParam(
+        PD.Numeric(
+          0,
+          { min: -1000, max: 1000, step: 0.1 },
+          { description: 'Off the path, along a perpendicular of the axis, Å' },
+        ),
+      ),
+      particles: ListParam(),
+    },
+    async run(values, ctx) {
+      const { entity, particles } = values;
+      const given = values as typeof values & Partial<FiberSettings>;
+      if (
+        given.rise === undefined &&
+        given.twist === undefined &&
+        given.jitter === undefined &&
+        given.axis === undefined &&
+        given.offset === undefined &&
+        given.bank === undefined
+      ) {
+        return ApiResult.fail(
+          'invalid',
+          'Nothing to change.',
+          'Give a rise, a twist, a jitter, an axis, an offset or a bank.',
+        );
+      }
+      if (given.rise !== undefined && !(given.rise > 0)) return ApiResult.fail('invalid', 'The rise is above 0 Å.');
+      const l = oneList(ctx, particles || undefined);
+      if (isFailure(l)) return l;
+      if (!l.cell.obj?.data) return ApiResult.fail('not-found', 'The particle list is not loaded yet.');
+      const ids = selectEntities(ctx, l, entity, '');
+      if (isFailure(ids)) return ids;
+      if (ids.length !== 1 || !entity.trim()) return ApiResult.fail('invalid', 'Give one entity.');
+      const { data, brush } = fiberBrushOf(ctx.plugin.state.data, l, ids[0]);
+      if (!data || !brush) return ApiResult.fail('not-found', 'No particle of that entity.');
+      const id = brushIdOf(data, brush);
+      // a bank is an entity's (review S3, M2): a list with entities, an entity of its own
+      if (given.bank && given.bank !== 'none' && !(data.entityInfo?.size && ids[0] >= 0)) {
+        return ApiResult.fail('invalid', 'A bank of units is for an entity of a list with entities.');
+      }
+      const state = ctx.plugin.state.data;
+      const structures = paintedStructures(state, l.cell.transform.ref);
+      // a structure's fibers are of the structure itself (follow-up review S3)
+      if (given.bank && given.bank !== 'none' && paintedStructureOf(structures, id)) {
+        return ApiResult.fail('invalid', 'A structure painted with has no bank of units: its fibers are of itself.');
+      }
+      const old = paintedFibers(state, l.cell.transform.ref);
+      const now = fiberSettingsOf(data, id, brush.target, old, structures);
+      // a bank chosen anew: its units' helix (Round 5), what is given kept
+      const helix =
+        given.bank && given.bank !== 'none' && given.bank !== now.bank
+          ? { ...FiberBankHelix, jitter: 0, axis: 'z' as const, offset: 0 }
+          : undefined;
+      const next: FiberSettingsIn = {
+        rise: given.rise ?? helix?.rise ?? now.rise,
+        twist: given.twist ?? helix?.twist ?? now.twist,
+        jitter: Math.min(180, Math.max(0, given.jitter ?? helix?.jitter ?? now.jitter)),
+        axis: given.axis ?? helix?.axis ?? now.axis,
+        offset: given.offset ?? helix?.offset ?? now.offset,
+        bank: given.bank ?? now.bank,
+      };
+      const same = (Object.keys(next) as (keyof FiberSettingsIn)[]).every((k) => next[k] === now[k]);
+      if (same && old?.[id]) return ApiResult.already('The fibers are already so.');
+      await updatePainted(ctx, l, (p) => ({ ...p, fibers: { ...p.fibers, [id]: next } }));
+      const name = mesoEntities(dataOf(l) ?? data).find((e) => e.id === ids[0])?.name ?? entity;
+      return ApiResult.ok(
+        `${name}'s fibers: ${round1(next.rise)} Å a point, ${round1(next.twist)}°${next.jitter ? ` ± ${round1(next.jitter)}°` : ''}` +
+          `, its ${next.axis} axis along${next.offset ? `, ${round1(next.offset)} Å off` : ''}` +
+          `${next.bank !== 'none' ? `, ${next.bank.toUpperCase()} units by sequence` : ''}.`,
+        { nodes: [l.cell.transform.ref] },
+        { value: next },
+      );
     },
   });
 
@@ -1402,3 +2115,275 @@ async function writeStyles(
 }
 
 export { cssColor };
+
+const round1 = (x: number) => Math.round(x * 10) / 10;
+
+type PaintedParams = { strokes: PaintStroke[]; fibers: FiberSettingsMap; structures?: PaintStructure[] };
+
+/** The fiber settings of a list's painted decorator (none: none painted, no settings) */
+function paintedFibers(state: State, list: string): FiberSettingsMap | undefined {
+  return (decoratorUnder(state, list, ParticleListPainted)?.transform.params as PaintedParams | undefined)?.fibers;
+}
+
+/** The structures painted with in a list (none: none) */
+function paintedStructures(state: State, list: string): readonly PaintStructure[] | undefined {
+  return (decoratorUnder(state, list, ParticleListPainted)?.transform.params as PaintedParams | undefined)?.structures;
+}
+
+/**
+ * Updates a list's painted decorator, one step; made on first use, right under the list, with the move under it
+ * (review must-fix 1): a move or scale of the list (`stage.move`, `stage.scale`) updates the Transform it finds in the
+ * chain; one inserted later would go right under the list, above the copies, and leave them behind
+ */
+async function updatePainted(
+  ctx: Pick<ApiContext, 'plugin'>,
+  l: ParticleListRef,
+  fn: (p: PaintedParams) => PaintedParams,
+) {
+  const state = ctx.plugin.state.data;
+  const painted = decoratorUnder(state, l.cell.transform.ref, ParticleListPainted);
+  const b = state.build();
+  if (painted) b.to(painted).update((p: PaintedParams) => fn({ ...p, fibers: p.fibers ?? {} }));
+  else {
+    const at = b.to(l.cell).insert(ParticleListPainted, fn({ strokes: [], fibers: {}, structures: [] }));
+    if (!decoratorUnder(state, l.cell.transform.ref, ParticleListTransform)) {
+      at.insert(ParticleListTransform, { transform: Mat4.identity(), scale: 1 });
+    }
+  }
+  await b.commit();
+}
+
+/**
+ * A structure's copies drawn as its object (`target`): the list's target representation (added if none), its other
+ * representations leaving the target out (their `hidden`, kept with the targets they leave out already)
+ */
+async function drawStructure(ctx: ApiContext, list: string, target: number) {
+  const l = lists(ctx).find((x) => x.cell.transform.ref === list);
+  if (!l || !ctx.plugin.representation.particles.registry.has('target')) return;
+  const typeOf = (r: ParticleListRef['representations'][number]) =>
+    (r.cell.transform.params as { type?: { name?: string } })?.type?.name;
+  if (!l.representations.some((r) => typeOf(r) === 'target')) {
+    const r = await ctx.api.run('particles.representation', { particles: list, type: 'target' });
+    if (!r.ok) throw new Error(r.message);
+  }
+  for (const r of lists(ctx).find((x) => x.cell.transform.ref === list)?.representations ?? []) {
+    if (typeOf(r) === 'target') continue;
+    const layers = layersCell(ctx, r);
+    const hidden = ((layers?.params as { hidden?: number[] } | undefined)?.hidden ?? []).slice();
+    if (hidden.includes(target)) continue;
+    const o = await ctx.api.run('particles.look', { node: `#${r.cell.transform.ref}`, hidden: [...hidden, target] });
+    if (!o.ok) throw new Error(o.message);
+  }
+}
+
+/**
+ * The list a brush paints into (paint-layer round 2): an entity of `particles` (or the one list), or a structure of the
+ * scene into `particles`, else into the Painting list (made by the stroke when the scene has none)
+ */
+function paintInto(ctx: ApiContext, structure: string | undefined, particles: string, entity: string) {
+  const state = ctx.plugin.state.data;
+  if (!structure) {
+    const l = oneList(ctx, particles || undefined);
+    if (isFailure(l)) return l;
+    const data = l.cell.obj?.data;
+    if (!data) return ApiResult.fail('not-found', 'The particle list is not loaded yet.');
+    const ids = selectEntities(ctx, l, entity, '');
+    if (isFailure(ids)) return ids;
+    if (ids.length !== 1 || !entity.trim()) {
+      return ApiResult.fail('invalid', 'Give one entity to paint with.', 'Read them with mesoscale.entities.');
+    }
+    const refused = classTargets(state, l);
+    if (refused) return refused;
+    // its particles as painted (an entity a structure added has copies only; review S1)
+    const painted = decoratorUnder(state, l.cell.transform.ref, ParticleListPainted);
+    const drawn = (painted?.obj?.data as ParticleList | undefined) ?? data;
+    const brush = brushOf(drawn, ids[0]);
+    if (!brush) return ApiResult.fail('not-found', 'No particle of that entity to copy.');
+    const name = mesoEntities(dataOf(l) ?? data).find((e) => e.id === ids[0])?.name ?? entity;
+    return {
+      l,
+      data: drawn,
+      brush: { ...brush, object: undefined as ParticleTarget | undefined },
+      name,
+      structure: undefined as PaintStructure | undefined,
+    };
+  }
+  const cell = state.cells.get(structure);
+  if (!cell?.obj || !SO.Molecule.Structure.is(cell.obj)) {
+    return ApiResult.fail('not-found', `'${structure}' is not a structure of the scene.`, 'Load a PDB id or a file.');
+  }
+  // its entry's id (1CRN), else its label: the entity's name
+  const name = cell.obj.data.model?.entryId || cell.obj.label;
+  // the list loads its own copy from where the structure came from (review M2: the structure can then be removed)
+  const source = structureSourceOf(state, structure);
+  if (!source) {
+    return ApiResult.fail(
+      'invalid',
+      `${name} was not read from a file or an address: it cannot be painted yet.`,
+      'Load it by its PDB id or from a file.',
+    );
+  }
+  const object: ParticleTarget = { kind: 'structure', structure: cell.obj.data };
+  let l: ParticleListRef | undefined;
+  if (particles) {
+    const one = oneList(ctx, particles);
+    if (isFailure(one)) return one;
+    l = one;
+  } else {
+    l = lists(ctx).find((x) => x.cell.transform.transformer === MesoscalePaintingList);
+  }
+  if (l) {
+    const refused = classTargets(state, l);
+    if (refused) return refused;
+  }
+  // its ids: those it was given when first painted into this list (the same source), else the next of its input's
+  // (kept with it: review M1, a decoration above the list later does not move them)
+  const painted = l && decoratorUnder(state, l.cell.transform.ref, ParticleListPainted);
+  const input = (painted ? state.cells.get(painted.transform.parent)?.obj?.data : l?.cell.obj?.data) as
+    | ParticleList
+    | undefined;
+  const base = input ?? paintingList();
+  const known = (painted?.transform.params as PaintedParams | undefined)?.structures ?? [];
+  const definition = structureDefinitionOf(state, structure);
+  const key = structureSourceKey({ source, definition });
+  // a new entity's name: its own, else (another build of it painted here already) with its build (review S2)
+  const taken =
+    known.some((x) => x.name === name) || [...(base.entityInfo?.values() ?? [])].some((e) => e.name === name);
+  const entry: PaintStructure = known.find((x) => structureSourceKey(x) === key) ?? {
+    name: taken ? structureBuildName(name, definition) : name,
+    ...nextStructureIds(base, known),
+    source,
+    ...(definition ? { definition } : {}),
+  };
+  const brush = { target: entry.target, entity: entry.entity, compartment: -1, surface: false, object };
+  return { l, data: base, brush, name: entry.name, structure: entry };
+}
+
+/**
+ * A grow's source (`mesoscale.grow`): particle `index` of a list as drawn, read where the painted copies are (the
+ * painted decorator's output, else the list's own; the decorators after it keep the particles' order): in the list's
+ * frame, before its move and its offsets. Its target, entity and compartment; its radius, Å (its own, else its
+ * structure's, else 10); its name (its entity's, else its target's)
+ */
+export function growSourceOf(state: State, l: ParticleListRef, index: number) {
+  const painted = decoratorUnder(state, l.cell.transform.ref, ParticleListPainted);
+  const data = (painted?.obj?.data as ParticleList | undefined) ?? l.cell.obj?.data;
+  if (!data) return ApiResult.fail('not-found', 'The particle list is not loaded yet.');
+  if (!Number.isInteger(index) || index < 0 || index >= data.count) {
+    return ApiResult.fail('not-found', `No particle #${index} in ${l.cell.obj?.label ?? 'the list'}.`);
+  }
+  const target = data.targets[index];
+  // a unit of a fiber's bank (made by the decorator, its id not kept) is no target of the list's to copy
+  const input = painted && (state.cells.get(painted.transform.parent)?.obj?.data as ParticleList | undefined);
+  const structures = (painted?.transform.params as PaintedParams | undefined)?.structures ?? [];
+  if (input && !input.targetInfo.has(target) && !structures.some((s) => s.target === target)) {
+    return ApiResult.fail('invalid', "A unit of a fiber's bank is not grown from.", "Grow from the entity's copies.");
+  }
+  const entity = data.entityInfo?.size ? Particle.entityOf(data, index) : -1;
+  const compartment = data.compartments?.[index] ?? -1;
+  const rotation = data.rotations ? Quat.fromArray(Quat(), data.rotations, index * 4) : Quat.identity();
+  const pose = {
+    position: Vec3.fromArray(Vec3(), data.coordinates, index * 3),
+    rotation: Quat.normalize(rotation, rotation),
+  };
+  const object = data.targetMapping?.get(target);
+  const radius =
+    data.radii?.[index] || (object?.kind === 'structure' ? object.structure.boundary.sphere.radius : 0) || 10;
+  const name =
+    (entity >= 0 && data.entityInfo?.get(entity)?.name) || data.targetInfo.get(target)?.name || `Target ${target}`;
+  const surface = isMembranePath(data.compartmentInfo?.get(compartment)?.name ?? '');
+  // its own move (Move this instance: the offsets' `instances`, in its own frame, in the scene's Å): where it is drawn
+  // (review S1); its kind's offsets are its copies' too, so not read
+  const offsets = decoratorUnder(state, l.cell.transform.ref, ParticleListOffsets)?.transform.params as
+    | { instances?: ParticleInstanceOffsetProps[] }
+    | undefined;
+  const own = (offsets?.instances ?? []).filter((o) => o.index === index).map((o) => ({ ...o, index: 0 }));
+  const moved = own.length ? offsetParticles(OneParticle, [], own) : undefined;
+  const instance = moved && {
+    translation: Vec3.fromArray(Vec3(), moved.coordinates, 0),
+    turn: Quat.fromArray(Quat(), moved.rotations!, 0),
+  };
+  return { data, target, entity, compartment, pose, radius, name, surface, instance };
+}
+
+/** One particle at the origin, unturned: an instance offset read as a pose (`offsetParticles`) */
+const OneParticle = {
+  count: 1,
+  coordinates: new Float32Array(3),
+  targets: new Int32Array(1),
+  targetInfo: new Map(),
+} as unknown as ParticleList;
+
+/** A list whose targets come from a class (cryoet's) is not painted yet (review should-fix 2) */
+function classTargets(state: State, l: ParticleListRef) {
+  if (decoratorUnder(state, l.cell.transform.ref, ParticleListTargetsFromAttribute)) {
+    return ApiResult.fail(
+      'invalid',
+      'Painting a list whose targets come from a class is not there yet.',
+      'Paint a model entity, or a list drawn by its own targets.',
+    );
+  }
+}
+
+/**
+ * The Painting list made with its first stroke (`MesoscalePaintingList`, the decorator and a move under it: a move of
+ * the list carries the copies, review M3); its target representation added after (`drawStructure`), in the same step
+ */
+async function paintNew(ctx: Pick<ApiContext, 'plugin'>, params: PaintedParams) {
+  const b = ctx.plugin.state.data.build();
+  const list = b.toRoot().apply(MesoscalePaintingList, {});
+  list.apply(ParticleListPainted, params).apply(ParticleListTransform, { transform: Mat4.identity(), scale: 1 });
+  await b.commit();
+  return list.ref;
+}
+
+/**
+ * The list whose fiber settings an entity's are read on and its brush there: the list's own, else (an entity a structure
+ * added: copies only) its painted decorator's
+ */
+function fiberBrushOf(state: State, l: ParticleListRef, entity: number) {
+  const own = l.cell.obj?.data;
+  const brush = own && brushOf(own, entity);
+  if (brush) return { data: own, brush };
+  const painted = decoratorUnder(state, l.cell.transform.ref, ParticleListPainted)?.obj?.data as
+    | ParticleList
+    | undefined;
+  return { data: painted, brush: painted && brushOf(painted, entity) };
+}
+
+/** A structure brush's entity in the list it paints into (`MesoscaleApi.structureBrushState`) */
+function structureBrushOf(ctx: Pick<ApiContext, 'plugin'>, structure: string, into: string) {
+  const state = ctx.plugin.state.data;
+  const source = structureSourceOf(state, structure);
+  if (!source) return undefined;
+  const all = lists(ctx);
+  // where its strokes go: its list, gone the Painting list (as the host's `paint`; follow-up review new N1)
+  const l =
+    (into && all.find((x) => x.cell.transform.ref === into)) ||
+    all.find((x) => x.cell.transform.transformer === MesoscalePaintingList);
+  if (!l) return undefined;
+  const painted = decoratorUnder(state, l.cell.transform.ref, ParticleListPainted);
+  const key = structureSourceKey({ source, definition: structureDefinitionOf(state, structure) });
+  const s = (painted?.transform.params as PaintedParams | undefined)?.structures?.find(
+    (x) => structureSourceKey(x) === key,
+  );
+  // its entity, or its target in a list without entities (`brushIdOf`)
+  return s ? { particles: l.cell.transform.ref, entity: s.entity >= 0 ? s.entity : s.target } : undefined;
+}
+
+/** An entity's fiber settings in effect and whether it makes fibers (`MesoscaleApi.fiberState`) */
+function fiberInfo(state: State, ctx: Pick<ApiContext, 'plugin'>, particles: string, entity: number) {
+  const l = oneList(ctx, particles || undefined);
+  if (isFailure(l)) return undefined;
+  const { data, brush } = fiberBrushOf(state, l, entity);
+  if (!data || !brush) return undefined;
+  const id = brushIdOf(data, brush);
+  const own = paintedFibers(state, l.cell.transform.ref);
+  const structures = paintedStructures(state, l.cell.transform.ref);
+  return {
+    ...fiberSettingsOf(data, id, brush.target, own, structures),
+    // whether it can have a bank (review S3): not a structure painted with (follow-up review S3)
+    banks: !!data.entityInfo?.size && entity >= 0 && !paintedStructureOf(structures, id),
+    fibers: !!own?.[id] || isFiberBrush(data, id),
+  };
+}

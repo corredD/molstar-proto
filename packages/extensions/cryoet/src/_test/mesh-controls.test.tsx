@@ -24,17 +24,30 @@ afterEach(() => {
   document.body.innerHTML = '';
 });
 
-/** The controls of one mesh, its picker opened; the palette's hues and the area's calls */
-function mounted() {
-  const mesh: MeshInfo = {
-    ref: 'm',
-    label: 'membrane.obj',
-    visible: true,
-    visuals: ['mesh'],
-    opacity: 1,
-    color: 0xcccccc,
-    scale: 1,
-  };
+const Obj: MeshInfo = {
+  ref: 'm',
+  label: 'membrane.obj',
+  visible: true,
+  visuals: ['mesh'],
+  opacity: 1,
+  color: 0xcccccc,
+  scale: 1,
+};
+
+/** A VTP colored by its cell array */
+const Vtp: MeshInfo = {
+  ...Obj,
+  label: 'seg.vtp',
+  color: undefined,
+  arrays: [
+    { key: 'point:Curvature', label: 'Point: Curvature', range: [0, 1.5] },
+    { key: 'cell:Labels', label: 'Cell: Labels', range: [1, 12] },
+  ],
+  colorBy: { array: 'cell:Labels', colorList: 'viridis', range: 'auto' },
+};
+
+/** The controls of one mesh, its picker opened (when it shows); the palette's hues and the area's calls */
+function mounted(mesh: MeshInfo = Obj) {
   const list = observableState<readonly MeshInfo[]>([mesh]);
   const area = { mesh: vi.fn(async () => ({ ok: true })) } as unknown as CryoetApi;
   const host = document.createElement('div');
@@ -49,9 +62,21 @@ function mounted() {
     },
   } as unknown as ViewerApi;
   const dispose = render(() => <MeshControls api={api} area={area} mesh="m" list={list.asReadonly} />, host);
-  host.querySelector<HTMLButtonElement>('button[aria-expanded]')!.click();
+  host.querySelector<HTMLButtonElement>('button[aria-expanded]:not([aria-haspopup])')?.click();
   const hues = () => Array.from(host.querySelectorAll<HTMLButtonElement>('[aria-label="Palette"] [role=option]'));
-  return { host, area, groups, dispose, hues };
+  /** A choice of a group of choices (Color by, Range), by its text */
+  const choice = (group: string, text: string) =>
+    Array.from(host.querySelectorAll<HTMLButtonElement>(`[role=group][aria-label="${group}"] button`)).find(
+      (b) => b.textContent?.trim() === text,
+    );
+  /** A select's option picked: its button opened, the option clicked */
+  const pick = (select: string, text: string) => {
+    host.querySelector<HTMLButtonElement>(`button[aria-haspopup][aria-label="${select}"]`)!.click();
+    Array.from(host.querySelectorAll<HTMLElement>('[role=option]'))
+      .find((o) => o.textContent?.trim() === text)!
+      .click();
+  };
+  return { host, area, list, groups, dispose, hues, choice, pick };
 }
 
 const hexOf = (b: HTMLElement) => {
@@ -101,6 +126,93 @@ describe("a mesh's opacity", () => {
     range.dispatchEvent(new Event('change', { bubbles: true }));
     await vi.waitFor(() => expect(area.mesh).toHaveBeenLastCalledWith({ mesh: 'm', opacity: 0.3 }));
     expect(groups).toEqual(['Mesh opacity']);
+    dispose();
+  });
+});
+
+describe("a mesh's Color by", () => {
+  it('shows a VTP on its array: the array, its colors, its range; no color picker', () => {
+    const { host, choice, dispose } = mounted(Vtp);
+    expect(choice('Color by', 'Array')!.getAttribute('aria-pressed')).toBe('true');
+    expect(choice('Color by', 'Uniform')!.getAttribute('aria-pressed')).toBe('false');
+    expect(host.querySelector('button[aria-haspopup][aria-label="Array"]')!.textContent).toContain('Cell: Labels');
+    expect(host.querySelector('button[aria-haspopup][aria-label="Colors"]')!.textContent).toContain('Viridis');
+    expect(choice('Range', 'Auto')!.getAttribute('aria-pressed')).toBe('true');
+    // the picker's swatch: not shown
+    expect(host.querySelector('button[aria-expanded]:not([aria-haspopup])')).toBeNull();
+    dispose();
+  });
+
+  it('writes an array, a scale, a range picked; Uniform writes the color shown', () => {
+    vi.useFakeTimers();
+    const { area, choice, pick, list, dispose } = mounted(Vtp);
+    pick('Array', 'Point: Curvature');
+    vi.advanceTimersByTime(500);
+    expect(area.mesh).toHaveBeenLastCalledWith({ mesh: 'm', array: 'point:Curvature' });
+    pick('Colors', 'Plasma');
+    vi.advanceTimersByTime(500);
+    expect(area.mesh).toHaveBeenLastCalledWith({ mesh: 'm', colorList: 'plasma' });
+    // Custom starts at the array's range
+    choice('Range', 'Custom')!.click();
+    vi.advanceTimersByTime(500);
+    expect(area.mesh).toHaveBeenLastCalledWith({ mesh: 'm', range: [1, 12] });
+    list.set([{ ...Vtp, colorBy: { ...Vtp.colorBy!, range: [1, 12] } }]);
+    choice('Range', 'Auto')!.click();
+    vi.advanceTimersByTime(500);
+    expect(area.mesh).toHaveBeenLastCalledWith({ mesh: 'm', range: 'auto' });
+    choice('Color by', 'Uniform')!.click();
+    vi.advanceTimersByTime(500);
+    expect(area.mesh).toHaveBeenLastCalledWith({ mesh: 'm', color: '#cccccc' });
+    dispose();
+  });
+
+  it('shows the picker under Uniform; Array colors by a cell array first (as a VTP opens)', () => {
+    vi.useFakeTimers();
+    const { host, area, choice, dispose } = mounted({ ...Vtp, colorBy: undefined, color: 0xff0000 });
+    expect(choice('Color by', 'Uniform')!.getAttribute('aria-pressed')).toBe('true');
+    expect(host.querySelector('button[aria-haspopup][aria-label="Array"]')).toBeNull();
+    choice('Color by', 'Array')!.click();
+    vi.advanceTimersByTime(500);
+    expect(area.mesh).toHaveBeenLastCalledWith({ mesh: 'm', array: 'cell:Labels' });
+    dispose();
+  });
+
+  it('is not offered for a mesh without arrays (an OBJ)', () => {
+    const { host, choice, dispose } = mounted(Obj);
+    expect(choice('Color by', 'Array')).toBeUndefined();
+    expect(host.querySelector('[aria-label="Palette"]')).not.toBeNull();
+    dispose();
+  });
+
+  it('Custom on an array of one value spans it, a range cryoet.mesh takes (review S3)', () => {
+    vi.useFakeTimers();
+    const one = { ...Vtp, arrays: [{ key: 'cell:Labels', label: 'Cell: Labels', range: [3, 3] as const }] };
+    const { area, choice, dispose } = mounted(one);
+    choice('Range', 'Custom')!.click();
+    vi.advanceTimersByTime(500);
+    expect(area.mesh).toHaveBeenLastCalledWith({ mesh: 'm', range: [2.5, 3.5] });
+    dispose();
+  });
+
+  it("Uniform after Array writes the mesh's own color again, not the picker's default (review S4)", () => {
+    vi.useFakeTimers();
+    const { area, choice, list, dispose } = mounted({ ...Vtp, colorBy: undefined, color: 0xff0000 });
+    choice('Color by', 'Array')!.click();
+    vi.advanceTimersByTime(500);
+    list.set([{ ...Vtp, color: undefined }]);
+    choice('Color by', 'Uniform')!.click();
+    vi.advanceTimersByTime(500);
+    expect(area.mesh).toHaveBeenLastCalledWith({ mesh: 'm', color: '#ff0000' });
+    dispose();
+  });
+
+  it('a color picked over a pending array change replaces it, and the other way (review S5)', () => {
+    vi.useFakeTimers();
+    const { area, choice, pick, dispose } = mounted(Vtp);
+    pick('Colors', 'Plasma');
+    choice('Color by', 'Uniform')!.click();
+    vi.advanceTimersByTime(500);
+    expect(area.mesh).toHaveBeenLastCalledWith({ mesh: 'm', color: '#cccccc' });
     dispose();
   });
 });

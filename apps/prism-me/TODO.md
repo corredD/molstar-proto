@@ -93,6 +93,31 @@ maintainer first (2026-10-25). All are v6 (master); the MRC reader and the parti
 
 ## Backlog
 
+- **Paint, what rounds 1 and 2 left** (lane `paint`, 2026-11-08/09; progress/2026-11-08-paint.md): a fibre edited and
+  wrapped on a surface after it is painted (round 2 paints a new one); collision checks (mesobuild's) so copies do not
+  overlap; an eraser (a stroke removing copies) and a stroke's undo kept apart from the list's other edits; painting
+  with a list's target (lists without entities) from its row; the copy under the pointer's cost on a surface brush (each
+  move redraws, so the next pick redraws the pick pass: measure on MG in the browser; if it shows, a draw whose only
+  change is a non-picked object keeps the pick, a graphics change of its own); the copy under the pointer with a list
+  moved or scaled (drawn at the scene's point, its turn not the list frame's: review S4a; a scaled list's step and
+  radius used as scene distances: N9); paint's and the gizmos' trackball holds restore each other's bindings (S3: one
+  holder in graphics, or paint removing only its Alt triggers); `host.ray` on a real canvas (S6); a fibre painted on a
+  list without fibres at load has no Fibers representation (N2); the copy built off the main thread (N6), hidden with
+  its entity (N7); a far bound on the depth (N8); fake timers in paint-mode.test.ts (N10); a pick normal test on Dawn
+  (headless WebGPU picks did not answer reliably here); lists whose targets come from a class (refused now); the
+  review's nits: Esc while the mode is on also stops the page's other Esc handlers once, the host names the brush by id
+  as text (a name "3" would win), the principal axis read where `targetMapping` is on the list (not a decorator's), a
+  real 100 ms wait in paint-mode.test.ts.
+
+- **Paint, what rounds 3 to 5 left** (lane `paint`, 2026-11-09; progress/2026-11-08-paint.md, Round 5 and its review): a
+  protein bank (cellPACK_data has `alanine.pdb` only; the 19 others from the CCD's ideal coordinates, in the units'
+  frame, on Ludo's word); the Seq\* link (a painted fibre's points as a Seq\* sequence's positions, highlight both ways:
+  `Translator` external systems and a particle 3D view); a painted fibre's sequence changed after it is painted; a
+  stroke drawn without rebuilding the whole list (2.1 M particles: about 1.2 s a stroke on cellpack-mg, the
+  representation's update; the painted copies as a list of their own); the review's nits: the cursor's moves dirty the
+  scene's bounds (N1), the depth clamp along the ray against the planes' view depth (N2), the sliders narrower than
+  `mesoscale.fiber` (N4), a string a point in `withUnits` (S6); the `*.scaling.ts` configs of io, cryoet and mesoscale
+  import Seq*'s old harness path (moved to `@molstar/test-harness`, b50bd2f07): broken on prism-me.
 - **Fibre points drawn twice** (lane `fibers-targeted`, 2026-11-08; to decide): a cellPACK fibre's points keep their
   one-atom target under the new tubes (the yeast slab: 2.3M extra instances). Leave fibre points untargeted in the
   reader (lighter, tubes only), or keep both (a cellPACK fibre whose points carry an ingredient)?
@@ -214,7 +239,12 @@ maintainer first (2026-10-25). All are v6 (master); the MRC reader and the parti
 - Color import per compartment (v5 parity): one entity per name across compartments; per-compartment layers
   (`ParticleLayerProps.compartments`) would restore it.
 - Snapshot descriptions' links: `#key`, `i<names>`, `g<group>.<names>`.
-- Tilt angles (`.tlt`, `.rawtlt`) with the images of a tilt series; binning large tomograms.
+- Tilt angles (`.tlt`, `.rawtlt`) with the images of a tilt series; binning large tomograms before they load (a loaded
+  MRC bins: lane `data-controls`).
+- A level read (an OME-Zarr's, an MRC binned): a distance anchored to voxels keeps their indices in the old grid (it
+  fails, or lands elsewhere; review S1 of `data-controls`): remap them in the level's write. The MRC's `bin` takes 1–8
+  (3, 5… are not listed levels); a stack is told by its name (.st, .ali, .mrcs) only; Array's first pick is the first
+  cell array, not the VTP's first scalar; a bare array name found in both point and cell data takes the point's.
 - Decorating by a string column (a tomogram name).
 - Keys on cuts (animation).
 - A distance follows its objects: moving a structure, a list or a volume (or a particle with its handle) moves the

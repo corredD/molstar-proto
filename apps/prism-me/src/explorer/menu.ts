@@ -501,6 +501,7 @@ export function nodeMenuItems(
   if (open && clippable(kind, node)) {
     items.push({ id: 'clip', label: 'Add clip…', icon: 'scissors', run: () => open(clipItems(api, area, picked)) });
   }
+  items.push(...paintItems(api, picked));
   items.push(...showOnlyItems(api, picked, actions.groupBy));
   items.push(...portalItems(api, node.ref));
   if (removable(kind, node)) {
@@ -540,6 +541,45 @@ function portalItems(api: ViewerApi, ref: string): ContextMenuItem[] {
       icon: 'link' as const,
       run: open(`https://doi.org/${doi}`),
     })),
+  ];
+}
+
+// --- Paint (progress/2026-11-08-paint.md; _spec/ui.md §5) ------------------------------------------------------------
+
+/**
+ * A model's entity or a structure: Paint with it (the canvas's paint mode, its brush that entity: a stroke a step), or
+ * Stop painting while it is the brush
+ */
+function paintItems(api: ViewerApi, picked: PickedNode): ContextMenuItem[] {
+  const { node, kind, label } = picked;
+  const mode = api.mesoscale?.paintMode;
+  // a structure of the scene (paint-layer round 2, Ludo 2026-11-10): Paint with it, into a list or the Painting list
+  if (mode && kind === 'structure') {
+    if (mode.brush.value?.structure === node.ref) {
+      return [{ id: 'paint', label: 'Stop painting', icon: 'paintbrush', run: () => mode.stop() }];
+    }
+    return [
+      {
+        id: 'paint',
+        label: `Paint with ${label}`,
+        icon: 'paintbrush',
+        run: () => void mode.start({ particles: '', entity: -1, name: label, structure: node.ref }),
+      },
+    ];
+  }
+  const entity = 'particles' in node ? node.particles.entities : undefined;
+  if (!mode || kind !== 'entity' || entity?.length !== 1) return [];
+  const brush = mode.brush.value;
+  if (brush?.particles === node.ref && brush.entity === entity[0]) {
+    return [{ id: 'paint', label: 'Stop painting', icon: 'paintbrush', run: () => mode.stop() }];
+  }
+  return [
+    {
+      id: 'paint',
+      label: `Paint with ${label}`,
+      icon: 'paintbrush',
+      run: () => void mode.start({ particles: node.ref, entity: entity[0], name: label }),
+    },
   ];
 }
 

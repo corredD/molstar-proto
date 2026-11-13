@@ -692,7 +692,9 @@ function sceneObjects(plugin: PluginContext): SceneObject[] {
     });
   }
   for (const l of plugin.managers.particles.hierarchy.current.lists) {
-    const data = l.cell.obj?.data;
+    // as it is drawn: its decorators' particles, the painted copies and their entities with them (paint-layer round 2:
+    // the Painting list has none of its own)
+    const data = (l.representations[0]?.cell.obj?.data.sourceData as ParticleList | undefined) ?? l.cell.obj?.data;
     const model = !!(data?.entityInfo?.size || data?.compartmentInfo?.size);
     out.push({
       ref: l.cell.transform.ref,
