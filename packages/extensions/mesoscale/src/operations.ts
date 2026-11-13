@@ -81,7 +81,7 @@ import {
   tilingTotal,
   walkPath,
 } from './grow.js';
-import { sceneMesh, sceneMeshSurface } from './mesh-surface.js';
+import { sceneMesh, sceneMeshes, sceneMeshSurface } from './mesh-surface.js';
 import { isMembranePath } from './pick-surface.js';
 import {
   findGroup,
@@ -239,6 +239,8 @@ export interface GrowSettings {
   readonly turn: 'random' | 'source';
   /** The mesh it grows on (its representation's state ref; grow-mesh): none, in space; not for Crystal */
   readonly mesh?: string;
+  /** Tiling on a mesh: its points, the source's counted; unset: the plane's for Rings */
+  readonly tiles?: number;
 }
 
 export const DefaultGrowSettings: GrowSettings = {
@@ -267,6 +269,11 @@ export function growParams(source: GrowSource, s: GrowSettings) {
   };
   const out: Record<string, unknown> = { particles: source.particles, index: source.index, mode: s.mode };
   for (const k of [...own[s.mode], 'seed' as const]) if (s[k] !== undefined) out[k] = s[k];
+  // on a mesh (grow-mesh): a crystal grows in space; Tiling's Count
+  if (s.mesh && s.mode !== 'crystal') {
+    out.mesh = s.mesh;
+    if (s.mode === 'tiling' && s.tiles !== undefined) out.count = s.tiles;
+  }
   return out;
 }
 
@@ -392,6 +399,16 @@ export class MesoscaleApi extends ApiArea {
         return { ...s, name: `${src.name} #${s.index}`, radius: src.radius, rise };
       },
       () => [plugin.state.data.events.changed, this.growSource.asReadonly],
+      { compare: (a, b) => JSON.stringify(a) === JSON.stringify(b) },
+    );
+  }
+
+  /** The file meshes a grow can grow on (grow-mesh), following the state tree while watched: a read for views */
+  growMeshesState(): ReadonlyState<readonly { readonly ref: string; readonly label: string }[]> {
+    const plugin = this.ctx.plugin;
+    return watchedState(
+      () => sceneMeshes(plugin.state.data).map((m) => ({ ref: m.ref, label: m.label })),
+      () => plugin.state.data.events.changed,
       { compare: (a, b) => JSON.stringify(a) === JSON.stringify(b) },
     );
   }

@@ -10,6 +10,7 @@ import { Button, Choices, Icon, Select, type SelectOption, Show, Slider, TextInp
 import { mapState } from '@molstar/prism-ui/reactive/map-state';
 import type { ReadonlyState } from '@molstar/prism-ui/reactive/readonly-state';
 import { classes } from './_generated/controls.module.css.js';
+import { tilingTotal } from './grow.js';
 import {
   type GraphicsInfo,
   type GraphicsMode,
@@ -558,12 +559,19 @@ const GrowModeChoices = [
  * The Grow block (progress/2026-11-11-grow.md; Ludo, 2026-11-11): copies of a source particle of the list by a rule,
  * one step a Grow (`mesoscale.grow`). It names its source (set by a particle's right-click, Grow from this instance…,
  * or by a paint, its last copy), its mode, the mode's params (a length unset: the source's size), a seed (none: at
- * random) and Grow. The settings are the area's (`growSettings`), no step.
+ * random) and Grow. The settings are the area's (`growSettings`), no step. On (grow-mesh): None or a file mesh of the
+ * scene (the one the source was painted on by default); on a mesh, Tiling's Rings becomes its Count; Crystal grows in
+ * space.
  */
 export function GrowBlock(props: { area: MesoscaleApi; particles: string }) {
   const area = props.area;
   const source = mapState(area.growSourceState(), (s) => (s?.particles === props.particles ? s : undefined));
   const settings = area.growSettings.asReadonly;
+  const meshes = area.growMeshesState();
+  /** The mesh chosen while it is in the scene */
+  const onMesh = (s: GrowSettings, list: readonly { ref: string }[]) =>
+    s.mesh && list.some((m) => m.ref === s.mesh) ? s.mesh : undefined;
+  const chosen = mapState(settings, (s) => onMesh(s, meshes.value));
   const set = (patch: Partial<GrowSettings>) => area.growSettings.set({ ...area.growSettings.value, ...patch });
   const line = (label: string, title: string, control: Node) => (
     <div class={classes.line}>
@@ -619,6 +627,31 @@ export function GrowBlock(props: { area: MesoscaleApi; particles: string }) {
               active={mapState(settings, (s) => s.mode)}
               onPick={(id) => set({ mode: id as GrowSettings['mode'] })}
             />
+            <Show
+              when={mapState(settings, (s) => s.mode !== 'crystal')}
+              fallback={() =>
+                line('On', 'A crystal is a 3D lattice', <div class={classes.label}>A crystal grows in space</div>)
+              }
+            >
+              {() => (
+                <Show when={mapState(meshes, (list) => ({ list }))}>
+                  {({ list }) =>
+                    line(
+                      'On',
+                      'A mesh of the scene the copies grow on, each turned to its normal; None: in space',
+                      <Select
+                        size="sm"
+                        over
+                        aria-label="Grow on a mesh"
+                        options={[['', 'None'], ...list.map((m): SelectOption => [m.ref, m.label])]}
+                        value={mapState(settings, (s) => onMesh(s, list) ?? '')}
+                        onChange={(ref) => set({ mesh: ref || undefined })}
+                      />,
+                    )
+                  }
+                </Show>
+              )}
+            </Show>
             <Show when={mode('walk')}>
               {() => (
                 <div class={classes.tight}>
@@ -683,7 +716,20 @@ export function GrowBlock(props: { area: MesoscaleApi; particles: string }) {
                     { min: 1, max: 1000, scale: 'log', unit: 'Å' },
                     diameter,
                   )}
-                  {number('rings', 'Rings', 'Rings about the source', { min: 1, max: 30, step: 1 })}
+                  <Show
+                    when={mapState(chosen, (m) => !!m)}
+                    fallback={() => number('rings', 'Rings', 'Rings about the source', { min: 1, max: 30, step: 1 })}
+                  >
+                    {() =>
+                      number(
+                        'tiles',
+                        'Count',
+                        "Its points on the mesh, the source's counted (unset: Rings' on a plane)",
+                        { min: 2, max: 5000, step: 1 },
+                        () => tilingTotal(settings.value.pattern, settings.value.rings),
+                      )
+                    }
+                  </Show>
                 </div>
               )}
             </Show>
@@ -730,7 +776,11 @@ export function GrowBlock(props: { area: MesoscaleApi; particles: string }) {
                 variant="ghost"
                 icon={<Icon name="sparkles" />}
                 title="Grow the copies by the rule: one step"
-                onClick={() => void area.grow(growParams(src, settings.value) as never)}
+                onClick={() =>
+                  void area.grow(
+                    growParams(src, { ...settings.value, mesh: onMesh(settings.value, meshes.value) }) as never,
+                  )
+                }
               >
                 Grow
               </Button>
