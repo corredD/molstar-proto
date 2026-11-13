@@ -934,9 +934,11 @@ export class CryoetApi extends ApiArea {
         return ApiResult.fail(
           'invalid',
           `${name} has one resolution.`,
-          mrc
-            ? `It is too small to bin (its longest side under ${2 * MinBinnedSide} voxels).`
-            : 'Only an OME-Zarr volume or an MRC map has levels.',
+          mrc?.stack
+            ? 'A tilt series or an image stack: its images are not binned together.'
+            : mrc
+              ? `It is too small to bin (its longest side under ${2 * MinBinnedSide} voxels).`
+              : 'Only an OME-Zarr volume or an MRC map has levels.',
         );
       }
       const levels = levelViews(zarr);
@@ -1225,7 +1227,9 @@ function ccp4Of(v: VolumeRef) {
     scale[a] = g[5 * a] / by;
     translation[a] = g[12 + a] - ((by - 1) / 2) * scale[a];
   }
-  return { bin, one: { translation, scale, size } as LevelFrame, bytes: values.BYTES_PER_ELEMENT };
+  // a tilt series or an image stack (as Ccp4Provider names them): its images along z are not binned together
+  const stack = /\.(st|ali|mrcs)$/i.test(v.cell.obj?.label ?? '');
+  return { bin, one: { translation, scale, size } as LevelFrame, bytes: values.BYTES_PER_ELEMENT, stack };
 }
 
 /** An MRC's grid binned by `f` (as `binGrid`): voxel 0 at its block's center, the voxel `f` times (a side's length) */
@@ -1245,7 +1249,7 @@ function binnedFrame(one: LevelFrame, f: number): LevelFrame {
 /** An MRC's levels, coarsest to finest: 1× as read (its type's bytes), each binning a Float32 grid */
 function binLevels(mrc: Ccp4Read): VolumeLevelView[] {
   const longest = Math.max(...Array.from(mrc.one.size));
-  return Binnings.filter((f) => f === 1 || (longest / f >= MinBinnedSide && (f < 8 || longest > 1000)))
+  return Binnings.filter((f) => f === 1 || (!mrc.stack && longest / f >= MinBinnedSide && (f < 8 || longest > 1000)))
     .reverse()
     .map((f) => {
       const frame = binnedFrame(mrc.one, f);

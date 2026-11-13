@@ -351,7 +351,7 @@ describe('cryoet.level', () => {
 // 1000 voxels a side). A map of 10 Å voxels, voxel 0 at (100, 50, 20) Å, its sides not multiples of 4.
 
 /** A viewer with an MRC loaded (10 Å voxels, voxel 0 at (100, 50, 20)), its three slices shown */
-async function mrcViewer(dims: [number, number, number] = [40, 36, 30]) {
+async function mrcViewer(dims: [number, number, number] = [40, 36, 30], name = 'tomogram.mrc') {
   const base = DefaultPrismViewerSpec();
   const v = await createPrismViewerHeadless({
     spec: { ...base, extensions: [...(base.extensions ?? []), CryoetExtension] },
@@ -375,7 +375,7 @@ async function mrcViewer(dims: [number, number, number] = [40, 36, 30]) {
     cells: Tensor.create(space, Tensor.Data1(values)),
     stats: { min: 0, max: 0, mean: 0, sigma: 0 },
   };
-  expectOk(await v.api.load.files({ files: [new File([CCP4Writer.writeMrc(grid, values)], 'tomogram.mrc')] }));
+  expectOk(await v.api.load.files({ files: [new File([CCP4Writer.writeMrc(grid, values)], name)] }));
   const ref = v.plugin.managers.volume.hierarchy.current.volumes[0].cell.transform.ref;
   if (slices(v, ref).length < 3) expectOk(await v.api.cryoet!.slices({ volume: ref } as never));
   return { v, ref };
@@ -393,6 +393,18 @@ describe('cryoet.level on an MRC', () => {
     ]);
     expect(info.levels.map((l) => l.bytes)).toEqual([10 * 9 * 8 * 4, 20 * 18 * 15 * 4, 40 * 36 * 30 * 4]);
     expect(info.levels[0].label).toBe('4× · 40 Å · 0.0 MB');
+  });
+
+  it('gives a tilt series or an image stack no levels: its images are not binned together (review M1)', async () => {
+    for (const name of ['tilts.st', 'tilts.ali', 'particles.mrcs']) {
+      const { v, ref } = await mrcViewer([40, 36, 30], name);
+      expect(v.api.cryoet!.dataState(ref).value!.levels).toEqual([]);
+      expect(await v.api.cryoet!.level({ volume: ref, level: '2' } as never)).toMatchObject({
+        ok: false,
+        code: 'invalid',
+      });
+      expect(dataOf(v, ref).grid.cells.space.dimensions).toEqual([40, 36, 30]);
+    }
   });
 
   it('lists 8× for a map over 1000 voxels a side', async () => {
