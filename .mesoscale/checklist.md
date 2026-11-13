@@ -82,6 +82,17 @@ Each lane: brief committed · steps · checks green · gate (reviewer, skeptic, 
 - [x] Ludo's check (2026-11-12): all ten rows accepted in the status doc after the gate's changes, no notes
 - [x] merged into `me/mesoviewspec` (`c27a6ba55`), not pushed
 
+### `mvs-paint-docs` ([progress](../apps/prism-me/progress/2026-11-12-mvs-paint-docs.md)), port 1372
+
+- [x] brief: paint into documents (coverage doc, fix 2); step 4 (a stroke in the document) waits on Ludo and David
+- [x] `origin/me/paint` merged into the lane (`46d9fc545`, four conflicts, both sides kept)
+- [x] paint, grow and fiber refuse a document's list: failing test `1e4c89c5e`, fix `712793ed7`
+- [x] gate: reviewer and skeptic (Opus); fixed (`5e9fa4dc0`); open: `state.apply`/`state.update` (agent-only)
+- [x] app check through the API (port 1372): refused on the tiled document, no step; Painting list paints and grows
+- [ ] Ludo's check in the app
+- [ ] merged into `me/mesoviewspec`
+- [ ] step 4: Ludo and David decide what a stroke is in the document
+
 ### 4. `mvs-drive` ([progress](../apps/prism-me/progress/2026-11-09-mvs-drive.md)), port 1358
 
 - [x] brief committed
