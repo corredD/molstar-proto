@@ -170,8 +170,19 @@ export function tilingPoses(source: GrowPose, normal: Vec3, p: TilingParams, on?
 const _q = Quat();
 const _zero = Vec3();
 
-/** `count` copies uniform in a ball of `radius` about the source (seeded), turned at random (seeded) or as the source */
-export function spherePoses(source: GrowPose, p: SphereParams, seed: number): GrowPoses {
+/**
+ * `count` copies uniform in a ball of `radius` about the source (seeded), turned at random (seeded) or as the source.
+ * On a surface (`on`), uniform on its part within the ball (`sphereOnSurface`); undefined for a source off it.
+ */
+export function spherePoses(source: GrowPose, p: SphereParams, seed: number): GrowPoses;
+export function spherePoses(
+  source: GrowPose,
+  p: SphereParams,
+  seed: number,
+  on: GrowOn | undefined,
+): GrowPoses | undefined;
+export function spherePoses(source: GrowPose, p: SphereParams, seed: number, on?: GrowOn): GrowPoses | undefined {
+  if (on) return sphereOnSurface(source, p, seed, on);
   const out: GrowPoses = { positions: [], rotations: [] };
   for (let i = 0; i < Math.max(0, Math.floor(p.count)); ++i) {
     const r = p.radius * Math.cbrt(paintRandom(seed, i, 10));
@@ -188,29 +199,70 @@ export function spherePoses(source: GrowPose, p: SphereParams, seed: number): Gr
 const _e1 = Vec3();
 const _e2 = Vec3();
 
+/** `d` (unit) turned at random within the cone of cosine `cosMax` about itself (uniform in it; draw `i` of `seed`) */
+function turnInCone(d: Vec3, cosMax: number, seed: number, i: number) {
+  const cos = 1 - paintRandom(seed, i, 13) * (1 - cosMax);
+  const sin = Math.sqrt(Math.max(0, 1 - cos * cos));
+  const phi = 2 * Math.PI * paintRandom(seed, i, 14);
+  fiberOffsetDirection(_e1, 'auto', d);
+  Vec3.cross(_e2, d, _e1);
+  Vec3.scale(d, d, cos);
+  Vec3.scaleAndAdd(d, d, _e1, sin * Math.cos(phi));
+  Vec3.scaleAndAdd(d, d, _e2, sin * Math.sin(phi));
+  Vec3.normalize(d, d);
+}
+
 /**
  * A persistent random walk from the source (a fiber's path): `steps` points a `rise` apart, the first a rise from the
  * source along its fiber axis (`axis`, in its frame), each step's direction turned from the one before by at most
- * `persistence` (uniform in that cone; seeded)
+ * `persistence` (uniform in that cone; seeded). On a surface (`on`), each step's direction kept in the tangent plane
+ * and its point projected onto the surface (it ends where the surface does); undefined for a source off it.
  */
-export function walkPath(source: GrowPose, axis: Vec3, rise: number, p: WalkParams, seed: number): number[] {
+export function walkPath(source: GrowPose, axis: Vec3, rise: number, p: WalkParams, seed: number): number[];
+export function walkPath(
+  source: GrowPose,
+  axis: Vec3,
+  rise: number,
+  p: WalkParams,
+  seed: number,
+  on: GrowOn | undefined,
+): number[] | undefined;
+export function walkPath(
+  source: GrowPose,
+  axis: Vec3,
+  rise: number,
+  p: WalkParams,
+  seed: number,
+  on?: GrowOn,
+): number[] | undefined {
   const out: number[] = [];
   const d = Vec3.normalize(Vec3(), Vec3.transformQuat(Vec3(), axis, source.rotation));
   const cosMax = Math.cos((Math.min(180, Math.max(0, p.persistence)) * Math.PI) / 180);
   const at = Vec3.copy(Vec3(), source.position);
+  const n = Vec3();
+  if (on) {
+    if (!on.surface.project(_hit, source.position, _zero, on.reach)) return undefined;
+    Vec3.copy(at, _hit.position);
+    Vec3.copy(n, _hit.normal);
+    if (!tangent(d, n)) fiberOffsetDirection(d, 'auto', n);
+  }
   for (let i = 0; i < Math.max(0, Math.floor(p.steps)); ++i) {
     if (i > 0) {
-      const cos = 1 - paintRandom(seed, i, 13) * (1 - cosMax);
-      const sin = Math.sqrt(Math.max(0, 1 - cos * cos));
-      const phi = 2 * Math.PI * paintRandom(seed, i, 14);
-      fiberOffsetDirection(_e1, 'auto', d);
-      Vec3.cross(_e2, d, _e1);
-      Vec3.scale(d, d, cos);
-      Vec3.scaleAndAdd(d, d, _e1, sin * Math.cos(phi));
-      Vec3.scaleAndAdd(d, d, _e2, sin * Math.sin(phi));
-      Vec3.normalize(d, d);
+      turnInCone(d, cosMax, seed, i);
+      // on a surface, in its tangent plane (a projection turns it no more than the cone did)
+      if (on) {
+        Vec3.copy(_t, d);
+        if (tangent(_t, n)) Vec3.copy(d, _t);
+      }
     }
     Vec3.scaleAndAdd(at, at, d, rise);
+    if (on) {
+      if (!on.surface.project(_hit, at, n, rise)) break;
+      if (Vec3.dot(_hit.normal, n) < 0) Vec3.negate(_hit.normal, _hit.normal);
+      Vec3.copy(at, _hit.position);
+      Vec3.copy(n, _hit.normal);
+      if (!tangent(d, n)) fiberOffsetDirection(d, 'auto', n);
+    }
     out.push(at[0], at[1], at[2]);
   }
   return out;
@@ -383,6 +435,70 @@ function tilingOnSurface(source: GrowPose, axis: Vec3, p: TilingParams, on: Grow
       Quat.multiply(_q, Quat.rotationTo(_q, n0, _hit.normal), start.rotation);
       push(out, _hit.position, _q);
       if (out.positions.length / 3 >= limit) break;
+    }
+  }
+  return out;
+}
+
+/** The draws a copy of Sphere on a surface takes at most to land within the ball */
+const SphereDraws = 64;
+
+/**
+ * Sphere on a surface: `count` points uniform by area on the surface's triangles within `radius` of the source (a
+ * triangle drawn by its area, a point uniform in it; drawn again when outside the ball; seeded), each turned with the
+ * copy's axis (`on.axis`) along the normal there: at random about it, or as the source (turned with its axis along the
+ * normal at the source, then by the least turn to the copy's). Fewer when a copy finds no place in its draws.
+ */
+function sphereOnSurface(source: GrowPose, p: SphereParams, seed: number, on: GrowOn): GrowPoses | undefined {
+  const local = Vec3.normalize(Vec3(), on.axis ?? Vec3.create(0, 0, 1));
+  const a = Vec3.transformQuat(Vec3(), local, source.rotation);
+  const start = sourceOn(on, source, a);
+  if (!start) return undefined;
+  const sign = start.flipped ? -1 : 1;
+  const { positions: v, normals: vn } = on.surface.triangles(source.position, p.radius);
+  const T = v.length / 9;
+  const cumulative = new Float64Array(T);
+  let total = 0;
+  const A = Vec3();
+  const B = Vec3();
+  const C = Vec3();
+  for (let t = 0; t < T; ++t) {
+    Vec3.fromArray(A, v, t * 9);
+    Vec3.sub(B, Vec3.fromArray(B, v, t * 9 + 3), A);
+    Vec3.sub(C, Vec3.fromArray(C, v, t * 9 + 6), A);
+    total += Vec3.magnitude(Vec3.cross(_c, B, C)) / 2;
+    cumulative[t] = total;
+  }
+  const out: GrowPoses = { positions: [], rotations: [] };
+  if (!(total > 0)) return out;
+  const point = Vec3();
+  const normal = Vec3();
+  for (let i = 0; i < Math.max(0, Math.floor(p.count)); ++i) {
+    for (let draw = 0; draw < SphereDraws; ++draw) {
+      const salt = 20 + 3 * draw;
+      const x = paintRandom(seed, i, salt) * total;
+      let lo = 0;
+      let hi = T - 1;
+      while (lo < hi) {
+        const mid = (lo + hi) >> 1;
+        if (cumulative[mid] < x) lo = mid + 1;
+        else hi = mid;
+      }
+      const r1 = Math.sqrt(paintRandom(seed, i, salt + 1));
+      const r2 = paintRandom(seed, i, salt + 2);
+      const w = [1 - r1, r1 * (1 - r2), r1 * r2];
+      Vec3.set(point, 0, 0, 0);
+      Vec3.set(normal, 0, 0, 0);
+      for (let k = 0; k < 3; ++k) {
+        Vec3.scaleAndAdd(point, point, Vec3.fromArray(A, v, lo * 9 + k * 3), w[k]);
+        Vec3.scaleAndAdd(normal, normal, Vec3.fromArray(A, vn, lo * 9 + k * 3), w[k] * sign);
+      }
+      if (Vec3.distance(point, source.position) > p.radius) continue;
+      Vec3.normalize(normal, normal);
+      if (p.turn === 'random') paintRotation(_q, normal, 'axis', seed, i, { axis: local });
+      else Quat.multiply(_q, Quat.rotationTo(_q, start.hit.normal, normal), start.rotation);
+      push(out, point, _q);
+      break;
     }
   }
   return out;

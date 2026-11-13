@@ -135,3 +135,50 @@ describe('tiling on a mesh', () => {
     );
   });
 });
+describe('random walk on a mesh', () => {
+  it('walks on the vesicle: every point on it, a rise apart, each turn within Persistence and the curvature', () => {
+    const axis = Vec3.create(1, 0, 0);
+    const on = { surface: vesicle, reach: 20 };
+    const path = walkPath(north, axis, 8, { steps: 40, persistence: 30 }, 3, on)!;
+    expect(path.length / 3).toBe(40);
+    // the first point a rise along the axis (tangent at the pole)
+    expect(Vec3.distance(at(path, 0), north.position)).toBeCloseTo(8, 0);
+    expect(at(path, 0)[0]).toBeGreaterThan(7.5);
+    for (let i = 0; i < 40; ++i) {
+      expect(Vec3.magnitude(at(path, i))).toBeGreaterThan(OnSphere);
+      expect(Vec3.magnitude(at(path, i))).toBeLessThanOrEqual(R + 1e-3);
+      if (i) expect(Math.abs(Vec3.distance(at(path, i), at(path, i - 1)) - 8)).toBeLessThan(0.2);
+      if (i > 1) {
+        const d = Vec3.sub(Vec3(), at(path, i), at(path, i - 1));
+        const before = Vec3.sub(Vec3(), at(path, i - 1), at(path, i - 2));
+        // the walk's own turn and the sphere's bend over a rise (8/100 rad)
+        expect((Vec3.angle(d, before) * 180) / Math.PI).toBeLessThanOrEqual(30 + (8 / R) * (180 / Math.PI) + 0.5);
+      }
+    }
+    expect(walkPath(north, axis, 8, { steps: 40, persistence: 30 }, 3, on)).toEqual(path);
+  });
+});
+
+describe('sphere on a mesh', () => {
+  it('puts Count copies on the surface within Radius, each along its normal; the same seed, the same copies', () => {
+    const on = { surface: vesicle, reach: 20, axis: z };
+    const p = { count: 60, radius: 40, turn: 'random' as const };
+    const a = spherePoses(north, p, 5, on)!;
+    expect(a.positions.length / 3).toBe(60);
+    for (let i = 0; i < 60; ++i) {
+      const q = at(a.positions, i);
+      expect(Vec3.magnitude(q)).toBeGreaterThan(OnSphere);
+      expect(Vec3.magnitude(q)).toBeLessThanOrEqual(R + 1e-3);
+      expect(Vec3.distance(q, north.position)).toBeLessThanOrEqual(40);
+      expect(Vec3.dot(axisOf(a.rotations, i), Vec3.normalize(Vec3(), q))).toBeGreaterThan(0.999);
+    }
+    expect(spherePoses(north, p, 5, on)).toEqual(a);
+    expect(spherePoses(north, p, 6, on)!.positions).not.toEqual(a.positions);
+    // As the source: its axis along the normal too
+    const same = spherePoses(north, { ...p, turn: 'source' }, 5, on)!;
+    expect(same.positions).toEqual(a.positions);
+    for (let i = 0; i < 60; ++i) {
+      expect(Vec3.dot(axisOf(same.rotations, i), Vec3.normalize(Vec3(), at(same.positions, i)))).toBeGreaterThan(0.999);
+    }
+  });
+});
