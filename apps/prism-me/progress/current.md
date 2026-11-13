@@ -80,6 +80,8 @@ is not built is [../TODO.md](../TODO.md).
     "Colours from meshes" on; Ludo 2026-11-10) built and gated at 0fa72ac06, pushed: parts named by file, de-duplicated,
     mapped by index; a part's own colour where its mesh gives no tint (coordinator's call, Ludo to confirm). Next on
     Ludo’s word: shells, the clip pop, the PR (rounds 4–9).
+  - `grow-mesh` (`me/grow-mesh` from `prism-me` at 78125df42; brief on its branch): started 2026-11-13 (Ludo: grow on
+    a surface before Symmetry). Paint on an OBJ/PLY/VTP mesh; Tiling, Random walk and Sphere grown on it.
 - **Merged 2026-11-13**: #64 (767de588a): paint rounds 1-5, `paint-layer` (copies are their list's particles; a
   structure as the brush), `grow` round 1 (Random walk, Crystal, Tiling, Sphere), `data-controls` (a VTP's Color by,
   an MRC's Level slider). Progress files in `progress/` (2026-11-08-paint, 2026-11-10-paint-layer, 2026-11-11-grow,
