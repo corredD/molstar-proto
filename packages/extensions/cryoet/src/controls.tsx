@@ -32,7 +32,15 @@ import type { JSX } from '@molstar/prism-ui/dom/jsx-runtime';
 import type { ViewerApi } from '@molstar/prism-viewer/api';
 import { gestureSteps } from '@molstar/prism-viewer/sources/gesture-steps';
 import { classes } from './_generated/controls.module.css.js';
-import type { CryoetApi, DecorationsInfo, MeshInfo, ObliqueView, SliceAxis, TargetDecoration } from './operations.js';
+import {
+  type CryoetApi,
+  type DecorationsInfo,
+  MeshColorLists,
+  type MeshInfo,
+  type ObliqueView,
+  type SliceAxis,
+  type TargetDecoration,
+} from './operations.js';
 import { mb, TiltSeriesPlaces } from './portal-run.js';
 
 // The cryo-ET controls, shown by the extension's own rows and tab and by a host's panels (prism-me's properties):
@@ -679,7 +687,10 @@ export function MeshControls(props: {
         />
         <strong class={classes.name}>{mapState(mesh, (m) => m?.label ?? '')}</strong>
       </div>
-      <ParamsForm form={color} />
+      <Show when={mapState(mesh, (m) => !!m?.arrays?.length)}>
+        {() => <MeshColorBy mesh={mesh} color={() => Color.toHexStyle(color.values.value.color)} set={set} />}
+      </Show>
+      <Show when={mapState(mesh, (m) => !m?.colorBy)}>{() => <ParamsForm form={color} />}</Show>
       <Choices
         choices={[
           { id: 'mesh', label: 'Surface' },
@@ -713,5 +724,85 @@ export function MeshControls(props: {
         />
       </Line>
     </div>
+  );
+}
+
+/**
+ * A mesh's Color by, when its file has arrays (a VTP's point and cell arrays): Uniform (the color picker) or Array, its
+ * array, its colors (a color scale) and its range (Auto: the array's; Custom: a min and a max, from the array's)
+ */
+function MeshColorBy(props: {
+  mesh: ReadonlyState<MeshInfo | undefined>;
+  /** The color the picker shows (Uniform writes it) */
+  color: () => string;
+  set(values: Record<string, unknown>, delay?: number): void;
+}) {
+  const { mesh, set } = props;
+  const colorBy = mapState(mesh, (m) => m?.colorBy);
+  // Array again: the array it was colored by, else a cell array first (as a VTP opens)
+  let last: string | undefined;
+  bind(colorBy, (c) => {
+    if (c) last = c.array;
+  });
+  const arrays = () => mesh.value?.arrays ?? [];
+  const firstArray = () => last ?? (arrays().find((a) => a.key.startsWith('cell:')) ?? arrays()[0])?.key;
+  const custom = mapState(colorBy, (c) => !!c && c.range !== 'auto');
+  const range = new ParamsFormModel({ range: PD.Interval([0, 1], { step: 0.001 }, { label: 'Min, max' }) }, undefined, {
+    onChange: ({ range }) => set({ range: [range[0], range[1]] }, 300),
+  });
+  bind(colorBy, (c) => {
+    if (c && c.range !== 'auto') range.load({ range: [c.range[0], c.range[1]] });
+  });
+  const arrayRange = () => arrays().find((a) => a.key === colorBy.value?.array)?.range ?? [0, 1];
+  return (
+    <>
+      <Choices
+        label="Color by"
+        choices={[
+          { id: 'uniform', label: 'Uniform' },
+          { id: 'array', label: 'Array' },
+        ]}
+        active={mapState(colorBy, (c) => (c ? 'array' : 'uniform'))}
+        onPick={(by) => {
+          if (by === 'uniform' && colorBy.value) set({ color: props.color() });
+          else if (by === 'array' && !colorBy.value && firstArray()) set({ array: firstArray() });
+        }}
+      />
+      <Show when={mapState(colorBy, (c) => !!c)}>
+        {() => (
+          <>
+            <Line label="Array">
+              <Select
+                aria-label="Array"
+                options={arrays().map((a): SelectOption => [a.key, a.label])}
+                value={mapState(colorBy, (c) => c?.array ?? '')}
+                onChange={(array) => set({ array })}
+              />
+            </Line>
+            <Line label="Colors">
+              <Select
+                aria-label="Colors"
+                options={MeshColorLists as readonly SelectOption[]}
+                value={mapState(colorBy, (c) => c?.colorList ?? '')}
+                onChange={(colorList) => set({ colorList })}
+              />
+            </Line>
+            <Choices
+              label="Range"
+              choices={[
+                { id: 'auto', label: 'Auto' },
+                { id: 'custom', label: 'Custom' },
+              ]}
+              active={mapState(custom, (c) => (c ? 'custom' : 'auto'))}
+              onPick={(r) => {
+                if (r === 'auto' && custom.value) set({ range: 'auto' });
+                else if (r === 'custom' && !custom.value) set({ range: [...arrayRange()] });
+              }}
+            />
+            <Show when={custom}>{() => <ParamsForm form={range} />}</Show>
+          </>
+        )}
+      </Show>
+    </>
   );
 }
