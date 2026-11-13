@@ -4,7 +4,7 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import { Mat4, Vec3 } from '@molstar/core/math/linear-algebra';
+import { Mat4, Tensor, Vec3 } from '@molstar/core/math/linear-algebra';
 import { type StateObjectCell, type StateObjectSelector, StateTransform } from '@molstar/core/state';
 import { Color } from '@molstar/core/util/color';
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
@@ -32,6 +32,8 @@ import {
 import { VolumeRepresentation3D } from '@molstar/plugin/state/transforms/volume/representation';
 import { omeZarrLevelNeeds, VolumeFromOmeZarr } from '@molstar/plugin/state/formats/volume/ome-zarr';
 import type { OmeZarrFormat } from '@molstar/model/formats/volume/ome-zarr';
+import { Ccp4Format } from '@molstar/model/formats/volume/ccp4';
+import { VolumeFromCcp4 } from '@molstar/plugin/state/formats/volume/ccp4';
 import { gridText, volumeStats, voxelText } from '@molstar/prism-viewer/api/volume';
 import { type ApiContext, ApiArea, type ApiFailure, ApiResult } from '@molstar/prism-viewer/api/area';
 import { OptionalParam } from '@molstar/prism-viewer/api/params';
@@ -828,10 +830,13 @@ export class CryoetApi extends ApiArea {
 
   readonly level = this.operation({
     id: 'cryoet.level',
-    title: 'Read a volume at another resolution (an OME-Zarr level)',
+    title: 'Read a volume at another resolution (an OME-Zarr level, an MRC binned)',
     params: {
       volume: PD.Text('', { description: 'A volume by label or state ref; empty: the only one loaded' }),
-      level: PD.Text('', { description: 'The level by its path ("0": the finest, 1× binning)' }),
+      level: PD.Text('', {
+        description:
+          'The level by its path: an OME-Zarr\'s ("0": the finest, 1× binning); an MRC\'s binning ("1", "2", "4")',
+      }),
       large: PD.Boolean(false, { description: "Read a level over the volume's size guard (asked first)" }),
     },
     async run({ volume, level, large }, ctx) {
@@ -839,7 +844,17 @@ export class CryoetApi extends ApiArea {
       if (isFailure(v)) return v;
       const zarr = zarrOf(v);
       const name = v.cell.obj?.label ?? 'The volume';
-      if (!zarr) return ApiResult.fail('invalid', `${name} has one resolution.`, 'Only an OME-Zarr volume has levels.');
+      if (!zarr) {
+        const mrc = ccp4Of(v);
+        if (mrc && binLevels(mrc).length > 1) return binTo(ctx, v, mrc, level);
+        return ApiResult.fail(
+          'invalid',
+          `${name} has one resolution.`,
+          mrc
+            ? `It is too small to bin (its longest side under ${2 * MinBinnedSide} voxels).`
+            : 'Only an OME-Zarr volume or an MRC map has levels.',
+        );
+      }
       const levels = levelViews(zarr);
       const to = zarr.file.levels.find((l) => l.path === level);
       if (!to) {
@@ -869,16 +884,7 @@ export class CryoetApi extends ApiArea {
         level: to.path,
         maxSizeMB: large ? Math.max(zarr.maxSizeMB, Math.ceil(needs / 1e6)) : zarr.maxSizeMB,
       });
-      for (const axis of Axes) {
-        const r = sliceRepresentation(v, axis);
-        if (!r) continue;
-        const p = r.cell.transform.params as any;
-        const index = sameIndex(p.type.params.dimension.params, AxisIndex[axis], zarr.level, to);
-        b.to(r.cell).update({
-          ...p,
-          type: { ...p.type, params: { ...p.type.params, dimension: { name: axis, params: index } } },
-        });
-      }
+      moveSlices(b, v, zarr.level, to);
       const failure = await commitWatched(ctx, v.cell.transform.ref, b);
       const read = ctx.plugin.state.data.cells.get(v.cell.transform.ref)?.obj?.data as Volume | undefined;
       if (failure || (read?.sourceData as OmeZarrFormat | undefined)?.data.level.path !== to.path) {
@@ -1048,8 +1054,6 @@ function sliceOf(ctx: Pick<ApiContext, 'plugin'>, v: VolumeRef): SliceInfo | und
 
 // --- a volume's data and its levels (cryoet.level) -------------------------------------------------------------------
 
-type ZarrLevel = OmeZarrFormat['data']['level'];
-
 /** An OME-Zarr volume's file, its level read now and its size guard; undefined: not an OME-Zarr read by its transform */
 function zarrOf(v: VolumeRef) {
   const data = v.cell.obj?.data;
@@ -1084,19 +1088,137 @@ function volumeDataOf(v: VolumeRef): VolumeDataInfo | undefined {
   if (!data) return;
   const stats = volumeStats(data);
   const zarr = zarrOf(v);
-  const levels = zarr && zarr.file.levels.length > 1 ? levelViews(zarr) : [];
+  const mrc = zarr ? undefined : ccp4Of(v);
+  const levels = zarr && zarr.file.levels.length > 1 ? levelViews(zarr) : mrc ? binLevels(mrc) : [];
+  const several = levels.length > 1;
   return {
     source: data.sourceData.kind.toUpperCase(),
     grid: gridText(stats),
     voxel: voxelText(stats),
     bytes: (data.grid.cells.data as unknown as ArrayBufferView).byteLength ?? 0,
-    levels,
-    ...(levels.length ? { level: zarr!.level.path } : {}),
+    levels: several ? levels : [],
+    ...(several ? { level: zarr ? zarr.level.path : String(mrc!.bin) } : {}),
   };
 }
 
+/** Each grid slice of a volume moved to the index at its place (Å) in another level's grid (an index past it fails) */
+function moveSlices(b: ReturnType<ApiContext['plugin']['build']>, v: VolumeRef, from: LevelFrame, to: LevelFrame) {
+  for (const axis of Axes) {
+    const r = sliceRepresentation(v, axis);
+    if (!r) continue;
+    const p = r.cell.transform.params as any;
+    const index = sameIndex(p.type.params.dimension.params, AxisIndex[axis], from, to);
+    b.to(r.cell).update({
+      ...p,
+      type: { ...p.type, params: { ...p.type.params, dimension: { name: axis, params: index } } },
+    });
+  }
+}
+
+// --- an MRC binned (its levels: VolumeFromCcp4's `bin`) ---------------------------------------------------------------
+
+/** The binnings an MRC map can be read at; 8× only over 1000 voxels a side */
+const Binnings = [1, 2, 4, 8] as const;
+/** A binning is listed while the map's longest side keeps this many voxels */
+const MinBinnedSide = 8;
+
+type Ccp4Read = NonNullable<ReturnType<typeof ccp4Of>>;
+
+/** An MRC (CCP4) map read by its transform: its grid at 1× (from the file), the bytes of its type, its binning now */
+function ccp4Of(v: VolumeRef) {
+  const data = v.cell.obj?.data;
+  if (v.cell.transform.transformer !== VolumeFromCcp4 || !data || !Ccp4Format.is(data.sourceData)) return undefined;
+  const bin = (v.cell.transform.params as { bin?: number } | undefined)?.bin ?? 1;
+  const { header, values } = data.sourceData.data;
+  const order = Tensor.convertToCanonicalAxisIndicesFastToSlow([header.MAPC - 1, header.MAPR - 1, header.MAPS - 1]);
+  const size = order([header.NC, header.NR, header.NS]);
+  // the grid read now, back to 1×: binned by its binning along each side, by its length along a shorter one
+  const g = Grid.getGridToCartesianTransform(data.grid);
+  const scale: number[] = [];
+  const translation: number[] = [];
+  for (let a = 0; a < 3; a++) {
+    const by = Math.max(1, Math.min(bin, size[a]));
+    scale[a] = g[5 * a] / by;
+    translation[a] = g[12 + a] - ((by - 1) / 2) * scale[a];
+  }
+  return { bin, one: { translation, scale, size } as LevelFrame, bytes: values.BYTES_PER_ELEMENT };
+}
+
+/** An MRC's grid binned by `f` (as `binGrid`): voxel 0 at its block's center, the voxel `f` times (a side's length) */
+function binnedFrame(one: LevelFrame, f: number): LevelFrame {
+  const translation: number[] = [];
+  const scale: number[] = [];
+  const size: number[] = [];
+  for (let a = 0; a < 3; a++) {
+    const by = Math.max(1, Math.min(f, one.size[a]));
+    translation[a] = one.translation[a] + ((by - 1) / 2) * one.scale[a];
+    scale[a] = one.scale[a] * by;
+    size[a] = Math.ceil(one.size[a] / by);
+  }
+  return { translation, scale, size };
+}
+
+/** An MRC's levels, coarsest to finest: 1× as read (its type's bytes), each binning a Float32 grid */
+function binLevels(mrc: Ccp4Read): VolumeLevelView[] {
+  const longest = Math.max(...Array.from(mrc.one.size));
+  return Binnings.filter((f) => f === 1 || (longest / f >= MinBinnedSide && (f < 8 || longest > 1000)))
+    .reverse()
+    .map((f) => {
+      const frame = binnedFrame(mrc.one, f);
+      const size = [frame.size[0], frame.size[1], frame.size[2]] as const;
+      const bytes = size[0] * size[1] * size[2] * (f === 1 ? mrc.bytes : 4);
+      const spacing = frame.scale[0];
+      return {
+        path: String(f),
+        binning: f,
+        spacing,
+        size,
+        bytes,
+        large: false,
+        label: `${f}× · ${+spacing.toFixed(1)} Å · ${mb(bytes)}`,
+      };
+    });
+}
+
+/**
+ * An MRC read at another binning, as `cryoet.level` reads an OME-Zarr's level: one write (its `bin`, each slice at its
+ * place in Å), then its windows and transfer functions refit in σ
+ */
+async function binTo(ctx: ApiContext, v: VolumeRef, mrc: Ccp4Read, level: string) {
+  const name = v.cell.obj?.label ?? 'The volume';
+  const levels = binLevels(mrc);
+  const view = levels.find((l) => l.path === level.trim().replace(/×$/, ''));
+  if (!view) {
+    return ApiResult.fail(
+      'not-found',
+      `${name} has no level '${level}'.`,
+      `Levels: ${levels.map((l) => `${l.path} (${l.label})`).join(', ')}.`,
+    );
+  }
+  if (view.binning === mrc.bin) return ApiResult.already(`${name} is read at ${view.label}.`);
+  const stats = { ...v.cell.obj!.data.grid.stats };
+  const windows = windowsOf(v, stats);
+  const b = ctx.plugin.state.data.build();
+  b.to(v.cell).update({ ...(v.cell.transform.params as object), bin: view.binning });
+  moveSlices(b, v, binnedFrame(mrc.one, mrc.bin), binnedFrame(mrc.one, view.binning));
+  const failure = await commitWatched(ctx, v.cell.transform.ref, b);
+  const read = ctx.plugin.state.data.cells.get(v.cell.transform.ref);
+  if (failure || ((read?.transform.params as { bin?: number } | undefined)?.bin ?? 1) !== view.binning) {
+    return ApiResult.fail('failed', failure ?? `Could not read ${name} at ${view.label}.`, 'It stays at its level.');
+  }
+  await refit(ctx, v.cell.transform.ref, windows, stats);
+  return ApiResult.ok(`Reading ${name} at ${view.label}.`, { nodes: [v.cell.transform.ref] });
+}
+
+/** A level's grid along x, y and z: voxel i at translation + i·scale (Å), `size` voxels */
+interface LevelFrame {
+  readonly translation: ArrayLike<number>;
+  readonly scale: ArrayLike<number>;
+  readonly size: ArrayLike<number>;
+}
+
 /** A grid slice's index at one level, the index at the same place (Å) at another: voxel i at translation + i·scale */
-function sameIndex(index: number, axis: number, from: ZarrLevel, to: ZarrLevel) {
+function sameIndex(index: number, axis: number, from: LevelFrame, to: LevelFrame) {
   const at = from.translation[axis] + index * from.scale[axis];
   const i = Math.round((at - to.translation[axis]) / to.scale[axis]);
   return Math.max(0, Math.min(to.size[axis] - 1, i));

@@ -7,7 +7,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { Mat4, Tensor } from '@molstar/core/math/linear-algebra';
+import { Mat4, Tensor, Vec3 } from '@molstar/core/math/linear-algebra';
 import { CCP4Writer } from '@molstar/model/formats/writer/ccp4/ccp4';
 import { Grid, type Volume } from '@molstar/model/model/volume';
 import { OmeZarrFromUrl, VolumeFromOmeZarr } from '@molstar/plugin/state/formats/volume/ome-zarr';
@@ -344,5 +344,109 @@ describe('cryoet.level', () => {
     expect((hi - to.mean) / to.sigma).toBeCloseTo(2, 6);
     // the custom one's stops are fractions of its domain: kept
     expect(params(fixed.ref).colorList.colors.map((c: number[]) => c[1])).toEqual([0.3, 0.7]);
+  });
+});
+
+// `cryoet.level` on an MRC: its levels binned from the grid loaded (`VolumeFromCcp4`'s `bin`), 1×, 2×, 4× (8× over
+// 1000 voxels a side). A map of 10 Å voxels, voxel 0 at (100, 50, 20) Å, its sides not multiples of 4.
+
+/** A viewer with an MRC loaded (10 Å voxels, voxel 0 at (100, 50, 20)), its three slices shown */
+async function mrcViewer(dims: [number, number, number] = [40, 36, 30]) {
+  const base = DefaultPrismViewerSpec();
+  const v = await createPrismViewerHeadless({
+    spec: { ...base, extensions: [...(base.extensions ?? []), CryoetExtension] },
+  });
+  viewers.push(v);
+  const [nx, ny, nz] = dims;
+  const space = Tensor.Space(dims, [2, 1, 0], Float32Array);
+  const values = new Float32Array(nx * ny * nz);
+  for (let k = 0; k < nz; k++) {
+    for (let j = 0; j < ny; j++) {
+      for (let i = 0; i < nx; i++) values[i + nx * (j + ny * k)] = Math.sin(0.7 * i) + Math.cos(0.5 * j) + 0.05 * k;
+    }
+  }
+  const matrix = Mat4.mul(
+    Mat4(),
+    Mat4.fromTranslation(Mat4(), Vec3.create(100, 50, 20)),
+    Mat4.fromUniformScaling(Mat4(), 10),
+  );
+  const grid: Grid = {
+    transform: { kind: 'matrix', matrix },
+    cells: Tensor.create(space, Tensor.Data1(values)),
+    stats: { min: 0, max: 0, mean: 0, sigma: 0 },
+  };
+  expectOk(await v.api.load.files({ files: [new File([CCP4Writer.writeMrc(grid, values)], 'tomogram.mrc')] }));
+  const ref = v.plugin.managers.volume.hierarchy.current.volumes[0].cell.transform.ref;
+  if (slices(v, ref).length < 3) expectOk(await v.api.cryoet!.slices({ volume: ref } as never));
+  return { v, ref };
+}
+
+describe('cryoet.level on an MRC', () => {
+  it('lists its levels binned, coarsest to finest, each its voxel and size; the one read now', async () => {
+    const { v, ref } = await mrcViewer();
+    const info = v.api.cryoet!.dataState(ref).value!;
+    expect(info).toMatchObject({ source: 'CCP4', grid: '40 × 36 × 30', voxel: '10 Å', level: '1' });
+    expect(info.levels.map((l) => [l.path, l.binning, l.spacing, l.size, l.large])).toEqual([
+      ['4', 4, 40, [10, 9, 8], false],
+      ['2', 2, 20, [20, 18, 15], false],
+      ['1', 1, 10, [40, 36, 30], false],
+    ]);
+    expect(info.levels.map((l) => l.bytes)).toEqual([10 * 9 * 8 * 4, 20 * 18 * 15 * 4, 40 * 36 * 30 * 4]);
+    expect(info.levels[0].label).toBe('4× · 40 Å · 0.0 MB');
+  });
+
+  it('lists 8× for a map over 1000 voxels a side', async () => {
+    const { v, ref } = await mrcViewer([1001, 20, 2]);
+    expect(v.api.cryoet!.dataState(ref).value!.levels.map((l) => l.path)).toEqual(['8', '4', '2', '1']);
+  });
+
+  it('reads the map binned in place: the same representations, a slice at z = 120 Å near 120 Å, its σ window', async () => {
+    const { v, ref } = await mrcViewer();
+    const c = v.api.cryoet!;
+    expectOk(await c.slice({ volume: ref, axis: 'z', index: 10, contrast: 2 } as never));
+    expect(sliceAt(v, ref, 'z')).toBe(120);
+    const reprs = v.plugin.managers.volume.hierarchy.current.volumes[0].representations.map(
+      (r) => r.cell.transform.ref,
+    );
+
+    expectOk(await c.level({ volume: ref, level: '2' } as never));
+
+    expect(dataOf(v, ref).grid.cells.space.dimensions).toEqual([20, 18, 15]);
+    expect(
+      v.plugin.managers.volume.hierarchy.current.volumes[0].representations.map((r) => r.cell.transform.ref),
+    ).toEqual(reprs);
+    // voxel 0 at its block's center (25 Å), 20 Å voxels: 120 Å between voxels 4 (105) and 5 (125)
+    expect(Math.abs(sliceAt(v, ref, 'z') - 120)).toBeLessThanOrEqual(10);
+    expect(slices(v, ref).find((s) => s.axis === 'z')!.contrast).toBe(2);
+    expect(slices(v, ref).find((s) => s.axis === 'x')!.contrast).toBe(3);
+    expect(c.dataState(ref).value).toMatchObject({ grid: '20 × 18 × 15', voxel: '20 Å', level: '2' });
+    expect(await c.level({ volume: ref, level: '2' } as never)).toMatchObject({ unchanged: true });
+    expect(await c.level({ volume: ref, level: '3' } as never)).toMatchObject({ ok: false, code: 'not-found' });
+  });
+
+  it('is one history step: an undo reads the map at 1× again, its slices and windows where they were', async () => {
+    const { v, ref } = await mrcViewer();
+    const index = slices(v, ref).map((s) => s.index);
+    const z = slices(v, ref).find((s) => s.axis === 'z')!.ref;
+    const window = () => (v.plugin.state.data.cells.get(z)!.transform.params as any).colorTheme.params.domain.params;
+    const before = window();
+    expectOk(await v.api.cryoet!.level({ volume: ref, level: '4' } as never));
+    expect(dataOf(v, ref).grid.cells.space.dimensions).toEqual([10, 9, 8]);
+    expectOk(await v.api.run('history.undo', {}));
+    expect(dataOf(v, ref).grid.cells.space.dimensions).toEqual([40, 36, 30]);
+    expect(slices(v, ref).map((s) => s.index)).toEqual(index);
+    expect(window()).toEqual(before);
+  });
+
+  it('keeps its level in a session', async () => {
+    const { v, ref } = await mrcViewer();
+    expectOk(await v.api.cryoet!.level({ volume: ref, level: '2' } as never));
+    const snapshot = v.plugin.state.getSnapshot({ camera: false });
+    expect(snapshot.data!.tree.transforms.find((t) => t.ref === ref)!.params).toMatchObject({ bin: 2 });
+    expectOk(await v.api.cryoet!.level({ volume: ref, level: '1' } as never));
+    expect(dataOf(v, ref).grid.cells.space.dimensions).toEqual([40, 36, 30]);
+    await v.plugin.state.setSnapshot(snapshot);
+    expect(dataOf(v, ref).grid.cells.space.dimensions).toEqual([20, 18, 15]);
+    expect(v.api.cryoet!.dataState(ref).value).toMatchObject({ level: '2' });
   });
 });
