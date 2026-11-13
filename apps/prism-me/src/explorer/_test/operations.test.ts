@@ -370,10 +370,11 @@ describe('explorer', () => {
     expect(items.map((i) => i.id)).toEqual(['focus', 'move', 'label', 'show-only', 'show-all']);
     expect(items[1].disabled).toBeTruthy();
     expect(nodeMenuItems(v.api, area, area.pickedOf(atoms)).map((i) => i.id)).toEqual(['focus', 'move', 'label']);
-    // a whole structure moves and turns
+    // a whole structure moves and turns, and paints (paint-layer round 2: Paint with it)
     setGranularity('structure');
     const whole = nodeMenuItems(v.api, area, area.pickedOf(atoms));
-    expect(whole.map((i) => i.id)).toEqual(['focus', 'move', 'label', 'remove']);
+    expect(whole.map((i) => i.id)).toEqual(['focus', 'move', 'label', 'paint', 'remove']);
+    expect(whole.find((i) => i.id === 'paint')?.label).toMatch(/^Paint with /);
     expect(whole[1].disabled).toBeUndefined();
     setGranularity('chain');
     expect(nodeMenuItems(v.api, area, undefined).map((i) => i.id)).toEqual(['reset-camera']);

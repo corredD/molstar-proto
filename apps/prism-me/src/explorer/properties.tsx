@@ -13,7 +13,14 @@ import { type ObjectPose, placementWith, poseOf } from '@molstar/stage-tools-ext
 import type { LabelInfo, StageApi } from '@molstar/stage-tools-extension/operations';
 import { Decorations, MeshControls, ObliqueSlice, Slice, VolumeData } from '@molstar/cryoet-extension/controls';
 import type { CryoetApi, DecorationsInfo, TargetDecoration } from '@molstar/cryoet-extension/operations';
-import { ImportColors, ObjectGraphics, ZoomColors } from '@molstar/mesoscale-extension/controls';
+import {
+  FiberSettings,
+  GrowBlock,
+  ImportColors,
+  ObjectGraphics,
+  PaintBrush,
+  ZoomColors,
+} from '@molstar/mesoscale-extension/controls';
 import type { MesoGroupBy } from '@molstar/mesoscale-extension/model';
 import type { MesoscaleInfo } from '@molstar/mesoscale-extension/operations';
 import {
@@ -72,7 +79,7 @@ import { CategoryThemes } from './tree-view.js';
 // The properties of the row picked in the explorer's tree (_spec/ui.md §4): its name and kind, a model's Group by
 // above the sections (the tree's grouping of its rows: view state), then the sections that apply on Prism's
 // `SectionList` (properties-view.tsx), in ui.md §4's order: Data, Look, Representation, Isosurface, Direct volume,
-// Decoration, Slice, Position, Clips, Labels, Graphics & Motion; a clip's, a label's and a distance's own section. They
+// Decoration, Slice, Position, Clips, Labels, Paint, Graphics & Motion; a clip's, a label's and a distance's own section. They
 // act through the API as the person; a slider once released (one step).
 
 /** The row picked: its key in the tree, what it is, what it stands for */
@@ -380,6 +387,63 @@ export const Sections: readonly Section[] = [
     title: 'Labels',
     when: ({ api, picked }) => !!api.stage && !!picked.node && picked.kind !== 'category' && !Made.has(picked.kind),
     render: ({ api, picked }) => <Labels api={api} stage={api.stage!} at={picked.key} />,
+  },
+  {
+    // a structure as a brush (paint-layer round 2, Ludo 2026-11-10): Paint with it, into a list or the Painting list
+    id: 'paint-structure',
+    title: 'Paint',
+    when: ({ api, picked }) => !!api.mesoscale && picked.kind === 'structure' && !!picked.node,
+    render: ({ api, picked }) => (
+      <PaintBrush area={api.mesoscale!} particles="" entity={-1} name={picked.label} structure={picked.node!.ref} />
+    ),
+  },
+  {
+    // a model's entity as a brush (progress/2026-11-08-paint.md): Paint with it, and how
+    id: 'paint',
+    title: 'Paint',
+    when: ({ api, picked }) =>
+      !!api.mesoscale &&
+      picked.kind === 'entity' &&
+      !!picked.node &&
+      'particles' in picked.node &&
+      picked.node.particles.entities?.length === 1,
+    render: ({ api, picked }) => {
+      const node = picked.node as Extract<NodeRef, { particles: unknown }>;
+      return (
+        <PaintBrush
+          area={api.mesoscale!}
+          particles={node.ref}
+          entity={node.particles.entities![0]}
+          name={picked.label}
+        />
+      );
+    },
+  },
+  {
+    // a grow from an instance (progress/2026-11-11-grow.md): on a list, its model, its entities and targets; its source
+    // the particle right-clicked (Grow from this instance…) or the last painted
+    id: 'grow',
+    title: 'Grow',
+    when: ({ api, picked }) =>
+      !!api.mesoscale &&
+      !!picked.node &&
+      ('particles' in picked.node || picked.kind === 'mesoscale model' || picked.kind === 'particle list'),
+    render: ({ api, picked }) => <GrowBlock area={api.mesoscale!} particles={picked.node!.ref} />,
+  },
+  {
+    // a model's entity's fibers (progress/2026-11-08-paint.md, Round 3): its painted fibers' rise, twist and jitter
+    id: 'fiber',
+    title: 'Fiber',
+    when: ({ api, picked }) =>
+      !!api.mesoscale &&
+      picked.kind === 'entity' &&
+      !!picked.node &&
+      'particles' in picked.node &&
+      picked.node.particles.entities?.length === 1,
+    render: ({ api, picked }) => {
+      const node = picked.node as Extract<NodeRef, { particles: unknown }>;
+      return <FiberSettings area={api.mesoscale!} particles={node.ref} entity={node.particles.entities![0]} />;
+    },
   },
   {
     id: 'graphics',

@@ -7,6 +7,7 @@
 import { operationCommand } from '@molstar/prism-viewer/commands/operations';
 import type { ViewerExtension, ViewerSkill } from '@molstar/prism-viewer/spec';
 import { MesoscaleApi } from './operations.js';
+import { MesoscalePaintingList, ParticleListPainted } from './paint.js';
 
 declare module '@molstar/prism-viewer/api' {
   // The `mesoscale` area: the Mesoscale Explorer's entity controls on particle lists.
@@ -36,6 +37,8 @@ export const MesoscaleSkill: ViewerSkill = {
     'move_mesoscale_particles wiggles the atoms and tumbles the particles of one model (particles; empty: every one; 0 stops)',
     'or of one structure (object; a volume does not move); open_mesoscale_example opens one of',
     "the Mesoscale Explorer's examples by id (petworld-hiv, cellpack-hiv1, …).",
+    'paint_mesoscale_copies paints copies of one entity at points (positions, and the surface normals there): one stroke a',
+    'call, one undo step; no collision checks.',
   ].join('\n'),
   tools: [
     {
@@ -80,6 +83,18 @@ export const MesoscaleSkill: ViewerSkill = {
       operation: 'mesoscale.theme',
       description:
         'Colors several objects at once by a theme (by object, entity, chain, generated colors, one color, by zoom), each kind by what it takes: structures, particle models and lists, volumes (their isosurfaces), meshes.',
+    },
+    {
+      id: 'paint_mesoscale_copies',
+      operation: 'mesoscale.paint',
+      description:
+        'Paints copies of an entity at points of the scene (a stroke, one step): a membrane protein upright along the normals given, anything else turned at random.',
+    },
+    {
+      id: 'grow_mesoscale_copies',
+      operation: 'mesoscale.grow',
+      description:
+        'Grows copies of a particle (its index in a list) by a rule, one step: a random walk (a new fiber), a crystal lattice, a planar tiling or a sphere of copies about it; overlaps allowed.',
     },
     {
       id: 'set_mesoscale_graphics',
@@ -135,14 +150,34 @@ export const MesoscaleExtension: ViewerExtension = {
         alias: ['color levels', 'colors by zoom', 'dynamic coloring', 'chameleon'],
         action: 'Apply',
       }),
+      operationCommand(api, m.fiber, {
+        category,
+        icon: 'sliders-horizontal',
+        alias: ['fiber', 'fibre', 'fiber rise', 'fiber twist', 'dna twist', 'rna', 'helix rise'],
+        action: 'Apply',
+      }),
       operationCommand(api, m.example, {
         category,
         icon: 'folder-open',
         alias: ['example', 'mesoscale example', 'cellpack', 'petworld'],
       }),
+      operationCommand(api, m.paint, {
+        category,
+        icon: 'paintbrush',
+        alias: ['paint', 'cellpaint', 'paint copies', 'brush'],
+        action: 'Paint',
+      }),
+      operationCommand(api, m.grow, {
+        category,
+        icon: 'paintbrush',
+        alias: ['grow', 'crystal', 'lattice', 'tiling', 'random walk', 'grow copies'],
+        action: 'Grow',
+      }),
       operationCommand(api, m.entities, { category, icon: 'info', alias: ['mesoscale entities', 'compartments'] }),
     ];
   },
   skills: [MesoscaleSkill],
+  // its painted strokes are a state transform: registered, so a session that has them opens
+  plugin: { registry: [{ actions: [ParticleListPainted, MesoscalePaintingList] }] },
   ui: async (ctx) => (await import('./prism-viewer-ui.js')).mesoscaleUI(ctx),
 };

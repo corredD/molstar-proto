@@ -6,6 +6,7 @@
  * @author Neli Fonseca <neli@ebi.ac.uk>
  * @author Yakov Pechersky <ffxen158@gmail.com>
  * @author Aliaksei Chareshneu <chareshneu.tech@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { PluginStateTransform, PluginStateObject as SO } from '@molstar/plugin/state/objects';
@@ -14,6 +15,7 @@ import * as CCP4 from '@molstar/io/reader/ccp4/parser';
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
 import { Vec3 } from '@molstar/core/math/linear-algebra';
 import { volumeFromCcp4 } from '@molstar/model/formats/volume/ccp4';
+import { binGrid } from '@molstar/model/model/volume/bin';
 import { DataFormatProvider, applyTransformerRaw, rawDataObject } from '@molstar/plugin/state/formats/provider';
 import { VolumeFormatCategory } from './category.js';
 import { type VolumeFormatParams, tryObtainRecommendedIsoValue, defaultVisuals } from './provider.js';
@@ -50,12 +52,21 @@ const VolumeFromCcp4 = PluginStateTransform.BuiltIn({
       voxelSize: PD.Vec3(Vec3.create(1, 1, 1)),
       offset: PD.Vec3(Vec3.create(0, 0, 0)),
       entryId: PD.Text(''),
+      bin: PD.Optional(
+        PD.Numeric(
+          1,
+          { min: 1, max: 8, step: 1 },
+          { description: 'Bin the map loaded by this factor along each side (the mean of each block): 1, as read' },
+        ),
+      ),
     };
   },
 })({
   apply({ a, params }) {
     return Task.create('Create volume from CCP4/MRC/MAP', async (ctx) => {
-      const volume = await volumeFromCcp4(a.data, { ...params, label: a.data.name || a.label }).runInContext(ctx);
+      const read = await volumeFromCcp4(a.data, { ...params, label: a.data.name || a.label }).runInContext(ctx);
+      const bin = params.bin ?? 1;
+      const volume = bin > 1 ? { ...read, grid: await binGrid(read.grid, bin, ctx) } : read;
       const props = {
         label: volume.label || 'Volume',
         description: `Volume ${a.data.header.NX}\u00D7${a.data.header.NX}\u00D7${a.data.header.NX}`,

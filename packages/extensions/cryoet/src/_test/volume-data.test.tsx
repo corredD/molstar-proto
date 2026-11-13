@@ -85,6 +85,17 @@ describe("a volume's Data section", () => {
     expect(host.textContent).toContain('CCP4');
   });
 
+  it("shows an MRC's binnings on the slider, at 1×, and reads one at the release", () => {
+    // as `cryoet.dataState` gives an MRC: its levels its binnings, paths "4", "2", "1"
+    const bin = (b: number, mb: number) => ({ ...level(String(b), b, mb), path: String(b) });
+    const mrc = { ...TS08, source: 'CCP4', levels: [bin(4, 13), bin(2, 105), bin(1, 210)], level: '1' };
+    const { host, area, release, range } = mounted(mrc, () => ApiResult.ok(''));
+    expect([range()!.max, range()!.value]).toEqual(['2', '2']);
+    expect(host.textContent).toContain('1× · 6.8 Å · 210 MB');
+    release(1);
+    expect(area.level).toHaveBeenCalledWith({ volume: 'v', level: '2', large: false });
+  });
+
   it('reads a level at the release, through cryoet.level', async () => {
     const { area, release, data, range } = mounted(TS08, () => ApiResult.ok(''));
     release(1);
