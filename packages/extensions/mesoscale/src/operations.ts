@@ -237,6 +237,8 @@ export interface GrowSettings {
   readonly count: number;
   readonly radius?: number;
   readonly turn: 'random' | 'source';
+  /** The mesh it grows on (its representation's state ref; grow-mesh): none, in space; not for Crystal */
+  readonly mesh?: string;
 }
 
 export const DefaultGrowSettings: GrowSettings = {
@@ -314,10 +316,10 @@ export class MesoscaleApi extends ApiArea {
     this._paintMode ??= new PaintMode(
       pluginPaintHost(
         this.ctx.plugin,
-        // the last copy painted is a grow's source as well (progress/2026-11-11-grow.md)
-        async (params) => {
+        // the last copy painted is a grow's source as well (progress/2026-11-11-grow.md), on the mesh it was painted on
+        async ({ mesh, ...params }) => {
           const r = await this.paint(params as never);
-          if (r.ok) this.growFromLast(r.changed?.nodes?.[0]);
+          if (r.ok) this.growFromLast(r.changed?.nodes?.[0], mesh as string | undefined);
           return r;
         },
         // the copy under the pointer in the entity's color (its look's)
@@ -346,25 +348,26 @@ export class MesoscaleApi extends ApiArea {
 
   /**
    * Sets the grow's source; another than the one before also unsets the lengths (a, b, c, spacing, radius): the new
-   * source's size again (review G1)
+   * source's size again (review G1), and sets the mesh it grows on: `mesh`, the one it was painted on, else none
+   * (grow-mesh)
    */
-  setGrowSource(source: GrowSource) {
+  setGrowSource(source: GrowSource, mesh?: string) {
     const old = this.growSource.value;
     if (old?.particles === source.particles && old.index === source.index) return;
-    const { a: _a, b: _b, c: _c, spacing: _s, radius: _r, ...kept } = this.growSettings.value;
-    this.growSettings.set(kept);
+    const { a: _a, b: _b, c: _c, spacing: _s, radius: _r, mesh: _m, ...kept } = this.growSettings.value;
+    this.growSettings.set(mesh ? { ...kept, mesh } : kept);
     this.growSource.set(source);
   }
 
-  /** The grow's source: the last particle of a list's painted decorator (a stroke's last copy) */
-  private growFromLast(list: string | undefined) {
+  /** The grow's source: the last particle of a list's painted decorator (a stroke's last copy), on `mesh` if painted on one */
+  private growFromLast(list: string | undefined, mesh?: string) {
     if (!list) return;
     const painted = decoratorUnder(this.ctx.plugin.state.data, list, ParticleListPainted);
     const count = (painted?.obj?.data as ParticleList | undefined)?.count ?? 0;
     const l = lists({ plugin: this.ctx.plugin }).find((x) => x.cell.transform.ref === list);
     // a copy that is no source (a unit of a bank's fiber: review S3) leaves the source as it was
     if (!count || !l || isFailure(growSourceOf(this.ctx.plugin.state.data, l, count - 1))) return;
-    this.setGrowSource({ particles: list, index: count - 1 });
+    this.setGrowSource({ particles: list, index: count - 1 }, mesh);
   }
 
   /**

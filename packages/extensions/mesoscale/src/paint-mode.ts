@@ -91,8 +91,12 @@ export interface PaintHost {
    * depth is kept between them, where it and what it paints are seen
    */
   depthRange?(): readonly [near: number, far: number] | undefined;
-  /** The membrane at a point when its pick is a membrane particle's (`membraneFrame`); the point as it is else */
-  refine(point: SurfacePoint): void;
+  /**
+   * The surface at a point read on one: a file mesh's triangle and normal when its pick is one (`meshFrame`, any brush;
+   * `point.mesh` set), the membrane at it when its pick is a membrane particle's and the brush is `upright`
+   * (`membraneFrame`); the point as it is else
+   */
+  refine(point: SurfacePoint, upright: boolean): void;
   /** Whether the brush stands upright in a membrane (a membrane protein): only its copies go on the mid-plane */
   upright(brush: PaintBrushTarget): boolean;
   /** A point of the scene on the canvas: CSS pixels from its top left (out[0], out[1]) */
@@ -106,7 +110,7 @@ export interface PaintHost {
   fiberStep(brush: PaintBrushTarget, into?: string): number | undefined;
   /**
    * Paints a stroke: one operation (`mesoscale.paint`); `seed`, its random turns' (the copy under the pointer's);
-   * `fiber`, the stroke a new fiber
+   * `fiber`, the stroke a new fiber; `mesh`, the file mesh it ended on (grow-mesh: a grow from its last copy follows it)
    */
   paint(
     brush: PaintBrushTarget,
@@ -115,6 +119,7 @@ export interface PaintHost {
     normals: number[],
     seed: number,
     fiber: boolean,
+    mesh?: string,
   ): Promise<unknown>;
   /** The copy of the brush drawn under the pointer (Round 2), gone with `dispose` */
   cursor(brush: PaintBrushTarget): PaintCursor;
@@ -197,6 +202,8 @@ interface Stroke {
   /** The canvas's place at the press */
   left: number;
   top: number;
+  /** The file mesh its last surface read was on (grow-mesh) */
+  mesh?: string;
 }
 
 const _point = SurfacePoint();
@@ -288,8 +295,10 @@ function paintLayer(mode: PaintMode, host: PaintHost, canvas: HTMLElement, brush
       const r = surfaceAt(host.identify, x, y, NormalStep, host.eye(_eye), _point);
       if (r === 'pending') return false;
       if (!r) return true;
-      // a membrane protein in the membrane's mid-plane; anything else on the surface picked (review should-fix 3)
-      if (upright) host.refine(_point);
+      // on a mesh, its triangle; a membrane protein in the membrane's mid-plane; anything else on the surface picked
+      // (review should-fix 3)
+      host.refine(_point, upright);
+      s.mesh = _point.mesh;
     }
     const k = s.positions.length;
     const p = _point.position;
@@ -416,7 +425,7 @@ function paintLayer(mode: PaintMode, host: PaintHost, canvas: HTMLElement, brush
         return;
       }
       if (!r) return cursor.hide();
-      if (upright) host.refine(_point);
+      host.refine(_point, upright);
     }
     cursor.move(_point.position, _point.normal, mode.settings.value, seed);
   });
@@ -481,7 +490,9 @@ function paintLayer(mode: PaintMode, host: PaintHost, canvas: HTMLElement, brush
       clear();
       if (how === 'up' && s.positions.length) {
         committing++;
-        void host.paint(brush, mode.settings.value, s.positions, s.normals, seed, fiber).finally(() => committing--);
+        void host
+          .paint(brush, mode.settings.value, s.positions, s.normals, seed, fiber, s.mesh)
+          .finally(() => committing--);
         // the next copy under the pointer: the next stroke's
         seed = nextSeed();
         follow.request();

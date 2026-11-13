@@ -6,8 +6,14 @@
 
 import { describe, expect, it } from 'vitest';
 import { Mat4, Vec3 } from '@molstar/core/math/linear-algebra';
+import { OrderedSet } from '@molstar/core/data/int';
+import { ColorNames } from '@molstar/core/util/color/names';
+import * as ShapeUtils from '@molstar/graphics/geo/shape/shape';
+import { EmptyLoci } from '@molstar/model/model/loci';
+import { ShapeGroup } from '@molstar/model/model/shape';
 import { SurfaceHit } from '../grow.js';
-import { meshSurface } from '../mesh-surface.js';
+import { meshFrame, meshSurface } from '../mesh-surface.js';
+import { SurfacePoint } from '../pick-surface.js';
 import { sphereMesh } from './fixtures.js';
 
 // The mesh projector (progress/2026-11-13-grow-mesh.md, Tests: the projector): a point off a mesh brought onto it, its
@@ -71,5 +77,52 @@ describe('meshSurface', () => {
       expect(Vec3.distance(v, Vec3.create(100, 0, 0))).toBeLessThan(20 + 15);
     }
     expect(surface.triangles(Vec3.create(300, 0, 0), 20).positions.length).toBe(0);
+  });
+});
+
+describe('meshFrame', () => {
+  const shapeOf = (picked: boolean) => {
+    const shape = ShapeUtils.create(
+      'vesicle',
+      {},
+      sphereMesh(10, 3),
+      () => ColorNames.red,
+      () => 1,
+      () => 'vesicle',
+      [Mat4.fromTranslation(Mat4(), Vec3.create(0, 0, 50))],
+      1,
+    );
+    return picked ? ShapeUtils.enableTrianglePicking(shape) : shape;
+  };
+
+  it("brings a paint's surface point onto a file mesh: its triangle's point and normal, toward the viewer", () => {
+    const shape = shapeOf(true);
+    const loci = ShapeGroup.Loci(shape, [{ ids: OrderedSet.ofSingleton(0), instance: 0 }]);
+    // a pick read a little off the sphere's front (toward a viewer on +x), its normal from the neighbours' slope
+    const point = SurfacePoint();
+    Vec3.set(point.position, 10.3, 1, 50.5);
+    Vec3.normalize(point.normal, Vec3.create(1, 0.3, 0.2));
+    expect(meshFrame(loci, point, 2)).toBe(shape);
+    const radial = Vec3.sub(Vec3(), point.position, Vec3.create(0, 0, 50));
+    expect(Vec3.magnitude(radial)).toBeGreaterThan(10 * (1 - ChordError));
+    expect(Vec3.magnitude(radial)).toBeLessThanOrEqual(10 + 1e-6);
+    expect(Vec3.dot(point.normal, Vec3.normalize(radial, radial))).toBeGreaterThan(0.999);
+    // seen from inside (the normal read toward the centre): the normal turned to the viewer's side
+    Vec3.set(point.position, 9.9, 0, 50);
+    Vec3.set(point.normal, -1, 0, 0);
+    expect(meshFrame(loci, point, 2)).toBe(shape);
+    expect(point.normal[0]).toBeLessThan(-0.999);
+  });
+
+  it('leaves the point as it was for a mesh not picked by triangle (a guide) and for any other pick', () => {
+    const point = SurfacePoint();
+    Vec3.set(point.position, 10.3, 1, 50.5);
+    Vec3.set(point.normal, 1, 0, 0);
+    const guide = shapeOf(false);
+    expect(meshFrame(ShapeGroup.Loci(guide, [{ ids: OrderedSet.ofSingleton(0), instance: 0 }]), point, 2)).toBe(
+      undefined,
+    );
+    expect(meshFrame(EmptyLoci, point, 2)).toBe(undefined);
+    expect([...point.position]).toEqual([10.3, 1, 50.5]);
   });
 });

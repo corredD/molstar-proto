@@ -17,7 +17,10 @@ import {
 import { PluginStateObject as SO } from '@molstar/plugin/state/objects';
 import type { ApiFailure } from '@molstar/prism-viewer/api/area';
 import { pickNamed } from '@molstar/prism-viewer/api/scope';
-import type { GrowSurface, SurfaceHit } from './grow.js';
+import type { Loci } from '@molstar/model/model/loci';
+import { ShapeGroup } from '@molstar/model/model/shape';
+import { type GrowSurface, SurfaceHit } from './grow.js';
+import type { SurfacePoint } from './pick-surface.js';
 
 // A file mesh as a surface to paint and grow on (progress/2026-11-13-grow-mesh.md): the triangle lookup of its picks
 // (`getMeshTriangleLookup`) finds the triangle, in the mesh's own space; the shape's instance transform (its scale: a
@@ -100,6 +103,24 @@ export function meshSurface(mesh: Mesh, transform: Mat4 = Mat4.identity()): Grow
       return { positions, normals };
     },
   };
+}
+
+const _hit = SurfaceHit();
+
+/**
+ * Paint on a mesh (grow-mesh): when a surface point's pick is a file mesh's (`loci`, a shape picked by triangle), the
+ * point brought onto the mesh along its normal (within `reach`, Å) and the mesh's normal there, on the side of the
+ * point's (the viewer's); returns the mesh's shape. Undefined for any other pick, the point as it was.
+ */
+export function meshFrame(loci: Loci, point: SurfacePoint, reach: number): Shape<Mesh> | undefined {
+  if (!ShapeGroup.isLoci(loci) || loci.shape.geometry.kind !== 'mesh' || !loci.shape.getTriangleLoci) return undefined;
+  const shape = loci.shape as Shape<Mesh>;
+  const transform = shape.transforms[loci.groups[0]?.instance ?? 0] ?? shape.transforms[0];
+  if (!meshSurface(shape.geometry, transform).project(_hit, point.position, point.normal, reach)) return undefined;
+  if (Vec3.dot(_hit.normal, point.normal) < 0) Vec3.negate(_hit.normal, _hit.normal);
+  Vec3.copy(point.position, _hit.position);
+  Vec3.copy(point.normal, _hit.normal);
+  return shape;
 }
 
 // --- The scene's meshes --------------------------------------------------------------------------------------------------

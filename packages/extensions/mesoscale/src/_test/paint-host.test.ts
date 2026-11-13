@@ -41,6 +41,20 @@ describe('pluginPaintHost', () => {
     expect(calls[0]).toMatchObject({ sequence: 'ATGC', start: 2, end: 3, fiber: true });
     expect(calls[1].sequence).toBeUndefined();
   });
+
+  it('gives a stroke on a mesh its mesh (grow-mesh: the grow after it follows it), a stroke elsewhere none', async () => {
+    const plugin = { log: { warn: vi.fn() }, managers: { particles: { hierarchy: { current: { lists: [] } } } } };
+    const calls: Record<string, unknown>[] = [];
+    const host = pluginPaintHost(plugin as unknown as PluginContext, async (p) => {
+      calls.push(p as Record<string, unknown>);
+      return { ok: true };
+    });
+    const brush = { particles: 'l', entity: 1, name: 'CD9' };
+    await host.paint(brush, DefaultPaintSettings, [0, 0, 0], [0, 0, 1], 1, false, 'vesicle-ref');
+    await host.paint(brush, DefaultPaintSettings, [0, 0, 0], [0, 0, 1], 1, false);
+    expect(calls[0].mesh).toBe('vesicle-ref');
+    expect('mesh' in calls[1]).toBe(false);
+  });
 });
 
 describe('pluginPaintHost, a structure brush (paint-layer round 2)', () => {

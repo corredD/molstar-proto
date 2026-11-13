@@ -164,6 +164,21 @@ describe('Grow from this instance', () => {
     );
     expect(v.api.mesoscale!.growSource.value).toEqual({ particles: hiv, index: 4 });
   });
+
+  it("grows on the mesh a paint's last copy was painted on (grow-mesh); a right-click's source in space", async () => {
+    const { v, hiv } = await viewer();
+    const m = v.api.mesoscale!;
+    const mode = m.paintMode as unknown as { host: { paint(...a: unknown[]): Promise<unknown> } };
+    const brush = { particles: hiv, entity: 1, name: 'NC' };
+    await mode.host.paint(brush, DefaultPaintSettings, [0, 50, 0], [0, 1, 0], 1, false, 'vesicle-ref');
+    expect(m.growSource.value).toEqual({ particles: hiv, index: 3 });
+    expect(m.growSettings.value.mesh).toBe('vesicle-ref');
+    await mode.host.paint(brush, DefaultPaintSettings, [0, 60, 0], [0, 1, 0], 1, false);
+    expect(m.growSettings.value.mesh).toBe(undefined);
+    await mode.host.paint(brush, DefaultPaintSettings, [0, 70, 0], [0, 1, 0], 1, false, 'vesicle-ref');
+    m.setGrowSource({ particles: hiv, index: 0 });
+    expect(m.growSettings.value.mesh).toBe(undefined);
+  });
 });
 
 describe('Grow settings', () => {

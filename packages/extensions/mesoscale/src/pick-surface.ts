@@ -15,11 +15,15 @@ import type { ParticleList } from '@molstar/model/model/particles/particle-list'
 /** The canvas's pick at a point (CSS pixels from the canvas's top left), as `Canvas3D.identify` */
 export type Identify = (x: number, y: number) => PickResult;
 
-/** A surface point: where, its normal (unit, toward the viewer), and the pick there */
+/**
+ * A surface point: where, its normal (unit, toward the viewer), the pick there, and the file mesh it is on (its
+ * representation's state ref: grow-mesh) when it is on one
+ */
 export interface SurfacePoint {
   readonly position: Vec3;
   readonly normal: Vec3;
   id: unknown;
+  mesh?: string;
 }
 
 export function SurfacePoint(): SurfacePoint {
@@ -81,6 +85,7 @@ export function surfaceAt(
   if (left === 'pending' || right === 'pending' || up === 'pending' || down === 'pending') return 'pending';
   Vec3.copy(out.position, centre.position);
   out.id = centre.id;
+  out.mesh = undefined;
   Vec3.sub(_toEye, eye, centre.position);
   const n = out.normal;
   if (slope(_u, centre.position, left, right) && slope(_v, centre.position, up, down)) {

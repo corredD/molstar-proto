@@ -24,20 +24,29 @@ afterEach(() => {
 
 function setup(
   pending = 0,
-  options: { upright?: boolean; changeOnPaint?: boolean; fiberStep?: number; depthRange?: [number, number] } = {},
+  options: {
+    upright?: boolean;
+    changeOnPaint?: boolean;
+    fiberStep?: number;
+    depthRange?: [number, number];
+    /** The mesh every surface read is on (grow-mesh): its state ref */
+    mesh?: string;
+  } = {},
 ) {
   vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null);
   const root = document.createElement('div');
   const canvas = document.createElement('canvas');
   root.append(canvas);
   document.body.append(root);
-  const strokes: { positions: number[]; normals: number[] }[] = [];
+  const strokes: { positions: number[]; normals: number[]; mesh?: string }[] = [];
   /** the list each fiber step was read for (`into`) */
   const intos: (string | undefined)[] = [];
   const listeners = new Set<() => void>();
   let lists = true;
   let reads = pending;
   const refined: number[] = [];
+  /** Whether each refine was for an upright brush */
+  const uprights: boolean[] = [];
   const camera = { held: 0, released: 0 };
   /** The copy under the pointer: where it was last shown (undefined: hidden), its seed, disposed */
   const copy = { at: undefined as number[] | undefined, seed: -1, disposed: false };
@@ -65,8 +74,10 @@ function setup(
     },
     focus: () => 100,
     ...(options.depthRange ? { depthRange: () => options.depthRange! } : {}),
-    refine: (p) => {
+    refine: (p, upright) => {
       refined.push(p.position[0]);
+      uprights.push(upright);
+      if (options.mesh) p.mesh = options.mesh;
     },
     upright: () => options.upright ?? true,
     project: (out, p) => Vec3.set(out, p[0], -p[1], 0),
@@ -84,8 +95,8 @@ function setup(
       },
     }),
     fiberStep: (_b, into) => (intos.push(into), options.fiberStep),
-    paint: async (_b, _s, positions, normals, seed, fiber) => {
-      strokes.push({ positions, normals });
+    paint: async (_b, _s, positions, normals, seed, fiber, mesh) => {
+      strokes.push({ positions, normals, ...(mesh ? { mesh } : {}) });
       seeds.push(seed);
       fibers.push(fiber);
       // the commit's own change of the state, a moment later (a large list's rebuild)
@@ -112,6 +123,7 @@ function setup(
     change,
     listeners,
     refined,
+    uprights,
     camera,
     copy,
     seeds,
@@ -179,15 +191,30 @@ describe('paint mode', () => {
     mode.stop();
   });
 
-  it("snaps to a membrane's mid-plane only for an upright brush (a membrane protein)", () => {
+  it("refines every surface read (a mesh's for any brush), a membrane's mid-plane only for an upright brush", () => {
     for (const upright of [true, false]) {
-      const { mode, layer, strokes, refined } = setup(0, { upright });
+      const { mode, layer, strokes, refined, uprights } = setup(0, { upright });
+      mode.set({ place: 'surface' });
       mode.start(brush);
       const el = layer();
       el.dispatchEvent(pointer('pointerdown', { x: 10, y: 10 }));
       el.dispatchEvent(pointer('pointerup', { x: 10, y: 10 }));
       expect(strokes.length).toBe(1);
-      expect(refined.length).toBe(upright ? 1 : 0);
+      expect(refined.length).toBe(1);
+      expect(uprights).toEqual([upright]);
+      mode.stop();
+    }
+  });
+
+  it('paints a stroke on a mesh with the mesh it was read on (grow-mesh), a stroke at a depth with none', () => {
+    for (const place of ['surface', 'depth'] as const) {
+      const { mode, layer, strokes } = setup(0, { upright: false, mesh: 'vesicle-ref' });
+      mode.set({ place });
+      mode.start(brush);
+      const el = layer();
+      el.dispatchEvent(pointer('pointerdown', { x: 10, y: 10 }));
+      el.dispatchEvent(pointer('pointerup', { x: 10, y: 10 }));
+      expect(strokes[0].mesh).toBe(place === 'surface' ? 'vesicle-ref' : undefined);
       mode.stop();
     }
   });
@@ -331,8 +358,8 @@ describe('paint mode', () => {
       el.dispatchEvent(pointer('pointerdown', { x: 10, y: 10 }));
       el.dispatchEvent(pointer('pointerup', { x: 10, y: 10 }));
       expect(strokes[0].positions[2]).toBe(z);
-      // a surface read refines a membrane protein; a depth reads no pick
-      expect(refined.length, `${upright} ${place}`).toBe(upright && place === 'auto' ? 1 : 0);
+      // a surface read is refined; a depth reads no pick
+      expect(refined.length, `${upright} ${place}`).toBe(place === 'depth' ? 0 : 1);
       mode.stop();
     }
   });
