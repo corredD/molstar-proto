@@ -204,6 +204,35 @@ export function walkPath(source: GrowPose, axis: Vec3, rise: number, p: WalkPara
   return out;
 }
 
+// --- On a surface (progress/2026-11-13-grow-mesh.md) -------------------------------------------------------------------
+
+/** A point of a surface and its unit normal there */
+export interface SurfaceHit {
+  readonly position: Vec3;
+  readonly normal: Vec3;
+}
+
+export function SurfaceHit(): SurfaceHit {
+  return { position: Vec3(), normal: Vec3() };
+}
+
+/**
+ * A surface the copies grow on, in the frame of the poses (the scene's, Å): a mesh's (`meshSurface`); a mask's level
+ * later. Its normals are its own side's (a file's winding): the growth keeps them on the source's side.
+ */
+export interface GrowSurface {
+  /**
+   * `p` on the surface: where the line through it along `along` (unit) meets the surface nearest to `p` within `reach`,
+   * else (or with `along` zero) the surface's point nearest to `p` within `reach`; false when none is within `reach`
+   */
+  project(out: SurfaceHit, p: Vec3, along: Vec3, reach: number): boolean;
+  /** The triangles within `radius` of `center`: their vertices and vertex normals, 9 numbers a triangle each */
+  triangles(
+    center: Vec3,
+    radius: number,
+  ): { readonly positions: ArrayLike<number>; readonly normals: ArrayLike<number> };
+}
+
 // --- Frames ------------------------------------------------------------------------------------------------------------
 
 /** A list's move and scale (`ParticleListTransform`'s params) */
