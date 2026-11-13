@@ -40,11 +40,15 @@ export interface CrystalParams {
   readonly nc: number;
 }
 
-/** A planar tiling in the source's own plane: its pattern, the spacing between copies (Å) and its rings */
+/**
+ * A planar tiling in the source's own plane: its pattern, the spacing between copies (Å) and its rings; on a surface,
+ * its points (the source's counted; absent: the plane's for its rings)
+ */
 export interface TilingParams {
   readonly pattern: 'hex' | 'square';
   readonly spacing: number;
   readonly rings: number;
+  readonly count?: number;
 }
 
 /** Copies uniform in a ball about the source (Å), turned at random or as the source */
@@ -128,9 +132,17 @@ export function crystalPoses(source: GrowPose, p: CrystalParams): GrowPoses | un
 /**
  * A tiling of the source's own plane (`normal`, in its frame: its axis), ring by ring: Hex, 1 + 3r(r+1) points with
  * r rings, Square, (2r+1)², the source's among them (not a copy); each a spacing from its neighbours, turned as the
- * source
+ * source. On a surface (`on`), grown over it (`tilingOnSurface`); undefined for a source off it.
  */
-export function tilingPoses(source: GrowPose, normal: Vec3, p: TilingParams): GrowPoses {
+export function tilingPoses(source: GrowPose, normal: Vec3, p: TilingParams): GrowPoses;
+export function tilingPoses(
+  source: GrowPose,
+  normal: Vec3,
+  p: TilingParams,
+  on: GrowOn | undefined,
+): GrowPoses | undefined;
+export function tilingPoses(source: GrowPose, normal: Vec3, p: TilingParams, on?: GrowOn): GrowPoses | undefined {
+  if (on) return tilingOnSurface(source, normal, p, on);
   const n = Vec3.normalize(Vec3(), normal);
   const u = fiberOffsetDirection(Vec3(), 'auto', n);
   const w = Vec3.cross(Vec3(), n, u);
@@ -231,6 +243,149 @@ export interface GrowSurface {
     center: Vec3,
     radius: number,
   ): { readonly positions: ArrayLike<number>; readonly normals: ArrayLike<number> };
+}
+
+/** A surface to grow on; `reach`, how far from it the source may be (Å); `axis`, the copies' axis in their frame */
+export interface GrowOn {
+  readonly surface: GrowSurface;
+  readonly reach: number;
+  readonly axis?: Vec3;
+}
+
+/** The points of the plane's tiling with `rings` rings, the source's counted */
+export function tilingTotal(pattern: TilingParams['pattern'], rings: number): number {
+  const r = Math.max(0, Math.floor(rings));
+  return pattern === 'hex' ? 1 + 3 * r * (r + 1) : (2 * r + 1) ** 2;
+}
+
+/** `v` in the plane of normal `n` (unit), unit; false when it is along `n` */
+function tangent(v: Vec3, n: Vec3): boolean {
+  Vec3.scaleAndAdd(v, v, n, -Vec3.dot(v, n));
+  if (Vec3.squaredMagnitude(v) < 1e-12) return false;
+  Vec3.normalize(v, v);
+  return true;
+}
+
+/**
+ * The source on the surface: its nearest point there, the normal on the side of its axis `a` (the scene's, unit) and
+ * its turn with that axis along the normal (its spin kept); undefined when the surface is beyond `on.reach`
+ */
+function sourceOn(on: GrowOn, source: GrowPose, a: Vec3) {
+  const hit = SurfaceHit();
+  if (!on.surface.project(hit, source.position, _zero, on.reach)) return undefined;
+  const flipped = Vec3.dot(hit.normal, a) < 0;
+  if (flipped) Vec3.negate(hit.normal, hit.normal);
+  const rotation = Quat.multiply(Quat(), Quat.rotationTo(Quat(), a, hit.normal), source.rotation);
+  return { hit, rotation, flipped };
+}
+
+/** A hash of a grid cell (collisions only merge cells: distances are checked) */
+const cellKey = (i: number, j: number, k: number) => (i * 73856093) ^ (j * 19349663) ^ (k * 83492791);
+
+/**
+ * Points kept apart (TomoNet's rule: a point closer than `min` to one kept is dropped), on a grid of cells of `min`:
+ * a point's neighbours within `min` are in its cell's 27
+ */
+function apartGrid(min: number) {
+  const cells = new Map<number, number[]>();
+  const points: number[] = [];
+  const at = (x: number) => Math.floor(x / min);
+  return {
+    crowded(p: Vec3) {
+      const [i, j, k] = [at(p[0]), at(p[1]), at(p[2])];
+      for (let di = -1; di <= 1; ++di) {
+        for (let dj = -1; dj <= 1; ++dj) {
+          for (let dk = -1; dk <= 1; ++dk) {
+            for (const o of cells.get(cellKey(i + di, j + dj, k + dk)) ?? []) {
+              const dx = points[o] - p[0];
+              const dy = points[o + 1] - p[1];
+              const dz = points[o + 2] - p[2];
+              if (dx * dx + dy * dy + dz * dz < min * min) return true;
+            }
+          }
+        }
+      }
+      return false;
+    },
+    add(p: Vec3) {
+      const key = cellKey(at(p[0]), at(p[1]), at(p[2]));
+      const list = cells.get(key);
+      if (list) list.push(points.length);
+      else cells.set(key, [points.length]);
+      points.push(p[0], p[1], p[2]);
+    },
+  };
+}
+
+const _hit = SurfaceHit();
+const _c = Vec3();
+const _w = Vec3();
+
+/**
+ * A tiling grown over a surface (D2b), ring by ring (breadth first) from the source's point: each kept point's
+ * neighbours a spacing away in its tangent plane (Hex: six at 60°; Square: four, and four diagonals at √2 spacings, so
+ * its rings are the plane's), projected onto the surface along its normal. A neighbour is dropped when the projection
+ * moved it more than half a spacing (another sheet) or when it is closer than 0.8 × Spacing to a point kept (TomoNet's
+ * rule: a closed surface fills without piling up). The lattice's first direction is carried from point to point in
+ * the tangent planes (the plane's at the source, so a flat mesh gives the plane's tiling). Each copy is the source
+ * turned with its axis along the normal at the source, then by the least turn from that normal to its own; it stops at
+ * Count points, the source's counted.
+ */
+function tilingOnSurface(source: GrowPose, axis: Vec3, p: TilingParams, on: GrowOn): GrowPoses | undefined {
+  const local = Vec3.normalize(Vec3(), axis);
+  const a = Vec3.transformQuat(Vec3(), local, source.rotation);
+  const start = sourceOn(on, source, a);
+  if (!start) return undefined;
+  const n0 = start.hit.normal;
+  const u0 = Vec3.transformQuat(Vec3(), fiberOffsetDirection(Vec3(), 'auto', local), source.rotation);
+  if (!tangent(u0, n0)) fiberOffsetDirection(u0, 'auto', n0);
+  const hex = p.pattern === 'hex';
+  const dirs: (readonly [number, number, number])[] = [];
+  for (let k = 0; k < (hex ? 6 : 4); ++k) {
+    const t = (k * Math.PI) / (hex ? 3 : 2);
+    dirs.push([Math.cos(t), Math.sin(t), 1]);
+  }
+  if (!hex) {
+    for (let k = 0; k < 4; ++k) {
+      const t = Math.PI / 4 + (k * Math.PI) / 2;
+      dirs.push([Math.cos(t), Math.sin(t), Math.SQRT2]);
+    }
+  }
+  const s = p.spacing;
+  const limit = Math.floor(p.count ?? tilingTotal(p.pattern, p.rings)) - 1;
+  const apart = apartGrid(0.8 * s);
+  // the points kept (the source's first): position, normal, the lattice's first direction
+  const kept: number[] = [];
+  const keep = (x: Vec3, n: Vec3, u: Vec3) => {
+    kept.push(x[0], x[1], x[2], n[0], n[1], n[2], u[0], u[1], u[2]);
+    apart.add(x);
+  };
+  keep(start.hit.position, n0, u0);
+  const out: GrowPoses = { positions: [], rotations: [] };
+  const P = Vec3();
+  const N = Vec3();
+  const U = Vec3();
+  for (let head = 0; head * 9 < kept.length && out.positions.length / 3 < limit; ++head) {
+    Vec3.fromArray(P, kept, head * 9);
+    Vec3.fromArray(N, kept, head * 9 + 3);
+    Vec3.fromArray(U, kept, head * 9 + 6);
+    Vec3.cross(_w, N, U);
+    for (const [cos, sin, len] of dirs) {
+      Vec3.scaleAndAdd(_c, P, U, s * len * cos);
+      Vec3.scaleAndAdd(_c, _c, _w, s * len * sin);
+      if (!on.surface.project(_hit, _c, N, s)) continue;
+      if (Vec3.distance(_hit.position, _c) > 0.5 * s) continue;
+      if (apart.crowded(_hit.position)) continue;
+      if (Vec3.dot(_hit.normal, N) < 0) Vec3.negate(_hit.normal, _hit.normal);
+      Vec3.copy(_t, U);
+      if (!tangent(_t, _hit.normal)) fiberOffsetDirection(_t, 'auto', _hit.normal);
+      keep(_hit.position, _hit.normal, _t);
+      Quat.multiply(_q, Quat.rotationTo(_q, n0, _hit.normal), start.rotation);
+      push(out, _hit.position, _q);
+      if (out.positions.length / 3 >= limit) break;
+    }
+  }
+  return out;
 }
 
 // --- Frames ------------------------------------------------------------------------------------------------------------
