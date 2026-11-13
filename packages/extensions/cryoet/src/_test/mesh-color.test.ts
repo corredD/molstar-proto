@@ -96,6 +96,13 @@ describe("a segmentation mesh's Color by", () => {
     expect(await c.mesh({ mesh: 'seg.vtp', array: 'cell:Labels' } as never)).toMatchObject({ unchanged: true });
   });
 
+  it("another array goes back to Auto: the last array's range is not this one's (review X1)", async () => {
+    const { c, read } = await viewer();
+    expectOk(await c.mesh({ mesh: 'seg.vtp', array: 'point:Curvature', range: [0.2, 0.4] } as never));
+    expectOk(await c.mesh({ mesh: 'seg.vtp', array: 'cell:Labels' } as never));
+    expect((await read('seg.vtp')).colorBy).toEqual({ array: 'cell:Labels', colorList: 'viridis', range: 'auto' });
+  });
+
   it("a color makes it uniform; opacity, visuals and scale leave an array's theme as it is", async () => {
     const { c, read, theme } = await viewer();
     const before = await theme();

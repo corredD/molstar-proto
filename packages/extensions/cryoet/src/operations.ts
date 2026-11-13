@@ -1712,12 +1712,14 @@ function arrayTheme(
     name = found.key;
   }
   const symmetric = base.domain?.name === 'auto' ? !!base.domain.params?.symmetric : false;
+  // another array without a range: Auto (the last array's custom range is not this one's)
+  const range = change.range ?? (name !== base.name && base.domain?.name === 'custom' ? 'auto' : undefined);
   const domain =
-    change.range === undefined
+    range === undefined
       ? base.domain
-      : change.range === 'auto'
+      : range === 'auto'
         ? { name: 'auto', params: { symmetric } }
-        : { name: 'custom', params: [change.range[0], change.range[1]] };
+        : { name: 'custom', params: [range[0], range[1]] };
   return { value: { name: 'attribute', params: { ...base, name, colors: change.colorList ?? base.colors, domain } } };
 }
 
