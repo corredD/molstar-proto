@@ -80,15 +80,13 @@ is not built is [../TODO.md](../TODO.md).
     "Colours from meshes" on; Ludo 2026-11-10) built and gated at 0fa72ac06, pushed: parts named by file, de-duplicated,
     mapped by index; a part's own colour where its mesh gives no tint (coordinator's call, Ludo to confirm). Next on
     Ludo’s word: shells, the clip pop, the PR (rounds 4–9).
-  - `paint` (`me/paint`, rounds 1-5, [progress](2026-11-08-paint.md) on its branch): **PR #64** open, waits on Ludo's
-    merge (fibres by rise, twist, axis, offset; a DNA/RNA bank by sequence).
-  - `paint-layer`: merged into `me/paint` (fast-forward, 04e7f65cf, 2026-11-10; #64's body updated). Copies are their
-    list's particles; a structure as the brush (its assembly), its fibers. The worktree can be closed.
-  - `grow`: round 1 merged into `me/paint` (fast-forward, 92a52528e, 2026-11-12; `me/grow` deleted on the fork, #64's
-    body updated). Grow from an instance: Random walk, Crystal, Tiling, Sphere. Round 2 Symmetry (point, helical, space
-    group) waits for Ludo. Then `grow-mesh`, `density-weight` (`plans/2026-11-10-paint-on-density.md`).
-  - `data-controls` (`me/data-controls` from `me/paint` at 92a52528e, back into `me/paint`; brief on its branch):
-    started 2026-11-12. A VTP's Color by (its point and cell arrays), an MRC's Level slider (binned 2×, 4×).
+- **Merged 2026-11-13**: #64 (767de588a): paint rounds 1-5, `paint-layer` (copies are their list's particles; a
+  structure as the brush), `grow` round 1 (Random walk, Crystal, Tiling, Sphere), `data-controls` (a VTP's Color by,
+  an MRC's Level slider). Progress files in `progress/` (2026-11-08-paint, 2026-11-10-paint-layer, 2026-11-11-grow,
+  2026-11-12-data-controls). Worktrees and `me/paint*`, `me/grow`, `me/data-controls` branches removed.
+  - Waiting for Ludo: grow round 2 (Symmetry: point, helical, space group), then `grow-mesh`, `density-weight`
+    (`plans/2026-11-10-paint-on-density.md`); whether Color… may replace a VTP's array coloring; `bin.ts` and
+    `VolumeFromCcp4.bin` as a lane from master.
 - **Merged 2026-11-08/09**: #60 (GPU culling dispatched in rows), #61 (targeted cellPACK fibres), #62 (master v6 #2069
   in, favoring master; [progress](2026-11-09-merge-master.md)), #63 (colours by zoom on sites targets). Worktrees of
   merge-master and color-levels-sites removed 2026-11-10.
