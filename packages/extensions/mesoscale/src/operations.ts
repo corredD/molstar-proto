@@ -1202,6 +1202,10 @@ export class MesoscaleApi extends ApiArea {
           // on a mesh, in the scene: the rise as drawn (the list's units times its scale), then back in the list's frame
           path = walkPath(scene, axis, rise * (move?.scale ?? 1), p, seed, on);
           if (!path) return offMesh();
+          // a walk that left the mesh at once (an open edge: review M1)
+          if (path.length < 6) {
+            return ApiResult.fail('invalid', `The walk leaves ${mesh!.label} at once.`, 'Grow from further in.');
+          }
           toListFrame(move, path, undefined);
         } else {
           path = walkPath(pose, axis, rise, p, seed);

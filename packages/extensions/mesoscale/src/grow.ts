@@ -259,7 +259,8 @@ export function walkPath(
     }
     Vec3.scaleAndAdd(at, at, d, rise);
     if (on) {
-      if (!on.surface.project(_hit, at, n, rise)) break;
+      // past an open edge the nearest point is the edge: a step it moves by more than a quarter rise ends the walk
+      if (!on.surface.project(_hit, at, n, rise) || Vec3.distance(_hit.position, at) > 0.25 * rise) break;
       if (Vec3.dot(_hit.normal, n) < 0) Vec3.negate(_hit.normal, _hit.normal);
       Vec3.copy(at, _hit.position);
       Vec3.copy(n, _hit.normal);

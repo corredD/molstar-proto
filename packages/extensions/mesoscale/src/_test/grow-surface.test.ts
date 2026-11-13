@@ -159,6 +159,23 @@ describe('random walk on a mesh', () => {
   });
 });
 
+describe('random walk on an open mesh (review M1)', () => {
+  it('ends where the surface does: no point stacked on its edge, every step a rise', () => {
+    const patch = meshSurface(flatMesh(4, 10));
+    const source: GrowPose = { position: Vec3.create(15, 0, 0), rotation: Quat.identity() };
+    for (const persistence of [0, 30]) {
+      const path = walkPath(source, Vec3.create(1, 0, 0), 8, { steps: 20, persistence }, 7, {
+        surface: patch,
+        reach: 10,
+      })!;
+      for (let i = 1; i < path.length / 3; ++i) {
+        expect(Math.abs(Vec3.distance(at(path, i), at(path, i - 1)) - 8)).toBeLessThan(0.5);
+      }
+      expect(path.length / 3).toBeLessThan(20);
+    }
+  });
+});
+
 describe('sphere on a mesh', () => {
   it('puts Count copies on the surface within Radius, each along its normal; the same seed, the same copies', () => {
     const on = { surface: vesicle, reach: 20, axis: z };
