@@ -172,6 +172,8 @@ export interface MeshInfo {
 export interface MeshArray {
   readonly key: string;
   readonly label: string;
+  /** Its values' range (a vector's: its length's), when the file is read */
+  readonly range?: readonly [number, number];
 }
 
 /** A mesh colored by an array: its key, its color scale (a color list: viridis…), its range (auto: the array's) */
@@ -1607,7 +1609,7 @@ function meshes(ctx: Pick<ApiContext, 'plugin'>): MeshInfo[] {
     const data = cells.get(root)?.obj;
     if (!SO.Data.String.is(data) && !SO.Data.Binary.is(data) && !SO.Data.Response.is(data)) continue;
     const p = cell.transform.params as any;
-    const arrays = arraysOf(cell);
+    const arrays = arraysOf(cell, shapeCellOf(ctx, cell.transform.ref));
     out.push({
       ref: cell.transform.ref,
       label: data.label,
@@ -1632,11 +1634,50 @@ function arrayThemeParams(cell: StateObjectCell): PD.Params | undefined {
   return group.type === 'group' ? group.params : undefined;
 }
 
-/** The arrays a mesh can be colored by: its color theme's (a VTP's point and cell arrays) */
-function arraysOf(cell: StateObjectCell): MeshArray[] {
+/** A VTP's point or cell array as its file holds it (io's `VtpScalarArray`) */
+type FileArray = { readonly numberOfComponents: number; readonly values: { toArray(): ArrayLike<number> } };
+type FileArrays = {
+  readonly pointData: ReadonlyMap<string, FileArray>;
+  readonly cellData: ReadonlyMap<string, FileArray>;
+};
+
+/** The arrays a mesh can be colored by: its color theme's (a VTP's point and cell arrays), each its range from its file */
+function arraysOf(cell: StateObjectCell, shape?: StateObjectCell): MeshArray[] {
   const name = arrayThemeParams(cell)?.name;
   if (name?.type !== 'select') return [];
-  return name.options.filter(([key]) => key !== '').map(([key, label]) => ({ key: String(key), label }));
+  const file = (shape?.obj?.data as { data?: { source?: FileArrays } } | undefined)?.data?.source;
+  return name.options
+    .filter(([key]) => key !== '')
+    .map(([key, label]) => {
+      const [kind, array] = [String(key).split(':')[0], String(key).slice(String(key).indexOf(':') + 1)];
+      const values =
+        kind === 'point' ? file?.pointData?.get(array) : kind === 'cell' ? file?.cellData?.get(array) : undefined;
+      const range = values && rangeOf(values);
+      return { key: String(key), label, ...(range ? { range } : {}) };
+    });
+}
+
+/** The range of an array's values (a vector's: its length's), once per array */
+const ranges = new WeakMap<FileArray, readonly [number, number] | undefined>();
+function rangeOf(a: FileArray): readonly [number, number] | undefined {
+  if (ranges.has(a)) return ranges.get(a);
+  const values = a.values.toArray();
+  const n = Math.max(1, a.numberOfComponents);
+  let min = Infinity;
+  let max = -Infinity;
+  for (let i = 0; i + n <= values.length; i += n) {
+    let v = values[i];
+    if (n > 1) {
+      let sq = 0;
+      for (let c = 0; c < n; c++) sq += values[i + c] * values[i + c];
+      v = Math.sqrt(sq);
+    }
+    if (v < min) min = v;
+    if (v > max) max = v;
+  }
+  const range = min <= max ? ([min, max] as const) : undefined;
+  ranges.set(a, range);
+  return range;
 }
 
 function colorByOf(p: { name: string; colors: string; domain: { name: string; params: unknown } }): MeshColorBy {

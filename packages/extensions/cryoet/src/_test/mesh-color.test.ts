@@ -70,9 +70,10 @@ describe("a segmentation mesh's Color by", () => {
   it("lists a VTP's arrays and opens on its first, as the shape does; an OBJ has none", async () => {
     const { read } = await viewer();
     const vtp = await read('seg.vtp');
+    // each its range: where Custom starts
     expect(vtp.arrays).toEqual([
-      { key: 'point:Curvature', label: 'Point: Curvature' },
-      { key: 'cell:Labels', label: 'Cell: Labels' },
+      { key: 'point:Curvature', label: 'Point: Curvature', range: [0, 1.5] },
+      { key: 'cell:Labels', label: 'Cell: Labels', range: [1, 2] },
     ]);
     expect(vtp.colorBy).toEqual({ array: 'cell:Labels', colorList: 'viridis', range: 'auto' });
     expect(vtp).not.toHaveProperty('color');
