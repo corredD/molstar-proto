@@ -7,6 +7,7 @@
 import { Mat4, Tensor, Vec3 } from '@molstar/core/math/linear-algebra';
 import { type StateObjectCell, type StateObjectSelector, StateTransform } from '@molstar/core/state';
 import { Color } from '@molstar/core/util/color';
+import { ColorListOptionsScale } from '@molstar/core/util/color/lists';
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
 import type { ParticleList, ParticleTarget } from '@molstar/model/model/particles/particle-list';
 import { Grid, Volume } from '@molstar/model/model/volume';
@@ -159,9 +160,29 @@ export interface MeshInfo {
   readonly opacity: number;
   /** Its uniform color, when it has one */
   readonly color?: number;
+  /** The point and cell arrays it can be colored by (a VTP's), by key ("cell:Labels") */
+  readonly arrays?: readonly MeshArray[];
+  /** Its color by an array, when it is so colored */
+  readonly colorBy?: MeshColorBy;
   /** Its scale (1: as in the file; a mesh in pixels: the pixel size, Å) */
   readonly scale: number;
 }
+
+/** A point or cell array of a mesh, by key ("point:Curvature") and as its color theme names it ("Point: Curvature") */
+export interface MeshArray {
+  readonly key: string;
+  readonly label: string;
+}
+
+/** A mesh colored by an array: its key, its color scale (a color list: viridis…), its range (auto: the array's) */
+export interface MeshColorBy {
+  readonly array: string;
+  readonly colorList: string;
+  readonly range: 'auto' | readonly [number, number];
+}
+
+/** The color scales an array is colored with (a color list's name: viridis, plasma…) */
+export const MeshColorLists: readonly (readonly [string, string])[] = ColorListOptionsScale.map(([k, l]) => [k, l]);
 
 const ListParam = () =>
   PD.Text('', { description: 'A particle list by label or state ref; empty: the only one loaded' });
@@ -278,16 +299,56 @@ export class CryoetApi extends ApiArea {
           },
         ),
       ),
+      array: OptionalParam(
+        PD.Text('', {
+          description:
+            'Colors it by a point or cell array of its file (a VTP): "cell:Labels", "point:Curvature", or a name',
+        }),
+      ),
+      colorList: OptionalParam(
+        PD.Text('', { description: "The color scale of its array's colors: viridis, plasma, red-white-blue…" }),
+      ),
+      range: OptionalParam(
+        PD.Value<'auto' | [number, number]>('auto', {
+          description: "The values its array's colors span: auto (the array's), or [min, max]",
+        }),
+      ),
     },
     async run(values, ctx) {
-      const { mesh, visible, visuals, opacity, color, colors, scale } = values as typeof values & {
-        scale?: number;
-        visible?: boolean;
-        visuals?: 'mesh' | 'wireframe' | 'both';
-        opacity?: number;
-        color?: string;
-        colors?: { mesh: string; color: string }[];
-      };
+      const { mesh, visible, visuals, opacity, color, colors, scale, array, colorList, range } =
+        values as typeof values & {
+          scale?: number;
+          visible?: boolean;
+          visuals?: 'mesh' | 'wireframe' | 'both';
+          opacity?: number;
+          color?: string;
+          colors?: { mesh: string; color: string }[];
+          array?: string;
+          colorList?: string;
+          range?: 'auto' | [number, number];
+        };
+      const byArray = array !== undefined || colorList !== undefined || range !== undefined;
+      if (byArray && (color !== undefined || colors !== undefined)) {
+        return ApiResult.fail(
+          'invalid',
+          'A color or an array, not both.',
+          'Give color for one color, array for an array.',
+        );
+      }
+      if (colorList !== undefined && !MeshColorLists.some(([k]) => k === colorList)) {
+        return ApiResult.fail(
+          'invalid',
+          `'${colorList}' is not a color scale.`,
+          `Scales: ${MeshColorLists.map(([k]) => k).join(', ')}.`,
+        );
+      }
+      if (
+        range !== undefined &&
+        range !== 'auto' &&
+        !(Array.isArray(range) && range.length === 2 && range.every(Number.isFinite) && range[0] < range[1])
+      ) {
+        return ApiResult.fail('invalid', 'range: auto, or [min, max] with min under max.');
+      }
       const all = meshes(ctx);
       // the meshes indexed once, by ref and by name (lowercased): an entry of `colors` found without a scan
       const byRef = new Map(all.map((m) => [m.ref, m]));
@@ -340,18 +401,39 @@ export class CryoetApi extends ApiArea {
         for (const m of find(mesh)) picked.push({ ...m, color: parsed });
         if (!picked.length) return missing(mesh);
       }
+      // each mesh's theme by an array, all checked before the write
+      const themes = new Map<string, unknown>();
+      if (byArray) {
+        for (const m of picked) {
+          const cell = ctx.plugin.state.data.cells.get(m.ref)!;
+          const theme = arrayTheme(cell, { array, colorList, range });
+          if (theme === 'none') {
+            return ApiResult.fail(
+              'invalid',
+              `${m.label} has no arrays to color by.`,
+              'A VTP with point or cell arrays has them; give its color.',
+            );
+          }
+          if (typeof theme === 'string') {
+            return ApiResult.fail('not-found', `${m.label} has no array '${array}'.`, `Arrays: ${theme}.`);
+          }
+          themes.set(m.ref, theme.value);
+        }
+      }
       const b = ctx.plugin.state.data.build();
       const nodes: string[] = [];
       for (const m of picked) {
         const cell = ctx.plugin.state.data.cells.get(m.ref)!;
         const old = cell.transform.params as any;
+        const uniform = m.color !== undefined ? { name: 'uniform', params: { color: m.color } } : undefined;
         const next = {
           ...old,
           ...(visuals ? { visuals: visuals === 'both' ? ['mesh', 'wireframe'] : [visuals] } : {}),
           ...(opacity !== undefined ? { alpha: opacity } : {}),
-          ...(m.color !== undefined && old.coloring
-            ? { coloring: { name: 'uniform', params: { color: m.color } } }
-            : {}),
+          // an OBJ's and a PLY's color is their `coloring`, a VTP's its `colorTheme`
+          ...(uniform && old.coloring ? { coloring: uniform } : {}),
+          ...(uniform && old.colorTheme ? { colorTheme: uniform } : {}),
+          ...(themes.has(m.ref) ? { colorTheme: themes.get(m.ref) } : {}),
         };
         if (JSON.stringify(next) !== JSON.stringify(old)) {
           b.to(cell).update(next);
@@ -1525,6 +1607,7 @@ function meshes(ctx: Pick<ApiContext, 'plugin'>): MeshInfo[] {
     const data = cells.get(root)?.obj;
     if (!SO.Data.String.is(data) && !SO.Data.Binary.is(data) && !SO.Data.Response.is(data)) continue;
     const p = cell.transform.params as any;
+    const arrays = arraysOf(cell);
     out.push({
       ref: cell.transform.ref,
       label: data.label,
@@ -1532,10 +1615,65 @@ function meshes(ctx: Pick<ApiContext, 'plugin'>): MeshInfo[] {
       visuals: Array.isArray(p?.visuals) ? p.visuals : ['mesh'],
       opacity: p?.alpha ?? 1,
       ...(p?.coloring?.name === 'uniform' ? { color: p.coloring.params.color } : {}),
+      ...(p?.colorTheme?.name === 'uniform' ? { color: p.colorTheme.params.color } : {}),
+      ...(arrays.length ? { arrays } : {}),
+      ...(arrays.length && p?.colorTheme?.name === 'attribute' ? { colorBy: colorByOf(p.colorTheme.params) } : {}),
       scale: scaleOf(shapeCellOf(ctx, cell.transform.ref)),
     });
   }
   return out;
+}
+
+/** The definition of a mesh's color theme by an array (a VTP's `colorTheme`, its `attribute` choice), if it has one */
+function arrayThemeParams(cell: StateObjectCell): PD.Params | undefined {
+  const def = cell.params?.definition?.colorTheme as PD.Any | undefined;
+  if (def?.type !== 'mapped' || !def.select.options.some(([name]) => name === 'attribute')) return undefined;
+  const group = def.map('attribute');
+  return group.type === 'group' ? group.params : undefined;
+}
+
+/** The arrays a mesh can be colored by: its color theme's (a VTP's point and cell arrays) */
+function arraysOf(cell: StateObjectCell): MeshArray[] {
+  const name = arrayThemeParams(cell)?.name;
+  if (name?.type !== 'select') return [];
+  return name.options.filter(([key]) => key !== '').map(([key, label]) => ({ key: String(key), label }));
+}
+
+function colorByOf(p: { name: string; colors: string; domain: { name: string; params: unknown } }): MeshColorBy {
+  const range = p.domain.name === 'custom' ? (p.domain.params as [number, number]) : 'auto';
+  return { array: p.name, colorList: p.colors, range };
+}
+
+/**
+ * A mesh's color theme by an array, its array, colors or range changed (its others kept, or as the theme opens);
+ * 'none': it has no arrays; a string: the array is none of them (its arrays, listed)
+ */
+function arrayTheme(
+  cell: StateObjectCell,
+  change: { array?: string; colorList?: string; range?: 'auto' | [number, number] },
+): { value: unknown } | string {
+  const params = arrayThemeParams(cell);
+  const arrays = arraysOf(cell);
+  if (!params || !arrays.length) return 'none';
+  const old = (cell.transform.params as any)?.colorTheme;
+  const base = old?.name === 'attribute' ? old.params : PD.getDefaultValues(params);
+  let name = base.name;
+  if (change.array !== undefined) {
+    const a = change.array.trim();
+    const found =
+      arrays.find((x) => x.key === a) ??
+      arrays.find((x) => x.key.replace(/^(point|cell):/, '').toLowerCase() === a.toLowerCase());
+    if (!found) return arrays.map((x) => x.key).join(', ');
+    name = found.key;
+  }
+  const symmetric = base.domain?.name === 'auto' ? !!base.domain.params?.symmetric : false;
+  const domain =
+    change.range === undefined
+      ? base.domain
+      : change.range === 'auto'
+        ? { name: 'auto', params: { symmetric } }
+        : { name: 'custom', params: [change.range[0], change.range[1]] };
+  return { value: { name: 'attribute', params: { ...base, name, colors: change.colorList ?? base.colors, domain } } };
 }
 
 /** The shape a mesh representation draws (its `transforms` param: the OBJ, PLY, VTP shapes') */
