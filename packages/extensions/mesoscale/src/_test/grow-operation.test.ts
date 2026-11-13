@@ -21,6 +21,13 @@ import { ParticleListPainted, type PaintStroke } from '../paint.js';
 import { MesoscaleExtension } from '../prism-viewer.js';
 import { Sphere } from '@molstar/graphics/geo/primitive/sphere';
 import { PluginStateObject as SO } from '@molstar/plugin/state/objects';
+import { OrderedSet } from '@molstar/core/data/int';
+import { ShapeGroup } from '@molstar/model/model/shape';
+import type { PluginContext } from '@molstar/plugin/context';
+import { sceneMeshes } from '../mesh-surface.js';
+import { pluginPaintHost } from '../paint-host.js';
+import { DefaultPaintSettings } from '../paint-mode.js';
+import { SurfacePoint } from '../pick-surface.js';
 import { setTestTargetStructure, TestTargetList } from './fixtures.js';
 
 // `mesoscale.grow` (progress/2026-11-11-grow.md, Tests: the operation) on the cellPACK-like list of paint's tests (four
@@ -418,5 +425,50 @@ describe('mesoscale.grow on a mesh', () => {
     expect(m.growSettings.value.mesh).toBe(repr);
     m.setGrowSource({ particles: ref, index: 6 });
     expect(m.growSettings.value.mesh).toBe(undefined);
+  });
+
+  it('paints over a mesh: the pick refined onto it (its mesh named), the copy on it along its normal, one step (review S6)', async () => {
+    const v = await viewer();
+    expectOk(await v.api.load.files({ files: [new File([sphereObj(50, Vec3())], 'vesicle.obj')] }));
+    const { repr } = meshCells(v);
+    const mesh = sceneMeshes(v.plugin.state.data)[0];
+    // the canvas's pick of the mesh (headless: no canvas), the camera on +x
+    const plugin = Object.create(v.plugin) as PluginContext;
+    Object.defineProperty(plugin, 'canvas3d', {
+      value: {
+        getLoci: () => ({ loci: ShapeGroup.Loci(mesh.shape, [{ ids: OrderedSet.ofSingleton(0), instance: 0 }]) }),
+        camera: { state: { position: Vec3.create(300, 0, 0) } },
+      },
+    });
+    // the mesh is the area's (its grow source's), not the operation's: as `MesoscaleApi.paintMode` does
+    const host = pluginPaintHost(plugin, ({ mesh: _mesh, ...params }) => v.api.run('mesoscale.paint', params));
+    const point = SurfacePoint();
+    Vec3.set(point.position, 50.4, 3, -2);
+    Vec3.normalize(point.normal, Vec3.create(1, 0.2, 0));
+    host.refine(point, false);
+    expect(point.mesh).toBe(repr);
+    expect(Vec3.magnitude(point.position)).toBeCloseTo(50, 0);
+    const radial = Vec3.normalize(Vec3(), point.position);
+    expect(Vec3.dot(point.normal, radial)).toBeGreaterThan(0.999);
+    const before = steps(v);
+    const structure = v.plugin.managers.structure.hierarchy.current.structures[0].cell.transform.ref;
+    const r = (await host.paint(
+      { particles: '', entity: -1, name: '1CRN', structure },
+      { ...DefaultPaintSettings, orient: 'normal', spin: 0 },
+      [...point.position],
+      [...point.normal],
+      1,
+      false,
+      point.mesh,
+    )) as ApiResult<unknown>;
+    expectOk(r);
+    expect(steps(v)).toBe(before + 1);
+    const painted = Array.from(v.plugin.state.data.cells.values()).find(
+      (c) => c.transform.transformer === ParticleListPainted && c.transform.parent !== entry(v).cell.transform.ref,
+    )!;
+    const copy = painted.obj!.data as ParticleList;
+    expect(Vec3.magnitude(xyz(copy, copy.count - 1))).toBeCloseTo(50, 0);
+    const up = Vec3.transformQuat(Vec3(), Vec3.create(0, 0, 1), quat(copy, copy.count - 1));
+    expect(Vec3.dot(up, radial)).toBeGreaterThan(0.999);
   });
 });
