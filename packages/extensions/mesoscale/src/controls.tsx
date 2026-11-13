@@ -8,6 +8,7 @@
 
 import { Button, Choices, Icon, Select, type SelectOption, Show, Slider, TextInput } from '@molstar/prism-ui';
 import { mapState } from '@molstar/prism-ui/reactive/map-state';
+import { derive } from '@molstar/prism-ui/reactive/state';
 import type { ReadonlyState } from '@molstar/prism-ui/reactive/readonly-state';
 import { classes } from './_generated/controls.module.css.js';
 import { tilingTotal } from './grow.js';
@@ -571,7 +572,8 @@ export function GrowBlock(props: { area: MesoscaleApi; particles: string }) {
   /** The mesh chosen while it is in the scene */
   const onMesh = (s: GrowSettings, list: readonly { ref: string }[]) =>
     s.mesh && list.some((m) => m.ref === s.mesh) ? s.mesh : undefined;
-  const chosen = mapState(settings, (s) => onMesh(s, meshes.value));
+  // following both: a mesh deleted after it was chosen is none (review S3)
+  const chosen = derive([settings, meshes], (s, list) => onMesh(s, list));
   const set = (patch: Partial<GrowSettings>) => area.growSettings.set({ ...area.growSettings.value, ...patch });
   const line = (label: string, title: string, control: Node) => (
     <div class={classes.line}>

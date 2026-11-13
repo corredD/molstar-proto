@@ -243,6 +243,17 @@ describe('Grow on a mesh (grow-mesh)', () => {
       expect(Math.hypot(x, y, z)).toBeCloseTo(50, 0);
     }
 
+    // the mesh deleted: On None, Rings back in place of Count (review S3)
+    const shape = Array.from(v.plugin.state.data.cells.values()).find((c) => SO.Shape.Provider.is(c.obj))!;
+    let root = shape.transform.ref;
+    while (v.plugin.state.data.tree.transforms.get(root)!.parent !== v.plugin.state.data.tree.root.ref) {
+      root = v.plugin.state.data.tree.transforms.get(root)!.parent;
+    }
+    await v.plugin.build().delete(root).commit();
+    await until(() => on()?.textContent === 'None');
+    await until(() => !!host.querySelector('[aria-label="Grow Rings"]'));
+    expect(host.querySelector('[aria-label="Grow Count"]')).toBe(null);
+
     choice(host, 'Mode', 'Crystal')!.click();
     await until(() => !on());
     expect(host.textContent).toContain('A crystal grows in space');
