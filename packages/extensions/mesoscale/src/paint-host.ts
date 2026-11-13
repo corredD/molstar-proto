@@ -30,6 +30,7 @@ import {
   type PaintStructure,
   ParticleListPainted,
 } from './paint.js';
+import { meshFrame, sceneMeshes } from './mesh-surface.js';
 import { pluginPaintCursor, pluginStructureCursor } from './paint-cursor.js';
 import { membraneFrame } from './pick-surface.js';
 
@@ -123,9 +124,20 @@ export function pluginPaintHost(
       if (!camera || !(camera.far > camera.near)) return undefined;
       return [camera.near / camera.scale, camera.far / camera.scale];
     },
-    refine(point) {
-      const loci = plugin.canvas3d?.getLoci(point.id as PickingId).loci;
-      if (!loci || !Particle.isLoci(loci) || OrderedSet.size(loci.indices) !== 1) return;
+    refine(point, upright) {
+      const canvas = plugin.canvas3d;
+      const loci = canvas?.getLoci(point.id as PickingId).loci;
+      if (!canvas || !loci) return;
+      // a file mesh (grow-mesh): its triangle within a hundredth of the view's distance (a few pixels) of the pick
+      const reach = Math.max(1, 0.01 * Vec3.distance(canvas.camera.state.position, point.position));
+      const shape = meshFrame(loci, point, reach);
+      if (shape) {
+        point.mesh = sceneMeshes(plugin.state.data).find(
+          (m) => m.shape === shape || m.shape.geometry === shape.geometry,
+        )?.ref;
+        return;
+      }
+      if (!upright || !Particle.isLoci(loci) || OrderedSet.size(loci.indices) !== 1) return;
       membraneFrame(loci.particles, OrderedSet.start(loci.indices), point);
     },
     upright(brush) {
@@ -176,7 +188,7 @@ export function pluginPaintHost(
       if (!own?.[id] && !isFiberBrush(data, id)) return undefined;
       return fiberSettingsOf(data, id, b.target, own, p?.structures).rise;
     },
-    async paint(brush: PaintBrushTarget, s: PaintSettings, positions, normals, seed, fiber) {
+    async paint(brush: PaintBrushTarget, s: PaintSettings, positions, normals, seed, fiber, mesh) {
       const r = (await paint({
         ...(brush.structure
           ? // its list gone since it was chosen: the Painting list (review S3)
@@ -193,6 +205,7 @@ export function pluginPaintHost(
             }
           : {}),
         side: s.side,
+        ...(mesh ? { mesh } : {}),
         ...(s.orient !== 'auto' ? { orient: s.orient } : {}),
         ...(s.spin !== undefined ? { spin: s.spin } : {}),
       })) as { ok?: boolean; message?: string } | undefined;

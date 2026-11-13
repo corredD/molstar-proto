@@ -7,6 +7,7 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
+import { Sphere } from '@molstar/graphics/geo/primitive/sphere';
 import { CustomProperties } from '@molstar/model/model/custom-property';
 import type { ParticleList } from '@molstar/model/model/particles/particle-list';
 import { DefaultPaintSettings } from '@molstar/mesoscale-extension/paint-mode';
@@ -163,6 +164,99 @@ describe('Grow from this instance', () => {
       false,
     );
     expect(v.api.mesoscale!.growSource.value).toEqual({ particles: hiv, index: 4 });
+  });
+
+  it("grows on the mesh a paint's last copy was painted on (grow-mesh); a right-click's source in space", async () => {
+    const { v, hiv } = await viewer();
+    const m = v.api.mesoscale!;
+    const mode = m.paintMode as unknown as { host: { paint(...a: unknown[]): Promise<unknown> } };
+    const brush = { particles: hiv, entity: 1, name: 'NC' };
+    await mode.host.paint(brush, DefaultPaintSettings, [0, 50, 0], [0, 1, 0], 1, false, 'vesicle-ref');
+    expect(m.growSource.value).toEqual({ particles: hiv, index: 3 });
+    expect(m.growSettings.value.mesh).toBe('vesicle-ref');
+    await mode.host.paint(brush, DefaultPaintSettings, [0, 60, 0], [0, 1, 0], 1, false);
+    expect(m.growSettings.value.mesh).toBe(undefined);
+    await mode.host.paint(brush, DefaultPaintSettings, [0, 70, 0], [0, 1, 0], 1, false, 'vesicle-ref');
+    m.setGrowSource({ particles: hiv, index: 0 });
+    expect(m.growSettings.value.mesh).toBe(undefined);
+  });
+});
+
+describe('Grow on a mesh (grow-mesh)', () => {
+  /** An OBJ of a sphere of `radius` about `center` (an icosahedron subdivided: its vertices on the sphere) */
+  function sphereObj(radius: number, center: [number, number, number]) {
+    const { vertices, indices } = Sphere(3);
+    const lines: string[] = [];
+    for (let i = 0; i < vertices.length; i += 3) {
+      lines.push(`v ${center.map((c, k) => c + radius * vertices[i + k]).join(' ')}`);
+    }
+    for (let i = 0; i < indices.length; i += 3) {
+      lines.push(`f ${indices[i] + 1} ${indices[i + 1] + 1} ${indices[i + 2] + 1}`);
+    }
+    return lines.join('\n');
+  }
+
+  it('picks the mesh in On, tiles over it by Count, one step; Crystal grows in space, the select gone', async () => {
+    const { v, hiv } = await viewer();
+    // CA #1 at (10, 0, 0) on a vesicle of 50 Å about (10, -50, 0)
+    const loaded = await v.api.load.files({ files: [new File([sphereObj(50, [10, -50, 0])], 'vesicle.obj')] });
+    if (!loaded.ok) throw new Error(loaded.message);
+    const host = mountScene(v);
+    await until(() => !!rowOf(host, 'HIV'));
+    rowOf(host, 'HIV')!.click();
+    await until(() => !!button(host, 'Grow'));
+    const section = button(host, 'Grow')!;
+    if (section.getAttribute('aria-expanded') !== 'true') section.click();
+    v.api.mesoscale!.growSource.set({ particles: hiv, index: 1 });
+    await until(() => !!host.textContent?.includes('CA #1'));
+    choice(host, 'Mode', 'Tiling')!.click();
+    const on = () =>
+      host.querySelector<HTMLButtonElement>(
+        '[aria-label="Grow on a mesh"] button, button[aria-label="Grow on a mesh"]',
+      );
+    await until(() => !!on());
+    expect(on()!.textContent).toBe('None');
+    expect(host.querySelector('[aria-label="Grow Rings"]')).not.toBe(null);
+    on()!.click();
+    await until(() => !!host.querySelector('[role=option]'));
+    Array.from(host.querySelectorAll<HTMLElement>('[role=option]'))
+      .find((o) => o.textContent === 'vesicle.obj')!
+      .click();
+    await until(() => !!v.api.mesoscale!.growSettings.value.mesh);
+    // on a mesh, Count (the plane's for Rings: 37) in place of Rings
+    await until(() => !!host.querySelector('[aria-label="Grow Count"]'));
+    expect(host.querySelector('[aria-label="Grow Rings"]')).toBe(null);
+    const steps = v.api.history.steps.value.length;
+    const grow = Array.from(host.querySelectorAll<HTMLButtonElement>('button')).filter(
+      (b) => b.textContent?.trim() === 'Grow',
+    );
+    grow[grow.length - 1].click();
+    await until(() => count(v) === 3 + 36);
+    expect(v.api.history.steps.value.length).toBe(steps + 1);
+    const list = (
+      v.plugin.managers.particles.hierarchy.current.lists[0].representations[0].cell.obj!.data as unknown as {
+        sourceData: ParticleList;
+      }
+    ).sourceData;
+    for (let i = 3; i < 39; ++i) {
+      const [x, y, z] = [list.coordinates[i * 3] - 10, list.coordinates[i * 3 + 1] + 50, list.coordinates[i * 3 + 2]];
+      expect(Math.hypot(x, y, z)).toBeCloseTo(50, 0);
+    }
+
+    // the mesh deleted: On None, Rings back in place of Count (review S3)
+    const shape = Array.from(v.plugin.state.data.cells.values()).find((c) => SO.Shape.Provider.is(c.obj))!;
+    let root = shape.transform.ref;
+    while (v.plugin.state.data.tree.transforms.get(root)!.parent !== v.plugin.state.data.tree.root.ref) {
+      root = v.plugin.state.data.tree.transforms.get(root)!.parent;
+    }
+    await v.plugin.build().delete(root).commit();
+    await until(() => on()?.textContent === 'None');
+    await until(() => !!host.querySelector('[aria-label="Grow Rings"]'));
+    expect(host.querySelector('[aria-label="Grow Count"]')).toBe(null);
+
+    choice(host, 'Mode', 'Crystal')!.click();
+    await until(() => !on());
+    expect(host.textContent).toContain('A crystal grows in space');
   });
 });
 

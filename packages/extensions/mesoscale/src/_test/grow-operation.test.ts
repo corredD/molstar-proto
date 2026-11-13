@@ -19,6 +19,15 @@ import {
 } from '@molstar/plugin/state/transforms/particles/ops';
 import { ParticleListPainted, type PaintStroke } from '../paint.js';
 import { MesoscaleExtension } from '../prism-viewer.js';
+import { Sphere } from '@molstar/graphics/geo/primitive/sphere';
+import { PluginStateObject as SO } from '@molstar/plugin/state/objects';
+import { OrderedSet } from '@molstar/core/data/int';
+import { ShapeGroup } from '@molstar/model/model/shape';
+import type { PluginContext } from '@molstar/plugin/context';
+import { sceneMeshes } from '../mesh-surface.js';
+import { pluginPaintHost } from '../paint-host.js';
+import { DefaultPaintSettings } from '../paint-mode.js';
+import { SurfacePoint } from '../pick-surface.js';
 import { setTestTargetStructure, TestTargetList } from './fixtures.js';
 
 // `mesoscale.grow` (progress/2026-11-11-grow.md, Tests: the operation) on the cellPACK-like list of paint's tests (four
@@ -274,5 +283,192 @@ describe('mesoscale.grow', () => {
     await v.plugin.build().to(entry(v).cell).apply(ParticleListTargetsFromAttribute, { attribute: 'class' }).commit();
     expect(await grow({})).toMatchObject({ ok: false, code: 'invalid' });
     expect(painted(v).length).toBe(0);
+  });
+});
+
+// On a mesh (progress/2026-11-13-grow-mesh.md, Tests: the operation): a file mesh loaded beside the list, the source on
+// it.
+
+/** An OBJ of a sphere of `radius` about `center` (an icosphere, detail 3) */
+function sphereObj(radius: number, center: Vec3) {
+  const { vertices, indices } = Sphere(3);
+  const lines: string[] = [];
+  for (let i = 0; i < vertices.length; i += 3) {
+    lines.push(
+      `v ${center[0] + radius * vertices[i]} ${center[1] + radius * vertices[i + 1]} ${center[2] + radius * vertices[i + 2]}`,
+    );
+  }
+  for (let i = 0; i < indices.length; i += 3)
+    lines.push(`f ${indices[i] + 1} ${indices[i + 1] + 1} ${indices[i + 2] + 1}`);
+  return lines.join('\n');
+}
+
+/** The mesh's representation (its state ref) and its shape provider */
+function meshCells(v: PrismViewer) {
+  const cells = Array.from(v.plugin.state.data.cells.values());
+  const shape = cells.find((c) => SO.Shape.Provider.is(c.obj))!;
+  const repr = cells.find((c) => c.transform.parent === shape.transform.ref)!;
+  return { repr: repr.transform.ref, shape };
+}
+
+describe('mesoscale.grow on a mesh', () => {
+  it('tiles a sphere mesh in the scene: a list moved and scaled, a mesh scaled (in pixels); Count points', async () => {
+    const v = await viewer();
+    const ref = entry(v).cell.transform.ref;
+    const m = Mat4.fromTranslation(Mat4(), Vec3.create(100, 0, 0));
+    await v.plugin.build().to(ref).insert(ParticleListTransform, { transform: m, scale: 2 }).commit();
+    // CA (#2) drawn at (140, 0, 0): on a sphere of 20 Å about (120, 0, 0), a mesh of 5 units scaled by 4
+    expectOk(await v.api.load.files({ files: [new File([sphereObj(5, Vec3.create(30, 0, 0))], 'vesicle.obj')] }));
+    const { repr, shape } = meshCells(v);
+    await v.plugin
+      .build()
+      .to(shape)
+      .update((p: any) => ({ ...p, transforms: [Mat4.fromScaling(Mat4(), Vec3.create(4, 4, 4))] }))
+      .commit();
+    const before = steps(v);
+    const r = await v.api.run('mesoscale.grow', {
+      particles: ref,
+      index: 2,
+      mode: 'tiling',
+      spacing: 6,
+      count: 20,
+      mesh: 'vesicle.obj',
+    });
+    expectOk(r);
+    expect(r.value).toMatchObject({ count: 19, mode: 'tiling' });
+    expect(steps(v)).toBe(before + 1);
+    const list = drawn(v);
+    expect(list.count).toBe(7 + 19);
+    const centre = Vec3.create(120, 0, 0);
+    for (let i = 7; i < 26; ++i) {
+      expect(Vec3.distance(xyz(list, i), centre)).toBeGreaterThan(20 * 0.99);
+      expect(Vec3.distance(xyz(list, i), centre)).toBeLessThan(20.001);
+    }
+    expect(strokes(v)[0].grow).toMatchObject({ mode: 'tiling', mesh: { ref: repr, label: 'vesicle.obj' } });
+  });
+
+  it('walks a fiber and fills a sphere on a mesh (by its state ref), each point on it', async () => {
+    const v = await viewer();
+    const ref = entry(v).cell.transform.ref;
+    // CA (#2) at (20, 0, 0) on a vesicle of 100 Å about (-80, 0, 0); its rise 10 Å
+    expectOk(await v.api.load.files({ files: [new File([sphereObj(100, Vec3.create(-80, 0, 0))], 'vesicle.obj')] }));
+    const { repr } = meshCells(v);
+    const centre = Vec3.create(-80, 0, 0);
+    const grow = (p: object) => v.api.run('mesoscale.grow', { particles: ref, index: 2, mesh: repr, ...p });
+    expectOk(await grow({ mode: 'walk', steps: 8, seed: 1 }));
+    expect(drawn(v).count).toBe(7 + 8);
+    for (let i = 7; i < 15; ++i) expect(Vec3.distance(xyz(drawn(v), i), centre)).toBeCloseTo(100, 0);
+    expectOk(await v.api.run('history.undo', {}));
+    expectOk(await grow({ mode: 'sphere', count: 12, radius: 15, seed: 3 }));
+    expect(drawn(v).count).toBe(7 + 12);
+    for (let i = 7; i < 19; ++i) {
+      expect(Vec3.distance(xyz(drawn(v), i), centre)).toBeCloseTo(100, 0);
+      expect(Vec3.distance(xyz(drawn(v), i), Vec3.create(20, 0, 0))).toBeLessThanOrEqual(15.001);
+    }
+  });
+
+  it('refuses Crystal on a mesh, a mesh not in the scene, and a source off the mesh: no step', async () => {
+    const v = await viewer();
+    const ref = entry(v).cell.transform.ref;
+    expectOk(await v.api.load.files({ files: [new File([sphereObj(20, Vec3())], 'vesicle.obj')] }));
+    const before = steps(v);
+    const grow = (p: object) => v.api.run('mesoscale.grow', { particles: ref, index: 2, mesh: 'vesicle.obj', ...p });
+    const crystal = await grow({ mode: 'crystal' });
+    expect(crystal).toMatchObject({ ok: false, code: 'invalid' });
+    expect((crystal as { message: string }).message).toMatch(/crystal/i);
+    expect(await grow({ mode: 'tiling', mesh: 'nothing.obj' })).toMatchObject({ ok: false, code: 'not-found' });
+    // NC (#6) at (60, 0, 0): 40 Å off the sphere
+    expect(await grow({ mode: 'tiling', index: 6 })).toMatchObject({ ok: false, code: 'invalid' });
+    expect(steps(v)).toBe(before);
+    expect(painted(v).length).toBe(0);
+  });
+
+  it('keeps the copies without the mesh: the mesh deleted, a saved state opened again', async () => {
+    const v = await viewer();
+    const ref = entry(v).cell.transform.ref;
+    expectOk(await v.api.load.files({ files: [new File([sphereObj(20, Vec3())], 'vesicle.obj')] }));
+    expectOk(
+      await v.api.run('mesoscale.grow', {
+        particles: ref,
+        index: 2,
+        mode: 'sphere',
+        count: 5,
+        seed: 1,
+        mesh: 'vesicle.obj',
+      }),
+    );
+    const grown = Array.from(drawn(v).coordinates.slice(21));
+    const { shape } = meshCells(v);
+    let root = shape.transform.ref;
+    for (;;) {
+      const parent = v.plugin.state.data.tree.transforms.get(root)!.parent;
+      if (parent === v.plugin.state.data.tree.root.ref) break;
+      root = parent;
+    }
+    await v.plugin.build().delete(root).commit();
+    expect(Array.from(v.plugin.state.data.cells.values()).some((c) => SO.Shape.Provider.is(c.obj))).toBe(false);
+    expect(Array.from(drawn(v).coordinates.slice(21))).toEqual(grown);
+    const snapshot = JSON.parse(JSON.stringify(v.plugin.state.data.getSnapshot()));
+    await v.plugin.build().delete(entry(v).cell.transform.ref).commit();
+    await v.plugin.runTask(v.plugin.state.data.setSnapshot(snapshot));
+    expect(Array.from(drawn(v).coordinates.slice(21))).toEqual(grown);
+  });
+
+  it('a source set by its right-click grows on the mesh under it, else in space (review S7)', async () => {
+    const v = await viewer();
+    const ref = entry(v).cell.transform.ref;
+    expectOk(await v.api.load.files({ files: [new File([sphereObj(20, Vec3())], 'vesicle.obj')] }));
+    const { repr } = meshCells(v);
+    const m = v.api.mesoscale!;
+    // CA #2 at (20, 0, 0) on the vesicle; NC #6 at (60, 0, 0) 40 Å off it
+    m.setGrowSource({ particles: ref, index: 2 });
+    expect(m.growSettings.value.mesh).toBe(repr);
+    m.setGrowSource({ particles: ref, index: 6 });
+    expect(m.growSettings.value.mesh).toBe(undefined);
+  });
+
+  it('paints over a mesh: the pick refined onto it (its mesh named), the copy on it along its normal, one step (review S6)', async () => {
+    const v = await viewer();
+    expectOk(await v.api.load.files({ files: [new File([sphereObj(50, Vec3())], 'vesicle.obj')] }));
+    const { repr } = meshCells(v);
+    const mesh = sceneMeshes(v.plugin.state.data)[0];
+    // the canvas's pick of the mesh (headless: no canvas), the camera on +x
+    const plugin = Object.create(v.plugin) as PluginContext;
+    Object.defineProperty(plugin, 'canvas3d', {
+      value: {
+        getLoci: () => ({ loci: ShapeGroup.Loci(mesh.shape, [{ ids: OrderedSet.ofSingleton(0), instance: 0 }]) }),
+        camera: { state: { position: Vec3.create(300, 0, 0) } },
+      },
+    });
+    // the mesh is the area's (its grow source's), not the operation's: as `MesoscaleApi.paintMode` does
+    const host = pluginPaintHost(plugin, ({ mesh: _mesh, ...params }) => v.api.run('mesoscale.paint', params));
+    const point = SurfacePoint();
+    Vec3.set(point.position, 50.4, 3, -2);
+    Vec3.normalize(point.normal, Vec3.create(1, 0.2, 0));
+    host.refine(point, false);
+    expect(point.mesh).toBe(repr);
+    expect(Vec3.magnitude(point.position)).toBeCloseTo(50, 0);
+    const radial = Vec3.normalize(Vec3(), point.position);
+    expect(Vec3.dot(point.normal, radial)).toBeGreaterThan(0.999);
+    const before = steps(v);
+    const structure = v.plugin.managers.structure.hierarchy.current.structures[0].cell.transform.ref;
+    const r = (await host.paint(
+      { particles: '', entity: -1, name: '1CRN', structure },
+      { ...DefaultPaintSettings, orient: 'normal', spin: 0 },
+      [...point.position],
+      [...point.normal],
+      1,
+      false,
+      point.mesh,
+    )) as ApiResult<unknown>;
+    expectOk(r);
+    expect(steps(v)).toBe(before + 1);
+    const painted = Array.from(v.plugin.state.data.cells.values()).find(
+      (c) => c.transform.transformer === ParticleListPainted && c.transform.parent !== entry(v).cell.transform.ref,
+    )!;
+    const copy = painted.obj!.data as ParticleList;
+    expect(Vec3.magnitude(xyz(copy, copy.count - 1))).toBeCloseTo(50, 0);
+    const up = Vec3.transformQuat(Vec3(), Vec3.create(0, 0, 1), quat(copy, copy.count - 1));
+    expect(Vec3.dot(up, radial)).toBeGreaterThan(0.999);
   });
 });

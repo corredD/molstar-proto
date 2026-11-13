@@ -4,6 +4,11 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
+import { ChunkedArray } from '@molstar/core/data/util';
+import { Mat4, Vec3 } from '@molstar/core/math/linear-algebra';
+import type { Mesh } from '@molstar/graphics/geo/geometry/mesh/mesh';
+import { MeshBuilder } from '@molstar/graphics/geo/geometry/mesh/mesh-builder';
+import { Sphere } from '@molstar/graphics/geo/primitive/sphere';
 import { CustomProperties } from '@molstar/model/model/custom-property';
 import type { ParticleList, ParticleTarget } from '@molstar/model/model/particles/particle-list';
 import type { Structure } from '@molstar/model/model/structure';
@@ -140,3 +145,31 @@ export const TestPetworldTargetList = PluginStateTransform.BuiltIn({
     });
   },
 });
+
+/** A sphere's mesh about the origin: an icosahedron subdivided `detail` times, its vertices on the sphere (grow-mesh) */
+export function sphereMesh(radius: number, detail: number): Mesh {
+  const state = MeshBuilder.createState(1024, 1024);
+  MeshBuilder.addPrimitive(state, Mat4.fromScaling(Mat4(), Vec3.create(radius, radius, radius)), Sphere(detail));
+  return MeshBuilder.getMesh(state);
+}
+
+/** A flat square of `n` × `n` cells of `size` Å in the xy plane about the origin, its normal +z (grow-mesh) */
+export function flatMesh(n: number, size: number): Mesh {
+  const state = MeshBuilder.createState((n + 1) * (n + 1), 1024);
+  const half = (n * size) / 2;
+  for (let j = 0; j <= n; j++) {
+    for (let i = 0; i <= n; i++) {
+      ChunkedArray.add3(state.vertices, i * size - half, j * size - half, 0);
+      ChunkedArray.add3(state.normals, 0, 0, 1);
+      ChunkedArray.add(state.groups, 0);
+    }
+  }
+  for (let j = 0; j < n; j++) {
+    for (let i = 0; i < n; i++) {
+      const o = j * (n + 1) + i;
+      ChunkedArray.add3(state.indices, o, o + 1, o + n + 2);
+      ChunkedArray.add3(state.indices, o, o + n + 2, o + n + 1);
+    }
+  }
+  return MeshBuilder.getMesh(state);
+}
