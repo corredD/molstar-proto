@@ -7,6 +7,7 @@
 import { describe, expect, it } from 'vitest';
 import { Quat, Vec3 } from '@molstar/core/math/linear-algebra';
 import { type GrowPose, spherePoses, tilingPoses, walkPath } from '../grow.js';
+import { MeshBuilder } from '@molstar/graphics/geo/geometry/mesh/mesh-builder';
 import { meshSurface } from '../mesh-surface.js';
 import { flatMesh, sphereMesh } from './fixtures.js';
 
@@ -196,6 +197,48 @@ describe('sphere on a mesh', () => {
     expect(same.positions).toEqual(a.positions);
     for (let i = 0; i < 60; ++i) {
       expect(Vec3.dot(axisOf(same.rotations, i), Vec3.normalize(Vec3(), at(same.positions, i)))).toBeGreaterThan(0.999);
+    }
+  });
+});
+
+describe('sphere on a mesh, coarse or mixed (review S1, S2)', () => {
+  it('places Count copies within Radius on triangles far larger than the ball', () => {
+    const plane = meshSurface(flatMesh(1, 4000));
+    const source: GrowPose = { position: Vec3.create(3, -2, 0), rotation: Quat.identity() };
+    const out = spherePoses(source, { count: 60, radius: 40, turn: 'random' }, 7, {
+      surface: plane,
+      reach: 10,
+      axis: z,
+    })!;
+    expect(out.positions.length / 3).toBe(60);
+    for (let i = 0; i < 60; ++i) expect(Vec3.distance(at(out.positions, i), source.position)).toBeLessThanOrEqual(40);
+  });
+
+  it("turns every copy out on a mesh of mixed winding, and on a whole vesicle (its far side's normals opposite)", () => {
+    // a triangle soup of the sphere, every other triangle wound the other way (a file's mixed winding): its normals
+    // its faces'
+    const sphere = sphereMesh(R, 3);
+    const state = MeshBuilder.createState(1024, 1024);
+    const [a, b, c] = [Vec3(), Vec3(), Vec3()];
+    const vb = sphere.vertexBuffer.ref.value;
+    const ib = sphere.indexBuffer.ref.value;
+    for (let t = 0; t < sphere.triangleCount; ++t) {
+      Vec3.fromArray(a, vb, ib[t * 3] * 3);
+      Vec3.fromArray(b, vb, ib[t * 3 + 1] * 3);
+      Vec3.fromArray(c, vb, ib[t * 3 + 2] * 3);
+      if (t % 2) MeshBuilder.addTriangle(state, a, c, b);
+      else MeshBuilder.addTriangle(state, a, b, c);
+    }
+    const mesh = MeshBuilder.getMesh(state);
+    for (const [surface, radius] of [
+      [meshSurface(mesh), 60],
+      [vesicle, 2 * R + 1],
+    ] as const) {
+      const out = spherePoses(north, { count: 80, radius, turn: 'random' }, 3, { surface, reach: 20, axis: z })!;
+      expect(out.positions.length / 3).toBe(80);
+      for (let i = 0; i < 80; ++i) {
+        expect(Vec3.dot(axisOf(out.rotations, i), Vec3.normalize(Vec3(), at(out.positions, i)))).toBeGreaterThan(0.99);
+      }
     }
   });
 });

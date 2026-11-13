@@ -445,20 +445,116 @@ function tilingOnSurface(source: GrowPose, axis: Vec3, p: TilingParams, on: Grow
 
 /** The draws a copy of Sphere on a surface takes at most to land within the ball */
 const SphereDraws = 64;
+/** Sphere's pieces of triangles: split until their longest edge is under this share of its Radius (review S1) */
+const SpherePiece = 0.25;
+
+/** The ball (`center`, `radius`) misses triangle `a`, `b`, `c`: its centroid further than the ball and its reach */
+function missesBall(a: Vec3, b: Vec3, c: Vec3, center: Vec3, radius: number) {
+  Vec3.scale(_c, Vec3.add(_c, Vec3.add(_c, a, b), c), 1 / 3);
+  const reach = Math.sqrt(
+    Math.max(Vec3.squaredDistance(a, _c), Vec3.squaredDistance(b, _c), Vec3.squaredDistance(c, _c)),
+  );
+  return Vec3.distance(_c, center) - reach > radius;
+}
 
 /**
- * Sphere on a surface: `count` points uniform by area on the surface's triangles within `radius` of the source (a
- * triangle drawn by its area, a point uniform in it; drawn again when outside the ball; seeded), each turned with the
- * copy's axis (`on.axis`) along the normal there: at random about it, or as the source (turned with its axis along the
- * normal at the source, then by the least turn to the copy's). Fewer when a copy finds no place in its draws.
+ * The triangles' normals turned to one side (review S2: a file's winding may change from one triangle to the next):
+ * a triangle's sign makes its normal (its vertices' mean) agree with its neighbour's (a triangle sharing a vertex),
+ * from the triangle nearest `at`, which agrees with `normal`; a piece apart from it agrees with `normal`
+ */
+function orientTriangles(v: ArrayLike<number>, vn: ArrayLike<number>, at: Vec3, normal: Vec3): Int8Array {
+  const T = v.length / 9;
+  const mean = new Float64Array(T * 3);
+  const byVertex = new Map<string, number[]>();
+  let first = -1;
+  let nearest = Infinity;
+  for (let t = 0; t < T; ++t) {
+    for (let c = 0; c < 3; ++c) mean[t * 3 + c] = vn[t * 9 + c] + vn[t * 9 + 3 + c] + vn[t * 9 + 6 + c];
+    let d = 0;
+    for (let k = 0; k < 3; ++k) {
+      const o = t * 9 + k * 3;
+      const key = `${v[o].toFixed(3)} ${v[o + 1].toFixed(3)} ${v[o + 2].toFixed(3)}`;
+      const list = byVertex.get(key);
+      if (list) list.push(t);
+      else byVertex.set(key, [t]);
+      // the sum of its vertices' squared distances to `at`
+      for (let c = 0; c < 3; ++c) d += (v[o + c] - at[c]) ** 2;
+    }
+    if (d < nearest) {
+      nearest = d;
+      first = t;
+    }
+  }
+  const keysOf = (t: number) =>
+    [0, 1, 2].map((k) => {
+      const o = t * 9 + k * 3;
+      return `${v[o].toFixed(3)} ${v[o + 1].toFixed(3)} ${v[o + 2].toFixed(3)}`;
+    });
+  const dot = (t: number, x: ArrayLike<number>, xo: number) =>
+    mean[t * 3] * x[xo] + mean[t * 3 + 1] * x[xo + 1] + mean[t * 3 + 2] * x[xo + 2];
+  const sign = new Int8Array(T);
+  const queue: number[] = [];
+  const visit = (root: number) => {
+    sign[root] = dot(root, normal, 0) < 0 ? -1 : 1;
+    queue.push(root);
+    while (queue.length) {
+      const t = queue.pop()!;
+      for (const key of keysOf(t)) {
+        for (const u of byVertex.get(key)!) {
+          if (sign[u]) continue;
+          sign[u] = dot(u, mean, t * 3) * sign[t] < 0 ? -1 : 1;
+          queue.push(u);
+        }
+      }
+    }
+  };
+  if (first >= 0) visit(first);
+  for (let t = 0; t < T; ++t) if (!sign[t]) visit(t);
+  return sign;
+}
+
+/**
+ * Sphere on a surface: `count` points uniform by area on the surface within `radius` of the source (its triangles
+ * near the ball split into pieces of a quarter Radius and less, those that miss the ball dropped; a piece drawn by
+ * its area, a point uniform in it, drawn again when outside the ball; seeded), each turned with the copy's axis
+ * (`on.axis`) along the normal there, the triangles' normals turned to the source's side (`orientTriangles`): at
+ * random about it, or as the source (turned with its axis along the normal at the source, then by the least turn to
+ * the copy's). Fewer when a copy finds no place in its draws.
  */
 function sphereOnSurface(source: GrowPose, p: SphereParams, seed: number, on: GrowOn): GrowPoses | undefined {
   const local = Vec3.normalize(Vec3(), on.axis ?? Vec3.create(0, 0, 1));
   const a = Vec3.transformQuat(Vec3(), local, source.rotation);
   const start = sourceOn(on, source, a);
   if (!start) return undefined;
-  const sign = start.flipped ? -1 : 1;
-  const { positions: v, normals: vn } = on.surface.triangles(source.position, p.radius);
+  const { positions: tv, normals: tn } = on.surface.triangles(source.position, p.radius);
+  const sign = orientTriangles(tv, tn, start.hit.position, start.hit.normal);
+  // the pieces: positions and normals (turned), 9 numbers a piece each
+  const v: number[] = [];
+  const vn: number[] = [];
+  const limit = SpherePiece * p.radius;
+  const split = (P: Vec3[], N: Vec3[], depth: number) => {
+    if (missesBall(P[0], P[1], P[2], source.position, p.radius)) return;
+    const longest = Math.max(Vec3.distance(P[0], P[1]), Vec3.distance(P[1], P[2]), Vec3.distance(P[2], P[0]));
+    if (longest <= limit || depth >= 16) {
+      for (let k = 0; k < 3; ++k) {
+        v.push(P[k][0], P[k][1], P[k][2]);
+        vn.push(N[k][0], N[k][1], N[k][2]);
+      }
+      return;
+    }
+    const mid = (x: Vec3[], i: number, j: number) => Vec3.scale(Vec3(), Vec3.add(Vec3(), x[i], x[j]), 0.5);
+    const [p01, p12, p20] = [mid(P, 0, 1), mid(P, 1, 2), mid(P, 2, 0)];
+    const [n01, n12, n20] = [mid(N, 0, 1), mid(N, 1, 2), mid(N, 2, 0)];
+    split([P[0], p01, p20], [N[0], n01, n20], depth + 1);
+    split([p01, P[1], p12], [n01, N[1], n12], depth + 1);
+    split([p20, p12, P[2]], [n20, n12, N[2]], depth + 1);
+    split([p01, p12, p20], [n01, n12, n20], depth + 1);
+  };
+  for (let t = 0; t < tv.length / 9; ++t) {
+    const P = [0, 1, 2].map((k) => Vec3.fromArray(Vec3(), tv, t * 9 + k * 3));
+    const N = [0, 1, 2].map((k) => Vec3.scale(Vec3(), Vec3.fromArray(Vec3(), tn, t * 9 + k * 3), sign[t]));
+    split(P, N, 0);
+  }
   const T = v.length / 9;
   const cumulative = new Float64Array(T);
   let total = 0;
@@ -494,7 +590,7 @@ function sphereOnSurface(source: GrowPose, p: SphereParams, seed: number, on: Gr
       Vec3.set(normal, 0, 0, 0);
       for (let k = 0; k < 3; ++k) {
         Vec3.scaleAndAdd(point, point, Vec3.fromArray(A, v, lo * 9 + k * 3), w[k]);
-        Vec3.scaleAndAdd(normal, normal, Vec3.fromArray(A, vn, lo * 9 + k * 3), w[k] * sign);
+        Vec3.scaleAndAdd(normal, normal, Vec3.fromArray(A, vn, lo * 9 + k * 3), w[k]);
       }
       if (Vec3.distance(point, source.position) > p.radius) continue;
       Vec3.normalize(normal, normal);
