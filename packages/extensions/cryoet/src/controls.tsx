@@ -753,7 +753,11 @@ function MeshColorBy(props: {
   bind(colorBy, (c) => {
     if (c && c.range !== 'auto') range.load({ range: [c.range[0], c.range[1]] });
   });
-  const arrayRange = () => arrays().find((a) => a.key === colorBy.value?.array)?.range ?? [0, 1];
+  // Custom starts at the array's range; an array of one value, half a unit about it (a range has two ends)
+  const arrayRange = (): [number, number] => {
+    const [lo, hi] = arrays().find((a) => a.key === colorBy.value?.array)?.range ?? [0, 1];
+    return lo < hi ? [lo, hi] : [lo - 0.5, hi + 0.5];
+  };
   return (
     <>
       <Choices
@@ -796,7 +800,7 @@ function MeshColorBy(props: {
               active={mapState(custom, (c) => (c ? 'custom' : 'auto'))}
               onPick={(r) => {
                 if (r === 'auto' && custom.value) set({ range: 'auto' });
-                else if (r === 'custom' && !custom.value) set({ range: [...arrayRange()] });
+                else if (r === 'custom' && !custom.value) set({ range: arrayRange() });
               }}
             />
             <Show when={custom}>{() => <ParamsForm form={range} />}</Show>
