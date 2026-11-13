@@ -128,9 +128,9 @@ Reviewer (lane-reviewer) then skeptic (lane-skeptic) on `git diff origin/me/pain
 | M1 a tilt series / stack binned along its images         | confirmed           | fixed 1cb78f976 (no levels for .st, .ali, .mrcs)                 |
 | S1 a distance anchored to voxels breaks at another level | confirmed (reading) | open (TODO.md): the OME-Zarr level has the same gap; a lane      |
 | S2 CPU memory not saved                                  | confirmed (brief)   | recorded in Learned; spec and changelog claim none               |
-| S3 Custom on a one-value array refused silently          | confirmed (probe)   | fixed (Custom spans it by half a unit), tests in the S5 commit   |
-| S4 Uniform after Array writes #cccccc                    | confirmed (probe)   | fixed (the picker keeps the last own color)                      |
-| S5 a color merged with a pending array change, refused   | confirmed (probe)   | fixed (each replaces the other in the pending write)             |
+| S3 Custom on a one-value array refused silently          | confirmed (probe)   | fixed c6cfdc1b4, its test in 6b28f1eb2                           |
+| S4 Uniform after Array writes #cccccc                    | confirmed (probe)   | fixed d1cccb6da, its test in 6b28f1eb2                           |
+| S5 a color merged with a pending array change, refused   | confirmed (probe)   | fixed 6b28f1eb2                                                  |
 | S6 progress file only the brief                          | refuted (timing)    | this section                                                     |
 | S7 library code in a prism-me lane                       | confirmed (process) | open: Ludo's call (4 commits cherry-pick to a master lane)       |
 | X1 another array keeps the last one's custom range       | confirmed (reading) | fixed 4e944b2b4                                                  |
