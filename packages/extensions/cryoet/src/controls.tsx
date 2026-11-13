@@ -670,7 +670,10 @@ export function MeshControls(props: {
   const color = new ParamsFormModel({ color: PD.Color(Color(0xcccccc)) }, undefined, {
     onChange: ({ color }) => set({ color: Color.toHexStyle(color) }, 120),
   });
-  bind(mesh, (m) => color.load({ color: Color(m?.color ?? 0xcccccc) }));
+  // the picker keeps the mesh's last own color while it is colored by an array (Uniform writes it again)
+  bind(mesh, (m) => {
+    if (m?.color !== undefined) color.load({ color: Color(m.color) });
+  });
   return (
     <div class={classes.tight}>
       <div class={classes.tools}>
