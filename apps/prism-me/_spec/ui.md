@@ -553,13 +553,14 @@ still completes its distance.
 - Grow on a mesh (lane `grow-mesh`, Ludo 2026-11-13): a paint stroke over a file mesh (OBJ, PLY, VTP) puts its copies on
   the mesh's surface at its triangle's point, turned to its normal (a membrane protein upright in it; others as Turn
   says). The Grow section's **On** picks None (in space) or a mesh of the scene by its file's name; it is the mesh the
-  source was painted on when it was, else None. On a mesh: Tiling grows over the surface ring by ring, each new point a
-  Spacing from one kept in its tangent plane, projected onto the surface; a point closer than 0.8 × Spacing to one kept
-  is dropped (TomoNet's rule), so a closed surface fills without piling up; its **Count** (the points, the source's
-  counted; unset: the plane's for Rings) takes Rings' place. Random walk keeps each step in the tangent plane, its point
-  projected back. Sphere puts its Count copies uniform by area on the surface within Radius. Each copy's axis (+z for a
-  membrane protein, else its principal axis) follows the surface's normal, its spin carried from the source. Crystal (a
-  3D lattice) grows in space: On says so. The copies are explicit: the mesh can go, they stay.
+  source was painted on when it was, else the mesh under it (within its radius), else None. On a mesh: Tiling grows over
+  the surface ring by ring, each new point a Spacing from one kept in its tangent plane, projected onto the surface; a
+  point closer than 0.8 × Spacing to one kept is dropped (TomoNet's rule), so a closed surface fills without piling up;
+  its **Count** (the points, the source's counted; unset: the plane's for Rings) takes Rings' place. Random walk keeps
+  each step in the tangent plane, its point projected back. Sphere puts its Count copies uniform by area on the surface
+  within Radius. Each copy's axis (+z for a membrane protein, else its principal axis) follows the surface's normal, its
+  spin carried from the source. Crystal (a 3D lattice) grows in space: On says so. The copies are explicit: the mesh can
+  go, they stay.
 - Models decorated too (2026-10-23, Ludovic: "why can't we change the target in Simularium"): a model (a list with
   entities: Simularium, cellPACK, PetWorld) has the Decoration section, so each of its targets (an agent, an entity) can
   be drawn as another object of the scene. A particle list's own shape (a Simularium simulation box) is not listed as a

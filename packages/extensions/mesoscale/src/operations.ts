@@ -72,6 +72,7 @@ import {
   type GrowMode,
   type GrowOn,
   type GrowPoses,
+  SurfaceHit,
   type ListMove,
   offsetPose,
   poseToScene,
@@ -355,12 +356,13 @@ export class MesoscaleApi extends ApiArea {
 
   /**
    * Sets the grow's source; another than the one before also unsets the lengths (a, b, c, spacing, radius): the new
-   * source's size again (review G1), and sets the mesh it grows on: `mesh`, the one it was painted on, else none
-   * (grow-mesh)
+   * source's size again (review G1), and sets the mesh it grows on: `mesh`, the one it was painted on, else the mesh
+   * under it, else none (grow-mesh; review S7)
    */
-  setGrowSource(source: GrowSource, mesh?: string) {
+  setGrowSource(source: GrowSource, painted?: string) {
     const old = this.growSource.value;
     if (old?.particles === source.particles && old.index === source.index) return;
+    const mesh = painted ?? meshUnder(this.ctx, source);
     const { a: _a, b: _b, c: _c, spacing: _s, radius: _r, mesh: _m, ...kept } = this.growSettings.value;
     this.growSettings.set(mesh ? { ...kept, mesh } : kept);
     this.growSource.set(source);
@@ -2388,6 +2390,32 @@ export function growSourceOf(state: State, l: ParticleListRef, index: number) {
     turn: Quat.fromArray(Quat(), moved.rotations!, 0),
   };
   return { data, target, entity, compartment, pose, radius, name, surface, instance };
+}
+
+/**
+ * The file mesh under a grow's source (review S7): the nearest within its radius of where it is drawn (its list's
+ * move and scale, its own move; a copy painted on a mesh is on it), if any
+ */
+function meshUnder(ctx: Pick<ApiContext, 'plugin'>, source: GrowSource): string | undefined {
+  const state = ctx.plugin.state.data;
+  const l = lists(ctx).find((x) => x.cell.transform.ref === source.particles);
+  if (!l) return undefined;
+  const src = growSourceOf(state, l, source.index);
+  if (isFailure(src)) return undefined;
+  const move = decoratorUnder(state, source.particles, ParticleListTransform)?.transform.params as ListMove | undefined;
+  const at = offsetPose(poseToScene(move, src.pose), src.instance).position;
+  const hit = SurfaceHit();
+  let best: string | undefined;
+  let nearest = Infinity;
+  for (const m of sceneMeshes(state)) {
+    if (!sceneMeshSurface(m).project(hit, at, Vec3(), src.radius)) continue;
+    const d = Vec3.distance(hit.position, at);
+    if (d < nearest) {
+      nearest = d;
+      best = m.ref;
+    }
+  }
+  return best;
 }
 
 /** One particle at the origin, unturned: an instance offset read as a pose (`offsetParticles`) */

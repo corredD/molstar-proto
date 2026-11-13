@@ -406,4 +406,17 @@ describe('mesoscale.grow on a mesh', () => {
     await v.plugin.runTask(v.plugin.state.data.setSnapshot(snapshot));
     expect(Array.from(drawn(v).coordinates.slice(21))).toEqual(grown);
   });
+
+  it('a source set by its right-click grows on the mesh under it, else in space (review S7)', async () => {
+    const v = await viewer();
+    const ref = entry(v).cell.transform.ref;
+    expectOk(await v.api.load.files({ files: [new File([sphereObj(20, Vec3())], 'vesicle.obj')] }));
+    const { repr } = meshCells(v);
+    const m = v.api.mesoscale!;
+    // CA #2 at (20, 0, 0) on the vesicle; NC #6 at (60, 0, 0) 40 Å off it
+    m.setGrowSource({ particles: ref, index: 2 });
+    expect(m.growSettings.value.mesh).toBe(repr);
+    m.setGrowSource({ particles: ref, index: 6 });
+    expect(m.growSettings.value.mesh).toBe(undefined);
+  });
 });
