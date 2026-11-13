@@ -13,7 +13,7 @@ import type { Grid } from './grid.js';
  * A grid binned by `factor` along each side (a side shorter than it: by its length): each voxel the mean of its block
  * of the grid, a partial block at the far edge the mean of what it holds; Float32 whatever the grid's type. Its voxels
  * are where their blocks' centers are (Å): the voxel size times the factor, voxel 0 moved half a block less one voxel.
- * Its stats are its own. The grid itself at 1×.
+ * Its stats are its own; periodic while its blocks tile its sides. The grid itself at 1×.
  */
 export async function binGrid(grid: Grid, factor: number, ctx?: RuntimeContext): Promise<Grid> {
   const f = Math.floor(factor);
@@ -76,7 +76,15 @@ export async function binGrid(grid: Grid, factor: number, ctx?: RuntimeContext):
   const count = values.length;
   const mean = sum / count;
   const stats = { min, max, mean, sigma: Math.sqrt(Math.max(0, sumSq / count - mean * mean)) };
-  return { ...grid, transform: binnedTransform(grid, by, out), cells: Tensor.create(binned, values), stats };
+  // periodic still when its blocks tile each side (a partial block would wrap onto the next cell's first)
+  const tiles = dims.every((n, a) => n % by[a] === 0);
+  return {
+    ...grid,
+    transform: binnedTransform(grid, by, out),
+    cells: Tensor.create(binned, values),
+    stats,
+    ...(grid.periodicity === 'xyz' && !tiles ? { periodicity: 'none' as const } : {}),
+  };
 }
 
 /** The transform of a grid binned `by` along each axis to `out` voxels: voxel 0 at its block's center, `by` times the voxel */

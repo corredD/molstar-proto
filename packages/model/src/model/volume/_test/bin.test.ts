@@ -103,6 +103,13 @@ describe('binGrid', () => {
     expect(b.stats.sigma).toBeCloseTo(1, 6);
   });
 
+  it('stays periodic only when its blocks tile its sides', async () => {
+    const periodic = (dims: number[]) => ({ ...grid([2, 1, 0], Float32Array, dims), periodicity: 'xyz' as const });
+    expect((await binGrid(periodic([8, 4, 2]), 2)).periodicity).toBe('xyz');
+    expect((await binGrid(periodic([7, 4, 2]), 2)).periodicity).toBe('none');
+    expect((await binGrid(grid([2, 1, 0]), 2)).periodicity).toBeUndefined();
+  });
+
   it('keeps the grid at 1×', async () => {
     const g = grid([2, 1, 0]);
     expect(await binGrid(g, 1)).toBe(g);
