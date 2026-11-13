@@ -21,7 +21,7 @@ agent run (one undo step each); the command menu (⌘K) has each.
 | The explorer's URL (`url` + `type`, `pdbihm`/`pdbdev`, `graphics-mode`, `example`)                                    | Done     | `apps/prism-me/src/url.ts`                                                          |
 | The explorer's generic zip (`manifest.json`) and Martini `instanced_structure.json`                                   | Deferred | needs a reader to a `ParticleList`; the classic explorer's loader builds structures |
 | Tilt angles (`.tlt`, `.rawtlt`) shown with the images                                                                 | Deferred | no reader; the images step along z                                                  |
-| Binning of large tomograms                                                                                            | Deferred | decision of 2026-10-18                                                              |
+| Binning of large tomograms                                                                                            | Partial  | an MRC binned once loaded, 2×, 4×, 8× (`cryoet.level`); the file is read whole      |
 
 ## Mesoscale (the Mesoscale Explorer's features)
 
@@ -76,10 +76,10 @@ agent run (one undo step each); the command menu (⌘K) has each.
 | Tomogram slice along x, y, z, its position, a gray window in σ; follows the slider during a drag                          | Done     | `cryoet.slice`; Slice row                                                            |
 | Tilt series stepped image by image                                                                                        | Done     | `cryoet.slice` along z                                                               |
 | Oblique slice: a plane through a volume, its handle and numbers (live) in the volume's frame, moved with it               | Done     | `cryoet.oblique`; Oblique slice row                                                  |
-| A volume's Data: source, grid, voxel, size; an OME-Zarr read at another level in place, slices and looks kept             | Done     | `cryoet.level`; the properties' Data (ui.md §4)                                      |
+| A volume's Data: source, grid, voxel, size; an OME-Zarr or an MRC (binned) read at another level, slices and looks kept   | Done     | `cryoet.level`; the properties' Data (ui.md §4)                                      |
 | A volume's Direct volume: Lighting on a line, Prism's transfer function on the histogram, ×½ ×2; Add one                  | Done     | `volume.update`, `volume.representation`; the properties (ui.md §4)                  |
 | A volume's Isosurface and Direct volume forms follow their sliders during a drag, one undo step                           | Done     | `volume.update`; the properties (`gestureSteps`, lane `live-forms`)                  |
-| Segmentation meshes: show, hide, surface, wireframe, both, opacity (live), color                                          | Done     | `cryoet.meshes`, `cryoet.mesh`; Segmentations tab                                    |
+| Segmentation meshes: show, hide, surface, wireframe, both, opacity (live), color; a VTP colored by its arrays             | Done     | `cryoet.meshes`, `cryoet.mesh`; Segmentations tab; the mesh's Look: Color by         |
 | A class's decoration chosen from a column of the file other than an attribute (a tomogram name)                           | Deferred | string columns are not particle attributes                                           |
 | CryoET Data Portal: a dataset's runs, tomogram levels and annotations from the shipped index (10003, 10453, 10524, 10518) | Done     | `cryoetPortal.datasets`, `cryoetPortal.run`; `portal/*.json` (tools/portal-index)    |
 | … a run loaded: tomogram slices and direct volume, masks as surfaces, points at the index's spacing, decorated            | Done     | `cryoetPortal.load`; extensions/cryoet/_spec/portal.md                               |

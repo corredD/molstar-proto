@@ -234,7 +234,8 @@ maintainer first (2026-10-25). All are v6 (master); the MRC reader and the parti
 - Color import per compartment (v5 parity): one entity per name across compartments; per-compartment layers
   (`ParticleLayerProps.compartments`) would restore it.
 - Snapshot descriptions' links: `#key`, `i<names>`, `g<group>.<names>`.
-- Tilt angles (`.tlt`, `.rawtlt`) with the images of a tilt series; binning large tomograms.
+- Tilt angles (`.tlt`, `.rawtlt`) with the images of a tilt series; binning large tomograms before they load (a loaded
+  MRC bins: lane `data-controls`).
 - Decorating by a string column (a tomogram name).
 - Keys on cuts (animation).
 - A distance follows its objects: moving a structure, a list or a volume (or a particle with its handle) moves the
