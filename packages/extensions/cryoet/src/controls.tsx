@@ -661,7 +661,11 @@ export function MeshControls(props: {
   const timer = restartable(write);
   onCleanup(write);
   const set = (values: Record<string, unknown>, delay = 0) => {
-    pending = { ...pending, ...values };
+    // a color and an array are each the other's undoing: the last one asked for stays (`cryoet.mesh` takes one)
+    const next = { ...pending };
+    if ('color' in values) for (const k of ArrayKeys) delete next[k];
+    if (ArrayKeys.some((k) => k in values)) delete next.color;
+    pending = { ...next, ...values };
     timer.start(delay);
   };
   const opacity = live<{ opacity: number }>(api, 'Mesh opacity', (g, _key, v) =>
@@ -729,6 +733,9 @@ export function MeshControls(props: {
     </div>
   );
 }
+
+/** What colors a mesh by an array (`cryoet.mesh`) */
+const ArrayKeys = ['array', 'colorList', 'range'] as const;
 
 /**
  * A mesh's Color by, when its file has arrays (a VTP's point and cell arrays): Uniform (the color picker) or Array, its

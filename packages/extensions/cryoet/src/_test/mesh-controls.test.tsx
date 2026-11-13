@@ -183,4 +183,36 @@ describe("a mesh's Color by", () => {
     expect(host.querySelector('[aria-label="Palette"]')).not.toBeNull();
     dispose();
   });
+
+  it('Custom on an array of one value spans it, a range cryoet.mesh takes (review S3)', () => {
+    vi.useFakeTimers();
+    const one = { ...Vtp, arrays: [{ key: 'cell:Labels', label: 'Cell: Labels', range: [3, 3] as const }] };
+    const { area, choice, dispose } = mounted(one);
+    choice('Range', 'Custom')!.click();
+    vi.advanceTimersByTime(500);
+    expect(area.mesh).toHaveBeenLastCalledWith({ mesh: 'm', range: [2.5, 3.5] });
+    dispose();
+  });
+
+  it("Uniform after Array writes the mesh's own color again, not the picker's default (review S4)", () => {
+    vi.useFakeTimers();
+    const { area, choice, list, dispose } = mounted({ ...Vtp, colorBy: undefined, color: 0xff0000 });
+    choice('Color by', 'Array')!.click();
+    vi.advanceTimersByTime(500);
+    list.set([{ ...Vtp, color: undefined }]);
+    choice('Color by', 'Uniform')!.click();
+    vi.advanceTimersByTime(500);
+    expect(area.mesh).toHaveBeenLastCalledWith({ mesh: 'm', color: '#ff0000' });
+    dispose();
+  });
+
+  it('a color picked over a pending array change replaces it, and the other way (review S5)', () => {
+    vi.useFakeTimers();
+    const { area, choice, pick, dispose } = mounted(Vtp);
+    pick('Colors', 'Plasma');
+    choice('Color by', 'Uniform')!.click();
+    vi.advanceTimersByTime(500);
+    expect(area.mesh).toHaveBeenLastCalledWith({ mesh: 'm', color: '#cccccc' });
+    dispose();
+  });
 });
