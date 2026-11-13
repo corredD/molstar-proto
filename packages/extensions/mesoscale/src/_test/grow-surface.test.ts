@@ -60,7 +60,7 @@ describe('tiling on a mesh', () => {
     // the sphere full: about its area in hexagons of the spacing (4πr² / (√3/2 · s²) ≈ 1451)
     const hexagons = (4 * Math.PI * R * R) / ((Math.sqrt(3) / 2) * s * s);
     expect(points.length).toBeGreaterThan(0.85 * hexagons);
-    expect(points.length).toBeLessThan(1.3 * hexagons);
+    expect(points.length).toBeLessThan(1.1 * hexagons);
     // no hole: every point of the sphere within a spacing of a copy
     for (let i = 0; i < 200; ++i) {
       const u = Vec3.normalize(Vec3(), Vec3.create(Math.sin(i * 1.7), Math.cos(i * 2.3), Math.sin(i * 0.9 + 1)));
