@@ -236,6 +236,10 @@ maintainer first (2026-10-25). All are v6 (master); the MRC reader and the parti
 - Snapshot descriptions' links: `#key`, `i<names>`, `g<group>.<names>`.
 - Tilt angles (`.tlt`, `.rawtlt`) with the images of a tilt series; binning large tomograms before they load (a loaded
   MRC bins: lane `data-controls`).
+- A level read (an OME-Zarr's, an MRC binned): a distance anchored to voxels keeps their indices in the old grid (it
+  fails, or lands elsewhere; review S1 of `data-controls`): remap them in the level's write. The MRC's `bin` takes 1–8
+  (3, 5… are not listed levels); a stack is told by its name (.st, .ali, .mrcs) only; Array's first pick is the first
+  cell array, not the VTP's first scalar; a bare array name found in both point and cell data takes the point's.
 - Decorating by a string column (a tomogram name).
 - Keys on cuts (animation).
 - A distance follows its objects: moving a structure, a list or a volume (or a particle with its handle) moves the
