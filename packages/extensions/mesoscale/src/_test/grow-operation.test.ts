@@ -1153,8 +1153,12 @@ describe('mesoscale.grow, Count and Turns linked (decisions 8 and 21)', () => {
     expect([few.n, many.n]).toEqual([12, 30]);
     expect(few.params.count).toBe(12);
     // 12 units of 5 Å along √((2π·15)² + 40²) ≈ 102 Å a turn: about 0.59 turns
-    expect(few.params.turns).toBeGreaterThan(0.55);
-    expect(few.params.turns).toBeLessThan(0.65);
+    // the turns at its last copy, not past it (review M4): 12 × 5 Å over the arc a turn
+    const arc = Math.hypot(2 * Math.PI * 15, 40);
+    expect(Math.abs(few.params.turns - (12 * 5) / arc)).toBeLessThan(0.006);
+    expect(Math.abs(many.params.turns - (30 * 5) / arc)).toBeLessThan(0.006);
+    // the grow's own record: by, the asked count, the copies made
+    expect(few.params).toMatchObject({ by: 'count', copies: 12 });
     expect(many.ps.slice(0, few.ps.length)).toEqual(few.ps);
     expect(lengthOf(few.ps)).toBeCloseTo(11 * 5, 0);
   });
@@ -1178,6 +1182,22 @@ describe('mesoscale.grow, Count and Turns linked (decisions 8 and 21)', () => {
     expect(turns).toBe(2);
     expect(count).toBe(drawn(v).count - 7);
     expect(count).toBe(40);
+    expect(strokes(v)[0].grow!.params).toMatchObject({ by: 'turns', copies: 40 });
+  });
+
+  it('a helix by Count that needs more than the 200 turns a grow has says so, not fewer copies (review N4)', async () => {
+    const v = await viewer();
+    const ref = entry(v).cell.transform.ref;
+    const r = await v.api.run('mesoscale.grow', {
+      particles: ref,
+      index: 3,
+      mode: 'helix',
+      pitch: 40,
+      helixRadius: 15,
+      rise: 5,
+      count: 5000,
+    });
+    expect(r).toMatchObject({ ok: false, code: 'invalid' });
   });
 
   it('a spiral by Turns: the copies those turns hold, Count the turns reached', async () => {
@@ -1189,6 +1209,7 @@ describe('mesoscale.grow, Count and Turns linked (decisions 8 and 21)', () => {
     const byTurns = strokes(v)[0].grow!.params as { count: number; turns: number; copies: number };
     expect(byTurns.turns).toBe(2);
     expect(byTurns.copies).toBe(byTurns.count);
+    expect(strokes(v)[0].grow!.params).toMatchObject({ by: 'turns' });
     expect(drawn(v).count - 7).toBe(byTurns.count);
     expectOk(await v.api.run('history.undo', {}));
     expectOk(await v.api.run('mesoscale.grow', { ...spiral, count: byTurns.count }));

@@ -16,7 +16,7 @@ import { derive } from '@molstar/prism-ui/reactive/state';
 import type { ReadonlyState } from '@molstar/prism-ui/reactive/readonly-state';
 import { classes } from './_generated/controls.module.css.js';
 import { type GrowRecord, tilingTotal } from './grow.js';
-import { helixCopies, helixTurns, spiralCount, spiralTurnsOf } from './grow-link.js';
+import { linkedValue } from './grow-link.js';
 import {
   type GraphicsInfo,
   type GraphicsMode,
@@ -633,6 +633,13 @@ function settingsOfGrow(g: GrowRecord): Partial<GrowSettings> {
   // On: the grow's mesh (a crystal grows in space whatever On says)
   if (g.mode !== 'crystal') out.mesh = g.mesh?.ref;
   for (const [from, to] of keys[g.mode]) if (p[from] !== undefined) out[to] = p[from];
+  // Helix, Spiral: the driver of Count and Turns comes back with `by`, never the follower (a shared value: the
+  // follower is the grow's to show, not the settings' to keep; review S1, M6)
+  if (g.mode === 'helix' || g.mode === 'spiral') {
+    const by = p.by === 'count' || p.by === 'turns' ? p.by : g.mode === 'spiral' ? 'count' : 'turns';
+    out.by = by;
+    delete out[by === 'turns' ? 'count' : 'turns'];
+  }
   // a session's Tiling by Rings reads as its count (decisions 11)
   if (g.mode === 'tiling' && out.tiles === undefined && typeof p.rings === 'number') {
     out.tiles = tilingTotal(p.pattern === 'square' ? 'square' : 'hex', p.rings);
@@ -771,27 +778,9 @@ export function GrowBlock(props: { area: MesoscaleApi; api: ViewerApi; particles
       />,
     );
   /**
-   * Count and Turns of a Helix or a Spiral, linked (decisions 8 and 21): setting one sets the other (the copies those turns
-   * hold, the turns reached) and the grow is made by it; the other is shown as the settings give it (on a mesh, as the
-   * grow made it)
+   * Count and Turns of a Helix or a Spiral, linked (decisions 8 and 21): setting one makes the grow by it; the other is
+   * shown as the live grow made it, else (in space) as flat geometry says
    */
-  const linkOf = (s: GrowSettings, by: 'turns' | 'count'): Partial<GrowSettings> | undefined => {
-    const src = source.value;
-    if (!src) return undefined;
-    const diameter = () => Math.round(2 * src.radius * 10) / 10;
-    const rise = s.rise ?? src.rise;
-    if (s.mode === 'spiral') {
-      const spacing = s.spacing ?? diameter();
-      return by === 'turns'
-        ? { count: spiralCount(s.turns, spacing, rise) }
-        : { turns: spiralTurnsOf(s.count, spacing, rise) };
-    }
-    if (s.mesh) return undefined;
-    const [pitch, radius] = [s.pitch ?? 4 * diameter(), s.helixRadius ?? diameter()];
-    return by === 'turns'
-      ? { count: helixCopies(s.turns, pitch, radius, rise) }
-      : { turns: Math.round(helixTurns(s.count, pitch, radius, rise) * 100) / 100 };
-  };
   const linked = (
     key: 'turns' | 'count',
     label: string,
@@ -799,16 +788,23 @@ export function GrowBlock(props: { area: MesoscaleApi; api: ViewerApi; particles
     range: { min: number; max: number; step?: number },
   ) => {
     const by = (s: GrowSettings) => s.by ?? (s.mode === 'spiral' ? 'count' : 'turns');
-    const change = (v: number, end: boolean) => {
-      const s = { ...area.growSettings.value, [key]: v };
-      set({ [key]: v, by: key, ...linkOf(s, key) }, end);
-    };
+    const shown = derive([settings, liveGrow, chosen] as const, (s, g, m): number | undefined => {
+      if (by(s) === key) return s[key];
+      if (g && g.mode === s.mode) {
+        const v = key === 'count' ? (g.params.copies ?? g.params.count) : g.params.turns;
+        if (typeof v === 'number') return v;
+      }
+      const src = source.value;
+      const other = src && linkedValue(s, by(s), src.rise, Math.round(2 * src.radius * 10) / 10, !!m);
+      return other ? (other as Record<string, number>)[key] : s[key];
+    });
+    const change = (v: number, end: boolean) => set({ [key]: v, by: key }, end);
     return line(
       label,
       title,
       <Slider
         aria-label={`Grow ${label}`}
-        value={mapState(settings, (s) => (by(s) === key ? s[key] : (linkOf(s, by(s)) ?? s)[key]))}
+        value={shown}
         min={range.min}
         max={range.max}
         step={range.step}

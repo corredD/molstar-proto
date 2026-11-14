@@ -64,7 +64,6 @@ import {
   structureSourceOf,
   paintRotations,
   fiberAxisVector,
-  fiberUnitUp,
   principalAxisOf,
   strokeCounts,
   toListFrame,
@@ -80,6 +79,7 @@ import {
   HelixAxes,
   type HelixAxis,
   helixPath,
+  type HelixInfo,
   type SpiralInfo,
   spiralPath,
   SurfaceHit,
@@ -94,6 +94,7 @@ import {
   walkPath,
 } from './grow.js';
 import { spiralCount } from './grow-link.js';
+import { fiberUnitUp } from './fiber-up.js';
 import { meshAxis, sceneMesh, sceneMeshes, sceneMeshSurface } from './mesh-surface.js';
 import { isMembranePath } from './pick-surface.js';
 import {
@@ -338,11 +339,7 @@ const MaxHelixTurns = 200;
 /** The most copies one grow makes */
 const MaxGrown = 20000;
 const tooMany = (n: number) =>
-  ApiResult.fail(
-    'invalid',
-    `That is ${n} copies: a grow makes ${MaxGrown} at most.`,
-    'Fewer cells, rings, copies or steps.',
-  );
+  ApiResult.fail('invalid', `That is ${n} copies: a grow makes ${MaxGrown} at most.`, 'Fewer cells, copies or steps.');
 
 const GroupByParam = () =>
   PD.Select('compartment', [
@@ -1282,7 +1279,10 @@ export class MesoscaleApi extends ApiArea {
         PD.Numeric(
           5,
           { min: 0, max: MaxHelixTurns, step: 0.1 },
-          { description: 'Helix: its turns (a Spiral: its Count and Step)' },
+          {
+            description:
+              'Helix, Spiral: its turns; with count, Turns wins (Helix: the copies are then those the turns hold; Spiral: Count is)',
+          },
         ),
       ),
       hand: OptionalParam(
@@ -1351,7 +1351,8 @@ export class MesoscaleApi extends ApiArea {
           50,
           { min: 1, step: 1 },
           {
-            description: "Sphere, Spiral: its copies; Tiling: its points, the source's counted (absent: 3 rings')",
+            description:
+              "Sphere, Spiral: its copies; Helix: its copies (it then ends at that many, its turns the ones it reaches; absent: 5 turns); Tiling: its points, the source's counted (absent: 3 rings')",
           },
         ),
       ),
@@ -1577,6 +1578,7 @@ export class MesoscaleApi extends ApiArea {
           Object.assign(sizes, p, {
             turns: byTurns ? v.turns! : Math.round(info.turns * 100) / 100,
             copies: info.copies ?? 0,
+            by: byTurns ? 'turns' : 'count',
           });
           toListFrame(move, path, normals);
           units = info.copies ?? 0;
@@ -1610,7 +1612,7 @@ export class MesoscaleApi extends ApiArea {
           if (p.turns > MaxHelixTurns) return ApiResult.fail('invalid', `Give ${MaxHelixTurns} turns or fewer.`);
           if (!on && !(p.radius > 0)) return ApiResult.fail('invalid', 'The radius is above 0 Å.');
           const scaled = rise * (move?.scale ?? 1);
-          const reached = { turns: 0 };
+          const reached: HelixInfo = {};
           // its length in space before it is made: no 1000 turns of a long radius at a short rise (its points every 5°)
           if (!byCount && !on && (p.turns * Math.hypot(2 * Math.PI * p.radius, p.pitch)) / scaled + 1 > MaxGrown) {
             return tooMany(Math.floor((p.turns * Math.hypot(2 * Math.PI * p.radius, p.pitch)) / scaled) + 1);
@@ -1655,13 +1657,25 @@ export class MesoscaleApi extends ApiArea {
           }
           // by Count: the path ended at its copies' length (a rise apart, the first at its start), its turns the ones it reached
           if (byCount) {
-            path.length = trimEnd(path, normals, (count - 1) * scaled);
+            const at = (count - 1) * scaled;
+            path.length = trimEnd(path, normals, at);
             if (normals) normals.length = path.length;
-            sizes.turns = Math.round(reached.turns * 100) / 100;
+            sizes.turns = Math.round(reached.turnsAt!(Math.min(at, pathLength(path))) * 100) / 100;
           }
           toListFrame(move, path, normals);
           units = Math.floor(pathLength(path) / rise + 1e-6) + 1;
-          sizes.count = units;
+          // its record: its copies made; its count the one asked (by Count), else the copies those turns hold
+          sizes.copies = units;
+          sizes.count = byCount ? count : units;
+          sizes.by = byCount ? 'count' : 'turns';
+          // by Count past the turns a grow has (200): not fewer copies without a word (review N4)
+          if (byCount && !on && units < count) {
+            return ApiResult.fail(
+              'invalid',
+              `${count} copies need more than ${MaxHelixTurns} turns of that helix.`,
+              'Fewer copies, a longer rise or a shorter pitch.',
+            );
+          }
           if (units > MaxGrown) return tooMany(units);
           // a unit alone would be a copy unturned, as a walk of one point (review New 1)
           if (units < 2) {
@@ -1703,7 +1717,7 @@ export class MesoscaleApi extends ApiArea {
       };
       const count = units ?? stroke.positions.length / 3;
       // no copy, no step (review S2): one cell, no ring
-      if (!count) return ApiResult.fail('invalid', 'That rule makes no copy.', 'More cells or rings.');
+      if (!count) return ApiResult.fail('invalid', 'That rule makes no copy.', 'More cells or copies.');
       await updatePainted(ctx, l, (p) => ({
         ...p,
         // made again: the grows from later painted copies kept on their copy (review M1)

@@ -319,6 +319,11 @@ export function walkPath(
   return out;
 }
 
+/** What a helix made: the turns it has made at a length along its path */
+export interface HelixInfo {
+  turnsAt?: (length: number) => number;
+}
+
 /** A helix's angle a point of its path: 5° (its chords within 0.1 % of its radius; `makeFiber` places its units) */
 const HelixStep = Math.PI / 36;
 
@@ -347,9 +352,12 @@ export function helixPath(
   p: HelixParams,
   on: (GrowOn & { readonly line: HelixLine }) | undefined,
   normals?: number[],
-  info?: { turns: number },
+  info?: HelixInfo,
 ): number[] | undefined;
-/** `info.turns`: the turns the path (before any cut at a length) reached (decisions 8: Count's turns) */
+/**
+ * `info.turnsAt(length)`: the turns the helix has made at `length` along its path (as returned; clamped to its end):
+ * a Count's turns (decisions 8)
+ */
 export function helixPath(
   source: GrowPose,
   axis: Vec3,
@@ -357,7 +365,7 @@ export function helixPath(
   p: HelixParams,
   on?: GrowOn & { readonly line: HelixLine },
   normals?: number[],
-  info?: { turns: number },
+  info?: HelixInfo,
 ): number[] | undefined {
   const start = Vec3.copy(Vec3(), source.position);
   const n = Vec3();
@@ -393,6 +401,8 @@ export function helixPath(
   const all: number[] = [];
   const ns: number[] | undefined = on ? [] : undefined;
   let walked = 0;
+  const arcs: number[] | undefined = info ? [] : undefined;
+  const thetas: number[] | undefined = info ? [] : undefined;
   // the angles of a grid from the source's, k × 5° (its first, `from`, apart), up to Turns: so more turns continue the
   // path point for point and fewer cut it (round 2: a grow's count prefix-stable)
   const first = Math.floor(from / HelixStep) + 1;
@@ -422,8 +432,21 @@ export function helixPath(
     if (m) walked += Math.hypot(_p[0] - all[m - 3], _p[1] - all[m - 2], _p[2] - all[m - 1]);
     all.push(_p[0], _p[1], _p[2]);
     ns?.push(n[0], n[1], n[2]);
-    if (info) info.turns = theta / (2 * Math.PI);
+    arcs?.push(walked);
+    thetas?.push(theta);
     if (p.limit !== undefined && walked >= p.limit) break;
+  }
+  if (info && arcs && thetas) {
+    // the path starts a rise along it on a surface (`trimStart`)
+    const skip = on ? rise : 0;
+    info.turnsAt = (length) => {
+      const s = length + skip;
+      let k = 1;
+      while (k < arcs.length - 1 && arcs[k] < s) ++k;
+      const [a0, a1] = [arcs[k - 1] ?? 0, arcs[k] ?? 0];
+      const t = k < arcs.length && a1 > a0 ? Math.min(1, Math.max(0, (s - a0) / (a1 - a0))) : 0;
+      return ((thetas[k - 1] ?? 0) * (1 - t) + (thetas[k] ?? thetas[k - 1] ?? 0) * t) / (2 * Math.PI);
+    };
   }
   return on ? trimStart(all, ns, rise, normals) : all;
 }

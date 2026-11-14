@@ -623,16 +623,53 @@ describe('Grow › Spiral (grow-helix round 3)', () => {
     choice(host, 'Mode', 'Helix')!.click();
     await until(() => !!host.querySelector('input[aria-label="Grow Pitch"]'));
     m.growSettings.set({ ...m.growSettings.value, pitch: 40, helixRadius: 15, rise: 5 });
-    // A turn: √((2π·15)² + 40²) ≈ 102.4 Å, 20.5 copies a rise of 5 Å apart
+    const shown = (label: string) =>
+      Number(host.querySelector<HTMLInputElement>(`input[type=range][aria-label="Grow ${label}"]`)!.value);
+    // 3 turns of √((2π·15)² + 40²) ≈ 102.4 Å, 5 Å a copy: the 61 copies of its 5° polyline
     dragGrow(host, 'Turns', [3]);
-    expect(m.growSettings.value).toMatchObject({ turns: 3, by: 'turns', count: 61 });
+    expect(m.growSettings.value).toMatchObject({ turns: 3, by: 'turns' });
+    await until(() => shown('Count') === 61);
+    // Count sets Turns, and the grow is made by it; the Count not set is not kept (a shared value: review S1)
     dragGrow(host, 'Count', [41]);
     const s = m.growSettings.value;
     expect(s).toMatchObject({ count: 41, by: 'count' });
-    expect(s.turns).toBeCloseTo(2, 1);
+    await until(() => Math.abs(shown('Turns') - 2) < 0.1);
     expect(growParams({ particles: 'L', index: 0 }, s)).toMatchObject({ count: 41 });
     expect(growParams({ particles: 'L', index: 0 }, s)).not.toHaveProperty('turns');
     expect(growParams({ particles: 'L', index: 0 }, { ...s, by: 'turns' })).not.toHaveProperty('count');
+  });
+
+  it('a Mode round trip keeps Count (the follower is not kept: review S1)', async () => {
+    const { v, hiv } = await viewer();
+    const m = v.api.mesoscale!;
+    const host = await openGrow(v, hiv, 2);
+    choice(host, 'Mode', 'Spiral')!.click();
+    await until(() => !!host.querySelector('input[aria-label="Grow Arm spacing"]'));
+    m.growSettings.set({ ...m.growSettings.value, spacing: 20, count: 20 });
+    growButton(host).click();
+    await until(() => count(v) === 3 + 20);
+    choice(host, 'Mode', 'Helix')!.click();
+    await until(() => !!host.querySelector('input[aria-label="Grow Pitch"]'));
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    choice(host, 'Mode', 'Spiral')!.click();
+    await until(() => count(v) === 3 + 20);
+    expect(m.growSettings.value.count).toBe(20);
+  });
+
+  it('an undone change by Turns brings by back as the grow was made (review M6)', async () => {
+    const { v, hiv } = await viewer();
+    const m = v.api.mesoscale!;
+    const host = await openGrow(v, hiv, 2);
+    choice(host, 'Mode', 'Spiral')!.click();
+    await until(() => !!host.querySelector('input[aria-label="Grow Arm spacing"]'));
+    m.growSettings.set({ ...m.growSettings.value, spacing: 20, count: 20 });
+    growButton(host).click();
+    await until(() => count(v) === 3 + 20);
+    dragGrow(host, 'Turns', [2]);
+    await until(() => m.growSettings.value.by === 'turns' && count(v) !== 3 + 20);
+    expect((await v.api.run('history.undo', {})).ok).toBe(true);
+    await until(() => count(v) === 3 + 20);
+    await until(() => m.growSettings.value.by === 'count');
   });
 
   it('shows Count, Arm spacing, Hand, Step and the Turns it reaches; Count and Step live (more continue it)', async () => {
@@ -654,7 +691,9 @@ describe('Grow › Spiral (grow-helix round 3)', () => {
     expect(strokesOf(v)[0]?.grow?.mode).toBe('spiral');
     // the turns it reached, shown
     const turns = (strokesOf(v)[0]?.grow?.params as { turns: number }).turns;
-    await until(() => m.growSettings.value.turns === turns);
+    await until(
+      () => Number(host.querySelector<HTMLInputElement>('input[type=range][aria-label="Grow Turns"]')!.value) === turns,
+    );
     const first = coordinates(v, 3, 23);
     const steps = v.api.history.steps.value.length;
     dragGrow(host, 'Count', [30, 40]);
