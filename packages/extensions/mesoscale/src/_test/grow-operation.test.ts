@@ -624,3 +624,113 @@ describe('mesoscale.grow on a mesh', () => {
     expect(Vec3.dot(up, radial)).toBeGreaterThan(0.999);
   });
 });
+
+// Grow › Helix (apps/prism-me/progress/2026-11-13-grow-helix.md, Tests): a fiber stroke as the walk's, its path a helix.
+
+describe('mesoscale.grow helix', () => {
+  /** The distance from `p` to the line through `at` along z */
+  const offZ = (p: Vec3, at: Vec3) => Math.hypot(p[0] - at[0], p[1] - at[1]);
+
+  it("winds a fiber in space about the source's Fiber Axis, Radius away, Pitch a turn; one step, undo and redo", async () => {
+    const v = await viewer();
+    const ref = entry(v).cell.transform.ref;
+    // NC (#3) at (30, 0, 0), unturned, its Fiber Axis z: the helix about the line along z through (45, 0, 0)
+    expectOk(await v.api.run('mesoscale.fiber', { entity: 'NC', axis: 'z' }));
+    const before = steps(v);
+    const helix = { particles: ref, index: 3, mode: 'helix', pitch: 40, turns: 3, helixRadius: 15, rise: 5, seed: 1 };
+    const r = await v.api.run('mesoscale.grow', helix);
+    expectOk(r);
+    expect(steps(v)).toBe(before + 1);
+    const [stroke] = strokes(v);
+    expect(stroke).toMatchObject({ fiber: true, grow: { mode: 'helix', params: { pitch: 40, turns: 3, hand: 'right' } } });
+    // the path: a point and the one a turn later (72 points of 5°) Pitch apart along z (its last at Turns, nearer)
+    const ps = stroke.positions;
+    for (let i = 0; i + 72 < ps.length / 3 - 1; ++i) {
+      expect(ps[(i + 72) * 3 + 2] - ps[i * 3 + 2]).toBeCloseTo(40, 6);
+      expect(ps[(i + 72) * 3] - ps[i * 3]).toBeCloseTo(0, 6);
+    }
+    const list = drawn(v);
+    expect(list.count).toBeGreaterThan(7 + 40);
+    for (let i = 7; i < list.count; ++i) {
+      expect(offZ(xyz(list, i), Vec3.create(45, 0, 0))).toBeCloseTo(15, 1);
+      if (i > 7) expect(Vec3.distance(xyz(list, i), xyz(list, i - 1))).toBeCloseTo(5, 1);
+    }
+    // the first unit a rise along the helix from the source, not on it
+    expect(Vec3.distance(xyz(list, 7), Vec3.create(30, 0, 0))).toBeCloseTo(5, 0);
+    const count = list.count;
+    expectOk(await v.api.run('history.undo', {}));
+    expect(drawn(v).count).toBe(7);
+    expectOk(await v.api.run('history.redo', {}));
+    expect(drawn(v).count).toBe(count);
+    // Hand left: the other way about the axis
+    expectOk(await v.api.run('history.undo', {}));
+    expectOk(await v.api.run('mesoscale.grow', { ...helix, hand: 'left' }));
+    expect(xyz(drawn(v), 9)[1] * xyz(list, 9)[1]).toBeLessThan(0);
+  });
+
+  it("a helix's own Rise live (paint-refine's grown fiber): the same path, its units r apart, one step", async () => {
+    const v = await viewer();
+    const ref = entry(v).cell.transform.ref;
+    expectOk(await v.api.run('mesoscale.fiber', { entity: 'NC', axis: 'z' }));
+    const r = await v.api.run('mesoscale.grow', {
+      particles: ref,
+      index: 3,
+      mode: 'helix',
+      pitch: 40,
+      turns: 2,
+      helixRadius: 15,
+      rise: 5,
+    });
+    expectOk(r);
+    const id = (r.value as { id: number }).id;
+    const path = [...strokes(v)[0].positions];
+    const count = drawn(v).count;
+    const before = steps(v);
+    expectOk(await v.api.run('mesoscale.grown-fiber', { particles: ref, grow: id, rise: 2.5 }));
+    expect(steps(v)).toBe(before + 1);
+    expect(strokes(v)[0].positions).toEqual(path);
+    const list = drawn(v);
+    expect(list.count - 7).toBeCloseTo(2 * (count - 7), -1);
+    for (let i = 7; i < list.count; ++i) expect(offZ(xyz(list, i), Vec3.create(45, 0, 0))).toBeCloseTo(15, 1);
+  });
+
+  it("spirals over a vesicle about its axis (Z) to its pole, each unit on it, its normals kept", async () => {
+    const v = await viewer();
+    const ref = entry(v).cell.transform.ref;
+    // CA (#2) at (20, 0, 0) on a vesicle of 100 Å about (-80, 0, 0): on its equator about z
+    expectOk(await v.api.load.files({ files: [new File([sphereObj(100, Vec3.create(-80, 0, 0))], 'vesicle.obj')] }));
+    const { repr } = meshCells(v);
+    const centre = Vec3.create(-80, 0, 0);
+    const grow = (p: object) =>
+      v.api.run('mesoscale.grow', { particles: ref, index: 2, mesh: repr, mode: 'helix', rise: 10, ...p });
+    expectOk(await grow({ pitch: 30, turns: 10, axis: 'z' }));
+    const [stroke] = strokes(v);
+    expect(stroke.normals?.length).toBe(stroke.positions.length);
+    expect(stroke.grow).toMatchObject({ mode: 'helix', params: { axis: 'z' }, mesh: { ref: repr } });
+    const list = drawn(v);
+    // on its faces (an icosphere of detail 3: within 0.3 Å of the sphere) or their chords of 5°
+    for (let i = 7; i < list.count; ++i) {
+      expect(Vec3.distance(xyz(list, i), centre)).toBeGreaterThan(99.4);
+      expect(Vec3.distance(xyz(list, i), centre)).toBeLessThan(100.001);
+    }
+    // up to the north pole, not past it: some 3⅓ turns of the 10
+    expect(xyz(list, list.count - 1)[2]).toBeGreaterThan(90);
+    // the source on the axis (X through the vesicle's center): refused, no step
+    const s = steps(v);
+    expect(await grow({ pitch: 30, turns: 2, axis: 'x' })).toMatchObject({ ok: false, code: 'invalid' });
+    expect(steps(v)).toBe(s);
+  });
+
+  it('refuses a pitch, turns or radius of no helix, and more units than a grow makes: no step', async () => {
+    const v = await viewer();
+    const ref = entry(v).cell.transform.ref;
+    const grow = (p: object) => v.api.run('mesoscale.grow', { particles: ref, index: 3, mode: 'helix', ...p });
+    const s = steps(v);
+    expect(await grow({ pitch: 0 })).toMatchObject({ ok: false, code: 'invalid' });
+    expect(await grow({ turns: 0 })).toMatchObject({ ok: false, code: 'invalid' });
+    expect(await grow({ helixRadius: 0 })).toMatchObject({ ok: false, code: 'invalid' });
+    expect(await grow({ turns: 1000, helixRadius: 1000, rise: 0.5 })).toMatchObject({ ok: false, code: 'invalid' });
+    expect(steps(v)).toBe(s);
+    expect(painted(v).length).toBe(0);
+  });
+});

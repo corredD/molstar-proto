@@ -73,6 +73,9 @@ import {
   type GrowMode,
   type GrowOn,
   type GrowPoses,
+  HelixAxes,
+  type HelixAxis,
+  helixPath,
   SurfaceHit,
   type ListMove,
   offsetPose,
@@ -83,7 +86,7 @@ import {
   tilingTotal,
   walkPath,
 } from './grow.js';
-import { sceneMesh, sceneMeshes, sceneMeshSurface } from './mesh-surface.js';
+import { meshAxis, sceneMesh, sceneMeshes, sceneMeshSurface } from './mesh-surface.js';
 import { isMembranePath } from './pick-surface.js';
 import {
   findGroup,
@@ -246,7 +249,14 @@ export interface GrowSettings {
   readonly mesh?: string;
   /** Tiling on a mesh: its points, the source's counted; unset: the plane's for Rings */
   readonly tiles?: number;
-  /** A walk's own rise, twist and jitter (paint-refine); unset: the entity's */
+  /** A helix (grow-helix): its pitch (unset: 4 × the copy's diameter), turns, hand, direction, axis on a mesh, radius in space (unset: the copy's diameter) */
+  readonly pitch?: number;
+  readonly turns: number;
+  readonly hand: 'right' | 'left';
+  readonly direction: 'up' | 'down';
+  readonly axis: HelixAxis;
+  readonly helixRadius?: number;
+  /** A walk's or a helix's own rise, twist and jitter (paint-refine); unset: the entity's */
   readonly rise?: number;
   readonly twist?: number;
   readonly jitter?: number;
@@ -266,24 +276,39 @@ export const DefaultGrowSettings: GrowSettings = {
   rings: 3,
   count: 50,
   turn: 'random',
+  turns: 5,
+  hand: 'right',
+  direction: 'up',
+  axis: 'auto',
 };
 
 /** `mesoscale.grow`'s params of a source and the settings: the mode's own only */
 export function growParams(source: GrowSource, s: GrowSettings) {
   const own: Record<GrowMode, readonly (keyof GrowSettings)[]> = {
     walk: ['steps', 'persistence', 'rise', 'twist', 'jitter'],
+    helix: ['pitch', 'turns', 'hand', 'direction', 'axis', 'helixRadius', 'rise', 'twist', 'jitter'],
     crystal: ['a', 'b', 'c', 'alpha', 'beta', 'gamma', 'na', 'nb', 'nc'],
     tiling: ['pattern', 'spacing', 'rings'],
     sphere: ['count', 'radius', 'turn'],
   };
   const out: Record<string, unknown> = { particles: source.particles, index: source.index, mode: s.mode };
   for (const k of [...own[s.mode], 'seed' as const]) if (s[k] !== undefined) out[k] = s[k];
-  // on a mesh (grow-mesh): a crystal grows in space; Tiling's Count
+  // on a mesh (grow-mesh): a crystal grows in space; Tiling's Count; a helix's axis there, its radius in space
   if (s.mesh && s.mode !== 'crystal') {
     out.mesh = s.mesh;
     if (s.mode === 'tiling' && s.tiles !== undefined) out.count = s.tiles;
-  }
+    delete out.helixRadius;
+  } else delete out.axis;
   return out;
+}
+
+/** A path's length (x, y, z a point) */
+function pathLength(ps: ArrayLike<number>) {
+  let length = 0;
+  for (let i = 3; i < ps.length; i += 3) {
+    length += Math.hypot(ps[i] - ps[i - 3], ps[i + 1] - ps[i - 2], ps[i + 2] - ps[i - 1]);
+  }
+  return length;
 }
 
 /** The most copies one grow makes */
@@ -1168,6 +1193,7 @@ export class MesoscaleApi extends ApiArea {
         'crystal',
         [
           ['walk', 'Random walk: a new fiber from the source'],
+          ['helix', 'Helix: a new fiber from the source winding as a helix (on a mesh, about its axis)'],
           ['crystal', "Crystal: a lattice in the source's frame"],
           ['tiling', "Tiling: a plane of copies in the source's own plane"],
           ['sphere', 'Sphere: copies at random in a ball about the source'],
@@ -1179,7 +1205,51 @@ export class MesoscaleApi extends ApiArea {
       persistence: OptionalParam(
         PD.Numeric(30, { min: 0, max: 180, step: 1 }, { description: 'Random walk: the most it turns a step, °' }),
       ),
-      ...WalkFiberParams('Random walk: '),
+      pitch: OptionalParam(
+        PD.Numeric(
+          0,
+          { min: 0, step: 0.1 },
+          { description: "Helix: along its axis a turn, Å; absent: 4 × the copy's diameter" },
+        ),
+      ),
+      turns: OptionalParam(PD.Numeric(5, { min: 0, max: 1000, step: 0.1 }, { description: 'Helix: its turns' })),
+      hand: OptionalParam(
+        PD.Select(
+          'right',
+          [
+            ['right', 'Right-handed'],
+            ['left', 'Left-handed'],
+          ] as const,
+          { description: 'Helix: its hand' },
+        ),
+      ),
+      direction: OptionalParam(
+        PD.Select(
+          'up',
+          [
+            ['up', 'Up the axis'],
+            ['down', 'Down the axis'],
+          ] as const,
+          { description: 'Helix: the way it goes along its axis from the source' },
+        ),
+      ),
+      axis: OptionalParam(
+        PD.Select('auto', PD.arrayToOptions(HelixAxes), {
+          description:
+            "Helix on a mesh: the axis it winds about, through the mesh's center (auto: its longest; view: toward the viewer)",
+        }),
+      ),
+      helixRadius: OptionalParam(
+        PD.Numeric(
+          0,
+          { min: 0, step: 0.1 },
+          {
+            description:
+              "Helix in space: its radius about the source's Fiber Axis, Å (the source on it); absent: the copy's diameter",
+          },
+        ),
+      ),
+      ...WalkFiberParams('Random walk, Helix: '),
       ...CellParams,
       pattern: OptionalParam(
         PD.Select('hex', [
@@ -1215,7 +1285,7 @@ export class MesoscaleApi extends ApiArea {
       mesh: OptionalParam(
         PD.Text('', {
           description:
-            'Grow on a mesh of the scene (OBJ, PLY, VTP) by state ref or file name: Tiling, Random walk, Sphere; absent: in space',
+            'Grow on a mesh of the scene (OBJ, PLY, VTP) by state ref or file name: Tiling, Random walk, Helix, Sphere; absent: in space',
         }),
       ),
     },
@@ -1225,6 +1295,9 @@ export class MesoscaleApi extends ApiArea {
           pattern?: 'hex' | 'square';
           turn?: 'random' | 'source';
           mesh?: string;
+          hand?: 'right' | 'left';
+          direction?: 'up' | 'down';
+          axis?: HelixAxis;
         };
       const { particles, index, mode } = values;
       const l = oneList(ctx, particles || undefined);
@@ -1274,7 +1347,7 @@ export class MesoscaleApi extends ApiArea {
           `${name} #${index} is not on ${mesh!.label} (none of it within ${Math.round(reach)} Å).`,
           'Grow from a copy painted on the mesh.',
         );
-      const sizes: Record<string, number> = {};
+      const sizes: Record<string, number | string> = {};
       let made: GrowPoses | undefined;
       let path: number[] | undefined;
       let own: PaintStroke['own'] = {};
@@ -1329,10 +1402,6 @@ export class MesoscaleApi extends ApiArea {
         if (!made) return offMesh();
         Object.assign(sizes, p);
       } else {
-        const p = { steps: Math.floor(v.steps ?? 20), persistence: v.persistence ?? 30 };
-        // a fiber of two points or more (a point alone would be a copy unturned; review N1)
-        if (!(p.steps >= 2)) return ApiResult.fail('invalid', 'Give 2 steps or more.');
-        if (p.steps > MaxGrown) return tooMany(p.steps);
         // a fiber of the source's: its rise and axis (its Fiber Axis, else its own fibers', else its principal axis;
         // as `makeFiber` turns its units, review S6), in the list's frame
         const id = brushIdOf(data, { target, entity });
@@ -1346,20 +1415,67 @@ export class MesoscaleApi extends ApiArea {
           fiber.axis !== 'auto'
             ? Vec3.create(fiber.axis === 'x' ? 1 : 0, fiber.axis === 'y' ? 1 : 0, fiber.axis === 'z' ? 1 : 0)
             : (fiberConventionOf(data, id)?.axis ?? principalAxisOf(data.targetMapping?.get(target)));
-        if (on) {
-          // on a mesh, in the scene: the rise as drawn (the list's units times its scale), then back in the list's frame
-          normals = [];
-          path = walkPath(scene, axis, rise * (move?.scale ?? 1), p, seed, { ...on, axis: surfaceAxis() }, normals);
-          if (!path) return offMesh();
-          // a walk that left the mesh at once (an open edge: review M1)
-          if (path.length < 6) {
-            return ApiResult.fail('invalid', `The walk leaves ${mesh!.label} at once.`, 'Grow from further in.');
+        if (mode === 'walk') {
+          const p = { steps: Math.floor(v.steps ?? 20), persistence: v.persistence ?? 30 };
+          // a fiber of two points or more (a point alone would be a copy unturned; review N1)
+          if (!(p.steps >= 2)) return ApiResult.fail('invalid', 'Give 2 steps or more.');
+          if (p.steps > MaxGrown) return tooMany(p.steps);
+          if (on) {
+            // on a mesh, in the scene: the rise as drawn (the list's units times its scale), then back in the list's frame
+            normals = [];
+            path = walkPath(scene, axis, rise * (move?.scale ?? 1), p, seed, { ...on, axis: surfaceAxis() }, normals);
+            if (!path) return offMesh();
+            // a walk that left the mesh at once (an open edge: review M1)
+            if (path.length < 6) {
+              return ApiResult.fail('invalid', `The walk leaves ${mesh!.label} at once.`, 'Grow from further in.');
+            }
+            toListFrame(move, path, normals);
+          } else {
+            path = walkPath(pose, axis, rise, p, seed);
+          }
+          Object.assign(sizes, p);
+        } else {
+          // a helix (grow-helix), in the scene (its pitch and radius as drawn), then in the list's frame
+          const p = {
+            pitch: v.pitch ?? 4 * diameter,
+            turns: v.turns ?? 5,
+            hand: v.hand ?? 'right',
+            direction: v.direction ?? 'up',
+            radius: v.helixRadius ?? diameter,
+          };
+          if (!(p.pitch > 0)) return ApiResult.fail('invalid', 'The pitch is above 0 Å.');
+          if (!(p.turns > 0)) return ApiResult.fail('invalid', 'Give a turn or a part of one.');
+          if (!on && !(p.radius > 0)) return ApiResult.fail('invalid', 'The radius is above 0 Å.');
+          const scaled = rise * (move?.scale ?? 1);
+          // its length in space before it is made: no 1000 turns of a long radius at a short rise (its points every 5°)
+          if (!on && (p.turns * Math.hypot(2 * Math.PI * p.radius, p.pitch)) / scaled + 1 > MaxGrown) {
+            return tooMany(Math.floor((p.turns * Math.hypot(2 * Math.PI * p.radius, p.pitch)) / scaled) + 1);
+          }
+          if (on) {
+            const which = v.axis ?? 'auto';
+            const camera = ctx.plugin.canvas3d?.camera.state;
+            const view = camera && Vec3.sub(Vec3(), camera.position, camera.target);
+            const line = meshAxis(mesh!.shape.geometry, mesh!.shape.transforms[0], which, view);
+            normals = [];
+            path = helixPath(scene, axis, scaled, p, { ...on, axis: surfaceAxis(), line }, normals);
+            if (!path) return offMesh();
+            if (path.length < 6) {
+              return ApiResult.fail(
+                'invalid',
+                `The helix leaves ${mesh!.label} at once, or ${name} #${index} is on its axis.`,
+                'Another Axis, or grow from further in.',
+              );
+            }
+            Object.assign(sizes, { ...p, axis: which });
+            delete sizes.radius;
+          } else {
+            path = helixPath(scene, axis, scaled, p);
+            Object.assign(sizes, p);
           }
           toListFrame(move, path, normals);
-        } else {
-          path = walkPath(pose, axis, rise, p, seed);
+          const units = pathLength(path) / rise + 1;
+          if (units > MaxGrown) return tooMany(Math.floor(units));
         }
-        Object.assign(sizes, p);
       }
       if (made) {
         toListFrame(move, made.positions, undefined);
@@ -1428,11 +1544,7 @@ export class MesoscaleApi extends ApiArea {
       const own = { ...strokes[at].own, ...given };
       // its units: the path's length a rise each (`makeFiber`), as many as a grow makes at most (review 9)
       if (own.rise !== undefined) {
-        const ps = strokes[at].positions;
-        let length = 0;
-        for (let i = 3; i < ps.length; i += 3) {
-          length += Math.hypot(ps[i] - ps[i - 3], ps[i + 1] - ps[i - 2], ps[i + 2] - ps[i - 1]);
-        }
+        const length = pathLength(strokes[at].positions);
         if (length / own.rise + 1 > MaxGrown) return tooMany(Math.floor(length / own.rise) + 1);
       }
       if ((Object.keys(given) as (keyof typeof given)[]).every((k) => strokes[at].own?.[k] === given[k])) {

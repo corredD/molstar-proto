@@ -12,7 +12,7 @@ import { fiberOffsetDirection, paintRandom, paintRotation } from './paint.js';
 // exactly where the rule says, overlaps allowed. The source itself is never one of them.
 
 /** The modes of round 1 (Symmetry is round 2) */
-export const GrowModes = ['walk', 'crystal', 'tiling', 'sphere'] as const;
+export const GrowModes = ['walk', 'helix', 'crystal', 'tiling', 'sphere'] as const;
 export type GrowMode = (typeof GrowModes)[number];
 
 /** A copy's place: its position and its orientation */
