@@ -2119,7 +2119,8 @@ export class MesoscaleApi extends ApiArea {
         // a spiral's copies the kept ones; the turns its path drawn for them reached are not its own (review S2)
         if (mode === 'spiral') {
           sizes.copies = kept.positions.length / 3;
-          delete sizes.turns;
+          // by Turns its turns are the ones asked, kept for the section and a live change (decisions 21)
+          if (sizes.by !== 'turns') delete sizes.turns;
         }
       }
       if (made) {

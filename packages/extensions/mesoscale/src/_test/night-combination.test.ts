@@ -22,7 +22,8 @@ import { crnAtoms, density, type Site } from './density.js';
 import { setTestTargetStructure, TestTargetList } from './fixtures.js';
 
 // The night lanes together (me/night-integration): a group brush (paint-group) fitted to a density (density-fit), grown
-// by Symmetry (symmetry) and by a fitted Tiling, Place Auto (decisions) for a group brush.
+// by Symmetry (symmetry) and by a fitted Tiling, Place Auto (decisions) for a group brush, a fitted Spiral by Turns
+// (decisions).
 
 const viewers: PrismViewer[] = [];
 afterEach(async () => {
@@ -195,5 +196,30 @@ describe('grown from a group copy', () => {
       expect(filled.has(nearest)).toBe(true);
       expect(near(nearest)).toBeLessThan(5);
     }
+  });
+});
+
+describe('a fitted Spiral by Turns (decisions 21 with density-fit)', () => {
+  it('keeps its Turns and its driver in the record', async () => {
+    const v = await viewer();
+    expectOk(await v.api.run('mesoscale.paint', { entity: 'CA', positions: [60, 60, 60], seed: 2, orient: 'random' }));
+    const index = drawn(v).count - 1;
+    const volume = await loadMap(v, [{ position: xyz(drawn(v), index), rotation: quat(drawn(v), index) }]);
+    expectOk(
+      await v.api.run('mesoscale.grow', {
+        particles: ref(v),
+        index,
+        seed: 3,
+        mode: 'spiral',
+        turns: 1,
+        spacing: 30,
+        rise: 20,
+        fit: volume,
+        threshold: 0,
+      }),
+    );
+    const record = params(v).strokes.at(-1)!.grow!;
+    expect(record.params.by).toBe('turns');
+    expect(record.params.turns).toBe(1);
   });
 });
