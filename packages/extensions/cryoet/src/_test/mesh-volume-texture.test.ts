@@ -8,7 +8,6 @@ import { describe, expect, it } from 'vitest';
 import { Mat4, Tensor, Vec3 } from '@molstar/core/math/linear-algebra';
 import type { Grid } from '@molstar/model/model/volume';
 import { type ColorBand, colorBand, meshSamplePoints, sampleVolume } from '../mesh-volume.js';
-import { itWithin } from '../../../../../test-harness/src/timing.js';
 import { gridOf, sphereMesh, squareMesh } from './mesh-volume-fixtures.js';
 
 // Color by › Volume, Detail Texture (apps/prism-me/progress/2026-11-14-mesh-volume-texture.md): a color grid at the
@@ -138,29 +137,23 @@ describe('a color grid at the voxels of a volume (Detail Texture)', () => {
 });
 
 // review S2: the brief's budget, at the size of Ludo's capsids (122k triangles, 13.36 Å voxels, a band of ~0.5M cells:
-// 1.4 s in the app for Min ±40 Å): a sphere of 122,880 triangles and 1,330 Å radius in a 256³ map
+// 1.4 s in the app for Min ±40 Å): a sphere of 122,880 triangles and 1,330 Å radius in a 256³ map. Its point is the
+// time: heavy only, its fixtures made in it (`test-harness/src/timing.ts`)
 describe('a color grid at the voxels of a volume, at the size of a tomogram', () => {
-  const n = 256;
-  const voxel = 13.36;
-  const values = new Float32Array(n * n * n).map((_, i) => Math.sin(i));
-  const grid: Grid = {
-    transform: { kind: 'matrix', matrix: Mat4.fromUniformScaling(Mat4(), voxel) },
-    cells: Tensor.create(Tensor.Space([n, n, n], [2, 1, 0], Float32Array), Tensor.Data1(values)),
-    stats: { min: -1, max: 1, mean: 0, sigma: 0.7 },
-  };
-  const sphere = sphereMesh(1330, Vec3.create(1710, 1710, 1710), 240, 256);
-
-  itWithin(
-    'its band and Min ±40 Å in under 3 s',
-    (within) => {
-      expect(sphere.triangleCount).toBeGreaterThan(122_000);
-      const band = within(3000, () => {
-        const b = colorBand(sphere, Mat4.identity(), grid);
-        sampleVolume(b.points, Mat4.identity(), grid, 'min', 40);
-        return b;
-      });
-      expect(band.cells.length).toBeGreaterThan(400_000);
-    },
-    60_000,
-  );
+  it('its band and Min ±40 Å in under 3 s', { tags: ['heavy'], timeout: 60_000 }, () => {
+    const n = 256;
+    const values = new Float32Array(n * n * n).map((_, i) => Math.sin(i));
+    const grid: Grid = {
+      transform: { kind: 'matrix', matrix: Mat4.fromUniformScaling(Mat4(), 13.36) },
+      cells: Tensor.create(Tensor.Space([n, n, n], [2, 1, 0], Float32Array), Tensor.Data1(values)),
+      stats: { min: -1, max: 1, mean: 0, sigma: 0.7 },
+    };
+    const sphere = sphereMesh(1330, Vec3.create(1710, 1710, 1710), 240, 256);
+    expect(sphere.triangleCount).toBeGreaterThan(122_000);
+    const t0 = performance.now();
+    const band = colorBand(sphere, Mat4.identity(), grid);
+    sampleVolume(band.points, Mat4.identity(), grid, 'min', 40);
+    expect(performance.now() - t0, 'under 3000 ms').toBeLessThan(3000);
+    expect(band.cells.length).toBeGreaterThan(400_000);
+  });
 });
