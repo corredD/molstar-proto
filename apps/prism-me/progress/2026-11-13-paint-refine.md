@@ -172,8 +172,8 @@ Screenshots in
 ## Checks
 
 `npx tsc -b` and `npx tsc --noEmit -p apps/prism-me`: clean. `pnpm lint`: clean. `pnpm format:check`: only
-`progress/current.md` (fails on origin too). Tests: mesoscale 200 passed, prism-me's grow 8 passed (mesoscale + prism-me
-419 before the review fixes). `pnpm check:workspace`: fails on unbuilt lib/ exports in this worktree
+`progress/current.md` (fails on origin too). Tests: mesoscale and prism-me 424 passed (54 files).
+`pnpm check:workspace`: fails on unbuilt lib/ exports in this worktree
 (`@molstar/plugin-ui: Export pattern ./*.css has no matching files`), as expected. `graphics/gl/_test/backend-neutral`
 not run (fails without this lane's change, per the brief).
 

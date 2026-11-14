@@ -340,7 +340,11 @@ export function PaintBrush(props: {
         choices={[
           { id: 'auto', label: 'Auto', title: 'A membrane protein on the surface, anything else at the depth' },
           { id: 'surface', label: 'Surface', title: 'On the surface under the pointer' },
-          { id: 'depth', label: 'Depth', title: "At a depth along the pointer's ray: what is under it; Alt+wheel moves it" },
+          {
+            id: 'depth',
+            label: 'Depth',
+            title: "At a depth along the pointer's ray: what is under it; Alt+wheel moves it",
+          },
         ]}
         active={mapState(settings, (s) => s.place)}
         onPick={(id) => mode.set({ place: id as PaintSettings['place'] })}
