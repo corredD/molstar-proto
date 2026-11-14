@@ -176,6 +176,23 @@ describe('the copy under the pointer, fitted', () => {
   });
 });
 
+describe('Fit to a volume deleted', () => {
+  it('paints the stroke unfitted, not refused (review M2)', async () => {
+    const v = await viewer();
+    const volume = await loadMap(v, [{ position: Vec3.create(60, 40, 40), rotation: Quat.identity() }], [80, 60, 60]);
+    await v.plugin.build().delete(volume).commit();
+    const runs: Record<string, unknown>[] = [];
+    const host = pluginPaintHost(v.plugin, async (params) => {
+      runs.push(params);
+      return { ok: true };
+    });
+    const brush = { particles: entry(v).cell.transform.ref, entity: 1, name: 'CA' };
+    await host.paint(brush, DefaultPaintSettings, [60, 40, 40], [0, 0, 1], 1, false, undefined, false, volume);
+    expect(runs[0].fit).toBeUndefined();
+    host.dispose();
+  });
+});
+
 describe('a copy without an object', () => {
   it('is fitted as a ball of its radius, the cursor where the click paints it', async () => {
     const base = DefaultPrismViewerSpec();

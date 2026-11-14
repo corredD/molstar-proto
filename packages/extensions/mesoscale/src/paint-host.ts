@@ -376,7 +376,8 @@ export function pluginPaintHost(
         ...(mesh ? { mesh } : {}),
         ...(s.orient !== 'auto' ? { orient: s.orient } : {}),
         ...(s.spin !== undefined ? { spin: s.spin } : {}),
-        ...(fit ? { fit, contrast: s.contrast } : {}),
+        // a volume deleted since it was chosen: unfitted (review M2)
+        ...(fit && sceneVolumes(plugin.state.data).some((v) => v.ref === fit) ? { fit, contrast: s.contrast } : {}),
       })) as { ok?: boolean; message?: string } | undefined;
       // a stroke refused is said, not dropped (review N1)
       if (r && r.ok === false) plugin.log.warn(`Not painted: ${r.message ?? 'the stroke was refused.'}`);

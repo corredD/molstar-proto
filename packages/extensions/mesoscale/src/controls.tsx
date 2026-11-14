@@ -669,7 +669,10 @@ export function GrowBlock(props: { area: MesoscaleApi; api: ViewerApi; particles
       const src = source.value;
       const s = area.growSettings.value;
       if (!src) return Promise.resolve();
-      return g.run('mesoscale.grow', { ...growParams(src, { ...s, mesh: onMesh(s, meshes.value) }), replace: at.grow });
+      return g.run('mesoscale.grow', {
+        ...growParams(src, { ...s, mesh: onMesh(s, meshes.value), fit: onVolume(s, volumes.value) }),
+        replace: at.grow,
+      });
     },
     // what a drag has not applied yet is shown (its overlay), not the state's last (review 6); a drag ended (refused:
     // nothing applied) shows the grow as it is (round 2 review S1)
@@ -694,6 +697,10 @@ export function GrowBlock(props: { area: MesoscaleApi; api: ViewerApi; particles
   );
   const settings = area.growSettings.asReadonly;
   const meshes = area.growMeshesState();
+  const volumes = area.fitVolumesState();
+  /** The volume chosen to fit to while it is in the scene (density-fit review M2) */
+  const onVolume = (s: GrowSettings, list: readonly { ref: string }[]) =>
+    s.fit && list.some((v) => v.ref === s.fit) ? s.fit : undefined;
   /** The mesh chosen while it is in the scene */
   const onMesh = (s: GrowSettings, list: readonly { ref: string }[]) =>
     s.mesh && list.some((m) => m.ref === s.mesh) ? s.mesh : undefined;
@@ -1128,10 +1135,18 @@ export function GrowBlock(props: { area: MesoscaleApi; api: ViewerApi; particles
                   redraw.settle();
                   live.set(undefined);
                   const s = settings.value;
-                  void area.grow(growParams(src, { ...s, mesh: onMesh(s, meshes.value) }) as never).then((r) => {
-                    const id = r.ok ? (r.value as { id?: number } | undefined)?.id : undefined;
-                    if (id !== undefined) live.set({ particles: src.particles, grow: id });
-                  });
+                  void area
+                    .grow(
+                      growParams(src, {
+                        ...s,
+                        mesh: onMesh(s, meshes.value),
+                        fit: onVolume(s, volumes.value),
+                      }) as never,
+                    )
+                    .then((r) => {
+                      const id = r.ok ? (r.value as { id?: number } | undefined)?.id : undefined;
+                      if (id !== undefined) live.set({ particles: src.particles, grow: id });
+                    });
                 }}
               >
                 Grow
