@@ -1185,9 +1185,10 @@ export class MesoscaleApi extends ApiArea {
    * Grow (progress/2026-11-11-grow.md; Ludo, 2026-11-11): copies of a particle (its index in the list as drawn) by a
    * rule from its pose, one stroke of the list's painted copies (one step). The copies go exactly where the rule says,
    * overlaps allowed. Crystal, Tiling and Sphere grow in the scene's Å from the source as its list's move and scale put
-   * it (before the offsets of its kind, which its copies take too); Random walk is a new fiber, in the list's frame.
-   * On a mesh (progress/2026-11-13-grow-mesh.md): Tiling, Random walk and Sphere grow on its surface in the scene (a
-   * walk's rise the list's times its scale, as drawn), each copy's axis along its normal; Crystal is refused.
+   * it (before the offsets of its kind, which its copies take too); Random walk is a new fiber, in the list's frame;
+   * Helix a new fiber made in the scene (its pitch and radius as drawn), then in the list's frame (grow-helix).
+   * On a mesh (progress/2026-11-13-grow-mesh.md): Tiling, Random walk, Helix and Sphere grow on its surface in the scene
+   * (a fiber's rise the list's times its scale, as drawn), each copy's axis along its normal; Crystal is refused.
    */
   readonly grow = this.operation({
     id: 'mesoscale.grow',

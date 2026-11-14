@@ -204,9 +204,7 @@ export function meshAxis(mesh: Mesh, transform: Mat4, axis: HelixAxis, view?: Ve
   }
   if (axis === 'view') return { center, direction: Vec3.normalize(Vec3(), view ?? Vec3.create(0, 0, 1)) };
   const direction =
-    k >= 2
-      ? Vec3.clone(PrincipalAxes.ofPositions(vb.subarray(0, k * 3) as never).momentsAxes.dirA)
-      : Vec3.create(0, 0, 1);
+    k >= 2 ? Vec3.clone(PrincipalAxes.calculateMomentsAxes(vb.subarray(0, k * 3)).dirA) : Vec3.create(0, 0, 1);
   Vec3.normalize(direction, Vec3.transformMat3(direction, direction, Mat3.fromMat4(Mat3(), transform)));
   const largest = [0, 1, 2].reduce((m, c) => (Math.abs(direction[c]) > Math.abs(direction[m]) ? c : m), 0);
   if (direction[largest] < 0) Vec3.negate(direction, direction);

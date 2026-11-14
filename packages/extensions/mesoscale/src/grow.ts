@@ -321,8 +321,7 @@ const _u = Vec3();
  * - On a surface (`on`): about `on.line` (the mesh's axis), from the source's point on the surface; each point brought
  *   onto it along its radial line (`GrowSurface.project`, from the point a radius as the one before away, within half
  *   that radius), its normal in `normals` (the source's side, then continuous). It ends where the surface does: no
- *   point on that line (an open edge, a pole: the nearest is off it by more than a quarter of a step), or one at the
- *   axis or past it.
+ *   point on that line (an open edge, a pole: the nearest is off it by more than a quarter of a step).
  * The path starts a rise from the source along the helix (the source is on it, not one of its units). Undefined for a
  * source off the surface; empty for a source on the axis.
  */
@@ -391,10 +390,8 @@ export function helixPath(
       Vec3.sub(_w, _hit.position, _p);
       const along = Vec3.dot(_w, _u);
       if (Vec3.magnitude(Vec3.scaleAndAdd(_w, _w, _u, -along)) > 0.25 * chord) break;
-      const r = radius + along;
-      // at the axis or past it
-      if (!(r > 1e-3 * radius)) break;
-      radius = r;
+      // within half the radius of the guess (the projection's reach): never at the axis
+      radius += along;
       Vec3.copy(_p, _hit.position);
       if (Vec3.dot(_hit.normal, n) < 0) Vec3.negate(_hit.normal, _hit.normal);
       Vec3.copy(n, _hit.normal);
