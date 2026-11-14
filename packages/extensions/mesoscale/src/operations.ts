@@ -446,7 +446,8 @@ export class MesoscaleApi extends ApiArea {
       }
       return;
     }
-    // a walk's rise, twist and jitter too: the new source's entity's (paint-refine, review 4)
+    // a walk's rise, twist and jitter too: the new source's entity's (paint-refine, review 4); a helix's pitch and
+    // radius (grow-helix review S1)
     const {
       a: _a,
       b: _b,
@@ -457,6 +458,8 @@ export class MesoscaleApi extends ApiArea {
       rise: _rise,
       twist: _t,
       jitter: _j,
+      pitch: _pitch,
+      helixRadius: _hr,
       ...kept
     } = this.growSettings.value;
     this.growSettings.set(mesh ? { ...kept, mesh } : kept);

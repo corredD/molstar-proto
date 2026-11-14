@@ -440,12 +440,16 @@ describe('Grow settings', () => {
     const { v, hiv } = await viewer();
     const m = v.api.mesoscale!;
     m.setGrowSource({ particles: hiv, index: 0 });
-    m.growSettings.set({ ...m.growSettings.value, a: 30, spacing: 12, na: 5 });
+    m.growSettings.set({ ...m.growSettings.value, a: 30, spacing: 12, na: 5, pitch: 200, helixRadius: 40, turns: 3 });
     m.setGrowSource({ particles: hiv, index: 0 });
     expect(m.growSettings.value.a).toBe(30);
     m.setGrowSource({ particles: hiv, index: 2 });
     expect(m.growSettings.value.a).toBeUndefined();
     expect(m.growSettings.value.spacing).toBeUndefined();
     expect(m.growSettings.value.na).toBe(5);
+    // a helix's Pitch and Radius too (grow-helix review S1); its Turns kept
+    expect(m.growSettings.value.pitch).toBeUndefined();
+    expect(m.growSettings.value.helixRadius).toBeUndefined();
+    expect(m.growSettings.value.turns).toBe(3);
   });
 });
