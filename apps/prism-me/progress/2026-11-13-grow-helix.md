@@ -75,8 +75,17 @@ design. Mechanical steps (checks, screenshots) may go to Sonnet subagents. Gate:
   kept continuous.
 - (author) **The stopping rule**: the helix ends at the first point where the surface is not on its radial line: no hit
   at all, or the projector's fallback (the surface's nearest point) off the line by more than a quarter of a step's
-  chord (an open edge, past a pole, a cap the line grazes), or the hit at the axis or past it; else at Turns. On the HIV
-  capsid, up from the wide end it reaches the narrow cap (4.8 of 5 turns at Pitch 200); down, the wide cap (1.4 turns).
+  chord (an open edge, past a pole, a cap the line grazes); else at Turns, or at the grow's cap (`limit`, review M1). A
+  hit is within half the radius of its guess (the reach), so it never reaches the axis (review N1: that check removed).
+  On the HIV capsid, up from the wide end it reaches the narrow cap (4.8 of 5 turns at Pitch 200); down, the wide cap
+  (1.4 turns).
+- (review M1) **At most 200 turns** (`MaxHelixTurns`): a point every 5° is a projection each on a mesh (about 0.25 ms on
+  a 128 × 80 tube, so 200 turns some 3.5 s); the UI's Turns stops at 50. On a mesh it also stops as it is made once its
+  length passes the cap's units (`HelixParams.limit`), so a spiral of 0.1 Å rises is refused in well under a second.
+- (review New 1) **Two units at least**: a helix shorter than two rises is refused, its rise named (a unit alone would
+  be a copy unturned, as the walk's one point, review N1 of lane grow).
+- (review S5) **Another Mode ends the live fiber**: Helix shows Rise, Twist and Jitter as Random walk does, so a drag
+  after switching mode sets the next grow's only (ui.md's rule gains "another Mode").
 - (author) **Hand** is the helix's own: right turns counterclockwise about the way it advances, Up or Down. So Direction
   Down is the same helix going the other way (its heights the negatives of Up's), not a mirror (a mirror would flip the
   hand). The brief's "Direction down mirrors along the axis" read as the heights only.
@@ -95,3 +104,56 @@ design. Mechanical steps (checks, screenshots) may go to Sonnet subagents. Gate:
 - The repo formats TypeScript with biome (`pnpm format:check`), not prettier; prettier is for md/yaml/scss only.
 - `GrowSurface.project` falls back to the nearest point when its line misses: a rule that stops on an edge has to test
   that the hit is on the line, not how far it moved (a cone's radius changes legitimately).
+
+## Size
+
+About 444 production lines against the brief's ~150–200: grow.ts +156 (the path builder ~100, its trim and the types),
+mesh-surface.ts +25 (`meshAxis`), operations.ts +166 −32 (the helix branch ~70, its seven params with their descriptions
+~50 for ⌘K and the assistant, the shared fiber set-up moved, the review's caps, count and refusals), controls.tsx +97 −5
+(the Helix block, the shared fiber sliders, the mode's end of the live fiber). The room went to the params'
+descriptions, the UI block and the review's fixes. Tests +597 (grow-helix.test.ts, grow-operation.test.ts, the app's
+grow.test.tsx, the scaling guard, `tubeMesh`).
+
+## App check (Ludo's check, port 1368)
+
+`~/prism-me-lanes/grow-helix-capsid.cjs` (headless Chrome): `capsid_tiling.vtp` and 1CRN loaded, one copy painted on the
+capsid's wide end (Place Surface), Grow › Helix, Pitch 200, Turns 5, Axis Auto. Right/Up: 244 units winding up the cone
+to its narrow cap (4.8 turns); Left/Up the other sense, 243; Right/Down 55 units to the wide cap (1.4 turns); Rise
+dragged 29.4 → 30.1 Å (238 units, the same path, one step), Twist 19.1° (one step), two undos back to 29.4 Å and 244,
+one more the helix gone. Screenshots: scratchpad `grow-helix/h1-helix-right-up.png`, `h2-helix-left-up.png`,
+`h3-helix-right-down.png`, `h5-rise.png`, `h6-twist.png`, `h7-undone.png`.
+
+## Review (lane-reviewer, then lane-skeptic)
+
+| Finding                                                                                       | Verdict                        | Severity | Done                                                                      |
+| --------------------------------------------------------------------------------------------- | ------------------------------ | -------- | ------------------------------------------------------------------------- |
+| M1 trimStart's spread overflows at ~1000 turns on a mesh; the mesh cap checked after the path | confirmed                      | medium   | f5fc1064b (copy one by one, ≤ 200 turns, `limit` at the cap; tests first) |
+| S1 a new source keeps Pitch and Radius (review G1)                                            | confirmed                      | minor    | 3819f5ade                                                                 |
+| S2 `value.count` the path's points, not the units                                             | confirmed (no agent reads it)  | nit      | d1d6a0dfc                                                                 |
+| S3 no scaling guard for the helix on a mesh                                                   | confirmed (process)            | nit      | a350e937c (n 20 → 80 turns: ×4.9 time, ×4.9 allocation; control ×17)      |
+| S4 growParams, a moved/scaled list, undo on a mesh untested                                   | confirmed                      | minor    | 6ff2c1c6a (tests; they passed: no fix needed)                             |
+| S5 Rise under Helix still live on the last walk                                               | confirmed                      | minor    | f80202166                                                                 |
+| N1 the axis check never fires                                                                 | confirmed                      | nit      | e90effa28 (removed)                                                       |
+| N2 wrong hint for a helix shorter than a rise                                                 | confirmed                      | minor    | d1d6a0dfc (with New 1)                                                    |
+| N3 the first normal not unit                                                                  | refuted (`upAlong` normalizes) | none     | —                                                                         |
+| N4 `as never`, unused box axes                                                                | confirmed                      | nit      | e90effa28                                                                 |
+| N5 docs list no Helix on a mesh                                                               | half confirmed (features.md)   | nit      | e90effa28                                                                 |
+| N6 walk's validation order changed                                                            | confirmed, not a defect        | nit      | —                                                                         |
+| New 1 a one-unit helix, unturned                                                              | confirmed                      | minor    | d1d6a0dfc                                                                 |
+| New 2 the grow's doc comment                                                                  | confirmed                      | nit      | e90effa28                                                                 |
+| New 3 the record names `radius`, the param `helixRadius`                                      | confirmed, no reader           | nit      | left (the record's own name)                                              |
+
+## Open
+
+- The mesoscale package's `test:scaling` tier does not start on prism-me: its config imports `heapTests` from
+  `sequences/vitest.shared.ts` and the `*.scaling.ts` import `sequences/core/_test/model/scaling.js`, both gone (the
+  harness is now `@molstar/test-harness/scaling`). The helix guard follows its siblings' import; it was run with a
+  scratch config aliasing the harness. Not this lane's: a lane of its own.
+- `meshSurface.project` allocates about 170 KB a pick on a 128 × 400 tube (the scaling guard's 250 MB for 20 turns): the
+  walk and Tiling share it. Linear, but worth a look (grow-mesh's projector).
+- In a test, `mesoscale.fiber` run before a list's move was inserted put the painted copies above the move (they drew in
+  the scene's frame, unmoved); the app inserts the move first. Not the helix's; noted for the grow lanes.
+- `pnpm check:workspace` fails on prism-me's base too
+  (`@molstar/plugin-ui: Export pattern ./*.css has no matching files`).
+- For Ludo: Pitch's default (4 × the copy's diameter), the hand kept when going Down (not a mirror), Axis on a mesh
+  only.
