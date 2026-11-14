@@ -87,8 +87,9 @@ is not built is [../TODO.md](../TODO.md).
 - **`mesh-volume-texture`** (Ludo, 2026-11-14; Opus, `~/prism-me-lanes/mesh-volume-texture`, port 1377): Color by ›
   Volume with a Texture toggle (a 3D color grid sampled per pixel, the volume's detail on any mesh), At surface and
   Projected; [brief](2026-11-14-mesh-volume-texture.md) on its branch. **Stopped before code**: Mol*'s `volume` color
-  type samples the grid in the vertex shader (still per vertex) and a Shape cannot take a grid theme. Waits on Ludo:
-  A, a library lane from master (per-fragment grid lookup + a Shape color-grid hook), or B, subdivide the mesh to ~1 voxel.
+  type samples the grid in the vertex shader (still per vertex) and a Shape cannot take a grid theme. Ludo chose A
+  (2026-11-14): per-fragment grid lookup and a Shape color-grid hook in packages/graphics as separate commits (to
+  cherry-pick onto master later), then the toggle. Running.
 - **Merged 2026-11-13**: `grow-helix` (Ludo's word, decisions doc point 10): Grow › Helix and Spiral (Archimedean,
   Count, Arm spacing, Step; crowded copies skipped), every Grow setting live on the last grow, Count prefix-stable, Clear;
   [progress](2026-11-13-grow-helix.md). Next: the night lanes ([plan](../plans/2026-11-13-night-lanes.md)).
