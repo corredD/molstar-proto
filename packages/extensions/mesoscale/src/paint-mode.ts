@@ -28,6 +28,8 @@ export interface PaintBrushTarget {
    * `into` list, its `particles` and `entity` not read
    */
   readonly structure?: string;
+  /** A group of the list (paint-group; its id, the `entity` too): all its members a copy */
+  readonly group?: number;
 }
 
 /** How the brush paints (apps/prism-me/_spec/ui.md §4, Paint) */

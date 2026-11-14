@@ -241,4 +241,34 @@ describe('mesoscale.group', () => {
     const now = Array.from(drawn(v).coordinates);
     for (let i = 0; i < was.length; ++i) expect(now[i]).toBeCloseTo(was[i], 4);
   });
+
+  it('picks instances: a click on a member toggles its group copy whole, a particle alone; painting stops it', async () => {
+    const v = await viewer();
+    const g = await grouped(v);
+    expectOk(
+      await v.api.run('mesoscale.paint', { entity: '', group: g.group, positions: [0, 0, 300], normals: [0, 0, 1], seed: 4 }),
+    );
+    const m = v.api.mesoscale!;
+    expect(m.instanceAt(ref(v), 12)).toEqual({ first: 10, count: 3, group: 'Group 1' });
+    expect(m.instanceAt(ref(v), 2)).toBeUndefined();
+    m.startGroupPick(ref(v));
+    expect(m.groupPick.toggle(ref(v), 12)).toBe(true);
+    expect(m.groupPick.toggle(ref(v), 2)).toBe(true);
+    expect(m.groupPick.state.value?.instances).toEqual([
+      { first: 10, count: 3, group: 'Group 1' },
+      { first: 2, count: 1 },
+    ]);
+    expect(m.groupPick.indices).toEqual([10, 2]);
+    // another member of the copy: the copy let go
+    m.groupPick.toggle(ref(v), 11);
+    expect(m.groupPick.indices).toEqual([2]);
+    // another list's click is not taken
+    expect(m.groupPick.toggle('other', 3)).toBe(false);
+    // its list's groups listed with the entities (a row each)
+    expect(m.infoState(ref(v)).value?.paintGroups).toEqual([{ id: g.group, name: 'Group 1', members: 3 }]);
+    // a brush set (headless: no canvas to start on) stops the picking
+    m.paintMode.brush.set({ particles: ref(v), entity: g.group, name: 'Group 1', group: g.group });
+    expect(m.groupPick.state.value).toBeUndefined();
+    m.paintMode.stop();
+  });
 });

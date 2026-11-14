@@ -6,6 +6,8 @@
 
 import { Quat, Vec3 } from '@molstar/core/math/linear-algebra';
 import { PrincipalAxes } from '@molstar/core/math/linear-algebra/matrix/principal-axes';
+import { CustomProperties } from '@molstar/model/model/custom-property';
+import type { ParticleList, ParticleTarget } from '@molstar/model/model/particles/particle-list';
 
 // Groups (cellPAINT's grouping; progress/2026-11-13-paint-group.md, Ludo 2026-11-13: "select a couple of instances,
 // and make that a new ingredient"): a few instances made a brush of their own. A group is its members, each a brush
@@ -346,4 +348,44 @@ export function nextGroupId(
   for (const s of taken) id = Math.max(id, s.target, s.entity);
   for (const g of groups) id = Math.max(id, g.id);
   return id + 1;
+}
+
+/**
+ * A group's copy under the pointer (the paint brush's): its leaves as a list at their poses about the origin, their
+ * targets, entities and compartments as `list` has them (its objects, its radii by target)
+ */
+export function groupCopyList(list: ParticleList, leaves: GroupLeaves): ParticleList {
+  const n = leaves.count;
+  const targetMapping = new Map<number, ParticleTarget>();
+  for (let i = 0; i < n; ++i) {
+    const o = list.targetMapping?.get(leaves.targets[i]);
+    if (o) targetMapping.set(leaves.targets[i], o);
+  }
+  // a target's radius: its first particle's in the list (read until each leaf's target is found)
+  const wanted = new Set(leaves.targets);
+  const radiusOf = new Map<number, number>();
+  if (list.radii) {
+    for (let i = 0; i < list.count && radiusOf.size < wanted.size; ++i) {
+      const t = list.targets[i];
+      if (wanted.has(t) && !radiusOf.has(t)) radiusOf.set(t, list.radii[i]);
+    }
+  }
+  return {
+    ...list,
+    targetMapping: targetMapping.size ? targetMapping : undefined,
+    movedFrom: undefined,
+    count: n,
+    keys: Int32Array.from({ length: n }, (_, i) => i),
+    targets: Int32Array.from(leaves.targets),
+    coordinates: Float32Array.from(leaves.positions),
+    rotations: Float32Array.from(leaves.rotations),
+    ...(list.entities ? { entities: Int32Array.from(leaves.entities) } : {}),
+    ...(list.compartments ? { compartments: Int32Array.from(leaves.compartments) } : {}),
+    ...(list.radii ? { radii: Float32Array.from(leaves.targets, (t) => radiusOf.get(t) ?? 10) } : {}),
+    attributes: undefined,
+    fibers: undefined,
+    getParticleLabel: () => 'Paint brush',
+    customProperties: new CustomProperties(),
+    _propertyData: Object.create(null),
+  };
 }

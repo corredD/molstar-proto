@@ -33,7 +33,8 @@ import {
   ParticleListPainted,
 } from './paint.js';
 import { meshFrame, sceneMeshes } from './mesh-surface.js';
-import { pluginPaintCursor, pluginStructureCursor } from './paint-cursor.js';
+import { pluginGroupCursor, pluginPaintCursor, pluginStructureCursor } from './paint-cursor.js';
+import { groupLeaves, type PaintGroup } from './paint-group.js';
 import { membraneFrame } from './pick-surface.js';
 
 // Paint mode's host on the viewer (paint-mode.ts): the plugin's canvas, its picks and camera, and the stroke run as
@@ -94,6 +95,14 @@ export function pluginPaintHost(
   const listOf = (ref: string) =>
     plugin.managers.particles.hierarchy.current.lists.find((l) => l.cell.transform.ref === ref);
   /** A structure brush's structure (paint-layer round 2), if it is still in the scene */
+  /** A group brush's group and its list's groups (paint-group), if it is still there */
+  const groupOf = (brush: PaintBrushTarget) => {
+    const l = brush.group !== undefined ? listOf(brush.particles) : undefined;
+    const painted = l && decoratorUnder(plugin.state.data, l.cell.transform.ref, ParticleListPainted);
+    const groups = (painted?.transform.params as { groups?: PaintGroup[] } | undefined)?.groups;
+    const group = groups?.find((g) => g.id === brush.group);
+    return group && { group, groups: groups!, list: l };
+  };
   const structureOf = (brush: PaintBrushTarget) => {
     const obj = brush.structure ? plugin.state.data.cells.get(brush.structure)?.obj : undefined;
     return obj && SO.Molecule.Structure.is(obj) ? obj.data : undefined;
@@ -179,6 +188,7 @@ export function pluginPaintHost(
     },
     radius(brush) {
       if (brush.structure) return structureOf(brush)?.boundary.sphere.radius || 10;
+      if (brush.group !== undefined) return groupOf(brush)?.group.radius || 10;
       const data = listOf(brush.particles)?.cell.obj?.data;
       if (!data) return 1;
       // its first particle's (a list without entities: its targets are its entities)
@@ -214,6 +224,10 @@ export function pluginPaintHost(
           c.dispose();
         },
       });
+      if (brush.group !== undefined) {
+        const g = groupOf(brush);
+        return withSub(pluginGroupCursor(plugin, g?.list, g && groupLeaves(g.groups, g.group.id), plugin.canvas3d));
+      }
       if (brush.structure) {
         const structure = structureOf(brush);
         const along = cached((s) =>
@@ -259,6 +273,7 @@ export function pluginPaintHost(
           ? // its list gone since it was chosen: the Painting list (review S3)
             { structure: brush.structure, particles: s.into && listOf(s.into) ? s.into : '' }
           : { particles: brush.particles, entity: String(brush.entity) }),
+        ...(brush.group !== undefined ? { group: brush.group } : {}),
         positions,
         normals,
         seed,
@@ -279,7 +294,8 @@ export function pluginPaintHost(
       if (r && r.ok === false) plugin.log.warn(`Not painted: ${r.message ?? 'the stroke was refused.'}`);
       return r;
     },
-    has: (brush) => (brush.structure ? !!structureOf(brush) : !!listOf(brush.particles)),
+    has: (brush) =>
+      brush.structure ? !!structureOf(brush) : brush.group !== undefined ? !!groupOf(brush) : !!listOf(brush.particles),
     changed(fn) {
       const sub = plugin.state.data.events.changed.subscribe(fn);
       return () => sub.unsubscribe();

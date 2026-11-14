@@ -21,6 +21,7 @@ import type { PluginContext } from '@molstar/plugin/context';
 import type { ParticleListRef } from '@molstar/plugin/state/manager/particles/hierarchy-state';
 import type { PaintBrushTarget, PaintCursor, PaintSettings } from './paint-mode.js';
 import { type PaintOrient, paintingList, paintRotation, principalAxisOf, withStructures } from './paint.js';
+import { type GroupLeaves, groupCopyList } from './paint-group.js';
 
 // The copy under the pointer (progress/2026-11-08-paint.md, Round 2): one copy of the brush drawn before it is painted,
 // where a click would put it and turned as it would be (the stroke's seed). A representation outside the state (a
@@ -117,6 +118,24 @@ export function pluginStructureCursor(
   return copyCursor(plugin, oneCopyOf(one, 0), params(), false, canvas, along);
 }
 
+/**
+ * The copy under the pointer of a group (paint-group): all its leaves (`groupCopyList`), drawn as `list`'s first
+ * representation draws its particles; turned by its frame (+z its axis)
+ */
+export function pluginGroupCursor(
+  plugin: PluginContext,
+  list: ParticleListRef | undefined,
+  leaves: GroupLeaves | undefined,
+  canvas: VisualSetCanvas | undefined = plugin.canvas3d,
+): PaintCursor {
+  const r = list?.representations[0];
+  const data = r?.cell.obj?.data.sourceData as ParticleList | undefined;
+  const params = r?.cell.params?.values;
+  if (!data || !leaves?.count || !params) return NoCursor;
+  const one = groupCopyList(data, leaves);
+  return copyCursor(plugin, one, Promise.resolve(params), false, canvas, undefined, Vec3.create(0, 0, 1));
+}
+
 /** A target representation's params, the type's default themes (as `particles.representation` makes them) */
 export function targetRepresentationParams(plugin: PluginContext, data: ParticleList) {
   const { registry, themes } = plugin.representation.particles;
@@ -145,10 +164,12 @@ function copyCursor(
   surface: boolean,
   canvas: VisualSetCanvas | undefined,
   along?: Along,
+  /** Its own axis for Turn: Axis (a group's: +z); none: its target's principal axis */
+  own?: Vec3,
 ): PaintCursor {
   if (!canvas) return NoCursor;
   const set = new VisualSet(canvas);
-  const axis = principalAxisOf(one.targetMapping?.get(one.targets[0]));
+  const axis = own ?? principalAxisOf(one.targetMapping?.get(one.targets[0]));
   let repr: Representation<any, any, any> | undefined;
   let shown = false;
   /** The copy's turn options, set in place each move */

@@ -38,6 +38,7 @@ import type { ReadonlyState } from '@molstar/prism-ui/reactive/readonly-state';
 import { cssColor, matchColors, parseColorFile } from './color-file.js';
 import { pluginPaintHost } from './paint-host.js';
 import { PaintMode } from './paint-mode.js';
+import { InstancePick } from './group-pick.js';
 import {
   brushOf,
   brushIdOf,
@@ -179,6 +180,8 @@ export interface MesoscaleInfo {
   readonly groupBy: MesoGroupBy;
   /** Whether the list has compartments (else grouping by compartment lists every entity flat) */
   readonly hasCompartments: boolean;
+  /** Its groups of instances (paint-group), brushes of their own: their ids, names and members' count */
+  readonly paintGroups?: readonly { readonly id: number; readonly name: string; readonly members: number }[];
 }
 
 const ListParam = () =>
@@ -420,8 +423,38 @@ export class MesoscaleApi extends ApiArea {
    * strokes are `mesoscale.paint`, one step each
    */
   get paintMode(): PaintMode {
-    this._paintMode ??= new PaintMode(this.paintHost);
+    if (!this._paintMode) {
+      this._paintMode = new PaintMode(this.paintHost);
+      // painting and picking instances are not on together (paint-group)
+      this._paintMode.brush.asReadonly.subscribe((b) => {
+        if (b) this.groupPick.stop();
+      });
+    }
     return this._paintMode;
+  }
+
+  /**
+   * Pick instances (paint-group; group-pick.ts): a click toggles an instance of a list for Make group; view state, no
+   * step. Starting it stops painting
+   */
+  readonly groupPick = new InstancePick(this.ctx.plugin, (particles, index) => this.instanceAt(particles, index));
+
+  /** Picks instances in a list (painting stopped) */
+  startGroupPick(particles: string) {
+    this._paintMode?.stop();
+    this.groupPick.start(particles);
+  }
+
+  /**
+   * The group copy a particle of a list (by index as drawn) is of (paint-group): its particles and its group's name;
+   * undefined: none (the particle an instance alone)
+   */
+  instanceAt(particles: string, index: number): { first: number; count: number; group: string } | undefined {
+    const state = this.ctx.plugin.state.data;
+    const painted = decoratorUnder(state, particles, ParticleListPainted);
+    const data = painted?.obj?.data as ParticleList | undefined;
+    const at = data && groupCopyOf(state, painted, data, index);
+    return at && { first: at.input.count + at.copy.first, count: at.copy.count, group: at.group.name };
   }
 
   /**
@@ -582,6 +615,7 @@ export class MesoscaleApi extends ApiArea {
   /** The paint mode ends with the viewer: its layer, its keys and its subscription go (review should-fix 5) */
   dispose() {
     this._paintMode?.stop();
+    this.groupPick.stop();
     this.paintHost.dispose();
   }
 
@@ -2715,6 +2749,11 @@ function describe(ctx: Pick<ApiContext, 'plugin'>, l: ParticleListRef, asked?: M
     groups: mesoGroups(data, entities, groupBy),
     groupBy,
     hasCompartments: !!data.compartmentInfo?.size,
+    paintGroups: (
+      (decoratorUnder(ctx.plugin.state.data, l.cell.transform.ref, ParticleListPainted)?.transform.params as
+        | PaintedParams
+        | undefined)?.groups ?? []
+    ).map((g) => ({ id: g.id, name: g.name, members: g.members.length })),
   };
 }
 
