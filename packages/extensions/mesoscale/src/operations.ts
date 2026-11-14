@@ -402,7 +402,19 @@ export class MesoscaleApi extends ApiArea {
     const old = this.growSource.value;
     if (old?.particles === source.particles && old.index === source.index) return;
     const mesh = painted ?? meshUnder(this.ctx, source);
-    const { a: _a, b: _b, c: _c, spacing: _s, radius: _r, mesh: _m, ...kept } = this.growSettings.value;
+    // a walk's rise, twist and jitter too: the new source's entity's (paint-refine, review 4)
+    const {
+      a: _a,
+      b: _b,
+      c: _c,
+      spacing: _s,
+      radius: _r,
+      mesh: _m,
+      rise: _rise,
+      twist: _t,
+      jitter: _j,
+      ...kept
+    } = this.growSettings.value;
     this.growSettings.set(mesh ? { ...kept, mesh } : kept);
     this.growSource.set(source);
   }
