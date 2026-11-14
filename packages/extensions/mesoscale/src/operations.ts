@@ -527,6 +527,22 @@ export class MesoscaleApi extends ApiArea {
     );
   }
 
+  /**
+   * The grows from a source (round 2, Clear): its grow strokes, by its key (`GrowRecord.source.key`), following the state
+   * tree while watched
+   */
+  grownFromState(source: ReadonlyState<GrowSource | undefined>): ReadonlyState<number> {
+    const state = this.ctx.plugin.state.data;
+    return watchedState(
+      () => {
+        const at = source.value;
+        const l = at && lists(this.ctx).find((x) => x.cell.transform.ref === at.particles);
+        return (l && grownFrom(state, l, at.index)?.length) ?? 0;
+      },
+      () => [state.events.changed, source],
+    );
+  }
+
   /** The file meshes a grow can grow on (grow-mesh), following the state tree while watched: a read for views */
   growMeshesState(): ReadonlyState<readonly { readonly ref: string; readonly label: string }[]> {
     const plugin = this.ctx.plugin;
@@ -1615,6 +1631,36 @@ export class MesoscaleApi extends ApiArea {
           .join(', ')}.`,
         { nodes: [l.cell.transform.ref] },
         { value: own },
+      );
+    },
+  });
+
+  /**
+   * Clear (grow-helix round 2, Ludo 2026-11-13: "clear all growth from that instance"): every grow stroke from a source
+   * (its key), whatever its mode, removed; the source and the other strokes stay. One step.
+   */
+  readonly clearGrown = this.operation({
+    id: 'mesoscale.clear-grown',
+    title: 'Clear the grows from an instance',
+    params: {
+      particles: ListParam(),
+      index: PD.Numeric(0, { min: 0, step: 1 }, { description: 'The source: a particle by its index in the list' }),
+    },
+    async run(values, ctx) {
+      const l = oneList(ctx, values.particles || undefined);
+      if (isFailure(l)) return l;
+      const state = ctx.plugin.state.data;
+      const src = growSourceOf(state, l, values.index);
+      if (isFailure(src)) return src;
+      const ids = grownFrom(state, l, values.index);
+      if (!ids?.length) return ApiResult.fail('not-found', `Nothing is grown from ${src.name} #${values.index}.`);
+      const key = ids[0].grow!.source.key;
+      await updatePainted(ctx, l, (p) => ({ ...p, strokes: p.strokes.filter((s) => s.grow?.source.key !== key) }));
+      const n = ids.length;
+      return ApiResult.ok(
+        `Cleared ${n} ${n === 1 ? 'grow' : 'grows'} from ${src.name} #${values.index}.`,
+        { nodes: [l.cell.transform.ref] },
+        { value: { count: n } },
       );
     },
   });
@@ -2765,6 +2811,16 @@ export function growSourceOf(state: State, l: ParticleListRef, index: number) {
   // list's own painted fibers would give their step as the rise (round 2: a grow made again read its own stroke)
   const fibers = input?.targetInfo.has(target) ? input : data;
   return { data, target, entity, compartment, pose, radius, name, surface, instance, fibers };
+}
+
+/** The grow strokes from a list's particle (its index as drawn): those whose record names its key; undefined: none there */
+function grownFrom(state: State, l: ParticleListRef, index: number): PaintStroke[] | undefined {
+  const painted = decoratorUnder(state, l.cell.transform.ref, ParticleListPainted);
+  const data = (painted?.obj?.data as ParticleList | undefined) ?? l.cell.obj?.data;
+  const strokes = (painted?.transform.params as PaintedParams | undefined)?.strokes;
+  if (!data || !strokes || !Number.isInteger(index) || index < 0 || index >= data.count) return undefined;
+  const key = data.keys[index];
+  return strokes.filter((s) => s.grow?.source.key === key);
 }
 
 /**

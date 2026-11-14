@@ -914,3 +914,51 @@ describe('mesoscale.grow replace', () => {
     expect(steps(v)).toBe(s);
   });
 });
+
+// Clear (grow-helix round 2, Ludo 2026-11-13: "a clear button, that will clear all growth from that instance").
+
+describe('mesoscale.clear-grown', () => {
+  it('removes every grow from the source (any mode), one step; the source and the other grows stay; redo clears again', async () => {
+    const v = await viewer();
+    const ref = entry(v).cell.transform.ref;
+    const grow = (p: object) => v.api.run('mesoscale.grow', { particles: ref, ...p });
+    expectOk(await grow({ index: 2, mode: 'sphere', count: 4 }));
+    expectOk(await grow({ index: 3, mode: 'sphere', count: 3 }));
+    expectOk(await grow({ index: 2, mode: 'walk', steps: 5 }));
+    expectOk(await grow({ index: 2, mode: 'crystal', na: 2, nb: 1, nc: 1 }));
+    const m = v.api.mesoscale!;
+    const count = m.grownFromState(observableState({ particles: ref, index: 2 }).asReadonly);
+    const sub = count.subscribe(() => undefined);
+    expect(count.value).toBe(3);
+    const all = drawn(v).count;
+    const before = steps(v);
+    const r = await v.api.run('mesoscale.clear-grown', { particles: ref, index: 2 });
+    expectOk(r);
+    expect(steps(v)).toBe(before + 1);
+    expect(drawn(v).count).toBe(7 + 3);
+    expect(strokes(v).map((s) => s.grow?.source.index)).toEqual([3]);
+    expect(Array.from(xyz(drawn(v), 2))).toEqual([20, 0, 0]);
+    expect(count.value).toBe(0);
+    // nothing more to clear: refused, no step
+    expect(await v.api.run('mesoscale.clear-grown', { particles: ref, index: 2 })).toMatchObject({ ok: false });
+    expect(steps(v)).toBe(before + 1);
+    expectOk(await v.api.run('history.undo', {}));
+    expect(drawn(v).count).toBe(all);
+    expect(count.value).toBe(3);
+    expectOk(await v.api.run('history.redo', {}));
+    expect(drawn(v).count).toBe(7 + 3);
+    sub.unsubscribe();
+  });
+
+  it('keeps a painted source: the grows from it go, the copy it is stays', async () => {
+    const v = await viewer();
+    const ref = entry(v).cell.transform.ref;
+    expectOk(await v.api.run('mesoscale.grow', { particles: ref, index: 2, mode: 'sphere', count: 2, seed: 1 }));
+    // copy #7 (grown) the next source
+    expectOk(await v.api.run('mesoscale.grow', { particles: ref, index: 7, mode: 'sphere', count: 5 }));
+    const seven = Array.from(xyz(drawn(v), 7));
+    expectOk(await v.api.run('mesoscale.clear-grown', { particles: ref, index: 7 }));
+    expect(drawn(v).count).toBe(7 + 2);
+    expect(Array.from(xyz(drawn(v), 7))).toEqual(seven);
+  });
+});
