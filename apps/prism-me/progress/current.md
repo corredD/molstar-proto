@@ -80,9 +80,15 @@ is not built is [../TODO.md](../TODO.md).
     "Colours from meshes" on; Ludo 2026-11-10) built and gated at 0fa72ac06, pushed: parts named by file, de-duplicated,
     mapped by index; a part's own colour where its mesh gives no tint (coordinator's call, Ludo to confirm). Next on
     Ludo’s word: shells, the clip pop, the PR (rounds 4–9).
-  - `paint-refine` (`me/paint-refine` from `prism-me` at eb77182ab; brief on its branch): started 2026-11-13. The copy at
-    the pointer from the first moment; the standard camera in Paint (left paints, Alt+wheel the depth, the picked
-    depth); Undo after Grow; a grown fiber's Rise and Twist, live on the last grow.
+  - `grow-helix` (`me/grow-helix` from `prism-me` after the paint-refine merge; brief on its branch): started
+    2026-11-13. Grow › Helix: a helical path from the source, on a mesh (around its axis, each point onto the surface)
+    or in space (around the Fiber Axis); Pitch, Turns, Hand, Direction, Axis; a fiber stroke like the walk.
+- **Merged 2026-11-13**: `paint-refine` (merged into prism-me directly, Ludo's word): the copy at the pointer from the
+  first Paint; the standard camera in Paint (left paints, Alt+wheel the depth, the picked depth); a grown walk's own
+  Rise/Twist/Jitter, live on the last grow; on a surface any brush's copies along the normal (Fiber Axis else +z), and
+  Grow on a mesh with the same rule; Paint on opens the brush's Paint section; [progress](2026-11-13-paint-refine.md).
+  Undo after Grow did not reproduce. Open for Ludo: a fiber unit as Grow source (offset as up?), Place Auto over a
+  mesh, painted fibers following the normal.
 - **Merged 2026-11-13**: `grow-mesh` (merged into prism-me directly, Ludo's word): paint on an OBJ/PLY/VTP mesh;
   Grow › On a mesh: Tiling over it (Count, 0.8 × Spacing apart), Random walk on it, Sphere by area within Radius;
   [progress](2026-11-13-grow-mesh.md). Open: Tiling on the main thread (~0.5 ms a copy on 1.3 M triangles), the spin
