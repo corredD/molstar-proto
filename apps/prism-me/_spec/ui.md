@@ -578,6 +578,16 @@ still completes its distance.
   X, Y, Z), each point brought onto the surface along its line from the axis, so it follows a tube's or a cone's radius
   and spirals over a closed round mesh to its pole; it ends where the surface does. Its units' up along the surface's
   normal, as the walk's. The first unit is a rise along the helix from the source.
+- The last grow live (lane `grow-helix` round 2, Ludo 2026-11-13: "all the parameters in the grow properties to update
+  the latest grow … more will continue the distribution, less will remove the excedent copies … a clear button"): after
+  a Grow, every setting of the section (each mode's, its Seed, On, and its Mode) makes that grow again in place, from
+  the same source, by the settings shown (`mesoscale.grow { replace }`; its seed kept while Seed is empty): one step a
+  drag or a pick. A Mode picked turns the last grow into one of that mode. Rise, Twist and Jitter still redraw a fiber
+  on its path. Its count is prefix-stable: more Steps, Turns, Rings or Count keep every copy where it was and add the
+  next ones (a fiber's last unit turned to the next); fewer cut the last ones; Crystal's cells are nested (each cell
+  stays where it was). Another Grow, another source, Clear or the section closed ends it; an undone grow is not live (a
+  change is the next grow's). **Clear** removes every grow from the source (any mode; the source stays), one step
+  (`mesoscale.clear-grown`), disabled when there is none.
 - Models decorated too (2026-10-23, Ludovic: "why can't we change the target in Simularium"): a model (a list with
   entities: Simularium, cellPACK, PetWorld) has the Decoration section, so each of its targets (an agent, an entity) can
   be drawn as another object of the scene. A particle list's own shape (a Simularium simulation box) is not listed as a
