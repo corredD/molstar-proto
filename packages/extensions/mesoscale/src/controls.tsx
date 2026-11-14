@@ -239,7 +239,7 @@ export function PaintBrush(props: {
   name: string;
   /** A structure of the scene as the brush (paint-layer round 2): painted into a list or the Painting list */
   structure?: string;
-  /** A group of the list as the brush (paint-group; its id, `entity` too) */
+  /** A group of the list as the brush (paint-group; its id, `entity` too): its strokes copies, no Fiber */
   group?: number;
 }) {
   const mode = props.area.paintMode;
@@ -248,6 +248,7 @@ export function PaintBrush(props: {
       ? b?.structure === props.structure
       : !b?.structure && b?.particles === props.particles && b.entity === props.entity && b.group === props.group,
   );
+  const fibers = props.group === undefined;
   const settings = mode.settings.asReadonly;
   const brush = () => ({
     particles: props.particles,
@@ -288,9 +289,9 @@ export function PaintBrush(props: {
         onPick={(id) => mode.set({ orient: id as PaintSettings['orient'] })}
       />
       {props.structure ? <PaintInto area={props.area} /> : null}
-      {/* a group's strokes are copies (paint-group): its fibers are grown (Grow › Random walk, Helix, Spiral) */}
-      {props.group === undefined ? (
-        <>
+      {/* a group's strokes are copies (paint-group): its fibers are grown */}
+      <Show when={fibers}>
+        {() => (
           <Choices
             label="Fiber"
             choices={[
@@ -307,42 +308,42 @@ export function PaintBrush(props: {
             active={mapState(settings, (s) => s.fiber)}
             onPick={(id) => mode.set({ fiber: id as PaintSettings['fiber'] })}
           />
-          <Show when={mapState(settings, (st) => !!props.structure && st.fiber !== 'off')}>
-            {() => <StructureFiberSettings area={props.area} structure={props.structure!} />}
-          </Show>
-          <Show when={mapState(settings, (st) => !props.structure && st.fiber !== 'off')}>
-            {() => (
-              <div class={classes.tight}>
-                <FiberSettings area={props.area} particles={props.particles} entity={props.entity} />
-                <div class={classes.line}>
-                  <div class={classes.label} title="The next fibers' sequence, one-letter codes; empty: at random">
-                    Sequence
-                  </div>
-                  <TextInput
-                    size="sm"
-                    aria-label="Fiber sequence"
-                    placeholder="at random"
-                    value={mapState(settings, (st) => st.sequence ?? '')}
-                    onInput={(sequence) => mode.set({ sequence })}
-                  />
-                </div>
-                <div class={classes.line}>
-                  <div class={classes.label} title="The letters of the sequence used, 1-based (3-120); empty: all">
-                    Range
-                  </div>
-                  <TextInput
-                    size="sm"
-                    aria-label="Fiber sequence range"
-                    placeholder="all"
-                    value={mapState(settings, (st) => st.range ?? '')}
-                    onInput={(range) => mode.set({ range })}
-                  />
-                </div>
+        )}
+      </Show>
+      <Show when={mapState(settings, (st) => fibers && !!props.structure && st.fiber !== 'off')}>
+        {() => <StructureFiberSettings area={props.area} structure={props.structure!} />}
+      </Show>
+      <Show when={mapState(settings, (st) => fibers && !props.structure && st.fiber !== 'off')}>
+        {() => (
+          <div class={classes.tight}>
+            <FiberSettings area={props.area} particles={props.particles} entity={props.entity} />
+            <div class={classes.line}>
+              <div class={classes.label} title="The next fibers' sequence, one-letter codes; empty: at random">
+                Sequence
               </div>
-            )}
-          </Show>
-        </>
-      ) : null}
+              <TextInput
+                size="sm"
+                aria-label="Fiber sequence"
+                placeholder="at random"
+                value={mapState(settings, (st) => st.sequence ?? '')}
+                onInput={(sequence) => mode.set({ sequence })}
+              />
+            </div>
+            <div class={classes.line}>
+              <div class={classes.label} title="The letters of the sequence used, 1-based (3-120); empty: all">
+                Range
+              </div>
+              <TextInput
+                size="sm"
+                aria-label="Fiber sequence range"
+                placeholder="all"
+                value={mapState(settings, (st) => st.range ?? '')}
+                onInput={(range) => mode.set({ range })}
+              />
+            </div>
+          </div>
+        )}
+      </Show>
       <Choices
         label="Place"
         choices={[

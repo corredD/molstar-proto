@@ -304,9 +304,9 @@ export function paintParticles(
   painted: readonly PaintStroke[],
   fibers?: FiberSettingsMap,
   structures?: readonly PaintStructure[],
-  groups?: readonly PaintGroup[],
+  paintGroups?: readonly PaintGroup[],
 ): ParticleList {
-  const strokes = expandGroups(makeFibers(list, painted, fibers, structures), groups);
+  const strokes = expandGroups(makeFibers(list, painted, fibers, structures), paintGroups);
   const units = withUnits(list, strokes);
   let added = 0;
   for (const s of strokes) added += Math.floor(s.positions.length / 3);
@@ -331,7 +331,7 @@ export function paintParticles(
   compartments?.set(list.compartments!);
   const radii = list.radii ? new Float32Array(count) : undefined;
   radii?.set(list.radii!);
-  const sets = radii ? getParticleTargetGroups(list) : undefined;
+  const groups = radii ? getParticleTargetGroups(list) : undefined;
 
   let at = n;
   /** The fiber strokes' first copy and count, in order */
@@ -350,7 +350,7 @@ export function paintParticles(
       } else newFibers.push(at, k);
     }
     const radiusOf = (target: number) => {
-      const set = sets?.sets[sets.groupOfTarget.get(target) ?? -1];
+      const set = groups?.sets[groups.groupOfTarget.get(target) ?? -1];
       return set && OrderedSet.size(set) ? list.radii![OrderedSet.start(set)] : 0;
     };
     const radius = radiusOf(s.target);
