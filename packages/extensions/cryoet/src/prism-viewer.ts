@@ -33,7 +33,8 @@ export const CryoetSkill: ViewerSkill = {
     'targets_by_class gives each class (or another attribute: cc, score) its own target, to decorate classes apart.',
     'slice_tomogram shows a gray slice of a tomogram or tilt series (axis z steps through its images; contrast in σ).',
     'get_meshes lists the segmentation meshes (OBJ, PLY, VTP); style_mesh shows, hides, fades or colors one and draws',
-    'it as a surface, a wireframe or both.',
+    'it as a surface, a wireframe or both; it colors one by a volume of the scene (volume; sample surface, or mean, min',
+    'or max along the normal within ±depth Å; in σ; invert for a tomogram, whose protein is dark).',
   ].join('\n'),
   tools: [
     {
