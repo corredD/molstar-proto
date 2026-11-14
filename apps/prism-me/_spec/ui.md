@@ -236,22 +236,24 @@ on a tree row (its right-click or its ⋯), the same menu, in this order:
   of the same file is another entity, named with its build ("2PLV (assembly 1)") when the first has the name. A
   structure brush paints fibers too (**Fiber**, the same choices): their Rise and Twist in Paint once its first stroke
   made its entity where it paints; its rise its length along its principal axis until set (its units touching), no Bank.
-  Round 2 (Ludo, 2026-11-09): Alt with the usual gestures moves the camera while painting (Alt+left drag turns,
-  Alt+right drag pans, Alt+wheel zooms: the layer steps aside while Alt is held, the canvas's bindings take Alt until
-  the mode ends); **Place**: a membrane protein on the surface, anything else at a depth along the pointer's ray (from
-  the camera's focus; the plain wheel moves it a copy's diameter a notch, shown in the hint), Surface or Depth to
-  override; a click paints one copy. A copy of the brush follows the pointer (drawn in the scene, depth-tested, not
-  picked, in the entity's look color), where a click puts it and turned as it will be (the stroke's seed); hidden off
-  the canvas and while Alt is held. **Fiber**: an entity with fibers in its list paints a new fiber (its points its
-  fibers' step apart, a line on the canvas while drawn, each point turned as its fibers are: their axis along the way,
-  their twist a point); On or Off to override. A fiber's points are made from its path by the entity's **Fiber**
-  settings (round 3): Rise (Å a point), Twist (° a point), Jitter (± ° a point, random); in the entity's own Fiber
-  section and in Paint. A change makes every painted fiber of the entity again, one step; the file's fibers stay.
-  Default: the entity's fibers' step and twist. Round 4: Axis (Auto, X, Y, Z: the unit's own axis along the path) and
-  Offset (Å off the path, along a perpendicular of that axis, turned with the unit). The copy under the pointer is drawn
-  in the scene, depth-tested (round 4); the wheel's depth stays inside the camera's near and far planes. Round 5: Bank
-  (None, DNA, RNA: the units the fibers switch between, a letter each), and in Paint a Sequence (one-letter codes;
-  empty: at random) and its Range (`3-120`).
+  The mouse (paint-refine, Ludo 2026-11-13): a plain left click paints one copy, a plain left drag a stroke; every other
+  gesture is the viewer's camera as outside Paint (right drag pans, the wheel zooms, a modifier with the left drag as
+  its bindings say), and Alt+left drag turns (the canvas's bindings take Alt until the mode ends); **Alt+wheel** moves
+  the depth. **Place**: a membrane protein on the surface, anything else at a depth along the pointer's ray: the depth
+  of what is under the pointer (a particle, a structure, a mesh), elsewhere where it was (the camera's focus at the
+  start); Alt+wheel moves it a copy's diameter a notch (shown in the hint) and holds it for the next stroke; a stroke
+  keeps the depth of its first point. Surface or Depth to override. A copy of the brush follows the pointer (drawn in
+  the scene, depth-tested, not picked, in the entity's look color), where a click puts it and turned as it will be (the
+  stroke's seed), from the mode's start; hidden off the canvas. **Fiber**: an entity with fibers in its list paints a
+  new fiber (its points its fibers' step apart, a line on the canvas while drawn, each point turned as its fibers are:
+  their axis along the way, their twist a point); On or Off to override. A fiber's points are made from its path by the
+  entity's **Fiber** settings (round 3): Rise (Å a point), Twist (° a point), Jitter (± ° a point, random); in the
+  entity's own Fiber section and in Paint. A change makes every painted fiber of the entity again, one step; the file's
+  fibers stay. Default: the entity's fibers' step and twist. Round 4: Axis (Auto, X, Y, Z: the unit's own axis along the
+  path) and Offset (Å off the path, along a perpendicular of that axis, turned with the unit). The copy under the
+  pointer is drawn in the scene, depth-tested (round 4); the depth stays inside the camera's near and far planes. Round
+  5: Bank (None, DNA, RNA: the units the fibers switch between, a letter each), and in Paint a Sequence (one-letter
+  codes; empty: at random) and its Range (`3-120`).
 - **Grow from this instance…** (lane `grow`, 2026-11-11), on a particle, after Move this instance and Offset all like
   it: the particle the source of the next grow, its row's Grow section opened (§4; the rules in Status, Grow).
 - **Remove** (an object: with its file and labels).
