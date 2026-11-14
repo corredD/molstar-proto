@@ -322,7 +322,11 @@ const SelectionGroupByParam = () =>
 /** A walk's own fiber settings (paint-refine): absent, the entity's */
 const WalkFiberParams = (what: string) => ({
   rise: OptionalParam(
-    PD.Numeric(10, { min: 0.1, max: 1000, step: 0.1 }, { description: `${what}its units' rise, Å; absent: the entity's` }),
+    PD.Numeric(
+      10,
+      { min: 0.1, max: 1000, step: 0.1 },
+      { description: `${what}its units' rise, Å; absent: the entity's` },
+    ),
   ),
   twist: OptionalParam(
     PD.Numeric(
@@ -1323,7 +1327,11 @@ export class MesoscaleApi extends ApiArea {
     title: "Set a grown fiber's rise and twist",
     params: {
       particles: ListParam(),
-      grow: PD.Numeric(0, { step: 1 }, { description: 'The grow that made the fiber: its id (`mesoscale.grow`’s value)' }),
+      grow: PD.Numeric(
+        0,
+        { step: 1 },
+        { description: 'The grow that made the fiber: its id (`mesoscale.grow`’s value)' },
+      ),
       ...WalkFiberParams(''),
     },
     async run(values, ctx) {

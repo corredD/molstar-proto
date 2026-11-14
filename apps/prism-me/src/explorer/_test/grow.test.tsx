@@ -229,7 +229,9 @@ describe("A grown fiber's Rise and Twist (paint-refine)", () => {
     await until(() => count(v) === 3 + 10);
     // the slider follows the fiber's own as the state has it (the undo), not the drag's
     const box = () =>
-      host.querySelector<HTMLInputElement>('input[type=range][aria-label="Grow Rise"]')!.parentElement!.querySelector<HTMLInputElement>('input:not([type=range])')!;
+      host
+        .querySelector<HTMLInputElement>('input[type=range][aria-label="Grow Rise"]')!
+        .parentElement!.querySelector<HTMLInputElement>('input:not([type=range])')!;
     await until(() => box().value === '10');
     // another source: the fiber is not live anymore; Rise is the next grow's only
     m.growSource.set({ particles: hiv, index: 1 });
