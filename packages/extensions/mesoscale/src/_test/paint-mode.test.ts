@@ -234,6 +234,18 @@ describe('paint mode', () => {
     }
   });
 
+  it('Place Auto goes to the surface over a mesh (any brush), at a depth elsewhere (decisions 2)', () => {
+    for (const mesh of ['vesicle-ref', undefined]) {
+      const { mode, canvas, strokes, surfaces } = setup(0, { upright: false, mesh });
+      mode.start(brush);
+      canvas.dispatchEvent(pointer('pointerdown', { x: 10, y: 10 }));
+      canvas.dispatchEvent(pointer('pointerup', { x: 10, y: 10 }));
+      expect(strokes[0].mesh).toBe(mesh);
+      expect(surfaces).toEqual([!!mesh]);
+      mode.stop();
+    }
+  });
+
   it("the previous stroke's commit does not cancel the stroke drawn after it", async () => {
     const { mode, layer, canvas, strokes } = setup(0, { changeOnPaint: true });
     mode.start(brush);
