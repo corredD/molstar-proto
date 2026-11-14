@@ -555,7 +555,7 @@ describe('mesoscale.grow on a mesh', () => {
     }
   });
 
-  it("a fiber unit painted on a mesh grows Tiling and Sphere with its up (its offset direction) along the normal (decisions 1)", async () => {
+  it('a fiber unit painted on a mesh grows Tiling and Sphere with its up (its offset direction) along the normal (decisions 1)', async () => {
     const v = await viewer();
     const ref = entry(v).cell.transform.ref;
     // the tilted plane of round 3: through (0, 50, 0), its normal (1, 0, 1)/√2, +y along it
@@ -573,7 +573,13 @@ describe('mesoscale.grow on a mesh', () => {
     expectOk(await v.api.run('mesoscale.fiber', { entity: 'loose', axis: 'x' }));
     const positions = [0, 50, 0, 0, 90, 0];
     expectOk(
-      await v.api.run('mesoscale.paint', { entity: 'loose', positions, normals: [...n, ...n], surface: true, fiber: true }),
+      await v.api.run('mesoscale.paint', {
+        entity: 'loose',
+        positions,
+        normals: [...n, ...n],
+        surface: true,
+        fiber: true,
+      }),
     );
     const yAt = (i: number) => Vec3.transformQuat(Vec3(), Vec3.create(0, 1, 0), quat(drawn(v), i));
     const last = drawn(v).count - 1;
