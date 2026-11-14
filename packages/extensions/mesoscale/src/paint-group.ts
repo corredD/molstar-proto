@@ -64,7 +64,11 @@ const _inv = Quat();
  * no member mirrored); two members: x along their line; one: its own pose. Its members relative to that frame. Also
  * the pose that puts them back where they were.
  */
-export function makeGroup(id: number, name: string, picks: readonly GroupPick[]): { group: PaintGroup; pose: GroupPose } {
+export function makeGroup(
+  id: number,
+  name: string,
+  picks: readonly GroupPick[],
+): { group: PaintGroup; pose: GroupPose } {
   const n = picks.length;
   const center = Vec3();
   for (const p of picks) Vec3.add(center, center, Vec3.set(_v, p.position[0], p.position[1], p.position[2]));
@@ -235,7 +239,13 @@ export function expandGroups<S extends Posed>(
     const compartments = new Int32Array(k * L);
     for (let c = 0; c < k; ++c) {
       Vec3.set(P, s.positions[c * 3], s.positions[c * 3 + 1], s.positions[c * 3 + 2]);
-      Quat.set(Q, s.rotations[c * 4] ?? 0, s.rotations[c * 4 + 1] ?? 0, s.rotations[c * 4 + 2] ?? 0, s.rotations[c * 4 + 3] ?? 1);
+      Quat.set(
+        Q,
+        s.rotations[c * 4] ?? 0,
+        s.rotations[c * 4 + 1] ?? 0,
+        s.rotations[c * 4 + 2] ?? 0,
+        s.rotations[c * 4 + 3] ?? 1,
+      );
       for (let j = 0; j < L; ++j) {
         const at = c * L + j;
         Vec3.fromArray(p, leaves!.positions, j * 3);
@@ -253,7 +263,14 @@ export function expandGroups<S extends Posed>(
         compartments[at] = leaves!.compartments[j];
       }
     }
-    return { ...s, fiber: undefined, runs: undefined, positions, rotations, members: { targets, entities, compartments } };
+    return {
+      ...s,
+      fiber: undefined,
+      runs: undefined,
+      positions,
+      rotations,
+      members: { targets, entities, compartments },
+    };
   });
 }
 
@@ -323,7 +340,11 @@ export function groupCopyAt(
       if (m?.group === undefined) return undefined;
       // the member's pose: the copy's · its own
       const q = Quat.create(m.rotation[0], m.rotation[1], m.rotation[2], m.rotation[3]);
-      Vec3.add(position, position, Vec3.transformQuat(Vec3(), Vec3.create(m.position[0], m.position[1], m.position[2]), rotation));
+      Vec3.add(
+        position,
+        position,
+        Vec3.transformQuat(Vec3(), Vec3.create(m.position[0], m.position[1], m.position[2]), rotation),
+      );
       Quat.multiply(rotation, rotation, q);
       group = m.group;
       path += `.${j}`;

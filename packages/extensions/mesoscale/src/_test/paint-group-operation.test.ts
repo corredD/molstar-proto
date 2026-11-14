@@ -90,7 +90,7 @@ describe('mesoscale.group', () => {
     expect(drawn(v).count).toBe(10);
   });
 
-  it("paints the group at its own pose: its members where they were; at a pose P each at P · relative; one step", async () => {
+  it('paints the group at its own pose: its members where they were; at a pose P each at P · relative; one step', async () => {
     const v = await viewer();
     const g = await grouped(v);
     const before = drawn(v);
@@ -115,14 +115,19 @@ describe('mesoscale.group', () => {
     // a plane cluster of three, +z along the normal: each member at P · relative pose; P's +z the normal
     const P = Quat.fromArray(Quat(), params(v).strokes.at(-1)!.rotations, 0);
     group.members.forEach((m, j) => {
-      const want = Vec3.add(Vec3(), Vec3.transformQuat(Vec3(), Vec3.create(...(m.position as [number, number, number])), P), center);
+      const want = Vec3.add(
+        Vec3(),
+        Vec3.transformQuat(Vec3(), Vec3.create(...(m.position as [number, number, number])), P),
+        center,
+      );
       for (let c = 0; c < 3; ++c) expect(out.coordinates[(10 + j) * 3 + c]).toBeCloseTo(want[c], 3);
       // on the surface: its height along the normal its own z in the group
       expect(Vec3.dot(Vec3.sub(Vec3(), xyz(out, 10 + j), center), Vec3.create(0, 0, 1))).toBeCloseTo(m.position[2], 3);
       expect(out.targets[10 + j]).toBe(before.targets[7 + j]);
     });
     // the originals untouched
-    for (let i = 0; i < 3; ++i) for (let c = 0; c < 3; ++c) expect(out.coordinates[(7 + i) * 3 + c]).toBeCloseTo(was[i].p[c], 4);
+    for (let i = 0; i < 3; ++i)
+      for (let c = 0; c < 3; ++c) expect(out.coordinates[(7 + i) * 3 + c]).toBeCloseTo(was[i].p[c], 4);
     expectOk(await v.api.run('history.undo', {}));
     expect(drawn(v).count).toBe(10);
   });
@@ -149,7 +154,15 @@ describe('mesoscale.group', () => {
   it('grows a tiling from a group copy: every grown copy expands to the members', async () => {
     const v = await viewer();
     const g = await grouped(v);
-    expectOk(await v.api.run('mesoscale.paint', { entity: '', group: g.group, positions: [0, 0, 300], normals: [0, 0, 1], seed: 4 }));
+    expectOk(
+      await v.api.run('mesoscale.paint', {
+        entity: '',
+        group: g.group,
+        positions: [0, 0, 300],
+        normals: [0, 0, 1],
+        seed: 4,
+      }),
+    );
     // grown from any member of the copy (index 11): the copy's pose
     const r = await v.api.run('mesoscale.grow', { particles: ref(v), index: 11, mode: 'tiling', rings: 1 });
     expectOk(r);
@@ -164,14 +177,34 @@ describe('mesoscale.group', () => {
   it('nests: a group of a group copy and a copy expands to the leaves', async () => {
     const v = await viewer();
     const g = await grouped(v);
-    expectOk(await v.api.run('mesoscale.paint', { entity: '', group: g.group, positions: [0, 0, 300], normals: [0, 0, 1], seed: 4 }));
+    expectOk(
+      await v.api.run('mesoscale.paint', {
+        entity: '',
+        group: g.group,
+        positions: [0, 0, 300],
+        normals: [0, 0, 1],
+        seed: 4,
+      }),
+    );
     // a member of the group copy (11) stands for the whole copy; 2 a particle of the file
     const r = await v.api.run('mesoscale.group', { particles: ref(v), indices: [11, 2], name: 'Big' });
     expectOk(r);
     const big = r.value as { group: number; members: number };
     expect(big.members).toBe(2);
-    expect(params(v).groups!.find((x) => x.id === big.group)!.members.map((m) => m.group)).toEqual([g.group, undefined]);
-    expectOk(await v.api.run('mesoscale.paint', { entity: '', group: big.group, positions: [0, 0, -300], normals: [0, 0, 1], seed: 5 }));
+    expect(
+      params(v)
+        .groups!.find((x) => x.id === big.group)!
+        .members.map((m) => m.group),
+    ).toEqual([g.group, undefined]);
+    expectOk(
+      await v.api.run('mesoscale.paint', {
+        entity: '',
+        group: big.group,
+        positions: [0, 0, -300],
+        normals: [0, 0, 1],
+        seed: 5,
+      }),
+    );
     expect(drawn(v).count).toBe(13 + 4);
     expect(Array.from(drawn(v).targets.slice(13))).toEqual([1, 1, 2, 1]);
   });
@@ -213,13 +246,25 @@ describe('mesoscale.group', () => {
     const v = await viewer();
     const g = await grouped(v);
     expectOk(
-      await v.api.run('mesoscale.paint', { entity: '', group: g.group, positions: [0, 0, 300], normals: [0, 0, 1], seed: 4 }),
+      await v.api.run('mesoscale.paint', {
+        entity: '',
+        group: g.group,
+        positions: [0, 0, 300],
+        normals: [0, 0, 1],
+        seed: 4,
+      }),
     );
     const big = await v.api.run('mesoscale.group', { particles: ref(v), indices: [10, 2], name: 'Big' });
     expectOk(big);
     const id = (big.value as { group: number }).group;
     expectOk(
-      await v.api.run('mesoscale.paint', { entity: '', group: id, positions: [0, 0, -300], normals: [0, 0, 1], seed: 5 }),
+      await v.api.run('mesoscale.paint', {
+        entity: '',
+        group: id,
+        positions: [0, 0, -300],
+        normals: [0, 0, 1],
+        seed: 5,
+      }),
     );
     // 13..15 the inner copy's leaves, 16 the file particle's copy
     expectOk(await v.api.run('mesoscale.ungroup', { particles: ref(v), index: 14 }));
@@ -231,7 +276,15 @@ describe('mesoscale.group', () => {
   it('keeps the groups and their copies in a session', async () => {
     const v = await viewer();
     const g = await grouped(v);
-    expectOk(await v.api.run('mesoscale.paint', { entity: '', group: g.group, positions: [0, 0, 300], normals: [0, 0, 1], seed: 4 }));
+    expectOk(
+      await v.api.run('mesoscale.paint', {
+        entity: '',
+        group: g.group,
+        positions: [0, 0, 300],
+        normals: [0, 0, 1],
+        seed: 4,
+      }),
+    );
     const was = Array.from(drawn(v).coordinates);
     const snapshot = JSON.parse(JSON.stringify(v.plugin.state.data.getSnapshot()));
     await v.plugin.build().delete(ref(v)).commit();
@@ -246,12 +299,20 @@ describe('mesoscale.group', () => {
     const v = await viewer();
     const g = await grouped(v);
     expectOk(
-      await v.api.run('mesoscale.paint', { entity: '', group: g.group, positions: [0, 0, 300], normals: [0, 0, 1], seed: 4 }),
+      await v.api.run('mesoscale.paint', {
+        entity: '',
+        group: g.group,
+        positions: [0, 0, 300],
+        normals: [0, 0, 1],
+        seed: 4,
+      }),
     );
     const m = v.api.mesoscale!;
     expect(m.instanceAt(ref(v), 12)).toEqual({ first: 10, count: 3, group: 'Group 1' });
     expect(m.instanceAt(ref(v), 2)).toBeUndefined();
     m.startGroupPick(ref(v));
+    // the canvas in selection mode meanwhile (a click neither focuses the camera nor resets it)
+    expect(v.plugin.selectionMode).toBe(true);
     expect(m.groupPick.toggle(ref(v), 12)).toBe(true);
     expect(m.groupPick.toggle(ref(v), 2)).toBe(true);
     expect(m.groupPick.state.value?.instances).toEqual([
@@ -269,6 +330,12 @@ describe('mesoscale.group', () => {
     // a brush set (headless: no canvas to start on) stops the picking
     m.paintMode.brush.set({ particles: ref(v), entity: g.group, name: 'Group 1', group: g.group });
     expect(m.groupPick.state.value).toBeUndefined();
+    expect(v.plugin.selectionMode).toBe(false);
     m.paintMode.stop();
+    // leaving selection mode ends the picking too (the explorer's Esc); one on before stays on
+    v.plugin.selectionMode = true;
+    m.startGroupPick(ref(v));
+    m.groupPick.stop();
+    expect(v.plugin.selectionMode).toBe(true);
   });
 });

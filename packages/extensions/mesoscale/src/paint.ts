@@ -864,10 +864,13 @@ const ParticleListPainted = PluginStateTransform.BuiltIn({
       const objects = await loadStructures(plugin, ctx, params.structures ?? [], c);
       Object.assign(c, { input: a.data, objects });
       const list = withStructures(a.data, params.structures ?? [], objects);
-      return new SO.Particle.List(paintParticles(list, params.strokes, params.fibers, params.structures, params.groups), {
-        label: a.label,
-        description: a.description,
-      });
+      return new SO.Particle.List(
+        paintParticles(list, params.strokes, params.fibers, params.structures, params.groups),
+        {
+          label: a.label,
+          description: a.description,
+        },
+      );
     });
   },
   update({ a, b, newParams, oldParams, cache }, plugin: PluginContext) {

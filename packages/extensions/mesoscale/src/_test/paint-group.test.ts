@@ -95,7 +95,11 @@ describe('makeGroup', () => {
         P.position,
       );
       for (let c = 0; c < 3; ++c) expect(out.coordinates[at * 3 + c]).toBeCloseTo(want[c], 4);
-      const turn = Quat.multiply(Quat(), P.rotation, Quat.create(m.rotation[0], m.rotation[1], m.rotation[2], m.rotation[3]));
+      const turn = Quat.multiply(
+        Quat(),
+        P.rotation,
+        Quat.create(m.rotation[0], m.rotation[1], m.rotation[2], m.rotation[3]),
+      );
       sameTurn(out.rotations!.slice(at * 4, at * 4 + 4), turn);
     });
   });
@@ -161,7 +165,13 @@ describe('expandGroups and groupCopyAt', () => {
     expect(strokeCounts(list, [plain, stroke], undefined, undefined, [group])).toEqual([1, 6]);
     expect(expandGroups([stroke], [group])[0].positions.length).toBe(18);
     expect(groupCopyAt([plain, stroke], [group], 0)).toBeUndefined();
-    expect(groupCopyAt([plain, stroke], [group], 1)).toMatchObject({ stroke: 1, copy: 0, first: 1, count: 3, group: 7 });
+    expect(groupCopyAt([plain, stroke], [group], 1)).toMatchObject({
+      stroke: 1,
+      copy: 0,
+      first: 1,
+      count: 3,
+      group: 7,
+    });
     expect(groupCopyAt([plain, stroke], [group], 6)).toMatchObject({ stroke: 1, copy: 1, first: 4, count: 3 });
     expect(groupCopyAt([plain, stroke], [group], 7)).toBeUndefined();
   });

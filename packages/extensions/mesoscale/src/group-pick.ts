@@ -11,7 +11,8 @@ import { type ObservableState, observableState } from '@molstar/prism-ui/reactiv
 
 // Pick instances (paint-group; progress/2026-11-13-paint-group.md): while on, a click on a particle of the list adds
 // or removes its instance (a group copy whole), shown selected in 3D; Make group (`mesoscale.group`) takes them. View
-// state: no step.
+// state: no step. The canvas is in selection mode meanwhile (a plain click neither moves the camera nor resets it; its
+// select toggle is overridden by the instances' selection, set after it); leaving that mode ends the picking.
 
 /** An instance: its particles as drawn (`first`, `count`: a group copy's leaves, else one) */
 export interface PickedInstance {
@@ -34,9 +35,14 @@ export class InstancePick {
     private readonly instanceAt: (particles: string, index: number) => PickedInstance | undefined,
   ) {}
 
+  /** Whether the canvas was in selection mode before the picking (it is left as it was) */
+  private selecting = false;
+
   /** Starts picking in a list (the instances picked before let go) */
   start(particles: string) {
+    if (!this.state.value) this.selecting = this.plugin.selectionMode;
     this.state.set({ particles, instances: [] });
+    if (!this.plugin.selectionMode) this.plugin.selectionMode = true;
     this.mark();
   }
 
@@ -44,6 +50,7 @@ export class InstancePick {
     if (!this.state.value) return;
     this.state.set(undefined);
     this.plugin.managers.interactivity.lociSelects.deselectAll();
+    if (!this.selecting && this.plugin.selectionMode) this.plugin.selectionMode = false;
   }
 
   /** A click on particle `index` of `particles`: its instance added or removed; false when not picking in that list */

@@ -1089,7 +1089,11 @@ export class MesoscaleApi extends ApiArea {
         }),
       ),
       group: OptionalParam(
-        PD.Numeric(0, { step: 1 }, { description: 'The brush: a group of the list by id (mesoscale.group), all its members' }),
+        PD.Numeric(
+          0,
+          { step: 1 },
+          { description: 'The brush: a group of the list by id (mesoscale.group), all its members' },
+        ),
       ),
       positions: PD.Value<number[]>([], { description: 'Where the copies go: x, y, z per copy (Å, the scene)' }),
       normals: OptionalParam(
@@ -1171,7 +1175,8 @@ export class MesoscaleApi extends ApiArea {
       }
       // a structure painted into a scene without particles: Mol*'s particles (opt-in) loaded first
       if (structure) await ctx.extensions.ensureFor({ transformers: ['ms-plugin.particles-representation-3d'] });
-      const into = group !== undefined ? groupInto(ctx, particles, group) : paintInto(ctx, structure, particles, entity);
+      const into =
+        group !== undefined ? groupInto(ctx, particles, group) : paintInto(ctx, structure, particles, entity);
       if (isFailure(into)) return into;
       const { l, data, brush, name } = into;
       // a range with no letter of the sequence in it (review X1)
@@ -1302,7 +1307,15 @@ export class MesoscaleApi extends ApiArea {
           seen.add(key);
           const { position, rotation } = at.copy.pose;
           const entity = data.entityInfo?.size ? at.group.id : -1;
-          picks.push({ target: at.group.id, entity, compartment: -1, group: at.group.id, position, rotation, radius: at.group.radius });
+          picks.push({
+            target: at.group.id,
+            entity,
+            compartment: -1,
+            group: at.group.id,
+            position,
+            rotation,
+            radius: at.group.radius,
+          });
           continue;
         }
         if (seen.has(`#${index}`)) continue;
@@ -2750,9 +2763,11 @@ function describe(ctx: Pick<ApiContext, 'plugin'>, l: ParticleListRef, asked?: M
     groupBy,
     hasCompartments: !!data.compartmentInfo?.size,
     paintGroups: (
-      (decoratorUnder(ctx.plugin.state.data, l.cell.transform.ref, ParticleListPainted)?.transform.params as
-        | PaintedParams
-        | undefined)?.groups ?? []
+      (
+        decoratorUnder(ctx.plugin.state.data, l.cell.transform.ref, ParticleListPainted)?.transform.params as
+          | PaintedParams
+          | undefined
+      )?.groups ?? []
     ).map((g) => ({ id: g.id, name: g.name, members: g.members.length })),
   };
 }

@@ -99,7 +99,8 @@ export const MesoscaleSkill: ViewerSkill = {
     {
       id: 'ungroup_mesoscale_copy',
       operation: 'mesoscale.ungroup',
-      description: 'Ungroups a painted group copy (a particle of it by index): its members instances of their own, one step.',
+      description:
+        'Ungroups a painted group copy (a particle of it by index): its members instances of their own, one step.',
     },
     {
       id: 'grow_mesoscale_copies',
