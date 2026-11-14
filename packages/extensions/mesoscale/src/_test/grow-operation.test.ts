@@ -237,6 +237,20 @@ describe('mesoscale.grow', () => {
     expect(Array.from(drawn(v).coordinates.slice(21, 36))).toEqual(other);
   });
 
+  it('a walk of an entity with fibers takes the rise its fibers are drawn with, not their measured step (round 2)', async () => {
+    const v = await viewer();
+    const ref = entry(v).cell.transform.ref;
+    expectOk(await v.api.run('mesoscale.grow', { particles: ref, index: 3, mode: 'walk', steps: 8, seed: 1 }));
+    expectOk(await v.api.run('mesoscale.grow', { particles: ref, index: 3, mode: 'walk', steps: 20, seed: 2 }));
+    // its path's points 10 Å apart (the entity's rise), not the first fiber's step as the drawn list's floats measure it
+    const ps = strokes(v)[1].positions;
+    for (let i = 1; i < ps.length / 3; ++i) {
+      const d = Math.hypot(ps[i * 3] - ps[i * 3 - 3], ps[i * 3 + 1] - ps[i * 3 - 2], ps[i * 3 + 2] - ps[i * 3 - 1]);
+      expect(d).toBeCloseTo(10, 12);
+    }
+    expect(drawn(v).count).toBe(7 + 8 + 20);
+  });
+
   it('refuses a grown fiber of more units than a grow makes (review 9): no step', async () => {
     const v = await viewer();
     const ref = entry(v).cell.transform.ref;

@@ -1415,9 +1415,10 @@ export class MesoscaleApi extends ApiArea {
       } else {
         // a fiber of the source's: its rise and axis (its Fiber Axis, else its own fibers', else its principal axis;
         // as `makeFiber` turns its units, review S6), in the list's frame
-        const id = brushIdOf(data, { target, entity });
+        const base = src.fibers;
+        const id = brushIdOf(base, { target, entity });
         const structures = paintedStructures(state, l.cell.transform.ref);
-        const fiber = fiberSettingsOf(data, id, target, paintedFibers(state, l.cell.transform.ref), structures);
+        const fiber = fiberSettingsOf(base, id, target, paintedFibers(state, l.cell.transform.ref), structures);
         // its own rise, twist and jitter when given (paint-refine), else the entity's
         own = ownFiberOf(v);
         if (own.rise !== undefined && !(own.rise > 0)) return ApiResult.fail('invalid', 'The rise is above 0 Å.');
@@ -1425,7 +1426,7 @@ export class MesoscaleApi extends ApiArea {
         const axis =
           fiber.axis !== 'auto'
             ? Vec3.create(fiber.axis === 'x' ? 1 : 0, fiber.axis === 'y' ? 1 : 0, fiber.axis === 'z' ? 1 : 0)
-            : (fiberConventionOf(data, id)?.axis ?? principalAxisOf(data.targetMapping?.get(target)));
+            : (fiberConventionOf(base, id)?.axis ?? principalAxisOf(base.targetMapping?.get(target)));
         if (mode === 'walk') {
           const p = { steps: Math.floor(v.steps ?? 20), persistence: v.persistence ?? 30 };
           // a fiber of two points or more (a point alone would be a copy unturned; review N1)
@@ -2732,7 +2733,10 @@ export function growSourceOf(state: State, l: ParticleListRef, index: number) {
     translation: Vec3.fromArray(Vec3(), moved.coordinates, 0),
     turn: Quat.fromArray(Quat(), moved.rotations!, 0),
   };
-  return { data, target, entity, compartment, pose, radius, name, surface, instance };
+  // the list its painted fibers are made from (the painted decorator's input, as `paintParticles` reads it): the drawn
+  // list's own painted fibers would give their step as the rise (round 2: a grow made again read its own stroke)
+  const fibers = input?.targetInfo.has(target) ? input : data;
+  return { data, target, entity, compartment, pose, radius, name, surface, instance, fibers };
 }
 
 /**
