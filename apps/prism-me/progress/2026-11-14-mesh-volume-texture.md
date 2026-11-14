@@ -65,3 +65,49 @@ up. Also a decimated mesh (e.g. 1/10 of the cells) to show Texture keeps the det
 ## Out of scope
 
 UV textures (a VTP has no UVs); coloring other shapes than meshes; changing the per-vertex path.
+
+## Stopped (2026-11-14, before code)
+
+The lane stopped at the reading step, as the brief allows ("stop and report when the work turns out different").
+Nothing was built. The Texture toggle cannot be built as the brief describes it without library changes larger than
+the brief. There are two reasons:
+
+1. **Mol*'s `volume` color type samples per vertex, not per pixel.** `tColorGrid` is read only in the vertex shader:
+   `packages/graphics/src/gl/webgl/shader/chunks/assign-color-varying.glsl.ts:40-44` samples it into `vColor`, and that
+   chunk is included only by `mesh.vert.ts:59`. `vColor` is a varying (`common.glsl.ts:14`, `dColorType_grid` →
+   `dColorType_varying`), so the fragment shader reads the interpolated value
+   (`assign-material-color.glsl.ts:26-27`). No fragment shader samples `tColorGrid`. Color smoothing uses the same
+   path. A triangle therefore interpolates its three vertices' grid colors, which gives the same detail as Vertex.
+   Wired as the brief describes, the Texture toggle would change nothing on screen.
+2. **A Shape representation takes no grid theme.** `repr/shape/representation.ts:146` sets its theme from
+   `ShapeUtils.getTheme` (`ShapeGroupColorTheme`, `geo/shape/shape.ts:26-31`), and its `setTheme` (`:401-407`) ignores
+   any other theme. A `Shape` has no field that can carry a `ColorVolume`. The getter also has no WebGL context to
+   make the grid's texture.
+
+**Measured (one number for the choice):** the capsid VTP's edges at Scale 10 are a mean of 20.8 Å (median 20.9, p90
+23.9). That is 1.56 voxels of 13.36 Å. The current path also samples per cell and averages the cells to the vertices.
+This makes its detail coarser than the edges. On the full mesh, per-pixel coloring would gain about 1.5× in linear
+detail. On a decimated mesh it would gain more.
+
+## Options for Ludo
+
+- **A: a library lane from `origin/master`, which upstream could want.** Add a fragment-stage grid lookup behind a new
+  define or color type, for example `volumeFragment`:
+  - Pass the local position (`volume`) or the model position (`volumeInstance`) to the fragment shader as a varying.
+  - Declare `tColorGrid` and `uColorGrid*` in the fragment params.
+  - Include `texture3d-from-2d-linear` in the fragment shader and sample there in `assign-material-color`.
+  - Make palette, overpaint, color levels and emissive behave as the varying path does.
+  - Add a hook so that a `Shape` can supply a color grid (its theme as a grid theme, with the texture made where the
+    representation has its WebGL context).
+
+  Estimate: about 150–250 library lines, with shader tests. This lane then sits on top of it at the brief's ~300–450
+  lines.
+- **B: in cryoet only, with no shader change.** Subdivide the triangles longer than about one voxel, then color the
+  vertices as now. The Look's toggle becomes "Detail: Mesh | Voxel". This multiplies the vertex count by about
+  (edge / voxel)², which is about 2.4× on the capsid and more on a decimated mesh. It trades memory for detail, and
+  picking or labels must map the new vertices back to cells. This path is outside the brief's "how", so it is listed
+  here for Ludo to choose and is not a recommendation.
+
+## Size
+
+0 production lines, against the brief's ~300–450.
