@@ -79,6 +79,7 @@ import {
   HelixAxes,
   type HelixAxis,
   helixPath,
+  type SpiralInfo,
   spiralPath,
   SurfaceHit,
   type ListMove,
@@ -1437,6 +1438,8 @@ export class MesoscaleApi extends ApiArea {
       let normals: number[] | undefined;
       /** A fiber's units (`makeFiber`'s: its path's length a rise each), its count (review S2) */
       let units: number | undefined;
+      /** A spiral's units skipped (crowding an arm of its own; round 3b) */
+      let skip: number[] | undefined;
       if (mode === 'crystal') {
         const p = {
           a: v.a ?? diameter,
@@ -1530,7 +1533,7 @@ export class MesoscaleApi extends ApiArea {
           if (!(p.count >= 2)) return ApiResult.fail('invalid', 'Give 2 copies or more.');
           if (p.count > MaxGrown) return tooMany(p.count);
           const scaled = rise * (move?.scale ?? 1);
-          const info = { turns: 0 };
+          const info: SpiralInfo = { turns: 0 };
           const params = { ...p, step: scaled };
           if (on) {
             normals = [];
@@ -1539,10 +1542,11 @@ export class MesoscaleApi extends ApiArea {
           } else {
             path = spiralPath(scene, surfaceAxis(), params, undefined, undefined, info)!;
           }
-          // the turns it reached: for the section to show
-          Object.assign(sizes, p, { turns: Math.round(info.turns * 100) / 100 });
+          // the turns it reached and its copies made: for the section to show
+          Object.assign(sizes, p, { turns: Math.round(info.turns * 100) / 100, copies: info.copies ?? 0 });
           toListFrame(move, path, normals);
-          units = Math.floor(pathLength(path) / rise + 1e-6) + 1;
+          units = info.copies ?? 0;
+          if (info.skip?.length) skip = info.skip;
           if (units < 2) {
             return ApiResult.fail(
               'invalid',
@@ -1615,7 +1619,13 @@ export class MesoscaleApi extends ApiArea {
         positions: path ?? made!.positions,
         rotations: path ? [] : made!.rotations,
         ...(path
-          ? { fiber: true, seed, ...(Object.keys(own).length ? { own } : {}), ...(normals ? { normals } : {}) }
+          ? {
+              fiber: true,
+              seed,
+              ...(Object.keys(own).length ? { own } : {}),
+              ...(normals ? { normals } : {}),
+              ...(skip ? { skip } : {}),
+            }
           : {}),
         grow: {
           mode,

@@ -69,6 +69,11 @@ export interface PaintStroke {
    * its units' up (their offset direction) follows it, turned by the twist
    */
   readonly normals?: readonly number[];
+  /**
+   * A fiber's units left out (their indices along it; a spiral's crowding an arm of its own, grow-helix round 3b): the
+   * others turned as along the whole chain (their twist by their place along it)
+   */
+  readonly skip?: readonly number[];
 }
 
 /** A fiber's sequence or a range of it (Round 5): one-letter codes, 1-based, `end` inclusive */
@@ -369,6 +374,25 @@ export function paintParticles(
   };
 }
 
+/** A fiber's units but those `skip` names (their indices), each kept as it was made */
+function dropUnits(made: { positions: number[]; rotations: number[] }, skip: readonly number[] | undefined) {
+  if (!skip?.length) return made;
+  const gone = new Set(skip);
+  const positions: number[] = [];
+  const rotations: number[] = [];
+  for (let i = 0; i < made.positions.length / 3; ++i) {
+    if (gone.has(i)) continue;
+    positions.push(made.positions[i * 3], made.positions[i * 3 + 1], made.positions[i * 3 + 2]);
+    rotations.push(
+      made.rotations[i * 4],
+      made.rotations[i * 4 + 1],
+      made.rotations[i * 4 + 2],
+      made.rotations[i * 4 + 3],
+    );
+  }
+  return { positions, rotations };
+}
+
 /** The copies each stroke makes as the painted decorator makes them (a fiber's units every rise along its path) */
 export function strokeCounts(
   list: ParticleList,
@@ -399,7 +423,7 @@ function makeFibers(
       axes.set(id, axis);
     }
     const settings = { ...fiberSettingsOf(list, id, s.target, given, structures), ...s.own };
-    const made = makeFiber(s.positions, settings, axis, s.seed ?? 0, s.normals);
+    const made = dropUnits(makeFiber(s.positions, settings, axis, s.seed ?? 0, s.normals), s.skip);
     // a bank's units only where the brush is an entity (a list without: its targets are its brushes)
     // and an entity of its own (review M2: -1, none, would give ids below the list's)
     const bank = list.entityInfo?.size && s.entity >= 0 && settings.bank !== 'none' ? settings.bank : undefined;

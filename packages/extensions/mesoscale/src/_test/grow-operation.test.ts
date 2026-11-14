@@ -1132,6 +1132,35 @@ describe('mesoscale.grow spiral', () => {
     expect(drawn(v).count).toBe(7 + 30);
   });
 
+  it('skips the copies crowding an earlier arm and goes on (round 3b): its skips with its stroke, the rest turned as before', async () => {
+    const v = await viewer();
+    const ref = entry(v).cell.transform.ref;
+    expectOk(await v.api.load.files({ files: [new File([sphereObj(100, Vec3.create(-80, 0, 0))], 'vesicle.obj')] }));
+    const { repr } = meshCells(v);
+    const spiral = { particles: ref, index: 2, mesh: repr, mode: 'spiral', rise: 8, spacing: 20, twist: 15 };
+    const r = await v.api.run('mesoscale.grow', { ...spiral, count: 400 });
+    expectOk(r);
+    const [stroke] = strokes(v);
+    expect(stroke.skip?.length).toBeGreaterThan(0);
+    const made = (r.value as { count: number }).count;
+    expect(drawn(v).count).toBe(7 + made);
+    expect((stroke.grow!.params as { copies: number }).copies).toBe(made);
+    // the copies kept turned as in the chain unskipped (by their place along it): Twist 15° a unit, so two kept a
+    // skip apart are 30° apart
+    const list = drawn(v);
+    const first = stroke.skip![0];
+    const angle = (a: Quat, b: Quat) => (2 * Math.acos(Math.min(1, Math.abs(Quat.dot(a, b)))) * 180) / Math.PI;
+    if (!stroke.skip!.includes(first + 1) && first > 0) {
+      // units first - 1 and first + 1 are copies first - 1 and first (as drawn)
+      expect(angle(quat(list, 7 + first - 1), quat(list, 7 + first))).toBeGreaterThan(20);
+    }
+    // fewer copies: the first of them, the same skips before
+    expectOk(await v.api.run('mesoscale.grow', { ...spiral, count: 100, replace: (r.value as { id: number }).id }));
+    expect(Array.from(drawn(v).coordinates.slice(21, 107 * 3))).toEqual(
+      Array.from(list.coordinates.slice(21, 107 * 3)),
+    );
+  });
+
   it('rolls over a vesicle from the source, each copy on it, its normals kept; refuses no spacing or count', async () => {
     const v = await viewer();
     const ref = entry(v).cell.transform.ref;
