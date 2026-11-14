@@ -30,7 +30,6 @@ export interface SymmetryParams {
 
 const Z = Vec3.create(0, 0, 1);
 const phi = (1 + Math.sqrt(5)) / 2;
-const unit = (x: number, y: number, z: number) => Vec3.normalize(Vec3(), Vec3.create(x, y, z));
 const turn = (axis: Vec3, angle: number) => Quat.setAxisAngle(Quat(), Vec3.normalize(Vec3(), axis), angle);
 
 /** A turn's key: q and −q the same (its first part not zero, of w, x, y, z, positive), to 1e-6 */

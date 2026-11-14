@@ -16,6 +16,7 @@ import { derive } from '@molstar/prism-ui/reactive/state';
 import type { ReadonlyState } from '@molstar/prism-ui/reactive/readonly-state';
 import { classes } from './_generated/controls.module.css.js';
 import { type GrowRecord, spiralTurns, tilingTotal } from './grow.js';
+import { symmetryContact } from './grow-symmetry.js';
 import {
   type GraphicsInfo,
   type GraphicsMode,
@@ -581,6 +582,19 @@ const GrowModeChoices = [
   { id: 'crystal', label: 'Crystal', title: "A lattice in the source's frame, each copy turned as the source" },
   { id: 'tiling', label: 'Tiling', title: "A plane of copies in the source's own plane, ring by ring" },
   { id: 'sphere', label: 'Sphere', title: 'Copies at random in a ball about the source' },
+  {
+    id: 'symmetry',
+    label: 'Symmetry',
+    title: 'Copies by a point group (Cn, Dn, T, O, I) about a center a Radius from the source',
+  },
+];
+
+const SymmetryGroupChoices = [
+  { id: 'c', label: 'Cn', title: 'Cyclic: n copies about an axis (a ring)' },
+  { id: 'd', label: 'Dn', title: 'Dihedral: 2n, Cn and n 2-folds across its axis (a barrel)' },
+  { id: 't', label: 'T', title: 'Tetrahedral: 12' },
+  { id: 'o', label: 'O', title: 'Octahedral: 24' },
+  { id: 'i', label: 'I', title: 'Icosahedral: 60 (a shell)' },
 ];
 
 /** A grow's record as the Grow section's settings (round 2: the section follows the live grow back) */
@@ -626,11 +640,19 @@ function settingsOfGrow(g: GrowRecord): Partial<GrowSettings> {
       ['radius', 'radius'],
       ['turn', 'turn'],
     ],
+    symmetry: [
+      ['group', 'group'],
+      ['n', 'n'],
+      ['radius', 'symmetryRadius'],
+      ['side', 'side'],
+      ['axis', 'symmetryAxis'],
+    ],
   };
   const out: Record<string, unknown> = { mode: g.mode };
   // On: the grow's mesh (a crystal grows in space whatever On says)
   if (g.mode !== 'crystal') out.mesh = g.mesh?.ref;
   for (const [from, to] of keys[g.mode]) if (p[from] !== undefined) out[to] = p[from];
+  if (g.mode === 'symmetry') out.snap = p.snap === 1;
   return out as Partial<GrowSettings>;
 }
 
@@ -1091,6 +1113,65 @@ export function GrowBlock(props: { area: MesoscaleApi; api: ViewerApi; particles
                     active={mapState(settings, (s) => s.turn)}
                     onPick={(id) => set({ turn: id as GrowSettings['turn'] })}
                   />
+                </div>
+              )}
+            </Show>
+            <Show when={mode('symmetry')}>
+              {() => (
+                <div class={classes.tight}>
+                  <Choices
+                    label="Group"
+                    choices={SymmetryGroupChoices}
+                    active={mapState(settings, (s) => s.group)}
+                    onPick={(id) => set({ group: id as GrowSettings['group'] })}
+                  />
+                  <Show when={mapState(settings, (s) => s.group === 'c' || s.group === 'd')}>
+                    {() => number('n', 'n', 'Cn: n copies; Dn: 2n (the source counted)', { min: 2, max: 60, step: 1 })}
+                  </Show>
+                  {number(
+                    'symmetryRadius',
+                    'Radius',
+                    "The center's distance from the source along its axis, Å (unset: the copies touching)",
+                    { min: 1, max: 5000, scale: 'log', unit: 'Å' },
+                    () => {
+                      const s = settings.value;
+                      return Math.round((diameter() / symmetryContact(s.group, s.n)) * 10) / 10;
+                    },
+                  )}
+                  <Choices
+                    label="Side"
+                    choices={[
+                      { id: 'inside', label: 'Inside', title: 'The center against its axis (a subunit pointing out)' },
+                      { id: 'outside', label: 'Outside', title: 'The center along its axis' },
+                    ]}
+                    active={mapState(settings, (s) => s.side)}
+                    onPick={(id) => set({ side: id as GrowSettings['side'] })}
+                  />
+                  {line(
+                    'Axis',
+                    "The group's principal axis through the center: Auto, across the source's (it sits on the shell); View, toward the viewer",
+                    <Select
+                      size="sm"
+                      over
+                      aria-label="Grow Symmetry Axis"
+                      options={HelixAxisOptions}
+                      value={mapState(settings, (s) => s.symmetryAxis)}
+                      onChange={(axis) => set({ symmetryAxis: axis as GrowSettings['symmetryAxis'] })}
+                    />,
+                  )}
+                  <Show when={mapState(chosen, (m) => !!m)}>
+                    {() => (
+                      <Choices
+                        label="Snap"
+                        choices={[
+                          { id: 'off', label: 'Exact', title: 'The copies where the group puts them' },
+                          { id: 'on', label: 'Snap', title: 'Each copy projected onto the mesh, turned to its normal' },
+                        ]}
+                        active={mapState(settings, (s) => (s.snap ? 'on' : 'off'))}
+                        onPick={(id) => set({ snap: id === 'on' })}
+                      />
+                    )}
+                  </Show>
                 </div>
               )}
             </Show>

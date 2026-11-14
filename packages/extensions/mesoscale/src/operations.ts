@@ -91,6 +91,7 @@ import {
   tilingTotal,
   walkPath,
 } from './grow.js';
+import { type SymmetryGroup, SymmetryGrowParams, symmetryContact, symmetryPoses } from './grow-symmetry.js';
 import { meshAxis, sceneMesh, sceneMeshes, sceneMeshSurface } from './mesh-surface.js';
 import { isMembranePath } from './pick-surface.js';
 import {
@@ -265,6 +266,13 @@ export interface GrowSettings {
   readonly rise?: number;
   readonly twist?: number;
   readonly jitter?: number;
+  /** A symmetry (grow-symmetry.ts): its group, n (Cn, Dn), Radius (unset: touching), Side, principal axis, Snap on a mesh */
+  readonly group: SymmetryGroup;
+  readonly n: number;
+  readonly symmetryRadius?: number;
+  readonly side: 'inside' | 'outside';
+  readonly symmetryAxis: HelixAxis;
+  readonly snap: boolean;
 }
 
 export const DefaultGrowSettings: GrowSettings = {
@@ -285,6 +293,11 @@ export const DefaultGrowSettings: GrowSettings = {
   hand: 'right',
   direction: 'up',
   axis: 'auto',
+  group: 'c',
+  n: 6,
+  side: 'inside',
+  symmetryAxis: 'auto',
+  snap: false,
 };
 
 /** `mesoscale.grow`'s params of a source and the settings: the mode's own only */
@@ -296,6 +309,7 @@ export function growParams(source: GrowSource, s: GrowSettings) {
     crystal: ['a', 'b', 'c', 'alpha', 'beta', 'gamma', 'na', 'nb', 'nc'],
     tiling: ['pattern', 'spacing', 'rings'],
     sphere: ['count', 'radius', 'turn'],
+    symmetry: ['group', 'n', 'symmetryRadius', 'side', 'symmetryAxis', 'snap'],
   };
   const out: Record<string, unknown> = { particles: source.particles, index: source.index, mode: s.mode };
   for (const k of [...own[s.mode], 'seed' as const]) if (s[k] !== undefined) out[k] = s[k];
@@ -1245,6 +1259,7 @@ export class MesoscaleApi extends ApiArea {
           ['crystal', "Crystal: a lattice in the source's frame"],
           ['tiling', "Tiling: a plane of copies in the source's own plane"],
           ['sphere', 'Sphere: copies at random in a ball about the source'],
+          ['symmetry', 'Symmetry: copies by a point group (Cn, Dn, T, O, I) about a center a Radius from the source'],
         ] as const,
         { description: 'The rule' },
       ),
@@ -1340,10 +1355,11 @@ export class MesoscaleApi extends ApiArea {
           ['source', 'As the source'],
         ] as const),
       ),
+      ...SymmetryGrowParams,
       mesh: OptionalParam(
         PD.Text('', {
           description:
-            'Grow on a mesh of the scene (OBJ, PLY, VTP) by state ref or file name: Tiling, Random walk, Helix, Spiral, Sphere; absent: in space',
+            'Grow on a mesh of the scene (OBJ, PLY, VTP) by state ref or file name: Tiling, Random walk, Helix, Spiral, Sphere, Symmetry (with Snap); absent: in space',
         }),
       ),
       replace: OptionalParam(
@@ -1366,6 +1382,10 @@ export class MesoscaleApi extends ApiArea {
           hand?: 'right' | 'left';
           direction?: 'up' | 'down';
           axis?: HelixAxis;
+          group?: SymmetryGroup;
+          side?: 'inside' | 'outside';
+          symmetryAxis?: HelixAxis;
+          snap?: boolean;
         };
       const { particles, index, mode } = values;
       const l = oneList(ctx, particles || undefined);
@@ -1488,6 +1508,41 @@ export class MesoscaleApi extends ApiArea {
         made = spherePoses(scene, p, seed, on && { ...on, axis: surfaceAxis() });
         if (!made) return offMesh();
         Object.assign(sizes, p);
+      } else if (mode === 'symmetry') {
+        // a point group about a center a Radius from the source along paint's axis (grow-symmetry.ts); on a mesh, Snap
+        const group = v.group ?? 'c';
+        const cyclic = group === 'c' || group === 'd';
+        const n = Math.floor(v.n ?? 6);
+        if (cyclic && !(n >= 2 && n <= 60)) return ApiResult.fail('invalid', 'Give n from 2 to 60.');
+        // unset: the copies touching (their nearest two a diameter apart)
+        const p = {
+          group,
+          n,
+          radius: v.symmetryRadius ?? diameter / symmetryContact(group, n),
+          side: v.side ?? 'inside',
+        };
+        if (!(p.radius > 0)) return ApiResult.fail('invalid', 'The radius is above 0 Å.');
+        const which = v.symmetryAxis ?? 'auto';
+        const camera = ctx.plugin.canvas3d?.camera.state;
+        const direction =
+          which === 'auto'
+            ? undefined
+            : which === 'view'
+              ? camera
+                ? Vec3.sub(Vec3(), camera.position, camera.target)
+                : Vec3.create(0, 0, 1)
+              : Vec3.create(which === 'x' ? 1 : 0, which === 'y' ? 1 : 0, which === 'z' ? 1 : 0);
+        const snap = v.snap && on ? on : undefined;
+        made = symmetryPoses(scene, surfaceAxis(), p, direction, snap);
+        if (!made) {
+          return ApiResult.fail(
+            'invalid',
+            `${name} #${index} is on an axis of the group: its copies would coincide.`,
+            'Another Axis, or Auto.',
+          );
+        }
+        Object.assign(sizes, { group, ...(cyclic ? { n } : {}), radius: p.radius, side: p.side, axis: which });
+        if (snap) sizes.snap = 1;
       } else {
         // a fiber of the source's: its rise and axis (its Fiber Axis, else its own fibers', else its principal axis;
         // as `makeFiber` turns its units, review S6), in the list's frame
