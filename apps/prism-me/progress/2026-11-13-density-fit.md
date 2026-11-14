@@ -115,7 +115,7 @@ Ludo's morning try.
   the depth.
 - `fit.scaling.ts`: N fitted copies, n and 4n, the quadratic control.
 - Checks: `npx tsc -b`, `npx tsc --noEmit -p apps/prism-me`, `pnpm lint`,
-  `npx vitest run packages/extensions/mesoscale apps/prism-me` (60 files, 512 tests).
+  `npx vitest run packages/extensions/mesoscale apps/prism-me` (60 files, 522 tests after the review).
 
 ## In the app (port 1372)
 
@@ -129,9 +129,40 @@ tomogram: 12 copies, all within 2.2 Å of a filled site, none nearer than 39.6 �
 For Ludo's try: open `tomo-1crn-tiling.mrc` and 1crn.cif, Paint with 1CRN, Turn Axis and Spin 0 (the sites' turn), hover
 near a dark site: the copy snaps; click; Grow › Tiling, Square, Spacing 40, Rings 2, Fit to the tomogram.
 
+## Review (lane-reviewer, then lane-skeptic)
+
+The skeptic confirmed 15 of the reviewer's 17 findings (S7 plausible, N4 refuted) and added 4. Each must and should fix
+has a failing test first, a commit each.
+
+| Finding                                                                                                                                                        | Verdict   | Sev.  | Fixed                                                                                       |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- | ----- | ------------------------------------------------------------------------------------------- |
+| M1 paint fitted a 10 Å ball, the cursor one of the copy's radius (no object, a shape)                                                                          | confirmed | M     | a1e22979a                                                                                   |
+| M2 a deleted volume kept in Fit to: every stroke and Grow refused                                                                                              | confirmed | M     | 602a5ce79                                                                                   |
+| M3 allocations a frame (the search's sort and closures, poses, slice plane, volume scan)                                                                       | confirmed | M     | 615b3d74b                                                                                   |
+| S1 fitted Tiling on a mesh kept Count + the source                                                                                                             | confirmed | S     | 3b3e026f1                                                                                   |
+| S2 fitted spiral reported the overdrawn path's turns, copies                                                                                                   | confirmed | S     | 0425fc69d                                                                                   |
+| S3 no bound on a fitted grow's work; Threshold refit on preview                                                                                                | confirmed | S (M) | 934f1e3a9                                                                                   |
+| S11 (skeptic) no bound on a fitted stroke                                                                                                                      | plausible | S     | 934f1e3a9                                                                                   |
+| S4 depth drags read a pick a sample, no volume needed                                                                                                          | confirmed | S     | 9bef2ad9c                                                                                   |
+| S10 (skeptic) a fiber stroke not fitted, the cursor showed a fit                                                                                               | confirmed | S     | 861189129                                                                                   |
+| S7 envelope cache ignored the target's own center                                                                                                              | plausible | N     | 0a752b584                                                                                   |
+| S8 tests missing                                                                                                                                               | confirmed | S     | in the fixes: fitted walk and spiral, a list of picks (no object), Tiling's Count on a mesh |
+| S9 TODO item not removed                                                                                                                                       | confirmed | S     | c2f0bdb0f (reworded: what is left)                                                          |
+| N1, N2, N3/N5, N6 comments, flat map, a stroke's first slice, the hint's depth                                                                                 | confirmed | N     | 32c895e89                                                                                   |
+| N4 Threshold slider max 1.5                                                                                                                                    | refuted   | —     | —                                                                                           |
+| S5 the copy under the pointer on a moved or turned list starts from another pose than the click (older than this lane: the cursor never reads the list's move) | confirmed | S     | open (TODO)                                                                                 |
+| S6 a target's kind offsets (`ParticleListOffsets`) are not in the fit: an offset kind is drawn off its fitted site                                             | confirmed | S     | open (TODO)                                                                                 |
+
+Left untested: the bank refusal of a fitted fiber, a moved list (S5).
+
+M3's guard: a fit into an out pose allocates no object (it was 1.9 MB a fit: TimSort's buffers a step, Math.hypot's
+arguments, closures, poses); V8's boxed numbers between calls are left, about 200 bytes an evaluation (under 100 KB a
+fit, short-lived).
+
 ## Size
 
-About 1300 production lines against ~550: fit.ts 742 (the score and search ~250 as planned, plus the envelope's k-means
-and kinds ~150, the fast map read ~50, `fitGrown` with its spacing grid ~90, slices ~70, scene volumes and `fitCopies`
-~100, doc comments), fit-controls.tsx 133, operations.ts +166 (the grow's candidates, fiber units and fit block),
-paint-host +149 (slice, `pluginCursorFit`, a block moved: `radiusOf`), paint-mode +99, the rest wiring.
+About 1470 production lines against ~550 after the review (1300 before it): fit.ts 742 (the score and search ~250 as
+planned, plus the envelope's k-means and kinds ~150, the fast map read ~50, `fitGrown` with its spacing grid ~90, slices
+~70, scene volumes and `fitCopies` ~100, doc comments), fit-controls.tsx 133, operations.ts +166 (the grow's candidates,
+fiber units and fit block), paint-host +149 (slice, `pluginCursorFit`, a block moved: `radiusOf`), paint-mode +99, the
+rest wiring.
