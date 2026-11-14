@@ -349,6 +349,15 @@ const MaxGrown = 20000;
 
 /** A fitted grow with a Count (density-fit): its rule drawn this many times Count, to keep Count above the threshold */
 const Overdraw = 4;
+
+/** The most copies one fit tries (density-fit review S3: about 3 ms each, some 6 s) */
+const MaxFitted = 2000;
+const tooManyFits = (n: number) =>
+  ApiResult.fail(
+    'invalid',
+    `That is ${n} copies to fit: a fit tries ${MaxFitted} at most (about 3 ms each).`,
+    `Fewer copies (with a Count, it is drawn ${Overdraw} times over), or no fit.`,
+  );
 const tooMany = (n: number) =>
   ApiResult.fail(
     'invalid',
@@ -1245,6 +1254,7 @@ export class MesoscaleApi extends ApiArea {
       // fiber's path is not (its units are made from it)
       let fitted: StrokeFit | undefined;
       if (fit?.trim() && !asFiber) {
+        if (k > MaxFitted) return tooManyFits(k);
         const volume = sceneVolume(state, fit.trim());
         if (isFailure(volume)) return volume;
         // the copy's object, else a ball of its radius (as the copy under the pointer's: `PaintHost.radius`)
@@ -1739,6 +1749,9 @@ export class MesoscaleApi extends ApiArea {
       }
       let fitted: StrokeFit | undefined;
       if (fitTo) {
+        // a fit is about 3 ms a copy, on the main thread: a bounded wait (review S3)
+        const tried = (made ?? fiberCopies)!.positions.length / 3;
+        if (tried > MaxFitted) return tooManyFits(tried);
         const map = fitMapOf(fitTo.volume.grid);
         const envelope = envelopeOf(data.targetMapping?.get(target), radius);
         const contrast = v.contrast ?? 'dark';

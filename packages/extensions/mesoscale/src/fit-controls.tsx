@@ -115,13 +115,13 @@ export function GrowFit(props: { area: MesoscaleApi; set: (patch: Partial<GrowSe
               <div class={classes.label} title="A grown copy kept when its fit scores this × the source's at least">
                 Threshold
               </div>
+              {/* on release only: each change fits every copy again (review S3) */}
               <Slider
                 aria-label="Grow fit threshold, × the source's score"
                 value={mapState(settings, (s) => s.threshold)}
                 min={0}
                 max={1.5}
                 step={0.05}
-                onPreview={(threshold) => props.set({ threshold }, false)}
                 onCommit={(threshold) => props.set({ threshold })}
               />
             </div>
