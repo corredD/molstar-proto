@@ -64,6 +64,7 @@ import {
   structureSourceOf,
   paintRotations,
   fiberAxisVector,
+  fiberUnitUp,
   principalAxisOf,
   strokeCounts,
   toListFrame,
@@ -1412,20 +1413,20 @@ export class MesoscaleApi extends ApiArea {
       const on: GrowOn | undefined = mesh && { surface: sceneMeshSurface(mesh), reach };
       /**
        * The copy's own axis along a surface's normal, as paint puts it (round 3, Ludo 2026-11-13: a tiling grown from a
-       * painted copy aligned with it): a membrane protein's +z, else its Fiber Axis when set, else +z
+       * painted copy aligned with it): a fiber's unit's up (its offset direction; decisions 1), else a membrane
+       * protein's +z, else its Fiber Axis when set, else +z
        */
-      const surfaceAxis = () =>
-        (!src.surface &&
-          fiberAxisVector(
-            fiberSettingsOf(
-              data,
-              brushIdOf(data, { target, entity }),
-              target,
-              paintedFibers(state, l.cell.transform.ref),
-              paintedStructures(state, l.cell.transform.ref),
-            ).axis,
-          )) ||
-        Vec3.create(0, 0, 1);
+      const surfaceAxis = () => {
+        const { axis } = fiberSettingsOf(
+          data,
+          brushIdOf(data, { target, entity }),
+          target,
+          paintedFibers(state, l.cell.transform.ref),
+          paintedStructures(state, l.cell.transform.ref),
+        );
+        const up = fiberUnitUp(data, index, src.fibers, brushIdOf(src.fibers, { target, entity }), target, axis);
+        return up ?? ((!src.surface && fiberAxisVector(axis)) || Vec3.create(0, 0, 1));
+      };
       const offMesh = () =>
         ApiResult.fail(
           'invalid',
