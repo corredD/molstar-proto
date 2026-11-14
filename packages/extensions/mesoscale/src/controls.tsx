@@ -580,8 +580,10 @@ export function GrowBlock(props: { area: MesoscaleApi; api: ViewerApi; particles
       const at = live.value;
       return at ? g.run('mesoscale.grown-fiber', { ...at, ...change }) : Promise.resolve();
     },
-    changed: () => {},
+    // what a drag has not applied yet is shown (its overlay), not the state's last (review 6)
+    changed: () => overlaid.set(overlaid.value + 1),
   });
+  const overlaid = observableState(0);
   onCleanup(() => redraw.settle());
   /** The live fiber's rise, twist and jitter as the state has them (an undo) */
   const grown = area.grownFiberState(live.asReadonly);
@@ -599,6 +601,14 @@ export function GrowBlock(props: { area: MesoscaleApi; api: ViewerApi; particles
   // following both: a mesh deleted after it was chosen is none (review S3)
   const chosen = derive([settings, meshes], (s, list) => onMesh(s, list));
   const set = (patch: Partial<GrowSettings>) => area.growSettings.set({ ...area.growSettings.value, ...patch });
+  // the state's values kept in the settings set (an undo): the next Grow uses what is shown (review 7)
+  effect(grown, (f) => {
+    if (!f || redraw.overlay('fiber')) return;
+    const s = area.growSettings.value;
+    const patch: Partial<GrowSettings> = {};
+    for (const k of ['rise', 'twist', 'jitter'] as const) if (s[k] !== undefined && s[k] !== f[k]) patch[k] = f[k];
+    if (Object.keys(patch).length) set(patch);
+  });
   const line = (label: string, title: string, control: Node) => (
     <div class={classes.line}>
       <div class={classes.label} title={title}>
@@ -637,10 +647,14 @@ export function GrowBlock(props: { area: MesoscaleApi; api: ViewerApi; particles
     range: { min: number; max: number; step?: number; unit: string; scale?: 'log' },
     entity: () => number,
   ) => {
-    const shown = derive([settings, grown], (s, fiber) => fiber?.[key] ?? s[key] ?? entity());
+    const shown = derive(
+      [settings, grown, overlaid],
+      (s, fiber) => redraw.overlay('fiber')?.[key] ?? fiber?.[key] ?? s[key] ?? entity(),
+    );
     const change = (v: number, end: boolean) => {
       set({ [key]: v });
-      if (live.value) redraw.change('fiber', { [key]: v });
+      // the live fiber while it is there (undone: the next grow's only; review 5)
+      if (live.value && grown.value) redraw.change('fiber', { [key]: v });
       if (end) redraw.settle();
     };
     return line(

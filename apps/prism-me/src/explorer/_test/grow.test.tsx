@@ -233,15 +233,49 @@ describe("A grown fiber's Rise and Twist (paint-refine)", () => {
         .querySelector<HTMLInputElement>('input[type=range][aria-label="Grow Rise"]')!
         .parentElement!.querySelector<HTMLInputElement>('input:not([type=range])')!;
     await until(() => box().value === '10');
-    // another source: the fiber is not live anymore; Rise is the next grow's only
-    m.growSource.set({ particles: hiv, index: 1 });
+    // and the next Grow's is the value shown (review 7)
+    await until(() => m.growSettings.value.rise === 10);
+    expect(m.growSettings.value.twist).toBe(0);
+    // another source: the fiber is not live anymore; its Rise, Twist and Jitter unset, the entity's again (review 4)
+    m.setGrowSource({ particles: hiv, index: 1 });
     await until(() => !!host.textContent?.includes('CA #1'));
+    expect(m.growSettings.value.rise).toBeUndefined();
+    expect(m.growSettings.value.twist).toBeUndefined();
     const now = v.api.history.steps.value.length;
     drag(host, 'Rise', [Math.log10(4)]);
     await new Promise((r) => setTimeout(r, 300));
     expect(v.api.history.steps.value.length).toBe(now);
     expect(m.growSettings.value.rise).toBe(4);
     expect(count(v)).toBe(3 + 10);
+  });
+
+  it('a drag after the walk was undone changes the next grow only: no grown-fiber run (review 5)', async () => {
+    const { v, hiv } = await viewer();
+    const m = v.api.mesoscale!;
+    const host = mountScene(v);
+    await until(() => !!rowOf(host, 'HIV'));
+    rowOf(host, 'HIV')!.click();
+    await until(() => !!button(host, 'Grow'));
+    const section = button(host, 'Grow')!;
+    if (section.getAttribute('aria-expanded') !== 'true') section.click();
+    m.growSource.set({ particles: hiv, index: 2 });
+    await until(() => !!host.textContent?.includes('NC #2'));
+    choice(host, 'Mode', 'Random walk')!.click();
+    await until(() => !!host.querySelector('input[aria-label="Grow Rise"]'));
+    const grow = Array.from(host.querySelectorAll<HTMLButtonElement>('button')).filter(
+      (b) => b.textContent?.trim() === 'Grow',
+    );
+    grow[grow.length - 1].click();
+    await until(() => count(v) > 3);
+    await v.api.history.undo();
+    await until(() => count(v) === 3);
+    const runs: string[] = [];
+    const sub = v.api.events.finished.subscribe((r) => runs.push(r.operation));
+    drag(host, 'Rise', [Math.log10(4)]);
+    await new Promise((r) => setTimeout(r, 300));
+    sub.unsubscribe();
+    expect(runs).not.toContain('mesoscale.grown-fiber');
+    expect(m.growSettings.value.rise).toBe(4);
   });
 });
 
