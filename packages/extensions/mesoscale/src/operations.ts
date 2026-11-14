@@ -404,13 +404,17 @@ export class MesoscaleApi extends ApiArea {
    * source's size again (review G1), and sets the mesh it grows on: `mesh`, the one it was painted on, else the mesh
    * under it, else none (grow-mesh; review S7)
    */
-  setGrowSource(source: GrowSource, painted?: string) {
+  setGrowSource(source: GrowSource, painted?: string, fromPaint = false) {
     const old = this.growSource.value;
+    const same = old?.particles === source.particles && old.index === source.index;
+    // the same source picked again keeps the person's On; the same index painted again (after an undo) may be on
+    // another mesh, or none (round 3)
+    if (same && !fromPaint) return;
     const mesh = painted ?? meshUnder(this.ctx, source);
-    if (old?.particles === source.particles && old.index === source.index) {
-      // the same index painted again (after an undo): its mesh may be another (round 3)
-      if (painted !== undefined && painted !== this.growSettings.value.mesh) {
-        this.growSettings.set({ ...this.growSettings.value, mesh: painted });
+    if (same) {
+      if (mesh !== this.growSettings.value.mesh) {
+        const { mesh: _m, ...rest } = this.growSettings.value;
+        this.growSettings.set(mesh ? { ...rest, mesh } : rest);
       }
       return;
     }
@@ -439,7 +443,7 @@ export class MesoscaleApi extends ApiArea {
     const l = lists({ plugin: this.ctx.plugin }).find((x) => x.cell.transform.ref === list);
     // a copy that is no source (a unit of a bank's fiber: review S3) leaves the source as it was
     if (!count || !l || isFailure(growSourceOf(this.ctx.plugin.state.data, l, count - 1))) return;
-    this.setGrowSource({ particles: list, index: count - 1 }, mesh);
+    this.setGrowSource({ particles: list, index: count - 1 }, mesh, true);
   }
 
   /**

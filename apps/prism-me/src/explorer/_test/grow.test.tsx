@@ -200,6 +200,11 @@ describe('Grow On after a paint (paint-refine round 3)', () => {
     await mode.host.paint(brush, DefaultPaintSettings, [0, 50, 0], [0, 1, 0], 1, false, 'vesicle-ref');
     expect(m.growSource.value).toEqual({ particles: hiv, index: 3 });
     expect(m.growSettings.value.mesh).toBe('vesicle-ref');
+    // the other way: painted in space at that index again, On None (review 2)
+    await v.api.history.undo();
+    await mode.host.paint(brush, DefaultPaintSettings, [0, 500, 0], [0, 1, 0], 1, false);
+    expect(m.growSource.value).toEqual({ particles: hiv, index: 3 });
+    expect(m.growSettings.value.mesh).toBe(undefined);
   });
 });
 
