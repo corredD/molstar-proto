@@ -78,6 +78,17 @@ export interface HelixParams {
   readonly limit?: number;
 }
 
+/**
+ * A flat Archimedean spiral (grow-helix round 3): its radius Spacing (Å) more a turn from 0 at the source, Turns, its
+ * Hand (right: counterclockwise about its normal); `limit`, its length at most (Å, from the source)
+ */
+export interface SpiralParams {
+  readonly spacing: number;
+  readonly turns: number;
+  readonly hand: 'right' | 'left';
+  readonly limit?: number;
+}
+
 /** The axis a helix winds about on a mesh (the scene's): a point of it and its unit direction, up */
 export interface HelixLine {
   readonly center: Vec3;
@@ -408,6 +419,129 @@ export function helixPath(
     if (p.limit !== undefined && walked >= p.limit) break;
   }
   return on ? trimStart(all, ns, rise, normals) : all;
+}
+
+/** A spiral's points crowd an arm a turn behind closer than this share of its Spacing: it would cross it (round 3) */
+const SpiralCrowd = 0.6;
+
+/**
+ * A flat Archimedean spiral from the source, its center, outward (a fiber's path, grow-helix round 3): its radius
+ * Spacing × θ / 2π, a point every 5° (`HelixStep`) of θ, Turns turns, turning counterclockwise about its normal for Hand
+ * right; its normal the source's `axis` (in its frame), its angle 0 along that axis's offset direction
+ * (`fiberOffsetDirection`), turned. The path starts a rise along it from the source (the source is not a unit).
+ * - In space (no `on`): in the source's plane.
+ * - On a surface (`on`): from the source's point on it, as the walk goes: each step the planar spiral's own step (the
+ *   same length and turn) in the tangent plane of the point before, projected onto the surface along its normal, the
+ *   angle-0 direction carried from tangent plane to tangent plane; a flat mesh gives the space spiral. Its normal in
+ *   `normals` (the source's side, then continuous). It ends where the surface does (no point, or the nearest a quarter
+ *   of a step off: an open edge) or where its arm comes within 0.6 × Spacing of the arm a turn and more behind (on a
+ *   closed surface it would cross itself). Undefined for a source off the surface.
+ */
+export function spiralPath(source: GrowPose, axis: Vec3, rise: number, p: SpiralParams): number[];
+export function spiralPath(
+  source: GrowPose,
+  axis: Vec3,
+  rise: number,
+  p: SpiralParams,
+  on: GrowOn | undefined,
+  normals?: number[],
+): number[] | undefined;
+export function spiralPath(
+  source: GrowPose,
+  axis: Vec3,
+  rise: number,
+  p: SpiralParams,
+  on?: GrowOn,
+  normals?: number[],
+): number[] | undefined {
+  const local = Vec3.normalize(Vec3(), axis);
+  const n = Vec3.transformQuat(Vec3(), local, source.rotation);
+  const u = Vec3.transformQuat(Vec3(), fiberOffsetDirection(Vec3(), 'auto', local), source.rotation);
+  const at = Vec3.copy(Vec3(), source.position);
+  if (on) {
+    if (!on.surface.project(_hit, source.position, _zero, on.reach)) return undefined;
+    Vec3.copy(at, _hit.position);
+    const flip = Vec3.dot(_hit.normal, n) < -1e-3;
+    Vec3.copy(n, _hit.normal);
+    if (flip) Vec3.negate(n, n);
+    if (!tangent(u, n)) fiberOffsetDirection(u, 'auto', n);
+  }
+  const b = p.spacing / (2 * Math.PI);
+  const sense = p.hand === 'left' ? -1 : 1;
+  const last = Math.floor(((Math.max(0, p.turns) * 2 * Math.PI) / HelixStep) * (1 + 1e-12));
+  const all = [at[0], at[1], at[2]];
+  const ns: number[] | undefined = on ? [n[0], n[1], n[2]] : undefined;
+  const w = Vec3.cross(Vec3(), n, u);
+  // on a surface: the points kept by cell (of the crowding distance) with their angle, to find an arm behind
+  const crowd = SpiralCrowd * p.spacing;
+  const cells = new Map<number, number[]>();
+  const thetas: number[] = [0];
+  const cell = (x: number) => Math.floor(x / crowd);
+  const keep = (q: Vec3, index: number) => {
+    const key = cellKey(cell(q[0]), cell(q[1]), cell(q[2]));
+    const list = cells.get(key);
+    if (list) list.push(index);
+    else cells.set(key, [index]);
+  };
+  const crowded = (q: Vec3, theta: number) => {
+    const [i, j, k] = [cell(q[0]), cell(q[1]), cell(q[2])];
+    for (let di = -1; di <= 1; ++di) {
+      for (let dj = -1; dj <= 1; ++dj) {
+        for (let dk = -1; dk <= 1; ++dk) {
+          for (const o of cells.get(cellKey(i + di, j + dj, k + dk)) ?? []) {
+            if (thetas[o] > theta - 1.5 * Math.PI) continue;
+            const dx = all[o * 3] - q[0];
+            const dy = all[o * 3 + 1] - q[1];
+            const dz = all[o * 3 + 2] - q[2];
+            if (dx * dx + dy * dy + dz * dz < crowd * crowd) return true;
+          }
+        }
+      }
+    }
+    return false;
+  };
+  if (on) keep(at, 0);
+  let walked = 0;
+  let px = 0;
+  let py = 0;
+  for (let k = 1; k <= last; ++k) {
+    const theta = k * HelixStep;
+    const r = b * theta;
+    const qx = r * Math.cos(theta);
+    const qy = sense * r * Math.sin(theta);
+    if (on) {
+      // the planar step, in the tangent plane of the point before
+      Vec3.scale(_t, u, qx - px);
+      Vec3.scaleAndAdd(_t, _t, w, qy - py);
+      const step = Vec3.magnitude(_t);
+      Vec3.add(_c, at, _t);
+      const scale = Math.max(step, p.spacing / 8);
+      if (!on.surface.project(_hit, _c, n, Math.max(step, p.spacing / 2))) break;
+      if (Vec3.distance(_hit.position, _c) > 0.25 * scale) break;
+      if (crowded(_hit.position, theta)) break;
+      if (Vec3.dot(_hit.normal, n) < 0) Vec3.negate(_hit.normal, _hit.normal);
+      walked += Vec3.distance(_hit.position, at);
+      Vec3.copy(at, _hit.position);
+      Vec3.copy(n, _hit.normal);
+      if (!tangent(u, n)) fiberOffsetDirection(u, 'auto', n);
+      Vec3.cross(w, n, u);
+    } else {
+      Vec3.scaleAndAdd(_p, source.position, u, qx);
+      Vec3.scaleAndAdd(_p, _p, w, qy);
+      walked += Vec3.distance(_p, at);
+      Vec3.copy(at, _p);
+    }
+    px = qx;
+    py = qy;
+    all.push(at[0], at[1], at[2]);
+    ns?.push(n[0], n[1], n[2]);
+    if (on) {
+      thetas.push(theta);
+      keep(at, k);
+    }
+    if (p.limit !== undefined && walked >= p.limit) break;
+  }
+  return trimStart(all, ns, rise, normals);
 }
 
 /**
