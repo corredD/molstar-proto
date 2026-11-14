@@ -240,3 +240,81 @@ No size was given; `followSources` (~70) and the resync (~60) were the review's.
   pays it per preview, on top of the decorator's own rebuild. Linear; not measured.
 - Undo pressed while a gesture is open, and an operation started while a gesture's last replace is pending: not probed.
 - Crystal's copies are a nested set, not an order: "fewer" removes the cells outside, not "the last ones".
+
+## Round 3 (2026-11-13): Grow › Spiral
+
+**Ludo's words:** "the helix grow mode is great, can we also have spiral", then "Archimedean spiral need also the
+copy/count slider. We want to control the distance between arms, and the distance along the path between instances.
+Regular spiral parameters."
+
+### Built
+
+- `grow.ts`: `spiralPath(source, axis, p, on?, normals?, info?)` (`SpiralParams`: spacing, step, count, hand),
+  `spiralTurns`, `trimEnd`; mode `spiral`.
+- `mesoscale.grow { mode: 'spiral', count, spacing, rise (its Step), hand }`: the fiber stroke of the walk and the helix
+  (live on the last grow, replace, Clear, sessions); the record keeps the turns it reached. `grown-fiber` refuses a
+  spiral's rise (its Step is the grow's: replace); its Twist and Jitter stay live.
+- The Grow section's Spiral: **Count** (2–2000), **Arm spacing**, **Step** (the fiber's rise, made again by replace;
+  Rise not shown for a spiral), **Hand**, **Turns** read only (the live spiral's, else an estimate), Twist, Jitter. A
+  Mode pick of Spiral lifts a shared Count of 1 (Sphere's) to 2.
+- Tests: `grow-spiral.test.ts` (space, plane, cylinder, vesicle, bounded points), op and app tests, the prefix test, the
+  scaling guard's spiral cases.
+
+### Decided
+
+- (author) **Step is the spiral's rise**: one distance, Ludo's "distance along the path between instances"; copy k is k
+  × Step along it from the source (copy 0). Its drag makes the grow again with its Count kept.
+- (author) **Count is the length control and prefix-stable**: its path is long enough for Count copies (to half a Step
+  past the last, so rounding keeps exactly Count); more continue it outward, fewer cut it (the first copies bit for bit,
+  the last one's turn to its new neighbour as for every fiber). Turns is shown, not set.
+- (author) **The center rule**: none beyond the arc: copy 1 is a Step along the arc from the source; inside the first
+  turn the arc curls, so copies there sit closer than a Step in a straight line (overlaps allowed, Ludo 2026-11-11).
+- (author) **Sampling by arc length**: a step of a tenth of its radius there (b at least), a quarter Step at most: its
+  points follow its turns (about 63 a turn out where a Step is long), 4 a Step where its arms are wide; their number
+  bounded by its turns and Count.
+- (author) **On a mesh, rolled**: each step the planar spiral's own (length and turn), taken in the tangent plane of the
+  point before, projected along its normal (reach 4 steps), its angle-0 direction carried. Exact on developable surfaces
+  (plane, cylinder, cone: the capsid's body); on a surface curved both ways (a cap, a vesicle) its arms close up. A
+  geodesic polar spiral (arms Arm spacing apart on any surface) would need geodesic distances from the source.
+- (author) **Stopping on a mesh**: at an open edge (the projection a half step off) or where it comes within 0.6 × Arm
+  spacing of a point of itself more than 2 Arm spacings behind along it (an arm it would cross): round a tube when it
+  wraps to the far side, on a vesicle when its arms close up. More Count then adds nothing.
+
+### App check (port 1368)
+
+`~/prism-me-lanes/grow-helix-spiral.cjs`: capsid_tiling.vtp, one 1CRN painted, zoomed. Spiral, Count 60 (Arm spacing the
+copy's diameter, 35 Å; Step its rise, 29.5 Å): 60 copies, 4 turns. Arm spacing 60: 60 copies, 3.05 turns, one step.
+Count 120: 80 copies (it reached the capsid's far side round its body and stopped), 3.5 turns; Count 30: the first 30.
+Step 45: 30 copies, 2.67 turns. Hand Left. Clear, Undo. Screenshots in
+`/private/tmp/claude-501/-Users-ludovicautin-molstar-proto-git/bc8a7dcf-b4ed-4027-911e-5f56df74a469/scratchpad/grow-helix/`:
+`s1-spiral-count60.png`, `s2-spiral-arms60.png`, `s3-spiral-count120.png`, `s4-spiral-count30.png`,
+`s5-spiral-step45.png`, `s6-spiral-left.png`, `s7-cleared.png`, `s8-clear-undone.png`.
+
+### Review (two passes: the first spiral, then the rework after Ludo's Count/Step update)
+
+| Finding                                                                      | Verdict        | Severity | Done                                           |
+| ---------------------------------------------------------------------------- | -------------- | -------- | ---------------------------------------------- |
+| 1st M1 mesh cost per point grew with the radius; no scaling guard            | confirmed      | major    | 91edfaebd, 18c59a526                           |
+| 1st S1 sampled by angle, not arc length                                      | confirmed      | minor    | 91edfaebd                                      |
+| 1st S2 the 1.5π look-back missed a wrap (tubes)                              | confirmed      | major    | 91edfaebd (look-back along it: 2 Arm spacings) |
+| 1st S3 no center rule; first copies within a diameter                        | confirmed      | should   | 6e560757d (stated; Ludo's k × Step)            |
+| 1st N1–N3 docs                                                               | confirmed      | nit      | 6e560757d                                      |
+| 1st N-A crowd point-to-point                                                 | plausible      | minor    | 91edfaebd (fine sampling)                      |
+| 2nd 1 points ~ 8 · Count · Step / min(Step, Arm spacing) (8M; op RangeError) | confirmed      | must     | 482276314                                      |
+| 2nd N1 wide arms: each step scanned the whole path                           | confirmed      | should   | 482276314                                      |
+| 2nd 2 grown-fiber rise resampled a spiral (Count broken)                     | confirmed      | must     | 98fd07146                                      |
+| 2nd 3 `turns` described as Spiral's                                          | confirmed      | should   | 98fd07146                                      |
+| 2nd 4 Count 1 shared with Sphere refused a Mode switch                       | confirmed      | should   | 765f3c1d8                                      |
+| 2nd note: a pending Step drag reverted by the fiber effect                   | plausible      | should   | 4477e3146 (guard)                              |
+| 2nd 5 no spiral prefix test of turns/normals                                 | partly refuted | nit      | e5c156746                                      |
+| 2nd 6 UI tests: Step undo, Step > Arm spacing                                | confirmed      | nit      | left (op sweep by the reviewer passed)         |
+
+### Size
+
+Round 3: about 335 production lines (grow.ts +201, operations.ts +59 −10, controls.tsx +75 −7); tests +409.
+
+### Open
+
+- The spiral is rolled, not geodesic: on a cap or a vesicle its arms close up (it stops when they crowd).
+- On the capsid a Count past the wrap adds nothing (the section shows Count 120, the scene 80 copies, its Turns 3.5).
+- A mesh with coarse facets whose vertex normals differ much from them may stop a spiral early (the half-step rule).
