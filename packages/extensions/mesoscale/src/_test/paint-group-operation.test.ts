@@ -390,4 +390,39 @@ describe('mesoscale.group', () => {
     // its last copy a group copy whole
     expect(v.api.mesoscale!.instanceAt(ref(v), n - 1)).toEqual({ first: n - 3, count: 3, group: 'Group 1' });
   });
+
+  it("refuses to make a grow again from a group copy since ungrouped; keeps a grown copy's ungrouping (review M2, S1)", async () => {
+    const v = await viewer();
+    const g = await grouped(v);
+    expectOk(
+      await v.api.run('mesoscale.paint', {
+        entity: '',
+        group: g.group,
+        positions: [0, 0, 300],
+        normals: [0, 0, 1],
+        seed: 4,
+      }),
+    );
+    const r = await v.api.run('mesoscale.grow', { particles: ref(v), index: 11, mode: 'tiling', rings: 1 });
+    expectOk(r);
+    const id = (r.value as { id: number }).id;
+    // a grown copy (the second: 16..18) ungrouped, the grow made again with more rings: still ungrouped
+    expectOk(await v.api.run('mesoscale.ungroup', { particles: ref(v), index: 17 }));
+    expectOk(
+      await v.api.run('mesoscale.grow', { particles: ref(v), index: 10, mode: 'tiling', rings: 2, replace: id }),
+    );
+    expect(params(v).strokes.at(-1)!.split).toEqual(['1']);
+    expect(v.api.mesoscale!.instanceAt(ref(v), 17)).toBeUndefined();
+    // its source copy ungrouped: made again it would be a grow of one member
+    expectOk(await v.api.run('mesoscale.ungroup', { particles: ref(v), index: 11 }));
+    const again = await v.api.run('mesoscale.grow', {
+      particles: ref(v),
+      index: 10,
+      mode: 'tiling',
+      rings: 1,
+      replace: id,
+    });
+    expect(again.ok).toBe(false);
+    expect(params(v).strokes.at(-1)!.group).toBe(g.group);
+  });
 });

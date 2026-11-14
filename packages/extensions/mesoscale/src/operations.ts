@@ -1556,6 +1556,14 @@ export class MesoscaleApi extends ApiArea {
       if (old && old.grow!.source.key !== data.keys[src.first]) {
         return ApiResult.fail('invalid', `That grow is not from ${name} #${index}.`);
       }
+      // a grow from a group copy since ungrouped (paint-group, review M2): made again it would grow one member
+      if (old && old.group !== undefined && old.group !== src.group) {
+        return ApiResult.fail(
+          'invalid',
+          `${name} #${index} is no longer the group copy that grow was from.`,
+          'Grow from it again.',
+        );
+      }
       const seed = v.seed ?? old?.grow?.seed ?? Math.floor(Math.random() * 2 ** 31);
       const growId = old ? old.grow!.id! : Math.floor(Math.random() * 2 ** 31);
       const move = decoratorUnder(state, l.cell.transform.ref, ParticleListTransform)?.transform.params as
@@ -1785,6 +1793,8 @@ export class MesoscaleApi extends ApiArea {
         entity,
         compartment,
         ...(src.group !== undefined ? { group: src.group } : {}),
+        // its copies ungrouped kept, by their places (paint-group, review S1)
+        ...(old?.split && src.group !== undefined ? { split: old.split } : {}),
         positions: path ?? made!.positions,
         rotations: path ? [] : made!.rotations,
         ...(path
