@@ -525,6 +525,31 @@ describe('The last grow live (grow-helix round 2)', () => {
     expect(v.api.history.steps.value.length).toBe(now);
   });
 
+  it('one step a drag: let go, the step ends, as a real drag lands its preview a frame before (review M2)', async () => {
+    const { v, hiv } = await viewer();
+    const m = v.api.mesoscale!;
+    const host = await openGrow(v, hiv, 2);
+    choice(host, 'Mode', 'Sphere')!.click();
+    m.growSettings.set({ ...m.growSettings.value, count: 10, radius: 30 });
+    growButton(host).click();
+    await until(() => count(v) === 3 + 10);
+    const steps = v.api.history.steps.value.length;
+    const drag = async (value: number) => {
+      const range = host.querySelector<HTMLInputElement>('input[type=range][aria-label="Grow Count"]')!;
+      range.value = String(value);
+      range.dispatchEvent(new Event('input', { bubbles: true }));
+      // the preview lands (once a frame) before the release
+      await new Promise((r) => setTimeout(r, 40));
+      range.dispatchEvent(new Event('change', { bubbles: true }));
+    };
+    await drag(20);
+    await new Promise((r) => setTimeout(r, 100));
+    await drag(5);
+    await until(() => count(v) === 3 + 5);
+    await until(() => v.api.history.steps.value.length >= steps + 2, 3000);
+    expect(v.api.history.steps.value.length).toBe(steps + 2);
+  });
+
   it('Clear removes every grow from the source, one step; disabled when none; Undo brings them back', async () => {
     const { v, hiv } = await viewer();
     const m = v.api.mesoscale!;

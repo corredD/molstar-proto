@@ -638,7 +638,11 @@ export function GrowBlock(props: { area: MesoscaleApi; api: ViewerApi; particles
    */
   const set = (patch: Partial<GrowSettings>, end = true) => {
     const s = area.growSettings.value;
-    if ((Object.keys(patch) as (keyof GrowSettings)[]).every((k) => s[k] === patch[k])) return;
+    // the same again (a release after its last preview): nothing to grow, but the step ends (review M2)
+    if ((Object.keys(patch) as (keyof GrowSettings)[]).every((k) => s[k] === patch[k])) {
+      if (end) redraw.settle();
+      return;
+    }
     store(patch);
     if (!live.value || !liveGrow.value) return;
     redraw.change('grow', {});
