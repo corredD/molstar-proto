@@ -456,16 +456,23 @@ interface VolumeColorData {
   };
 }
 
+/** The colors of a band's grid, kept with the band: its other cells (never read) no value once, its cells refilled */
+const bandColors = new WeakMap<ColorBand, Uint8Array>();
+
 /** A color grid of `band`'s values: its cells' colors, the others (never read) as no value */
 function colorGridOf(band: ColorBand, values: Float32Array, color: (value: number) => Color): Shape.ColorGrid {
-  const [xn, yn, zn] = band.dimension;
-  const colors = new Uint8Array(4 * xn * yn * zn);
-  const none = Color.toRgb(NoData);
-  for (let i = 0; i < colors.length; i += 4) {
-    colors[i] = none[0];
-    colors[i + 1] = none[1];
-    colors[i + 2] = none[2];
-    colors[i + 3] = 255;
+  let colors = bandColors.get(band);
+  if (!colors) {
+    const [xn, yn, zn] = band.dimension;
+    colors = new Uint8Array(4 * xn * yn * zn);
+    const none = Color.toRgb(NoData);
+    for (let i = 0; i < colors.length; i += 4) {
+      colors[i] = none[0];
+      colors[i + 1] = none[1];
+      colors[i + 2] = none[2];
+      colors[i + 3] = 255;
+    }
+    bandColors.set(band, colors);
   }
   for (let n = 0; n < band.cells.length; n++) {
     const c = Number.isNaN(values[n]) ? NoData : color(values[n]);

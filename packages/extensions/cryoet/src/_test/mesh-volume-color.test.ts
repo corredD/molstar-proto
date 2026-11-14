@@ -392,9 +392,13 @@ describe("a mesh's Color by › Volume, Detail Texture", () => {
     );
     const before = (await bandOf(v, read, 'cells.vtp'))!.values;
     const grid = (await drawnShape(v, read, 'cells.vtp')).colorGrid!;
+    const colors = Uint8Array.from(grid.colors);
     expectOk(await c.mesh({ mesh: 'cells.vtp', range: [-6, 0], invert: true } as never));
     expect((await bandOf(v, read, 'cells.vtp'))!.values).toBe(before);
-    expect((await drawnShape(v, read, 'cells.vtp')).colorGrid!.colors).not.toEqual(grid.colors);
+    // the band's cells written again into the grid's array (review S7), not a new grid
+    const refilled = (await drawnShape(v, read, 'cells.vtp')).colorGrid!.colors;
+    expect(refilled).toBe(grid.colors);
+    expect(refilled).not.toEqual(colors);
     expectOk(await c.mesh({ mesh: 'cells.vtp', depth: 4 } as never));
     expect((await bandOf(v, read, 'cells.vtp'))!.values).not.toBe(before);
   });
