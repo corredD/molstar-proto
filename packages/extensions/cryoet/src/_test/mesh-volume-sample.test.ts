@@ -34,7 +34,12 @@ function gridOf(n: number, voxel: number, origin: Vec3, f: (x: number, y: number
   return {
     transform: { kind: 'matrix', matrix },
     cells: Tensor.create(Tensor.Space([n, n, n], [2, 1, 0], Float32Array), Tensor.Data1(values)),
-    stats: { min: values.reduce((a, b) => Math.min(a, b)), max: values.reduce((a, b) => Math.max(a, b)), mean, sigma: Math.sqrt(sq / values.length) },
+    stats: {
+      min: values.reduce((a, b) => Math.min(a, b)),
+      max: values.reduce((a, b) => Math.max(a, b)),
+      mean,
+      sigma: Math.sqrt(sq / values.length),
+    },
   };
 }
 

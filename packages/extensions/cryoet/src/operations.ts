@@ -48,6 +48,15 @@ import { mb } from './portal-run.js';
 import type { ViewerApi } from '@molstar/prism-viewer/api';
 import { ButtonsType } from '@molstar/core/util/input/input-observer';
 import { isEmptyLoci } from '@molstar/model/model/loci';
+import {
+  MeshVolumeColor,
+  type MeshVolumeColorProps,
+  MeshVolumeColorParams,
+  sampledArrayOf,
+  type VolumeSample,
+  VolumeSamples,
+  voxelOf,
+} from './mesh-volume.js';
 
 // The `cryoet` area (apps/prism-me/_spec/features.md, "CryoET"): what decorates a particle list and how the particles
 // map to targets (`decorations`, `decorate`, `classes`), and the slices of a tomogram or a tilt series (`slice`).
@@ -164,6 +173,8 @@ export interface MeshInfo {
   readonly arrays?: readonly MeshArray[];
   /** Its color by an array, when it is so colored */
   readonly colorBy?: MeshColorBy;
+  /** Its color by a volume, when it is so colored */
+  readonly volumeColor?: MeshVolumeColorBy;
   /** Its scale (1: as in the file; a mesh in pixels: the pixel size, Å) */
   readonly scale: number;
 }
@@ -181,6 +192,24 @@ export interface MeshColorBy {
   readonly array: string;
   readonly colorList: string;
   readonly range: 'auto' | readonly [number, number];
+}
+
+/**
+ * A mesh colored by a volume: the volume (its ref and label), where it is read (at the surface, or the mean, min or max
+ * along the normal within ±depth Å), its colors, its range in σ (auto: ±2σ), inverted or not, and the array its values
+ * are kept in ("cell:density_tomogram")
+ */
+export interface MeshVolumeColorBy {
+  readonly volume: string;
+  readonly label: string;
+  readonly sample: VolumeSample;
+  readonly depth: number;
+  readonly colorList: string;
+  readonly range: 'auto' | readonly [number, number];
+  readonly invert: boolean;
+  readonly array: string;
+  /** Its volume is not in the scene (removed): the mesh is gray until it comes back */
+  readonly missing?: true;
 }
 
 /** The color scales an array is colored with (a color list's name: viridis, plasma…) */
@@ -312,9 +341,27 @@ export class CryoetApi extends ApiArea {
       ),
       range: OptionalParam(
         PD.Value<'auto' | [number, number]>('auto', {
-          description: "The values its array's colors span: auto (the array's), or [min, max]",
+          description:
+            "The values its array's colors span: auto (the array's), or [min, max]; by a volume, in σ (auto: ±2σ)",
         }),
       ),
+      volume: OptionalParam(
+        PD.Text('', {
+          description: 'Colors it by a volume of the scene (by name or ref): its density on the mesh, in σ',
+        }),
+      ),
+      sample: OptionalParam(
+        PD.Select<VolumeSample>('surface', [
+          ['surface', 'At surface'],
+          ['mean', 'Projected: mean'],
+          ['min', 'Projected: min'],
+          ['max', 'Projected: max'],
+        ]),
+      ),
+      depth: OptionalParam(
+        PD.Numeric(10, { min: 0, max: 1000, step: 0.1 }, { description: 'Along the normal, ± Å (Projected)' }),
+      ),
+      invert: OptionalParam(PD.Boolean(false, { description: "Inverts the volume's color scale" })),
     },
     async run(values, ctx) {
       const { mesh, visible, visuals, opacity, color, colors, scale, array, colorList, range } =
@@ -329,6 +376,28 @@ export class CryoetApi extends ApiArea {
           colorList?: string;
           range?: 'auto' | [number, number];
         };
+      const { volume, sample, depth, invert } = values as {
+        volume?: string;
+        sample?: VolumeSample;
+        depth?: number;
+        invert?: boolean;
+      };
+      const byVolume = volume !== undefined || sample !== undefined || depth !== undefined || invert !== undefined;
+      if (byVolume && (color !== undefined || colors !== undefined || array !== undefined)) {
+        return ApiResult.fail(
+          'invalid',
+          'A volume, a color or an array: one.',
+          'Give volume to color it by a volume, color for one color, array for an array.',
+        );
+      }
+      if (sample !== undefined && !VolumeSamples.includes(sample)) {
+        return ApiResult.fail('invalid', `'${sample}' is not a sample.`, `Samples: ${VolumeSamples.join(', ')}.`);
+      }
+      if (depth !== undefined && !(Number.isFinite(depth) && depth > 0)) {
+        return ApiResult.fail('invalid', 'depth: a length in Å over 0.');
+      }
+      const v = volume !== undefined ? oneVolume(ctx, volume || undefined) : undefined;
+      if (isFailure(v)) return v;
       const byArray = array !== undefined || colorList !== undefined || range !== undefined;
       if (byArray && (color !== undefined || colors !== undefined)) {
         return ApiResult.fail(
@@ -403,10 +472,38 @@ export class CryoetApi extends ApiArea {
         for (const m of find(mesh)) picked.push({ ...m, color: parsed });
         if (!picked.length) return missing(mesh);
       }
+      // each mesh's color by a volume (its decorator's params), all checked before the write: a volume given, or its
+      // sample, depth or invert, or the colors and range of a mesh shown by a volume
+      const byVolumes = new Map<string, MeshVolumeColorProps>();
+      for (const m of picked) {
+        const node = volumeNodeOf(ctx, m.ref);
+        const old = node?.transform.params as MeshVolumeColorProps | undefined;
+        const shown = !!old?.show && array === undefined;
+        if (!byVolume && !(shown && (colorList !== undefined || range !== undefined))) continue;
+        if (!v && !old) {
+          return ApiResult.fail('invalid', `${m.label} is not colored by a volume.`, 'Give the volume to color it by.');
+        }
+        const drawn = v ? lastDecorator(ctx, v) : undefined;
+        const grid = (drawn?.obj?.data as Volume | undefined)?.grid;
+        const fresh = !old || (drawn && drawn.transform.ref !== old.volume);
+        byVolumes.set(m.ref, {
+          ...(old ?? PD.getDefaultValues(MeshVolumeColorParams)),
+          ...(drawn ? { volume: drawn.transform.ref } : {}),
+          ...(drawn && fresh ? { name: arrayName(ctx, m.ref, entryLabel(ctx, v!.cell)) } : {}),
+          ...(!old && grid ? { depth: Math.round(200 * voxelOf(grid)) / 100 } : {}),
+          ...(sample !== undefined ? { sample } : {}),
+          ...(depth !== undefined ? { depth } : {}),
+          ...(colorList !== undefined ? { colorList } : {}),
+          ...(range !== undefined ? { range } : {}),
+          ...(invert !== undefined ? { invert } : {}),
+          show: true,
+        });
+      }
       // each mesh's theme by an array, all checked before the write
       const themes = new Map<string, unknown>();
       if (byArray) {
         for (const m of picked) {
+          if (byVolumes.has(m.ref)) continue;
           const cell = ctx.plugin.state.data.cells.get(m.ref)!;
           const theme = arrayTheme(cell, { array, colorList, range });
           if (theme === 'none') {
@@ -441,8 +538,19 @@ export class CryoetApi extends ApiArea {
           b.to(cell).update(next);
           nodes.push(m.ref);
         }
-        // the scale is the shape's: its instance transform (OBJ, PLY, VTP shapes have one)
+        // its color by a volume: on, changed, or off (kept, its array with it) for a color or an array
         const shape = shapeCellOf(ctx, m.ref);
+        const node = volumeNodeOf(ctx, m.ref);
+        const oldVolume = node?.transform.params as MeshVolumeColorProps | undefined;
+        const nextVolume =
+          byVolumes.get(m.ref) ??
+          (oldVolume?.show && (uniform || themes.has(m.ref)) ? { ...oldVolume, show: false } : undefined);
+        if (nextVolume && JSON.stringify(nextVolume) !== JSON.stringify(oldVolume)) {
+          if (node) b.to(node).update(nextVolume);
+          else if (shape) b.to(shape).insert(MeshVolumeColor, nextVolume);
+          nodes.push(m.ref);
+        }
+        // the scale is the shape's: its instance transform (OBJ, PLY, VTP shapes have one)
         if (scale !== undefined && shape && scale > 0 && Math.abs(scaleOf(shape) - scale) > 1e-6) {
           b.to(shape).update((p: any) => ({
             ...p,
@@ -1613,7 +1721,9 @@ function meshes(ctx: Pick<ApiContext, 'plugin'>): MeshInfo[] {
     const data = cells.get(root)?.obj;
     if (!SO.Data.String.is(data) && !SO.Data.Binary.is(data) && !SO.Data.Response.is(data)) continue;
     const p = cell.transform.params as any;
-    const arrays = arraysOf(cell, shapeCellOf(ctx, cell.transform.ref));
+    const node = volumeNodeOf(ctx, cell.transform.ref);
+    const arrays = arraysOf(cell, cells.get(cell.transform.parent));
+    const byVolume = node && volumeColorByOf(ctx, node);
     out.push({
       ref: cell.transform.ref,
       label: data.label,
@@ -1623,7 +1733,10 @@ function meshes(ctx: Pick<ApiContext, 'plugin'>): MeshInfo[] {
       ...(p?.coloring?.name === 'uniform' ? { color: p.coloring.params.color } : {}),
       ...(p?.colorTheme?.name === 'uniform' ? { color: p.colorTheme.params.color } : {}),
       ...(arrays.length ? { arrays } : {}),
-      ...(arrays.length && p?.colorTheme?.name === 'attribute' ? { colorBy: colorByOf(p.colorTheme.params) } : {}),
+      ...(arrays.length && p?.colorTheme?.name === 'attribute' && !byVolume
+        ? { colorBy: colorByOf(p.colorTheme.params) }
+        : {}),
+      ...(byVolume ? { volumeColor: byVolume } : {}),
       scale: scaleOf(shapeCellOf(ctx, cell.transform.ref)),
     });
   }
@@ -1723,11 +1836,50 @@ function arrayTheme(
   return { value: { name: 'attribute', params: { ...base, name, colors: change.colorList ?? base.colors, domain } } };
 }
 
-/** The shape a mesh representation draws (its `transforms` param: the OBJ, PLY, VTP shapes') */
+/**
+ * The shape a mesh representation draws (its `transforms` param: the OBJ, PLY, VTP shapes'): its parent, past its color
+ * by a volume
+ */
 function shapeCellOf(ctx: Pick<ApiContext, 'plugin'>, repr: string): StateObjectCell | undefined {
   const { cells, tree } = ctx.plugin.state.data;
-  const parent = cells.get(tree.transforms.get(repr)?.parent ?? '');
+  let parent = cells.get(tree.transforms.get(repr)?.parent ?? '');
+  while (parent?.transform.transformer === MeshVolumeColor) parent = cells.get(parent.transform.parent);
   return parent && SO.Shape.Provider.is(parent.obj) ? parent : undefined;
+}
+
+/** A mesh representation's color by a volume (its decorator above it), if it has one */
+function volumeNodeOf(ctx: Pick<ApiContext, 'plugin'>, repr: string): StateObjectCell | undefined {
+  const { cells, tree } = ctx.plugin.state.data;
+  const parent = cells.get(tree.transforms.get(repr)?.parent ?? '');
+  return parent?.transform.transformer === MeshVolumeColor ? parent : undefined;
+}
+
+/** A mesh's color by a volume as `cryoet.meshes` gives it, when shown: its volume found by its drawn cell */
+function volumeColorByOf(ctx: Pick<ApiContext, 'plugin'>, node: StateObjectCell): MeshVolumeColorBy | undefined {
+  const p = node.transform.params as MeshVolumeColorProps;
+  if (!p.show) return undefined;
+  const v = ctx.plugin.managers.volume.hierarchy.current.volumes.find(
+    (x) => x.cell.transform.ref === p.volume || lastDecorator(ctx, x).transform.ref === p.volume,
+  );
+  const kind = sampledArrayOf(node.obj?.data)?.kind ?? 'point';
+  return {
+    volume: v?.cell.transform.ref ?? p.volume,
+    label: v ? entryLabel(ctx, v.cell) : p.volume,
+    sample: p.sample,
+    depth: p.depth,
+    colorList: p.colorList,
+    range: p.range,
+    invert: p.invert,
+    array: `${kind}:${p.name}`,
+    ...(v ? {} : { missing: true as const }),
+  };
+}
+
+/** The name of the array a mesh keeps a volume's values in: density_<volume>, not one of its file's own */
+function arrayName(ctx: Pick<ApiContext, 'plugin'>, repr: string, volume: string): string {
+  const name = `density_${volume.replace(/\.[^.]*$/, '')}`;
+  const file = (shapeCellOf(ctx, repr)?.obj?.data as { data?: { source?: FileArrays } } | undefined)?.data?.source;
+  return file?.pointData?.has(name) || file?.cellData?.has(name) ? `${name}_volume` : name;
 }
 
 /** A shape's scale: of its first instance transform (1 when none) */

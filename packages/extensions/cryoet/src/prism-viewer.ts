@@ -6,6 +6,7 @@
 
 import { operationCommand } from '@molstar/prism-viewer/commands/operations';
 import type { ViewerExtension, ViewerSkill } from '@molstar/prism-viewer/spec';
+import { MeshVolumeColor } from './mesh-volume.js';
 import { CryoetApi } from './operations.js';
 
 declare module '@molstar/prism-viewer/api' {
@@ -61,6 +62,8 @@ export const CryoetSkill: ViewerSkill = {
 export const CryoetExtension: ViewerExtension = {
   id: 'cryoet',
   title: 'Cryo-ET',
+  // a mesh's color by a volume is a state transform: registered, so a session that has it opens
+  plugin: { registry: [{ actions: [MeshVolumeColor] }] },
   api: { cryoet: (ctx) => new CryoetApi(ctx) },
   commands: (api) => {
     const c = api.cryoet;
