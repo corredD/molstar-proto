@@ -1526,6 +1526,8 @@ export class MesoscaleApi extends ApiArea {
                 : Vec3.create(0, 0, 1)
               : Vec3.create(which === 'x' ? 1 : 0, which === 'y' ? 1 : 0, which === 'z' ? 1 : 0);
         const snap = v.snap && on ? on : undefined;
+        // Snap from a copy on the mesh, as every grow on a mesh (review S3)
+        if (snap && !snap.surface.project(SurfaceHit(), scene.position, Vec3(), snap.reach)) return offMesh();
         // unset: the copies touching where the source is (their nearest two a diameter apart; review M2)
         const at = symmetryAt(scene, surfaceAxis(), { group, n, side }, direction);
         const contact = at ? symmetryContact(group, n, at) : 0;

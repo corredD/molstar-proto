@@ -291,4 +291,27 @@ describe('symmetryPoses', () => {
       expect(Vec3.dot(a, n)).toBeCloseTo(1, 9);
     }
   });
+
+  it("Snap: a copy with no surface within reach stays exact; a normal the other way is turned to the copy's side", () => {
+    const center = Vec3.scaleAndAdd(Vec3(), source.position, Vec3.transformQuat(Vec3(), up, source.rotation), -radius);
+    const exact = symmetryPoses(source, up, p('t'))!;
+    // a surface that never hits: the copies exact
+    const none: GrowSurface = { project: () => false, triangles: () => ({ positions: [], normals: [] }) };
+    expect(symmetryPoses(source, up, p('t'), undefined, { surface: none, reach: 60, axis: up })).toEqual(exact);
+    // a sphere of 40 Å wound inward (its normals toward the center): the copies' axes still outward
+    const inward: GrowSurface = {
+      project(out: SurfaceHit, x: Vec3) {
+        const d = Vec3.normalize(Vec3(), Vec3.sub(Vec3(), x, center));
+        Vec3.scaleAndAdd(out.position, center, d, 40);
+        Vec3.negate(out.normal, d);
+        return true;
+      },
+      triangles: () => ({ positions: [], normals: [] }),
+    };
+    const made = symmetryPoses(source, up, p('t'), undefined, { surface: inward, reach: 60, axis: up })!;
+    for (let i = 0; i < 11; ++i) {
+      const n = Vec3.normalize(Vec3(), Vec3.sub(Vec3(), pos(made, i), center));
+      expect(Vec3.dot(Vec3.transformQuat(Vec3(), up, rot(made, i)), n)).toBeCloseTo(1, 9);
+    }
+  });
 });

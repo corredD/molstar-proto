@@ -7,6 +7,7 @@
 import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it } from 'vitest';
 import { Vec3 } from '@molstar/core/math/linear-algebra';
+import { Sphere } from '@molstar/graphics/geo/primitive/sphere';
 import type { ParticleList } from '@molstar/model/model/particles/particle-list';
 import type { ApiResult } from '@molstar/prism-viewer/api/area';
 import { DefaultPrismViewerSpec } from '@molstar/prism-viewer/default-spec';
@@ -54,6 +55,18 @@ const strokes = (v: PrismViewer) =>
       .transform.params as { strokes: PaintStroke[] }
   ).strokes;
 const xyz = (l: ParticleList, i: number) => Vec3.fromArray(Vec3(), l.coordinates, i * 3);
+
+/** An OBJ of a sphere of `radius` about the origin (an icosphere, detail 3; grow-operation.test.ts's) */
+function sphereObj(radius: number) {
+  const { vertices, indices } = Sphere(3);
+  const lines: string[] = [];
+  for (let i = 0; i < vertices.length; i += 3) {
+    lines.push(`v ${radius * vertices[i]} ${radius * vertices[i + 1]} ${radius * vertices[i + 2]}`);
+  }
+  for (let i = 0; i < indices.length; i += 3)
+    lines.push(`f ${indices[i] + 1} ${indices[i + 1] + 1} ${indices[i + 2] + 1}`);
+  return lines.join('\n');
+}
 
 /** The points' center: the mean of a whole orbit is the center of a point group */
 function centerOf(ps: Vec3[]) {
@@ -184,6 +197,32 @@ describe('mesoscale.grow symmetry', () => {
       }
     },
   );
+
+  it('Snap on a mesh: copies within reach on it; refused from a source off the mesh, no step (review S3)', async () => {
+    const v = await viewer();
+    const ref = entry(v).cell.transform.ref;
+    // CA (#2) at (20, 0, 0) on a sphere of 20 Å about 0, 280 Å off one of 300 Å
+    expectOk(await v.api.load.files({ files: [new File([sphereObj(20)], 'vesicle.obj')] }));
+    expectOk(await v.api.load.files({ files: [new File([sphereObj(300)], 'far.obj')] }));
+    const grow = (p: object) =>
+      v.api.run('mesoscale.grow', {
+        particles: ref,
+        mode: 'symmetry',
+        group: 'c',
+        n: 6,
+        symmetryRadius: 10,
+        mesh: 'vesicle.obj',
+        snap: true,
+        ...p,
+      });
+    const before = { count: drawn(v).count, steps: steps(v) };
+    expect(await grow({ index: 2, mesh: 'far.obj' })).toMatchObject({ ok: false, code: 'invalid' });
+    expect(steps(v)).toBe(before.steps);
+    expectOk(await grow({ index: 2 }));
+    expect(strokes(v)[0].grow!.params.snap).toBe(1);
+    const list = drawn(v);
+    for (let i = before.count; i < list.count; ++i) expect(Vec3.magnitude(xyz(list, i))).toBeCloseTo(20, 0);
+  });
 
   it('refuses a Radius of 0', async () => {
     const v = await viewer();
