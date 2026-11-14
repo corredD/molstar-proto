@@ -95,3 +95,49 @@ describe('color grid read per fragment (WGSL)', () => {
     expect(emissive).toMatch(/var emissiveColor = varyingColor\.rgb/);
   });
 });
+
+// `texture3dFrom2dLinear` as the shaders read it (a slice's texels linear, as a texture's, the slices mixed by z): a
+// cell (i, j, k) of a grid is at (i + ½, j + ½, k) / dim, half a cell off in x and y, which the fragment lookup adds
+describe('the 2d layout of a grid read as the shaders read it', () => {
+  /** A 2d texture of `width` × `height` single values, read linearly at (u, v), clamped at its edges */
+  function texture2D(image: Float32Array, width: number, height: number, u: number, v: number) {
+    const at = (x: number, y: number) =>
+      image[Math.min(height - 1, Math.max(0, y)) * width + Math.min(width - 1, Math.max(0, x))];
+    const x = u * width - 0.5;
+    const y = v * height - 0.5;
+    const [x0, y0] = [Math.floor(x), Math.floor(y)];
+    const [fx, fy] = [x - x0, y - y0];
+    const a = at(x0, y0) * (1 - fx) + at(x0 + 1, y0) * fx;
+    const b = at(x0, y0 + 1) * (1 - fx) + at(x0 + 1, y0 + 1) * fx;
+    return a * (1 - fy) + b * fy;
+  }
+  /** `texture3dFrom2dLinear` (GLSL), for a layout of one row of slices */
+  function texture3d(image: Float32Array, dim: number[], texDim: number[], pos: number[]) {
+    const slice = (z: number) =>
+      texture2D(image, texDim[0], texDim[1], (z * dim[0] + pos[0] * dim[0]) / texDim[0], (pos[1] * dim[1]) / texDim[1]);
+    const z0 = Math.floor(pos[2] * dim[2]);
+    const d = pos[2] * dim[2] - z0;
+    return slice(z0) * (1 - d) + slice(z0 + 1) * d;
+  }
+
+  it("reads a cell's own value at its center plus half a cell in x and y, a mix of its neighbors without", () => {
+    const dim = [4, 3, 2];
+    const texDim = [dim[0] * dim[2], dim[1]];
+    const image = new Float32Array(texDim[0] * texDim[1]);
+    const value = (i: number, j: number, k: number) => i + 10 * j + 100 * k;
+    for (let k = 0; k < dim[2]; k++) {
+      for (let j = 0; j < dim[1]; j++) {
+        for (let i = 0; i < dim[0]; i++) image[j * texDim[0] + k * dim[0] + i] = value(i, j, k);
+      }
+    }
+    for (const [i, j, k] of [
+      [1, 1, 0],
+      [2, 1, 1],
+      [0, 0, 0],
+    ]) {
+      const atCenter = texture3d(image, dim, texDim, [(i + 0.5) / dim[0], (j + 0.5) / dim[1], k / dim[2]]);
+      expect(atCenter).toBeCloseTo(value(i, j, k), 6);
+    }
+    expect(texture3d(image, dim, texDim, [2 / dim[0], 1 / dim[1], 0])).not.toBeCloseTo(value(2, 1, 0), 1);
+  });
+});
