@@ -9,3 +9,6 @@
   again in place, one undo step a drag; more Steps, Turns, Rings or Count continue it (every copy kept where it was),
   fewer cut it. Clear removes every grow from the source instance. `mesoscale.grow { replace }`,
   `mesoscale.clear-grown`.
+- Grow › Spiral: a new fiber winding flat outward from the source, an Archimedean spiral of Spacing between its arms,
+  Turns and Hand; in the source's plane in space, rolled over the surface on a mesh (ending at its edge or where its
+  arms would cross). `mesoscale.grow { mode: 'spiral', spacing, turns, hand }`.
