@@ -191,3 +191,72 @@ single source of truth, the pending pick, ~60); the host made with the area move
 - Alt+wheel during a stroke still moves the depth mid-stroke (before this lane too).
 - The lone Alt key on Windows may focus the browser's menu after an Alt+drag (the old keydown guard is gone).
 - In Paint, Mol*'s own hover highlight runs beside paint's pick: two picks a frame (not measured).
+
+# Round 2 (Ludo, 2026-11-13, via the coordinator): copies aligned to the surface
+
+Ludo tried round 1 live: everything works. He wants the copies aligned to the surface's normal.
+
+## Built (round 2)
+
+1. **Paint on a surface** (b555fdaa6, f7c40658b, 7c880725d). A stroke read on a surface (Place Surface: a mesh's, a
+   structure's or particles' pick) says so (`mesoscale.paint`'s new `surface`); with Turn Auto every copy of any brush
+   then stands along that normal; at a depth or over nothing as before (random). **The axis rule:** the copy's own axis
+   put along the normal is the entity's Fiber Axis when set, else +z; a membrane protein stays upright (+z) whatever its
+   Fiber Axis (its mid-plane and grow's rule assume +z); the spin about the normal random by the stroke's seed; Side In
+   flips it. The copy under the pointer turns the same (its Fiber Axis kept until the settings or the state change).
+2. **Grow on a surface** (194acad89, 18ba62538). Tiling and Sphere on a mesh already put each copy's axis along its
+   normal (grow-surface tests at the unit level: Tiling +z, Tiling from a tilted source's principal axis, Sphere).
+   Random walk: its path followed the surface but its units only the least turn onto the path; it now keeps the
+   surface's normal at each point (`PaintStroke.normals`, list frame, resampled with the path when its rise changes) and
+   rolls each unit about the path so its up (the offset direction) lies along the normal, then the twist and jitter as
+   before. It fits the fiber frame cleanly (one roll about the tangent a unit). The first normal faces the source's +z,
+   not the mesh's winding. Crystal untouched.
+
+## Decided (round 2)
+
+- (Coordinator's rule) The axis along the normal: Fiber Axis when set, else +z. (Lane, review S1) not for a membrane
+  protein: upright always.
+- (Lane) "On a surface" is Place Surface (the stroke read on a pick); with Place Auto a non-membrane brush paints at a
+  depth (the depth of what is under it, round 1) and turns at random, as the brief says. The Turn Auto title says so.
+
+## Review (round 2: lane-reviewer, then lane-skeptic)
+
+| Finding                                                        | Skeptic                         | Outcome                                  |
+| -------------------------------------------------------------- | ------------------------------- | ---------------------------------------- |
+| M1 no round-2 changelog or progress                            | confirmed                       | fixed (this commit)                      |
+| S1 a membrane protein with a Fiber Axis lies on its side       | confirmed                       | fixed f7c40658b                          |
+| S2 paint's +z vs grow's principal axis on a mesh (1CRN: 46.8°) | confirmed (partly pre-existing) | open: Ludo's decision                    |
+| S3 Place Auto never reaches the new behaviour                  | confirmed, not a defect (nit)   | the Turn Auto title says Place Surface   |
+| S4 the Fiber Axis read every frame                             | confirmed                       | fixed 7c880725d (no test: a perf rule)   |
+| S5 no test of preview = painted through the real host closures | confirmed                       | open (checked in the app: painted dot 1) |
+| S6 ui.md's walk paragraph                                      | confirmed                       | fixed (this commit)                      |
+| S7 the walk's up from the mesh's winding, not the source       | confirmed                       | fixed 18ba62538                          |
+| nit features.md; along for fiber strokes                       | confirmed                       | fixed (this commit; f7c40658b)           |
+| nit a painted fiber on a surface keeps no normals              | confirmed                       | open                                     |
+| nit spin frame under a rotated list (preview vs painted)       | plausible, pre-existing         | open                                     |
+| nit fiberAxisVector returns shared constants                   | refuted as a defect             | kept                                     |
+| N1 a made stroke keeps the path-length normals                 | confirmed, harmless             | kept                                     |
+
+## Checked in the app (round 2, port 1367)
+
+The HIV capsid (~/Downloads/HIV-Capsid/capsid_tiling.vtp) and 1CRN; Paint with 1CRN, Place Surface, Turn Auto: three
+clicks on the capsid, each painted copy's +z · the picked normal = 1.00000 (the operation's calls read in the page,
+`surface: true`); Grow from the last copy on the capsid: Tiling Count 60 (61 copies over it), Random walk 40 steps on
+it. Screenshots in
+/private/tmp/claude-501/-Users-ludovicautin-molstar-proto-git/bc8a7dcf-b4ed-4027-911e-5f56df74a469/scratchpad/paint-refine/:
+`n-0-capsid.png`, `n-1-copy-on-surface.png`, `n-2-painted.png`, `n-3-tiling.png`, `n-4-walk.png`. Script:
+~/prism-me-lanes/paint-refine-capsid.cjs. The dev server left running (the coordinator's).
+
+## Checks (round 2)
+
+`npx tsc -b` clean; `pnpm lint` clean; `pnpm format:check` only `progress/current.md` (as on origin); mesoscale and
+prism-me tests 430 passed (54 files).
+
+## Open (round 2)
+
+- **S2 (Ludo):** paint on a surface puts +z (or the Fiber Axis) along the normal; Tiling and Sphere on a mesh put a
+  non-membrane source's **principal axis** along it, so a tiling grown from a painted 1CRN copy is tilted ~47° against
+  it. One rule: paint takes the principal axis, or grow takes +z / the Fiber Axis?
+- A fiber painted on a surface (Fiber On) keeps no normals: its units' up does not follow the surface (a grown walk's
+  does).
+- No test through the real host that the copy shown equals the copy painted (S5).

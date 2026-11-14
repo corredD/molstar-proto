@@ -563,10 +563,11 @@ still completes its distance.
   the surface ring by ring, each new point a Spacing from one kept in its tangent plane, projected onto the surface; a
   point closer than 0.8 × Spacing to one kept is dropped (TomoNet's rule), so a closed surface fills without piling up;
   its **Count** (the points, the source's counted; unset: the plane's for Rings) takes Rings' place. Random walk keeps
-  each step in the tangent plane, its point projected back. Sphere puts its Count copies uniform by area on the surface
-  within Radius. Each copy's axis (+z for a membrane protein, else its principal axis) follows the surface's normal, its
-  spin carried from the source. Crystal (a 3D lattice) grows in space: On says so. The copies are explicit: the mesh can
-  go, they stay.
+  each step in the tangent plane, its point projected back; its units' up (their offset) along the surface's normal on
+  the source's side (its +z), turned from there by the twist (paint-refine round 2). Sphere puts its Count copies
+  uniform by area on the surface within Radius. Each copy's axis (+z for a membrane protein, else its principal axis)
+  follows the surface's normal, its spin carried from the source. Crystal (a 3D lattice) grows in space: On says so. The
+  copies are explicit: the mesh can go, they stay.
 - Models decorated too (2026-10-23, Ludovic: "why can't we change the target in Simularium"): a model (a list with
   entities: Simularium, cellPACK, PetWorld) has the Decoration section, so each of its targets (an agent, an entity) can
   be drawn as another object of the scene. A particle list's own shape (a Simularium simulation box) is not listed as a
