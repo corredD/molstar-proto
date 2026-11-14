@@ -14,6 +14,9 @@ import { DefaultPrismViewerSpec } from '@molstar/prism-viewer/default-spec';
 import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
 import type { PrismViewer } from '@molstar/prism-viewer/viewer';
 import { sceneVolumes } from '../fit.js';
+import { pluginCursorFit } from '../paint-host.js';
+import { DefaultPaintSettings } from '../paint-mode.js';
+import { paintRotation } from '../paint.js';
 import { ParticleListPainted, type PaintStroke } from '../paint.js';
 import { MesoscaleExtension } from '../prism-viewer.js';
 import { angleBetween, crnAtoms, density, type Site, turn } from './density.js';
@@ -122,6 +125,37 @@ describe('mesoscale.paint with fit', () => {
     expect(drawn(v).count).toBe(count);
     const r = await v.api.run('mesoscale.paint', { entity: 'CA', positions: [61, 40, 40], fit: 'nothing' });
     expect(r.ok).toBe(false);
+  });
+});
+
+describe('the copy under the pointer, fitted', () => {
+  it('is where the click paints it', async () => {
+    const v = await viewer();
+    const volume = await loadMap(
+      v,
+      [{ position: Vec3.create(60, 40, 40), rotation: turn(Vec3.create(1, 0, 0), 30) }],
+      [80, 60, 60],
+    );
+    const data = drawn(v);
+    const fit = pluginCursorFit(v.plugin, () => data.targetMapping?.get(data.targets[2]), 10);
+    // as the cursor turns the copy (Turn Random, the stroke's seed): its first copy's turn
+    const rotation = paintRotation(Quat(), Vec3.create(0, 0, 1), 'random', 7, 0, {});
+    const shown = fit.fit(Vec3.create(62, 41, 40), rotation, volume, DefaultPaintSettings.contrast)!;
+    expect(shown.shift).toBeGreaterThan(0.5);
+    expectOk(
+      await v.api.run('mesoscale.paint', {
+        entity: 'CA',
+        positions: [62, 41, 40],
+        normals: [0, 0, 1],
+        orient: 'random',
+        seed: 7,
+        fit: volume,
+      }),
+    );
+    const n = drawn(v).count - 1;
+    expect(Vec3.distance(xyz(drawn(v), n), shown.position)).toBeLessThan(1e-3);
+    expect(angleBetween(quat(drawn(v), n), shown.rotation)).toBeLessThan(1e-2);
+    fit.dispose();
   });
 });
 

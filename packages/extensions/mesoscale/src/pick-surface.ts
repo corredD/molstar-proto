@@ -17,13 +17,15 @@ export type Identify = (x: number, y: number) => PickResult;
 
 /**
  * A surface point: where, its normal (unit, toward the viewer), the pick there, and the file mesh it is on (its
- * representation's state ref: grow-mesh) when it is on one
+ * representation's state ref: grow-mesh) or the slice, when it is on one
  */
 export interface SurfacePoint {
   readonly position: Vec3;
   readonly normal: Vec3;
   id: unknown;
   mesh?: string;
+  /** The volume (its state ref) whose slice it is on (density-fit: `PaintHost.sliceAt`) */
+  volume?: string;
 }
 
 export function SurfacePoint(): SurfacePoint {
@@ -86,6 +88,7 @@ export function surfaceAt(
   Vec3.copy(out.position, centre.position);
   out.id = centre.id;
   out.mesh = undefined;
+  out.volume = undefined;
   Vec3.sub(_toEye, eye, centre.position);
   const n = out.normal;
   if (slope(_u, centre.position, left, right) && slope(_v, centre.position, up, down)) {

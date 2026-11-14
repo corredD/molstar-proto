@@ -8,6 +8,7 @@ import { Vec3 } from '@molstar/core/math/linear-algebra';
 import { createRoot, effect, onCleanup } from '@molstar/prism-ui/dom/scope';
 import { drag, frames, observeResize, on } from '@molstar/prism-ui/dom/scoped';
 import { type ObservableState, observableState } from '@molstar/prism-ui/reactive/observable-state';
+import { type FitContrast, type FitResult, fitLabel } from './fit.js';
 import type { PaintOrient } from './paint.js';
 import { type Identify, SurfacePoint, surfaceAt } from './pick-surface.js';
 
@@ -65,6 +66,13 @@ export interface PaintSettings {
    * ref, or empty for the Painting list
    */
   readonly into?: string;
+  /**
+   * The volume each copy is fitted to (density-fit): its state ref; `auto`, the one whose slice is under the pointer
+   * (none elsewhere); empty: none
+   */
+  readonly fit: string;
+  /** The volume's contrast: Dark (a tomogram's protein) or Bright */
+  readonly contrast: FitContrast;
 }
 
 export type PaintPlace = 'surface' | 'depth';
@@ -75,6 +83,8 @@ export const DefaultPaintSettings: PaintSettings = {
   side: 'out',
   place: 'auto',
   fiber: 'auto',
+  fit: 'auto',
+  contrast: 'dark',
 };
 
 /** What painting needs of the viewer: the plugin's canvas and the operation (a fake in tests) */
@@ -104,6 +114,11 @@ export interface PaintHost {
    * (`membraneFrame`); the point as it is else
    */
   refine(point: SurfacePoint, upright: boolean): void;
+  /**
+   * A volume's slice under (x, y) (density-fit): the point where the pointer's ray meets its plane and the plane's
+   * normal toward the viewer (`point.volume`, the volume's state ref, when it is one of the scene's); false elsewhere
+   */
+  sliceAt?(x: number, y: number, point: SurfacePoint): boolean;
   /** Whether the brush stands upright in a membrane (a membrane protein): only its copies go on the mid-plane */
   upright(brush: PaintBrushTarget): boolean;
   /** A point of the scene on the canvas: CSS pixels from its top left (out[0], out[1]) */
@@ -129,6 +144,8 @@ export interface PaintHost {
     mesh?: string,
     /** Its normals a surface's (a pick: paint-refine round 2): with Turn Auto, every copy along them */
     surface?: boolean,
+    /** The volume its copies are fitted to (density-fit: its state ref) */
+    fit?: string,
   ): Promise<unknown>;
   /** The copy of the brush drawn under the pointer (Round 2), gone with `dispose` */
   cursor(brush: PaintBrushTarget): PaintCursor;
@@ -142,11 +159,23 @@ export interface PaintHost {
 export interface PaintCursor {
   /**
    * Shows it at `position`, turned as a stroke's first copy of `seed` with that normal would be; `onSurface`, the normal
-   * a surface's (Turn Auto: along it)
+   * a surface's (Turn Auto: along it); `fit`, the volume it is fitted to (density-fit), shown at its fitted pose: the fit
    */
-  move(position: Vec3, normal: Vec3, settings: PaintSettings, seed: number, onSurface?: boolean): void;
+  move(
+    position: Vec3,
+    normal: Vec3,
+    settings: PaintSettings,
+    seed: number,
+    onSurface?: boolean,
+    fit?: string,
+  ): FitResult | undefined | void;
   hide(): void;
   dispose(): void;
+}
+
+/** The volume a stroke's copies are fitted to: the settings' Fit to, Auto the slice's it is on (`volume`), else none */
+export function fitOf(settings: PaintSettings, volume: string | undefined): string | undefined {
+  return settings.fit === 'auto' ? volume : settings.fit || undefined;
 }
 
 /** Where a brush's copies go: the settings' place, else a membrane protein (`upright`) on the surface, else at a depth */
@@ -216,6 +245,8 @@ interface Stroke {
   top: number;
   /** The file mesh its last surface read was on (grow-mesh) */
   mesh?: string;
+  /** The volume whose slice its last point was on (density-fit) */
+  volume?: string;
 }
 
 const _point = SurfacePoint();
@@ -290,11 +321,14 @@ function paintLayer(mode: PaintMode, host: PaintHost, canvas: HTMLElement, brush
   let committing = 0;
   const clear = () => ctx?.clearRect(0, 0, preview.width, preview.height);
 
+  /** The copy under the pointer's fit (density-fit: "fit 2.4σ, 3.1 Å, 8°"), when it is fitted */
+  let fitText = '';
   const writeHint = () => {
     const how =
       where === 'depth' ? `click or drag · Alt+wheel: depth ${Math.round(depth)} Å` : 'click or drag on a surface';
     const what = fiber ? `a fiber of ${brush.name}` : brush.name;
-    hint.textContent = `Painting with ${what} · ${how} · Alt+drag to turn the camera · Esc to stop`;
+    const fitted = fitText ? ` · ${fitText}` : '';
+    hint.textContent = `Painting with ${what} · ${how}${fitted} · Alt+drag to turn the camera · Esc to stop`;
   };
   writeHint();
 
@@ -316,7 +350,10 @@ function paintLayer(mode: PaintMode, host: PaintHost, canvas: HTMLElement, brush
 
   /** Reads the place at (x, y): a point kept a spacing from the last; false while the pick is read */
   const sampleAt = (s: Stroke, x: number, y: number): boolean => {
-    if (where === 'depth') {
+    // on a slice (density-fit): the copy's center on its plane, its normal the plane's, whatever the place
+    if (host.sliceAt?.(x, y, _point)) {
+      s.volume = _point.volume;
+    } else if (where === 'depth') {
       if (!atDepth(x, y)) return true;
     } else {
       const r = surfaceAt(host.identify, x, y, NormalStep, host.eye(_eye), _point);
@@ -440,7 +477,14 @@ function paintLayer(mode: PaintMode, host: PaintHost, canvas: HTMLElement, brush
   let retries = 0;
   const follow = frames(() => {
     if (!hovering) return cursor.hide();
-    if (where === 'depth') {
+    // on a slice (density-fit): there, its plane's normal
+    const slice = !stroke && !!host.sliceAt?.(hoverX, hoverY, _point);
+    if (slice) {
+      // the next stroke's depth there (where the pointer leaves the slice)
+      if (where === 'depth' && !held && host.ray(hoverX, hoverY, _eye, _t)) {
+        depth = inRange(Vec3.dot(Vec3.sub(_s, _point.position, _eye), _t));
+      }
+    } else if (where === 'depth') {
       // at the depth of what is under the pointer (paint-refine), unless Alt+wheel set it or a stroke is drawn
       if (!stroke && !held) {
         const d = pickedDepth(hoverX, hoverY);
@@ -466,7 +510,20 @@ function paintLayer(mode: PaintMode, host: PaintHost, canvas: HTMLElement, brush
       if (!r) return cursor.hide();
       host.refine(_point, upright);
     }
-    cursor.move(_point.position, _point.normal, mode.settings.value, seed, where === 'surface');
+    const settings = mode.settings.value;
+    const fitted = cursor.move(
+      _point.position,
+      _point.normal,
+      settings,
+      seed,
+      where === 'surface',
+      fitOf(settings, slice ? _point.volume : undefined),
+    );
+    const text = fitted ? fitLabel(fitted) : '';
+    if (text !== fitText) {
+      fitText = text;
+      hintNext.request();
+    }
   });
   on<PointerEvent>(
     canvas,
@@ -548,8 +605,19 @@ function paintLayer(mode: PaintMode, host: PaintHost, canvas: HTMLElement, brush
       clear();
       if (how === 'up' && s.positions.length) {
         committing++;
+        const settings = mode.settings.value;
         void host
-          .paint(brush, mode.settings.value, s.positions, s.normals, seed, fiber, s.mesh, where === 'surface')
+          .paint(
+            brush,
+            settings,
+            s.positions,
+            s.normals,
+            seed,
+            fiber,
+            s.mesh,
+            where === 'surface',
+            fitOf(settings, s.volume),
+          )
           .finally(() => committing--);
         // the next copy under the pointer: the next stroke's
         seed = nextSeed();
