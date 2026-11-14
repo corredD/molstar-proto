@@ -68,12 +68,19 @@ export const assign_material_wgsl = /* wgsl */ `
         }
     #endif
 
+    // the color grid read per fragment (mesh programs), else the vertex stage's color
+    #if defined(dColorType_grid) && defined(dColorGridFragment)
+        let varyingColor = colorGridFragment(in.vColorGridPosition);
+    #elif defined(dColorType_varying)
+        let varyingColor = in.vColor;
+    #endif
+
     #if defined(dUsePalette)
-        var material = vec4<f32>(sample_tPalette(vec2<f32>(in.vColor.w, 0.5)).rgb, uMaterial.uAlpha);
+        var material = vec4<f32>(sample_tPalette(vec2<f32>(varyingColor.w, 0.5)).rgb, uMaterial.uAlpha);
     #elif defined(dColorType_uniform)
         var material = vec4<f32>(uMaterial.uColor, uMaterial.uAlpha);
     #else
-        var material = vec4<f32>(in.vColor.rgb, uMaterial.uAlpha);
+        var material = vec4<f32>(varyingColor.rgb, uMaterial.uAlpha);
     #endif
 
     // the levels already folded a Look color into vColor (color-levels.md)

@@ -4,6 +4,11 @@ export const color_frag_params = `
         varying vec4 vColor;
     #endif
 
+    #if defined(dColorType_grid) && defined(dColorGridFragment)
+        // the grid position, read per fragment
+        varying vec3 vColorGridPosition;
+    #endif
+
     #ifdef dUsePalette
         varying float vPaletteV;
     #endif

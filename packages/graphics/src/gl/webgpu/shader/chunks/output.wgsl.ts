@@ -234,11 +234,11 @@ export const emissive_output_wgsl = /* wgsl */ `
     }
     // glow with the object's own color so emissive isn't double-counted via the lit buffer
     #if defined(dUsePalette)
-        var emissiveColor = sample_tPalette(vec2<f32>(in.vColor.w, 0.5)).rgb;
+        var emissiveColor = sample_tPalette(vec2<f32>(varyingColor.w, 0.5)).rgb;
     #elif defined(dColorType_uniform)
         var emissiveColor = uMaterial.uColor;
     #elif defined(dColorType_varying)
-        var emissiveColor = in.vColor.rgb;
+        var emissiveColor = varyingColor.rgb;
     #else
         var emissiveColor = vec3<f32>(1.0);
     #endif
