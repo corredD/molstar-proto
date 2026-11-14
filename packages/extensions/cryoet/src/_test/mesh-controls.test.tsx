@@ -231,6 +231,7 @@ const ByVolume: MeshInfo = {
     label: 'tomo.mrc',
     sample: 'min',
     depth: 40,
+    detail: 'vertex',
     colorList: 'viridis',
     range: 'auto',
     invert: true,
@@ -304,6 +305,30 @@ describe("a mesh's Color by › Volume", () => {
     vi.advanceTimersByTime(500);
     expect(area.mesh).toHaveBeenLastCalledWith({ mesh: 'm', volume: 'v2' });
     dispose();
+  });
+
+  it('Detail: Vertex, then Texture written; Texture shows its cells, coarser when capped', () => {
+    vi.useFakeTimers();
+    const { host, area, choice, dispose } = mounted(ByVolume, Tomo);
+    expect(choice('Detail', 'Vertex')!.getAttribute('aria-pressed')).toBe('true');
+    expect(host.textContent).not.toContain('Cells of');
+    choice('Detail', 'Texture')!.click();
+    vi.advanceTimersByTime(500);
+    expect(area.mesh).toHaveBeenLastCalledWith({ mesh: 'm', detail: 'texture' });
+    dispose();
+    const texture = mounted(
+      { ...ByVolume, volumeColor: { ...ByVolume.volumeColor!, detail: 'texture', cell: 13.36 } },
+      Tomo,
+    );
+    expect(texture.choice('Detail', 'Texture')!.getAttribute('aria-pressed')).toBe('true');
+    expect(texture.host.textContent).toContain("Cells of 13.36 Å, the volume's voxels");
+    texture.dispose();
+    const capped = mounted(
+      { ...ByVolume, volumeColor: { ...ByVolume.volumeColor!, detail: 'texture', cell: 26.72, capped: true } },
+      Tomo,
+    );
+    expect(capped.host.textContent).toContain("Cells of 26.72 Å: coarser than the volume's voxels");
+    capped.dispose();
   });
 
   it('Array from Volume colors by the array it keeps the values in', () => {

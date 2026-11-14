@@ -52,7 +52,10 @@ import {
   MeshVolumeColor,
   type MeshVolumeColorProps,
   MeshVolumeColorParams,
+  colorBandOf,
   sampledArrayOf,
+  type VolumeDetail,
+  VolumeDetails,
   type VolumeSample,
   VolumeSamples,
   voxelOf,
@@ -206,6 +209,12 @@ export interface MeshVolumeColorBy {
   readonly label: string;
   readonly sample: VolumeSample;
   readonly depth: number;
+  /** At the vertices, or a grid at the volume's voxels read per pixel */
+  readonly detail: VolumeDetail;
+  /** Texture: a cell's side (Å), the voxel's or, over the grid's cap, more */
+  readonly cell?: number;
+  /** Texture: the grid over its cap (`MaxColorGridCells`), its cells coarser than the voxels */
+  readonly capped?: true;
   readonly colorList: string;
   readonly range: 'auto' | readonly [number, number];
   readonly invert: boolean;
@@ -382,6 +391,19 @@ export class CryoetApi extends ApiArea {
         ),
       ),
       invert: OptionalParam(PD.Boolean(false, { description: "Inverts the volume's color scale" })),
+      detail: OptionalParam(
+        PD.Select<VolumeDetail>(
+          'vertex',
+          [
+            ['vertex', 'Vertex'],
+            ['texture', 'Texture'],
+          ],
+          {
+            description:
+              "Colors at the vertices, or a grid at the volume's voxels read per pixel (the volume's detail)",
+          },
+        ),
+      ),
     },
     async run(values, ctx) {
       const { mesh, visible, visuals, opacity, color, colors, scale, array, colorList, range } =
@@ -396,13 +418,19 @@ export class CryoetApi extends ApiArea {
           colorList?: string;
           range?: 'auto' | [number, number];
         };
-      const { volume, sample, depth, invert } = values as {
+      const { volume, sample, depth, invert, detail } = values as {
         volume?: string;
         sample?: VolumeSample;
         depth?: number;
         invert?: boolean;
+        detail?: VolumeDetail;
       };
-      const byVolume = volume !== undefined || sample !== undefined || depth !== undefined || invert !== undefined;
+      const byVolume =
+        volume !== undefined ||
+        sample !== undefined ||
+        depth !== undefined ||
+        invert !== undefined ||
+        detail !== undefined;
       if (byVolume && (color !== undefined || colors !== undefined || array !== undefined)) {
         return ApiResult.fail(
           'invalid',
@@ -412,6 +440,9 @@ export class CryoetApi extends ApiArea {
       }
       if (sample !== undefined && !VolumeSamples.includes(sample)) {
         return ApiResult.fail('invalid', `'${sample}' is not a sample.`, `Samples: ${VolumeSamples.join(', ')}.`);
+      }
+      if (detail !== undefined && !VolumeDetails.includes(detail)) {
+        return ApiResult.fail('invalid', `'${detail}' is not a detail.`, `Details: ${VolumeDetails.join(', ')}.`);
       }
       if (depth !== undefined && !(Number.isFinite(depth) && depth > 0)) {
         return ApiResult.fail('invalid', 'depth: a length in Å over 0.');
@@ -516,6 +547,7 @@ export class CryoetApi extends ApiArea {
           ...(colorList !== undefined ? { colorList } : {}),
           ...(range !== undefined ? { range } : {}),
           ...(invert !== undefined ? { invert } : {}),
+          ...(detail !== undefined ? { detail } : {}),
           show: true,
         });
       }
@@ -1891,11 +1923,15 @@ function volumeColorByOf(
     (x) => x.cell.transform.ref === p.volume || lastDecorator(ctx, x).transform.ref === p.volume,
   );
   const kind = sampledArrayOf(node.obj?.data)?.kind ?? 'point';
+  const band = p.detail === 'texture' ? colorBandOf(node.obj?.data) : undefined;
   return {
     volume: v?.cell.transform.ref ?? p.volume,
     label: v ? entryLabel(ctx, v.cell) : p.volume,
     sample: p.sample,
     depth: p.depth,
+    detail: p.detail,
+    ...(band ? { cell: Math.round(100 * band.spacing) / 100 } : {}),
+    ...(band?.capped ? { capped: true as const } : {}),
     colorList: p.colorList,
     range: p.range,
     invert: p.invert,

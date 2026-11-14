@@ -747,13 +747,14 @@ export function MeshControls(props: {
 /** What colors a mesh by an array (`cryoet.mesh`) */
 const ArrayKeys = ['array', 'colorList', 'range'] as const;
 /** What colors a mesh by a volume (with the colors and range) */
-const VolumeKeys = ['volume', 'sample', 'depth', 'invert'] as const;
+const VolumeKeys = ['volume', 'sample', 'depth', 'invert', 'detail'] as const;
 
 /**
  * A mesh's Color by: Uniform (the color picker); Array, when its file has arrays (a VTP's point and cell arrays): its
  * array, its colors (a color scale) and its range (Auto: the array's; Custom: a min and a max, from the array's); Volume,
  * when the scene has one: the volume, At surface or Projected (the Mean, Min or Max along the normal within ±Depth Å),
- * its colors, its range in σ (Auto ±2σ, or Custom) and its color order as is or inverted
+ * its Detail (at the vertices, or a grid at the volume's voxels read per pixel), its colors, its range in σ (Auto ±2σ,
+ * or Custom) and its color order as is or inverted
  */
 function MeshColorBy(props: {
   mesh: ReadonlyState<MeshInfo | undefined>;
@@ -885,6 +886,28 @@ function MeshColorBy(props: {
                   </Line>
                 </>
               )}
+            </Show>
+            <Choices
+              label="Detail"
+              choices={[
+                { id: 'vertex', label: 'Vertex' },
+                { id: 'texture', label: 'Texture' },
+              ]}
+              active={mapState(byVolume, (v) => v?.detail ?? 'vertex')}
+              onPick={(detail) => {
+                if (detail !== byVolume.value?.detail) set({ detail });
+              }}
+            />
+            <Show
+              when={mapState(byVolume, (v) =>
+                !v?.cell
+                  ? ''
+                  : v.capped
+                    ? `Cells of ${v.cell} Å: coarser than the volume's voxels, the grid capped at 256³ cells.`
+                    : `Cells of ${v.cell} Å, the volume's voxels, read per pixel.`,
+              )}
+            >
+              {(text) => <span class={classes.hint}>{text}</span>}
             </Show>
           </>
         )}
