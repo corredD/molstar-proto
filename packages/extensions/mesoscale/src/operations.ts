@@ -1482,7 +1482,8 @@ export class MesoscaleApi extends ApiArea {
         const structures = paintedStructures(state, l.cell.transform.ref);
         const fiber = fiberSettingsOf(base, id, target, paintedFibers(state, l.cell.transform.ref), structures);
         // its own rise, twist and jitter when given (paint-refine), else the entity's
-        own = ownFiberOf(v);
+        // made again: the fiber's own kept where not given (its rise set live by `grown-fiber`)
+        own = { ...(old?.fiber ? old.own : undefined), ...ownFiberOf(v) };
         if (own.rise !== undefined && !(own.rise > 0)) return ApiResult.fail('invalid', 'The rise is above 0 Å.');
         const rise = own.rise ?? fiber.rise;
         const axis =

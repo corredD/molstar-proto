@@ -919,6 +919,22 @@ describe('mesoscale.grow replace', () => {
     expect(drawn(v).count).toBe(7 + 5);
   });
 
+  it("keeps a fiber's own rise set by grown-fiber when made again without one (review nit, minor)", async () => {
+    const v = await viewer();
+    const ref = entry(v).cell.transform.ref;
+    const r = await v.api.run('mesoscale.grow', { particles: ref, index: 3, mode: 'walk', steps: 8 });
+    expectOk(r);
+    const id = (r.value as { id: number }).id;
+    expectOk(await v.api.run('mesoscale.grown-fiber', { particles: ref, grow: id, rise: 15 }));
+    expectOk(await v.api.run('mesoscale.grow', { particles: ref, index: 3, mode: 'walk', steps: 12, replace: id }));
+    expect(strokes(v)[0].own).toMatchObject({ rise: 15 });
+    // given, it wins
+    expectOk(
+      await v.api.run('mesoscale.grow', { particles: ref, index: 3, mode: 'walk', steps: 12, rise: 7, replace: id }),
+    );
+    expect(strokes(v)[0].own).toMatchObject({ rise: 7 });
+  });
+
   it('refuses a grow that is not there or is of another source: no step', async () => {
     const v = await viewer();
     const ref = entry(v).cell.transform.ref;
