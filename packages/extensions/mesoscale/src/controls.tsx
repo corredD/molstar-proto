@@ -630,9 +630,11 @@ function settingsOfGrow(g: GrowRecord): Partial<GrowSettings> {
  * or by a paint, its last copy), its mode, the mode's params (a length unset: the source's size), a seed (none: at
  * random) and Grow. The settings are the area's (`growSettings`), no step. On (grow-mesh): None or a file mesh of the
  * scene (the one the source was painted on by default); on a mesh, Tiling's Rings becomes its Count; Crystal grows in
- * space. A walk's or a helix's Rise, Twist and Jitter (paint-refine; unset: the entity's) are live on the last one grown
- * here: a drag redraws it in place (`mesoscale.grown-fiber`), one step a drag; another Grow, another source, another
- * mode or the block gone ends it.
+ * space. The last grow made here is live (round 2): any setting (each mode's, Seed, On and Mode: a Mode picked turns it
+ * into one of that mode) makes it again in place (`mesoscale.grow { replace }`), one step a drag or a pick, and the
+ * settings follow it back (an undo, a drag refused); a fiber's Rise, Twist and Jitter redraw it on its path
+ * (`mesoscale.grown-fiber`). Another Grow, another source, Clear or the block gone ends it. Clear removes every grow
+ * from the source (`mesoscale.clear-grown`).
  */
 export function GrowBlock(props: { area: MesoscaleApi; api: ViewerApi; particles: string }) {
   const area = props.area;
