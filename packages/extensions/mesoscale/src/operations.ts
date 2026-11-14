@@ -1581,7 +1581,8 @@ export class MesoscaleApi extends ApiArea {
           : src.surface
             ? Vec3.create(0, 0, 1)
             : principalAxisOf(data.targetMapping?.get(target));
-        if (p.count !== undefined) keep = p.count;
+        // its Count the source's counted, as unfitted (review S1)
+        if (p.count !== undefined) keep = p.count - 1;
         made = tilingPoses(scene, normal, p.count !== undefined ? { ...p, count: draw(p.count) } : p, on);
         if (!made) return offMesh();
         Object.assign(sizes, p);

@@ -14,6 +14,7 @@ import { DefaultPrismViewerSpec } from '@molstar/prism-viewer/default-spec';
 import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
 import type { PrismViewer } from '@molstar/prism-viewer/viewer';
 import { sceneVolumes } from '../fit.js';
+import { sceneMeshes } from '../mesh-surface.js';
 import { pluginCursorFit } from '../paint-host.js';
 import { DefaultGrowSettings, growParams } from '../operations.js';
 import { DefaultPaintSettings } from '../paint-mode.js';
@@ -366,5 +367,97 @@ describe('mesoscale.grow with fit', () => {
     const six = Array.from(drawn(v).coordinates.slice((index + 1) * 3));
     expect(six.length).toBe(18);
     expect(six.slice(0, 9)).toEqual(three);
+  });
+
+  it('Tiling on a mesh: Count counts the source, as unfitted (review S1)', async () => {
+    const v = await viewer();
+    const list = entry(v).cell.transform.ref;
+    const vs = [
+      [0, 0, 40],
+      [200, 0, 40],
+      [200, 200, 40],
+      [0, 200, 40],
+    ];
+    const obj = `${vs.map((x) => `v ${x.join(' ')}`).join('\n')}\nf 1 2 3\nf 1 3 4\n`;
+    expectOk(await v.api.load.files({ files: [new File([obj], 'plane.obj')] }));
+    const mesh = sceneMeshes(v.plugin.state.data)[0].ref;
+    expectOk(
+      await v.api.run('mesoscale.paint', {
+        entity: 'CA',
+        positions: [100, 100, 40],
+        normals: [0, 0, 1],
+        surface: true,
+      }),
+    );
+    const index = drawn(v).count - 1;
+    // the sites: a tiling of 10 (the source counted), every one filled
+    const tiling = { particles: list, index, mode: 'tiling', mesh, spacing: 32, count: 5 };
+    expectOk(await v.api.run('mesoscale.grow', { ...tiling, count: 10 }));
+    const grown = drawn(v);
+    const sites: Site[] = [];
+    for (let i = index; i < grown.count; ++i) sites.push({ position: xyz(grown, i), rotation: quat(grown, i) });
+    expect(sites.length).toBe(10);
+    expectOk(await v.api.run('history.undo', {}));
+    const volume = await loadMap(v, sites, [140, 140, 60]);
+    expectOk(await v.api.run('mesoscale.grow', { ...tiling, fit: volume, threshold: 0.3 }));
+    expect(drawn(v).count - 1 - index).toBe(4);
+  });
+
+  it("a fitted fiber's units are copies (Random walk, Spiral), its copies the kept ones (review S2, S8)", async () => {
+    const v = await viewer();
+    const list = entry(v).cell.transform.ref;
+    expectOk(await v.api.run('mesoscale.paint', { entity: 'CA', positions: [60, 60, 60], seed: 2, orient: 'random' }));
+    const index = drawn(v).count - 1;
+    const volume = await loadMap(
+      v,
+      [{ position: xyz(drawn(v), index), rotation: quat(drawn(v), index) }],
+      [80, 80, 80],
+    );
+    for (const params of [
+      { mode: 'walk', steps: 6, rise: 20 },
+      { mode: 'spiral', count: 5, spacing: 30, rise: 20 },
+    ]) {
+      const r = await v.api.run('mesoscale.grow', {
+        particles: list,
+        index,
+        seed: 3,
+        fit: volume,
+        threshold: 0,
+        ...params,
+      });
+      expectOk(r);
+      const s = strokes(v).at(-1)!;
+      expect(s.fiber, params.mode).toBeUndefined();
+      expect(s.rotations.length / 4).toBe(s.positions.length / 3);
+      expect(s.fit?.score.length).toBe(s.positions.length / 3);
+      if (params.mode === 'spiral') {
+        expect(s.positions.length / 3).toBeLessThanOrEqual(5);
+        expect(s.grow?.params.copies).toBe(s.positions.length / 3);
+      }
+      expectOk(await v.api.run('history.undo', {}));
+    }
+  });
+
+  it('refuses a fit of too many copies at once, before fitting (review S3)', async () => {
+    const v = await viewer();
+    const list = entry(v).cell.transform.ref;
+    expectOk(await v.api.run('mesoscale.paint', { entity: 'CA', positions: [60, 60, 60], seed: 2, orient: 'random' }));
+    const index = drawn(v).count - 1;
+    const volume = await loadMap(
+      v,
+      [{ position: xyz(drawn(v), index), rotation: quat(drawn(v), index) }],
+      [80, 80, 80],
+    );
+    const t0 = performance.now();
+    const r = await v.api.run('mesoscale.grow', {
+      particles: list,
+      index,
+      mode: 'sphere',
+      count: 1500,
+      radius: 40,
+      fit: volume,
+    });
+    expect(r.ok).toBe(false);
+    expect(performance.now() - t0).toBeLessThan(1000);
   });
 });
