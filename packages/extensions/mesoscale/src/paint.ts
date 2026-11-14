@@ -65,8 +65,9 @@ export interface PaintStroke {
    */
   readonly own?: Partial<Pick<FiberSettings, 'rise' | 'twist' | 'jitter'>>;
   /**
-   * A fiber grown on a surface: the surface's normal at each point of its path (the list's frame; paint-refine round 2):
-   * its units' up (their offset direction) follows it, turned by the twist
+   * A fiber grown or painted on a surface: the surface's normal at each point of its path (the list's frame;
+   * paint-refine round 2): its units' up (their offset direction) follows it, turned by the twist; a painted one's only
+   * with no twist, jitter or offset (decisions 3)
    */
   readonly normals?: readonly number[];
   /**
@@ -444,7 +445,11 @@ function makeFibers(
       axes.set(id, axis);
     }
     const settings = { ...fiberSettingsOf(list, id, s.target, given, structures), ...s.own };
-    const made = dropUnits(makeFiber(s.positions, settings, axis, s.seed ?? 0, s.normals), s.skip);
+    // a grown fiber's units follow its normals always; a painted one's only as a plain walk (no twist, jitter or
+    // offset: those turn its units about the path; decisions 3), decided at each make so a live change flips it
+    const plain = !settings.twist && !settings.jitter && !settings.offset;
+    const normals = s.grow || plain ? s.normals : undefined;
+    const made = dropUnits(makeFiber(s.positions, settings, axis, s.seed ?? 0, normals), s.skip);
     // a bank's units only where the brush is an entity (a list without: its targets are its brushes)
     // and an entity of its own (review M2: -1, none, would give ids below the list's)
     const bank = list.entityInfo?.size && s.entity >= 0 && settings.bank !== 'none' ? settings.bank : undefined;
