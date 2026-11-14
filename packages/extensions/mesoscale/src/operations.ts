@@ -117,7 +117,7 @@ import {
   fitCopies,
   fitGrown,
   fitMapOf,
-  fitScore,
+  fitPose,
   GrowReach,
   PaintReach,
   sceneVolume,
@@ -402,6 +402,23 @@ const tooManyFits = (n: number) =>
     `That is ${n} copies to fit: a fit tries ${MaxFitted} at most (about 3 ms each).`,
     `Fewer copies (with a Count, it is drawn ${Overdraw} times over), or no fit.`,
   );
+/**
+ * A surface's unit normals at points (x, y, z each) within its reach (`GrowOn`), x, y, z each; 0, 0, 0 for a point off
+ * it (density-fit: a copy fitted on it stays on it)
+ */
+function surfaceNormals(on: GrowOn, positions: ArrayLike<number>): number[] {
+  const out: number[] = [];
+  const hit = SurfaceHit();
+  const p = Vec3();
+  const none = Vec3();
+  for (let i = 0; i < positions.length / 3; ++i) {
+    Vec3.fromArray(p, positions, i * 3);
+    if (on.surface.project(hit, p, none, on.reach)) out.push(hit.normal[0], hit.normal[1], hit.normal[2]);
+    else out.push(0, 0, 0);
+  }
+  return out;
+}
+
 const tooMany = (n: number) =>
   ApiResult.fail('invalid', `That is ${n} copies: a grow makes ${MaxGrown} at most.`, 'Fewer cells, copies or steps.');
 
@@ -2081,8 +2098,19 @@ export class MesoscaleApi extends ApiArea {
         const leaves = 'leaves' in src ? src.leaves : undefined;
         const envelope = leaves ? groupEnvelope(data, leaves) : envelopeOf(data.targetMapping?.get(target), radius);
         const contrast = v.contrast ?? 'dark';
-        const score = map ? fitScore(map, envelope, scene, contrast) : 0;
         if (!map) return ApiResult.fail('invalid', `${fitTo.label} is flat (σ 0): nothing to fit to.`, 'Fit to None.');
+        const copies = (made ?? fiberCopies)!;
+        // on a mesh, each copy kept on it: its normal there (the copies are on it; one off it, none: fitted in space)
+        const copyNormals = on ? surfaceNormals(on, copies.positions) : undefined;
+        const sourceNormal = on ? Vec3.fromArray(Vec3(), surfaceNormals(on, scene.position), 0) : undefined;
+        // the score to keep copies by: the source's at its best within paint's reach (as a click fits it), not moved: a
+        // copy placed on a surface, not fitted, may sit between two of a lattice's proteins (Ludo, 2026-11-14)
+        const score = fitPose(map, envelope, scene, {
+          reach: PaintReach.shift * envelope.radius,
+          turn: PaintReach.turn,
+          contrast,
+          ...(sourceNormal && Vec3.magnitude(sourceNormal) > 0 ? { normal: sourceNormal } : {}),
+        }).score;
         if (!(score > 0)) {
           return ApiResult.fail(
             'invalid',
@@ -2091,13 +2119,14 @@ export class MesoscaleApi extends ApiArea {
           );
         }
         const threshold = v.threshold ?? 0.6;
-        const kept = fitGrown(map, envelope, (made ?? fiberCopies)!, {
+        const kept = fitGrown(map, envelope, copies, {
           reach: GrowReach.shift * envelope.radius,
           turn: GrowReach.turn,
           contrast,
           threshold: threshold * score,
           apart: radius,
           from: scene.position,
+          ...(copyNormals ? { normals: copyNormals } : {}),
           ...(keep !== undefined ? { count: keep } : {}),
         });
         if (!kept.positions.length) {
