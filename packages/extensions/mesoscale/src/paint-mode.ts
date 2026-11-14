@@ -520,8 +520,9 @@ function paintLayer(mode: PaintMode, host: PaintHost, canvas: HTMLElement, brush
       const settings = mode.settings.value;
       radius = Math.max(host.radius(brush), 1e-3);
       upright = host.upright(brush);
-      where = placeOf(settings, upright);
-      autoPlace(e.clientX - rect.left, e.clientY - rect.top);
+      // Auto over a mesh: what the pointer showed, read again at the press (a pick still pending keeps it)
+      if (settings.place === 'auto' && !upright) autoPlace(e.clientX - rect.left, e.clientY - rect.top);
+      else where = placeOf(settings, upright);
       // the entity's rise as it is now (its settings changed since the mode started)
       fiberStep = host.fiberStep(brush, settings.into);
       fiber = fiberOf(settings);
