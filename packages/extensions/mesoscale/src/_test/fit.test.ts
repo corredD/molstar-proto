@@ -48,6 +48,14 @@ describe('the envelope', () => {
     expect(reach.reach).toBeGreaterThan(4);
   });
 
+  it("is about the target's own center when it gives one (review S7)", () => {
+    const sites = crnSites();
+    const a = envelopeOf({ kind: 'sites', sites }, 0);
+    const b = envelopeOf({ kind: 'sites', sites, center: Vec3.create(100, 0, 0) }, 0);
+    expect(b).not.toBe(a);
+    expect(centroidOf(b.inside)[0]).toBeLessThan(-50);
+  });
+
   it('put at a site, it is where the atoms are: the score there well above any 6 Å off', () => {
     const map = fitMapOf(density(atoms, [site], box).grid)!;
     const at = fitScore(map, envelope, site, 'dark');

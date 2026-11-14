@@ -196,14 +196,17 @@ const balls = new Map<number, FitEnvelope>();
  * object) a ball of `radius`
  */
 export function envelopeOf(target: ParticleTarget | undefined, radius: number): FitEnvelope {
+  // a center the target gives is its own (two of one structure may differ: review S7)
+  const own = target && 'center' in target ? target.center : undefined;
   const key =
-    target?.kind === 'structure'
+    own ??
+    (target?.kind === 'structure'
       ? target.structure
       : target?.kind === 'sites'
         ? target.sites
         : target?.kind === 'volume'
           ? target.volume
-          : undefined;
+          : undefined);
   if (!key || !target || target.kind === 'shape') {
     const r = Math.max(radius, 1);
     let e = balls.get(r);
