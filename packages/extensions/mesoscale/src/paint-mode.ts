@@ -67,8 +67,8 @@ export interface PaintSettings {
    */
   readonly into?: string;
   /**
-   * The volume each copy is fitted to (density-fit): its state ref; `auto`, the one whose slice is under the pointer
-   * (none elsewhere); empty: none
+   * The volume each copy is fitted to (density-fit): its state ref; `auto`, the one of the first slice a stroke is on
+   * (a stroke on none: none), all its copies to it; empty: none
    */
   readonly fit: string;
   /** The volume's contrast: Dark (a tomogram's protein) or Bright */
@@ -356,7 +356,8 @@ function paintLayer(mode: PaintMode, host: PaintHost, canvas: HTMLElement, brush
     const slice = host.sliceAt?.(x, y, _point);
     if (slice === 'pending' && !last) return false;
     if (slice === true) {
-      s.volume = _point.volume;
+      // the stroke's fit the first slice's it crosses (review N3)
+      s.volume ??= _point.volume;
     } else if (where === 'depth') {
       if (!atDepth(x, y)) return true;
     } else {
@@ -491,7 +492,12 @@ function paintLayer(mode: PaintMode, host: PaintHost, canvas: HTMLElement, brush
     if (slice) {
       // the next stroke's depth there (where the pointer leaves the slice)
       if (where === 'depth' && !held && host.ray(hoverX, hoverY, _eye, _t)) {
-        depth = inRange(Vec3.dot(Vec3.sub(_s, _point.position, _eye), _t));
+        const next = inRange(Vec3.dot(Vec3.sub(_s, _point.position, _eye), _t));
+        // the hint's depth too (review N6)
+        if (next !== depth) {
+          depth = next;
+          hintNext.request();
+        }
       }
     } else if (where === 'depth') {
       // at the depth of what is under the pointer (paint-refine), unless Alt+wheel set it or a stroke is drawn

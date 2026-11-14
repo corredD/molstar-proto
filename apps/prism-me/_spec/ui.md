@@ -608,11 +608,11 @@ still completes its distance.
 - Fit to a density (lane `density-fit`, Ludo 2026-11-10: "when we place an object on a slice, it should have a slight
   bias / minimisation using the surrounding density, a mini envelope matching. From that seed we could grow"): a click
   on a volume's slice paints the copy's center on the slice (where the pointer's ray meets its plane, its normal the
-  plane's), at a depth or on a surface. Paint's **Fit to** (Auto: the volume whose slice is under the pointer, none
-  elsewhere; None; a volume of the scene) and **Contrast** (Dark, a tomogram's protein, by default; Bright): each copy
-  is shifted and turned toward the density, at most a third of its radius and 15°, pulled back toward the click (a flat
-  map leaves it); the copy under the pointer shows the pose the click paints and the hint its fit, "fit 2.4σ, 3.1 Å, 8°"
-  (its score: the density inside its envelope minus a shell about it, in σ). Grow's **Fit to** (None, a volume),
+  plane's), at a depth or on a surface. Paint's **Fit to** (Auto: the volume of the first slice a stroke is on, none for
+  a stroke on none; None; a volume of the scene) and **Contrast** (Dark, a tomogram's protein, by default; Bright): each
+  copy is shifted and turned toward the density, at most a third of its radius and 15°, pulled back toward the click (a
+  flat map leaves it); the copy under the pointer shows the pose the click paints and the hint its fit, "fit 2.4σ, 3.1
+  Å, 8°" (its score: the density inside its envelope minus a shell about it, in σ). Grow's **Fit to** (None, a volume),
   **Contrast** and **Threshold** (0.6 by default): every grown copy is fitted (a sixth of its radius, 7.5°) and kept
   when it scores at least Threshold × the source's (the source off the density is refused); a copy in a site already
   taken is dropped. Count (Sphere, Spiral, Tiling on a mesh) counts the copies kept, the first ones the same for more;

@@ -390,7 +390,6 @@ const SelectionGroupByParam = () =>
     }),
   );
 
-/** A walk's own fiber settings (paint-refine): absent, the entity's */
 /** A fit to a volume's params (density-fit): the volume, its contrast */
 const FitParams = (what: string) => ({
   fit: OptionalParam(
@@ -410,6 +409,7 @@ const FitParams = (what: string) => ({
   ),
 });
 
+/** A walk's own fiber settings (paint-refine): absent, the entity's */
 const WalkFiberParams = (what: string) => ({
   rise: OptionalParam(
     PD.Numeric(
@@ -622,7 +622,6 @@ export class MesoscaleApi extends ApiArea {
     );
   }
 
-  /** The file meshes a grow can grow on (grow-mesh), following the state tree while watched: a read for views */
   /** The volumes of the scene (density-fit: Paint's and Grow's Fit to), their state refs and names */
   fitVolumesState(): ReadonlyState<readonly { readonly ref: string; readonly label: string }[]> {
     const plugin = this.ctx.plugin;
@@ -633,6 +632,7 @@ export class MesoscaleApi extends ApiArea {
     );
   }
 
+  /** The file meshes a grow can grow on (grow-mesh), following the state tree while watched: a read for views */
   growMeshesState(): ReadonlyState<readonly { readonly ref: string; readonly label: string }[]> {
     const plugin = this.ctx.plugin;
     return watchedState(
@@ -1756,7 +1756,8 @@ export class MesoscaleApi extends ApiArea {
         const envelope = envelopeOf(data.targetMapping?.get(target), radius);
         const contrast = v.contrast ?? 'dark';
         const score = map ? fitScore(map, envelope, scene, contrast) : 0;
-        if (!map || !(score > 0)) {
+        if (!map) return ApiResult.fail('invalid', `${fitTo.label} is flat (σ 0): nothing to fit to.`, 'Fit to None.');
+        if (!(score > 0)) {
           return ApiResult.fail(
             'invalid',
             `${name} #${index} is not on the density of ${fitTo.label} (${score.toFixed(1)}σ).`,
