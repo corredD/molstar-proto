@@ -318,3 +318,49 @@ Round 3: about 335 production lines (grow.ts +201, operations.ts +59 −10, cont
 - The spiral is rolled, not geodesic: on a cap or a vesicle its arms close up (it stops when they crowd).
 - On the capsid a Count past the wrap adds nothing (the section shows Count 120, the scene 80 copies, its Turns 3.5).
 - A mesh with coarse facets whose vertex normals differ much from them may stop a spiral early (the half-step rule).
+
+## Round 3b (2026-11-13): the spiral skips crowded copies and goes on
+
+**Ludo's decision** (Count 120 gave 80 on the capsid): "Skip crowded, keep going".
+
+### Built and decided
+
+- (Ludo) Crossing an arm of its own no longer ends the spiral. (author) A copy within 0.6 × Arm spacing of a copy
+  already kept more than 2 Arm spacings behind along it (i − j > ⌊2 × Arm spacing / Step⌋) is skipped; the path keeps
+  rolling until Count copies are kept. It still ends at an open edge.
+- (author) **The bound**: its path is 4 × Count Steps long at most (after the first Step), and its units made (kept and
+  skipped) as many as a grow makes at most (20000). Reached: fewer copies, and the section shows its turns and the
+  copies it made ("4.99, 120 copies"). So past a surface's capacity the copies made still depend on Count (a vesicle of
+  R 100: Count 700 → 541, 5000 → 684); more Count still continues the same copies.
+- (author) **Prefix-stable**: the path's points, its units and its skips are the same for more Count; the path is
+  extended in passes (at least twice as long a pass), each made from the same points.
+- (author) **Orientation after a gap**: the fiber's units are made along the whole chain (twist and jitter by their
+  place along it, the tangent their neighbour's), then those skipped are dropped (`PaintStroke.skip`, paint's
+  `dropUnits`). Each run of kept copies is a fiber of its own (no link across a skip). A bank's letters follow the kept
+  copies, not their place (left).
+- (review) A spiral's Step is its stroke's own rise, so a later change of the entity's rise does not move its units
+  under its skips.
+
+### App check
+
+`~/prism-me-lanes/grow-helix-spiral-skip.cjs` on the capsid: Count 60 → 60 copies; Arm spacing 60, Count 120 → 120
+copies (4.99 turns, gaps where it crosses its arms round the body); Count 200 → 200 (6.76 turns); Count 100 → the first
+100; Clear, Undo. Screenshots in
+`/private/tmp/claude-501/-Users-ludovicautin-molstar-proto-git/bc8a7dcf-b4ed-4027-911e-5f56df74a469/scratchpad/grow-helix/`:
+`s9-spiral-count60.png`, `s9-spiral-count120.png`, `s9-spiral-count200.png`, `s9-spiral-count100.png`,
+`s9-spiral-count200-back.png`, `s9-cleared.png`, `s9-clear-undone.png`.
+
+### Review (short gate: reviewer, skeptic)
+
+| Finding                                                                  | Verdict              | Severity | Done                                 |
+| ------------------------------------------------------------------------ | -------------------- | -------- | ------------------------------------ |
+| 1 one fiber chain drawn across the skips                                 | confirmed            | must     | 67d39df84                            |
+| 2 skips stale after the entity's rise changed                            | confirmed            | must     | 29467f015                            |
+| 3 extension passes re-resample the whole path (106 passes near capacity) | confirmed            | should   | 0e3f6ebf0                            |
+| 4 the 3b test's twist branch never ran; fewer before the first skip      | confirmed            | should   | 5ac7241ba                            |
+| 5 copies made depend on Count via the bound; tooltip "full ahead"        | confirmed, by design | nit      | 8f7b58e40 (tooltip)                  |
+| 6 stored stroke large past capacity                                      | confirmed            | should   | 0e3f6ebf0 (units capped at MaxGrown) |
+| N1 MaxGrown no longer bounded the units made                             | confirmed            | should   | 0e3f6ebf0                            |
+| 7 look-back by ceil                                                      | confirmed            | nit      | 0e3f6ebf0                            |
+| 8 bank letters by kept index                                             | confirmed            | nit      | left                                 |
+| N2 non-integer ratio untested                                            | confirmed            | nit      | left                                 |
