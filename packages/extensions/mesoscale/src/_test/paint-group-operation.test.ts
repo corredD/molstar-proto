@@ -85,12 +85,14 @@ describe('mesoscale.group', () => {
     expect(group.members.map((m) => m.target)).toEqual([1, 1, 2]);
     // its id above the list's targets and entities
     expect(g.group).toBeGreaterThan(3);
+    // a name another group has is refused
+    expect((await v.api.run('mesoscale.group', { particles: ref(v), indices: [7], name: 'Group 1' })).ok).toBe(false);
     expectOk(await v.api.run('history.undo', {}));
     expect(params(v).groups ?? []).toEqual([]);
     expect(drawn(v).count).toBe(10);
   });
 
-  it('paints the group at its own pose: its members where they were; at a pose P each at P · relative; one step', async () => {
+  it('paints the group at a pose P: each member at P · relative, the originals untouched; one step', async () => {
     const v = await viewer();
     const g = await grouped(v);
     const before = drawn(v);

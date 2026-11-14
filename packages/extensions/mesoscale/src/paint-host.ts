@@ -94,7 +94,6 @@ export function pluginPaintHost(
 ): PaintHost & { dispose(): void } {
   const listOf = (ref: string) =>
     plugin.managers.particles.hierarchy.current.lists.find((l) => l.cell.transform.ref === ref);
-  /** A structure brush's structure (paint-layer round 2), if it is still in the scene */
   /** A group brush's group and its list's groups (paint-group), if it is still there */
   const groupOf = (brush: PaintBrushTarget) => {
     const l = brush.group !== undefined ? listOf(brush.particles) : undefined;
@@ -103,6 +102,7 @@ export function pluginPaintHost(
     const group = groups?.find((g) => g.id === brush.group);
     return group && { group, groups: groups!, list: l };
   };
+  /** A structure brush's structure (paint-layer round 2), if it is still in the scene */
   const structureOf = (brush: PaintBrushTarget) => {
     const obj = brush.structure ? plugin.state.data.cells.get(brush.structure)?.obj : undefined;
     return obj && SO.Molecule.Structure.is(obj) ? obj.data : undefined;

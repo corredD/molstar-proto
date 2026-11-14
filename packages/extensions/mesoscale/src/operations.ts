@@ -1342,6 +1342,9 @@ export class MesoscaleApi extends ApiArea {
       if (!picks.length) return ApiResult.fail('invalid', 'Pick one instance or more.');
       const names = new Set(groups.map((g) => g.name));
       let name = values.name?.trim() ?? '';
+      // a name given is its own: not another group's (review nit: it was renamed Group N without a word)
+      if (name && names.has(name))
+        return ApiResult.fail('invalid', `There is a group ${name} already.`, 'Another name.');
       for (let i = groups.length + 1; !name || names.has(name); ++i) name = `Group ${i}`;
       const id = nextGroupId(data, structures, groups);
       const { group } = makeGroup(id, name, picks);

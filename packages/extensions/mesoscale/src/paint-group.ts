@@ -90,12 +90,13 @@ export function makeGroup(
     for (const p of picks) {
       spread = Math.max(spread, Vec3.distance(center, Vec3.set(_v, p.position[0], p.position[1], p.position[2])));
     }
-    if (n === 2) Vec3.sub(_x, Vec3.set(_v, xyz[3], xyz[4], xyz[5]), Vec3.set(_y, xyz[0], xyz[1], xyz[2]));
-    else Vec3.copy(_x, PrincipalAxes.calculateMomentsAxes(xyz).dirA);
+    const axes = n >= 3 ? PrincipalAxes.calculateMomentsAxes(xyz) : undefined;
+    if (!axes) Vec3.sub(_x, Vec3.set(_v, xyz[3], xyz[4], xyz[5]), Vec3.set(_y, xyz[0], xyz[1], xyz[2]));
+    else Vec3.copy(_x, axes.dirA);
     if (!(spread > 1e-6) || Vec3.squaredMagnitude(_x) < 1e-12) Vec3.set(_x, 1, 0, 0);
     Vec3.normalize(_x, _x);
     // +z: the smallest axis (3 or more), else the members' up; perpendicular to x
-    if (n >= 3) Vec3.copy(_z, PrincipalAxes.calculateMomentsAxes(xyz).dirC);
+    if (axes) Vec3.copy(_z, axes.dirC);
     else Vec3.copy(_z, up);
     Vec3.scaleAndAdd(_z, _z, _x, -Vec3.dot(_z, _x));
     if (Vec3.squaredMagnitude(_z) < 1e-12) anyPerpendicular(_z, _x);
