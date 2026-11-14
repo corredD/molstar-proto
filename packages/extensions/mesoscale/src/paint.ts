@@ -28,6 +28,7 @@ import { RootStructureDefinition } from '@molstar/plugin/state/helpers/root-stru
 import { PluginStateObject as SO, PluginStateTransform } from '@molstar/plugin/state/objects';
 import { Asset } from '@molstar/core/util/assets';
 import { type RuntimeContext, Task } from '@molstar/core/task';
+import type { StrokeFit } from './fit.js';
 import type { GrowRecord } from './grow.js';
 import { isMembranePath } from './pick-surface.js';
 import { expandGroups, type PaintGroup } from './paint-group.js';
@@ -83,6 +84,11 @@ export interface PaintStroke {
   readonly group?: number;
   /** A group stroke's copies ungrouped (`mesoscale.ungroup`): a copy's place, then a member's ("3", "3.1"); kept drawn */
   readonly split?: readonly string[];
+  /**
+   * Its copies fitted to a volume (density-fit): each one's score (σ), shift (Å) and turn (°), and the volume's name;
+   * its poses the fitted ones (explicit: a session keeps them without the volume)
+   */
+  readonly fit?: StrokeFit;
 }
 
 /** A fiber's sequence or a range of it (Round 5): one-letter codes, 1-based, `end` inclusive */
@@ -124,7 +130,7 @@ export function brushIdOf(list: ParticleList, stroke: Pick<PaintStroke, 'entity'
 }
 
 /** The radius of a target's first particle (0 without radii) */
-function targetRadius(list: ParticleList, target: number): number {
+export function targetRadius(list: ParticleList, target: number): number {
   if (!list.radii) return 0;
   const groups = getParticleTargetGroups(list);
   const set = groups.sets[groups.groupOfTarget.get(target) ?? -1];

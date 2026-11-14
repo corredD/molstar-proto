@@ -15,6 +15,7 @@ import { gestureSteps } from '@molstar/prism-viewer/sources/gesture-steps';
 import { derive } from '@molstar/prism-ui/reactive/state';
 import type { ReadonlyState } from '@molstar/prism-ui/reactive/readonly-state';
 import { classes } from './_generated/controls.module.css.js';
+import { GrowFit, PaintFit } from './fit-controls.js';
 import { type GrowRecord, tilingTotal } from './grow.js';
 import { linkedValue } from './grow-link.js';
 import { symmetryContact } from './grow-symmetry.js';
@@ -369,6 +370,7 @@ export function PaintBrush(props: {
         active={mapState(settings, (s) => s.side)}
         onPick={(id) => mode.set({ side: id as PaintSettings['side'] })}
       />
+      <PaintFit area={props.area} />
       <div class={classes.line}>
         <div class={classes.label}>
           <Button
@@ -679,6 +681,9 @@ function settingsOfGrow(g: GrowRecord): Partial<GrowSettings> {
     // its Radius unset: touching as it changes (review S1)
     if (p.touching === 1) out.symmetryRadius = undefined;
   }
+  // fitted (density-fit): its volume, contrast and threshold; none: not fitted
+  out.fit = p.fit;
+  if (p.fit !== undefined) Object.assign(out, { contrast: p.contrast, threshold: p.threshold });
   return out as Partial<GrowSettings>;
 }
 
@@ -704,12 +709,18 @@ export function GrowBlock(props: { area: MesoscaleApi; api: ViewerApi; particles
       const at = live.value;
       if (!at) return Promise.resolve();
       // a fiber's rise, twist and jitter: its units made again on the same path
-      if (key === 'fiber') return g.run('mesoscale.grown-fiber', { ...at, ...change });
+      // (fitted: its units are copies, the grow made again by the settings)
+      if (key === 'fiber' && liveGrow.value?.params.fit === undefined) {
+        return g.run('mesoscale.grown-fiber', { ...at, ...change });
+      }
       // any other setting: the grow made again in place by the settings shown (its seed kept unless set)
       const src = source.value;
       const s = area.growSettings.value;
       if (!src) return Promise.resolve();
-      return g.run('mesoscale.grow', { ...growParams(src, { ...s, mesh: onMesh(s, meshes.value) }), replace: at.grow });
+      return g.run('mesoscale.grow', {
+        ...growParams(src, { ...s, mesh: onMesh(s, meshes.value), fit: onVolume(s, volumes.value) }),
+        replace: at.grow,
+      });
     },
     // what a drag has not applied yet is shown (its overlay), not the state's last (review 6); a drag ended (refused:
     // nothing applied) shows the grow as it is (round 2 review S1)
@@ -734,6 +745,10 @@ export function GrowBlock(props: { area: MesoscaleApi; api: ViewerApi; particles
   );
   const settings = area.growSettings.asReadonly;
   const meshes = area.growMeshesState();
+  const volumes = area.fitVolumesState();
+  /** The volume chosen to fit to while it is in the scene (density-fit review M2) */
+  const onVolume = (s: GrowSettings, list: readonly { ref: string }[]) =>
+    s.fit && list.some((v) => v.ref === s.fit) ? s.fit : undefined;
   /** The mesh chosen while it is in the scene */
   const onMesh = (s: GrowSettings, list: readonly { ref: string }[]) =>
     s.mesh && list.some((m) => m.ref === s.mesh) ? s.mesh : undefined;
@@ -863,8 +878,8 @@ export function GrowBlock(props: { area: MesoscaleApi; api: ViewerApi; particles
     );
     const change = (v: number, end: boolean) => {
       store({ [key]: v });
-      // the live fiber while it is there (undone: the next grow's only; review 5)
-      if (live.value && grown.value) redraw.change('fiber', { [key]: v });
+      // the live fiber while it is there (undone: the next grow's only; review 5); a fitted one's grow made again
+      if (live.value && (grown.value || liveGrow.value?.params.fit !== undefined)) redraw.change('fiber', { [key]: v });
       if (end) redraw.settle();
     };
     return line(
@@ -934,6 +949,7 @@ export function GrowBlock(props: { area: MesoscaleApi; api: ViewerApi; particles
                 </Show>
               )}
             </Show>
+            <GrowFit area={area} set={set} />
             <Show when={mode('walk')}>
               {() => (
                 <div class={classes.tight}>
@@ -1261,10 +1277,18 @@ export function GrowBlock(props: { area: MesoscaleApi; api: ViewerApi; particles
                   redraw.settle();
                   live.set(undefined);
                   const s = settings.value;
-                  void area.grow(growParams(src, { ...s, mesh: onMesh(s, meshes.value) }) as never).then((r) => {
-                    const id = r.ok ? (r.value as { id?: number } | undefined)?.id : undefined;
-                    if (id !== undefined) live.set({ particles: src.particles, grow: id });
-                  });
+                  void area
+                    .grow(
+                      growParams(src, {
+                        ...s,
+                        mesh: onMesh(s, meshes.value),
+                        fit: onVolume(s, volumes.value),
+                      }) as never,
+                    )
+                    .then((r) => {
+                      const id = r.ok ? (r.value as { id?: number } | undefined)?.id : undefined;
+                      if (id !== undefined) live.set({ particles: src.particles, grow: id });
+                    });
                 }}
               >
                 Grow

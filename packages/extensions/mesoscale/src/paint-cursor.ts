@@ -19,6 +19,7 @@ import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
 import { VisualSet, type VisualSetCanvas } from '@molstar/graphics/util/visual-set';
 import type { PluginContext } from '@molstar/plugin/context';
 import type { ParticleListRef } from '@molstar/plugin/state/manager/particles/hierarchy-state';
+import type { FitContrast, FitResult } from './fit.js';
 import type { PaintBrushTarget, PaintCursor, PaintSettings } from './paint-mode.js';
 import { type PaintOrient, paintingList, paintRotation, principalAxisOf, withStructures } from './paint.js';
 import { type GroupLeaves, groupCopyList } from './paint-group.js';
@@ -82,6 +83,7 @@ export function pluginPaintCursor(
   surface: boolean,
   canvas: VisualSetCanvas | undefined = plugin.canvas3d,
   along?: Along,
+  fit?: CursorFit,
 ): PaintCursor {
   const r = list?.representations[0];
   const data = r?.cell.obj?.data.sourceData as ParticleList | undefined;
@@ -89,7 +91,15 @@ export function pluginPaintCursor(
   const params = r?.cell.params?.values;
   if (!data || i === undefined || !params) return NoCursor;
   const colorTheme = color !== undefined ? { name: 'uniform', params: { value: color } } : params.colorTheme;
-  return copyCursor(plugin, oneCopyOf(data, i), Promise.resolve({ ...params, colorTheme }), surface, canvas, along);
+  return copyCursor(
+    plugin,
+    oneCopyOf(data, i),
+    Promise.resolve({ ...params, colorTheme }),
+    surface,
+    canvas,
+    along,
+    fit,
+  );
 }
 
 /**
@@ -103,6 +113,7 @@ export function pluginStructureCursor(
   canvas: VisualSetCanvas | undefined = plugin.canvas3d,
   ensure?: () => Promise<void>,
   along?: Along,
+  fit?: CursorFit,
 ): PaintCursor {
   const registered = () => plugin.representation.particles.registry.has('target');
   if (!registered() && !ensure) return NoCursor;
@@ -115,7 +126,7 @@ export function pluginStructureCursor(
     if (!registered()) await ensure?.();
     return registered() ? targetRepresentationParams(plugin, one) : undefined;
   };
-  return copyCursor(plugin, oneCopyOf(one, 0), params(), false, canvas, along);
+  return copyCursor(plugin, oneCopyOf(one, 0), params(), false, canvas, along, fit);
 }
 
 /**
@@ -133,7 +144,7 @@ export function pluginGroupCursor(
   const params = r?.cell.params?.values;
   if (!data || !leaves?.count || !params) return NoCursor;
   const one = groupCopyList(data, leaves);
-  return copyCursor(plugin, one, Promise.resolve(params), false, canvas, undefined, Vec3.create(0, 0, 1));
+  return copyCursor(plugin, one, Promise.resolve(params), false, canvas, undefined, undefined, Vec3.create(0, 0, 1));
 }
 
 /** A target representation's params, the type's default themes (as `particles.representation` makes them) */
@@ -164,6 +175,7 @@ function copyCursor(
   surface: boolean,
   canvas: VisualSetCanvas | undefined,
   along?: Along,
+  fit?: CursorFit,
   /** Its own axis for Turn: Axis (a group's: +z); none: its target's principal axis */
   own?: Vec3,
 ): PaintCursor {
@@ -198,7 +210,7 @@ function copyCursor(
     .catch((e) => plugin.log.warn(`The paint brush's copy could not be drawn: ${e}`));
 
   return {
-    move(position, normal, settings, seed, onSurface) {
+    move(position, normal, settings, seed, onSurface, fitTo) {
       // Turn Auto: along the normal on a surface (paint-refine round 2) or for a membrane protein, else at random
       const how: PaintOrient =
         settings.orient !== 'auto' ? settings.orient : surface || onSurface ? 'normal' : 'random';
@@ -211,10 +223,14 @@ function copyCursor(
       turn.axis = how === 'axis' ? axis : how === 'normal' && !surface ? along?.(settings) : undefined;
       turn.spin = settings.spin;
       paintRotation(_q, _dir, how, seed, 0, turn);
+      // fitted to a volume (density-fit): shown where a click puts it
+      const fitted = fitTo ? fit?.(position, _q, fitTo, settings.contrast) : undefined;
+      if (fitted) Quat.copy(_q, fitted.rotation);
       Mat4.fromQuat(_m, _q);
-      Mat4.setTranslation(_m, position);
+      Mat4.setTranslation(_m, fitted?.position ?? position);
       shown = true;
       if (repr) set.setState(repr, Shown);
+      return fitted;
     },
     hide() {
       if (!shown) return;
@@ -227,6 +243,14 @@ function copyCursor(
     },
   };
 }
+
+/** A copy at a pose fitted to a volume (its state ref; density-fit), as the stroke's would be; none without it */
+export type CursorFit = (
+  position: Vec3,
+  rotation: Quat,
+  volume: string,
+  contrast: FitContrast,
+) => FitResult | undefined;
 
 /** The copy's own axis put along the normal (its Fiber Axis when set; none: +z), by the brush's settings (`into`) */
 export type Along = (settings: PaintSettings) => Vec3 | undefined;

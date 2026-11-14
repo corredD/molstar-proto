@@ -8,6 +8,8 @@
  */
 
 import { Sphere } from '@molstar/graphics/geo/primitive/sphere';
+import { Mat4, Tensor } from '@molstar/core/math/linear-algebra';
+import { CCP4Writer } from '@molstar/model/formats/writer/ccp4/ccp4';
 import { CustomProperties } from '@molstar/model/model/custom-property';
 import type { ParticleList } from '@molstar/model/model/particles/particle-list';
 import { DefaultPaintSettings } from '@molstar/mesoscale-extension/paint-mode';
@@ -743,5 +745,41 @@ describe('Grow settings', () => {
     expect(m.growSettings.value.pitch).toBeUndefined();
     expect(m.growSettings.value.helixRadius).toBeUndefined();
     expect(m.growSettings.value.turns).toBe(3);
+  });
+});
+
+describe('Grow › Fit to (density-fit)', () => {
+  it('a volume deleted after it was chosen: Fit to None, Grow grows unfitted (review M2)', async () => {
+    const { v, hiv } = await viewer();
+    const m = v.api.mesoscale!;
+    // a small map: its volume chosen in Fit to
+    const n = 8;
+    const space = Tensor.Space([n, n, n], [2, 1, 0], Float32Array);
+    const data = Float32Array.from({ length: n * n * n }, (_, i) => i % 5);
+    const grid = {
+      transform: { kind: 'matrix' as const, matrix: Mat4.identity() },
+      cells: Tensor.create(space, Tensor.Data1(data)),
+      stats: { min: 0, max: 4, mean: 2, sigma: 1.4 },
+    };
+    const r = await v.api.load.files({ files: [new File([CCP4Writer.writeMrc(grid, data)], 'tomo.mrc')] });
+    if (!r.ok) throw new Error(r.message);
+    const volume = v.plugin.managers.volume.hierarchy.current.volumes[0].cell.transform.ref;
+    const host = mountScene(v);
+    await until(() => !!rowOf(host, 'HIV'));
+    rowOf(host, 'HIV')!.click();
+    await until(() => !!button(host, 'Grow'));
+    const section = button(host, 'Grow')!;
+    if (section.getAttribute('aria-expanded') !== 'true') section.click();
+    m.growSource.set({ particles: hiv, index: 2 });
+    await until(() => !!host.textContent?.includes('NC #2'));
+    choice(host, 'Mode', 'Sphere')!.click();
+    m.growSettings.set({ ...m.growSettings.value, count: 3, fit: volume });
+    await v.plugin.build().delete(volume).commit();
+    const before = count(v);
+    const grow = Array.from(host.querySelectorAll<HTMLButtonElement>('button')).filter(
+      (b) => b.textContent?.trim() === 'Grow',
+    );
+    grow[grow.length - 1].click();
+    await until(() => count(v) === before + 3);
   });
 });

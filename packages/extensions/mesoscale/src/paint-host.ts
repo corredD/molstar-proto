@@ -4,7 +4,7 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import { Vec2, Vec3, Vec4 } from '@molstar/core/math/linear-algebra';
+import { Quat, Vec2, Vec3, Vec4 } from '@molstar/core/math/linear-algebra';
 import { OrderedSet } from '@molstar/core/data/int';
 import { Ray3D } from '@molstar/core/math/geometry/primitives/ray3d';
 import type { Binding } from '@molstar/core/util/binding';
@@ -16,6 +16,8 @@ import {
   Particle,
 } from '@molstar/model/model/particles/particle-list';
 import { PluginStateObject as SO } from '@molstar/plugin/state/objects';
+import { type Grid, Volume } from '@molstar/model/model/volume';
+import type { ParticleTarget } from '@molstar/model/model/particles/particle-list';
 import type { PluginContext } from '@molstar/plugin/context';
 import type { ParticleListRef } from '@molstar/plugin/state/manager/particles/hierarchy-state';
 import type { PaintBrushTarget, PaintCursor, PaintHost, PaintSettings } from './paint-mode.js';
@@ -33,8 +35,18 @@ import {
   ParticleListPainted,
 } from './paint.js';
 import { meshFrame, sceneMeshes } from './mesh-surface.js';
-import { pluginGroupCursor, pluginPaintCursor, pluginStructureCursor } from './paint-cursor.js';
+import { type CursorFit, pluginGroupCursor, pluginPaintCursor, pluginStructureCursor } from './paint-cursor.js';
 import { groupLeaves, type PaintGroup } from './paint-group.js';
+import {
+  envelopeOf,
+  type FitContrast,
+  fitMapOf,
+  fitPose,
+  PaintReach,
+  rayOnPlane,
+  sceneVolumes,
+  slicePlane,
+} from './fit.js';
 import { membraneFrame } from './pick-surface.js';
 
 // Paint mode's host on the viewer (paint-mode.ts): the plugin's canvas, its picks and camera, and the stroke run as
@@ -43,6 +55,9 @@ import { membraneFrame } from './pick-surface.js';
 const _v = Vec2();
 const _p4 = Vec4();
 const _ray = Ray3D();
+const _origin = Vec3();
+const _direction = Vec3();
+const _toEye = Vec3();
 
 type TrackballBindings = Canvas3D['attribs']['trackball']['bindings'];
 
@@ -76,6 +91,39 @@ export function withAltCamera(bindings: TrackballBindings): TrackballBindings {
     if (alt.length) out[k] = { ...b, triggers: [...b.triggers, ...alt] };
   }
   return out as TrackballBindings;
+}
+
+/**
+ * The copy under the pointer fitted to a volume of `plugin`'s scene by its state ref (density-fit), as a stroke's copy
+ * of its object (its envelope's; `radius` a ball's without one) is (`mesoscale.paint` with `fit`): within paint's reach.
+ * The volumes are read again after a change of the state, not a move; `dispose` ends that
+ */
+export function pluginCursorFit(
+  plugin: PluginContext,
+  object: ParticleTarget | undefined,
+  radius: number,
+): { fit: CursorFit; dispose(): void } {
+  let grids: Map<string, Volume> | undefined;
+  const sub = plugin.state.data.events.changed.subscribe(() => {
+    grids = undefined;
+  });
+  // made once: a move allocates nothing (review M3)
+  const envelope = envelopeOf(object, radius);
+  const from = { position: Vec3(), rotation: Quat() };
+  const out = { position: Vec3(), rotation: Quat(), score: 0, shift: 0, angle: 0 };
+  const options = { reach: PaintReach.shift * envelope.radius, turn: PaintReach.turn, contrast: 'dark' as FitContrast };
+  return {
+    fit(position, rotation, ref, contrast) {
+      if (!grids) grids = new Map(sceneVolumes(plugin.state.data).map((v) => [v.ref, v.volume]));
+      const volume = grids.get(ref);
+      if (!volume) return undefined;
+      Vec3.copy(from.position, position);
+      Quat.copy(from.rotation, rotation);
+      options.contrast = contrast;
+      return fitPose(fitMapOf(volume.grid), envelope, from, options, out);
+    },
+    dispose: () => sub.unsubscribe(),
+  };
 }
 
 /**
@@ -115,8 +163,49 @@ export function pluginPaintHost(
     pointerY = e.clientY;
   };
   globalThis.document?.addEventListener('pointermove', track, { capture: true, passive: true });
+  /** A copy's radius, Å */
+  const radiusOf = (brush: PaintBrushTarget) => {
+    if (brush.structure) return structureOf(brush)?.boundary.sphere.radius || 10;
+    if (brush.group !== undefined) return groupOf(brush)?.group.radius || 10;
+    const data = listOf(brush.particles)?.cell.obj?.data;
+    if (!data) return 1;
+    // its first particle's (a list without entities: its targets are its entities)
+    const groups = data.entityInfo?.size ? undefined : getParticleTargetGroups(data);
+    const set = groups
+      ? groups.sets[groups.groupOfTarget.get(brush.entity) ?? -1]
+      : getParticleEntityGroups(data).get(brush.entity);
+    return (set && OrderedSet.size(set) && data.radii?.[OrderedSet.start(set)]) || 10;
+  };
+  /** The scene's volumes by the grid they are drawn by, read again after a change of the state (not a frame: M3) */
+  let volumeRefs: Map<Grid, string> | undefined;
+  let volumesChanged: { unsubscribe(): void } | undefined;
+  const volumesByGrid = () => {
+    volumesChanged ??= plugin.state.data.events.changed.subscribe(() => {
+      volumeRefs = undefined;
+    });
+    if (!volumeRefs) volumeRefs = new Map(sceneVolumes(plugin.state.data).map((v) => [v.volume.grid, v.ref]));
+    return volumeRefs;
+  };
+  const volumeRefOf = (grid: Grid) => volumesByGrid().get(grid);
+  /** A slice's plane, set in place */
+  const plane = { point: Vec3(), normal: Vec3() };
+  /** The pointer's ray at a point of the canvas (CSS pixels) in the scene */
+  const ray = (x: number, y: number, origin: Vec3, direction: Vec3) => {
+    const canvas = plugin.canvas3d;
+    if (!canvas) return false;
+    const ratio = canvas.graphics.pixelRatio || 1;
+    // the camera's views are in its scaled units (`Camera.scale`): the origin back in the scene's
+    const { camera } = canvas;
+    camera.getRay(_ray, x * ratio, y * ratio);
+    Vec3.scale(origin, _ray.origin, 1 / camera.scale);
+    Vec3.copy(direction, _ray.direction);
+    return true;
+  };
   return {
-    dispose: () => globalThis.document?.removeEventListener('pointermove', track, { capture: true }),
+    dispose: () => {
+      globalThis.document?.removeEventListener('pointermove', track, { capture: true });
+      volumesChanged?.unsubscribe();
+    },
     canvas: () => plugin.canvas3dContext?.canvas ?? undefined,
     pointer() {
       const canvas = plugin.canvas3dContext?.canvas;
@@ -137,15 +226,28 @@ export function pluginPaintHost(
     },
     identify: (x, y) => plugin.canvas3d?.identify(Vec2.set(_v, x, y)),
     eye: (out) => Vec3.copy(out, plugin.canvas3d?.camera.state.position ?? Vec3.create(0, 0, 1)),
-    ray(x, y, origin, direction) {
+    ray,
+    sliceAt(x, y, point) {
+      // no volume: no pick read (a depth drag as before; review S4)
+      if (!volumesByGrid().size) return false;
       const canvas = plugin.canvas3d;
-      if (!canvas) return false;
-      const ratio = canvas.graphics.pixelRatio || 1;
-      // the camera's views are in its scaled units (`Camera.scale`): the origin back in the scene's
-      const { camera } = canvas;
-      camera.getRay(_ray, x * ratio, y * ratio);
-      Vec3.scale(origin, _ray.origin, 1 / camera.scale);
-      Vec3.copy(direction, _ray.direction);
+      const pick = canvas?.identify(Vec2.set(_v, x, y));
+      if (pick === 'pending') return pick;
+      if (!canvas || !pick) return false;
+      const { loci, repr } = canvas.getLoci(pick.id);
+      if (!Volume.isLoci(loci) && !Volume.Cell.isLoci(loci)) return false;
+      // a slice's plane (its props: a grid index or a plane), not an isosurface's
+      const on = repr && slicePlane(loci.volume.grid, repr.props as Parameters<typeof slicePlane>[1], plane);
+      if (!on || !ray(x, y, _origin, _direction) || !rayOnPlane(point.position, _origin, _direction, plane)) {
+        return false;
+      }
+      Vec3.copy(point.normal, plane.normal);
+      if (Vec3.dot(point.normal, Vec3.sub(_toEye, _origin, point.position)) < 0) {
+        Vec3.negate(point.normal, point.normal);
+      }
+      point.id = pick.id;
+      point.mesh = undefined;
+      point.volume = volumeRefOf(loci.volume.grid);
       return true;
     },
     focus() {
@@ -186,18 +288,7 @@ export function pluginPaintHost(
       const ratio = canvas.graphics.pixelRatio || 1;
       return Vec3.set(out, _p4[0] / ratio, _p4[1] / ratio, _p4[2]);
     },
-    radius(brush) {
-      if (brush.structure) return structureOf(brush)?.boundary.sphere.radius || 10;
-      if (brush.group !== undefined) return groupOf(brush)?.group.radius || 10;
-      const data = listOf(brush.particles)?.cell.obj?.data;
-      if (!data) return 1;
-      // its first particle's (a list without entities: its targets are its entities)
-      const groups = data.entityInfo?.size ? undefined : getParticleTargetGroups(data);
-      const set = groups
-        ? groups.sets[groups.groupOfTarget.get(brush.entity) ?? -1]
-        : getParticleEntityGroups(data).get(brush.entity);
-      return (set && OrderedSet.size(set) && data.radii?.[OrderedSet.start(set)]) || 10;
-    },
+    radius: radiusOf,
     cursor(brush) {
       // the Fiber Axis read when the settings or the state changed, not a frame (round 2 review S4)
       let key: PaintSettings | undefined;
@@ -216,11 +307,19 @@ export function pluginPaintHost(
           }
           return value;
         };
+      // the copy fitted where a click would fit it (density-fit)
+      const fits: { dispose(): void }[] = [];
+      const fitWith = (object: ParticleTarget | undefined, radius: number) => {
+        const f = pluginCursorFit(plugin, object, radius);
+        fits.push(f);
+        return f.fit;
+      };
       const withSub = (c: PaintCursor): PaintCursor => ({
         move: c.move,
         hide: c.hide,
         dispose() {
           sub.unsubscribe();
+          for (const f of fits) f.dispose();
           c.dispose();
         },
       });
@@ -235,7 +334,14 @@ export function pluginPaintHost(
         );
         return withSub(
           structure
-            ? pluginStructureCursor(plugin, structure, plugin.canvas3d, ensureParticles, along)
+            ? pluginStructureCursor(
+                plugin,
+                structure,
+                plugin.canvas3d,
+                ensureParticles,
+                along,
+                fitWith({ kind: 'structure', structure }, structure.boundary.sphere.radius || 10),
+              )
             : { move() {}, hide() {}, dispose() {} },
         );
       }
@@ -250,7 +356,20 @@ export function pluginPaintHost(
         const p = painted?.transform.params as { fibers?: FiberSettingsMap; structures?: PaintStructure[] } | undefined;
         return fiberAxisVector(fiberSettingsOf(data, brushIdOf(data, b), b.target, p?.fibers, p?.structures).axis);
       });
-      return withSub(pluginPaintCursor(plugin, list, brush, color, surface, plugin.canvas3d, along));
+      const b = data && brushOf(data, brush.entity);
+      const object = b ? data!.targetMapping?.get(b.target) : undefined;
+      return withSub(
+        pluginPaintCursor(
+          plugin,
+          list,
+          brush,
+          color,
+          surface,
+          plugin.canvas3d,
+          along,
+          fitWith(object, radiusOf(brush)),
+        ),
+      );
     },
     fiberStep(brush, into) {
       // the entity's rise (Round 3): its own settings, else its file's fibers'; none when it makes no fibers (a
@@ -267,7 +386,7 @@ export function pluginPaintHost(
       if (!own?.[id] && !isFiberBrush(data, id)) return undefined;
       return fiberSettingsOf(data, id, b.target, own, p?.structures).rise;
     },
-    async paint(brush: PaintBrushTarget, s: PaintSettings, positions, normals, seed, fiber, mesh, surface) {
+    async paint(brush: PaintBrushTarget, s: PaintSettings, positions, normals, seed, fiber, mesh, surface, fit) {
       const r = (await paint({
         ...(brush.structure
           ? // its list gone since it was chosen: the Painting list (review S3)
@@ -289,6 +408,8 @@ export function pluginPaintHost(
         ...(mesh ? { mesh } : {}),
         ...(s.orient !== 'auto' ? { orient: s.orient } : {}),
         ...(s.spin !== undefined ? { spin: s.spin } : {}),
+        // a volume deleted since it was chosen: unfitted (review M2)
+        ...(fit && sceneVolumes(plugin.state.data).some((v) => v.ref === fit) ? { fit, contrast: s.contrast } : {}),
       })) as { ok?: boolean; message?: string } | undefined;
       // a stroke refused is said, not dropped (review N1)
       if (r && r.ok === false) plugin.log.warn(`Not painted: ${r.message ?? 'the stroke was refused.'}`);
