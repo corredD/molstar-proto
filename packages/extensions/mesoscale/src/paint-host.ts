@@ -169,13 +169,14 @@ export function pluginPaintHost(
   /** The scene's volumes by the grid they are drawn by, read again after a change of the state (not a frame: M3) */
   let volumeRefs: Map<Grid, string> | undefined;
   let volumesChanged: { unsubscribe(): void } | undefined;
-  const volumeRefOf = (grid: Grid) => {
+  const volumesByGrid = () => {
     volumesChanged ??= plugin.state.data.events.changed.subscribe(() => {
       volumeRefs = undefined;
     });
     if (!volumeRefs) volumeRefs = new Map(sceneVolumes(plugin.state.data).map((v) => [v.volume.grid, v.ref]));
-    return volumeRefs.get(grid);
+    return volumeRefs;
   };
+  const volumeRefOf = (grid: Grid) => volumesByGrid().get(grid);
   /** A slice's plane, set in place */
   const plane = { point: Vec3(), normal: Vec3() };
   /** The pointer's ray at a point of the canvas (CSS pixels) in the scene */
@@ -217,6 +218,8 @@ export function pluginPaintHost(
     eye: (out) => Vec3.copy(out, plugin.canvas3d?.camera.state.position ?? Vec3.create(0, 0, 1)),
     ray,
     sliceAt(x, y, point) {
+      // no volume: no pick read (a depth drag as before; review S4)
+      if (!volumesByGrid().size) return false;
       const canvas = plugin.canvas3d;
       const pick = canvas?.identify(Vec2.set(_v, x, y));
       if (pick === 'pending') return pick;

@@ -10,7 +10,10 @@ import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { Quat, Vec3 } from '@molstar/core/math/linear-algebra';
 import type { PickResult } from '@molstar/graphics/canvas3d/passes/pick';
 import { pointer, stubPointerCapture } from '@molstar/prism-ui/testing/gestures';
+import type { PluginContext } from '@molstar/plugin/context';
+import { pluginPaintHost } from '../paint-host.js';
 import { type PaintHost, PaintMode } from '../paint-mode.js';
+import { SurfacePoint } from '../pick-surface.js';
 
 // Paint on a slice (density-fit): a fake canvas whose pick is the plane z = 0 and, left of x = 50, a volume's slice,
 // the plane z = 20 seen down -z: a click there paints at the slice's point (its normal the plane's) whatever the place
@@ -149,5 +152,24 @@ describe('paint on a slice', () => {
     expect(shown.at(-1)).toEqual({ at: [10, -10, 20], fit: 'tomogram' });
     expect(root.querySelector('.msp-paint-layer')!.textContent).toContain('fit 2.4σ, 3.1 Å, 8°');
     mode.stop();
+  });
+});
+
+describe("the viewer's slice read", () => {
+  it('reads no pick when the scene has no volume: a depth drag as before (review S4)', () => {
+    let picks = 0;
+    const plugin = {
+      canvas3d: {
+        identify: () => {
+          picks++;
+          return undefined;
+        },
+      },
+      state: { data: { cells: new Map(), events: { changed: { subscribe: () => ({ unsubscribe() {} }) } } } },
+    } as unknown as PluginContext;
+    const host = pluginPaintHost(plugin, async () => undefined);
+    expect(host.sliceAt!(1, 1, SurfacePoint())).toBe(false);
+    expect(picks).toBe(0);
+    host.dispose();
   });
 });
