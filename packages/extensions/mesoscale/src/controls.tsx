@@ -15,7 +15,7 @@ import { gestureSteps } from '@molstar/prism-viewer/sources/gesture-steps';
 import { derive } from '@molstar/prism-ui/reactive/state';
 import type { ReadonlyState } from '@molstar/prism-ui/reactive/readonly-state';
 import { classes } from './_generated/controls.module.css.js';
-import { type GrowRecord, tilingTotal } from './grow.js';
+import { type GrowRecord, spiralTurns, tilingTotal } from './grow.js';
 import {
   type GraphicsInfo,
   type GraphicsMode,
@@ -922,18 +922,25 @@ export function GrowBlock(props: { area: MesoscaleApi; api: ViewerApi; particles
             <Show when={mode('spiral')}>
               {() => (
                 <div class={classes.tight}>
+                  {number('count', 'Count', 'Its copies, a Step apart along it from the source (copy 0)', {
+                    min: 2,
+                    max: 2000,
+                    step: 1,
+                  })}
                   {number(
                     'spacing',
-                    'Spacing',
-                    "Between its arms, Å (unset: the copy's diameter, so they touch)",
+                    'Arm spacing',
+                    "Between its arms, Å: its radius this more a turn (unset: the copy's diameter, so they touch)",
                     { min: 1, max: 1000, scale: 'log', unit: 'Å' },
                     diameter,
                   )}
-                  {number('turns', 'Turns', 'Its turns (on a mesh, fewer where the surface ends or its arms crowd)', {
-                    min: 0.5,
-                    max: 50,
-                    step: 0.5,
-                  })}
+                  {number(
+                    'rise',
+                    'Step',
+                    "Between its copies along it, Å: the fiber's rise (unset: the entity's)",
+                    { min: 0.5, max: 500, scale: 'log', unit: 'Å' },
+                    () => src.rise,
+                  )}
                   <Choices
                     label="Hand"
                     choices={[
@@ -943,19 +950,36 @@ export function GrowBlock(props: { area: MesoscaleApi; api: ViewerApi; particles
                     active={mapState(settings, (s) => s.hand)}
                     onPick={(id) => set({ hand: id as GrowSettings['hand'] })}
                   />
+                  {line(
+                    'Turns',
+                    'The turns it reaches: Count × Step along it (on a mesh, fewer where it ends)',
+                    <div class={classes.label}>
+                      {derive([settings, liveGrow] as const, (s, g) => {
+                        if (g?.mode === 'spiral' && typeof g.params.turns === 'number') return `${g.params.turns}`;
+                        const step = s.rise ?? src.rise;
+                        const turns = spiralTurns(s.spacing ?? diameter(), Math.floor(s.count) * step);
+                        return `≈ ${Math.round(turns * 100) / 100}`;
+                      })}
+                    </div>,
+                  )}
                 </div>
               )}
             </Show>
             <Show when={mapState(settings, (s) => s.mode === 'walk' || s.mode === 'helix' || s.mode === 'spiral')}>
               {() => (
                 <div class={classes.tight}>
-                  {fiberSlider(
-                    'rise',
-                    'Rise',
-                    "Between the fiber's units along its path (unset: the entity's)",
-                    { min: 0.5, max: 500, scale: 'log', unit: 'Å' },
-                    () => src.rise,
-                  )}
+                  {/* a spiral's rise is its Step (above): its Count copies made again Step apart */}
+                  <Show when={mapState(settings, (s) => s.mode !== 'spiral')}>
+                    {() =>
+                      fiberSlider(
+                        'rise',
+                        'Rise',
+                        "Between the fiber's units along its path (unset: the entity's)",
+                        { min: 0.5, max: 500, scale: 'log', unit: 'Å' },
+                        () => src.rise,
+                      )
+                    }
+                  </Show>
                   {fiberSlider(
                     'twist',
                     'Twist',
