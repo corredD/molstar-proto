@@ -753,7 +753,7 @@ const VolumeKeys = ['volume', 'sample', 'depth', 'invert'] as const;
  * A mesh's Color by: Uniform (the color picker); Array, when its file has arrays (a VTP's point and cell arrays): its
  * array, its colors (a color scale) and its range (Auto: the array's; Custom: a min and a max, from the array's); Volume,
  * when the scene has one: the volume, At surface or Projected (the Mean, Min or Max along the normal within ±Depth Å),
- * its colors, its range in σ (Auto ±2σ, or Custom) and its scale as is or inverted
+ * its colors, its range in σ (Auto ±2σ, or Custom) and its color order as is or inverted
  */
 function MeshColorBy(props: {
   mesh: ReadonlyState<MeshInfo | undefined>;
@@ -913,7 +913,7 @@ function MeshColorBy(props: {
             <Show when={b === 'volume'}>
               {() => (
                 <Choices
-                  label="Scale"
+                  label="Color order"
                   choices={[
                     { id: 'as-is', label: 'As is' },
                     { id: 'inverted', label: 'Inverted' },

@@ -263,7 +263,7 @@ describe("a mesh's Color by › Volume", () => {
     expect(choice('Sample', 'Projected')!.getAttribute('aria-pressed')).toBe('true');
     expect(choice('Along the normal', 'Min')!.getAttribute('aria-pressed')).toBe('true');
     expect(host.querySelector<HTMLInputElement>('input[type=range][aria-label="Depth"]')!.value).toBe('40');
-    expect(choice('Scale', 'Inverted')!.getAttribute('aria-pressed')).toBe('true');
+    expect(choice('Color order', 'Inverted')!.getAttribute('aria-pressed')).toBe('true');
     expect(choice('Range', 'Auto ±2σ')!.getAttribute('aria-pressed')).toBe('true');
     expect(host.querySelector('button[aria-haspopup][aria-label="Array"]')).toBeNull();
     expect(host.querySelector('button[aria-expanded]:not([aria-haspopup])')).toBeNull();
@@ -284,7 +284,7 @@ describe("a mesh's Color by › Volume", () => {
     depth.dispatchEvent(new Event('change', { bubbles: true }));
     vi.advanceTimersByTime(500);
     expect(area.mesh).toHaveBeenLastCalledWith({ mesh: 'm', depth: 20 });
-    choice('Scale', 'As is')!.click();
+    choice('Color order', 'As is')!.click();
     vi.advanceTimersByTime(500);
     expect(area.mesh).toHaveBeenLastCalledWith({ mesh: 'm', invert: false });
     choice('Range', 'Custom')!.click();
