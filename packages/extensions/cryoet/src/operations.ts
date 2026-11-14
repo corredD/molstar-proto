@@ -375,7 +375,11 @@ export class CryoetApi extends ApiArea {
         ]),
       ),
       depth: OptionalParam(
-        PD.Numeric(10, { min: 0, max: 1000, step: 0.1 }, { description: 'Along the normal, ± Å (Projected)' }),
+        PD.Numeric(
+          2,
+          { min: 0, max: 1000, step: 0.1 },
+          { description: "Along the normal, ± Å (Projected); a new color by a volume: 2 of the volume's voxels" },
+        ),
       ),
       invert: OptionalParam(PD.Boolean(false, { description: "Inverts the volume's color scale" })),
     },
