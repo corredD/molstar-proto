@@ -449,7 +449,7 @@ export function spiralTurns(spacing: number, length: number): number {
 
 /**
  * A flat Archimedean spiral from the source, its center, outward (a fiber's path, grow-helix round 3): its radius Arm
- * spacing × θ / 2π, a point every h = min(Step, Arm spacing) / 8 of its length (by arc, so its steps stay bounded), long
+ * spacing × θ / 2π, its points by arc length (a tenth of its radius, a quarter Step at most: `stepAt`), long
  * enough for Count copies a Step apart (`makeFiber` places them): from a Step along it from the source (the source is
  * copy 0) to half a Step past the last. It turns counterclockwise about its normal for Hand right; its normal the
  * source's `axis` (in its frame), its angle 0 along that axis's offset direction (`fiberOffsetDirection`), turned.
@@ -494,30 +494,39 @@ export function spiralPath(
   }
   const b = p.spacing / (2 * Math.PI);
   const sense = p.hand === 'left' ? -1 : 1;
-  const h = Math.min(p.step, p.spacing) / 8;
+  /**
+   * Its step along it at angle θ (by arc): a tenth of its radius there (b at least, at the center), a quarter Step at
+   * most; so its points follow its turns (some 63 a turn out where a Step is long) and are 4 a Step where its arms are
+   * wide (second review 1, N1): their number bounded by its turns and its Count, not by Step / Arm spacing
+   */
+  const stepAt = (t: number) => Math.min(p.step / 4, 0.1 * Math.max(b * t, b));
   // its length from the source: Count copies, the last half a Step before its end
   const length = Math.max(0, Math.floor(p.count)) * p.step + p.step / 2;
   const all = [at[0], at[1], at[2]];
   const ns: number[] | undefined = on ? [n[0], n[1], n[2]] : undefined;
   const w = Vec3.cross(Vec3(), n, u);
-  // on a surface: its points by cell (of the crowding distance) and how far along it each is
+  // on a surface: its points by cell (of the crowding distance) once they are 2 Arm spacings behind along it (an arm
+  // behind, not its own neighbours: only those are looked at; second review N1), and how far along it each is
   const crowd = SpiralCrowd * p.spacing;
   const cells = new Map<number, number[]>();
   const along: number[] = [0];
+  let filed = 0;
   const cell = (x: number) => Math.floor(x / crowd);
-  const keep = (q: Vec3, index: number) => {
-    const key = cellKey(cell(q[0]), cell(q[1]), cell(q[2]));
-    const list = cells.get(key);
-    if (list) list.push(index);
-    else cells.set(key, [index]);
+  const file = (walked: number) => {
+    for (; filed < along.length && along[filed] <= walked - SpiralAlong * p.spacing; ++filed) {
+      const key = cellKey(cell(all[filed * 3]), cell(all[filed * 3 + 1]), cell(all[filed * 3 + 2]));
+      const list = cells.get(key);
+      if (list) list.push(filed);
+      else cells.set(key, [filed]);
+    }
   };
   const crowded = (q: Vec3, walked: number) => {
+    file(walked);
     const [i, j, k] = [cell(q[0]), cell(q[1]), cell(q[2])];
     for (let di = -1; di <= 1; ++di) {
       for (let dj = -1; dj <= 1; ++dj) {
         for (let dk = -1; dk <= 1; ++dk) {
           for (const o of cells.get(cellKey(i + di, j + dj, k + dk)) ?? []) {
-            if (along[o] > walked - SpiralAlong * p.spacing) continue;
             const dx = all[o * 3] - q[0];
             const dy = all[o * 3 + 1] - q[1];
             const dz = all[o * 3 + 2] - q[2];
@@ -528,13 +537,15 @@ export function spiralPath(
     }
     return false;
   };
-  if (on) keep(at, 0);
   let walked = 0;
   let theta = 0;
+  let arc = 0;
   let px = 0;
   let py = 0;
-  for (let k = 1; walked < length && h > 0; ++k) {
-    const next = spiralAngle(b, k * h, theta);
+  for (; walked < length && p.step > 0 && b > 0; ) {
+    const h = stepAt(theta);
+    arc += h;
+    const next = spiralAngle(b, arc, theta);
     const r = b * next;
     const qx = r * Math.cos(next);
     const qy = sense * r * Math.sin(next);
@@ -543,8 +554,8 @@ export function spiralPath(
       Vec3.scale(_t, u, qx - px);
       Vec3.scaleAndAdd(_t, _t, w, qy - py);
       Vec3.add(_c, at, _t);
-      if (!on.surface.project(_hit, _c, n, Math.max(4 * h, p.spacing / 4))) break;
-      if (Vec3.distance(_hit.position, _c) > 0.25 * h) break;
+      if (!on.surface.project(_hit, _c, n, 4 * h)) break;
+      if (Vec3.distance(_hit.position, _c) > 0.5 * h) break;
       const moved = walked + Vec3.distance(_hit.position, at);
       if (crowded(_hit.position, moved)) break;
       if (Vec3.dot(_hit.normal, n) < 0) Vec3.negate(_hit.normal, _hit.normal);
@@ -564,10 +575,7 @@ export function spiralPath(
     py = qy;
     all.push(at[0], at[1], at[2]);
     ns?.push(n[0], n[1], n[2]);
-    if (on) {
-      along.push(walked);
-      keep(at, k);
-    }
+    if (on) along.push(walked);
   }
   if (info) info.turns = theta / (2 * Math.PI);
   // from a Step along it (copy 1), to half a Step past copy Count

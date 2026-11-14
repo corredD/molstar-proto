@@ -50,10 +50,31 @@ it('a spiral of N copies on a mesh', () => {
       setup: (n) => ({ count: n }),
       run: ({ count }) => {
         const path = spiralPath(center, z, { spacing: 5, step: 5, count, hand: 'right' }, { surface: plane, reach: 5 });
-        if (!path || path.length / 3 < 7 * count) throw new Error('short');
+        if (!path || path.length / 3 < 3 * count) throw new Error('short');
       },
     },
     500,
   );
   checkLinear('spiralPath on a mesh, N copies', s);
+});
+
+it('a spiral of N copies on a mesh: a long Step over thin arms, and a short Step over wide arms (second review 1, N1)', () => {
+  const plane = meshSurface(flatMesh(800, 10));
+  const center: GrowPose = { position: Vec3.create(0, 0, 0), rotation: Quat.identity() };
+  for (const [spacing, step] of [
+    [2, 50],
+    [1000, 0.5],
+  ] as const) {
+    const s = scaling(
+      {
+        setup: (n) => ({ count: n }),
+        run: ({ count }) => {
+          const path = spiralPath(center, z, { spacing, step, count, hand: 'right' }, { surface: plane, reach: 5 });
+          if (!path) throw new Error('none');
+        },
+      },
+      200,
+    );
+    checkLinear(`spiralPath on a mesh, N copies, Arm spacing ${spacing}, Step ${step}`, s);
+  }
 });

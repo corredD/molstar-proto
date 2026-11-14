@@ -174,6 +174,18 @@ describe('spiral on a mesh', () => {
     expect(spiralPath(north, z, { ...p, count: 8000 }, { surface: vesicle, reach: 20 })).toEqual(path);
   });
 
+  it('has a bounded number of points, whatever Step and Arm spacing (second review 1, N1)', () => {
+    const center: GrowPose = { position: Vec3.create(0, 0, 0), rotation: Quat.identity() };
+    // a long Step over thin arms: its points follow its turns, not 8 a Step
+    const long = spiralPath(center, z, { spacing: 1, step: 500, count: 2000, hand: 'right' });
+    expect(long.length / 3).toBeLessThan(100000);
+    expect(copies(long, 500).length / 3).toBe(2000);
+    // a short Step over wide arms: a few points a Step
+    const short = spiralPath(center, z, { spacing: 1000, step: 0.5, count: 2000, hand: 'right' });
+    expect(short.length / 3).toBeLessThan(5 * 2000);
+    expect(copies(short, 0.5).length / 3).toBe(2000);
+  });
+
   it('is undefined for a source off the mesh', () => {
     const plane = meshSurface(flatMesh(4, 10));
     const far: GrowPose = { position: Vec3.create(0, 0, 50), rotation: Quat.identity() };
