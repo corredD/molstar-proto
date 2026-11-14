@@ -140,6 +140,21 @@ describe('paint on a slice', () => {
     mode.stop();
   });
 
+  it('fits no fiber: its stroke and the copy under the pointer unfitted (review S10)', async () => {
+    const { mode, canvas, strokes, shown } = setup();
+    mode.set({ fiber: 'on' });
+    mode.start(brush);
+    const move = new PointerEvent('pointermove', { bubbles: true });
+    Object.defineProperties(move, { offsetX: { value: 10 }, offsetY: { value: 10 } });
+    canvas.dispatchEvent(move);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(shown.length).toBeGreaterThan(0);
+    expect(shown.at(-1)?.fit).toBeUndefined();
+    click(canvas, 10, 10);
+    expect(strokes[0].fit).toBeUndefined();
+    mode.stop();
+  });
+
   it('shows the copy under the pointer fitted, its fit in the hint', async () => {
     const { mode, canvas, shown, root } = setup();
     mode.start(brush);

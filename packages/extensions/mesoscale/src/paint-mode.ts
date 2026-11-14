@@ -526,7 +526,8 @@ function paintLayer(mode: PaintMode, host: PaintHost, canvas: HTMLElement, brush
       settings,
       seed,
       where === 'surface',
-      fitOf(settings, slice ? _point.volume : undefined),
+      // a fiber's path is not fitted (its units are made from it): nor its copy here (review S10)
+      fiber ? undefined : fitOf(settings, slice ? _point.volume : undefined),
     );
     const text = fitted ? fitLabel(fitted) : '';
     if (text !== fitText) {
@@ -625,7 +626,7 @@ function paintLayer(mode: PaintMode, host: PaintHost, canvas: HTMLElement, brush
             fiber,
             s.mesh,
             where === 'surface',
-            fitOf(settings, s.volume),
+            fiber ? undefined : fitOf(settings, s.volume),
           )
           .finally(() => committing--);
         // the next copy under the pointer: the next stroke's
