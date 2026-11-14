@@ -248,11 +248,18 @@ export function colorItems(
     }
     return api.run('representation.color', { target: { loci: area.loci(node) }, structure: node.ref, color });
   };
+  // a mesh colored by an array of its file (a VTP's) keeps it: Color… is for uniform-colored meshes (decisions 13)
+  const mesh = kind === 'mesh' ? api.cryoet?.meshesState().value.find((m) => m.ref === node.ref) : undefined;
+  const by = mesh?.colorBy;
+  const disabled = by
+    ? `Colored by ${mesh!.arrays?.find((a) => a.key === by.array)?.label ?? by.array}: change it in Properties`
+    : undefined;
   const items: ContextMenuItem[] = Swatches.map(([color, label]) => ({
     id: `color-${color}`,
     label,
     icon: 'palette',
-    run: () => void paint(color),
+    ...(disabled ? { disabled } : {}),
+    run: () => void (disabled || paint(color)),
   }));
   if (kind === 'mesoscale model' || kind === 'group') {
     const part = partOf(node);
