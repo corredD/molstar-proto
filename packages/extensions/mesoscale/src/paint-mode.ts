@@ -570,6 +570,20 @@ function paintLayer(mode: PaintMode, host: PaintHost, canvas: HTMLElement, brush
     },
     { capture: true },
   );
+  // one finger paints (its pointer events, `drag` above): its touch events kept from the canvas, whose camera would turn
+  // under the stroke (review 3); two fingers or more are the camera's (pinch, pan)
+  for (const type of ['touchstart', 'touchmove'] as const) {
+    on<TouchEvent>(
+      canvas.parentElement ?? root,
+      type,
+      (e) => {
+        if (e.target !== canvas || e.touches.length !== 1) return;
+        e.preventDefault();
+        e.stopPropagation();
+      },
+      { capture: true, passive: false },
+    );
+  }
   // Alt+wheel: the depth along the pointer's ray (paint-refine; Round 2, Decided 2), a copy's diameter a notch (100 px
   // of delta), kept for the next stroke; the plain wheel is the camera's zoom. Read before the canvas's own listener
   // (captured on its parent) and kept from it

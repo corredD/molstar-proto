@@ -299,6 +299,30 @@ describe('paint mode', () => {
     mode.stop();
   });
 
+  it('touch (review 3): one finger paints and is kept from the canvas (no turn); two fingers are the camera', () => {
+    const { mode, canvas, strokes } = setup(0, { upright: false });
+    mode.start(brush);
+    const seen: number[] = [];
+    canvas.addEventListener('touchstart', (e) => seen.push((e as unknown as { touches: unknown[] }).touches.length));
+    canvas.addEventListener('touchmove', (e) => seen.push((e as unknown as { touches: unknown[] }).touches.length));
+    const touch = (type: string, n: number) => {
+      const e = new Event(type, { bubbles: true, cancelable: true });
+      Object.defineProperty(e, 'touches', { value: Array.from({ length: n }, () => ({ pageX: 0, pageY: 0 })) });
+      canvas.dispatchEvent(e);
+    };
+    const finger = { bubbles: true, cancelable: true, clientX: 10, clientY: 10, pointerId: 2, pointerType: 'touch' };
+    canvas.dispatchEvent(new PointerEvent('pointerdown', { ...finger, button: 0, buttons: 1 }));
+    touch('touchstart', 1);
+    touch('touchmove', 1);
+    canvas.dispatchEvent(new PointerEvent('pointerup', { ...finger, button: 0, buttons: 0 }));
+    expect(strokes.length).toBe(1);
+    expect(seen).toEqual([]);
+    touch('touchstart', 2);
+    touch('touchmove', 2);
+    expect(seen).toEqual([2, 2]);
+    mode.stop();
+  });
+
   it("the camera's Alt gestures are held while the mode is on and released on every way out", () => {
     for (const end of ['stop', 'escape', 'other brush', 'list removed'] as const) {
       const { mode, camera, change, removeList } = setup();
