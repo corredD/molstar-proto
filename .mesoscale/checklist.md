@@ -91,7 +91,17 @@ Each lane: brief committed · steps · checks green · gate (reviewer, skeptic, 
 - [x] app check through the API (port 1372): refused on the tiled document, no step; Painting list paints and grows
 - [ ] Ludo's check in the app
 - [ ] merged into `me/mesoviewspec`
-- [ ] step 4: Ludo and David decide what a stroke is in the document
+- [ ] step 4: Ludo and David decide what a stroke is in the document (proposed in `mvs-spec-placement`: both)
+- [ ] the lane holds the old `me/paint`; `prism-me` (`0b89d57d4`, grow-mesh) not merged in: ask Ludo
+
+### `mvs-spec-placement` ([progress](../apps/prism-me/progress/2026-11-13-mvs-spec-placement.md)), spec only
+
+- [x] brief: placement sources, triggers, surfaces, arrangements, parts; the flagellar motor both ways (Ludo,
+      2026-11-13)
+- [x] `placement.md` proposed (v0.6), pointers, decision 14 (`07dd3d3b3`)
+- [x] gate: reviewer and skeptic (Opus); fixed (`83ee0850a`)
+- [ ] Ludo reads it (David after)
+- [ ] merged into `me/mesoviewspec`
 
 ### 4. `mvs-drive` ([progress](../apps/prism-me/progress/2026-11-09-mvs-drive.md)), port 1358
 
