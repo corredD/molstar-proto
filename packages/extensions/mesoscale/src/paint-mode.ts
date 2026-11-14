@@ -306,6 +306,24 @@ function paintLayer(mode: PaintMode, host: PaintHost, canvas: HTMLElement, brush
     return inRange(Math.max(radius, Vec3.dot(Vec3.sub(_s, pick.position, _eye), _t)));
   };
 
+  const probe = SurfacePoint();
+  /**
+   * Place Auto over a mesh (decisions 2, Ludo): Surface whenever the pointer is over a mesh (any brush), else the brush's
+   * own place; a pick not read yet leaves it as it is
+   */
+  const autoPlace = (x: number, y: number) => {
+    const s = mode.settings.value;
+    if (s.place !== 'auto' || upright) return;
+    const r = surfaceAt(host.identify, x, y, NormalStep, host.eye(_eye), probe);
+    if (r === 'pending') return;
+    if (r) host.refine(probe, upright);
+    const next = r && probe.mesh ? 'surface' : placeOf(s, upright);
+    if (next === where) return;
+    where = next;
+    // the hint says where the copies go
+    hintNext.request();
+  };
+
   /** The point at the stroke's depth along the pointer's ray at (x, y), facing the viewer */
   const atDepth = (x: number, y: number): boolean => {
     if (!host.ray(x, y, _eye, _t)) return false;
@@ -440,6 +458,7 @@ function paintLayer(mode: PaintMode, host: PaintHost, canvas: HTMLElement, brush
   let retries = 0;
   const follow = frames(() => {
     if (!hovering) return cursor.hide();
+    if (!stroke) autoPlace(hoverX, hoverY);
     if (where === 'depth') {
       // at the depth of what is under the pointer (paint-refine), unless Alt+wheel set it or a stroke is drawn
       if (!stroke && !held) {
@@ -505,7 +524,9 @@ function paintLayer(mode: PaintMode, host: PaintHost, canvas: HTMLElement, brush
       const settings = mode.settings.value;
       radius = Math.max(host.radius(brush), 1e-3);
       upright = host.upright(brush);
-      where = placeOf(settings, upright);
+      // Auto over a mesh: what the pointer showed, read again at the press (a pick still pending keeps it)
+      if (settings.place === 'auto' && !upright) autoPlace(e.clientX - rect.left, e.clientY - rect.top);
+      else where = placeOf(settings, upright);
       // the entity's rise as it is now (its settings changed since the mode started)
       fiberStep = host.fiberStep(brush, settings.into);
       fiber = fiberOf(settings);

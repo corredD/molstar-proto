@@ -15,7 +15,8 @@ import { gestureSteps } from '@molstar/prism-viewer/sources/gesture-steps';
 import { derive } from '@molstar/prism-ui/reactive/state';
 import type { ReadonlyState } from '@molstar/prism-ui/reactive/readonly-state';
 import { classes } from './_generated/controls.module.css.js';
-import { type GrowRecord, spiralTurns, tilingTotal } from './grow.js';
+import { type GrowRecord, tilingTotal } from './grow.js';
+import { linkedValue } from './grow-link.js';
 import {
   type GraphicsInfo,
   type GraphicsMode,
@@ -594,6 +595,7 @@ function settingsOfGrow(g: GrowRecord): Partial<GrowSettings> {
     helix: [
       ['pitch', 'pitch'],
       ['turns', 'turns'],
+      ['count', 'count'],
       ['hand', 'hand'],
       ['direction', 'direction'],
       ['axis', 'axis'],
@@ -602,6 +604,7 @@ function settingsOfGrow(g: GrowRecord): Partial<GrowSettings> {
     spiral: [
       ['spacing', 'spacing'],
       ['count', 'count'],
+      ['turns', 'turns'],
       ['hand', 'hand'],
     ],
     crystal: [
@@ -618,7 +621,6 @@ function settingsOfGrow(g: GrowRecord): Partial<GrowSettings> {
     tiling: [
       ['pattern', 'pattern'],
       ['spacing', 'spacing'],
-      ['rings', 'rings'],
       ['count', 'tiles'],
     ],
     sphere: [
@@ -631,6 +633,17 @@ function settingsOfGrow(g: GrowRecord): Partial<GrowSettings> {
   // On: the grow's mesh (a crystal grows in space whatever On says)
   if (g.mode !== 'crystal') out.mesh = g.mesh?.ref;
   for (const [from, to] of keys[g.mode]) if (p[from] !== undefined) out[to] = p[from];
+  // Helix, Spiral: the driver of Count and Turns comes back with `by`, never the follower (a shared value: the
+  // follower is the grow's to show, not the settings' to keep; review S1, M6)
+  if (g.mode === 'helix' || g.mode === 'spiral') {
+    const by = p.by === 'count' || p.by === 'turns' ? p.by : g.mode === 'spiral' ? 'count' : 'turns';
+    out.by = by;
+    delete out[by === 'turns' ? 'count' : 'turns'];
+  }
+  // a session's Tiling by Rings reads as its count (decisions 11)
+  if (g.mode === 'tiling' && out.tiles === undefined && typeof p.rings === 'number') {
+    out.tiles = tilingTotal(p.pattern === 'square' ? 'square' : 'hex', p.rings);
+  }
   return out as Partial<GrowSettings>;
 }
 
@@ -639,7 +652,7 @@ function settingsOfGrow(g: GrowRecord): Partial<GrowSettings> {
  * one step a Grow (`mesoscale.grow`). It names its source (set by a particle's right-click, Grow from this instance…,
  * or by a paint, its last copy), its mode, the mode's params (a length unset: the source's size), a seed (none: at
  * random) and Grow. The settings are the area's (`growSettings`), no step. On (grow-mesh): None or a file mesh of the
- * scene (the one the source was painted on by default); on a mesh, Tiling's Rings becomes its Count; Crystal grows in
+ * scene (the one the source was painted on by default); Tiling's Count is in space too; Crystal grows in
  * space. The last grow made here is live (round 2): any setting (each mode's, Seed, On and Mode: a Mode picked turns it
  * into one of that mode) makes it again in place (`mesoscale.grow { replace }`), one step a drag or a pick, and the
  * settings follow it back (an undo, a drag refused); a fiber's Rise, Twist and Jitter redraw it on its path
@@ -764,6 +777,42 @@ export function GrowBlock(props: { area: MesoscaleApi; api: ViewerApi; particles
         onCommit={(v) => set({ [key]: v })}
       />,
     );
+  /**
+   * Count and Turns of a Helix or a Spiral, linked (decisions 8 and 21): setting one makes the grow by it; the other is
+   * shown as the live grow made it, else (in space) as flat geometry says
+   */
+  const linked = (
+    key: 'turns' | 'count',
+    label: string,
+    title: string,
+    range: { min: number; max: number; step?: number },
+  ) => {
+    const by = (s: GrowSettings) => s.by ?? (s.mode === 'spiral' ? 'count' : 'turns');
+    const shown = derive([settings, liveGrow, chosen] as const, (s, g, m): number | undefined => {
+      if (by(s) === key) return s[key];
+      if (g && g.mode === s.mode) {
+        const v = key === 'count' ? (g.params.copies ?? g.params.count) : g.params.turns;
+        if (typeof v === 'number') return v;
+      }
+      const src = source.value;
+      const other = src && linkedValue(s, by(s), src.rise, Math.round(2 * src.radius * 10) / 10, !!m);
+      return other ? (other as Record<string, number>)[key] : s[key];
+    });
+    const change = (v: number, end: boolean) => set({ [key]: v, by: key }, end);
+    return line(
+      label,
+      title,
+      <Slider
+        aria-label={`Grow ${label}`}
+        value={shown}
+        min={range.min}
+        max={range.max}
+        step={range.step}
+        onPreview={(v) => change(v, false)}
+        onCommit={(v) => change(v, true)}
+      />,
+    );
+  };
   const mode = (m: GrowSettings['mode']) => mapState(settings, (s) => s.mode === m);
   /** A walk's fiber setting: the live fiber's own (it follows an undo), else the settings', else the entity's */
   const fiberSlider = (
@@ -873,10 +922,15 @@ export function GrowBlock(props: { area: MesoscaleApi; api: ViewerApi; particles
                     { min: 1, max: 5000, scale: 'log', unit: 'Å' },
                     () => 4 * diameter(),
                   )}
-                  {number('turns', 'Turns', 'Its turns (on a mesh, fewer where the surface ends)', {
+                  {linked('turns', 'Turns', 'Its turns (on a mesh, fewer where the surface ends); sets Count', {
                     min: 0.5,
                     max: 50,
                     step: 0.5,
+                  })}
+                  {linked('count', 'Count', 'Its copies, a rise apart along it from the source; sets Turns', {
+                    min: 2,
+                    max: 5000,
+                    step: 1,
                   })}
                   <Choices
                     label="Hand"
@@ -929,7 +983,7 @@ export function GrowBlock(props: { area: MesoscaleApi; api: ViewerApi; particles
             <Show when={mode('spiral')}>
               {() => (
                 <div class={classes.tight}>
-                  {number('count', 'Count', 'Its copies, a Step apart along it from the source (copy 0)', {
+                  {linked('count', 'Count', 'Its copies, a Step apart along it from the source (copy 0); sets Turns', {
                     min: 2,
                     max: 2000,
                     step: 1,
@@ -957,21 +1011,11 @@ export function GrowBlock(props: { area: MesoscaleApi; api: ViewerApi; particles
                     active={mapState(settings, (s) => s.hand)}
                     onPick={(id) => set({ hand: id as GrowSettings['hand'] })}
                   />
-                  {line(
+                  {linked(
+                    'turns',
                     'Turns',
-                    'The turns it reaches and its copies made (on a mesh, fewer where it ends, or where it skips so many that it reaches 4 × Count Steps)',
-                    <div class={classes.label}>
-                      {derive([settings, liveGrow] as const, (s, g) => {
-                        // the live spiral's: its turns and the copies it made (fewer than Count where it ends, or where
-                        // it reached its bound of 4 × Count Steps skipping; round 3b)
-                        if (g?.mode === 'spiral' && typeof g.params.turns === 'number') {
-                          return `${g.params.turns}, ${g.params.copies ?? g.params.count} copies`;
-                        }
-                        const step = s.rise ?? src.rise;
-                        const turns = spiralTurns(s.spacing ?? diameter(), Math.floor(s.count) * step);
-                        return `≈ ${Math.round(turns * 100) / 100}`;
-                      })}
-                    </div>,
+                    'Its turns (on a mesh, fewer where it ends, or where it skips so many that it reaches 4 × Count Steps); sets Count',
+                    { min: 0.5, max: 50, step: 0.5 },
                   )}
                 </div>
               )}
@@ -1054,20 +1098,13 @@ export function GrowBlock(props: { area: MesoscaleApi; api: ViewerApi; particles
                     { min: 1, max: 1000, scale: 'log', unit: 'Å' },
                     diameter,
                   )}
-                  <Show
-                    when={mapState(chosen, (m) => !!m)}
-                    fallback={() => number('rings', 'Rings', 'Rings about the source', { min: 1, max: 30, step: 1 })}
-                  >
-                    {() =>
-                      number(
-                        'tiles',
-                        'Count',
-                        "Its points on the mesh, the source's counted (unset: Rings' on a plane)",
-                        { min: 2, max: 5000, step: 1 },
-                        () => tilingTotal(settings.value.pattern, settings.value.rings),
-                      )
-                    }
-                  </Show>
+                  {number(
+                    'tiles',
+                    'Count',
+                    "Its points, the source's counted (unset: 3 rings')",
+                    { min: 2, max: 5000, step: 1 },
+                    () => tilingTotal(settings.value.pattern, 3),
+                  )}
                 </div>
               )}
             </Show>

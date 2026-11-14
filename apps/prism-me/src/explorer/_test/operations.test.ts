@@ -392,6 +392,30 @@ describe('explorer', () => {
     expect(ids).toEqual(['focus', 'move', 'color', 'label', 'clip', 'remove']);
   });
 
+  it("leaves a VTP's array color theme alone: Color… is for uniform-colored meshes, and says so (decisions 13)", async () => {
+    const v = await viewer();
+    const area = v.api.explorer!;
+    const vtp = `<?xml version="1.0"?>
+<VTKFile type="PolyData" version="0.1" byte_order="LittleEndian"><PolyData><Piece NumberOfPoints="3" NumberOfPolys="1">
+<CellData><DataArray type="Int32" Name="Labels" NumberOfComponents="1" format="ascii">1</DataArray></CellData>
+<Points><DataArray type="Float32" Name="Points" NumberOfComponents="3" format="ascii">0 0 0 10 0 0 0 10 0</DataArray></Points>
+<Polys><DataArray type="Int32" Name="connectivity" format="ascii">0 1 2</DataArray><DataArray type="Int32" Name="offsets" format="ascii">3</DataArray></Polys>
+</Piece></PolyData></VTKFile>`;
+    expectOk(await v.api.load.files({ files: [new File([vtp], 'seg.vtp')] }));
+    const meshes = area.objectsState().value.filter((o) => o.kind === 'mesh');
+    const item = (label: string) => {
+      const o = meshes.find((m) => m.label === label)!;
+      const picked = { key: `o:${o.ref}`, kind: 'mesh', label, node: { ref: o.ref } };
+      return { o, swatch: colorItems(v.api, area, picked).find((i) => i.id === 'color-tomato')! };
+    };
+    const array = item('seg.vtp');
+    expect(array.swatch.disabled).toMatch(/Cell: Labels/);
+    array.swatch.run();
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect((v.plugin.state.data.cells.get(array.o.ref)!.transform.params as any).colorTheme.name).not.toBe('uniform');
+    expect(item('membrane.obj').swatch.disabled).toBeUndefined();
+  });
+
   it("adds several clips to an object and one to a target (Prism's), each on what it cuts, and colors a target", async () => {
     const v = await viewer();
     const area = v.api.explorer!;

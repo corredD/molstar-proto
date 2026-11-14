@@ -41,14 +41,13 @@ export interface CrystalParams {
 }
 
 /**
- * A planar tiling in the source's own plane: its pattern, the spacing between copies (Å) and its rings; on a surface,
- * its points (the source's counted; absent: the plane's for its rings)
+ * A planar tiling in the source's own plane: its pattern, the spacing between copies (Å) and its points, the source's
+ * counted (decisions 11: Count in space too, filled ring by ring; Rings are gone)
  */
 export interface TilingParams {
   readonly pattern: 'hex' | 'square';
   readonly spacing: number;
-  readonly rings: number;
-  readonly count?: number;
+  readonly count: number;
 }
 
 /** Copies uniform in a ball about the source (Å), turned at random or as the source */
@@ -174,9 +173,9 @@ export function crystalPoses(source: GrowPose, p: CrystalParams): GrowPoses | un
 }
 
 /**
- * A tiling of the source's own plane (`normal`, in its frame: its axis), ring by ring: Hex, 1 + 3r(r+1) points with
- * r rings, Square, (2r+1)², the source's among them (not a copy); each a spacing from its neighbours, turned as the
- * source. On a surface (`on`), grown over it (`tilingOnSurface`); undefined for a source off it.
+ * A tiling of the source's own plane (`normal`, in its frame: its axis), ring by ring up to Count points (Hex rings
+ * hold 1 + 3r(r+1) points, Square's (2r+1)²), the source's among them (not a copy); each a spacing from its neighbours,
+ * turned as the source. On a surface (`on`), grown over it (`tilingOnSurface`); undefined for a source off it.
  */
 export function tilingPoses(source: GrowPose, normal: Vec3, p: TilingParams): GrowPoses;
 export function tilingPoses(
@@ -195,10 +194,10 @@ export function tilingPoses(source: GrowPose, normal: Vec3, p: TilingParams, on?
   const e1 = u;
   const e2 = hex ? Vec3.scaleAndAdd(Vec3(), Vec3.scale(Vec3(), u, 0.5), w, Math.sqrt(3) / 2) : w;
   const out: GrowPoses = { positions: [], rotations: [] };
-  const rings = Math.max(0, Math.floor(p.rings));
-  for (let ring = 1; ring <= rings; ++ring) {
+  const limit = Math.floor(p.count) - 1;
+  for (let ring = 1; out.positions.length / 3 < limit; ++ring) {
     for (let q = -ring; q <= ring; ++q) {
-      for (let r = -ring; r <= ring; ++r) {
+      for (let r = -ring; r <= ring && out.positions.length / 3 < limit; ++r) {
         const at = hex ? Math.max(Math.abs(q), Math.abs(r), Math.abs(q + r)) : Math.max(Math.abs(q), Math.abs(r));
         if (at !== ring) continue;
         Vec3.scale(_t, e1, q * p.spacing);
@@ -320,6 +319,11 @@ export function walkPath(
   return out;
 }
 
+/** What a helix made: the turns it has made at a length along its path */
+export interface HelixInfo {
+  turnsAt?: (length: number) => number;
+}
+
 /** A helix's angle a point of its path: 5° (its chords within 0.1 % of its radius; `makeFiber` places its units) */
 const HelixStep = Math.PI / 36;
 
@@ -348,7 +352,12 @@ export function helixPath(
   p: HelixParams,
   on: (GrowOn & { readonly line: HelixLine }) | undefined,
   normals?: number[],
+  info?: HelixInfo,
 ): number[] | undefined;
+/**
+ * `info.turnsAt(length)`: the turns the helix has made at `length` along its path (as returned; clamped to its end):
+ * a Count's turns (decisions 8)
+ */
 export function helixPath(
   source: GrowPose,
   axis: Vec3,
@@ -356,6 +365,7 @@ export function helixPath(
   p: HelixParams,
   on?: GrowOn & { readonly line: HelixLine },
   normals?: number[],
+  info?: HelixInfo,
 ): number[] | undefined {
   const start = Vec3.copy(Vec3(), source.position);
   const n = Vec3();
@@ -391,6 +401,8 @@ export function helixPath(
   const all: number[] = [];
   const ns: number[] | undefined = on ? [] : undefined;
   let walked = 0;
+  const arcs: number[] | undefined = info ? [] : undefined;
+  const thetas: number[] | undefined = info ? [] : undefined;
   // the angles of a grid from the source's, k × 5° (its first, `from`, apart), up to Turns: so more turns continue the
   // path point for point and fewer cut it (round 2: a grow's count prefix-stable)
   const first = Math.floor(from / HelixStep) + 1;
@@ -420,7 +432,21 @@ export function helixPath(
     if (m) walked += Math.hypot(_p[0] - all[m - 3], _p[1] - all[m - 2], _p[2] - all[m - 1]);
     all.push(_p[0], _p[1], _p[2]);
     ns?.push(n[0], n[1], n[2]);
+    arcs?.push(walked);
+    thetas?.push(theta);
     if (p.limit !== undefined && walked >= p.limit) break;
+  }
+  if (info && arcs && thetas) {
+    // the path starts a rise along it on a surface (`trimStart`)
+    const skip = on ? rise : 0;
+    info.turnsAt = (length) => {
+      const s = length + skip;
+      let k = 1;
+      while (k < arcs.length - 1 && arcs[k] < s) ++k;
+      const [a0, a1] = [arcs[k - 1] ?? 0, arcs[k] ?? 0];
+      const t = k < arcs.length && a1 > a0 ? Math.min(1, Math.max(0, (s - a0) / (a1 - a0))) : 0;
+      return ((thetas[k - 1] ?? 0) * (1 - t) + (thetas[k] ?? thetas[k - 1] ?? 0) * t) / (2 * Math.PI);
+    };
   }
   return on ? trimStart(all, ns, rise, normals) : all;
 }
@@ -431,7 +457,7 @@ const SpiralCrowd = 0.6;
 const SpiralAlong = 2;
 
 /** The arc length of the Archimedean spiral r = b·θ from 0 to θ */
-const spiralArc = (b: number, t: number) => (b / 2) * (t * Math.sqrt(1 + t * t) + Math.asinh(t));
+export const spiralArc = (b: number, t: number) => (b / 2) * (t * Math.sqrt(1 + t * t) + Math.asinh(t));
 
 /** The angle of the spiral r = b·θ at arc length `s`, from `t` (Newton's, its arc's derivative b·√(1 + θ²)) */
 function spiralAngle(b: number, s: number, t: number) {
@@ -642,7 +668,7 @@ export function spiralPath(
 }
 
 /** How much of a path (its numbers) is within a `length` along it, its last point moved to that length if past it */
-function trimEnd(path: number[], values: number[] | undefined, length: number): number {
+export function trimEnd(path: number[], values: number[] | undefined, length: number): number {
   let walked = 0;
   for (let i = 1; i < path.length / 3; ++i) {
     const len = Math.hypot(
@@ -731,7 +757,7 @@ export interface GrowOn {
   readonly axis?: Vec3;
 }
 
-/** The points of the plane's tiling with `rings` rings, the source's counted */
+/** The points of the plane's tiling with `rings` rings, the source's counted (a session's Rings read as this count) */
 export function tilingTotal(pattern: TilingParams['pattern'], rings: number): number {
   const r = Math.max(0, Math.floor(rings));
   return pattern === 'hex' ? 1 + 3 * r * (r + 1) : (2 * r + 1) ** 2;
@@ -831,7 +857,7 @@ function tilingOnSurface(source: GrowPose, axis: Vec3, p: TilingParams, on: Grow
     }
   }
   const s = p.spacing;
-  const limit = Math.floor(p.count ?? tilingTotal(p.pattern, p.rings)) - 1;
+  const limit = Math.floor(p.count) - 1;
   const apart = apartGrid(0.8 * s);
   // the points kept (the source's first): position, normal, the lattice's first direction
   const kept: number[] = [];
