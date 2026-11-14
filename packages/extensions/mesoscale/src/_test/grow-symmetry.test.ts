@@ -111,6 +111,12 @@ describe('symmetryPosition', () => {
     expect(symmetryPosition('c', 6)[2]).toBe(0);
     expect(symmetryPosition('d', 7)[2]).toBeGreaterThan(0.3);
   });
+
+  it('T and O: the copies spread over the sphere (review M1: not trimers about a 3-fold)', () => {
+    // the best spreads are about 1.05 (T) and 0.74 (O)
+    expect(symmetryContact('t', 1)).toBeGreaterThan(0.6);
+    expect(symmetryContact('o', 1)).toBeGreaterThan(0.6);
+  });
 });
 
 describe('symmetryPoses', () => {
@@ -219,6 +225,21 @@ describe('symmetryPoses', () => {
     // on the equator about a chosen axis it is refused only when on an axis; here 14 copies − 1
     expect(symmetryPoses(flat, up, p('d', 7), Vec3.create(0, 0, 1))!.positions.length / 3).toBe(13);
   });
+
+  it.each(orders)(
+    '%s%i about a chosen axis across the source: grown, its copies apart (review NEW-1)',
+    (group, n, order) => {
+      const flat: GrowPose = {
+        position: Vec3.create(50, 0, 0),
+        rotation: Quat.rotationTo(Quat(), up, Vec3.create(1, 0, 0)),
+      };
+      for (const axis of [Vec3.create(0, 0, 1), Vec3.create(0, 1, 0)]) {
+        const made = symmetryPoses(flat, up, p(group, n), axis);
+        expect(made?.positions.length).toBe(3 * (order - 1));
+        expect(distancesFrom(points(flat, made!), 0)[0]).toBeGreaterThan(1);
+      }
+    },
+  );
 
   it('refuses a source on the principal axis (its copies would coincide)', () => {
     const along: GrowPose = { position: Vec3.create(0, 0, 50), rotation: Quat.identity() };

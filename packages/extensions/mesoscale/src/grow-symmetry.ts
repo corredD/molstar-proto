@@ -95,7 +95,7 @@ export function symmetryOperators(group: SymmetryGroup, n: number): readonly Qua
 /**
  * The general position (unit, in the group's frame) the source takes: Cn, x (on the equator); the others, the middle
  * of a triangle of adjacent axes (the sum of their directions), which is on none: Dn, z and the 2-folds at 0 and π/n
- * (a barrel: two rings at ± a height); T and O, O's 4-, 3- and 2-fold (z, (1, 1, 1), (1, 1, 0)); I, its 2-, 3- and
+ * (a barrel: two rings at ± a height); T and O, O's 4-, 3- and 2-fold (z, (1, 1, 1), (1, 0, 1)); I, its 2-, 3- and
  * 5-fold (z, the face (0, ±1, φ), (φ, 0, 1), and (0, 1, φ))
  */
 export function symmetryPosition(group: SymmetryGroup, n: number): Vec3 {
@@ -110,7 +110,8 @@ export function symmetryPosition(group: SymmetryGroup, n: number): Vec3 {
     return sum(Z, Vec3.create(1, 0, 0), Vec3.create(Math.cos(t), Math.sin(t), 0));
   }
   if (group === 'i') return sum(Z, Vec3.create(phi, 0, 2 * phi + 1), Vec3.create(0, 1, phi));
-  return sum(Z, Vec3.create(1, 1, 1), Vec3.create(1, 1, 0));
+  // O's 4-, 3- and 2-fold about one corner (review M1: not (1, 1, 0), in the plane of the other two); T's axes are O's
+  return sum(Z, Vec3.create(1, 1, 1), Vec3.create(1, 0, 1));
 }
 
 /** The nearest two of the general position's copies apart on the unit sphere: a Radius of diameter / this, touching */
