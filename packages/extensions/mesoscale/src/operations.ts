@@ -103,6 +103,7 @@ import {
   GrowReach,
   PaintReach,
   sceneVolume,
+  sceneVolumes,
   type StrokeFit,
 } from './fit.js';
 import { isMembranePath } from './pick-surface.js';
@@ -278,6 +279,11 @@ export interface GrowSettings {
   readonly rise?: number;
   readonly twist?: number;
   readonly jitter?: number;
+  /** The volume each grown copy is fitted to (density-fit: its state ref); none: no fit */
+  readonly fit?: string;
+  readonly contrast: FitContrast;
+  /** A fitted copy kept at this × the source's score at least */
+  readonly threshold: number;
 }
 
 export const DefaultGrowSettings: GrowSettings = {
@@ -298,6 +304,8 @@ export const DefaultGrowSettings: GrowSettings = {
   hand: 'right',
   direction: 'up',
   axis: 'auto',
+  contrast: 'dark',
+  threshold: 0.6,
 };
 
 /** `mesoscale.grow`'s params of a source and the settings: the mode's own only */
@@ -318,6 +326,8 @@ export function growParams(source: GrowSource, s: GrowSettings) {
     if (s.mode === 'tiling' && s.tiles !== undefined) out.count = s.tiles;
     delete out.helixRadius;
   } else delete out.axis;
+  // fitted to a volume (density-fit)
+  if (s.fit) Object.assign(out, { fit: s.fit, contrast: s.contrast, threshold: s.threshold });
   return out;
 }
 
@@ -603,6 +613,16 @@ export class MesoscaleApi extends ApiArea {
   }
 
   /** The file meshes a grow can grow on (grow-mesh), following the state tree while watched: a read for views */
+  /** The volumes of the scene (density-fit: Paint's and Grow's Fit to), their state refs and names */
+  fitVolumesState(): ReadonlyState<readonly { readonly ref: string; readonly label: string }[]> {
+    const plugin = this.ctx.plugin;
+    return watchedState(
+      () => sceneVolumes(plugin.state.data).map((v) => ({ ref: v.ref, label: v.label })),
+      () => plugin.state.data.events.changed,
+      { compare: (a, b) => JSON.stringify(a) === JSON.stringify(b) },
+    );
+  }
+
   growMeshesState(): ReadonlyState<readonly { readonly ref: string; readonly label: string }[]> {
     const plugin = this.ctx.plugin;
     return watchedState(

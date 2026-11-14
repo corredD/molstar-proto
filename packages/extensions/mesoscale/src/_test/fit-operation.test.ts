@@ -15,6 +15,7 @@ import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
 import type { PrismViewer } from '@molstar/prism-viewer/viewer';
 import { sceneVolumes } from '../fit.js';
 import { pluginCursorFit } from '../paint-host.js';
+import { DefaultGrowSettings, growParams } from '../operations.js';
 import { DefaultPaintSettings } from '../paint-mode.js';
 import { paintRotation } from '../paint.js';
 import { ParticleListPainted, type PaintStroke } from '../paint.js';
@@ -224,6 +225,39 @@ describe('mesoscale.grow with fit', () => {
       threshold: 50,
     });
     expect(none.ok).toBe(false);
+  });
+
+  it("carries the section's Fit to, Contrast and Threshold to the grow (none without), made again in place", async () => {
+    const src = { particles: 'list', index: 3 };
+    const plain = growParams(src, { ...DefaultGrowSettings, mode: 'tiling' });
+    expect(plain.fit).toBeUndefined();
+    expect(plain.threshold).toBeUndefined();
+    const fitted = growParams(src, {
+      ...DefaultGrowSettings,
+      mode: 'tiling',
+      fit: 'v',
+      contrast: 'bright',
+      threshold: 0.4,
+    });
+    expect([fitted.fit, fitted.contrast, fitted.threshold]).toEqual(['v', 'bright', 0.4]);
+    // the last grow made again with another Threshold: one stroke, in place
+    const v = await viewer();
+    const list = entry(v).cell.transform.ref;
+    expectOk(await v.api.run('mesoscale.paint', { entity: 'CA', positions: [60, 60, 60], seed: 2, orient: 'random' }));
+    const index = drawn(v).count - 1;
+    const volume = await loadMap(
+      v,
+      [{ position: xyz(drawn(v), index), rotation: quat(drawn(v), index) }],
+      [80, 80, 80],
+    );
+    const params = { particles: list, index, mode: 'sphere', count: 4, radius: 40, seed: 4, fit: volume, threshold: 0 };
+    const r = await v.api.run('mesoscale.grow', params);
+    expectOk(r);
+    const id = (r.value as { id: number }).id;
+    expectOk(await v.api.run('mesoscale.grow', { ...params, count: 2, replace: id }));
+    expect(strokes(v).length).toBe(2);
+    expect(strokes(v)[1].positions.length).toBe(6);
+    expect(strokes(v)[1].grow?.params.fit).toBe(volume);
   });
 
   it('Sphere: Count counts kept copies, prefix-stable', async () => {
