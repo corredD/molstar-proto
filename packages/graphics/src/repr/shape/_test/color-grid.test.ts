@@ -138,4 +138,19 @@ describe('shape representation, color grid', () => {
     expect(repr.renderObjects[0].values.colorType.ref.value).toBe('vertex');
     expect(textures.length).toBe(0);
   });
+
+  // review M1: a grid longer in x than its other sides together (a filament along x) laid out as one column of slices
+  it('draws a grid long in x, by a texture and at the vertices', async () => {
+    const grid = getGrid([305, 7, 7]);
+    const { graphics, textures } = getGraphics();
+    const repr = ShapeRepresentation((_, s: Shape<Mesh>) => s, Mesh.Utils, { graphics });
+    await repr.createOrUpdate({}, getShape(grid)).run();
+    const image = textures[0].image!;
+    expect([image.width, image.height]).toEqual([305, 49]);
+    // cell (2, 1, 3): slice 3 in row 3
+    expect(image.array[4 * (3 * 7 * 305 + 305 + 2)]).toBe(grid.colors[4 * (2 + 305 * (1 + 7 * 3))]);
+    const cpu = ShapeRepresentation((_, s: Shape<Mesh>) => s, Mesh.Utils);
+    await cpu.createOrUpdate({}, getShape(grid)).run();
+    expect(cpu.renderObjects[0].values.tColor.ref.value.array[8]).toBe(grid.colors[4 * (1 + 305 * (1 + 7 * 3))]);
+  });
 });
