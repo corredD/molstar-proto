@@ -595,6 +595,23 @@ describe('mesoscale.grow on a mesh', () => {
       for (let i = last + 1; i < list.count; ++i) expect(Vec3.dot(yAt(i), n), `${params.mode} ${i}`).toBeCloseTo(1, 4);
       expectOk(await v.api.run('history.undo', {}));
     }
+    // its Fiber Axis auto: its up already along the normal (a plain walk painted), so each tile turned as it is
+    expectOk(await v.api.run('mesoscale.fiber', { entity: 'loose', axis: 'auto' }));
+    expectOk(
+      await v.api.run('mesoscale.grow', {
+        particles: ref,
+        index: last,
+        mode: 'tiling',
+        spacing: 40,
+        count: 7,
+        mesh: repr,
+      }),
+    );
+    const list = drawn(v);
+    expect(list.count).toBeGreaterThan(last + 2);
+    for (let i = last + 1; i < list.count; ++i) {
+      expect(Math.abs(Quat.dot(quat(list, i), quat(list, last))), `auto ${i}`).toBeCloseTo(1, 4);
+    }
   });
 
   it('refuses Crystal on a mesh, a mesh not in the scene, and a source off the mesh: no step', async () => {
