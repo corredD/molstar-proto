@@ -14,7 +14,7 @@ import { DefaultPrismViewerSpec } from '@molstar/prism-viewer/default-spec';
 import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
 import type { PrismViewer } from '@molstar/prism-viewer/viewer';
 import { DefaultPaintSettings } from '../paint-mode.js';
-import { oneCopyOf, pluginPaintCursor } from '../paint-cursor.js';
+import { oneCopyOf, pluginPaintCursor, pluginStructureCursor } from '../paint-cursor.js';
 import { paintRotation, paintRotations } from '../paint.js';
 import { MesoscaleExtension } from '../prism-viewer.js';
 import { setTestTargetStructure, TestTargetList } from './fixtures.js';
@@ -84,6 +84,35 @@ describe('the copy under the pointer', () => {
     expect(repr.state.visible).toBe(false);
     cursor.dispose();
     expect(removed).toHaveBeenCalledWith(repr);
+  });
+
+  it("a structure brush's copy is drawn in a scene with no particle list yet (paint-refine, the first Paint)", async () => {
+    const base = DefaultPrismViewerSpec();
+    const v = await createPrismViewerHeadless({
+      spec: { ...base, extensions: [...(base.extensions ?? []), MesoscaleExtension] },
+    });
+    viewers.push(v);
+    const crn = readFileSync(new URL('../../../../../data/examples/1crn.cif', import.meta.url));
+    expectOk(await v.api.load.files({ files: [new File([crn], '1crn.cif')] }));
+    expect(v.plugin.managers.particles.hierarchy.current.lists.length).toBe(0);
+    const added: Representation<any, any, any>[] = [];
+    const canvas = {
+      graphics: undefined as never,
+      add: (r: Representation<any, any, any>) => void added.push(r),
+      remove: () => {},
+      update: () => true,
+      requestDraw: () => {},
+    } as unknown as VisualSetCanvas;
+    const structure = v.plugin.managers.structure.hierarchy.current.structures[0].cell.obj!.data;
+    // Mol*'s particles are lazy: their target representation is not registered before a list is there
+    expect(v.plugin.representation.particles.registry.has('target')).toBe(false);
+    const cursor = pluginStructureCursor(v.plugin, structure, canvas, () =>
+      v.extensions.ensureFor({ transformers: ['ms-plugin.particles-representation-3d'] }),
+    );
+    cursor.move(Vec3.create(1, 2, 3), Vec3.create(0, 0, 1), DefaultPaintSettings, 7);
+    await vi.waitFor(() => expect(added.length).toBe(1), { timeout: 5000 });
+    expect(added[0].state.visible).toBe(true);
+    cursor.dispose();
   });
 
   it('is nothing without a list or a particle of the brush', async () => {

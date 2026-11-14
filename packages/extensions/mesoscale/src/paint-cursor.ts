@@ -87,25 +87,32 @@ export function pluginPaintCursor(
   const params = r?.cell.params?.values;
   if (!data || i === undefined || !params) return NoCursor;
   const colorTheme = color !== undefined ? { name: 'uniform', params: { value: color } } : params.colorTheme;
-  return copyCursor(plugin, oneCopyOf(data, i), { ...params, colorTheme }, surface, canvas);
+  return copyCursor(plugin, oneCopyOf(data, i), Promise.resolve({ ...params, colorTheme }), surface, canvas);
 }
 
 /**
  * The copy under the pointer of a structure brush (paint-layer round 2): one copy of the structure, drawn as a target
- * representation draws it (its default themes)
+ * representation draws it (its default themes). In a scene without particles yet, Mol*'s particles (lazy) are not
+ * there: `ensure` loads them first (paint-refine: the first Paint showed no copy), else it draws nothing
  */
 export function pluginStructureCursor(
   plugin: PluginContext,
   structure: Structure,
   canvas: VisualSetCanvas | undefined = plugin.canvas3d,
+  ensure?: () => Promise<void>,
 ): PaintCursor {
-  if (!plugin.representation.particles.registry.has('target')) return NoCursor;
+  const registered = () => plugin.representation.particles.registry.has('target');
+  if (!registered() && !ensure) return NoCursor;
   const one = withStructures(
     { ...paintingList(), count: 1, keys: Int32Array.of(0), targets: Int32Array.of(0), entities: Int32Array.of(0) },
     [{ name: 'Paint brush', target: 0, entity: 0, source: { kind: 'url', url: '' } }],
     [{ kind: 'structure', structure }],
   );
-  return copyCursor(plugin, oneCopyOf(one, 0), targetRepresentationParams(plugin, one), false, canvas);
+  const params = async () => {
+    if (!registered()) await ensure?.();
+    return registered() ? targetRepresentationParams(plugin, one) : undefined;
+  };
+  return copyCursor(plugin, oneCopyOf(one, 0), params(), false, canvas);
 }
 
 /** A target representation's params, the type's default themes (as `particles.representation` makes them) */
@@ -128,35 +135,38 @@ export function targetRepresentationParams(plugin: PluginContext, data: Particle
   };
 }
 
-/** The copy `one` (a list of one particle) under the pointer, drawn by a representation of `params` */
+/** The copy `one` (a list of one particle) under the pointer, drawn by a representation of `params` (none: nothing) */
 function copyCursor(
   plugin: PluginContext,
   one: ParticleList,
-  params: { type: { name: string; params: any }; colorTheme: any; sizeTheme: any },
+  params: Promise<{ type: { name: string; params: any }; colorTheme: any; sizeTheme: any } | undefined>,
   surface: boolean,
   canvas: VisualSetCanvas | undefined,
 ): PaintCursor {
   if (!canvas) return NoCursor;
   const set = new VisualSet(canvas);
-  const provider = plugin.representation.particles.registry.get(params.type.name);
   const axis = principalAxisOf(one.targetMapping?.get(one.targets[0]));
   let repr: Representation<any, any, any> | undefined;
   let shown = false;
   /** The copy's turn options, set in place each move */
   const turn: { axis?: Vec3; spin?: number } = {};
   let gone = false;
-  void set
-    .fromProvider(provider, one, {
-      themes: plugin.representation.particles.themes,
-      themeData: { particles: one },
-      properties: { runtime: RuntimeContext.Synchronous, assetManager: plugin.managers.asset },
-      props: params.type.params,
-      colorTheme: params.colorTheme,
-      sizeTheme: params.sizeTheme,
-      state: { pickable: false, layer: 'scene', visible: false },
-    })
+  void params
+    .then((p) =>
+      p && !gone
+        ? set.fromProvider(plugin.representation.particles.registry.get(p.type.name), one, {
+            themes: plugin.representation.particles.themes,
+            themeData: { particles: one },
+            properties: { runtime: RuntimeContext.Synchronous, assetManager: plugin.managers.asset },
+            props: p.type.params,
+            colorTheme: p.colorTheme,
+            sizeTheme: p.sizeTheme,
+            state: { pickable: false, layer: 'scene', visible: false },
+          })
+        : undefined,
+    )
     .then((built) => {
-      if (gone) return;
+      if (gone || !built) return;
       repr = built;
       // where the pointer was while it was built
       if (shown) set.setState(repr, Shown);

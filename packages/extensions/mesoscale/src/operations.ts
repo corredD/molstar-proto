@@ -338,6 +338,8 @@ export class MesoscaleApi extends ApiArea {
           const f = b && fiberInfo(this.ctx.plugin.state.data, this.ctx, b.particles, b.entity);
           return f?.fibers ? f.rise : undefined;
         },
+        // a structure brush's copy in a scene without particles: Mol*'s particles first, as its stroke loads them
+        () => this.ctx.extensions.ensureFor({ transformers: ['ms-plugin.particles-representation-3d'] }),
       ),
     );
     return this._paintMode;

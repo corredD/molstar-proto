@@ -76,13 +76,15 @@ export function withAltCamera(bindings: TrackballBindings): TrackballBindings {
 
 /**
  * The host of a paint mode on `plugin`; `paint` runs the operation, `colorOf` reads an entity's color from its look
- * (the copy under the pointer's), `structureFiberStep` a structure brush's fibers' rise in a list (none: it makes none)
+ * (the copy under the pointer's), `structureFiberStep` a structure brush's fibers' rise in a list (none: it makes none),
+ * `ensureParticles` loads Mol*'s particles (lazy) for a structure brush's copy in a scene without them
  */
 export function pluginPaintHost(
   plugin: PluginContext,
   paint: (params: Record<string, unknown>) => Promise<unknown>,
   colorOf?: (list: ParticleListRef, entity: number) => number | undefined,
   structureFiberStep?: (structure: string, into: string) => number | undefined,
+  ensureParticles?: () => Promise<void>,
 ): PaintHost {
   const listOf = (ref: string) =>
     plugin.managers.particles.hierarchy.current.lists.find((l) => l.cell.transform.ref === ref);
@@ -166,7 +168,9 @@ export function pluginPaintHost(
     cursor(brush) {
       if (brush.structure) {
         const structure = structureOf(brush);
-        return structure ? pluginStructureCursor(plugin, structure) : { move() {}, hide() {}, dispose() {} };
+        return structure
+          ? pluginStructureCursor(plugin, structure, plugin.canvas3d, ensureParticles)
+          : { move() {}, hide() {}, dispose() {} };
       }
       const list = listOf(brush.particles);
       const data = list?.cell.obj?.data;
