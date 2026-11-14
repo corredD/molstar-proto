@@ -10,6 +10,8 @@
   volume leaves the mesh gray (no values) until it comes back. `cryoet.mesh { volume, sample, depth, invert }`;
   `cryoet.meshes` gives a mesh's `volumeColor`; `CryoetApi.volumesState`.
 - `MeshVolumeColor` (cryoet): a decorator between a mesh's shape and its representation.
-- stage-tools: a mesh's move, placement and gizmo find its shape past such decorators.
+- stage-tools: a mesh's move, placement and gizmo find its shape past such decorators; cryoet: a mesh's Scale too
+  (after a `shape.transform` it wrote nothing before).
+- Prism viewer: `shape.list`, `shape.focus` find a shape's representations under any decorator of it.
 - Core state: a transformer's `weakDependencies` (dependencies.md §3): a deleted or absent dependency is waited for, the
   cell evaluated without it, instead of an error that takes its children with it.
