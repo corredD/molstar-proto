@@ -20,7 +20,7 @@ import type { ShapeGetter } from '@molstar/graphics/repr/shape/representation';
 import type { Shape } from '@molstar/model/model/shape';
 import { Grid, type Volume } from '@molstar/model/model/volume';
 import { PluginStateObject as SO, PluginStateTransform } from '@molstar/plugin/state/objects';
-import { transformShapeProvider } from '@molstar/plugin/state/transforms/shape/transform';
+import { getShapeProviderTransform, transformShapeProvider } from '@molstar/plugin/state/transforms/shape/transform';
 
 // A mesh colored by a volume of the scene (Look › Color by › Volume; apps/prism-me/_spec/ui.md): the volume's density
 // at each vertex (or each cell's center, when the mesh's arrays are per cell), or its Mean, Min or Max along the
@@ -340,6 +340,8 @@ interface SampleCache {
   sample?: VolumeSample;
   depth?: number;
   values?: Float32Array;
+  /** The shape drawn with the array (a VTP's made again from its file), for these values and this name */
+  base?: { inner: AnyProvider; values: Float32Array; name: string; provider: AnyProvider };
 }
 
 export type MeshVolumeColor = typeof MeshVolumeColor;
@@ -361,14 +363,6 @@ export const MeshVolumeColor = PluginStateTransform.BuiltIn({
       const file = vtpOf(inner);
       // per cell when the mesh's arrays are (a VTP with cell arrays only), else per vertex
       const perCell = !!file && file.cellData.size > 0 && file.pointData.size === 0;
-      const drawn = (await inner.getShape(ctx, inner.data, PD.getDefaultValues(inner.params))) as Shape<Mesh>;
-      const g = drawn.geometry;
-      const mesh = {
-        vertices: g.vertexBuffer.ref.value,
-        indices: g.indexBuffer.ref.value,
-        vertexCount: g.vertexCount,
-        triangleCount: g.triangleCount,
-      };
       const c = cache as SampleCache;
       let values = c.values;
       if (
@@ -378,6 +372,15 @@ export const MeshVolumeColor = PluginStateTransform.BuiltIn({
         c.sample !== params.sample ||
         c.depth !== params.depth
       ) {
+        // the mesh as drawn (its transform, a move above it included), made with the shape's default props
+        const drawn = (await inner.getShape(ctx, inner.data, PD.getDefaultValues(inner.params))) as Shape<Mesh>;
+        const g = drawn.geometry;
+        const mesh = {
+          vertices: g.vertexBuffer.ref.value,
+          indices: g.indexBuffer.ref.value,
+          vertexCount: g.vertexCount,
+          triangleCount: g.triangleCount,
+        };
         const points = meshSamplePoints(
           mesh,
           perCell ? { triangleCell: file!.triangleCellIndex, count: file!.numberOfCells } : undefined,
@@ -388,10 +391,17 @@ export const MeshVolumeColor = PluginStateTransform.BuiltIn({
         Object.assign(c, { inner, volume, sample: params.sample, depth: params.depth, values });
       }
       const array: SampledArray = { name: params.name, kind: perCell ? 'cell' : 'point', values };
-      // a VTP: a provider of its file with the array, so Array can color by it; another mesh: its own
-      const base: AnyProvider = file
-        ? await shapeFromVtp(withArray(file, array), { transforms: inner.data.transforms }).runInContext(ctx)
-        : inner;
+      // a VTP: a provider of its file with the array, so Array can color by it, moved as the shape above it moves it
+      // (`shape.transform`); another mesh: its own. Made again only for other values or another name
+      let base = c.base?.inner === inner && c.base.values === values && c.base.name === params.name && c.base.provider;
+      if (!base) {
+        const move = getShapeProviderTransform(inner);
+        const vtp = file
+          ? await shapeFromVtp(withArray(file, array), { transforms: inner.data.transforms }).runInContext(ctx)
+          : undefined;
+        base = vtp ? (move ? transformShapeProvider(vtp, move) : vtp) : inner;
+        c.base = { inner, values, name: params.name, provider: base };
+      }
       const getShape = volumeColorGetter();
       const data: VolumeColorData = {
         ...base.data,
