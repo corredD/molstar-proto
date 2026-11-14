@@ -5,43 +5,14 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { Mat4, Tensor, Vec3 } from '@molstar/core/math/linear-algebra';
+import { Mat4, Vec3 } from '@molstar/core/math/linear-algebra';
 import type { Grid } from '@molstar/model/model/volume';
 import { meshSamplePoints, sampleVolume } from '../mesh-volume.js';
-import { sphereMesh, squareMesh } from './mesh-volume-fixtures.js';
+import { gridOf, sphereMesh, squareMesh } from './mesh-volume-fixtures.js';
 
 // The sampler of a mesh's Color by › Volume (apps/prism-me/progress/2026-11-14-mesh-volume-color.md): the density at
 // each vertex (or cell center) of a mesh in its drawn frame, or the Mean, Min or Max along its normal within ±Depth,
 // in σ of the volume's grid, read in the grid's own frame (its origin, its voxel).
-
-/** A grid of n³ voxels of `voxel` Å, voxel 0 at `origin`, its values f(x, y, z) at each voxel's place in Å */
-function gridOf(n: number, voxel: number, origin: Vec3, f: (x: number, y: number, z: number) => number): Grid {
-  const values = new Float32Array(n * n * n);
-  let sum = 0;
-  for (let k = 0; k < n; k++) {
-    for (let j = 0; j < n; j++) {
-      for (let i = 0; i < n; i++) {
-        const v = f(origin[0] + i * voxel, origin[1] + j * voxel, origin[2] + k * voxel);
-        values[i + n * (j + n * k)] = v;
-        sum += v;
-      }
-    }
-  }
-  const mean = sum / values.length;
-  let sq = 0;
-  for (const v of values) sq += (v - mean) ** 2;
-  const matrix = Mat4.mul(Mat4(), Mat4.fromTranslation(Mat4(), origin), Mat4.fromUniformScaling(Mat4(), voxel));
-  return {
-    transform: { kind: 'matrix', matrix },
-    cells: Tensor.create(Tensor.Space([n, n, n], [2, 1, 0], Float32Array), Tensor.Data1(values)),
-    stats: {
-      min: values.reduce((a, b) => Math.min(a, b)),
-      max: values.reduce((a, b) => Math.max(a, b)),
-      mean,
-      sigma: Math.sqrt(sq / values.length),
-    },
-  };
-}
 
 /** A dark shell of radius 30 Å about (40, 40, 40): -1 on it, 0 far from it */
 const Center = Vec3.create(40, 40, 40);

@@ -116,3 +116,32 @@ export function mrcOf(n: number, voxel: number, f: (x: number, y: number, z: num
   };
   return CCP4Writer.writeMrc(grid, values);
 }
+
+/** A grid of n³ voxels of `voxel` Å, voxel 0 at `origin`, its values f(x, y, z) at each voxel's place in Å */
+export function gridOf(n: number, voxel: number, origin: Vec3, f: (x: number, y: number, z: number) => number): Grid {
+  const values = new Float32Array(n * n * n);
+  let sum = 0;
+  for (let k = 0; k < n; k++) {
+    for (let j = 0; j < n; j++) {
+      for (let i = 0; i < n; i++) {
+        const v = f(origin[0] + i * voxel, origin[1] + j * voxel, origin[2] + k * voxel);
+        values[i + n * (j + n * k)] = v;
+        sum += v;
+      }
+    }
+  }
+  const mean = sum / values.length;
+  let sq = 0;
+  for (const v of values) sq += (v - mean) ** 2;
+  const matrix = Mat4.mul(Mat4(), Mat4.fromTranslation(Mat4(), origin), Mat4.fromUniformScaling(Mat4(), voxel));
+  return {
+    transform: { kind: 'matrix', matrix },
+    cells: Tensor.create(Tensor.Space([n, n, n], [2, 1, 0], Float32Array), Tensor.Data1(values)),
+    stats: {
+      min: values.reduce((a, b) => Math.min(a, b)),
+      max: values.reduce((a, b) => Math.max(a, b)),
+      mean,
+      sigma: Math.sqrt(sq / values.length),
+    },
+  };
+}

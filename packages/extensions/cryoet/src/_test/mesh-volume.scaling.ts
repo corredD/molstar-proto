@@ -8,12 +8,13 @@ import { it } from 'vitest';
 import { Mat4, Tensor, Vec3 } from '@molstar/core/math/linear-algebra';
 import type { Grid } from '@molstar/model/model/volume';
 import { checkLinear, quadraticControl, scaling } from '../../../../../test-harness/src/scaling.js';
-import { meshSamplePoints, sampleVolume } from '../mesh-volume.js';
+import { colorBand, meshSamplePoints, sampleVolume } from '../mesh-volume.js';
 import { sphereMesh } from './mesh-volume-fixtures.js';
 
 // A mesh colored by a volume (`test:scaling`; apps/prism-me/AGENTS.md, no accidental quadratic): its sampling's time
 // linear in vertices × depth samples: a sphere of N rings (64 vertices each) at ±4 Å, then a sphere of 64 rings at
-// ±N Å (2N + 1 samples along each normal at 1 Å voxels), each at n and 4n.
+// ±N Å (2N + 1 samples along each normal at 1 Å voxels), each at n and 4n; its color grid's band (Detail Texture)
+// linear in triangles: a sphere of N rings.
 
 const n = 64;
 const values = new Float32Array(n * n * n).map((_, i) => Math.sin(i));
@@ -49,4 +50,15 @@ it('a mesh sampled along its normals: N depth samples', () => {
     1,
   );
   checkLinear('volume samples, N depth samples', s);
+});
+
+it("a mesh's color grid band: N triangles", () => {
+  const s = scaling(
+    {
+      setup: (k) => sphereMesh(20, center, k, 64),
+      run: (mesh) => void colorBand(mesh, Mat4.identity(), grid),
+    },
+    64,
+  );
+  checkLinear('color band, N triangles', s);
 });
