@@ -376,8 +376,13 @@ export function helixPath(
   const all: number[] = [];
   const ns: number[] | undefined = on ? [] : undefined;
   let walked = 0;
-  for (let i = 0; ; ++i) {
-    const theta = Math.min(from + i * HelixStep, end);
+  // the angles of a grid from the source's, k × 5° (its first, `from`, apart), up to Turns: so more turns continue the
+  // path point for point and fewer cut it (round 2: a grow's count prefix-stable)
+  const first = Math.floor(from / HelixStep) + 1;
+  const last = Math.floor((end / HelixStep) * (1 + 1e-12));
+  for (let k = first - 1; k <= last; ++k) {
+    const i = k - first + 1;
+    const theta = i === 0 ? from : k * HelixStep;
     Vec3.scale(_u, e1, Math.cos(theta));
     Vec3.scaleAndAdd(_u, _u, _side, sense * Math.sin(theta));
     // the axis's point at this height
@@ -396,11 +401,11 @@ export function helixPath(
       if (Vec3.dot(_hit.normal, n) < 0) Vec3.negate(_hit.normal, _hit.normal);
       Vec3.copy(n, _hit.normal);
     }
-    const k = all.length;
-    if (k) walked += Math.hypot(_p[0] - all[k - 3], _p[1] - all[k - 2], _p[2] - all[k - 1]);
+    const m = all.length;
+    if (m) walked += Math.hypot(_p[0] - all[m - 3], _p[1] - all[m - 2], _p[2] - all[m - 1]);
     all.push(_p[0], _p[1], _p[2]);
     ns?.push(n[0], n[1], n[2]);
-    if (theta >= end || (p.limit !== undefined && walked >= p.limit)) break;
+    if (p.limit !== undefined && walked >= p.limit) break;
   }
   return on ? trimStart(all, ns, rise, normals) : all;
 }

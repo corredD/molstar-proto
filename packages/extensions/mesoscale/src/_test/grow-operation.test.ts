@@ -649,9 +649,10 @@ describe('mesoscale.grow helix', () => {
       fiber: true,
       grow: { mode: 'helix', params: { pitch: 40, turns: 3, hand: 'right' } },
     });
-    // the path: a point and the one a turn later (72 points of 5°) Pitch apart along z (its last at Turns, nearer)
+    // the path: a point of its 5° grid and the one a turn later (72 points) Pitch apart along z (its first, a rise from
+    // the source, off the grid)
     const ps = stroke.positions;
-    for (let i = 0; i + 72 < ps.length / 3 - 1; ++i) {
+    for (let i = 1; i + 72 < ps.length / 3; ++i) {
       expect(ps[(i + 72) * 3 + 2] - ps[i * 3 + 2]).toBeCloseTo(40, 6);
       expect(ps[(i + 72) * 3] - ps[i * 3]).toBeCloseTo(0, 6);
     }
