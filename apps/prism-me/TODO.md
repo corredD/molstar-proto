@@ -21,8 +21,9 @@ the app, in his words; the lane turns it into spec and tests.
    Rings (11); Color… leaves a VTP's array theme alone (13). The spec records all answered decisions.
 3. **Symmetry** (decision 12 open): point groups only, Cn, Dn, T, O, I about the source with a Radius; live settings,
    Clear, Undo. Helical is Grow › Helix; a space group is a structure built with its symmetry, painted, plus Crystal.
-4. **density-weight** (decision 12: before or after Symmetry): paint and grow follow a density map
-   ([plans/2026-11-10-paint-on-density.md](plans/2026-11-10-paint-on-density.md)).
+4. **density-weight**: built in lane `density-fit` (Paint and Grow › Fit to, Contrast, Threshold; awaiting merge).
+   Left: the handedness flip of a mirrored tomogram (plan, Decided 4), a target's kind offsets in the fit, the copy
+   under the pointer on a moved list ([progress/2026-11-13-density-fit.md](progress/2026-11-13-density-fit.md)).
 5. **Geodesic spiral** (only if decision 23 says geodesic): the spiral by distance over the surface, even on caps
    and vesicles.
 6. **Paint speed on cellpack-mg** (a stroke ~1.3 s on 2.1 M particles): one lane per cost of the paint-layer profile:
