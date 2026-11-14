@@ -65,6 +65,7 @@ import {
   paintRotations,
   fiberAxisVector,
   principalAxisOf,
+  strokeCounts,
   toListFrame,
   withStructures,
 } from './paint.js';
@@ -1587,7 +1588,16 @@ export class MesoscaleApi extends ApiArea {
       if (!count) return ApiResult.fail('invalid', 'That rule makes no copy.', 'More cells or rings.');
       await updatePainted(ctx, l, (p) => ({
         ...p,
-        strokes: old ? p.strokes.map((s) => (s.grow?.id === growId ? stroke : s)) : [...p.strokes, stroke],
+        // made again: the grows from later painted copies kept on their copy (review M1)
+        strokes: old
+          ? followSources(
+              state,
+              l,
+              p.strokes,
+              p.strokes.map((s) => (s.grow?.id === growId ? stroke : s)),
+              p.strokes.map((_, i) => i),
+            )
+          : [...p.strokes, stroke],
       }));
       return ApiResult.ok(
         path
@@ -1636,9 +1646,16 @@ export class MesoscaleApi extends ApiArea {
       if ((Object.keys(given) as (keyof typeof given)[]).every((k) => strokes[at].own?.[k] === given[k])) {
         return ApiResult.already('The fiber is already so.');
       }
+      // its units as many as its rise makes: the grows from later painted copies kept on their copy (review M1)
       await updatePainted(ctx, l, (p) => ({
         ...p,
-        strokes: p.strokes.map((s, i) => (i === at ? { ...s, own } : s)),
+        strokes: followSources(
+          ctx.plugin.state.data,
+          l,
+          p.strokes,
+          p.strokes.map((s, i) => (i === at ? { ...s, own } : s)),
+          p.strokes.map((_, i) => i),
+        ),
       }));
       return ApiResult.ok(
         `The grown fiber: ${[
@@ -1674,7 +1691,20 @@ export class MesoscaleApi extends ApiArea {
       const ids = grownFrom(state, l, values.index);
       if (!ids?.length) return ApiResult.fail('not-found', `Nothing is grown from ${src.name} #${values.index}.`);
       const key = ids[0].grow!.source.key;
-      await updatePainted(ctx, l, (p) => ({ ...p, strokes: p.strokes.filter((s) => s.grow?.source.key !== key) }));
+      await updatePainted(ctx, l, (p) => {
+        const from = p.strokes.map((_, i) => i).filter((i) => p.strokes[i].grow?.source.key !== key);
+        // the grows from the cleared copies go too, the later ones kept on their copy (review M1)
+        return {
+          ...p,
+          strokes: followSources(
+            state,
+            l,
+            p.strokes,
+            from.map((i) => p.strokes[i]),
+            from,
+          ),
+        };
+      });
       const n = ids.length;
       return ApiResult.ok(
         `Cleared ${n} ${n === 1 ? 'grow' : 'grows'} from ${src.name} #${values.index}.`,
@@ -2844,6 +2874,79 @@ function fiberListOf(state: State, painted: StateObjectCell | undefined, drawn: 
     structures,
     structures.map((s) => drawn.targetMapping?.get(s.target)),
   );
+}
+
+/**
+ * The strokes `after` of a list's painted strokes changed (each `before[from[i]]`, made again or not; -1, new), the grows
+ * from painted copies kept on their copy (round 2 review M1, New 1): a painted copy's key is its place among them
+ * (`paintParticles`), so a stroke before it with another count, or gone, moves it. Each such grow's source (its key
+ * and index) follows its copy, by its stroke and its place in it; a grow whose copy is gone (its stroke cleared, or cut
+ * shorter) goes too, and so the grows from its copies, until none goes.
+ */
+function followSources(
+  state: State,
+  l: ParticleListRef,
+  before: readonly PaintStroke[],
+  after: readonly PaintStroke[],
+  from: readonly number[],
+): PaintStroke[] {
+  const painted = decoratorUnder(state, l.cell.transform.ref, ParticleListPainted);
+  const drawn = painted?.obj?.data as ParticleList | undefined;
+  const input = painted && (state.cells.get(painted.transform.parent)?.obj?.data as ParticleList | undefined);
+  if (!painted || !drawn || !input) return [...after];
+  const p = painted.transform.params as PaintedParams;
+  const list = fiberListOf(state, painted, drawn);
+  const counts = (ss: readonly PaintStroke[]) => strokeCounts(list, ss, p.fibers, p.structures);
+  const startsOf = (cs: number[]) => {
+    const out: number[] = [];
+    let at = 0;
+    for (const c of cs) {
+      out.push(at);
+      at += c;
+    }
+    return out;
+  };
+  let base = 0;
+  for (let i = 0; i < input.count; ++i) base = Math.max(base, input.keys[i] + 1);
+  const oldCounts = counts(before);
+  const oldStarts = startsOf(oldCounts);
+  // each grow's source as a painted copy: its stroke (in `before`) and its place in it
+  const copyOf = after.map((s) => {
+    const key = s.grow?.source.key;
+    if (key === undefined || key < base) return undefined;
+    const k = key - base;
+    for (let j = 0; j < before.length; ++j) {
+      if (k >= oldStarts[j] && k < oldStarts[j] + oldCounts[j]) return { stroke: j, at: k - oldStarts[j] };
+    }
+    return undefined;
+  });
+  const keep = after.map(() => true);
+  for (;;) {
+    const kept = after.map((_, i) => i).filter((i) => keep[i]);
+    const newCounts = counts(kept.map((i) => after[i]));
+    const newStarts = startsOf(newCounts);
+    const place = new Map(kept.map((i, m) => [from[i], m] as const));
+    let dropped = false;
+    for (const i of kept) {
+      const c = copyOf[i];
+      if (!c) continue;
+      const m = place.get(c.stroke);
+      if (m === undefined || c.at >= newCounts[m]) {
+        keep[i] = false;
+        dropped = true;
+      }
+    }
+    if (dropped) continue;
+    return kept.map((i) => {
+      const c = copyOf[i];
+      const s = after[i];
+      if (!c) return s;
+      const start = newStarts[place.get(c.stroke)!];
+      const key = base + start + c.at;
+      if (key === s.grow!.source.key) return s;
+      return { ...s, grow: { ...s.grow!, source: { index: input.count + start + c.at, key } } };
+    });
+  }
 }
 
 /** The grow strokes from a list's particle (its index as drawn): those whose record names its key; undefined: none there */

@@ -369,6 +369,16 @@ export function paintParticles(
   };
 }
 
+/** The copies each stroke makes as the painted decorator makes them (a fiber's units every rise along its path) */
+export function strokeCounts(
+  list: ParticleList,
+  strokes: readonly PaintStroke[],
+  fibers?: FiberSettingsMap,
+  structures?: readonly PaintStructure[],
+): number[] {
+  return makeFibers(list, strokes, fibers, structures).map((s) => Math.floor(s.positions.length / 3));
+}
+
 /**
  * The strokes with each fiber stroke's points made (`makeFiber`) by its brush's settings (`fiberSettingsOf`) about its
  * brush's fiber axis (its own fibers', else its target's principal axis); the others as they are

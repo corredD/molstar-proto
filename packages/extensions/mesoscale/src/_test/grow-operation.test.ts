@@ -983,3 +983,58 @@ describe('mesoscale.clear-grown', () => {
     expect(Array.from(xyz(drawn(v), 7))).toEqual(seven);
   });
 });
+
+// A grow from a painted copy (round 2 review M1, New 1): a copy's key is its place among the painted copies, so when a
+// stroke before it changes its count or goes, the grows from later copies follow their copy (their record's key and
+// index); when their copy goes, they go with it.
+
+describe('grows from painted copies when the strokes before them change', () => {
+  const sources = (v: PrismViewer) => strokes(v).map((s) => s.grow?.source.index);
+
+  it("Clear: the grows from the cleared grows' copies go too; a grow from a later copy follows it", async () => {
+    const v = await viewer();
+    const ref = entry(v).cell.transform.ref;
+    const grow = (p: object) => v.api.run('mesoscale.grow', { particles: ref, mode: 'sphere', ...p });
+    // G1: #7..#10 from #2; G2: #11..#13 from #3; G3 from #9 (G1's); G4 from #12 (G2's)
+    expectOk(await grow({ index: 2, count: 4 }));
+    expectOk(await grow({ index: 3, count: 3 }));
+    expectOk(await grow({ index: 9, count: 2 }));
+    expectOk(await grow({ index: 12, count: 2 }));
+    const g4 = Array.from(drawn(v).coordinates.slice(-6));
+    expectOk(await v.api.run('mesoscale.clear-grown', { particles: ref, index: 2 }));
+    // G1 and G3 gone; G2 now #7..#9, G4 from #8, its copies as they were
+    expect(sources(v)).toEqual([3, 8]);
+    expect(drawn(v).count).toBe(7 + 3 + 2);
+    expect(Array.from(drawn(v).coordinates.slice(-6))).toEqual(g4);
+    const m = v.api.mesoscale!;
+    expect(m.grownFromState(observableState({ particles: ref, index: 8 }).asReadonly).value).toBe(1);
+    expect(m.grownFromState(observableState({ particles: ref, index: 10 }).asReadonly).value).toBe(0);
+    expect(await v.api.run('mesoscale.clear-grown', { particles: ref, index: 10 })).toMatchObject({ ok: false });
+    expectOk(await v.api.run('mesoscale.clear-grown', { particles: ref, index: 8 }));
+    expect(sources(v)).toEqual([3]);
+  });
+
+  it('replace: fewer copies take the grows from the cut ones with them; more keep a later grow on its copy', async () => {
+    const v = await viewer();
+    const ref = entry(v).cell.transform.ref;
+    const grow = (p: object) => v.api.run('mesoscale.grow', { particles: ref, mode: 'sphere', ...p });
+    const r = await grow({ index: 2, count: 4, seed: 1 });
+    expectOk(r);
+    const g1 = (r.value as { id: number }).id;
+    // G2 from #8 (G1's second), G3 from #11 (G2's first)
+    expectOk(await grow({ index: 8, count: 3 }));
+    expectOk(await grow({ index: 11, count: 2 }));
+    const g3 = Array.from(drawn(v).coordinates.slice(-6));
+    // G1 with 6: G2 still from #8; G3's source now #13, its copies as they were
+    expectOk(await grow({ index: 2, count: 6, seed: 1, replace: g1 }));
+    expect(sources(v)).toEqual([2, 8, 13]);
+    expect(Array.from(drawn(v).coordinates.slice(-6))).toEqual(g3);
+    expectOk(await grow({ index: 13, count: 3, replace: strokes(v)[2].grow!.id }));
+    // G1 with 1: its second copy (G2's source) cut, so G2 and G3 go
+    expectOk(await grow({ index: 2, count: 1, seed: 1, replace: g1 }));
+    expect(sources(v)).toEqual([2]);
+    expect(drawn(v).count).toBe(7 + 1);
+    expectOk(await v.api.run('history.undo', {}));
+    expect(sources(v)).toEqual([2, 8, 13]);
+  });
+});
