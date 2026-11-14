@@ -305,20 +305,20 @@ describe("A grown fiber's Rise and Twist (paint-refine)", () => {
   });
 });
 
-describe('Grow on a mesh (grow-mesh)', () => {
-  /** An OBJ of a sphere of `radius` about `center` (an icosahedron subdivided: its vertices on the sphere) */
-  function sphereObj(radius: number, center: [number, number, number]) {
-    const { vertices, indices } = Sphere(3);
-    const lines: string[] = [];
-    for (let i = 0; i < vertices.length; i += 3) {
-      lines.push(`v ${center.map((c, k) => c + radius * vertices[i + k]).join(' ')}`);
-    }
-    for (let i = 0; i < indices.length; i += 3) {
-      lines.push(`f ${indices[i] + 1} ${indices[i + 1] + 1} ${indices[i + 2] + 1}`);
-    }
-    return lines.join('\n');
+/** An OBJ of a sphere of `radius` about `center` (an icosahedron subdivided: its vertices on the sphere) */
+function sphereObj(radius: number, center: [number, number, number]) {
+  const { vertices, indices } = Sphere(3);
+  const lines: string[] = [];
+  for (let i = 0; i < vertices.length; i += 3) {
+    lines.push(`v ${center.map((c, k) => c + radius * vertices[i + k]).join(' ')}`);
   }
+  for (let i = 0; i < indices.length; i += 3) {
+    lines.push(`f ${indices[i] + 1} ${indices[i + 1] + 1} ${indices[i + 2] + 1}`);
+  }
+  return lines.join('\n');
+}
 
+describe('Grow on a mesh (grow-mesh)', () => {
   it('picks the mesh in On, tiles over it by Count, one step; Crystal grows in space, the select gone', async () => {
     const { v, hiv } = await viewer();
     // CA #1 at (10, 0, 0) on a vesicle of 50 Å about (10, -50, 0)
@@ -380,6 +380,58 @@ describe('Grow on a mesh (grow-mesh)', () => {
     choice(host, 'Mode', 'Crystal')!.click();
     await until(() => !on());
     expect(host.textContent).toContain('A crystal grows in space');
+  });
+});
+
+describe('Grow › Helix (grow-helix)', () => {
+  it('shows Pitch, Turns, Hand, Direction and Radius in space (Axis on a mesh), grows a helix, its Rise live', async () => {
+    const { v, hiv } = await viewer();
+    const m = v.api.mesoscale!;
+    const host = mountScene(v);
+    await until(() => !!rowOf(host, 'HIV'));
+    rowOf(host, 'HIV')!.click();
+    await until(() => !!button(host, 'Grow'));
+    const section = button(host, 'Grow')!;
+    if (section.getAttribute('aria-expanded') !== 'true') section.click();
+    m.growSource.set({ particles: hiv, index: 2 });
+    await until(() => !!host.textContent?.includes('NC #2'));
+    choice(host, 'Mode', 'Helix')!.click();
+    await until(() => !!host.querySelector('input[aria-label="Grow Pitch"]'));
+    for (const label of ['Turns', 'Radius', 'Rise', 'Twist', 'Jitter']) {
+      expect(host.querySelector(`input[aria-label="Grow ${label}"]`)).not.toBe(null);
+    }
+    expect(host.querySelector('[aria-label="Grow Steps"]')).toBe(null);
+    expect(host.querySelector('[aria-label="Grow Axis"]')).toBe(null);
+    choice(host, 'Hand', 'Left')!.click();
+    choice(host, 'Direction', 'Down')!.click();
+    expect(m.growSettings.value).toMatchObject({ mode: 'helix', hand: 'left', direction: 'down' });
+    m.growSettings.set({ ...m.growSettings.value, pitch: 40, turns: 2, helixRadius: 15 });
+    const grow = Array.from(host.querySelectorAll<HTMLButtonElement>('button')).filter(
+      (b) => b.textContent?.trim() === 'Grow',
+    );
+    grow[grow.length - 1].click();
+    // NC without radii: 10 Å a unit along 2 turns of √((2π·15)² + 40²) ≈ 102 Å: 20 units
+    await until(() => count(v) > 3);
+    const units = count(v) - 3;
+    expect(units).toBe(20);
+    const steps = v.api.history.steps.value.length;
+    // Rise live on the helix as on a walk: 5 Å along its 195 Å (two turns less the first rise), 39 units; one step
+    const range = host.querySelector<HTMLInputElement>('input[type=range][aria-label="Grow Rise"]')!;
+    range.value = String(Math.log10(5));
+    range.dispatchEvent(new Event('input', { bubbles: true }));
+    range.dispatchEvent(new Event('change', { bubbles: true }));
+    await until(() => count(v) - 3 === 39);
+    await until(() => v.api.history.steps.value.length === steps + 1);
+    // on a mesh: Axis in place of Radius
+    const loaded = await v.api.load.files({ files: [new File([sphereObj(50, [10, -50, 0])], 'vesicle.obj')] });
+    if (!loaded.ok) throw new Error(loaded.message);
+    const shape = Array.from(v.plugin.state.data.cells.values()).find((c) => SO.Shape.Provider.is(c.obj))!;
+    const repr = Array.from(v.plugin.state.data.cells.values()).find(
+      (c) => c.transform.parent === shape.transform.ref,
+    )!;
+    m.growSettings.set({ ...m.growSettings.value, mesh: repr.transform.ref });
+    await until(() => !!host.querySelector('[aria-label="Grow Axis"]'));
+    expect(host.querySelector('input[aria-label="Grow Radius"]')).toBe(null);
   });
 });
 

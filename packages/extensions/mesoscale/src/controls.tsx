@@ -550,6 +550,14 @@ const FiberBankOptions: readonly SelectOption[] = [
   ['rna', 'RNA'],
 ];
 
+const HelixAxisOptions: readonly SelectOption[] = [
+  ['auto', 'Auto'],
+  ['view', 'View'],
+  ['x', 'X'],
+  ['y', 'Y'],
+  ['z', 'Z'],
+];
+
 const FiberAxisOptions: readonly SelectOption[] = [
   ['auto', 'Auto'],
   ['x', 'X'],
@@ -559,6 +567,11 @@ const FiberAxisOptions: readonly SelectOption[] = [
 
 const GrowModeChoices = [
   { id: 'walk', label: 'Random walk', title: 'A new fiber from the source: a persistent random walk, a rise a step' },
+  {
+    id: 'helix',
+    label: 'Helix',
+    title: "A new fiber from the source winding as a helix: on a mesh about its axis, on its surface; in space about the source's Fiber Axis",
+  },
   { id: 'crystal', label: 'Crystal', title: "A lattice in the source's frame, each copy turned as the source" },
   { id: 'tiling', label: 'Tiling', title: "A plane of copies in the source's own plane, ring by ring" },
   { id: 'sphere', label: 'Sphere', title: 'Copies at random in a ball about the source' },
@@ -576,7 +589,7 @@ const GrowModeChoices = [
  */
 export function GrowBlock(props: { area: MesoscaleApi; api: ViewerApi; particles: string }) {
   const area = props.area;
-  /** The last walk grown here, live: its list and its grow's id */
+  /** The last walk or helix grown here, live: its list and its grow's id */
   const live = observableState<{ particles: string; grow: number } | undefined>(undefined);
   const redraw = gestureSteps<Partial<Record<'rise' | 'twist' | 'jitter', number>>>(props.api, {
     label: "Set the grown fiber's rise and twist",
@@ -732,6 +745,75 @@ export function GrowBlock(props: { area: MesoscaleApi; api: ViewerApi; particles
                     step: 1,
                     unit: '°',
                   })}
+                </div>
+              )}
+            </Show>
+            <Show when={mode('helix')}>
+              {() => (
+                <div class={classes.tight}>
+                  {number(
+                    'pitch',
+                    'Pitch',
+                    "Along its axis a turn, Å (unset: 4 × the copy's diameter)",
+                    { min: 1, max: 5000, scale: 'log', unit: 'Å' },
+                    () => 4 * diameter(),
+                  )}
+                  {number('turns', 'Turns', 'Its turns (on a mesh, fewer where the surface ends)', {
+                    min: 0.5,
+                    max: 50,
+                    step: 0.5,
+                  })}
+                  <Choices
+                    label="Hand"
+                    choices={[
+                      { id: 'right', label: 'Right', title: 'Right-handed' },
+                      { id: 'left', label: 'Left', title: 'Left-handed' },
+                    ]}
+                    active={mapState(settings, (s) => s.hand)}
+                    onPick={(id) => set({ hand: id as GrowSettings['hand'] })}
+                  />
+                  <Choices
+                    label="Direction"
+                    choices={[
+                      { id: 'up', label: 'Up', title: 'Up its axis from the source' },
+                      { id: 'down', label: 'Down', title: 'Down its axis from the source' },
+                    ]}
+                    active={mapState(settings, (s) => s.direction)}
+                    onPick={(id) => set({ direction: id as GrowSettings['direction'] })}
+                  />
+                  <Show
+                    when={mapState(chosen, (m) => !!m)}
+                    fallback={() =>
+                      number(
+                        'helixRadius',
+                        'Radius',
+                        "About the source's Fiber Axis, Å, the source on it (unset: the copy's diameter)",
+                        { min: 1, max: 5000, scale: 'log', unit: 'Å' },
+                        diameter,
+                      )
+                    }
+                  >
+                    {() =>
+                      line(
+                        'Axis',
+                        "The axis it winds about, through the mesh's center: Auto, its longest; View, toward the viewer",
+                        <Select
+                          size="sm"
+                          over
+                          aria-label="Grow Axis"
+                          options={HelixAxisOptions}
+                          value={mapState(settings, (s) => s.axis)}
+                          onChange={(axis) => set({ axis: axis as GrowSettings['axis'] })}
+                        />,
+                      )
+                    }
+                  </Show>
+                </div>
+              )}
+            </Show>
+            <Show when={mapState(settings, (s) => s.mode === 'walk' || s.mode === 'helix')}>
+              {() => (
+                <div class={classes.tight}>
                   {fiberSlider(
                     'rise',
                     'Rise',
@@ -868,7 +950,8 @@ export function GrowBlock(props: { area: MesoscaleApi; api: ViewerApi; particles
                   live.set(undefined);
                   const s = settings.value;
                   void area.grow(growParams(src, { ...s, mesh: onMesh(s, meshes.value) }) as never).then((r) => {
-                    const id = r.ok && s.mode === 'walk' ? (r.value as { id?: number } | undefined)?.id : undefined;
+                    const fiber = s.mode === 'walk' || s.mode === 'helix';
+                    const id = r.ok && fiber ? (r.value as { id?: number } | undefined)?.id : undefined;
                     if (id !== undefined) live.set({ particles: src.particles, grow: id });
                   });
                 }}
