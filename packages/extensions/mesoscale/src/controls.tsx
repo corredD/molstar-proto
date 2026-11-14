@@ -584,9 +584,9 @@ const GrowModeChoices = [
  * or by a paint, its last copy), its mode, the mode's params (a length unset: the source's size), a seed (none: at
  * random) and Grow. The settings are the area's (`growSettings`), no step. On (grow-mesh): None or a file mesh of the
  * scene (the one the source was painted on by default); on a mesh, Tiling's Rings becomes its Count; Crystal grows in
- * space. A walk's Rise, Twist and Jitter (paint-refine; unset: the entity's) are live on the last walk grown here: a
- * drag redraws it in place (`mesoscale.grown-fiber`), one step a drag; another Grow, another source or the block gone
- * ends it.
+ * space. A walk's or a helix's Rise, Twist and Jitter (paint-refine; unset: the entity's) are live on the last one grown
+ * here: a drag redraws it in place (`mesoscale.grown-fiber`), one step a drag; another Grow, another source, another
+ * mode or the block gone ends it.
  */
 export function GrowBlock(props: { area: MesoscaleApi; api: ViewerApi; particles: string }) {
   const area = props.area;
@@ -612,6 +612,14 @@ export function GrowBlock(props: { area: MesoscaleApi; api: ViewerApi; particles
     () => live.set(undefined),
   );
   const settings = area.growSettings.asReadonly;
+  // another mode: the last walk or helix is not live anymore (grow-helix review S5: Helix shows the same sliders)
+  effect(
+    mapState(settings, (s) => s.mode),
+    () => {
+      redraw.settle();
+      live.set(undefined);
+    },
+  );
   const meshes = area.growMeshesState();
   /** The mesh chosen while it is in the scene */
   const onMesh = (s: GrowSettings, list: readonly { ref: string }[]) =>

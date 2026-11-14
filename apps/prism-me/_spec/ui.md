@@ -555,7 +555,7 @@ still completes its distance.
   and **Jitter** (paint-refine, Ludo 2026-11-13; unset: the entity's Fiber settings) are its own, kept in its stroke:
   only that fiber has them. After a walk is grown, they are live on it: a drag redraws that fiber in place (the same
   path, its units made again: one step a drag, `mesoscale.grown-fiber`), the sliders following an undo; another Grow,
-  another source or the section closed ends it.
+  another source, another Mode or the section closed ends it.
 - Grow on a mesh (lane `grow-mesh`, Ludo 2026-11-13): a paint stroke over a file mesh (OBJ, PLY, VTP) puts its copies on
   the mesh's surface at its triangle's point, turned to its normal (a membrane protein upright in it; others as Turn
   says). The Grow section's **On** picks None (in space) or a mesh of the scene by its file's name; it is the mesh the

@@ -435,6 +435,40 @@ describe('Grow › Helix (grow-helix)', () => {
   });
 });
 
+describe('Grow › Helix after a walk (grow-helix review S5)', () => {
+  it("another mode ends the walk's live Rise: a drag sets the next grow's only, no step", async () => {
+    const { v, hiv } = await viewer();
+    const m = v.api.mesoscale!;
+    const host = mountScene(v);
+    await until(() => !!rowOf(host, 'HIV'));
+    rowOf(host, 'HIV')!.click();
+    await until(() => !!button(host, 'Grow'));
+    const section = button(host, 'Grow')!;
+    if (section.getAttribute('aria-expanded') !== 'true') section.click();
+    m.growSource.set({ particles: hiv, index: 2 });
+    await until(() => !!host.textContent?.includes('NC #2'));
+    choice(host, 'Mode', 'Random walk')!.click();
+    m.growSettings.set({ ...m.growSettings.value, steps: 10, persistence: 0, seed: 3 });
+    await until(() => !!host.querySelector('input[aria-label="Grow Rise"]'));
+    const grow = Array.from(host.querySelectorAll<HTMLButtonElement>('button')).filter(
+      (b) => b.textContent?.trim() === 'Grow',
+    );
+    grow[grow.length - 1].click();
+    await until(() => count(v) === 3 + 10);
+    const steps = v.api.history.steps.value.length;
+    choice(host, 'Mode', 'Helix')!.click();
+    await until(() => !!host.querySelector('input[aria-label="Grow Pitch"]'));
+    const range = host.querySelector<HTMLInputElement>('input[type=range][aria-label="Grow Rise"]')!;
+    range.value = String(Math.log10(5));
+    range.dispatchEvent(new Event('input', { bubbles: true }));
+    range.dispatchEvent(new Event('change', { bubbles: true }));
+    await new Promise((r) => setTimeout(r, 300));
+    expect(v.api.history.steps.value.length).toBe(steps);
+    expect(count(v)).toBe(3 + 10);
+    expect(m.growSettings.value.rise).toBe(5);
+  });
+});
+
 describe('Grow settings', () => {
   it("leave a length set for one source to the next source's size (review G1)", async () => {
     const { v, hiv } = await viewer();
