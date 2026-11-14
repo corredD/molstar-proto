@@ -154,7 +154,7 @@ describe('the copy under the pointer, fitted', () => {
       [80, 60, 60],
     );
     const data = drawn(v);
-    const fit = pluginCursorFit(v.plugin, () => data.targetMapping?.get(data.targets[2]), 10);
+    const fit = pluginCursorFit(v.plugin, data.targetMapping?.get(data.targets[2]), 10);
     // as the cursor turns the copy (Turn Random, the stroke's seed): its first copy's turn
     const rotation = paintRotation(Quat(), Vec3.create(0, 0, 1), 'random', 7, 0, {});
     const shown = fit.fit(Vec3.create(62, 41, 40), rotation, volume, DefaultPaintSettings.contrast)!;
@@ -207,7 +207,7 @@ describe('a copy without an object', () => {
     const host = pluginPaintHost(v.plugin, async () => undefined);
     const radius = host.radius({ particles: list, entity: 1, name: 'CA' });
     expect(radius).toBe(30);
-    const fit = pluginCursorFit(v.plugin, () => undefined, radius);
+    const fit = pluginCursorFit(v.plugin, undefined, radius);
     const rotation = paintRotation(Quat(), Vec3.create(0, 0, 1), 'random', 7, 0, {});
     const shown = fit.fit(Vec3.create(66, 45, 40), rotation, volume, 'dark')!;
     expectOk(

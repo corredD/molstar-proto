@@ -4,7 +4,7 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import { Vec2, Vec3, Vec4 } from '@molstar/core/math/linear-algebra';
+import { Quat, Vec2, Vec3, Vec4 } from '@molstar/core/math/linear-algebra';
 import { OrderedSet } from '@molstar/core/data/int';
 import { Ray3D } from '@molstar/core/math/geometry/primitives/ray3d';
 import type { Binding } from '@molstar/core/util/binding';
@@ -16,7 +16,7 @@ import {
   Particle,
 } from '@molstar/model/model/particles/particle-list';
 import { PluginStateObject as SO } from '@molstar/plugin/state/objects';
-import { Volume } from '@molstar/model/model/volume';
+import { type Grid, Volume } from '@molstar/model/model/volume';
 import type { ParticleTarget } from '@molstar/model/model/particles/particle-list';
 import type { PluginContext } from '@molstar/plugin/context';
 import type { ParticleListRef } from '@molstar/plugin/state/manager/particles/hierarchy-state';
@@ -38,11 +38,11 @@ import { meshFrame, sceneMeshes } from './mesh-surface.js';
 import { type CursorFit, pluginPaintCursor, pluginStructureCursor } from './paint-cursor.js';
 import {
   envelopeOf,
+  type FitContrast,
   fitMapOf,
   fitPose,
   PaintReach,
   rayOnPlane,
-  sceneVolumeOf,
   sceneVolumes,
   slicePlane,
 } from './fit.js';
@@ -99,26 +99,27 @@ export function withAltCamera(bindings: TrackballBindings): TrackballBindings {
  */
 export function pluginCursorFit(
   plugin: PluginContext,
-  object: () => ParticleTarget | undefined,
+  object: ParticleTarget | undefined,
   radius: number,
 ): { fit: CursorFit; dispose(): void } {
   let grids: Map<string, Volume> | undefined;
   const sub = plugin.state.data.events.changed.subscribe(() => {
     grids = undefined;
   });
+  // made once: a move allocates nothing (review M3)
+  const envelope = envelopeOf(object, radius);
+  const from = { position: Vec3(), rotation: Quat() };
+  const out = { position: Vec3(), rotation: Quat(), score: 0, shift: 0, angle: 0 };
+  const options = { reach: PaintReach.shift * envelope.radius, turn: PaintReach.turn, contrast: 'dark' as FitContrast };
   return {
     fit(position, rotation, ref, contrast) {
       if (!grids) grids = new Map(sceneVolumes(plugin.state.data).map((v) => [v.ref, v.volume]));
       const volume = grids.get(ref);
       if (!volume) return undefined;
-      const envelope = envelopeOf(object(), radius);
-      const reach = PaintReach.shift * envelope.radius;
-      return fitPose(
-        fitMapOf(volume.grid),
-        envelope,
-        { position, rotation },
-        { reach, turn: PaintReach.turn, contrast },
-      );
+      Vec3.copy(from.position, position);
+      Quat.copy(from.rotation, rotation);
+      options.contrast = contrast;
+      return fitPose(fitMapOf(volume.grid), envelope, from, options, out);
     },
     dispose: () => sub.unsubscribe(),
   };
@@ -165,6 +166,18 @@ export function pluginPaintHost(
       : getParticleEntityGroups(data).get(brush.entity);
     return (set && OrderedSet.size(set) && data.radii?.[OrderedSet.start(set)]) || 10;
   };
+  /** The scene's volumes by the grid they are drawn by, read again after a change of the state (not a frame: M3) */
+  let volumeRefs: Map<Grid, string> | undefined;
+  let volumesChanged: { unsubscribe(): void } | undefined;
+  const volumeRefOf = (grid: Grid) => {
+    volumesChanged ??= plugin.state.data.events.changed.subscribe(() => {
+      volumeRefs = undefined;
+    });
+    if (!volumeRefs) volumeRefs = new Map(sceneVolumes(plugin.state.data).map((v) => [v.volume.grid, v.ref]));
+    return volumeRefs.get(grid);
+  };
+  /** A slice's plane, set in place */
+  const plane = { point: Vec3(), normal: Vec3() };
   /** The pointer's ray at a point of the canvas (CSS pixels) in the scene */
   const ray = (x: number, y: number, origin: Vec3, direction: Vec3) => {
     const canvas = plugin.canvas3d;
@@ -178,7 +191,10 @@ export function pluginPaintHost(
     return true;
   };
   return {
-    dispose: () => globalThis.document?.removeEventListener('pointermove', track, { capture: true }),
+    dispose: () => {
+      globalThis.document?.removeEventListener('pointermove', track, { capture: true });
+      volumesChanged?.unsubscribe();
+    },
     canvas: () => plugin.canvas3dContext?.canvas ?? undefined,
     pointer() {
       const canvas = plugin.canvas3dContext?.canvas;
@@ -208,8 +224,8 @@ export function pluginPaintHost(
       const { loci, repr } = canvas.getLoci(pick.id);
       if (!Volume.isLoci(loci) && !Volume.Cell.isLoci(loci)) return false;
       // a slice's plane (its props: a grid index or a plane), not an isosurface's
-      const plane = repr && slicePlane(loci.volume.grid, repr.props as Parameters<typeof slicePlane>[1]);
-      if (!plane || !ray(x, y, _origin, _direction) || !rayOnPlane(point.position, _origin, _direction, plane)) {
+      const on = repr && slicePlane(loci.volume.grid, repr.props as Parameters<typeof slicePlane>[1], plane);
+      if (!on || !ray(x, y, _origin, _direction) || !rayOnPlane(point.position, _origin, _direction, plane)) {
         return false;
       }
       Vec3.copy(point.normal, plane.normal);
@@ -218,7 +234,7 @@ export function pluginPaintHost(
       }
       point.id = pick.id;
       point.mesh = undefined;
-      point.volume = sceneVolumeOf(plugin.state.data, loci.volume)?.ref;
+      point.volume = volumeRefOf(loci.volume.grid);
       return true;
     },
     focus() {
@@ -280,7 +296,7 @@ export function pluginPaintHost(
         };
       // the copy fitted where a click would fit it (density-fit)
       const fits: { dispose(): void }[] = [];
-      const fitWith = (object: () => ParticleTarget | undefined, radius: number) => {
+      const fitWith = (object: ParticleTarget | undefined, radius: number) => {
         const f = pluginCursorFit(plugin, object, radius);
         fits.push(f);
         return f.fit;
@@ -307,7 +323,7 @@ export function pluginPaintHost(
                 plugin.canvas3d,
                 ensureParticles,
                 along,
-                fitWith(() => ({ kind: 'structure', structure }), structure.boundary.sphere.radius || 10),
+                fitWith({ kind: 'structure', structure }, structure.boundary.sphere.radius || 10),
               )
             : { move() {}, hide() {}, dispose() {} },
         );
@@ -323,10 +339,8 @@ export function pluginPaintHost(
         const p = painted?.transform.params as { fibers?: FiberSettingsMap; structures?: PaintStructure[] } | undefined;
         return fiberAxisVector(fiberSettingsOf(data, brushIdOf(data, b), b.target, p?.fibers, p?.structures).axis);
       });
-      const object = () => {
-        const b = data && brushOf(data, brush.entity);
-        return b ? data!.targetMapping?.get(b.target) : undefined;
-      };
+      const b = data && brushOf(data, brush.entity);
+      const object = b ? data!.targetMapping?.get(b.target) : undefined;
       return withSub(
         pluginPaintCursor(
           plugin,

@@ -8,6 +8,7 @@ import { describe, expect, it } from 'vitest';
 import { Quat, Tensor, Vec3 } from '@molstar/core/math/linear-algebra';
 import type { ParticleTarget } from '@molstar/model/model/particles/particle-list';
 import { envelopeOf, fitGrown, fitMapOf, fitPose, fitScore, PaintReach, rayOnPlane, slicePlane } from '../fit.js';
+import { allocated } from '../../../../../test-harness/src/scaling.js';
 import { angleBetween, centroidOf, crnAtoms, crnSites, density, gridOf, seeded, turn } from './density.js';
 
 // The fit (density-fit; plans/2026-11-10-paint-on-density.md, D1, Tests): a synthetic 1CRN map plus noise, a copy put
@@ -189,5 +190,28 @@ describe('slicePlane', () => {
     expect(Array.from(p.normal)).toEqual([0, 1, 0]);
     expect(Array.from(p.point)).toEqual([1, 2, 3]);
     expect(slicePlane(grid, { mode: 'frame' })).toBeUndefined();
+  });
+});
+
+describe('the copy under the pointer, a frame', () => {
+  it('a fit into an out pose allocates no object, a slice plane into an out plane nothing (review M3)', () => {
+    const map = fitMapOf(density(atoms, [site], box).grid)!;
+    const out = { position: Vec3(), rotation: Quat(), score: 0, shift: 0, angle: 0 };
+    const from = off(1, 3, 5);
+    const n = 20;
+    const fits = () => {
+      for (let i = 0; i < n; ++i) fitPose(map, envelope, from, reach, out);
+    };
+    for (let k = 0; k < 10; ++k) fits();
+    // no object a fit (it was 1.9 MB: a sort's buffers a step, Math.hypot's arguments, the closures, the poses); what
+    // is left is V8's boxed numbers between calls (about 200 bytes an evaluation, short-lived)
+    expect(allocated(fits) / n).toBeLessThan(100_000);
+    const plane = { point: Vec3(), normal: Vec3() };
+    const props = { mode: 'grid', dimension: { name: 'z', params: 12 } };
+    const planes = () => {
+      for (let i = 0; i < 1000; ++i) slicePlane(map.grid, props, plane);
+    };
+    for (let k = 0; k < 50; ++k) planes();
+    expect(allocated(planes) / 1000).toBeLessThan(16);
   });
 });

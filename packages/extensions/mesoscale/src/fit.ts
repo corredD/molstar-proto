@@ -40,6 +40,22 @@ export interface FitMap {
   /** Its voxel's side, Å (its smallest) */
   readonly voxel: number;
   read(p: Vec3): number;
+  /** Its layout read directly (a grid of strides, not periodic): the score's sums inline, no number boxed a read */
+  readonly layout?: FitLayout;
+}
+
+/** A grid's layout as a fit reads it: the scene to grid matrix, its sizes and strides, its data, mean and σ */
+export interface FitLayout {
+  readonly toGrid: Mat4;
+  readonly nx: number;
+  readonly ny: number;
+  readonly nz: number;
+  readonly sx: number;
+  readonly sy: number;
+  readonly sz: number;
+  readonly data: ArrayLike<number>;
+  readonly mean: number;
+  readonly sigma: number;
 }
 
 /** A copy's pose in the scene: its center's position and its orientation */
@@ -280,41 +296,29 @@ export function fitMapOf(grid: Grid): FitMap | undefined {
   const m = Grid.getGridToCartesianTransform(grid);
   const voxel = Math.min(Math.hypot(m[0], m[1], m[2]), Math.hypot(m[4], m[5], m[6]), Math.hypot(m[8], m[9], m[10]));
   const strides = Tensor.strides(grid.cells.space);
-  let read: (p: Vec3) => number;
-  if (strides && grid.periodicity !== 'xyz') {
-    // a grid's own layout read directly (a fit reads it some 10⁵ times): trilinear, 0 (its mean) outside it
-    const g = Mat4.invert(Mat4(), m);
-    const data = grid.cells.data;
-    const [nx, ny, nz] = grid.cells.space.dimensions;
-    const [sx, sy, sz] = strides;
-    read = (p) => {
-      const x = g[0] * p[0] + g[4] * p[1] + g[8] * p[2] + g[12];
-      const y = g[1] * p[0] + g[5] * p[1] + g[9] * p[2] + g[13];
-      const z = g[2] * p[0] + g[6] * p[1] + g[10] * p[2] + g[14];
-      if (!(x >= 0 && y >= 0 && z >= 0 && x <= nx - 1 && y <= ny - 1 && z <= nz - 1)) return 0;
-      const i = Math.min(Math.floor(x), nx - 2);
-      const j = Math.min(Math.floor(y), ny - 2);
-      const k = Math.min(Math.floor(z), nz - 2);
-      const u = x - i;
-      const v = y - j;
-      const w = z - k;
-      const o = i * sx + j * sy + k * sz;
-      const c00 = data[o] * (1 - u) + data[o + sx] * u;
-      const c10 = data[o + sy] * (1 - u) + data[o + sx + sy] * u;
-      const c01 = data[o + sz] * (1 - u) + data[o + sx + sz] * u;
-      const c11 = data[o + sy + sz] * (1 - u) + data[o + sx + sy + sz] * u;
-      const c = (c00 * (1 - v) + c10 * v) * (1 - w) + (c01 * (1 - v) + c11 * v) * w;
-      return (c - mean) / sigma;
-    };
-  } else {
-    const raw = Grid.makeGetTrilinearlyInterpolated(grid, 'none');
-    read = (p) => {
-      const v = raw(p);
-      // outside the grid: its mean
-      return Number.isNaN(v) ? 0 : (v - mean) / sigma;
-    };
-  }
-  const map: FitMap = { grid, voxel, read };
+  const [nx, ny, nz] = grid.cells.space.dimensions;
+  const layout: FitLayout | undefined =
+    strides && grid.periodicity !== 'xyz' && nx > 1 && ny > 1 && nz > 1
+      ? {
+          toGrid: Mat4.invert(Mat4(), m),
+          nx,
+          ny,
+          nz,
+          sx: strides[0],
+          sy: strides[1],
+          sz: strides[2],
+          data: grid.cells.data,
+          mean,
+          sigma,
+        }
+      : undefined;
+  const raw = Grid.makeGetTrilinearlyInterpolated(grid, 'none');
+  const read = (p: Vec3) => {
+    const v = raw(p);
+    // outside the grid: its mean
+    return Number.isNaN(v) ? 0 : (v - mean) / sigma;
+  };
+  const map: FitMap = { grid, voxel, read, ...(layout ? { layout } : {}) };
   maps.set(grid, map);
   return map;
 }
@@ -339,28 +343,58 @@ function rotationMatrix(out: Float64Array, q: Quat) {
   return out;
 }
 
-/** The mean of the map at points of a frame put at a pose */
-function meanAt(map: FitMap, points: Float32Array, position: Vec3, rotation: Quat): number {
+const means = new Float64Array(2);
+
+/** The mean of the map at points of a frame put at a pose, into `means[slot]` */
+function meanAt(map: FitMap, points: Float32Array, position: Vec3, rotation: Quat, slot: number): void {
   const m = rotationMatrix(_m, rotation);
-  const [px, py, pz] = position;
+  const px = position[0];
+  const py = position[1];
+  const pz = position[2];
+  const L = map.layout;
   let sum = 0;
   for (let i = 0; i < points.length; i += 3) {
-    const x = points[i];
-    const y = points[i + 1];
-    const z = points[i + 2];
-    _w[0] = m[0] * x + m[3] * y + m[6] * z + px;
-    _w[1] = m[1] * x + m[4] * y + m[7] * z + py;
-    _w[2] = m[2] * x + m[5] * y + m[8] * z + pz;
-    sum += map.read(_w);
+    const x0 = points[i];
+    const y0 = points[i + 1];
+    const z0 = points[i + 2];
+    const wx = m[0] * x0 + m[3] * y0 + m[6] * z0 + px;
+    const wy = m[1] * x0 + m[4] * y0 + m[7] * z0 + py;
+    const wz = m[2] * x0 + m[5] * y0 + m[8] * z0 + pz;
+    if (!L) {
+      Vec3.set(_w, wx, wy, wz);
+      sum += map.read(_w);
+      continue;
+    }
+    // trilinear in the grid's own layout, 0 (its mean) outside it
+    const g = L.toGrid;
+    const x = g[0] * wx + g[4] * wy + g[8] * wz + g[12];
+    const y = g[1] * wx + g[5] * wy + g[9] * wz + g[13];
+    const z = g[2] * wx + g[6] * wy + g[10] * wz + g[14];
+    if (!(x >= 0 && y >= 0 && z >= 0 && x <= L.nx - 1 && y <= L.ny - 1 && z <= L.nz - 1)) continue;
+    const a = Math.min(Math.floor(x), L.nx - 2);
+    const b = Math.min(Math.floor(y), L.ny - 2);
+    const c = Math.min(Math.floor(z), L.nz - 2);
+    const u = x - a;
+    const v = y - b;
+    const w = z - c;
+    const { sx, sy, sz, data } = L;
+    const o = a * sx + b * sy + c * sz;
+    const c00 = data[o] * (1 - u) + data[o + sx] * u;
+    const c10 = data[o + sy] * (1 - u) + data[o + sx + sy] * u;
+    const c01 = data[o + sz] * (1 - u) + data[o + sx + sz] * u;
+    const c11 = data[o + sy + sz] * (1 - u) + data[o + sx + sy + sz] * u;
+    sum += ((c00 * (1 - v) + c10 * v) * (1 - w) + (c01 * (1 - v) + c11 * v) * w - L.mean) / L.sigma;
   }
-  return points.length ? sum / (points.length / 3) : 0;
+  // into `means` (a number returned from a call is boxed: one a call, some 700 a fit)
+  means[slot] = points.length ? sum / (points.length / 3) : 0;
 }
 
 /** A pose's score: the mean inside minus the mean in the shell, in σ, signed by the contrast (Dark: inside darker) */
 export function fitScore(map: FitMap, envelope: FitEnvelope, pose: FitPose, contrast: FitContrast): number {
   const shell = shellOf(envelope, map.voxel);
-  const d =
-    meanAt(map, envelope.inside, pose.position, pose.rotation) - meanAt(map, shell, pose.position, pose.rotation);
+  meanAt(map, envelope.inside, pose.position, pose.rotation, 0);
+  meanAt(map, shell, pose.position, pose.rotation, 1);
+  const d = means[0] - means[1];
   return contrast === 'dark' ? -d : d;
 }
 
@@ -382,9 +416,10 @@ const xc = new Float64Array(N);
 
 /** Parameters kept in their unit balls (the shift's within the reach, the turn's within its most) */
 function project(x: Float64Array) {
-  const s = Math.hypot(x[0], x[1], x[2]);
+  // not Math.hypot: its arguments are allocated a call
+  const s = Math.sqrt(x[0] * x[0] + x[1] * x[1] + x[2] * x[2]);
   if (s > 1) for (let i = 0; i < 3; ++i) x[i] /= s;
-  const t = Math.hypot(x[3], x[4], x[5]);
+  const t = Math.sqrt(x[3] * x[3] + x[4] * x[4] + x[5] * x[5]);
   if (t > 1) for (let i = 3; i < 6; ++i) x[i] /= t;
 }
 
@@ -399,26 +434,54 @@ function poseOf(x: Float64Array, from: FitPose, reach: number, turn: number, pos
   Quat.normalize(rotation, Quat.multiply(rotation, _turn, from.rotation));
 }
 
+/** The search's objective, set by `fitPose` (module-level: nothing allocated a fit) */
+const objective = {
+  map: undefined as FitMap | undefined,
+  inside: new Float32Array(0) as Float32Array,
+  shell: new Float32Array(0) as Float32Array,
+  from: undefined as FitPose | undefined,
+  reach: 0,
+  turn: 0,
+  sign: 1,
+  pull: 0,
+};
+
+/** The score minus the pull back of parameters (the objective's) */
+function f(x: Float64Array): number {
+  const o = objective;
+  poseOf(x, o.from!, o.reach, o.turn, _pos, _rot);
+  meanAt(o.map!, o.inside, _pos, _rot, 0);
+  meanAt(o.map!, o.shell, _pos, _rot, 1);
+  const d = means[0] - means[1];
+  return -o.sign * d + o.pull * (x[0] * x[0] + x[1] * x[1] + x[2] * x[2] + x[3] * x[3] + x[4] * x[4] + x[5] * x[5]);
+}
+
+/** A point on the line through `a` and `b` (`a + t·(b − a)`), projected */
+function point(out: Float64Array, a: Float64Array, b: Float64Array, t: number) {
+  for (let k = 0; k < N; ++k) out[k] = a[k] + t * (b[k] - a[k]);
+  project(out);
+}
+
 /**
  * Nelder-Mead from the simplex as set, at most `evals` evaluations of `f` (each parameter vector projected first, so
- * every vertex stays within the bounds)
+ * every vertex stays within the bounds); the best vertex's index
  */
-function nelderMead(f: (x: Float64Array) => number, evals: number) {
+function nelderMead(evals: number) {
   for (let i = 0; i <= N; ++i) {
     project(simplex[i]);
     values[i] = f(simplex[i]);
   }
   let used = N + 1;
-  const order = Array.from({ length: N + 1 }, (_, i) => i);
-  const point = (out: Float64Array, a: Float64Array, b: Float64Array, t: number) => {
-    for (let k = 0; k < N; ++k) out[k] = a[k] + t * (b[k] - a[k]);
-    project(out);
-  };
   while (used < evals) {
-    order.sort((a, b) => values[a] - values[b]);
-    const best = order[0];
-    const worst = order[N];
-    const second = order[N - 1];
+    // the best, the worst and the second worst
+    let best = 0;
+    let worst = 0;
+    for (let i = 1; i <= N; ++i) {
+      if (values[i] < values[best]) best = i;
+      if (values[i] > values[worst]) worst = i;
+    }
+    let second = best;
+    for (let i = 0; i <= N; ++i) if (i !== worst && values[i] > values[second]) second = i;
     if (values[worst] - values[best] < 1e-7) break;
     centroid.fill(0);
     for (let i = 0; i <= N; ++i) if (i !== worst) for (let k = 0; k < N; ++k) centroid[k] += simplex[i][k] / N;
@@ -475,42 +538,59 @@ function startAt(x0: Float64Array, step: number) {
   }
 }
 
+/** A fit written in place (`fitPose`'s `out`: the copy under the pointer's, a frame) */
+export interface FitOut {
+  readonly position: Vec3;
+  readonly rotation: Quat;
+  score: number;
+  shift: number;
+  angle: number;
+}
+
 /**
  * A copy fitted to a map from its pose: the best shift and turn within the reach by the score minus the pull back
  * (`k·(d²/reach² + θ²/θmax²)`), Nelder-Mead from the pose and once more on a finer simplex. A flat map (none):
- * the pose as it is, score 0
+ * the pose as it is, score 0. Into `out` when given (nothing allocated)
  */
-export function fitPose(map: FitMap | undefined, envelope: FitEnvelope, from: FitPose, o: FitOptions): FitResult {
+export function fitPose(
+  map: FitMap | undefined,
+  envelope: FitEnvelope,
+  from: FitPose,
+  o: FitOptions,
+  out: FitOut = { position: Vec3(), rotation: Quat(), score: 0, shift: 0, angle: 0 },
+): FitResult {
   const turn = (o.turn * Math.PI) / 180;
   if (!map || !(o.reach > 0) || !(turn > 0)) {
-    const score = map ? fitScore(map, envelope, from, o.contrast) : 0;
-    return { position: Vec3.clone(from.position), rotation: Quat.clone(from.rotation), score, shift: 0, angle: 0 };
+    Vec3.copy(out.position, from.position);
+    Quat.copy(out.rotation, from.rotation);
+    out.score = map ? fitScore(map, envelope, from, o.contrast) : 0;
+    out.shift = 0;
+    out.angle = 0;
+    return out;
   }
-  const pull = o.pull ?? FitPull;
-  const shell = shellOf(envelope, map.voxel);
-  const sign = o.contrast === 'dark' ? -1 : 1;
-  const f = (x: Float64Array) => {
-    poseOf(x, from, o.reach, turn, _pos, _rot);
-    const d = meanAt(map, envelope.inside, _pos, _rot) - meanAt(map, shell, _pos, _rot);
-    return -sign * d + pull * (x[0] * x[0] + x[1] * x[1] + x[2] * x[2] + x[3] * x[3] + x[4] * x[4] + x[5] * x[5]);
-  };
+  const g = objective;
+  g.map = map;
+  g.inside = envelope.inside;
+  g.shell = shellOf(envelope, map.voxel);
+  g.from = from;
+  g.reach = o.reach;
+  g.turn = turn;
+  g.sign = o.contrast === 'dark' ? -1 : 1;
+  g.pull = o.pull ?? FitPull;
   _x.fill(0);
   startAt(_x, 0.5);
-  let b = nelderMead(f, NelderMeadEvals);
+  let b = nelderMead(NelderMeadEvals);
   _x.set(simplex[b]);
   startAt(_x, 0.1);
-  b = nelderMead(f, RefineEvals);
+  b = nelderMead(RefineEvals);
   const x = simplex[b];
-  const position = Vec3();
-  const rotation = Quat();
-  poseOf(x, from, o.reach, turn, position, rotation);
-  return {
-    position,
-    rotation,
-    score: fitScore(map, envelope, { position, rotation }, o.contrast),
-    shift: o.reach * Math.hypot(x[0], x[1], x[2]),
-    angle: o.turn * Math.hypot(x[3], x[4], x[5]),
-  };
+  poseOf(x, from, o.reach, turn, out.position, out.rotation);
+  out.score = fitScore(map, envelope, out, o.contrast);
+  out.shift = o.reach * Math.sqrt(x[0] * x[0] + x[1] * x[1] + x[2] * x[2]);
+  out.angle = o.turn * Math.sqrt(x[3] * x[3] + x[4] * x[4] + x[5] * x[5]);
+  g.map = undefined;
+  g.from = undefined;
+  return out;
 }
 
 // --- Grown copies ------------------------------------------------------------------------------------------------------
@@ -634,6 +714,11 @@ export function fitCopies(
 
 // --- Slices ------------------------------------------------------------------------------------------------------------
 
+const gridToScene = new WeakMap<Grid, Mat4>();
+const _g = Vec3();
+const _a = Vec3();
+const _b = Vec3();
+
 /** A slice's plane in the scene: a point of it and its unit normal */
 export interface SlicePlane {
   readonly point: Vec3;
@@ -642,7 +727,7 @@ export interface SlicePlane {
 
 /**
  * The plane a slice representation draws (its props: `mode` grid, an index along x, y or z, absolute or relative; or
- * plane, its point and normal) in the grid it takes (a moved volume's); undefined for a frame slice
+ * plane, its point and normal) in the grid it takes (a moved volume's), into `out`; undefined for a frame slice
  */
 export function slicePlane(
   grid: Grid,
@@ -651,11 +736,13 @@ export function slicePlane(
     readonly dimension?: { readonly name: string; readonly params: number };
     readonly plane?: { readonly point: Vec3; readonly normal: Vec3 };
   },
+  out: SlicePlane = { point: Vec3(), normal: Vec3() },
 ): SlicePlane | undefined {
   const mode = props.mode ?? 'grid';
   if (mode === 'plane' && props.plane) {
-    const n = Vec3.normalize(Vec3(), props.plane.normal);
-    return Vec3.magnitude(n) > 0 ? { point: Vec3.clone(props.plane.point), normal: n } : undefined;
+    Vec3.normalize(out.normal, props.plane.normal);
+    Vec3.copy(out.point, props.plane.point);
+    return Vec3.magnitude(out.normal) > 0 ? out : undefined;
   }
   if (mode !== 'grid' || !props.dimension) return undefined;
   const name = props.dimension.name;
@@ -664,15 +751,18 @@ export function slicePlane(
   const index = name.startsWith('relative')
     ? Math.round(props.dimension.params * (dims[axis] - 1))
     : props.dimension.params;
-  const g = Vec3();
-  g[axis] = index;
-  const m = Grid.getGridToCartesianTransform(grid);
-  const point = Vec3.transformMat4(Vec3(), g, m);
+  let m = gridToScene.get(grid);
+  if (!m) gridToScene.set(grid, (m = Grid.getGridToCartesianTransform(grid)));
+  Vec3.set(_g, 0, 0, 0);
+  _g[axis] = index;
+  Vec3.transformMat4(out.point, _g, m);
   // the plane of the two other axes: its normal their cross product (any grid, skewed too)
-  const a = Vec3.create(m[((axis + 1) % 3) * 4], m[((axis + 1) % 3) * 4 + 1], m[((axis + 1) % 3) * 4 + 2]);
-  const b = Vec3.create(m[((axis + 2) % 3) * 4], m[((axis + 2) % 3) * 4 + 1], m[((axis + 2) % 3) * 4 + 2]);
-  const normal = Vec3.normalize(Vec3(), Vec3.cross(Vec3(), a, b));
-  return { point, normal };
+  const i = ((axis + 1) % 3) * 4;
+  const j = ((axis + 2) % 3) * 4;
+  Vec3.set(_a, m[i], m[i + 1], m[i + 2]);
+  Vec3.set(_b, m[j], m[j + 1], m[j + 2]);
+  Vec3.normalize(out.normal, Vec3.cross(out.normal, _a, _b));
+  return out;
 }
 
 /** Where a ray meets a plane (false: along it, or behind the ray's origin) */
