@@ -544,6 +544,7 @@ export class MesoscaleApi extends ApiArea {
         return strokes?.find((x) => x.grow?.id === at.value?.grow)?.grow;
       },
       () => [state.events.changed, at],
+      { compare: (a, b) => JSON.stringify(a) === JSON.stringify(b) },
     );
   }
 

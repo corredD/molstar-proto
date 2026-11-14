@@ -467,7 +467,7 @@ function dragGrow(host: HTMLElement, label: string, values: number[]) {
 const strokesOf = (v: PrismViewer) =>
   (
     Array.from(v.plugin.state.data.cells.values()).find((c) => Array.isArray(c.transform.params?.strokes))?.transform
-      .params as { strokes: { grow?: { mode: string; id: number } }[] } | undefined
+      .params as { strokes: { grow?: { mode: string; id: number; params?: Record<string, unknown> } }[] } | undefined
   )?.strokes ?? [];
 
 const coordinates = (v: PrismViewer, from: number, to: number) =>
@@ -548,6 +548,43 @@ describe('The last grow live (grow-helix round 2)', () => {
     await until(() => count(v) === 3 + 5);
     await until(() => v.api.history.steps.value.length >= steps + 2, 3000);
     expect(v.api.history.steps.value.length).toBe(steps + 2);
+  });
+
+  it('the settings follow the last grow back: an undo, a Mode undone, a drag refused (review S1)', async () => {
+    const { v, hiv } = await viewer();
+    const m = v.api.mesoscale!;
+    const host = await openGrow(v, hiv, 2);
+    choice(host, 'Mode', 'Sphere')!.click();
+    m.growSettings.set({ ...m.growSettings.value, count: 10, radius: 30 });
+    growButton(host).click();
+    await until(() => count(v) === 3 + 10);
+    dragGrow(host, 'Count', [20]);
+    await until(() => count(v) === 3 + 20);
+    await new Promise((r) => setTimeout(r, 100));
+    await v.api.history.undo();
+    await until(() => count(v) === 3 + 10);
+    await until(() => m.growSettings.value.count === 10);
+    // a Radius drag now: 10 copies still (not the undone 20)
+    dragGrow(host, 'Radius', [Math.log10(40)]);
+    await until(() => strokesOf(v)[0] && v.api.history.steps.value.length > 0 && m.growSettings.value.radius !== 30);
+    await new Promise((r) => setTimeout(r, 800));
+    expect(count(v)).toBe(3 + 10);
+    // a Mode picked, then undone: the settings' mode is the grow's again
+    choice(host, 'Mode', 'Tiling')!.click();
+    await until(() => strokesOf(v)[0]?.grow?.mode === 'tiling');
+    await new Promise((r) => setTimeout(r, 100));
+    await v.api.history.undo();
+    await until(() => strokesOf(v)[0]?.grow?.mode === 'sphere');
+    await until(() => m.growSettings.value.mode === 'sphere');
+    // a crystal whose β makes no cell: refused, the settings back to the grow's
+    choice(host, 'Mode', 'Crystal')!.click();
+    await until(() => strokesOf(v)[0]?.grow?.mode === 'crystal');
+    dragGrow(host, 'α', [10]);
+    await until(() => (strokesOf(v)[0]?.grow as { params?: { alpha?: number } })?.params?.alpha === 10);
+    dragGrow(host, 'β', [10]);
+    await new Promise((r) => setTimeout(r, 1200));
+    expect((strokesOf(v)[0]?.grow as { params?: { beta?: number } })?.params?.beta).toBe(90);
+    await until(() => m.growSettings.value.beta === 90);
   });
 
   it('Clear removes every grow from the source, one step; disabled when none; Undo brings them back', async () => {

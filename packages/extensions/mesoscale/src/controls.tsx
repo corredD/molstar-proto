@@ -15,7 +15,7 @@ import { gestureSteps } from '@molstar/prism-viewer/sources/gesture-steps';
 import { derive } from '@molstar/prism-ui/reactive/state';
 import type { ReadonlyState } from '@molstar/prism-ui/reactive/readonly-state';
 import { classes } from './_generated/controls.module.css.js';
-import { tilingTotal } from './grow.js';
+import { type GrowRecord, tilingTotal } from './grow.js';
 import {
   type GraphicsInfo,
   type GraphicsMode,
@@ -578,6 +578,52 @@ const GrowModeChoices = [
   { id: 'sphere', label: 'Sphere', title: 'Copies at random in a ball about the source' },
 ];
 
+/** A grow's record as the Grow section's settings (round 2: the section follows the live grow back) */
+function settingsOfGrow(g: GrowRecord): Partial<GrowSettings> {
+  const p = g.params;
+  const keys: Record<GrowSettings['mode'], readonly [string, keyof GrowSettings][]> = {
+    walk: [
+      ['steps', 'steps'],
+      ['persistence', 'persistence'],
+    ],
+    helix: [
+      ['pitch', 'pitch'],
+      ['turns', 'turns'],
+      ['hand', 'hand'],
+      ['direction', 'direction'],
+      ['axis', 'axis'],
+      ['radius', 'helixRadius'],
+    ],
+    crystal: [
+      ['a', 'a'],
+      ['b', 'b'],
+      ['c', 'c'],
+      ['alpha', 'alpha'],
+      ['beta', 'beta'],
+      ['gamma', 'gamma'],
+      ['na', 'na'],
+      ['nb', 'nb'],
+      ['nc', 'nc'],
+    ],
+    tiling: [
+      ['pattern', 'pattern'],
+      ['spacing', 'spacing'],
+      ['rings', 'rings'],
+      ['count', 'tiles'],
+    ],
+    sphere: [
+      ['count', 'count'],
+      ['radius', 'radius'],
+      ['turn', 'turn'],
+    ],
+  };
+  const out: Record<string, unknown> = { mode: g.mode };
+  // On: the grow's mesh (a crystal grows in space whatever On says)
+  if (g.mode !== 'crystal') out.mesh = g.mesh?.ref;
+  for (const [from, to] of keys[g.mode]) if (p[from] !== undefined) out[to] = p[from];
+  return out as Partial<GrowSettings>;
+}
+
 /**
  * The Grow block (progress/2026-11-11-grow.md; Ludo, 2026-11-11): copies of a source particle of the list by a rule,
  * one step a Grow (`mesoscale.grow`). It names its source (set by a particle's right-click, Grow from this instance…,
@@ -605,8 +651,12 @@ export function GrowBlock(props: { area: MesoscaleApi; api: ViewerApi; particles
       if (!src) return Promise.resolve();
       return g.run('mesoscale.grow', { ...growParams(src, { ...s, mesh: onMesh(s, meshes.value) }), replace: at.grow });
     },
-    // what a drag has not applied yet is shown (its overlay), not the state's last (review 6)
-    changed: () => overlaid.set(overlaid.value + 1),
+    // what a drag has not applied yet is shown (its overlay), not the state's last (review 6); a drag ended (refused:
+    // nothing applied) shows the grow as it is (round 2 review S1)
+    changed: () => {
+      overlaid.set(overlaid.value + 1);
+      resync();
+    },
   });
   const overlaid = observableState(0);
   onCleanup(() => redraw.settle());
@@ -643,11 +693,26 @@ export function GrowBlock(props: { area: MesoscaleApi; api: ViewerApi; particles
       if (end) redraw.settle();
       return;
     }
+    // live read first: reading it may tell its watchers, and the settings must not follow it back before the change
+    const growing = !!live.value && !!liveGrow.value;
     store(patch);
-    if (!live.value || !liveGrow.value) return;
+    if (!growing) return;
     redraw.change('grow', {});
     if (end) redraw.settle();
   };
+  /**
+   * The live grow's settings back in the section when no change of it is pending (round 2 review S1): an undo, a drag
+   * refused, a Mode undone show the grow as it is, and the next change starts from it
+   */
+  const resync = () => {
+    const g = liveGrow.value;
+    if (!live.value || !g || redraw.overlay('grow')) return;
+    const patch = settingsOfGrow(g);
+    const s = area.growSettings.value;
+    const changed = (Object.keys(patch) as (keyof GrowSettings)[]).filter((k) => s[k] !== patch[k]);
+    if (changed.length) store(Object.fromEntries(changed.map((k) => [k, patch[k]])));
+  };
+  effect(liveGrow, resync);
   // the state's values kept in the settings set (an undo): the next Grow uses what is shown (review 7)
   effect(grown, (f) => {
     if (!f || redraw.overlay('fiber')) return;
