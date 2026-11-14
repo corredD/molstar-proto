@@ -6,6 +6,7 @@
 
 import { Ray3D } from '@molstar/core/math/geometry/primitives/ray3d';
 import { Mat3, Mat4, Vec3 } from '@molstar/core/math/linear-algebra';
+import { PrincipalAxes } from '@molstar/core/math/linear-algebra/matrix/principal-axes';
 import { type State, StateTransform } from '@molstar/core/state';
 import type { Mesh } from '@molstar/graphics/geo/geometry/mesh/mesh';
 import { Shape } from '@molstar/model/model/shape';
@@ -19,7 +20,7 @@ import type { ApiFailure } from '@molstar/prism-viewer/api/area';
 import { pickNamed } from '@molstar/prism-viewer/api/scope';
 import type { Loci } from '@molstar/model/model/loci';
 import { ShapeGroup } from '@molstar/model/model/shape';
-import { type GrowSurface, SurfaceHit } from './grow.js';
+import { type GrowSurface, type HelixAxis, type HelixLine, SurfaceHit } from './grow.js';
 import type { SurfacePoint } from './pick-surface.js';
 
 // A file mesh as a surface to paint and grow on (progress/2026-11-13-grow-mesh.md): the triangle lookup of its picks
@@ -185,4 +186,29 @@ export function sceneMesh(state: State, name: string): SceneMesh | ApiFailure {
 /** A scene mesh as a surface in the scene (its shape's first instance: a file mesh has one) */
 export function sceneMeshSurface(mesh: SceneMesh): GrowSurface {
   return meshSurface(mesh.shape.geometry, mesh.shape.transforms[0]);
+}
+
+/**
+ * The axis a helix winds about on a mesh (grow-helix), in the scene (drawn with `transform`): through its vertices'
+ * center; Auto, their longest principal axis (its largest part positive: its sign is the eigenvector's otherwise); View,
+ * `view` (toward the viewer; +z without it); X, Y, Z the scene's
+ */
+export function meshAxis(mesh: Mesh, transform: Mat4, axis: HelixAxis, view?: Vec3): HelixLine {
+  const vb = mesh.vertexBuffer.ref.value;
+  const k = mesh.vertexCount;
+  const center = Vec3();
+  for (let i = 0; i < k; ++i) for (let c = 0; c < 3; ++c) center[c] += vb[i * 3 + c] / k;
+  Vec3.transformMat4(center, center, transform);
+  if (axis === 'x' || axis === 'y' || axis === 'z') {
+    return { center, direction: Vec3.create(axis === 'x' ? 1 : 0, axis === 'y' ? 1 : 0, axis === 'z' ? 1 : 0) };
+  }
+  if (axis === 'view') return { center, direction: Vec3.normalize(Vec3(), view ?? Vec3.create(0, 0, 1)) };
+  const direction =
+    k >= 2
+      ? Vec3.clone(PrincipalAxes.ofPositions(vb.subarray(0, k * 3) as never).momentsAxes.dirA)
+      : Vec3.create(0, 0, 1);
+  Vec3.normalize(direction, Vec3.transformMat3(direction, direction, Mat3.fromMat4(Mat3(), transform)));
+  const largest = [0, 1, 2].reduce((m, c) => (Math.abs(direction[c]) > Math.abs(direction[m]) ? c : m), 0);
+  if (direction[largest] < 0) Vec3.negate(direction, direction);
+  return { center, direction };
 }

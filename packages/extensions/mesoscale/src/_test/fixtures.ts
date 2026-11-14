@@ -173,3 +173,32 @@ export function flatMesh(n: number, size: number): Mesh {
   }
   return MeshBuilder.getMesh(state);
 }
+
+/**
+ * An open tube along z from −height/2 (radius `r0`) to +height/2 (radius `r1`): a cylinder for r0 = r1, else a cone's
+ * frustum; `segments` around and `rows` along, its normals out (grow-helix)
+ */
+export function tubeMesh(r0: number, r1: number, height: number, segments: number, rows: number): Mesh {
+  const state = MeshBuilder.createState((segments + 1) * (rows + 1), 1024);
+  // the outward normal of a cone's side: radial, tilted by its slope
+  const slope = (r0 - r1) / height;
+  for (let j = 0; j <= rows; j++) {
+    const z = -height / 2 + (j * height) / rows;
+    const r = r0 + ((r1 - r0) * j) / rows;
+    for (let i = 0; i <= segments; i++) {
+      const t = (2 * Math.PI * i) / segments;
+      ChunkedArray.add3(state.vertices, r * Math.cos(t), r * Math.sin(t), z);
+      const n = Vec3.normalize(Vec3(), Vec3.create(Math.cos(t), Math.sin(t), slope));
+      ChunkedArray.add3(state.normals, n[0], n[1], n[2]);
+      ChunkedArray.add(state.groups, 0);
+    }
+  }
+  for (let j = 0; j < rows; j++) {
+    for (let i = 0; i < segments; i++) {
+      const o = j * (segments + 1) + i;
+      ChunkedArray.add3(state.indices, o, o + 1, o + segments + 2);
+      ChunkedArray.add3(state.indices, o, o + segments + 2, o + segments + 1);
+    }
+  }
+  return MeshBuilder.getMesh(state);
+}

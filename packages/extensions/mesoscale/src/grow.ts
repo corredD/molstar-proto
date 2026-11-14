@@ -64,6 +64,28 @@ export interface WalkParams {
   readonly persistence: number;
 }
 
+/**
+ * A helix (grow-helix): Pitch (Å along its axis a turn), Turns, its Hand (right: turning counterclockwise seen from
+ * where it goes) and Direction (up or down its axis from the source); in space, its Radius (Å)
+ */
+export interface HelixParams {
+  readonly pitch: number;
+  readonly turns: number;
+  readonly hand: 'right' | 'left';
+  readonly direction: 'up' | 'down';
+  readonly radius: number;
+}
+
+/** The axis a helix winds about on a mesh (the scene's): a point of it and its unit direction, up */
+export interface HelixLine {
+  readonly center: Vec3;
+  readonly direction: Vec3;
+}
+
+/** The axes a helix on a mesh may take: Auto (the mesh's longest), View (toward the viewer), X, Y, Z */
+export const HelixAxes = ['auto', 'view', 'x', 'y', 'z'] as const;
+export type HelixAxis = (typeof HelixAxes)[number];
+
 /** What a grow did, kept with its stroke (`PaintStroke.grow`): its mode, its params, its seed and its source */
 export interface GrowRecord {
   readonly mode: GrowMode;
@@ -279,6 +301,129 @@ export function walkPath(
     if (on) normals?.push(n[0], n[1], n[2]);
   }
   return out;
+}
+
+/** A helix's angle a point of its path: 5° (its chords within 0.1 % of its radius; `makeFiber` places its units) */
+const HelixStep = Math.PI / 36;
+
+const _foot = Vec3();
+const _side = Vec3();
+const _u = Vec3();
+
+/**
+ * A helix from the source (a fiber's path, grow-helix): about a line along `d` (unit; up, the way it advances) through
+ * `foot` (the source's foot on it), the source at angle 0 (`e1`, unit, from the foot to the source), the angle turning
+ * counterclockwise about `d` for Hand right, Pitch along `d` a turn; a point every 5°, Turns turns.
+ * - In space (no `on`): about the source's Fiber Axis (`axis`, in its frame) a Radius away (along the axis's offset
+ *   direction, `fiberOffsetDirection`), the points on that cylinder.
+ * - On a surface (`on`): about `on.line` (the mesh's axis), from the source's point on the surface; each point brought
+ *   onto it along its radial line (`GrowSurface.project`, from the point a radius as the one before away, within half
+ *   that radius), its normal in `normals` (the source's side, then continuous). It ends where the surface does: no
+ *   point on that line (an open edge, a pole: the nearest is off it by more than a quarter of a step), or one at the
+ *   axis or past it.
+ * The path starts a rise from the source along the helix (the source is on it, not one of its units). Undefined for a
+ * source off the surface; empty for a source on the axis.
+ */
+export function helixPath(source: GrowPose, axis: Vec3, rise: number, p: HelixParams): number[];
+export function helixPath(
+  source: GrowPose,
+  axis: Vec3,
+  rise: number,
+  p: HelixParams,
+  on: (GrowOn & { readonly line: HelixLine }) | undefined,
+  normals?: number[],
+): number[] | undefined;
+export function helixPath(
+  source: GrowPose,
+  axis: Vec3,
+  rise: number,
+  p: HelixParams,
+  on?: GrowOn & { readonly line: HelixLine },
+  normals?: number[],
+): number[] | undefined {
+  const start = Vec3.copy(Vec3(), source.position);
+  const n = Vec3();
+  const d = Vec3();
+  if (on) {
+    if (!on.surface.project(_hit, source.position, _zero, on.reach)) return undefined;
+    Vec3.copy(start, _hit.position);
+    Vec3.copy(n, _hit.normal);
+    // on the source's side, as the walk's (its axis along a surface: `on.axis`, else +z)
+    if (Vec3.dot(n, Vec3.transformQuat(_t, on.axis ?? _up, source.rotation)) < -1e-3) Vec3.negate(n, n);
+    Vec3.normalize(d, on.line.direction);
+    Vec3.sub(_t, start, on.line.center);
+    Vec3.scaleAndAdd(_foot, on.line.center, d, Vec3.dot(_t, d));
+  } else {
+    Vec3.normalize(d, Vec3.transformQuat(d, axis, source.rotation));
+    const local = Vec3.normalize(Vec3(), axis);
+    Vec3.transformQuat(_t, fiberOffsetDirection(_t, 'auto', local), source.rotation);
+    Vec3.scaleAndAdd(_foot, start, _t, p.radius);
+  }
+  if (p.direction === 'down') Vec3.negate(d, d);
+  const e1 = Vec3.sub(Vec3(), start, _foot);
+  let radius = Vec3.magnitude(e1);
+  if (!(radius > 1e-6 * Math.max(1, p.pitch))) return [];
+  Vec3.scale(e1, e1, 1 / radius);
+  Vec3.cross(_side, d, e1);
+  // the hand its own: right turns counterclockwise about the way it advances, whichever way that is
+  const sense = p.hand === 'left' ? -1 : 1;
+  const end = Math.max(0, p.turns) * 2 * Math.PI;
+  // in space, from a rise along the helix (its arc a radian is the same throughout); on a surface, from the source,
+  // then a rise cut off its path
+  const from = on ? 0 : rise / Math.hypot(radius, p.pitch / (2 * Math.PI));
+  if (from >= end) return [];
+  const all: number[] = [];
+  const ns: number[] | undefined = on ? [] : undefined;
+  for (let i = 0; ; ++i) {
+    const theta = Math.min(from + i * HelixStep, end);
+    Vec3.scale(_u, e1, Math.cos(theta));
+    Vec3.scaleAndAdd(_u, _u, _side, sense * Math.sin(theta));
+    // the axis's point at this height
+    Vec3.scaleAndAdd(_c, _foot, d, (p.pitch * theta) / (2 * Math.PI));
+    Vec3.scaleAndAdd(_p, _c, _u, radius);
+    if (on && i > 0) {
+      const chord = radius * HelixStep;
+      if (!on.surface.project(_hit, _p, _u, 0.5 * radius)) break;
+      // off the radial line: the surface's nearest point (an edge, past a pole), not on the line
+      Vec3.sub(_w, _hit.position, _p);
+      const along = Vec3.dot(_w, _u);
+      if (Vec3.magnitude(Vec3.scaleAndAdd(_w, _w, _u, -along)) > 0.25 * chord) break;
+      const r = radius + along;
+      // at the axis or past it
+      if (!(r > 1e-3 * radius)) break;
+      radius = r;
+      Vec3.copy(_p, _hit.position);
+      if (Vec3.dot(_hit.normal, n) < 0) Vec3.negate(_hit.normal, _hit.normal);
+      Vec3.copy(n, _hit.normal);
+    }
+    all.push(_p[0], _p[1], _p[2]);
+    ns?.push(n[0], n[1], n[2]);
+    if (theta >= end) break;
+  }
+  return on ? trimStart(all, ns, rise, normals) : all;
+}
+
+/**
+ * The path from a `length` along it (arc length; the point there interpolated), its values (3 a point) likewise into
+ * `valuesOut`; empty when it is shorter
+ */
+function trimStart(path: number[], values: number[] | undefined, length: number, valuesOut?: number[]): number[] {
+  let walked = 0;
+  for (let i = 1; i < path.length / 3; ++i) {
+    const len = Math.hypot(path[i * 3] - path[i * 3 - 3], path[i * 3 + 1] - path[i * 3 - 2], path[i * 3 + 2] - path[i * 3 - 1]);
+    if (walked + len < length) {
+      walked += len;
+      continue;
+    }
+    const t = len > 0 ? (length - walked) / len : 0;
+    const lerp = (xs: number[]) => [0, 1, 2].map((c) => xs[i * 3 - 3 + c] * (1 - t) + xs[i * 3 + c] * t);
+    // the first point the one there, the next ones the path's after it (not stacked on it)
+    const next = t >= 1 - 1e-9 ? i + 1 : i;
+    const out = [...lerp(path), ...path.slice(next * 3)];
+    if (values && valuesOut) valuesOut.push(...lerp(values), ...values.slice(next * 3));
+    return out;
+  }
+  return [];
 }
 
 // --- On a surface (progress/2026-11-13-grow-mesh.md) -------------------------------------------------------------------
