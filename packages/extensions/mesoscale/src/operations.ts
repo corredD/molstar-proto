@@ -260,7 +260,7 @@ export interface GrowSettings {
   readonly direction: 'up' | 'down';
   readonly axis: HelixAxis;
   readonly helixRadius?: number;
-  /** A walk's or a helix's own rise, twist and jitter (paint-refine); unset: the entity's */
+  /** A walk's, a helix's or a spiral's own rise (a spiral's Step), twist and jitter (paint-refine); unset: the entity's */
   readonly rise?: number;
   readonly twist?: number;
   readonly jitter?: number;
@@ -1225,8 +1225,8 @@ export class MesoscaleApi extends ApiArea {
    * rule from its pose, one stroke of the list's painted copies (one step). The copies go exactly where the rule says,
    * overlaps allowed. Crystal, Tiling and Sphere grow in the scene's Å from the source as its list's move and scale put
    * it (before the offsets of its kind, which its copies take too); Random walk is a new fiber, in the list's frame;
-   * Helix a new fiber made in the scene (its pitch and radius as drawn), then in the list's frame (grow-helix).
-   * On a mesh (progress/2026-11-13-grow-mesh.md): Tiling, Random walk, Helix and Sphere grow on its surface in the scene
+   * Helix and Spiral new fibers made in the scene (their lengths as drawn), then in the list's frame (grow-helix).
+   * On a mesh (progress/2026-11-13-grow-mesh.md): Tiling, Random walk, Helix, Spiral and Sphere grow on its surface in the scene
    * (a fiber's rise the list's times its scale, as drawn), each copy's axis along its normal; Crystal is refused.
    */
   readonly grow = this.operation({

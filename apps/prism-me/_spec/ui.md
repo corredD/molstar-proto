@@ -578,16 +578,21 @@ still completes its distance.
   X, Y, Z), each point brought onto the surface along its line from the axis, so it follows a tube's or a cone's radius
   and spirals over a closed round mesh to its pole; it ends where the surface does. Its units' up along the surface's
   normal, as the walk's. The first unit is a rise along the helix from the source.
-- Grow › Spiral (lane `grow-helix` round 3, Ludo 2026-11-13: "can we also have spiral"): a new fiber from the source
-  winding flat outward about it (the source its center), as Random walk's and Helix's (its Rise, Twist and Jitter its
-  own; the first unit a rise along it), an Archimedean spiral of **Spacing** between its arms (unset: the copy's
-  diameter, so they touch), **Turns** (5) and **Hand** (Right: counterclockwise about its normal). In space it lies in
-  the source's plane, its normal the copy's axis by paint's rule (+z for a membrane protein, else its Fiber Axis, else
-  +z). On a mesh it is rolled over the surface from the source's point: each step the planar spiral's own, taken in the
+- Grow › Spiral (lane `grow-helix` round 3, Ludo 2026-11-13: "can we also have spiral", then "the copy/count slider …
+  the distance between arms, and the distance along the path between instances. Regular spiral parameters"): a new fiber
+  from the source winding flat outward about it (the source its center, copy 0), an Archimedean spiral: **Count** copies
+  (50), **Step** apart along it (the fiber's rise: one distance, live as the grow; unset: the entity's), so copy k is k
+  × Step along it from the source; **Arm spacing** between its arms (its radius that more a turn; unset: the copy's
+  diameter, so they touch); **Hand** (Right: counterclockwise about its normal); its **Turns** shown, read only (the
+  ones it reaches). Twist and Jitter as a fiber's. Near the center the arc curls: copies within its first turn sit
+  closer than a Step in a straight line (overlaps allowed, Ludo 2026-11-11). In space it lies in the source's plane, its
+  normal the copy's axis by paint's rule (+z for a membrane protein, else its Fiber Axis, else +z). On a mesh it is
+  rolled over the surface from the source's point: each step (by arc length) the planar spiral's own, taken in the
   tangent plane of the point before and brought onto the surface, its direction carried along; so it is the flat spiral
   on a plane, a cylinder or a cone (the capsid's body), and its arms close up on a surface curved both ways (a cap, a
-  vesicle). It ends where the surface does, or where its arm comes within 0.6 × Spacing of the arm a turn behind (it
-  would cross itself). Its units' up along the surface's normal.
+  vesicle). It ends where the surface does, or where it comes within 0.6 × Arm spacing of a point of itself more than 2
+  Arm spacings behind along it (an arm it would cross: round a tube, on a closed surface). Its units' up along the
+  surface's normal.
 - The last grow live (lane `grow-helix` round 2, Ludo 2026-11-13: "all the parameters in the grow properties to update
   the latest grow … more will continue the distribution, less will remove the excedent copies … a clear button"): after
   a Grow, every setting of the section (each mode's, its Seed, On, and its Mode) makes that grow again in place, from
