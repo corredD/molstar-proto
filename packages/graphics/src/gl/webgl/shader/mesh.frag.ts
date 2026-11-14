@@ -3,6 +3,7 @@
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
  * @author Gianluca Tomasello <giagitom@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { common } from './chunks/common.glsl.js';
@@ -14,6 +15,7 @@ import { common_clip } from './chunks/common-clip.glsl.js';
 import { fade_lod } from './chunks/fade-lod.glsl.js';
 import { clip_pixel } from './chunks/clip-pixel.glsl.js';
 import { assign_material_color } from './chunks/assign-material-color.glsl.js';
+import { texture3d_from_2d_linear } from './chunks/texture3d-from-2d-linear.glsl.js';
 import { check_transparency } from './chunks/check-transparency.glsl.js';
 import { check_picking_alpha } from './chunks/check-picking-alpha.glsl.js';
 import { apply_marking } from './chunks/apply-marking.glsl.js';
@@ -35,6 +37,7 @@ ${color_frag_params}
 ${light_frag_params}
 ${normal_frag_params}
 ${common_clip}
+${texture3d_from_2d_linear}
 
 void main() {
     #ifdef dSolidInterior

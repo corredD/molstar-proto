@@ -563,6 +563,8 @@ export const ColorSchema = {
    * `uColorIndexType` selects
    */
   dColorType: DefineSpec('string', ['uniform', 'texture', 'grid', 'direct']),
+  /** the grid read per fragment ('grid' color type), else per vertex */
+  dColorGridFragment: DefineSpec('boolean'),
   /** the color type (`ColorType`) */
   colorType: ValueSpec('string'),
   dUsePalette: DefineSpec('boolean'),

@@ -28,6 +28,9 @@ struct VertexOutput {
 #if defined(dColorType_varying)
     @location(3) vColor: vec4<f32>,
 #endif
+#if defined(dColorType_grid) && defined(dColorGridFragment)
+    @location(7) vColorGridPosition: vec3<f32>,
+#endif
 #if defined(dNeedsMarker) || (defined(dClipObjects) && defined(dClipping))
     #if !defined(dVaryingGroup)
         @location(4) vMarkerClipping: vec2<f32>,
@@ -113,8 +116,9 @@ const GridTextures = [
  * and the GPU color smoothing write them), linear within a slice and between slices, as `texture3dFrom2dLinear` on
  * WebGL; for the mesh programs, which can have grid data
  */
-export const grid_functions_wgsl = GridTextures.map(
-  ({ texture, prefix, type }) => /* wgsl */ `
+export const grid_functions_wgsl =
+  GridTextures.map(
+    ({ texture, prefix, type }) => /* wgsl */ `
 #if defined(${type}_volume) || defined(${type}_volumeInstance) || defined(${type}_grid)
     fn texture3dFrom2dLinear_${texture}(pos: vec3<f32>) -> vec4<f32> {
         let gridDim = uObject.u${prefix}GridDim;
@@ -136,7 +140,23 @@ export const grid_functions_wgsl = GridTextures.map(
     }
 #endif
 `,
-).join('');
+  ).join('') +
+  /* wgsl */ `
+#if defined(dColorType_grid) && defined(dColorGridFragment)
+    /**
+     * The color grid at the grid position \`pos\` of a fragment, at its cell centers (the atlas' texels are half a cell
+     * off in x and y); the palette coordinate in w, as the vertex stage's \`vColor\`
+     */
+    fn colorGridFragment(pos: vec3<f32>) -> vec4<f32> {
+        let offset = vec3<f32>(0.5 / uObject.uColorGridDim.xy, 0.0);
+        var color = vec4<f32>(texture3dFrom2dLinear_tColorGrid(pos + offset).rgb, 1.0);
+        #if defined(dUsePalette)
+            color.w = ((color.r * 256.0 * 256.0 * 255.0 + color.g * 256.0 * 255.0 + color.b * 255.0) - 1.0) / 16777214.0;
+        #endif
+        return color;
+    }
+#endif
+`;
 
 /** The value of a grid texture at the model space `position` */
 function grid_value_wgsl(texture: string, position: string) {
@@ -205,6 +225,10 @@ export const assign_varyings_wgsl = /* wgsl */ `
             // the local position (volume) or the model position (volumeInstance), see \`ColorTypeIndex\`
             let colorGridPosition = select(${GridPosition}, ${GridModelPosition}, uObject.uColorIndexType == 1);
             out.vColor = vec4<f32>(${grid_value_wgsl('tColorGrid', 'colorGridPosition')}.rgb, 1.0);
+            #if defined(dColorGridFragment)
+                let colorGridTransform = uObject.uColorGridTransform;
+                out.vColorGridPosition = (colorGridTransform.w * (colorGridPosition - colorGridTransform.xyz)) / uObject.uColorGridDim;
+            #endif
         #endif
 
         #if defined(dUsePalette)

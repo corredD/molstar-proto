@@ -1,7 +1,19 @@
+/**
+ * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
+ *
+ * @author Alexander Rose <alexander.rose@weirdbyte.de>
+ * @author Ludovic Autin <autin@scripps.edu>
+ */
+
 export const color_vert_params = `
 #if defined(dRenderVariant_color) || defined(dRenderVariant_tracing) || defined(dRenderVariant_emissive)
     #if defined(dColorType_texture) || defined(dColorType_grid) || defined(dColorType_direct)
         varying vec4 vColor;
+    #endif
+
+    #if defined(dColorType_grid) && defined(dColorGridFragment)
+        // the grid position, read per fragment
+        varying vec3 vColorGridPosition;
     #endif
 
     #ifdef dUsePalette

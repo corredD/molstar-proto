@@ -346,3 +346,86 @@ describe("a mesh's Color by › Volume, with Prism's shapes (review)", () => {
     expect(m.volumeKept).toMatchObject({ label: 'ramp.mrc' });
   });
 });
+
+describe("a mesh's Color by › Volume, Detail Texture", () => {
+  /** The shape drawn now */
+  const drawnShape = async (v: PrismViewer, read: (label: string) => Promise<MeshInfo>, label: string) => {
+    const cell = v.plugin.state.data.cells.get((await read(label)).ref)!;
+    return ((cell.obj as SO.Shape.Representation3D).data.repr.getAllLoci()[0] as { shape: Shape }).shape;
+  };
+  /** The decorator's data: the band's values (σ) */
+  const bandOf = async (v: PrismViewer, read: (label: string) => Promise<MeshInfo>, label: string) => {
+    const cell = v.plugin.state.data.cells.get((await read(label)).ref)!;
+    const node = v.plugin.state.data.cells.get(cell.transform.parent)!;
+    return (node.obj as SO.Shape.Provider).data.data.volumeColor.band as { values: Float32Array } | undefined;
+  };
+
+  it('Texture colors by a grid at the voxels, read per pixel; Vertex as before', async () => {
+    const { v, c, read } = await viewer();
+    expectOk(await c.mesh({ mesh: 'points.vtp', volume: 'shell.mrc', sample: 'surface' } as never));
+    expect((await read('points.vtp')).volumeColor).toMatchObject({ detail: 'vertex' });
+    expect((await drawnShape(v, read, 'points.vtp')).colorGrid).toBeUndefined();
+
+    expectOk(await c.mesh({ mesh: 'points.vtp', detail: 'texture' } as never));
+    // a cell of a voxel (2 Å)
+    expect((await read('points.vtp')).volumeColor).toMatchObject({ detail: 'texture', cell: 2 });
+    const grid = (await drawnShape(v, read, 'points.vtp')).colorGrid!;
+    expect(grid).toBeDefined();
+    expect(grid.transform[3]).toBeCloseTo(1 / 2, 6);
+    // the shell's color where the mesh is, the band's cells colored: the dark shell at the low end
+    const dark = viridis(-2);
+    let shell = 0;
+    for (let i = 0; i < grid.colors.length; i += 4) {
+      if (((grid.colors[i] << 16) | (grid.colors[i + 1] << 8) | grid.colors[i + 2]) === dark) shell++;
+    }
+    expect(shell).toBeGreaterThan(Sphere.vertexCount);
+
+    expectOk(await c.mesh({ mesh: 'points.vtp', detail: 'vertex' } as never));
+    expect((await drawnShape(v, read, 'points.vtp')).colorGrid).toBeUndefined();
+    expect((await read('points.vtp')).volumeColor).not.toHaveProperty('cell');
+  });
+
+  it('a change of Range or colors refills the grid without sampling again; of Depth, samples again', async () => {
+    const { v, c, read } = await viewer();
+    expectOk(
+      await c.mesh({ mesh: 'cells.vtp', volume: 'shell.mrc', sample: 'min', depth: 8, detail: 'texture' } as never),
+    );
+    const before = (await bandOf(v, read, 'cells.vtp'))!.values;
+    const grid = (await drawnShape(v, read, 'cells.vtp')).colorGrid!;
+    const colors = Uint8Array.from(grid.colors);
+    expectOk(await c.mesh({ mesh: 'cells.vtp', range: [-6, 0], invert: true } as never));
+    expect((await bandOf(v, read, 'cells.vtp'))!.values).toBe(before);
+    // the band's cells written again into the grid's array (review S7), not a new grid
+    const refilled = (await drawnShape(v, read, 'cells.vtp')).colorGrid!.colors;
+    expect(refilled).toBe(grid.colors);
+    expect(refilled).not.toEqual(colors);
+    expectOk(await c.mesh({ mesh: 'cells.vtp', depth: 4 } as never));
+    expect((await bandOf(v, read, 'cells.vtp'))!.values).not.toBe(before);
+  });
+
+  it('a session keeps it; a session from before reads Vertex', async () => {
+    const { v, c, read } = await viewer();
+    expectOk(await c.mesh({ mesh: 'cells.vtp', volume: 'shell.mrc', detail: 'texture' } as never));
+    const snapshot = v.plugin.state.getSnapshot({ camera: false });
+    expectOk(await c.mesh({ mesh: 'cells.vtp', detail: 'vertex' } as never));
+    await v.plugin.state.setSnapshot(snapshot);
+    expect((await read('cells.vtp')).volumeColor).toMatchObject({ detail: 'texture' });
+    // a session made before Detail: its params without it (the mesh changed since, still Texture)
+    expectOk(await c.mesh({ mesh: 'cells.vtp', range: [-3, 0] } as never));
+    const old = JSON.parse(
+      JSON.stringify(snapshot)
+        .replace(/"detail":"texture",?/g, '')
+        .replace(/,}/g, '}'),
+    );
+    await v.plugin.state.setSnapshot(old);
+    expect((await read('cells.vtp')).volumeColor).toMatchObject({ detail: 'vertex' });
+    expect((await drawnShape(v, read, 'cells.vtp')).colorGrid).toBeUndefined();
+  });
+
+  it('refuses a detail that is none, or one without a volume', async () => {
+    const { c } = await viewer();
+    const r = await c.mesh({ mesh: 'cells.vtp', volume: 'shell.mrc', detail: 'pixel' } as never);
+    expect(r.ok).toBe(false);
+    expect((await c.mesh({ mesh: 'cells.vtp', detail: 'texture' } as never)).ok).toBe(false);
+  });
+});
