@@ -118,8 +118,13 @@ export function explorerUI(ctx: ViewerUIContext): ViewerExtensionUI {
   // and brought into view (paint-refine round 3, Ludo 2026-11-13); off leaves the panel as it is
   ctx.api.mesoscale?.paintMode.brush.asReadonly.subscribe((brush) => {
     if (!brush) return;
-    const section = brush.structure ? 'paint-structure' : 'paint';
-    const key = brush.structure ? `o:${brush.structure}` : `me:${brush.particles}:${brush.entity}`;
+    // a group's (paint-group): its row and its own Paint section
+    const section = brush.structure ? 'paint-structure' : brush.group !== undefined ? 'paint-group-brush' : 'paint';
+    const key = brush.structure
+      ? `o:${brush.structure}`
+      : brush.group !== undefined
+        ? `pg:${brush.particles}:${brush.group}`
+        : `me:${brush.particles}:${brush.entity}`;
     const shown = model.picked.value?.key === key && model.sections.sectionOpen(PropertiesSlot, section) === true;
     if (!shown) {
       const was = model.picked.value;
@@ -142,13 +147,23 @@ export function explorerUI(ctx: ViewerUIContext): ViewerExtensionUI {
     if (notifications.current.value?.text !== text) notifications.post(text);
   };
   const picker = distancePicker(ctx.api, area, { post, reveal: model.reveal });
-  area.escaped.subscribe(() => picker.cancel());
+  area.escaped.subscribe(() => {
+    picker.cancel();
+    // Esc ends Pick instances (paint-group)
+    ctx.api.mesoscale?.groupPick.stop();
+  });
   // the tree follows a pick in 3D (a left-click): its row picked and the way to it unfolded
   // what a click is on, as the stage says (a label under the pointer first: drawn, not picked by Mol*), as a row
   // (without the stage area, what Mol* picked: no label under the pointer)
   const pickedAt = (click: CanvasClick): PickedNode | undefined =>
     ctx.api.stage ? area.pickedRow(ctx.api.stage.pickedAt(click)) : area.pickedOf(click.loci);
   area.setOnClick((click) => {
+    // Pick instances (paint-group): a click on a particle of its list adds or removes its instance, nothing else
+    const groupPick = ctx.api.mesoscale?.groupPick;
+    if (groupPick?.state.value && !click.measure) {
+      const particle = area.particleOf(click.loci);
+      if (particle && groupPick.toggle(particle.list, particle.index)) return;
+    }
     // a distance's point: Ctrl or ⌘ + click in selection mode; else the click picks a row as any other
     if (click.measure && area.selectionMode) {
       // a label: no point of a distance, as nothing is (ui.md §7)
@@ -208,6 +223,8 @@ export function explorerUI(ctx: ViewerUIContext): ViewerExtensionUI {
           model.reveal(p);
         });
         if (grow) local.push(grow);
+        const ungroup = ungroupMenuItem(ctx.api, particle);
+        if (ungroup) local.push(ungroup);
         // the part's own move is not there: these are
         items.splice(0, items.length, ...local, ...items.filter((i) => i.id !== 'move'));
       }
@@ -256,6 +273,24 @@ export function growMenuItem(
       m.setGrowSource({ particles: particle.list, index: particle.index });
       opened();
     },
+  };
+}
+
+/**
+ * A group copy's Ungroup (paint-group): the copy the particle is of made its members (`mesoscale.ungroup`, one step);
+ * none on a particle of no group copy
+ */
+export function ungroupMenuItem(
+  api: ViewerApi,
+  particle: { readonly list: string; readonly index: number },
+): ContextMenuItem | undefined {
+  const at = api.mesoscale?.instanceAt(particle.list, particle.index);
+  if (!at) return undefined;
+  return {
+    id: 'ungroup',
+    label: `Ungroup this ${at.group}`,
+    icon: 'box',
+    run: () => void api.run('mesoscale.ungroup', { particles: particle.list, index: particle.index }),
   };
 }
 

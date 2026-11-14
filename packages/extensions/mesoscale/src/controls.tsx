@@ -241,19 +241,23 @@ export function PaintBrush(props: {
   name: string;
   /** A structure of the scene as the brush (paint-layer round 2): painted into a list or the Painting list */
   structure?: string;
+  /** A group of the list as the brush (paint-group; its id, `entity` too): its strokes copies, no Fiber */
+  group?: number;
 }) {
   const mode = props.area.paintMode;
   const on = mapState(mode.brush.asReadonly, (b) =>
     props.structure
       ? b?.structure === props.structure
-      : !b?.structure && b?.particles === props.particles && b.entity === props.entity,
+      : !b?.structure && b?.particles === props.particles && b.entity === props.entity && b.group === props.group,
   );
+  const fibers = props.group === undefined;
   const settings = mode.settings.asReadonly;
   const brush = () => ({
     particles: props.particles,
     entity: props.entity,
     name: props.name,
     ...(props.structure ? { structure: props.structure } : {}),
+    ...(props.group !== undefined ? { group: props.group } : {}),
   });
   return (
     <div class={classes.tight}>
@@ -287,26 +291,31 @@ export function PaintBrush(props: {
         onPick={(id) => mode.set({ orient: id as PaintSettings['orient'] })}
       />
       {props.structure ? <PaintInto area={props.area} /> : null}
-      <Choices
-        label="Fiber"
-        choices={[
-          {
-            id: 'auto',
-            label: 'Auto',
-            title: props.structure
-              ? 'A new fiber when the structure has fibers where it paints, else copies'
-              : 'A new fiber when the entity has fibers, else copies',
-          },
-          { id: 'on', label: 'On', title: 'A stroke is a new fiber: its points a step apart, turned along it' },
-          { id: 'off', label: 'Off', title: 'A stroke is copies' },
-        ]}
-        active={mapState(settings, (s) => s.fiber)}
-        onPick={(id) => mode.set({ fiber: id as PaintSettings['fiber'] })}
-      />
-      <Show when={mapState(settings, (st) => !!props.structure && st.fiber !== 'off')}>
+      {/* a group's strokes are copies (paint-group): its fibers are grown */}
+      <Show when={fibers}>
+        {() => (
+          <Choices
+            label="Fiber"
+            choices={[
+              {
+                id: 'auto',
+                label: 'Auto',
+                title: props.structure
+                  ? 'A new fiber when the structure has fibers where it paints, else copies'
+                  : 'A new fiber when the entity has fibers, else copies',
+              },
+              { id: 'on', label: 'On', title: 'A stroke is a new fiber: its points a step apart, turned along it' },
+              { id: 'off', label: 'Off', title: 'A stroke is copies' },
+            ]}
+            active={mapState(settings, (s) => s.fiber)}
+            onPick={(id) => mode.set({ fiber: id as PaintSettings['fiber'] })}
+          />
+        )}
+      </Show>
+      <Show when={mapState(settings, (st) => fibers && !!props.structure && st.fiber !== 'off')}>
         {() => <StructureFiberSettings area={props.area} structure={props.structure!} />}
       </Show>
-      <Show when={mapState(settings, (st) => !props.structure && st.fiber !== 'off')}>
+      <Show when={mapState(settings, (st) => fibers && !props.structure && st.fiber !== 'off')}>
         {() => (
           <div class={classes.tight}>
             <FiberSettings area={props.area} particles={props.particles} entity={props.entity} />

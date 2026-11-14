@@ -30,6 +30,7 @@ import { Asset } from '@molstar/core/util/assets';
 import { type RuntimeContext, Task } from '@molstar/core/task';
 import type { GrowRecord } from './grow.js';
 import { isMembranePath } from './pick-surface.js';
+import { expandGroups, type PaintGroup } from './paint-group.js';
 
 // Paint v1 (apps/prism-me/_spec/features.md, "Paint"; progress/2026-11-08-paint.md, Design 1): copies of an existing
 // target painted onto a surface. A decorator appends each stroke's particles to the list it takes, so a session keeps
@@ -75,6 +76,13 @@ export interface PaintStroke {
    * others turned as along the whole chain (their twist by their place along it)
    */
   readonly skip?: readonly number[];
+  /**
+   * A group's copies (paint-group): its id (`ParticleListPainted.groups`); each copy (a position and orientation, a
+   * fiber's unit) expanded to the group's leaves (`expandGroups`)
+   */
+  readonly group?: number;
+  /** A group stroke's copies ungrouped (`mesoscale.ungroup`): a copy's place, then a member's ("3", "3.1"); kept drawn */
+  readonly split?: readonly string[];
 }
 
 /** A fiber's sequence or a range of it (Round 5): one-letter codes, 1-based, `end` inclusive */
@@ -297,8 +305,9 @@ export function paintParticles(
   painted: readonly PaintStroke[],
   fibers?: FiberSettingsMap,
   structures?: readonly PaintStructure[],
+  paintGroups?: readonly PaintGroup[],
 ): ParticleList {
-  const strokes = makeFibers(list, painted, fibers, structures);
+  const strokes = expandGroups(makeFibers(list, painted, fibers, structures), paintGroups);
   const units = withUnits(list, strokes);
   let added = 0;
   for (const s of strokes) added += Math.floor(s.positions.length / 3);
@@ -341,19 +350,24 @@ export function paintParticles(
         }
       } else newFibers.push(at, k);
     }
-    const set = groups?.sets[groups.groupOfTarget.get(s.target) ?? -1];
-    const radius = set && OrderedSet.size(set) ? list.radii![OrderedSet.start(set)] : 0;
+    const radiusOf = (target: number) => {
+      const set = groups?.sets[groups.groupOfTarget.get(target) ?? -1];
+      return set && OrderedSet.size(set) ? list.radii![OrderedSet.start(set)] : 0;
+    };
+    const radius = radiusOf(s.target);
     const of = s.units ? units.idOf(s) : undefined;
+    // a group's leaves: each its own target, entity and compartment (paint-group)
+    const m = s.members;
     for (let j = 0; j < k; ++j, ++at) {
       keys[at] = ++maxKey;
-      targets[at] = of ? of[j] : s.target;
+      targets[at] = m ? m.targets[j] : of ? of[j] : s.target;
       coordinates[at * 3] = s.positions[j * 3];
       coordinates[at * 3 + 1] = s.positions[j * 3 + 1];
       coordinates[at * 3 + 2] = s.positions[j * 3 + 2];
       for (let c = 0; c < 4; ++c) rotations[at * 4 + c] = s.rotations[j * 4 + c] ?? (c === 3 ? 1 : 0);
-      if (entities) entities[at] = s.entity;
-      if (compartments) compartments[at] = s.compartment;
-      if (radii) radii[at] = of ? unitRadius(s.units![j]) : radius;
+      if (entities) entities[at] = m ? m.entities[j] : s.entity;
+      if (compartments) compartments[at] = m ? m.compartments[j] : s.compartment;
+      if (radii) radii[at] = m ? radiusOf(m.targets[j]) : of ? unitRadius(s.units![j]) : radius;
     }
   }
 
@@ -421,15 +435,18 @@ export function strokeCounts(
   strokes: readonly PaintStroke[],
   fibers?: FiberSettingsMap,
   structures?: readonly PaintStructure[],
+  groups?: readonly PaintGroup[],
 ): number[] {
-  return makeFibers(list, strokes, fibers, structures).map((s) => Math.floor(s.positions.length / 3));
+  return expandGroups(makeFibers(list, strokes, fibers, structures), groups).map((s) =>
+    Math.floor(s.positions.length / 3),
+  );
 }
 
 /**
  * The strokes with each fiber stroke's points made (`makeFiber`) by its brush's settings (`fiberSettingsOf`) about its
  * brush's fiber axis (its own fibers', else its target's principal axis); the others as they are
  */
-function makeFibers(
+export function makeFibers(
   list: ParticleList,
   strokes: readonly PaintStroke[],
   given?: FiberSettingsMap,
@@ -840,6 +857,10 @@ const ParticleListPainted = PluginStateTransform.BuiltIn({
       description: 'The structures painted with, each a target and an entity of the list (loaded from their source)',
       isHidden: true,
     }),
+    groups: PD.Value<PaintGroup[]>([], {
+      description: 'The groups made of its instances (paint-group): brushes of their members, each at its pose',
+      isHidden: true,
+    }),
   },
 })({
   apply({ a, params, cache }, plugin: PluginContext) {
@@ -848,10 +869,13 @@ const ParticleListPainted = PluginStateTransform.BuiltIn({
       const objects = await loadStructures(plugin, ctx, params.structures ?? [], c);
       Object.assign(c, { input: a.data, objects });
       const list = withStructures(a.data, params.structures ?? [], objects);
-      return new SO.Particle.List(paintParticles(list, params.strokes, params.fibers, params.structures), {
-        label: a.label,
-        description: a.description,
-      });
+      return new SO.Particle.List(
+        paintParticles(list, params.strokes, params.fibers, params.structures, params.groups),
+        {
+          label: a.label,
+          description: a.description,
+        },
+      );
     });
   },
   update({ a, b, newParams, oldParams, cache }, plugin: PluginContext) {
@@ -864,11 +888,16 @@ const ParticleListPainted = PluginStateTransform.BuiltIn({
       const changed =
         c.input !== a.data || objects.length !== c.objects?.length || objects.some((o, i) => o !== c.objects![i]);
       Object.assign(c, { input: a.data, objects });
-      if (!changed && sameStrokes(newParams.strokes, oldParams.strokes) && newParams.fibers === oldParams.fibers) {
+      if (
+        !changed &&
+        sameStrokes(newParams.strokes, oldParams.strokes) &&
+        newParams.fibers === oldParams.fibers &&
+        newParams.groups === oldParams.groups
+      ) {
         return StateTransformer.UpdateResult.Unchanged;
       }
       const list = withStructures(a.data, newParams.structures ?? [], objects);
-      b.data = paintParticles(list, newParams.strokes, newParams.fibers, newParams.structures);
+      b.data = paintParticles(list, newParams.strokes, newParams.fibers, newParams.structures, newParams.groups);
       b.label = a.label;
       b.description = a.description;
       return StateTransformer.UpdateResult.Updated;
