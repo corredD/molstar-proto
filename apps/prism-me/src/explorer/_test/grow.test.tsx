@@ -187,6 +187,22 @@ describe('Grow from this instance', () => {
   });
 });
 
+describe('Grow On after a paint (paint-refine round 3)', () => {
+  it('a copy painted again at the same index (after an undo) on a mesh: On follows it', async () => {
+    const { v, hiv } = await viewer();
+    const m = v.api.mesoscale!;
+    const mode = m.paintMode as unknown as { host: { paint(...a: unknown[]): Promise<unknown> } };
+    const brush = { particles: hiv, entity: 1, name: 'NC' };
+    await mode.host.paint(brush, DefaultPaintSettings, [0, 500, 0], [0, 1, 0], 1, false);
+    expect(m.growSource.value).toEqual({ particles: hiv, index: 3 });
+    expect(m.growSettings.value.mesh).toBe(undefined);
+    await v.api.history.undo();
+    await mode.host.paint(brush, DefaultPaintSettings, [0, 50, 0], [0, 1, 0], 1, false, 'vesicle-ref');
+    expect(m.growSource.value).toEqual({ particles: hiv, index: 3 });
+    expect(m.growSettings.value.mesh).toBe('vesicle-ref');
+  });
+});
+
 describe("A grown fiber's Rise and Twist (paint-refine)", () => {
   /** Drags a slider of the Grow block to `value` (its knob's: a log slider's power of ten), released there */
   const drag = (host: HTMLElement, label: string, values: number[]) => {
