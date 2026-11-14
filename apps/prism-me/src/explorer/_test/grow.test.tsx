@@ -649,6 +649,22 @@ describe('Grow › Spiral (grow-helix round 3)', () => {
   });
 });
 
+describe('Grow › Spiral from a Sphere of one copy (second review 4)', () => {
+  it('Mode Spiral on a live Sphere of Count 1 makes a spiral of 2 (its least), not a refusal', async () => {
+    const { v, hiv } = await viewer();
+    const m = v.api.mesoscale!;
+    const host = await openGrow(v, hiv, 2);
+    choice(host, 'Mode', 'Sphere')!.click();
+    m.growSettings.set({ ...m.growSettings.value, count: 1 });
+    growButton(host).click();
+    await until(() => count(v) === 3 + 1);
+    choice(host, 'Mode', 'Spiral')!.click();
+    await until(() => strokesOf(v)[0]?.grow?.mode === 'spiral');
+    expect(count(v)).toBe(3 + 2);
+    expect(m.growSettings.value.count).toBe(2);
+  });
+});
+
 describe('Grow settings', () => {
   it("leave a length set for one source to the next source's size (review G1)", async () => {
     const { v, hiv } = await viewer();

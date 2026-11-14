@@ -816,7 +816,13 @@ export function GrowBlock(props: { area: MesoscaleApi; api: ViewerApi; particles
               label="Mode"
               choices={GrowModeChoices}
               active={mapState(settings, (s) => s.mode)}
-              onPick={(id) => set({ mode: id as GrowSettings['mode'] })}
+              onPick={(id) =>
+                // Count shared with Sphere (1 at least): a spiral's is 2 at least (second review 4)
+                set({
+                  mode: id as GrowSettings['mode'],
+                  ...(id === 'spiral' && settings.value.count < 2 ? { count: 2 } : {}),
+                })
+              }
             />
             <Show
               when={mapState(settings, (s) => s.mode !== 'crystal')}
