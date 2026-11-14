@@ -586,8 +586,8 @@ still completes its distance.
   on its path. Its count is prefix-stable: more Steps, Turns, Rings or Count keep every copy where it was and add the
   next ones (a fiber's last unit turned to the next); fewer cut the last ones; Crystal's cells are nested (each cell
   stays where it was). Another Grow, another source, Clear or the section closed ends it; an undone grow is not live (a
-  change is the next grow's). **Clear** removes every grow from the source (any mode; the source stays), one step
-  (`mesoscale.clear-grown`), disabled when there is none.
+  change is the next grow's). **Clear** removes every grow from the source (any mode; the source stays), and the grows
+  from their copies, one step (`mesoscale.clear-grown`), disabled when there is none.
 - Models decorated too (2026-10-23, Ludovic: "why can't we change the target in Simularium"): a model (a list with
   entities: Simularium, cellPACK, PetWorld) has the Decoration section, so each of its targets (an agent, an entity) can
   be drawn as another object of the scene. A particle list's own shape (a Simularium simulation box) is not listed as a
