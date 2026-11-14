@@ -1775,6 +1775,11 @@ export class MesoscaleApi extends ApiArea {
         skip = undefined;
         fitted = { volume: fitTo.label, ...kept.fit };
         Object.assign(sizes, { fit: fitTo.ref, contrast, threshold });
+        // a spiral's copies the kept ones; the turns its path drawn for them reached are not its own (review S2)
+        if (mode === 'spiral') {
+          sizes.copies = kept.positions.length / 3;
+          delete sizes.turns;
+        }
       }
       if (made) {
         toListFrame(move, made.positions, undefined);
