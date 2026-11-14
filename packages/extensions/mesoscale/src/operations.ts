@@ -45,6 +45,7 @@ import {
   decoratorUnder,
   fiberConventionOf,
   isFiberBrush,
+  makeFiber,
   FiberAxes,
   type FiberSettings,
   type FiberSettingsIn,
@@ -92,7 +93,18 @@ import {
   walkPath,
 } from './grow.js';
 import { meshAxis, sceneMesh, sceneMeshes, sceneMeshSurface } from './mesh-surface.js';
-import { envelopeOf, type FitContrast, fitCopies, fitMapOf, PaintReach, sceneVolume, type StrokeFit } from './fit.js';
+import {
+  envelopeOf,
+  type FitContrast,
+  fitCopies,
+  fitGrown,
+  fitMapOf,
+  fitScore,
+  GrowReach,
+  PaintReach,
+  sceneVolume,
+  type StrokeFit,
+} from './fit.js';
 import { isMembranePath } from './pick-surface.js';
 import {
   findGroup,
@@ -323,6 +335,9 @@ const MaxHelixTurns = 200;
 
 /** The most copies one grow makes */
 const MaxGrown = 20000;
+
+/** A fitted grow with a Count (density-fit): its rule drawn this many times Count, to keep Count above the threshold */
+const Overdraw = 4;
 const tooMany = (n: number) =>
   ApiResult.fail(
     'invalid',
@@ -1386,6 +1401,17 @@ export class MesoscaleApi extends ApiArea {
             'Grow on a mesh of the scene (OBJ, PLY, VTP) by state ref or file name: Tiling, Random walk, Helix, Spiral, Sphere; absent: in space',
         }),
       ),
+      ...FitParams('Each grown copy'),
+      threshold: OptionalParam(
+        PD.Numeric(
+          0.6,
+          { min: 0, step: 0.05 },
+          {
+            description:
+              "Fit: a grown copy kept when its score is at least this × the source's; Count (Sphere, Spiral, Tiling's on a mesh) counts those kept",
+          },
+        ),
+      ),
       replace: OptionalParam(
         PD.Numeric(
           0,
@@ -1406,6 +1432,8 @@ export class MesoscaleApi extends ApiArea {
           hand?: 'right' | 'left';
           direction?: 'up' | 'down';
           axis?: HelixAxis;
+          fit?: string;
+          contrast?: FitContrast;
         };
       const { particles, index, mode } = values;
       const l = oneList(ctx, particles || undefined);
@@ -1447,6 +1475,15 @@ export class MesoscaleApi extends ApiArea {
       }
       if (isFailure(mesh)) return mesh;
       const reach = 2 * diameter;
+      // fitted to a volume (density-fit): the source's score there, each copy's kept above Threshold × it
+      const fitTo = v.fit?.trim() ? sceneVolume(state, v.fit.trim()) : undefined;
+      if (isFailure(fitTo)) return fitTo;
+      /** Candidates for Count kept copies (a Count's modes): as many as `Overdraw` × Count, at most a grow's */
+      const draw = (n: number) => (fitTo ? Math.min(MaxGrown, Overdraw * n) : n);
+      /** The copies kept at most (Count: the modes that have one) */
+      let keep: number | undefined;
+      /** A fitted fiber's units, its copies (in the list's frame) */
+      let fiberCopies: GrowPoses | undefined;
       const on: GrowOn | undefined = mesh && { surface: sceneMeshSurface(mesh), reach };
       /**
        * The copy's own axis along a surface's normal, as paint puts it (round 3, Ludo 2026-11-13: a tiling grown from a
@@ -1517,7 +1554,8 @@ export class MesoscaleApi extends ApiArea {
           : src.surface
             ? Vec3.create(0, 0, 1)
             : principalAxisOf(data.targetMapping?.get(target));
-        made = tilingPoses(scene, normal, p, on);
+        if (p.count !== undefined) keep = p.count;
+        made = tilingPoses(scene, normal, p.count !== undefined ? { ...p, count: draw(p.count) } : p, on);
         if (!made) return offMesh();
         Object.assign(sizes, p);
       } else if (mode === 'sphere') {
@@ -1525,7 +1563,8 @@ export class MesoscaleApi extends ApiArea {
         if (!(p.radius > 0)) return ApiResult.fail('invalid', 'The radius is above 0 Å.');
         if (!(p.count >= 1)) return ApiResult.fail('invalid', 'Give 1 copy or more.');
         if (p.count > MaxGrown) return tooMany(p.count);
-        made = spherePoses(scene, p, seed, on && { ...on, axis: surfaceAxis() });
+        keep = p.count;
+        made = spherePoses(scene, { ...p, count: draw(p.count) }, seed, on && { ...on, axis: surfaceAxis() });
         if (!made) return offMesh();
         Object.assign(sizes, p);
       } else {
@@ -1575,7 +1614,8 @@ export class MesoscaleApi extends ApiArea {
           const scaled = rise * (move?.scale ?? 1);
           const info: SpiralInfo = { turns: 0 };
           // its units made (kept and skipped) as many as a grow makes at most (3b review N1)
-          const params = { ...p, step: scaled, units: MaxGrown };
+          const params = { ...p, count: draw(p.count), step: scaled, units: MaxGrown };
+          keep = p.count;
           if (on) {
             normals = [];
             path = spiralPath(scene, surfaceAxis(), params, on, normals, info);
@@ -1650,6 +1690,63 @@ export class MesoscaleApi extends ApiArea {
             );
           }
         }
+        // fitted: its units each a copy (a fitted fiber is its points: the decorator would make them again unfitted)
+        if (fitTo && path) {
+          const bank = data.entityInfo?.size && entity >= 0 && fiber.bank !== 'none' ? fiber.bank : undefined;
+          if (bank)
+            return ApiResult.fail('invalid', `A fiber of a bank's units (${bank}) is not fitted.`, 'Fit to None.');
+          const gone = new Set(skip ?? []);
+          const all = makeFiber(path, { ...fiber, ...own }, axis, seed, normals);
+          fiberCopies = { positions: [], rotations: [] };
+          for (let i = 0; i < all.positions.length / 3; ++i) {
+            if (gone.has(i)) continue;
+            const q = poseToScene(move, {
+              position: Vec3.fromArray(Vec3(), all.positions, i * 3),
+              rotation: Quat.fromArray(Quat(), all.rotations, i * 4),
+            });
+            fiberCopies.positions.push(q.position[0], q.position[1], q.position[2]);
+            fiberCopies.rotations.push(q.rotation[0], q.rotation[1], q.rotation[2], q.rotation[3]);
+          }
+        }
+      }
+      let fitted: StrokeFit | undefined;
+      if (fitTo) {
+        const map = fitMapOf(fitTo.volume.grid);
+        const envelope = envelopeOf(data.targetMapping?.get(target), radius);
+        const contrast = v.contrast ?? 'dark';
+        const score = map ? fitScore(map, envelope, scene, contrast) : 0;
+        if (!map || !(score > 0)) {
+          return ApiResult.fail(
+            'invalid',
+            `${name} #${index} is not on the density of ${fitTo.label} (${score.toFixed(1)}σ).`,
+            'Grow from a copy painted onto it (Paint › Fit to), or the other Contrast.',
+          );
+        }
+        const threshold = v.threshold ?? 0.6;
+        const kept = fitGrown(map, envelope, (made ?? fiberCopies)!, {
+          reach: GrowReach.shift * envelope.radius,
+          turn: GrowReach.turn,
+          contrast,
+          threshold: threshold * score,
+          apart: radius,
+          from: scene.position,
+          ...(keep !== undefined ? { count: keep } : {}),
+        });
+        if (!kept.positions.length) {
+          return ApiResult.fail(
+            'invalid',
+            `No copy fits ${fitTo.label} at ${threshold} × ${name} #${index}'s score (${score.toFixed(1)}σ).`,
+            'A lower Threshold, or another rule.',
+          );
+        }
+        // its copies the fitted ones, explicit (in the scene until put in the list's frame below)
+        made = { positions: kept.positions, rotations: kept.rotations };
+        path = undefined;
+        units = undefined;
+        normals = undefined;
+        skip = undefined;
+        fitted = { volume: fitTo.label, ...kept.fit };
+        Object.assign(sizes, { fit: fitTo.ref, contrast, threshold });
       }
       if (made) {
         toListFrame(move, made.positions, undefined);
@@ -1661,6 +1758,7 @@ export class MesoscaleApi extends ApiArea {
         compartment,
         positions: path ?? made!.positions,
         rotations: path ? [] : made!.rotations,
+        ...(fitted ? { fit: fitted } : {}),
         ...(path
           ? {
               fiber: true,

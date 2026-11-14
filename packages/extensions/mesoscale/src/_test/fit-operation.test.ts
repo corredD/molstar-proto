@@ -197,13 +197,12 @@ describe('mesoscale.grow with fit', () => {
     const list = entry(v).cell.transform.ref;
     expectOk(await v.api.run('mesoscale.paint', { entity: 'CA', positions: [60, 60, 60], seed: 2, orient: 'random' }));
     const index = drawn(v).count - 1;
-    const rotation = quat(drawn(v), index);
-    // a cube of sites 30 Å apart about the source, every site filled: as many as Count
-    const sites: Site[] = [];
-    for (const dx of [-30, 0, 30])
-      for (const dy of [-30, 0, 30])
-        for (const dz of [-30, 0, 30]) sites.push({ position: Vec3.create(60 + dx, 60 + dy, 60 + dz), rotation });
-    const volume = await loadMap(v, sites, [80, 80, 80]);
+    // the source on a site; copies at random about it kept at a score of 0 or more (about half of them on noise)
+    const volume = await loadMap(
+      v,
+      [{ position: xyz(drawn(v), index), rotation: quat(drawn(v), index) }],
+      [80, 80, 80],
+    );
     const grow = (count: number) =>
       v.api.run('mesoscale.grow', {
         particles: list,
@@ -214,7 +213,7 @@ describe('mesoscale.grow with fit', () => {
         turn: 'source',
         seed: 4,
         fit: volume,
-        threshold: 0.3,
+        threshold: 0,
       });
     expectOk(await grow(3));
     const three = Array.from(drawn(v).coordinates.slice((index + 1) * 3));
