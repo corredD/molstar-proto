@@ -573,6 +573,11 @@ const GrowModeChoices = [
     title:
       "A new fiber from the source winding as a helix: on a mesh about its axis, on its surface; in space about the source's Fiber Axis",
   },
+  {
+    id: 'spiral',
+    label: 'Spiral',
+    title: 'A new fiber winding flat outward from the source, its center: on a mesh carried over its surface',
+  },
   { id: 'crystal', label: 'Crystal', title: "A lattice in the source's frame, each copy turned as the source" },
   { id: 'tiling', label: 'Tiling', title: "A plane of copies in the source's own plane, ring by ring" },
   { id: 'sphere', label: 'Sphere', title: 'Copies at random in a ball about the source' },
@@ -914,7 +919,34 @@ export function GrowBlock(props: { area: MesoscaleApi; api: ViewerApi; particles
                 </div>
               )}
             </Show>
-            <Show when={mapState(settings, (s) => s.mode === 'walk' || s.mode === 'helix')}>
+            <Show when={mode('spiral')}>
+              {() => (
+                <div class={classes.tight}>
+                  {number(
+                    'spacing',
+                    'Spacing',
+                    "Between its arms, Å (unset: the copy's diameter, so they touch)",
+                    { min: 1, max: 1000, scale: 'log', unit: 'Å' },
+                    diameter,
+                  )}
+                  {number('turns', 'Turns', 'Its turns (on a mesh, fewer where the surface ends or its arms crowd)', {
+                    min: 0.5,
+                    max: 50,
+                    step: 0.5,
+                  })}
+                  <Choices
+                    label="Hand"
+                    choices={[
+                      { id: 'right', label: 'Right', title: 'Counterclockwise about its normal' },
+                      { id: 'left', label: 'Left', title: 'Clockwise about its normal' },
+                    ]}
+                    active={mapState(settings, (s) => s.hand)}
+                    onPick={(id) => set({ hand: id as GrowSettings['hand'] })}
+                  />
+                </div>
+              )}
+            </Show>
+            <Show when={mapState(settings, (s) => s.mode === 'walk' || s.mode === 'helix' || s.mode === 'spiral')}>
               {() => (
                 <div class={classes.tight}>
                   {fiberSlider(

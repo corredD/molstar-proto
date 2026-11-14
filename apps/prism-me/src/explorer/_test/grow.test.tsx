@@ -612,6 +612,35 @@ describe('The last grow live (grow-helix round 2)', () => {
   });
 });
 
+describe('Grow › Spiral (grow-helix round 3)', () => {
+  it('shows Spacing, Turns, Hand and the fiber sliders, grows a spiral, its Turns live (more continue it)', async () => {
+    const { v, hiv } = await viewer();
+    const m = v.api.mesoscale!;
+    const host = await openGrow(v, hiv, 2);
+    choice(host, 'Mode', 'Spiral')!.click();
+    await until(() => !!host.querySelector('input[aria-label="Grow Spacing"]'));
+    for (const label of ['Turns', 'Rise', 'Twist', 'Jitter']) {
+      expect(host.querySelector(`input[aria-label="Grow ${label}"]`)).not.toBe(null);
+    }
+    expect(host.querySelector('input[aria-label="Grow Pitch"]')).toBe(null);
+    expect(choice(host, 'Hand', 'Left')).toBeDefined();
+    m.growSettings.set({ ...m.growSettings.value, spacing: 20, turns: 2 });
+    growButton(host).click();
+    await until(() => count(v) > 3);
+    expect(strokesOf(v)[0]?.grow?.mode).toBe('spiral');
+    const units = count(v);
+    const first = coordinates(v, 3, units);
+    const steps = v.api.history.steps.value.length;
+    dragGrow(host, 'Turns', [3, 4]);
+    await until(() => count(v) > units);
+    await until(() => v.api.history.steps.value.length === steps + 1);
+    expect(coordinates(v, 3, units)).toEqual(first);
+    choice(host, 'Hand', 'Left')!.click();
+    await until(() => (strokesOf(v)[0]?.grow?.params as { hand?: string } | undefined)?.hand === 'left');
+    expect(v.api.history.steps.value.length).toBe(steps + 2);
+  });
+});
+
 describe('Grow settings', () => {
   it("leave a length set for one source to the next source's size (review G1)", async () => {
     const { v, hiv } = await viewer();
