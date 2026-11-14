@@ -166,3 +166,21 @@ planned, plus the envelope's k-means and kinds ~150, the fast map read ~50, `fit
 ~70, scene volumes and `fitCopies` ~100, doc comments), fit-controls.tsx 133, operations.ts +166 (the grow's candidates,
 fiber units and fit block), paint-host +149 (slice, `pluginCursorFit`, a block moved: `radiusOf`), paint-mode +99, the
 rest wiring.
+
+## Real data (2026-11-14, Ludo: HIV capsids, 8CKV, `7-2_cryolithe_bin2.mrc` + `7-2_capsids_curvature.vtp`)
+
+- Frames checked: the MRC (512 × 720 × 225, 13.36 Å, origin 0) is drawn and sampled in one frame; the VTP is in nm
+  (Scale 10 in the Segmentations tab lines it up); 8CKV loads as its hexamer (assembly 1, 9900 atoms, radius 54 Å), its
+  envelope about its centroid, as the copies are drawn. The fit reads the 3D grid, not the slice's image.
+- "Goes to the brightest" not reproduced: every path measured (a click on a slice, Fit to Auto: −2.15 → −3.39σ at the
+  atoms; paint on the mesh with Fit to the MRC: −0.97 → −1.37σ) went darker. What was wrong: on a capsid's wall the
+  shell's points along the wall lie on the neighbouring hexamers (−0.8 to −2.0σ), as dark as the copy, so a copy put on
+  the mesh scored −0.9 to +1.1σ; a grow from one was refused at ≤ 0 (3 of 7) and a fit free in space left the surface.
+- Decided: **on a mesh a fit stays on it** (its shift in the tangent plane, a spin about the normal, a tilt of 5° at
+  most) and **its score's shell is the points within 45° of the normal** (the wall against either side); **a grow keeps
+  copies by the source's fitted score** (within paint's reach, on the mesh on it; the source not moved), refused only
+  when that is ≤ 0. Paint on a mesh (`mesoscale.paint { mesh }`) and the copy under the pointer over a mesh fit on it;
+  on a slice the fit stays free.
+- Ludo's grow (Tiling Hex 108.5 Å, Count 376, Fit to the MRC, Dark, 0.6) headless (`~/prism-me-lanes/fit-real-*.cjs`,
+  `fit-real/dens.py`): from each of 7 copies put on the capsids, all grow (81–237 kept); from #6 97 kept, −2.47σ at
+  their atoms (−3.47σ at their centers; the surface cells −2.23σ), 0.1 Å off the surface (median, 0.5 at most).
