@@ -652,7 +652,11 @@ function settingsOfGrow(g: GrowRecord): Partial<GrowSettings> {
   // On: the grow's mesh (a crystal grows in space whatever On says)
   if (g.mode !== 'crystal') out.mesh = g.mesh?.ref;
   for (const [from, to] of keys[g.mode]) if (p[from] !== undefined) out[to] = p[from];
-  if (g.mode === 'symmetry') out.snap = p.snap === 1;
+  if (g.mode === 'symmetry') {
+    out.snap = p.snap === 1;
+    // its Radius unset: touching as it changes (review S1)
+    if (p.touching === 1) out.symmetryRadius = undefined;
+  }
   return out as Partial<GrowSettings>;
 }
 
@@ -1128,15 +1132,26 @@ export function GrowBlock(props: { area: MesoscaleApi; api: ViewerApi; particles
                   <Show when={mapState(settings, (s) => s.group === 'c' || s.group === 'd')}>
                     {() => number('n', 'n', 'Cn: n copies; Dn: 2n (the source counted)', { min: 2, max: 60, step: 1 })}
                   </Show>
-                  {number(
-                    'symmetryRadius',
+                  {line(
                     'Radius',
                     "The center's distance from the source along its axis, Å (unset: the copies touching)",
-                    { min: 1, max: 5000, scale: 'log', unit: 'Å' },
-                    () => {
-                      const s = settings.value;
-                      return Math.round((diameter() / symmetryContact(s.group, s.n)) * 10) / 10;
-                    },
+                    <Slider
+                      aria-label="Grow Radius"
+                      value={derive([settings, liveGrow] as const, (s, g) => {
+                        if (s.symmetryRadius !== undefined) return s.symmetryRadius;
+                        // unset: the live grow's (touching where the source is), else the general position's
+                        if (g?.mode === 'symmetry' && typeof g.params.radius === 'number') {
+                          return Math.round(g.params.radius * 10) / 10;
+                        }
+                        return Math.round((diameter() / symmetryContact(s.group, s.n)) * 10) / 10;
+                      })}
+                      min={1}
+                      max={5000}
+                      scale="log"
+                      unit="Å"
+                      onPreview={(v) => set({ symmetryRadius: v }, false)}
+                      onCommit={(v) => set({ symmetryRadius: v })}
+                    />,
                   )}
                   <Choices
                     label="Side"

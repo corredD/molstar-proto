@@ -1543,6 +1543,8 @@ export class MesoscaleApi extends ApiArea {
         }
         Object.assign(sizes, { group, ...(cyclic ? { n } : {}), radius: p.radius, side: p.side, axis: which });
         if (snap) sizes.snap = 1;
+        // Radius unset: touching, made again so as the grow changes (review S1)
+        if (v.symmetryRadius === undefined) sizes.touching = 1;
       } else {
         // a fiber of the source's: its rise and axis (its Fiber Axis, else its own fibers', else its principal axis;
         // as `makeFiber` turns its units, review S6), in the list's frame

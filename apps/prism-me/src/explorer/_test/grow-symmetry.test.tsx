@@ -203,4 +203,28 @@ describe('Grow › Symmetry', () => {
     expect((await v.api.run('history.undo', {})).ok).toBe(true);
     await until(() => count(v) === 3 + 59);
   });
+
+  it('Radius unset stays unset on the live grow: Group I after C6 touches again (review S1)', async () => {
+    const { v, hiv } = await viewer();
+    const m = v.api.mesoscale!;
+    const host = await openGrow(v, hiv, 2);
+    choice(host, 'Mode', 'Symmetry')!.click();
+    m.growSettings.set({ ...m.growSettings.value, group: 'c', n: 6, symmetryRadius: undefined });
+    growButton(host).click();
+    await until(() => count(v) === 3 + 5);
+    // C6's contact is 1: its Radius is the copy's diameter
+    const diameter = strokesOf(v)[0]!.grow!.params!.radius as number;
+    await new Promise((r) => setTimeout(r, 100));
+    expect(m.growSettings.value.symmetryRadius).toBe(undefined);
+    choice(host, 'Group', 'I')!.click();
+    await until(() => count(v) === 3 + 59);
+    const xs = coordinates(v, 2, 3 + 59);
+    let min = Infinity;
+    for (let i = 0; i < xs.length; i += 3) {
+      for (let j = i + 3; j < xs.length; j += 3) {
+        min = Math.min(min, Math.hypot(xs[i] - xs[j], xs[i + 1] - xs[j + 1], xs[i + 2] - xs[j + 2]));
+      }
+    }
+    expect(min).toBeCloseTo(diameter, 1);
+  });
 });
