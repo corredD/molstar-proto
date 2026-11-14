@@ -551,7 +551,11 @@ still completes its distance.
   in the source's own plane (normal: +z for a membrane protein, else its principal axis), each turned as the source.
   Sphere: Count (50) copies uniform in a ball of Radius (5 × the copy's radius), turned at random or as the source. The
   source is where it is drawn: its list's move and scale and its own move (Move this instance), before the offsets of
-  its kind (its copies take them too). Round 2: Symmetry.
+  its kind (its copies take them too). Round 2: Symmetry. A walk's **Rise**, **Twist** and **Jitter** (paint-refine,
+  Ludo 2026-11-13; unset: the entity's Fiber settings) are its own, kept in its stroke: only that fiber has them. After
+  a walk is grown, they are live on it: a drag redraws that fiber in place (the same path, its units made again: one
+  step a drag, `mesoscale.grown-fiber`), the sliders following an undo; another Grow, another source or the section
+  closed ends it.
 - Grow on a mesh (lane `grow-mesh`, Ludo 2026-11-13): a paint stroke over a file mesh (OBJ, PLY, VTP) puts its copies on
   the mesh's surface at its triangle's point, turned to its normal (a membrane protein upright in it; others as Turn
   says). The Grow section's **On** picks None (in space) or a mesh of the scene by its file's name; it is the mesh the

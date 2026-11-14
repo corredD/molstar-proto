@@ -182,6 +182,67 @@ describe('Grow from this instance', () => {
   });
 });
 
+describe("A grown fiber's Rise and Twist (paint-refine)", () => {
+  /** Drags a slider of the Grow block to `value` (its knob's: a log slider's power of ten), released there */
+  const drag = (host: HTMLElement, label: string, values: number[]) => {
+    const range = host.querySelector<HTMLInputElement>(`input[type=range][aria-label="Grow ${label}"]`)!;
+    for (const k of values) {
+      range.value = String(k);
+      range.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+    range.dispatchEvent(new Event('change', { bubbles: true }));
+  };
+
+  it('a drag of Rise or Twist after a walk redraws that fiber in place, one step a drag; another source ends it', async () => {
+    const { v, hiv } = await viewer();
+    const m = v.api.mesoscale!;
+    const host = mountScene(v);
+    await until(() => !!rowOf(host, 'HIV'));
+    rowOf(host, 'HIV')!.click();
+    await until(() => !!button(host, 'Grow'));
+    const section = button(host, 'Grow')!;
+    if (section.getAttribute('aria-expanded') !== 'true') section.click();
+    m.growSource.set({ particles: hiv, index: 2 });
+    await until(() => !!host.textContent?.includes('NC #2'));
+    choice(host, 'Mode', 'Random walk')!.click();
+    await until(() => !!host.querySelector('input[aria-label="Grow Rise"]'));
+    m.growSettings.set({ ...m.growSettings.value, steps: 10, persistence: 0, seed: 3 });
+    const grow = Array.from(host.querySelectorAll<HTMLButtonElement>('button')).filter(
+      (b) => b.textContent?.trim() === 'Grow',
+    );
+    grow[grow.length - 1].click();
+    // NC without radii: 10 Å a unit, 10 units
+    await until(() => count(v) === 3 + 10);
+    const steps = v.api.history.steps.value.length;
+    // Rise dragged to 5 Å (log knob) through 7: the same 90 Å path, 19 units; one step
+    drag(host, 'Rise', [Math.log10(7), Math.log10(5)]);
+    await until(() => count(v) === 3 + 19);
+    await until(() => v.api.history.steps.value.length === steps + 1);
+    expect(m.growSettings.value.rise).toBe(5);
+    // Twist: one more step, the units as many
+    drag(host, 'Twist', [10, 20]);
+    await until(() => v.api.history.steps.value.length === steps + 2);
+    expect(count(v)).toBe(3 + 19);
+    // undone: 5 Å, then 10 Å again
+    await v.api.history.undo();
+    await v.api.history.undo();
+    await until(() => count(v) === 3 + 10);
+    // the slider follows the fiber's own as the state has it (the undo), not the drag's
+    const box = () =>
+      host.querySelector<HTMLInputElement>('input[type=range][aria-label="Grow Rise"]')!.parentElement!.querySelector<HTMLInputElement>('input:not([type=range])')!;
+    await until(() => box().value === '10');
+    // another source: the fiber is not live anymore; Rise is the next grow's only
+    m.growSource.set({ particles: hiv, index: 1 });
+    await until(() => !!host.textContent?.includes('CA #1'));
+    const now = v.api.history.steps.value.length;
+    drag(host, 'Rise', [Math.log10(4)]);
+    await new Promise((r) => setTimeout(r, 300));
+    expect(v.api.history.steps.value.length).toBe(now);
+    expect(m.growSettings.value.rise).toBe(4);
+    expect(count(v)).toBe(3 + 10);
+  });
+});
+
 describe('Grow on a mesh (grow-mesh)', () => {
   /** An OBJ of a sphere of `radius` about `center` (an icosahedron subdivided: its vertices on the sphere) */
   function sphereObj(radius: number, center: [number, number, number]) {

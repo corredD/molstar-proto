@@ -214,7 +214,10 @@ export interface GrowSource {
 export interface GrowSourceInfo extends GrowSource {
   readonly name: string;
   readonly radius: number;
+  /** Its entity's fiber settings: a walk's rise, twist and jitter unless set */
   readonly rise: number;
+  readonly twist: number;
+  readonly jitter: number;
 }
 
 /** The Grow block's settings (`mesoscale.grow`'s params); a length absent: the source's size; no seed: at random */
@@ -242,6 +245,10 @@ export interface GrowSettings {
   readonly mesh?: string;
   /** Tiling on a mesh: its points, the source's counted; unset: the plane's for Rings */
   readonly tiles?: number;
+  /** A walk's own rise, twist and jitter (paint-refine); unset: the entity's */
+  readonly rise?: number;
+  readonly twist?: number;
+  readonly jitter?: number;
 }
 
 export const DefaultGrowSettings: GrowSettings = {
@@ -263,7 +270,7 @@ export const DefaultGrowSettings: GrowSettings = {
 /** `mesoscale.grow`'s params of a source and the settings: the mode's own only */
 export function growParams(source: GrowSource, s: GrowSettings) {
   const own: Record<GrowMode, readonly (keyof GrowSettings)[]> = {
-    walk: ['steps', 'persistence'],
+    walk: ['steps', 'persistence', 'rise', 'twist', 'jitter'],
     crystal: ['a', 'b', 'c', 'alpha', 'beta', 'gamma', 'na', 'nb', 'nc'],
     tiling: ['pattern', 'spacing', 'rings'],
     sphere: ['count', 'radius', 'turn'],
@@ -425,10 +432,34 @@ export class MesoscaleApi extends ApiArea {
         const id = brushIdOf(src.data, src);
         const structures = paintedStructures(plugin.state.data, s.particles);
         const fibers = paintedFibers(plugin.state.data, s.particles);
-        const rise = fiberSettingsOf(src.data, id, src.target, fibers, structures).rise;
-        return { ...s, name: `${src.name} #${s.index}`, radius: src.radius, rise };
+        const { rise, twist, jitter } = fiberSettingsOf(src.data, id, src.target, fibers, structures);
+        return { ...s, name: `${src.name} #${s.index}`, radius: src.radius, rise, twist, jitter };
       },
       () => [plugin.state.data.events.changed, this.growSource.asReadonly],
+      { compare: (a, b) => JSON.stringify(a) === JSON.stringify(b) },
+    );
+  }
+
+  /**
+   * A grown fiber's rise, twist and jitter in effect (its own over its entity's; paint-refine), following the state
+   * tree while watched (an undo): a read for views; undefined when it is not there (undone, removed)
+   */
+  grownFiberState(
+    at: ReadonlyState<{ readonly particles: string; readonly grow: number } | undefined>,
+  ): ReadonlyState<FiberSettingsIn | undefined> {
+    const state = this.ctx.plugin.state.data;
+    return watchedState(
+      () => {
+        const painted = at.value && decoratorUnder(state, at.value.particles, ParticleListPainted);
+        const p = painted?.transform.params as PaintedParams | undefined;
+        const stroke = p?.strokes.find((x) => x.fiber && x.grow?.id === at.value?.grow);
+        // the list as painted (a structure's target is there, as a grow's source reads it)
+        const data = painted?.obj?.data as ParticleList | undefined;
+        if (!stroke || !data) return undefined;
+        const id = brushIdOf(data, stroke);
+        return { ...fiberSettingsOf(data, id, stroke.target, p?.fibers, p?.structures), ...stroke.own };
+      },
+      () => [state.events.changed, at],
       { compare: (a, b) => JSON.stringify(a) === JSON.stringify(b) },
     );
   }

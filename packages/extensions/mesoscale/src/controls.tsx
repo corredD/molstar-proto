@@ -7,7 +7,11 @@
  */
 
 import { Button, Choices, Icon, Select, type SelectOption, Show, Slider, TextInput } from '@molstar/prism-ui';
+import { effect, onCleanup } from '@molstar/prism-ui/dom/scope';
 import { mapState } from '@molstar/prism-ui/reactive/map-state';
+import { observableState } from '@molstar/prism-ui/reactive/observable-state';
+import type { ViewerApi } from '@molstar/prism-viewer/api/area';
+import { gestureSteps } from '@molstar/prism-viewer/sources/gesture-steps';
 import { derive } from '@molstar/prism-ui/reactive/state';
 import type { ReadonlyState } from '@molstar/prism-ui/reactive/readonly-state';
 import { classes } from './_generated/controls.module.css.js';
@@ -562,11 +566,31 @@ const GrowModeChoices = [
  * or by a paint, its last copy), its mode, the mode's params (a length unset: the source's size), a seed (none: at
  * random) and Grow. The settings are the area's (`growSettings`), no step. On (grow-mesh): None or a file mesh of the
  * scene (the one the source was painted on by default); on a mesh, Tiling's Rings becomes its Count; Crystal grows in
- * space.
+ * space. A walk's Rise, Twist and Jitter (paint-refine; unset: the entity's) are live on the last walk grown here: a
+ * drag redraws it in place (`mesoscale.grown-fiber`), one step a drag; another Grow, another source or the block gone
+ * ends it.
  */
-export function GrowBlock(props: { area: MesoscaleApi; particles: string }) {
+export function GrowBlock(props: { area: MesoscaleApi; api: ViewerApi; particles: string }) {
   const area = props.area;
+  /** The last walk grown here, live: its list and its grow's id */
+  const live = observableState<{ particles: string; grow: number } | undefined>(undefined);
+  const redraw = gestureSteps<Partial<Record<'rise' | 'twist' | 'jitter', number>>>(props.api, {
+    label: "Set the grown fiber's rise and twist",
+    apply: (g, _, change) => {
+      const at = live.value;
+      return at ? g.run('mesoscale.grown-fiber', { ...at, ...change }) : Promise.resolve();
+    },
+    changed: () => {},
+  });
+  onCleanup(() => redraw.settle());
+  /** The live fiber's rise, twist and jitter as the state has them (an undo) */
+  const grown = area.grownFiberState(live.asReadonly);
   const source = mapState(area.growSourceState(), (s) => (s?.particles === props.particles ? s : undefined));
+  // another source: the last walk is not live anymore
+  effect(
+    mapState(source, (s) => s && `${s.particles}:${s.index}`),
+    () => live.set(undefined),
+  );
   const settings = area.growSettings.asReadonly;
   const meshes = area.growMeshesState();
   /** The mesh chosen while it is in the scene */
@@ -605,6 +629,32 @@ export function GrowBlock(props: { area: MesoscaleApi; particles: string }) {
       />,
     );
   const mode = (m: GrowSettings['mode']) => mapState(settings, (s) => s.mode === m);
+  /** A walk's fiber setting: the live fiber's own (it follows an undo), else the settings', else the entity's */
+  const fiberSlider = (
+    key: 'rise' | 'twist' | 'jitter',
+    label: string,
+    title: string,
+    range: { min: number; max: number; step?: number; unit: string; scale?: 'log' },
+    entity: () => number,
+  ) => {
+    const shown = derive([settings, grown], (s, fiber) => fiber?.[key] ?? s[key] ?? entity());
+    const change = (v: number, end: boolean) => {
+      set({ [key]: v });
+      if (live.value) redraw.change('fiber', { [key]: v });
+      if (end) redraw.settle();
+    };
+    return line(
+      label,
+      title,
+      <Slider
+        aria-label={`Grow ${label}`}
+        value={shown}
+        {...range}
+        onPreview={(v) => change(v, false)}
+        onCommit={(v) => change(v, true)}
+      />,
+    );
+  };
   return (
     <Show
       when={source}
@@ -664,10 +714,26 @@ export function GrowBlock(props: { area: MesoscaleApi; particles: string }) {
                     step: 1,
                     unit: '°',
                   })}
-                  {line(
+                  {fiberSlider(
+                    'rise',
                     'Rise',
-                    "The entity's fiber rise (its Fiber settings)",
-                    <div class={classes.label}>{`${Math.round(src.rise * 10) / 10} Å`}</div>,
+                    "Between the fiber's units along its path (unset: the entity's)",
+                    { min: 0.5, max: 500, scale: 'log', unit: 'Å' },
+                    () => src.rise,
+                  )}
+                  {fiberSlider(
+                    'twist',
+                    'Twist',
+                    "The turn from one unit to the next (unset: the entity's)",
+                    { min: -180, max: 180, step: 0.1, unit: '°' },
+                    () => src.twist,
+                  )}
+                  {fiberSlider(
+                    'jitter',
+                    'Jitter',
+                    "A random turn within ± this a unit (unset: the entity's)",
+                    { min: 0, max: 180, step: 1, unit: '°' },
+                    () => src.jitter,
                   )}
                 </div>
               )}
@@ -778,11 +844,16 @@ export function GrowBlock(props: { area: MesoscaleApi; particles: string }) {
                 variant="ghost"
                 icon={<Icon name="sparkles" />}
                 title="Grow the copies by the rule: one step"
-                onClick={() =>
-                  void area.grow(
-                    growParams(src, { ...settings.value, mesh: onMesh(settings.value, meshes.value) }) as never,
-                  )
-                }
+                onClick={() => {
+                  // another Grow: the walk before it is not live anymore; this one is, when it is a walk
+                  redraw.settle();
+                  live.set(undefined);
+                  const s = settings.value;
+                  void area.grow(growParams(src, { ...s, mesh: onMesh(s, meshes.value) }) as never).then((r) => {
+                    const id = r.ok && s.mode === 'walk' ? (r.value as { id?: number } | undefined)?.id : undefined;
+                    if (id !== undefined) live.set({ particles: src.particles, grow: id });
+                  });
+                }}
               >
                 Grow
               </Button>

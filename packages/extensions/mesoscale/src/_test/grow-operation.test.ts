@@ -19,6 +19,7 @@ import {
 } from '@molstar/plugin/state/transforms/particles/ops';
 import { ParticleListPainted, type PaintStroke } from '../paint.js';
 import { MesoscaleExtension } from '../prism-viewer.js';
+import { observableState } from '@molstar/prism-ui/reactive/observable-state';
 import { Sphere } from '@molstar/graphics/geo/primitive/sphere';
 import { PluginStateObject as SO } from '@molstar/plugin/state/objects';
 import { OrderedSet } from '@molstar/core/data/int';
@@ -233,6 +234,23 @@ describe('mesoscale.grow', () => {
     });
     expect(steps(v)).toBe(after);
     expect(Array.from(drawn(v).coordinates.slice(21, 36))).toEqual(other);
+  });
+
+  it("reads a grown fiber's rise in effect as its source's (a structure painted: its length along its axis)", async () => {
+    const v = await viewer();
+    const structure = v.plugin.managers.structure.hierarchy.current.structures[0].cell.transform.ref;
+    expectOk(await v.api.run('mesoscale.paint', { structure, particles: '', positions: [0, 0, 0] }));
+    const painting = v.plugin.managers.particles.hierarchy.current.lists.find((l) => l.cell.obj?.label === 'Painting')!;
+    const particles = painting.cell.transform.ref;
+    const r = await v.api.run('mesoscale.grow', { particles, index: 0, mode: 'walk', steps: 3, seed: 1 });
+    expectOk(r);
+    const m = v.api.mesoscale!;
+    m.growSource.set({ particles, index: 0 });
+    const source = m.growSourceState().value!;
+    const at = observableState({ particles, grow: (r.value as { id: number }).id });
+    const grown = m.grownFiberState(at.asReadonly).value!;
+    expect(source.rise).not.toBe(10);
+    expect(grown.rise).toBeCloseTo(source.rise, 6);
   });
 
   it('grows from the source where it is drawn after Move this instance (review S1)', async () => {
