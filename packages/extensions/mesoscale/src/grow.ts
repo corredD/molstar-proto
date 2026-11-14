@@ -73,6 +73,8 @@ export interface GrowRecord {
   readonly source: { readonly index: number; readonly key: number };
   /** The mesh it grew on (its representation's state ref and file name), for the report: the copies stay without it */
   readonly mesh?: { readonly ref: string; readonly label: string };
+  /** Which grow it was (paint-refine): a walk's own rise and twist are set by it (`mesoscale.grown-fiber`) */
+  readonly id?: number;
 }
 
 /**

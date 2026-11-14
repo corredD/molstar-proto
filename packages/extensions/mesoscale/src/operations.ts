@@ -312,6 +312,32 @@ const SelectionGroupByParam = () =>
     }),
   );
 
+/** A walk's own fiber settings (paint-refine): absent, the entity's */
+const WalkFiberParams = (what: string) => ({
+  rise: OptionalParam(
+    PD.Numeric(10, { min: 0.1, max: 1000, step: 0.1 }, { description: `${what}its units' rise, Å; absent: the entity's` }),
+  ),
+  twist: OptionalParam(
+    PD.Numeric(
+      0,
+      { min: -360, max: 360, step: 0.1 },
+      { description: `${what}the turn from one unit to the next, °; absent: the entity's` },
+    ),
+  ),
+  jitter: OptionalParam(
+    PD.Numeric(0, { min: 0, max: 180, step: 1 }, { description: `${what}a random turn within ± this a unit, °` }),
+  ),
+});
+
+/** The rise, twist and jitter given (a jitter within 0 to 180) */
+function ownFiberOf(v: Partial<Record<string, unknown>>): NonNullable<PaintStroke['own']> {
+  const out: { rise?: number; twist?: number; jitter?: number } = {};
+  if (typeof v.rise === 'number') out.rise = v.rise;
+  if (typeof v.twist === 'number') out.twist = v.twist;
+  if (typeof v.jitter === 'number') out.jitter = Math.min(180, Math.max(0, v.jitter));
+  return out;
+}
+
 export class MesoscaleApi extends ApiArea {
   readonly id = 'mesoscale';
   private _paintMode?: PaintMode;
@@ -1065,6 +1091,7 @@ export class MesoscaleApi extends ApiArea {
       persistence: OptionalParam(
         PD.Numeric(30, { min: 0, max: 180, step: 1 }, { description: 'Random walk: the most it turns a step, °' }),
       ),
+      ...WalkFiberParams('Random walk: '),
       ...CellParams,
       pattern: OptionalParam(
         PD.Select('hex', [
@@ -1121,6 +1148,7 @@ export class MesoscaleApi extends ApiArea {
       if (isFailure(src)) return src;
       const { data, target, entity, compartment, radius, name, instance } = src;
       const seed = v.seed ?? Math.floor(Math.random() * 2 ** 31);
+      const growId = Math.floor(Math.random() * 2 ** 31);
       const move = decoratorUnder(state, l.cell.transform.ref, ParticleListTransform)?.transform.params as
         | ListMove
         | undefined;
@@ -1145,6 +1173,7 @@ export class MesoscaleApi extends ApiArea {
       const sizes: Record<string, number> = {};
       let made: GrowPoses | undefined;
       let path: number[] | undefined;
+      let own: PaintStroke['own'] = {};
       if (mode === 'crystal') {
         const p = {
           a: v.a ?? diameter,
@@ -1198,7 +1227,10 @@ export class MesoscaleApi extends ApiArea {
         const id = brushIdOf(data, { target, entity });
         const structures = paintedStructures(state, l.cell.transform.ref);
         const fiber = fiberSettingsOf(data, id, target, paintedFibers(state, l.cell.transform.ref), structures);
-        const rise = fiber.rise;
+        // its own rise, twist and jitter when given (paint-refine), else the entity's
+        own = ownFiberOf(v);
+        if (own.rise !== undefined && !(own.rise > 0)) return ApiResult.fail('invalid', 'The rise is above 0 Å.');
+        const rise = own.rise ?? fiber.rise;
         const axis =
           fiber.axis !== 'auto'
             ? Vec3.create(fiber.axis === 'x' ? 1 : 0, fiber.axis === 'y' ? 1 : 0, fiber.axis === 'z' ? 1 : 0)
@@ -1227,13 +1259,14 @@ export class MesoscaleApi extends ApiArea {
         compartment,
         positions: path ?? made!.positions,
         rotations: path ? [] : made!.rotations,
-        ...(path ? { fiber: true, seed } : {}),
+        ...(path ? { fiber: true, seed, ...(Object.keys(own).length ? { own } : {}) } : {}),
         grow: {
           mode,
           params: sizes,
           seed,
           source: { index, key: data.keys[index] },
           ...(mesh ? { mesh: { ref: mesh.ref, label: mesh.label } } : {}),
+          id: growId,
         },
       };
       const count = stroke.positions.length / 3;
@@ -1245,7 +1278,53 @@ export class MesoscaleApi extends ApiArea {
           ? `Grew a fiber of ${name} from #${index}.`
           : `Grew ${count} ${count === 1 ? 'copy' : 'copies'} of ${name} from #${index} (${mode}${mesh ? ` on ${mesh.label}` : ''}).`,
         { nodes: [l.cell.transform.ref] },
-        { value: { count, mode } },
+        { value: { count, mode, id: growId } },
+      );
+    },
+  });
+
+  /**
+   * A grown fiber's own rise, twist and jitter (paint-refine, Ludo 2026-11-13: the Grow section's, live on the last
+   * grow): its units made again from the same path (`makeFiber`), the entity's other fibers as they are. One step
+   */
+  readonly grownFiber = this.operation({
+    id: 'mesoscale.grown-fiber',
+    title: "Set a grown fiber's rise and twist",
+    params: {
+      particles: ListParam(),
+      grow: PD.Numeric(0, { step: 1 }, { description: 'The grow that made the fiber: its id (`mesoscale.grow`’s value)' }),
+      ...WalkFiberParams(''),
+    },
+    async run(values, ctx) {
+      const given = ownFiberOf(values as Partial<Record<string, number>>);
+      if (!Object.keys(given).length) {
+        return ApiResult.fail('invalid', 'Nothing to change.', 'Give a rise, a twist or a jitter.');
+      }
+      if (given.rise !== undefined && !(given.rise > 0)) return ApiResult.fail('invalid', 'The rise is above 0 Å.');
+      const l = oneList(ctx, values.particles || undefined);
+      if (isFailure(l)) return l;
+      const painted = decoratorUnder(ctx.plugin.state.data, l.cell.transform.ref, ParticleListPainted);
+      const strokes = (painted?.transform.params as PaintedParams | undefined)?.strokes ?? [];
+      const at = strokes.findIndex((s) => s.fiber && s.grow?.id === values.grow);
+      if (at < 0) return ApiResult.fail('not-found', 'That grown fiber is not there (undone or removed).');
+      const own = { ...strokes[at].own, ...given };
+      if ((Object.keys(given) as (keyof typeof given)[]).every((k) => strokes[at].own?.[k] === given[k])) {
+        return ApiResult.already('The fiber is already so.');
+      }
+      await updatePainted(ctx, l, (p) => ({
+        ...p,
+        strokes: p.strokes.map((s, i) => (i === at ? { ...s, own } : s)),
+      }));
+      return ApiResult.ok(
+        `The grown fiber: ${[
+          own.rise !== undefined ? `${round1(own.rise)} Å a point` : '',
+          own.twist !== undefined ? `${round1(own.twist)}°` : '',
+          own.jitter ? `± ${round1(own.jitter)}°` : '',
+        ]
+          .filter((t) => t)
+          .join(', ')}.`,
+        { nodes: [l.cell.transform.ref] },
+        { value: own },
       );
     },
   });

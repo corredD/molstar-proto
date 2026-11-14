@@ -59,6 +59,11 @@ export interface PaintStroke {
   readonly sequence?: PaintSequence;
   /** The grow that made the stroke (`mesoscale.grow`, grow.ts): its mode, params, seed and source; none for a paint */
   readonly grow?: GrowRecord;
+  /**
+   * A fiber's own rise, twist and jitter over its brush's (paint-refine: a grown walk's, set in the Grow section): only
+   * it changes with them
+   */
+  readonly own?: Partial<Pick<FiberSettings, 'rise' | 'twist' | 'jitter'>>;
 }
 
 /** A fiber's sequence or a range of it (Round 5): one-letter codes, 1-based, `end` inclusive */
@@ -353,7 +358,7 @@ function makeFibers(
       axis = fiberConventionOf(list, id)?.axis ?? principalAxisOf(list.targetMapping?.get(s.target));
       axes.set(id, axis);
     }
-    const settings = fiberSettingsOf(list, id, s.target, given, structures);
+    const settings = { ...fiberSettingsOf(list, id, s.target, given, structures), ...s.own };
     const made = makeFiber(s.positions, settings, axis, s.seed ?? 0);
     // a bank's units only where the brush is an entity (a list without: its targets are its brushes)
     // and an entity of its own (review M2: -1, none, would give ids below the list's)

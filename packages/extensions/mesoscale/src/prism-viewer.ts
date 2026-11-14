@@ -173,6 +173,12 @@ export const MesoscaleExtension: ViewerExtension = {
         alias: ['grow', 'crystal', 'lattice', 'tiling', 'random walk', 'grow copies'],
         action: 'Grow',
       }),
+      operationCommand(api, m.grownFiber, {
+        category,
+        icon: 'sliders-horizontal',
+        alias: ['grown fiber', 'walk rise', 'walk twist'],
+        action: 'Apply',
+      }),
       operationCommand(api, m.entities, { category, icon: 'info', alias: ['mesoscale entities', 'compartments'] }),
     ];
   },

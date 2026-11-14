@@ -189,6 +189,52 @@ describe('mesoscale.grow', () => {
     expect(Array.from(list.entities!.slice(7))).toEqual(new Array(12).fill(2));
   });
 
+  it("a walk's own Rise and Twist (paint-refine): its units r apart, each turned t; Rise changed after: the same path, one step, the entity's other fibers as they were", async () => {
+    const v = await viewer();
+    const ref = entry(v).cell.transform.ref;
+    // a fiber of NC grown first, by the entity's settings (10 Å, no twist): it stays as it is
+    expectOk(await v.api.run('mesoscale.grow', { particles: ref, index: 3, mode: 'walk', steps: 5, seed: 1 }));
+    const other = Array.from(drawn(v).coordinates.slice(21, 36));
+    const walk = { particles: ref, index: 3, mode: 'walk', steps: 6, persistence: 0, seed: 2 };
+    const r = await v.api.run('mesoscale.grow', { ...walk, rise: 6, twist: 30 });
+    expectOk(r);
+    const id = (r.value as { id: number }).id;
+    let list = drawn(v);
+    expect(list.count).toBe(7 + 5 + 6);
+    const angle = (a: Quat, b: Quat) => (2 * Math.acos(Math.min(1, Math.abs(Quat.dot(a, b)))) * 180) / Math.PI;
+    for (let i = 13; i < 18; ++i) {
+      expect(Vec3.distance(xyz(list, i), xyz(list, i - 1))).toBeCloseTo(6, 3);
+      expect(angle(quat(list, i), quat(list, i - 1))).toBeCloseTo(30, 3);
+    }
+    const start = xyz(list, 12);
+    const along = Vec3.normalize(Vec3(), Vec3.sub(Vec3(), xyz(list, 17), start));
+    const before = steps(v);
+    // Rise changed: the same path, its units 4 Å apart, the twist kept; one step
+    expectOk(await v.api.run('mesoscale.grown-fiber', { particles: ref, grow: id, rise: 4 }));
+    expect(steps(v)).toBe(before + 1);
+    list = drawn(v);
+    expect(Array.from(list.coordinates.slice(21, 36))).toEqual(other);
+    expect(list.count).toBeGreaterThan(7 + 5 + 6);
+    expect(Vec3.distance(xyz(list, 12), start)).toBeCloseTo(0, 3);
+    for (let i = 13; i < list.count; ++i) {
+      const d = Vec3.sub(Vec3(), xyz(list, i), xyz(list, i - 1));
+      expect(Vec3.magnitude(d)).toBeCloseTo(4, 3);
+      expect(Vec3.dot(Vec3.normalize(d, d), along)).toBeCloseTo(1, 4);
+      expect(angle(quat(list, i), quat(list, i - 1))).toBeCloseTo(30, 3);
+    }
+    // undone: 6 Å again; the grow undone: the fiber gone, nothing to change, no step
+    expectOk(await v.api.run('history.undo', {}));
+    expect(drawn(v).count).toBe(7 + 5 + 6);
+    expectOk(await v.api.run('history.undo', {}));
+    const after = steps(v);
+    expect(await v.api.run('mesoscale.grown-fiber', { particles: ref, grow: id, twist: 10 })).toMatchObject({
+      ok: false,
+      code: 'not-found',
+    });
+    expect(steps(v)).toBe(after);
+    expect(Array.from(drawn(v).coordinates.slice(21, 36))).toEqual(other);
+  });
+
   it('grows from the source where it is drawn after Move this instance (review S1)', async () => {
     const v = await viewer();
     const ref = entry(v).cell.transform.ref;
