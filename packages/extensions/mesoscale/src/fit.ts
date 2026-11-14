@@ -78,6 +78,13 @@ export interface FitOptions {
   readonly contrast: FitContrast;
   /** The restraint at the reach's edge (σ a term); `FitPull` without */
   readonly pull?: number;
+  /**
+   * On a surface (a mesh painted or grown on): its unit normal at the copy, in the scene. The copy stays on it (its
+   * shift in the tangent plane, its turn a spin about the normal and a tilt of `SurfaceTilt` at most) and its score's
+   * shell is the shell's points along the normal only: a wall's contrast against either side of it, not against its
+   * neighbours along it (a lattice's: as dark as the copy)
+   */
+  readonly normal?: Vec3;
 }
 
 /** The envelope's points (k-means'd from the object's) */
@@ -93,6 +100,10 @@ export const FitPull = 0.1;
 export const PaintReach = { shift: 1 / 3, turn: 15 } as const;
 /** A grown copy's reach (its rule already says where it goes): half paint's */
 export const GrowReach = { shift: 1 / 6, turn: 7.5 } as const;
+/** On a surface, a copy's tilt off its normal at most (°): it stays upright on it */
+export const SurfaceTilt = 5;
+/** On a surface, the shell's points within 45° of the normal (either side) score it */
+const AlongNormal = Math.SQRT1_2;
 
 // --- The envelope ------------------------------------------------------------------------------------------------------
 
@@ -349,14 +360,21 @@ function rotationMatrix(out: Float64Array, q: Quat) {
 const means = new Float64Array(2);
 
 /** The mean of the map at points of a frame put at a pose, into `means[slot]` */
-function meanAt(map: FitMap, points: Float32Array, position: Vec3, rotation: Quat, slot: number): void {
+function meanAt(
+  map: FitMap,
+  points: Float32Array,
+  position: Vec3,
+  rotation: Quat,
+  slot: number,
+  length = points.length,
+) {
   const m = rotationMatrix(_m, rotation);
   const px = position[0];
   const py = position[1];
   const pz = position[2];
   const L = map.layout;
   let sum = 0;
-  for (let i = 0; i < points.length; i += 3) {
+  for (let i = 0; i < length; i += 3) {
     const x0 = points[i];
     const y0 = points[i + 1];
     const z0 = points[i + 2];
@@ -389,14 +407,55 @@ function meanAt(map: FitMap, points: Float32Array, position: Vec3, rotation: Qua
     sum += ((c00 * (1 - v) + c10 * v) * (1 - w) + (c01 * (1 - v) + c11 * v) * w - L.mean) / L.sigma;
   }
   // into `means` (a number returned from a call is boxed: one a call, some 700 a fit)
-  means[slot] = points.length ? sum / (points.length / 3) : 0;
+  means[slot] = length ? sum / (length / 3) : 0;
 }
 
-/** A pose's score: the mean inside minus the mean in the shell, in σ, signed by the contrast (Dark: inside darker) */
-export function fitScore(map: FitMap, envelope: FitEnvelope, pose: FitPose, contrast: FitContrast): number {
-  const shell = shellOf(envelope, map.voxel);
+/** The shell's points used (`shellAlong`): all of them, or those along a surface's normal; made once */
+const _shell = new Float32Array(ShellPoints * 3);
+const _n = Vec3();
+const _inv = Quat();
+
+/**
+ * The shell's points scoring a pose turned by `rotation`: all of them, or on a surface (`normal`, in the scene) those
+ * whose direction from the copy is within 45° of it, either side (into `_shell`); their length (3 numbers a point)
+ */
+function shellAlong(envelope: FitEnvelope, voxel: number, rotation: Quat, normal: Vec3 | undefined): number {
+  const shell = shellOf(envelope, voxel);
+  if (!normal) {
+    _shell.set(shell);
+    return shell.length;
+  }
+  // the normal in the copy's own frame
+  Vec3.transformQuat(_n, normal, Quat.conjugate(_inv, rotation));
+  const golden = Math.PI * (3 - Math.sqrt(5));
+  let k = 0;
+  for (let d = 0; d < ShellPoints; ++d) {
+    // the shell's direction d (`shellOf`'s)
+    const z = 1 - (2 * (d + 0.5)) / ShellPoints;
+    const s = Math.sqrt(1 - z * z);
+    const t = s * Math.cos(golden * d) * _n[0] + s * Math.sin(golden * d) * _n[1] + z * _n[2];
+    if (Math.abs(t) < AlongNormal) continue;
+    _shell[k++] = shell[d * 3];
+    _shell[k++] = shell[d * 3 + 1];
+    _shell[k++] = shell[d * 3 + 2];
+  }
+  return k;
+}
+
+/**
+ * A pose's score: the mean inside minus the mean in the shell, in σ, signed by the contrast (Dark: inside darker); on a
+ * surface (`normal`), the shell along it only (`FitOptions.normal`)
+ */
+export function fitScore(
+  map: FitMap,
+  envelope: FitEnvelope,
+  pose: FitPose,
+  contrast: FitContrast,
+  normal?: Vec3,
+): number {
+  const length = shellAlong(envelope, map.voxel, pose.rotation, normal);
   meanAt(map, envelope.inside, pose.position, pose.rotation, 0);
-  meanAt(map, shell, pose.position, pose.rotation, 1);
+  meanAt(map, _shell, pose.position, pose.rotation, 1, length);
   const d = means[0] - means[1];
   return contrast === 'dark' ? -d : d;
 }
@@ -417,19 +476,77 @@ const xr = new Float64Array(N);
 const xe = new Float64Array(N);
 const xc = new Float64Array(N);
 
-/** Parameters kept in their unit balls (the shift's within the reach, the turn's within its most) */
+/**
+ * The parameters' frame (`objective.frame`, column-major, as `Mat3`): x, y, z in space; on a surface two tangents and
+ * the normal (its third axis)
+ */
+const _frame = new Float64Array(9);
+const _shift = Vec3();
+
+/** Its frame: the scene's axes, or a surface's two tangents and its normal */
+function frameOf(out: Float64Array, normal: Vec3 | undefined) {
+  out.fill(0);
+  if (!normal) {
+    out[0] = out[4] = out[8] = 1;
+    return;
+  }
+  const [nx, ny, nz] = normal;
+  // a tangent: the normal crossed with the axis least along it
+  const ax = Math.abs(nx) <= Math.abs(ny) && Math.abs(nx) <= Math.abs(nz) ? 1 : 0;
+  const ay = !ax && Math.abs(ny) <= Math.abs(nz) ? 1 : 0;
+  const az = !ax && !ay ? 1 : 0;
+  let tx = ny * az - nz * ay;
+  let ty = nz * ax - nx * az;
+  let tz = nx * ay - ny * ax;
+  const l = Math.sqrt(tx * tx + ty * ty + tz * tz);
+  tx /= l;
+  ty /= l;
+  tz /= l;
+  out[0] = tx;
+  out[1] = ty;
+  out[2] = tz;
+  out[3] = ny * tz - nz * ty;
+  out[4] = nz * tx - nx * tz;
+  out[5] = nx * ty - ny * tx;
+  out[6] = nx;
+  out[7] = ny;
+  out[8] = nz;
+}
+
+/**
+ * Parameters kept in their unit balls (the shift's within the reach, the turn's within its most); on a surface
+ * (`objective.surface`), no shift along the normal (its third) and a tilt (the turn's first two) of `objective.tilt`
+ * (of the most turn) at most
+ */
 function project(x: Float64Array) {
+  const o = objective;
+  if (o.surface) x[2] = 0;
   // not Math.hypot: its arguments are allocated a call
   const s = Math.sqrt(x[0] * x[0] + x[1] * x[1] + x[2] * x[2]);
   if (s > 1) for (let i = 0; i < 3; ++i) x[i] /= s;
+  if (o.surface) {
+    const tilt = Math.sqrt(x[3] * x[3] + x[4] * x[4]);
+    if (tilt > o.tilt) for (let i = 3; i < 5; ++i) x[i] *= o.tilt / tilt;
+    if (Math.abs(x[5]) > 1) x[5] = Math.sign(x[5]);
+    return;
+  }
   const t = Math.sqrt(x[3] * x[3] + x[4] * x[4] + x[5] * x[5]);
   if (t > 1) for (let i = 3; i < 6; ++i) x[i] /= t;
 }
 
-/** The pose of parameters (shift / reach, rotation vector / most turn) from a pose */
+/** `v` (3 of `x` from `at`) in the scene, from the parameters' frame, scaled */
+function inFrame(out: Vec3, x: Float64Array, at: number, scale: number) {
+  const f = objective.frame;
+  const a = x[at] * scale;
+  const b = x[at + 1] * scale;
+  const c = x[at + 2] * scale;
+  return Vec3.set(out, f[0] * a + f[3] * b + f[6] * c, f[1] * a + f[4] * b + f[7] * c, f[2] * a + f[5] * b + f[8] * c);
+}
+
+/** The pose of parameters (shift / reach, rotation vector / most turn, in their frame) from a pose */
 function poseOf(x: Float64Array, from: FitPose, reach: number, turn: number, position: Vec3, rotation: Quat) {
-  Vec3.set(position, from.position[0] + x[0] * reach, from.position[1] + x[1] * reach, from.position[2] + x[2] * reach);
-  Vec3.set(_omega, x[3] * turn, x[4] * turn, x[5] * turn);
+  Vec3.add(position, from.position, inFrame(_shift, x, 0, reach));
+  inFrame(_omega, x, 3, turn);
   const angle = Vec3.magnitude(_omega);
   if (angle > 1e-12) Quat.setAxisAngle(_turn, Vec3.scale(_omega, _omega, 1 / angle), angle);
   else Quat.setIdentity(_turn);
@@ -447,6 +564,12 @@ const objective = {
   turn: 0,
   sign: 1,
   pull: 0,
+  /** The shell's points used (of `shell`: 3 numbers a point) */
+  shellLength: 0,
+  /** On a surface: the shift tangent, the tilt at most `tilt` (of the most turn) */
+  surface: false,
+  tilt: 1,
+  frame: _frame,
 };
 
 /** The score minus the pull back of parameters (the objective's) */
@@ -454,7 +577,7 @@ function f(x: Float64Array): number {
   const o = objective;
   poseOf(x, o.from!, o.reach, o.turn, _pos, _rot);
   meanAt(o.map!, o.inside, _pos, _rot, 0);
-  meanAt(o.map!, o.shell, _pos, _rot, 1);
+  meanAt(o.map!, o.shell, _pos, _rot, 1, o.shellLength);
   const d = means[0] - means[1];
   return -o.sign * d + o.pull * (x[0] * x[0] + x[1] * x[1] + x[2] * x[2] + x[3] * x[3] + x[4] * x[4] + x[5] * x[5]);
 }
@@ -533,11 +656,17 @@ function nelderMead(evals: number) {
   return b;
 }
 
-/** The simplex about `x0`: it and a step along each parameter */
+/**
+ * The simplex about `x0`: it and a step along each parameter; on a surface (no shift along the normal, the third) that
+ * step is one back along both tangents instead, so the 6 vertices still span the 5 parameters left
+ */
 function startAt(x0: Float64Array, step: number) {
   for (let i = 0; i <= N; ++i) {
     simplex[i].set(x0);
-    if (i) simplex[i][i - 1] += step;
+    if (i === 3 && objective.surface) {
+      simplex[i][0] -= step;
+      simplex[i][1] -= step;
+    } else if (i) simplex[i][i - 1] += step;
   }
 }
 
@@ -566,7 +695,7 @@ export function fitPose(
   if (!map || !(o.reach > 0) || !(turn > 0)) {
     Vec3.copy(out.position, from.position);
     Quat.copy(out.rotation, from.rotation);
-    out.score = map ? fitScore(map, envelope, from, o.contrast) : 0;
+    out.score = map ? fitScore(map, envelope, from, o.contrast, o.normal) : 0;
     out.shift = 0;
     out.angle = 0;
     return out;
@@ -574,7 +703,12 @@ export function fitPose(
   const g = objective;
   g.map = map;
   g.inside = envelope.inside;
-  g.shell = shellOf(envelope, map.voxel);
+  // on a surface, the shell along its normal (as the copy is put: its tilt is a few degrees)
+  g.shellLength = shellAlong(envelope, map.voxel, from.rotation, o.normal);
+  g.shell = _shell;
+  g.surface = !!o.normal;
+  g.tilt = Math.min(1, SurfaceTilt / o.turn);
+  frameOf(g.frame, o.normal);
   g.from = from;
   g.reach = o.reach;
   g.turn = turn;
@@ -588,7 +722,7 @@ export function fitPose(
   b = nelderMead(RefineEvals);
   const x = simplex[b];
   poseOf(x, from, o.reach, turn, out.position, out.rotation);
-  out.score = fitScore(map, envelope, out, o.contrast);
+  out.score = fitScore(map, envelope, out, o.contrast, o.normal);
   out.shift = o.reach * Math.sqrt(x[0] * x[0] + x[1] * x[1] + x[2] * x[2]);
   out.angle = o.turn * Math.sqrt(x[3] * x[3] + x[4] * x[4] + x[5] * x[5]);
   g.map = undefined;
@@ -618,13 +752,20 @@ const cellKey = (i: number, j: number, k: number) => `${i},${j},${k}`;
  * Grown copies (their poses in the scene, in their rule's order) each fitted within `o`'s reach, kept when their score
  * is at least `threshold` and their center farther than `apart` from every copy kept before (and from `from`, the
  * source: two copies in one site are one), until `count` are kept (none: all of them). Each copy fitted from its rule's
- * pose alone: the first kept are the same whatever the count (prefix-stable)
+ * pose alone: the first kept are the same whatever the count (prefix-stable). On a surface, `normals` (its normal at
+ * each copy, x, y, z each; 0, 0, 0 for none): each kept on it (`FitOptions.normal`)
  */
 export function fitGrown(
   map: FitMap,
   envelope: FitEnvelope,
   poses: { readonly positions: ArrayLike<number>; readonly rotations: ArrayLike<number> },
-  o: FitOptions & { readonly threshold: number; readonly apart: number; readonly count?: number; readonly from?: Vec3 },
+  o: FitOptions & {
+    readonly threshold: number;
+    readonly apart: number;
+    readonly count?: number;
+    readonly from?: Vec3;
+    readonly normals?: ArrayLike<number>;
+  },
 ): FittedCopies {
   const out: FittedCopies = { positions: [], rotations: [], fit: { score: [], shift: [], angle: [] } };
   const cell = Math.max(o.apart, 1e-3);
@@ -654,6 +795,7 @@ export function fitGrown(
   const position = Vec3();
   const rotation = Quat();
   const pose = { position, rotation };
+  const normal = Vec3();
   const n = Math.floor(poses.positions.length / 3);
   for (let i = 0; i < n && (o.count === undefined || out.positions.length / 3 < o.count); ++i) {
     Vec3.set(position, poses.positions[i * 3], poses.positions[i * 3 + 1], poses.positions[i * 3 + 2]);
@@ -664,7 +806,8 @@ export function fitGrown(
       poses.rotations[i * 4 + 2] ?? 0,
       poses.rotations[i * 4 + 3] ?? 1,
     );
-    const r = fitPose(map, envelope, pose, o);
+    const on = !!o.normals && normalAt(normal, o.normals, i);
+    const r = fitPose(map, envelope, pose, on ? { ...o, normal } : { ...o, normal: undefined });
     if (!(r.score >= o.threshold) || crowded(r.position)) continue;
     add(r.position);
     out.positions.push(r.position[0], r.position[1], r.position[2]);
@@ -676,6 +819,16 @@ export function fitGrown(
   return out;
 }
 
+/** The unit normal `i` of normals (x, y, z each) into `out`; false for none there (0, 0, 0 or not given) */
+function normalAt(out: Vec3, normals: ArrayLike<number>, i: number): boolean {
+  if (normals.length < i * 3 + 3) return false;
+  Vec3.set(out, normals[i * 3], normals[i * 3 + 1], normals[i * 3 + 2]);
+  const l = Vec3.magnitude(out);
+  if (!(l > 1e-9)) return false;
+  Vec3.scale(out, out, 1 / l);
+  return true;
+}
+
 /** A stroke's copies' fit (`PaintStroke.fit`): each copy's, and the volume's name (the copies stay without it) */
 export interface StrokeFit extends CopiesFit {
   readonly volume: string;
@@ -683,7 +836,8 @@ export interface StrokeFit extends CopiesFit {
 
 /**
  * Copies of a list's frame (positions, rotations: a stroke's) each fitted in the scene (the list's move and scale put
- * them where they are drawn), in place, back in the list's frame; their fit
+ * them where they are drawn), in place, back in the list's frame; their fit. On a surface, `normals` (in the scene, x,
+ * y, z a copy): each kept on it (`FitOptions.normal`)
  */
 export function fitCopies(
   map: FitMap | undefined,
@@ -692,16 +846,19 @@ export function fitCopies(
   positions: number[],
   rotations: number[],
   o: FitOptions,
+  normals?: ArrayLike<number>,
 ): CopiesFit {
   const out: CopiesFit = { score: [], shift: [], angle: [] };
   const p = [0, 0, 0];
   const q = [0, 0, 0, 1];
+  const normal = Vec3();
   for (let i = 0; i < positions.length / 3; ++i) {
     const pose = poseToScene(move, {
       position: Vec3.fromArray(Vec3(), positions, i * 3),
       rotation: Quat.fromArray(Quat(), rotations, i * 4),
     });
-    const r = fitPose(map, envelope, pose, o);
+    const on = !!normals && normalAt(normal, normals, i);
+    const r = fitPose(map, envelope, pose, on ? { ...o, normal } : { ...o, normal: undefined });
     Vec3.toArray(r.position, p, 0);
     Quat.toArray(r.rotation, q, 0);
     toListFrame(move, p, undefined);
