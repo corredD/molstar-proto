@@ -570,7 +570,8 @@ const GrowModeChoices = [
   {
     id: 'helix',
     label: 'Helix',
-    title: "A new fiber from the source winding as a helix: on a mesh about its axis, on its surface; in space about the source's Fiber Axis",
+    title:
+      "A new fiber from the source winding as a helix: on a mesh about its axis, on its surface; in space about the source's Fiber Axis",
   },
   { id: 'crystal', label: 'Crystal', title: "A lattice in the source's frame, each copy turned as the source" },
   { id: 'tiling', label: 'Tiling', title: "A plane of copies in the source's own plane, ring by ring" },

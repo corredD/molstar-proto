@@ -410,7 +410,11 @@ export function helixPath(
 function trimStart(path: number[], values: number[] | undefined, length: number, valuesOut?: number[]): number[] {
   let walked = 0;
   for (let i = 1; i < path.length / 3; ++i) {
-    const len = Math.hypot(path[i * 3] - path[i * 3 - 3], path[i * 3 + 1] - path[i * 3 - 2], path[i * 3 + 2] - path[i * 3 - 1]);
+    const len = Math.hypot(
+      path[i * 3] - path[i * 3 - 3],
+      path[i * 3 + 1] - path[i * 3 - 2],
+      path[i * 3 + 2] - path[i * 3 - 1],
+    );
     if (walked + len < length) {
       walked += len;
       continue;

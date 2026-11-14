@@ -642,7 +642,10 @@ describe('mesoscale.grow helix', () => {
     expectOk(r);
     expect(steps(v)).toBe(before + 1);
     const [stroke] = strokes(v);
-    expect(stroke).toMatchObject({ fiber: true, grow: { mode: 'helix', params: { pitch: 40, turns: 3, hand: 'right' } } });
+    expect(stroke).toMatchObject({
+      fiber: true,
+      grow: { mode: 'helix', params: { pitch: 40, turns: 3, hand: 'right' } },
+    });
     // the path: a point and the one a turn later (72 points of 5°) Pitch apart along z (its last at Turns, nearer)
     const ps = stroke.positions;
     for (let i = 0; i + 72 < ps.length / 3 - 1; ++i) {
@@ -694,7 +697,7 @@ describe('mesoscale.grow helix', () => {
     for (let i = 7; i < list.count; ++i) expect(offZ(xyz(list, i), Vec3.create(45, 0, 0))).toBeCloseTo(15, 1);
   });
 
-  it("spirals over a vesicle about its axis (Z) to its pole, each unit on it, its normals kept", async () => {
+  it('spirals over a vesicle about its axis (Z) to its pole, each unit on it, its normals kept', async () => {
     const v = await viewer();
     const ref = entry(v).cell.transform.ref;
     // CA (#2) at (20, 0, 0) on a vesicle of 100 Å about (-80, 0, 0): on its equator about z
