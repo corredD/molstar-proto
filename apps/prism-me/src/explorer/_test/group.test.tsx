@@ -8,7 +8,7 @@
  */
 
 import { CustomProperties } from '@molstar/model/model/custom-property';
-import type { ParticleList } from '@molstar/model/model/particles/particle-list';
+import { Particle, type ParticleList } from '@molstar/model/model/particles/particle-list';
 import { PluginStateObject as SO, PluginStateTransform } from '@molstar/plugin/state/objects';
 import { ShellModel } from '@molstar/prism-ui/shell/shell';
 import { DefaultPrismViewerSpec } from '@molstar/prism-viewer/default-spec';
@@ -18,6 +18,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { MesoscaleExplorerExtensions } from '../../extensions.js';
 import { explorerUI, ungroupMenuItem } from '../ui.js';
 import { nodeMenuItems } from '../menu.js';
+import { OrderedSet } from '@molstar/core/data/int';
+import { ButtonsType, EmptyKeyInput, ModifiersKeys } from '@molstar/core/util/input/input-observer';
 
 // Groups in the explorer (progress/2026-11-13-paint-group.md): a list's Group section picks instances and makes a group
 // (one step), the group a row of the list ("Group 1 · 2 members") with Paint with, and a group copy's particle has
@@ -177,5 +179,26 @@ describe('Group', () => {
     await new Promise((r) => setTimeout(r, 100));
     const titles = Array.from(host.querySelectorAll('button[aria-expanded]')).map((b) => b.textContent?.trim());
     expect(titles.filter((t) => ['Look', 'Labels', 'Grow', 'Clips', 'Decoration'].includes(t ?? ''))).toEqual([]);
+  });
+
+  it('takes a click on a particle while picking (the tree does not follow it); Esc stops (review S6)', async () => {
+    const { v, hiv } = await viewer();
+    mountScene(v);
+    const m = v.api.mesoscale!;
+    m.startGroupPick(hiv);
+    const data = (
+      v.plugin.managers.particles.hierarchy.current.lists[0].representations[0].cell.obj!.data as unknown as {
+        sourceData: ParticleList;
+      }
+    ).sourceData;
+    v.plugin.behaviors.interaction.click.next({
+      current: { loci: Particle.Loci(data, OrderedSet.ofSingleton(2)) },
+      buttons: ButtonsType.Flag.Primary,
+      button: ButtonsType.Flag.Primary,
+      modifiers: ModifiersKeys.create(),
+    });
+    expect(m.groupPick.state.value?.instances).toEqual([{ first: 2, count: 1 }]);
+    v.plugin.behaviors.interaction.key.next({ ...EmptyKeyInput, key: 'Escape', code: 'Escape' });
+    expect(m.groupPick.state.value).toBeUndefined();
   });
 });

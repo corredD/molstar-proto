@@ -444,7 +444,8 @@ export const Sections: readonly Section[] = [
     id: 'group',
     title: 'Group',
     when: ({ api, picked }) =>
-      !!api.mesoscale && !!picked.node && (picked.kind === 'mesoscale model' || picked.kind === 'particle list'),
+      // a model (a list with entities: its groups are rows of it; review S3)
+      !!api.mesoscale && !!picked.node && picked.kind === 'mesoscale model',
     render: ({ api, picked }) => <GroupProps api={api} particles={picked.node!.ref} />,
   },
   {
