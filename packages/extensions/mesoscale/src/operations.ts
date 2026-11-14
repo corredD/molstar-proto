@@ -79,6 +79,7 @@ import {
   HelixAxes,
   type HelixAxis,
   helixPath,
+  spiralPath,
   SurfaceHit,
   type ListMove,
   offsetPose,
@@ -290,6 +291,7 @@ export function growParams(source: GrowSource, s: GrowSettings) {
   const own: Record<GrowMode, readonly (keyof GrowSettings)[]> = {
     walk: ['steps', 'persistence', 'rise', 'twist', 'jitter'],
     helix: ['pitch', 'turns', 'hand', 'direction', 'axis', 'helixRadius', 'rise', 'twist', 'jitter'],
+    spiral: ['spacing', 'turns', 'hand', 'rise', 'twist', 'jitter'],
     crystal: ['a', 'b', 'c', 'alpha', 'beta', 'gamma', 'na', 'nb', 'nc'],
     tiling: ['pattern', 'spacing', 'rings'],
     sphere: ['count', 'radius', 'turn'],
@@ -1238,6 +1240,7 @@ export class MesoscaleApi extends ApiArea {
         [
           ['walk', 'Random walk: a new fiber from the source'],
           ['helix', 'Helix: a new fiber from the source winding as a helix (on a mesh, about its axis)'],
+          ['spiral', 'Spiral: a new fiber winding flat outward from the source, its center (on a mesh, over it)'],
           ['crystal', "Crystal: a lattice in the source's frame"],
           ['tiling', "Tiling: a plane of copies in the source's own plane"],
           ['sphere', 'Sphere: copies at random in a ball about the source'],
@@ -1257,7 +1260,7 @@ export class MesoscaleApi extends ApiArea {
         ),
       ),
       turns: OptionalParam(
-        PD.Numeric(5, { min: 0, max: MaxHelixTurns, step: 0.1 }, { description: 'Helix: its turns' }),
+        PD.Numeric(5, { min: 0, max: MaxHelixTurns, step: 0.1 }, { description: 'Helix, Spiral: its turns' }),
       ),
       hand: OptionalParam(
         PD.Select(
@@ -1266,7 +1269,7 @@ export class MesoscaleApi extends ApiArea {
             ['right', 'Right-handed'],
             ['left', 'Left-handed'],
           ] as const,
-          { description: 'Helix: its hand' },
+          { description: 'Helix, Spiral: its hand (Spiral: right, counterclockwise about its normal)' },
         ),
       ),
       direction: OptionalParam(
@@ -1295,7 +1298,7 @@ export class MesoscaleApi extends ApiArea {
           },
         ),
       ),
-      ...WalkFiberParams('Random walk, Helix: '),
+      ...WalkFiberParams('Random walk, Helix, Spiral: '),
       ...CellParams,
       pattern: OptionalParam(
         PD.Select('hex', [
@@ -1304,7 +1307,11 @@ export class MesoscaleApi extends ApiArea {
         ] as const),
       ),
       spacing: OptionalParam(
-        PD.Numeric(0, { min: 0, step: 0.1 }, { description: "Tiling: between copies, Å; absent: the copy's diameter" }),
+        PD.Numeric(
+          0,
+          { min: 0, step: 0.1 },
+          { description: "Tiling: between copies; Spiral: between its arms, Å; absent: the copy's diameter" },
+        ),
       ),
       rings: OptionalParam(
         PD.Numeric(3, { min: 0, max: 50, step: 1 }, { description: 'Tiling: rings about the source' }),
@@ -1331,7 +1338,7 @@ export class MesoscaleApi extends ApiArea {
       mesh: OptionalParam(
         PD.Text('', {
           description:
-            'Grow on a mesh of the scene (OBJ, PLY, VTP) by state ref or file name: Tiling, Random walk, Helix, Sphere; absent: in space',
+            'Grow on a mesh of the scene (OBJ, PLY, VTP) by state ref or file name: Tiling, Random walk, Helix, Spiral, Sphere; absent: in space',
         }),
       ),
       replace: OptionalParam(
@@ -1509,6 +1516,37 @@ export class MesoscaleApi extends ApiArea {
             path = walkPath(pose, axis, rise, p, seed);
           }
           Object.assign(sizes, p);
+        } else if (mode === 'spiral') {
+          // a flat spiral from the source (round 3), in the scene (its spacing as drawn), then in the list's frame; its
+          // plane's normal the copy's axis by paint's rule (a membrane protein's +z, else its Fiber Axis, else +z)
+          const p = { spacing: v.spacing ?? diameter, turns: v.turns ?? 5, hand: v.hand ?? 'right' };
+          if (!(p.spacing > 0)) return ApiResult.fail('invalid', 'The spacing is above 0 Å.');
+          if (!(p.turns > 0)) return ApiResult.fail('invalid', 'Give a turn or a part of one.');
+          if (p.turns > MaxHelixTurns) return ApiResult.fail('invalid', `Give ${MaxHelixTurns} turns or fewer.`);
+          const scaled = rise * (move?.scale ?? 1);
+          // its length (π × Spacing × Turns², about) at the cap before it is made, in space; on a mesh it stops there
+          if (!on && (Math.PI * p.spacing * p.turns * p.turns) / scaled + 1 > MaxGrown) {
+            return tooMany(Math.floor((Math.PI * p.spacing * p.turns * p.turns) / scaled) + 1);
+          }
+          const limit = (MaxGrown + 1) * scaled;
+          if (on) {
+            normals = [];
+            path = spiralPath(scene, surfaceAxis(), scaled, { ...p, limit }, on, normals);
+            if (!path) return offMesh();
+          } else {
+            path = spiralPath(scene, surfaceAxis(), scaled, { ...p, limit });
+          }
+          Object.assign(sizes, p);
+          toListFrame(move, path, normals);
+          units = Math.floor(pathLength(path) / rise + 1e-6) + 1;
+          if (units > MaxGrown) return tooMany(units);
+          if (units < 2) {
+            return ApiResult.fail(
+              'invalid',
+              `The spiral is shorter than two units ${round1(rise)} Å (its rise) apart${on ? `, or it leaves ${mesh!.label} at once` : ''}.`,
+              'More turns, a wider spacing or a shorter rise.',
+            );
+          }
         } else {
           // a helix (grow-helix), in the scene (its pitch and radius as drawn), then in the list's frame
           const p = {

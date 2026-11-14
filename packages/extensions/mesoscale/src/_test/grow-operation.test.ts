@@ -1054,3 +1054,73 @@ describe('grows from painted copies when the strokes before them change', () => 
     expect(sources(v)).toEqual([2, 8, 13]);
   });
 });
+
+// Grow › Spiral (grow-helix round 3): a fiber stroke as the walk's and the helix's, its path a flat spiral from the source.
+
+describe('mesoscale.grow spiral', () => {
+  it('winds a fiber flat about the source in its plane, Spacing a turn; one step, undo, redo; more turns continue it', async () => {
+    const v = await viewer();
+    const ref = entry(v).cell.transform.ref;
+    // NC (#3) at (30, 0, 0), unturned, its Fiber Axis z: the spiral in z = 0 about it
+    expectOk(await v.api.run('mesoscale.fiber', { entity: 'NC', axis: 'z' }));
+    const spiral = { particles: ref, index: 3, mode: 'spiral', spacing: 20, turns: 3, rise: 5, seed: 1 };
+    const before = steps(v);
+    const r = await v.api.run('mesoscale.grow', spiral);
+    expectOk(r);
+    expect(steps(v)).toBe(before + 1);
+    expect(strokes(v)[0]).toMatchObject({
+      fiber: true,
+      grow: { mode: 'spiral', params: { spacing: 20, turns: 3, hand: 'right' } },
+    });
+    const list = drawn(v);
+    expect((r.value as { count: number }).count).toBe(list.count - 7);
+    const centre = Vec3.create(30, 0, 0);
+    let far = 0;
+    for (let i = 7; i < list.count; ++i) {
+      expect(xyz(list, i)[2]).toBeCloseTo(0, 4);
+      far = Math.max(far, Vec3.distance(xyz(list, i), centre));
+      if (i > 7) expect(Vec3.distance(xyz(list, i), xyz(list, i - 1))).toBeLessThanOrEqual(5 + 1e-3);
+    }
+    // three turns of 20 Å: out to 60 Å; no unit on the source
+    expect(far).toBeCloseTo(60, 0);
+    expect(Vec3.distance(xyz(list, 7), centre)).toBeGreaterThan(3);
+    const first = Array.from(list.coordinates.slice(21, list.count * 3));
+    expectOk(await v.api.run('history.undo', {}));
+    expect(drawn(v).count).toBe(7);
+    expectOk(await v.api.run('history.redo', {}));
+    expect(drawn(v).count).toBe(list.count);
+    // live: more turns continue it, its units where they were
+    const id = (r.value as { id: number }).id;
+    expectOk(await v.api.run('mesoscale.grow', { ...spiral, turns: 5, replace: id }));
+    expect(drawn(v).count).toBeGreaterThan(list.count);
+    expect(Array.from(drawn(v).coordinates.slice(21, list.count * 3))).toEqual(first);
+    // another Spacing: another spiral, the same grow
+    expectOk(await v.api.run('mesoscale.grow', { ...spiral, spacing: 30, replace: id }));
+    expect(strokes(v).length).toBe(1);
+    expect(strokes(v)[0].grow).toMatchObject({ params: { spacing: 30 } });
+    // Clear takes it
+    expectOk(await v.api.run('mesoscale.clear-grown', { particles: ref, index: 3 }));
+    expect(drawn(v).count).toBe(7);
+  });
+
+  it('rolls over a vesicle from the source, each unit on it, its normals kept; refuses no spacing or turns', async () => {
+    const v = await viewer();
+    const ref = entry(v).cell.transform.ref;
+    expectOk(await v.api.load.files({ files: [new File([sphereObj(100, Vec3.create(-80, 0, 0))], 'vesicle.obj')] }));
+    const { repr } = meshCells(v);
+    const grow = (p: object) =>
+      v.api.run('mesoscale.grow', { particles: ref, index: 2, mesh: repr, mode: 'spiral', rise: 8, ...p });
+    expectOk(await grow({ spacing: 20, turns: 3 }));
+    expect(strokes(v)[0].normals?.length).toBe(strokes(v)[0].positions.length);
+    const list = drawn(v);
+    for (let i = 7; i < list.count; ++i) {
+      expect(Vec3.distance(xyz(list, i), Vec3.create(-80, 0, 0))).toBeGreaterThan(99.4);
+      expect(Vec3.distance(xyz(list, i), Vec3.create(-80, 0, 0))).toBeLessThan(100.001);
+    }
+    const s = steps(v);
+    expect(await grow({ spacing: 0 })).toMatchObject({ ok: false, code: 'invalid' });
+    expect(await grow({ turns: 0 })).toMatchObject({ ok: false, code: 'invalid' });
+    expect(await grow({ turns: 201 })).toMatchObject({ ok: false, code: 'invalid' });
+    expect(steps(v)).toBe(s);
+  });
+});
