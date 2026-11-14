@@ -503,6 +503,14 @@ describe('paint mode', () => {
     off.mode.stop();
   });
 
+  it('at a depth, a pick not read yet still shows the copy, at the depth it has (review 8)', async () => {
+    const { mode, copy } = setup(1000, { upright: false, pointerAt: [30, 20] });
+    mode.start(brush);
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    expect(copy.at).toEqual([30, -20, 0]);
+    mode.stop();
+  });
+
   it("the viewer's host knows where the pointer is over the canvas, from its last move in the page", () => {
     const canvas = document.createElement('canvas');
     document.body.append(canvas);

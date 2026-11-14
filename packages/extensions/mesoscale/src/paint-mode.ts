@@ -436,11 +436,9 @@ function paintLayer(mode: PaintMode, host: PaintHost, canvas: HTMLElement, brush
       // at the depth of what is under the pointer (paint-refine), unless Alt+wheel set it or a stroke is drawn
       if (!stroke && !held) {
         const d = pickedDepth(hoverX, hoverY);
-        if (d === 'pending') {
-          if (++retries < MaxPendingFrames) follow.request();
-          return;
-        }
-        if (d !== undefined && d !== depth) {
+        // not read yet: shown at the depth it has meanwhile (review 8), read again next frame
+        if (d === 'pending' && ++retries < MaxPendingFrames) follow.request();
+        if (d !== undefined && d !== 'pending' && d !== depth) {
           depth = d;
           hintNext.request();
         }
