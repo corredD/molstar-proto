@@ -92,7 +92,7 @@ Each lane: brief committed · steps · checks green · gate (reviewer, skeptic, 
 - [ ] Ludo's check in the app
 - [ ] merged into `me/mesoviewspec`
 - [ ] step 4: Ludo and David decide what a stroke is in the document (proposed in `mvs-spec-placement`: both)
-- [ ] the lane holds the old `me/paint`; `prism-me` (`0b89d57d4`, grow-mesh) not merged in: ask Ludo
+- [x] `prism-me` (`0b89d57d4`, grow-mesh) merged in (Ludo, 2026-11-13): `ed5eb0e5a`; owned lists still refused
 
 ### `mvs-spec-placement` ([progress](../apps/prism-me/progress/2026-11-13-mvs-spec-placement.md)), spec only
 
