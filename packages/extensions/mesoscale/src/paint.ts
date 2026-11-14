@@ -64,6 +64,11 @@ export interface PaintStroke {
    * it changes with them
    */
   readonly own?: Partial<Pick<FiberSettings, 'rise' | 'twist' | 'jitter'>>;
+  /**
+   * A fiber grown on a surface: the surface's normal at each point of its path (the list's frame; paint-refine round 2):
+   * its units' up (their offset direction) follows it, turned by the twist
+   */
+  readonly normals?: readonly number[];
 }
 
 /** A fiber's sequence or a range of it (Round 5): one-letter codes, 1-based, `end` inclusive */
@@ -175,10 +180,20 @@ export function lengthAlongAxis(target: ParticleTarget | undefined): number {
 }
 
 /** Points every `step` along a path (x, y, z each), by arc length from its first point; the path itself for no step */
-export function resamplePath(path: ArrayLike<number>, step: number): number[] {
+export function resamplePath(
+  path: ArrayLike<number>,
+  step: number,
+  /** Values at the path's points (3 a point: normals), interpolated at the new points into `valuesOut` */
+  values?: ArrayLike<number>,
+  valuesOut?: number[],
+): number[] {
   const k = Math.floor(path.length / 3);
-  if (!(step > 0) || k < 2) return Array.from(path).slice(0, k * 3);
+  if (!(step > 0) || k < 2) {
+    if (values && valuesOut) valuesOut.push(...Array.from(values).slice(0, k * 3));
+    return Array.from(path).slice(0, k * 3);
+  }
   const out = [path[0], path[1], path[2]];
+  if (values && valuesOut) valuesOut.push(values[0], values[1], values[2]);
   // how far along the current segment the next point is
   let next = step;
   let walked = 0;
@@ -194,6 +209,9 @@ export function resamplePath(path: ArrayLike<number>, step: number): number[] {
     while (next <= walked + len + 1e-6 * step) {
       const t = len > 0 ? Math.min(1, (next - walked) / len) : 0;
       out.push(ax + dx * t, ay + dy * t, az + dz * t);
+      if (values && valuesOut) {
+        for (let c = 0; c < 3; ++c) valuesOut.push(values[i * 3 - 3 + c] * (1 - t) + values[i * 3 + c] * t);
+      }
       next += step;
     }
     walked += len;
@@ -235,14 +253,21 @@ export function makeFiber(
   settings: FiberSettings,
   axis: Vec3,
   seed: number,
+  /** The surface's normal at each point of the path (a walk grown on a mesh): the units' up follows it */
+  normals?: ArrayLike<number>,
 ): { positions: number[]; rotations: number[] } {
   const kind = settings.axis ?? 'auto';
   const along = kind === 'auto' ? axis : UnitAxes[kind];
-  const positions = resamplePath(path, settings.rise);
-  const rotations = fiberRotations(positions, { axis: along, twist: settings.twist, jitter: settings.jitter }, seed);
+  const ups: number[] | undefined = normals ? [] : undefined;
+  const positions = resamplePath(path, settings.rise, normals, ups);
+  const dir = fiberOffsetDirection(Vec3(), kind, along);
+  const rotations = fiberRotations(
+    positions,
+    { axis: along, twist: settings.twist, jitter: settings.jitter, ...(ups ? { up: dir, ups } : {}) },
+    seed,
+  );
   const offset = settings.offset ?? 0;
   if (offset) {
-    const dir = fiberOffsetDirection(Vec3(), kind, along);
     const q = Quat();
     const d = Vec3();
     for (let i = 0; i < positions.length / 3; ++i) {
@@ -364,7 +389,7 @@ function makeFibers(
       axes.set(id, axis);
     }
     const settings = { ...fiberSettingsOf(list, id, s.target, given, structures), ...s.own };
-    const made = makeFiber(s.positions, settings, axis, s.seed ?? 0);
+    const made = makeFiber(s.positions, settings, axis, s.seed ?? 0, s.normals);
     // a bank's units only where the brush is an entity (a list without: its targets are its brushes)
     // and an entity of its own (review M2: -1, none, would give ids below the list's)
     const bank = list.entityInfo?.size && s.entity >= 0 && settings.bank !== 'none' ? settings.bank : undefined;
@@ -1016,7 +1041,15 @@ function readConvention(list: ParticleList, id: number): FiberConvention | undef
  */
 export function fiberRotations(
   positions: ArrayLike<number>,
-  c: Pick<FiberConvention, 'axis' | 'twist'> & { readonly jitter?: number },
+  c: Pick<FiberConvention, 'axis' | 'twist'> & {
+    readonly jitter?: number;
+    /**
+     * The unit's up (its offset direction, across `axis`) put along `ups` (3 a point: a surface's normals, paint-refine
+     * round 2) before its twist; without, the least turn of `axis` onto the path
+     */
+    readonly up?: Vec3;
+    readonly ups?: ArrayLike<number>;
+  },
   seed = 0,
 ): number[] {
   const k = Math.floor(positions.length / 3);
@@ -1038,6 +1071,7 @@ export function fiberRotations(
     Vec3.normalize(_n, _n);
     Quat.setAxisAngle(_spin, axis, (turn * Math.PI) / 180);
     Quat.rotationTo(_q, axis, _n);
+    if (c.up && c.ups) upAlong(_q, c.up, _n, c.ups, i);
     Quat.multiply(_q, _q, _spin);
     Quat.normalize(_q, _q);
     out[i * 4] = _q[0];
@@ -1046,6 +1080,25 @@ export function fiberRotations(
     out[i * 4 + 3] = _q[3];
   }
   return out;
+}
+
+const _u = Vec3();
+const _d = Vec3();
+const _c = Vec3();
+const _roll = Quat();
+/**
+ * `q` (the unit's axis already along the path `t`) rolled about `t` so its `up` lies along point `i` of `ups` made
+ * across `t`; as it is when that normal is along `t`
+ */
+function upAlong(q: Quat, up: Vec3, t: Vec3, ups: ArrayLike<number>, i: number) {
+  Vec3.set(_u, ups[i * 3], ups[i * 3 + 1], ups[i * 3 + 2]);
+  Vec3.scaleAndAdd(_u, _u, t, -Vec3.dot(_u, t));
+  if (Vec3.squaredMagnitude(_u) < 1e-12) return;
+  Vec3.normalize(_u, _u);
+  Vec3.transformQuat(_d, up, q);
+  const angle = Math.atan2(Vec3.dot(t, Vec3.cross(_c, _d, _u)), Vec3.dot(_d, _u));
+  Quat.setAxisAngle(_roll, t, angle);
+  Quat.multiply(q, _roll, q);
 }
 
 // --- The operation's helpers (`mesoscale.paint`) ---------------------------------------------------------------------

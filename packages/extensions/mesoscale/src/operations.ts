@@ -1252,6 +1252,8 @@ export class MesoscaleApi extends ApiArea {
       let made: GrowPoses | undefined;
       let path: number[] | undefined;
       let own: PaintStroke['own'] = {};
+      /** A walk's surface normals a point (on a mesh): its units' up follows them (paint-refine round 2) */
+      let normals: number[] | undefined;
       if (mode === 'crystal') {
         const p = {
           a: v.a ?? diameter,
@@ -1315,13 +1317,14 @@ export class MesoscaleApi extends ApiArea {
             : (fiberConventionOf(data, id)?.axis ?? principalAxisOf(data.targetMapping?.get(target)));
         if (on) {
           // on a mesh, in the scene: the rise as drawn (the list's units times its scale), then back in the list's frame
-          path = walkPath(scene, axis, rise * (move?.scale ?? 1), p, seed, on);
+          normals = [];
+          path = walkPath(scene, axis, rise * (move?.scale ?? 1), p, seed, on, normals);
           if (!path) return offMesh();
           // a walk that left the mesh at once (an open edge: review M1)
           if (path.length < 6) {
             return ApiResult.fail('invalid', `The walk leaves ${mesh!.label} at once.`, 'Grow from further in.');
           }
-          toListFrame(move, path, undefined);
+          toListFrame(move, path, normals);
         } else {
           path = walkPath(pose, axis, rise, p, seed);
         }
@@ -1337,7 +1340,9 @@ export class MesoscaleApi extends ApiArea {
         compartment,
         positions: path ?? made!.positions,
         rotations: path ? [] : made!.rotations,
-        ...(path ? { fiber: true, seed, ...(Object.keys(own).length ? { own } : {}) } : {}),
+        ...(path
+          ? { fiber: true, seed, ...(Object.keys(own).length ? { own } : {}), ...(normals ? { normals } : {}) }
+          : {}),
         grow: {
           mode,
           params: sizes,

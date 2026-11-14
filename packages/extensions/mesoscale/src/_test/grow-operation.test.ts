@@ -445,6 +445,26 @@ describe('mesoscale.grow on a mesh', () => {
     }
   });
 
+  it("a walk on a mesh (paint-refine round 2): its units' up (their offset) along the normal, turned by the twist", async () => {
+    const v = await viewer();
+    const ref = entry(v).cell.transform.ref;
+    expectOk(await v.api.load.files({ files: [new File([sphereObj(100, Vec3.create(-80, 0, 0))], 'vesicle.obj')] }));
+    const { repr } = meshCells(v);
+    const centre = Vec3.create(-80, 0, 0);
+    // each unit 5 Å off the path along its up
+    expectOk(await v.api.run('mesoscale.fiber', { entity: 'CA', offset: 5 }));
+    const walk = { particles: ref, index: 2, mesh: repr, mode: 'walk', steps: 8, seed: 1 };
+    // no twist: every unit 5 Å off the surface, on one side
+    expectOk(await v.api.run('mesoscale.grow', { ...walk, twist: 0 }));
+    const off = (i: number) => Vec3.distance(xyz(drawn(v), i), centre) - 100;
+    const side = Math.sign(off(7));
+    for (let i = 7; i < 15; ++i) expect(off(i) * side).toBeCloseTo(5, 0);
+    expectOk(await v.api.run('history.undo', {}));
+    // half a turn a unit: the sides alternate
+    expectOk(await v.api.run('mesoscale.grow', { ...walk, twist: 180 }));
+    for (let i = 7; i < 15; ++i) expect(off(i) * side * (i % 2 ? 1 : -1)).toBeCloseTo(5, 0);
+  });
+
   it('refuses Crystal on a mesh, a mesh not in the scene, and a source off the mesh: no step', async () => {
     const v = await viewer();
     const ref = entry(v).cell.transform.ref;

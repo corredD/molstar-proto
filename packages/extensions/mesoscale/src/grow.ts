@@ -230,7 +230,9 @@ export function walkPath(
   p: WalkParams,
   seed: number,
   on: GrowOn | undefined,
+  normals?: number[],
 ): number[] | undefined;
+/** `normals`, on a surface: filled with its normal at each point (paint-refine round 2: the units' up follows it) */
 export function walkPath(
   source: GrowPose,
   axis: Vec3,
@@ -238,6 +240,7 @@ export function walkPath(
   p: WalkParams,
   seed: number,
   on?: GrowOn,
+  normals?: number[],
 ): number[] | undefined {
   const out: number[] = [];
   const d = Vec3.normalize(Vec3(), Vec3.transformQuat(Vec3(), axis, source.rotation));
@@ -269,6 +272,7 @@ export function walkPath(
       if (!tangent(d, n)) fiberOffsetDirection(d, 'auto', n);
     }
     out.push(at[0], at[1], at[2]);
+    if (on) normals?.push(n[0], n[1], n[2]);
   }
   return out;
 }

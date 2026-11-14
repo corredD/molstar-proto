@@ -220,7 +220,7 @@ const OrientChoices = [
 ];
 
 const OrientTitles: Record<string, string> = {
-  auto: "On a surface along its normal (+z, or the Fiber Axis when set), a membrane protein always; else at random",
+  auto: 'On a surface along its normal (+z, or the Fiber Axis when set), a membrane protein always; else at random',
   normal: "Each copy's +z (or its Fiber Axis when set) along the surface's normal",
   axis: "Each copy's principal axis along the surface's normal",
   view: "Each copy's +z toward the viewer",
