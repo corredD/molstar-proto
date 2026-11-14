@@ -530,21 +530,24 @@ describe('paint mode', () => {
     const canvas = document.createElement('canvas');
     document.body.append(canvas);
     vi.spyOn(canvas, 'getBoundingClientRect').mockReturnValue({ left: 100, top: 50 } as DOMRect);
-    let over = true;
-    vi.spyOn(canvas, 'matches').mockImplementation(() => over);
+    // what is under the point now (a menu over the canvas just closed: its :hover is not read again yet; review 11)
+    let under: Element | null = canvas;
+    vi.spyOn(canvas, 'matches').mockReturnValue(false);
+    Object.defineProperty(document, 'elementFromPoint', { configurable: true, value: () => under });
     const plugin = { canvas3dContext: { canvas } } as unknown as PluginContext;
     const host = pluginPaintHost(plugin, async () => ({ ok: true }));
     // no move yet: not known
     expect(host.pointer!()).toBeUndefined();
     document.dispatchEvent(new PointerEvent('pointermove', { clientX: 110, clientY: 70 }));
     expect(host.pointer!()).toEqual([10, 20]);
-    // elsewhere in the page: none
-    over = false;
+    // something else there (a panel): none
+    under = document.body;
     expect(host.pointer!()).toBeUndefined();
-    over = true;
+    under = canvas;
     host.dispose();
     document.dispatchEvent(new PointerEvent('pointermove', { clientX: 130, clientY: 70 }));
     expect(host.pointer!()).toEqual([10, 20]);
+    delete (document as { elementFromPoint?: unknown }).elementFromPoint;
   });
 
   it("a brush with fibers paints a fiber by default, its points its fibers' step apart; Fiber overrides it", () => {

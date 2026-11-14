@@ -106,7 +106,10 @@ export function pluginPaintHost(
     canvas: () => plugin.canvas3dContext?.canvas ?? undefined,
     pointer() {
       const canvas = plugin.canvas3dContext?.canvas;
-      if (!canvas || Number.isNaN(pointerX) || !canvas.matches(':hover')) return undefined;
+      if (!canvas || Number.isNaN(pointerX)) return undefined;
+      // what is there now: a menu over the canvas that just closed leaves its :hover stale (review 11)
+      const root = canvas.getRootNode() as Document | ShadowRoot;
+      if (root.elementFromPoint?.(pointerX, pointerY) !== canvas) return undefined;
       const rect = canvas.getBoundingClientRect();
       return [pointerX - rect.left, pointerY - rect.top];
     },
