@@ -286,6 +286,20 @@ export class CryoetApi extends ApiArea {
     );
   }
 
+  /** The volumes of the scene a mesh can be colored by (ref, label), following the state tree while watched */
+  volumesState(): ReadonlyState<readonly { ref: string; label: string }[]> {
+    const plugin = this.ctx.plugin;
+    return watchedState(
+      () =>
+        plugin.managers.volume.hierarchy.current.volumes.map((v) => ({
+          ref: v.cell.transform.ref,
+          label: entryLabel({ plugin }, v.cell),
+        })),
+      () => plugin.state.data.events.changed,
+      { compare: (a, b) => JSON.stringify(a) === JSON.stringify(b) },
+    );
+  }
+
   readonly meshes = this.operation({
     id: 'cryoet.meshes',
     title: 'Describe the segmentation meshes',
