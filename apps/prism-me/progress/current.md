@@ -80,9 +80,12 @@ is not built is [../TODO.md](../TODO.md).
     "Colours from meshes" on; Ludo 2026-11-10) built and gated at 0fa72ac06, pushed: parts named by file, de-duplicated,
     mapped by index; a part's own colour where its mesh gives no tint (coordinator's call, Ludo to confirm). Next on
     Ludo’s word: shells, the clip pop, the PR (rounds 4–9).
-  - Night lanes (Ludo, 2026-11-13; [plan](../plans/2026-11-13-night-lanes.md)): `decisions` (1369), `symmetry`
-    (1370), `paint-group` (1371), `density-fit` (1372) all done and gated, not merged; `me/night-integration` (1374,
-    local) merges the four, 644 tests. [Morning summary](2026-11-14-morning.md). Waits on Ludo's try and word to merge.
+- **Merged 2026-11-14** (Ludo's word): the night lanes (`decisions`, `symmetry`, `paint-group`, `density-fit`, via
+  `me/night-integration` with the surface fit) and `mesh-volume-color`, as `me/all` (a08cbf8e7, 834 tests); pushed,
+  published on mesoscope. [Morning summary](2026-11-14-morning.md). Worktrees kept until Ludo closes them.
+- **`mesh-volume-texture`** (Ludo, 2026-11-14; Opus, `~/prism-me-lanes/mesh-volume-texture`, port 1377): Color by ›
+  Volume with a Texture toggle (a 3D color grid sampled per pixel, the volume's detail on any mesh), At surface and
+  Projected; [brief](2026-11-14-mesh-volume-texture.md) on its branch. Running.
 - **Merged 2026-11-13**: `grow-helix` (Ludo's word, decisions doc point 10): Grow › Helix and Spiral (Archimedean,
   Count, Arm spacing, Step; crowded copies skipped), every Grow setting live on the last grow, Count prefix-stable, Clear;
   [progress](2026-11-13-grow-helix.md). Next: the night lanes ([plan](../plans/2026-11-13-night-lanes.md)).
