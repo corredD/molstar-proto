@@ -7,13 +7,14 @@
 import { it } from 'vitest';
 import { Quat, Vec3 } from '@molstar/core/math/linear-algebra';
 import { checkLinear, quadraticControl, scaling } from '../../../../sequences/core/_test/model/scaling.js';
-import { type GrowPose, type HelixParams, helixPath } from '../grow.js';
+import { type GrowPose, type HelixParams, helixPath, spiralPath } from '../grow.js';
 import { meshSurface } from '../mesh-surface.js';
-import { tubeMesh } from './fixtures.js';
+import { flatMesh, tubeMesh } from './fixtures.js';
 
 // A helix on a mesh of N turns (`test:scaling`; apps/prism-me/AGENTS.md, no accidental quadratic; grow-helix review
 // S3): a point every 5°, each projected onto the tube (a pick each), its normals kept and its first rise cut off, at n
-// and 4n turns. Its cost is its points' projections, whatever the rise.
+// and 4n turns. Its cost is its points' projections, whatever the rise. A spiral on a mesh of N copies (round 3,
+// review M1): its steps bounded by arc length, so its picks' reach does not grow as it goes out.
 
 const z = Vec3.create(0, 0, 1);
 // a tube of radius 50, long enough for 4n turns of 1 Å
@@ -39,4 +40,20 @@ it('a helix of N turns on a mesh', () => {
     20,
   );
   checkLinear('helixPath on a mesh, N turns', s);
+});
+
+it('a spiral of N copies on a mesh', () => {
+  const plane = meshSurface(flatMesh(400, 5));
+  const center: GrowPose = { position: Vec3.create(0, 0, 0), rotation: Quat.identity() };
+  const s = scaling(
+    {
+      setup: (n) => ({ count: n }),
+      run: ({ count }) => {
+        const path = spiralPath(center, z, { spacing: 5, step: 5, count, hand: 'right' }, { surface: plane, reach: 5 });
+        if (!path || path.length / 3 < 7 * count) throw new Error('short');
+      },
+    },
+    500,
+  );
+  checkLinear('spiralPath on a mesh, N copies', s);
 });

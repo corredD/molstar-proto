@@ -174,20 +174,6 @@ describe('spiral on a mesh', () => {
     expect(spiralPath(north, z, { ...p, count: 8000 }, { surface: vesicle, reach: 20 })).toEqual(path);
   });
 
-  it('costs about the same a copy however far out it goes (its steps bounded; review M1)', () => {
-    const plane = meshSurface(flatMesh(400, 5));
-    const source: GrowPose = { position: Vec3.create(0, 0, 0), rotation: Quat.identity() };
-    const time = (count: number) => {
-      const t0 = performance.now();
-      const path = spiralPath(source, z, { spacing: 5, step: 5, count, hand: 'right' }, { surface: plane, reach: 5 })!;
-      return { ms: performance.now() - t0, points: path.length / 3 };
-    };
-    time(200);
-    const [a, c] = [time(1000), time(4000)];
-    expect(c.points / a.points).toBeGreaterThan(3.5);
-    expect(c.ms / a.ms).toBeLessThan(8);
-  });
-
   it('is undefined for a source off the mesh', () => {
     const plane = meshSurface(flatMesh(4, 10));
     const far: GrowPose = { position: Vec3.create(0, 0, 50), rotation: Quat.identity() };
