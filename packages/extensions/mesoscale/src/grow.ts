@@ -5,14 +5,14 @@
  */
 
 import { Mat3, type Mat4, Quat, Vec3 } from '@molstar/core/math/linear-algebra';
-import { fiberOffsetDirection, paintRandom, paintRotation } from './paint.js';
+import { fiberOffsetDirection, paintRandom, paintRotation, resamplePath } from './paint.js';
 
 // Grow (apps/prism-me/progress/2026-11-11-grow.md; Ludo, 2026-11-11): copies of an instance by a rule, from its pose.
 // Each mode gives the copies' poses (positions in Å, unit quaternions x, y, z, w) from the source's; the copies go
 // exactly where the rule says, overlaps allowed. The source itself is never one of them.
 
 /** The modes of round 1 (Symmetry is round 2) */
-export const GrowModes = ['walk', 'crystal', 'tiling', 'sphere'] as const;
+export const GrowModes = ['walk', 'helix', 'spiral', 'crystal', 'tiling', 'sphere'] as const;
 export type GrowMode = (typeof GrowModes)[number];
 
 /** A copy's place: its position and its orientation */
@@ -63,6 +63,45 @@ export interface WalkParams {
   readonly steps: number;
   readonly persistence: number;
 }
+
+/**
+ * A helix (grow-helix): Pitch (Å along its axis a turn), Turns, its Hand (right: turning counterclockwise seen from
+ * where it goes) and Direction (up or down its axis from the source); in space, its Radius (Å)
+ */
+export interface HelixParams {
+  readonly pitch: number;
+  readonly turns: number;
+  readonly hand: 'right' | 'left';
+  readonly direction: 'up' | 'down';
+  readonly radius: number;
+  /** Its length at most (Å, from the source): it ends there whatever its turns (review M1: a grow's cap before it is made) */
+  readonly limit?: number;
+}
+
+/**
+ * A flat Archimedean spiral (grow-helix round 3; Ludo 2026-11-13: "the distance between arms, and the distance along
+ * the path between instances"): its arms `spacing` (Å) apart (its radius that more a turn, from 0 at the source),
+ * `count` copies `step` (Å) apart along it (the source copy 0, the first a Step from it), its Hand (right:
+ * counterclockwise about its normal)
+ */
+export interface SpiralParams {
+  readonly spacing: number;
+  readonly step: number;
+  readonly count: number;
+  readonly hand: 'right' | 'left';
+  /** Its units made at most, kept and skipped (a grow's cap; 3b review N1): its length that many Steps at most */
+  readonly units?: number;
+}
+
+/** The axis a helix winds about on a mesh (the scene's): a point of it and its unit direction, up */
+export interface HelixLine {
+  readonly center: Vec3;
+  readonly direction: Vec3;
+}
+
+/** The axes a helix on a mesh may take: Auto (the mesh's longest), View (toward the viewer), X, Y, Z */
+export const HelixAxes = ['auto', 'view', 'x', 'y', 'z'] as const;
+export type HelixAxis = (typeof HelixAxes)[number];
 
 /** What a grow did, kept with its stroke (`PaintStroke.grow`): its mode, its params, its seed and its source */
 export interface GrowRecord {
@@ -279,6 +318,381 @@ export function walkPath(
     if (on) normals?.push(n[0], n[1], n[2]);
   }
   return out;
+}
+
+/** A helix's angle a point of its path: 5° (its chords within 0.1 % of its radius; `makeFiber` places its units) */
+const HelixStep = Math.PI / 36;
+
+const _foot = Vec3();
+const _side = Vec3();
+const _u = Vec3();
+
+/**
+ * A helix from the source (a fiber's path, grow-helix): about a line along `d` (unit; up, the way it advances) through
+ * `foot` (the source's foot on it), the source at angle 0 (`e1`, unit, from the foot to the source), the angle turning
+ * counterclockwise about `d` for Hand right, Pitch along `d` a turn; a point every 5°, Turns turns.
+ * - In space (no `on`): about the source's Fiber Axis (`axis`, in its frame) a Radius away (along the axis's offset
+ *   direction, `fiberOffsetDirection`), the points on that cylinder.
+ * - On a surface (`on`): about `on.line` (the mesh's axis), from the source's point on the surface; each point brought
+ *   onto it along its radial line (`GrowSurface.project`, from the point a radius as the one before away, within half
+ *   that radius), its normal in `normals` (the source's side, then continuous). It ends where the surface does: no
+ *   point on that line (an open edge, a pole: the nearest is off it by more than a quarter of a step).
+ * The path starts a rise from the source along the helix (the source is on it, not one of its units). Undefined for a
+ * source off the surface; empty for a source on the axis.
+ */
+export function helixPath(source: GrowPose, axis: Vec3, rise: number, p: HelixParams): number[];
+export function helixPath(
+  source: GrowPose,
+  axis: Vec3,
+  rise: number,
+  p: HelixParams,
+  on: (GrowOn & { readonly line: HelixLine }) | undefined,
+  normals?: number[],
+): number[] | undefined;
+export function helixPath(
+  source: GrowPose,
+  axis: Vec3,
+  rise: number,
+  p: HelixParams,
+  on?: GrowOn & { readonly line: HelixLine },
+  normals?: number[],
+): number[] | undefined {
+  const start = Vec3.copy(Vec3(), source.position);
+  const n = Vec3();
+  const d = Vec3();
+  if (on) {
+    if (!on.surface.project(_hit, source.position, _zero, on.reach)) return undefined;
+    Vec3.copy(start, _hit.position);
+    Vec3.copy(n, _hit.normal);
+    // on the source's side, as the walk's (its axis along a surface: `on.axis`, else +z)
+    if (Vec3.dot(n, Vec3.transformQuat(_t, on.axis ?? _up, source.rotation)) < -1e-3) Vec3.negate(n, n);
+    Vec3.normalize(d, on.line.direction);
+    Vec3.sub(_t, start, on.line.center);
+    Vec3.scaleAndAdd(_foot, on.line.center, d, Vec3.dot(_t, d));
+  } else {
+    Vec3.normalize(d, Vec3.transformQuat(d, axis, source.rotation));
+    const local = Vec3.normalize(Vec3(), axis);
+    Vec3.transformQuat(_t, fiberOffsetDirection(_t, 'auto', local), source.rotation);
+    Vec3.scaleAndAdd(_foot, start, _t, p.radius);
+  }
+  if (p.direction === 'down') Vec3.negate(d, d);
+  const e1 = Vec3.sub(Vec3(), start, _foot);
+  let radius = Vec3.magnitude(e1);
+  if (!(radius > 1e-6 * Math.max(1, p.pitch))) return [];
+  Vec3.scale(e1, e1, 1 / radius);
+  Vec3.cross(_side, d, e1);
+  // the hand its own: right turns counterclockwise about the way it advances, whichever way that is
+  const sense = p.hand === 'left' ? -1 : 1;
+  const end = Math.max(0, p.turns) * 2 * Math.PI;
+  // in space, from a rise along the helix (its arc a radian is the same throughout); on a surface, from the source,
+  // then a rise cut off its path
+  const from = on ? 0 : rise / Math.hypot(radius, p.pitch / (2 * Math.PI));
+  if (from >= end) return [];
+  const all: number[] = [];
+  const ns: number[] | undefined = on ? [] : undefined;
+  let walked = 0;
+  // the angles of a grid from the source's, k × 5° (its first, `from`, apart), up to Turns: so more turns continue the
+  // path point for point and fewer cut it (round 2: a grow's count prefix-stable)
+  const first = Math.floor(from / HelixStep) + 1;
+  const last = Math.floor((end / HelixStep) * (1 + 1e-12));
+  for (let k = first - 1; k <= last; ++k) {
+    const i = k - first + 1;
+    const theta = i === 0 ? from : k * HelixStep;
+    Vec3.scale(_u, e1, Math.cos(theta));
+    Vec3.scaleAndAdd(_u, _u, _side, sense * Math.sin(theta));
+    // the axis's point at this height
+    Vec3.scaleAndAdd(_c, _foot, d, (p.pitch * theta) / (2 * Math.PI));
+    Vec3.scaleAndAdd(_p, _c, _u, radius);
+    if (on && i > 0) {
+      const chord = radius * HelixStep;
+      if (!on.surface.project(_hit, _p, _u, 0.5 * radius)) break;
+      // off the radial line: the surface's nearest point (an edge, past a pole), not on the line
+      Vec3.sub(_w, _hit.position, _p);
+      const along = Vec3.dot(_w, _u);
+      if (Vec3.magnitude(Vec3.scaleAndAdd(_w, _w, _u, -along)) > 0.25 * chord) break;
+      // within half the radius of the guess (the projection's reach): never at the axis
+      radius += along;
+      Vec3.copy(_p, _hit.position);
+      if (Vec3.dot(_hit.normal, n) < 0) Vec3.negate(_hit.normal, _hit.normal);
+      Vec3.copy(n, _hit.normal);
+    }
+    const m = all.length;
+    if (m) walked += Math.hypot(_p[0] - all[m - 3], _p[1] - all[m - 2], _p[2] - all[m - 1]);
+    all.push(_p[0], _p[1], _p[2]);
+    ns?.push(n[0], n[1], n[2]);
+    if (p.limit !== undefined && walked >= p.limit) break;
+  }
+  return on ? trimStart(all, ns, rise, normals) : all;
+}
+
+/** A spiral's point crowds an arm behind it closer than this share of its Arm spacing: it would cross it (round 3) */
+const SpiralCrowd = 0.6;
+/** Its arms' points along it nearer than this many Arm spacings are its own neighbours, not an arm behind */
+const SpiralAlong = 2;
+
+/** The arc length of the Archimedean spiral r = b·θ from 0 to θ */
+const spiralArc = (b: number, t: number) => (b / 2) * (t * Math.sqrt(1 + t * t) + Math.asinh(t));
+
+/** The angle of the spiral r = b·θ at arc length `s`, from `t` (Newton's, its arc's derivative b·√(1 + θ²)) */
+function spiralAngle(b: number, s: number, t: number) {
+  for (let i = 0; i < 32; ++i) {
+    const d = (spiralArc(b, t) - s) / (b * Math.sqrt(1 + t * t));
+    t = Math.max(0, t - d);
+    if (Math.abs(d) < 1e-14 * (1 + t)) break;
+  }
+  return t;
+}
+
+/** The turns an Archimedean spiral of arms `spacing` apart makes over a `length` from its center */
+export function spiralTurns(spacing: number, length: number): number {
+  const b = spacing / (2 * Math.PI);
+  return spiralAngle(b, length, Math.sqrt((2 * length) / b)) / (2 * Math.PI);
+}
+
+/**
+ * A flat Archimedean spiral from the source, its center, outward (a fiber's path, grow-helix round 3): its radius Arm
+ * spacing × θ / 2π, its points by arc length (a tenth of its radius, a quarter Step at most: `stepAt`), long
+ * enough for Count copies a Step apart (`makeFiber` places them): from a Step along it from the source (the source is
+ * copy 0) to half a Step past the last. It turns counterclockwise about its normal for Hand right; its normal the
+ * source's `axis` (in its frame), its angle 0 along that axis's offset direction (`fiberOffsetDirection`), turned.
+ * - In space (no `on`): in the source's plane.
+ * - On a surface (`on`): from the source's point on it, as the walk goes: each step the planar spiral's own (its length
+ *   and turn) in the tangent plane of the point before, projected onto the surface along its normal, the angle-0
+ *   direction carried from tangent plane to tangent plane: exact on a plane, a cylinder or a cone; on a surface curved
+ *   both ways its arms close up. Its normal in `normals` (the source's side, then continuous). It ends where the
+ *   surface does (no point, or the nearest a half step off: an open edge).
+ * Where it crosses an arm of its own (round a tube, on a closed surface; Ludo 2026-11-13: "Skip crowded, keep going"),
+ * a copy within 0.6 × Arm spacing of a copy kept more than 2 Arm spacings behind along it is skipped (`info.skip`, its
+ * index among its units) and it goes on to Count copies kept, its length 4 × Count × Step at most (a surface full
+ * ahead: fewer, `info.copies`). Its path ends half a Step past its last copy kept. Prefix-stable: its points, its
+ * units and its skips are the same for more Count, the further ones added.
+ * `info.turns`: the turns it reached. Undefined for a source off the surface.
+ */
+/** What a spiral made: the turns it reached, its copies kept and its units skipped (crowded) */
+export interface SpiralInfo {
+  turns: number;
+  copies?: number;
+  skip?: number[];
+}
+
+export function spiralPath(source: GrowPose, axis: Vec3, p: SpiralParams): number[];
+export function spiralPath(
+  source: GrowPose,
+  axis: Vec3,
+  p: SpiralParams,
+  on: GrowOn | undefined,
+  normals?: number[],
+  info?: SpiralInfo,
+): number[] | undefined;
+export function spiralPath(
+  source: GrowPose,
+  axis: Vec3,
+  p: SpiralParams,
+  on?: GrowOn,
+  normals?: number[],
+  info?: SpiralInfo,
+): number[] | undefined {
+  const local = Vec3.normalize(Vec3(), axis);
+  const n = Vec3.transformQuat(Vec3(), local, source.rotation);
+  const u = Vec3.transformQuat(Vec3(), fiberOffsetDirection(Vec3(), 'auto', local), source.rotation);
+  const at = Vec3.copy(Vec3(), source.position);
+  if (on) {
+    if (!on.surface.project(_hit, source.position, _zero, on.reach)) return undefined;
+    Vec3.copy(at, _hit.position);
+    const flip = Vec3.dot(_hit.normal, n) < -1e-3;
+    Vec3.copy(n, _hit.normal);
+    if (flip) Vec3.negate(n, n);
+    if (!tangent(u, n)) fiberOffsetDirection(u, 'auto', n);
+  }
+  const b = p.spacing / (2 * Math.PI);
+  const sense = p.hand === 'left' ? -1 : 1;
+  /**
+   * Its step along it at angle θ (by arc): a tenth of its radius there (b at least, at the center), a quarter Step at
+   * most; so its points follow its turns (some 63 a turn out where a Step is long) and are 4 a Step where its arms are
+   * wide (second review 1, N1): their number bounded by its turns and its Count, not by Step / Arm spacing
+   */
+  const stepAt = (t: number) => Math.min(p.step / 4, 0.1 * Math.max(b * t, b));
+  const count = Math.max(0, Math.floor(p.count));
+  // its length at most: Count copies, and as many again thrice for those skipped (a surface full ahead)
+  const bound = p.step + Math.min(4 * count, p.units ?? Number.POSITIVE_INFINITY) * p.step;
+  const all = [at[0], at[1], at[2]];
+  const ns: number[] | undefined = on ? [n[0], n[1], n[2]] : undefined;
+  const thetas = [0];
+  const along = [0];
+  const w = Vec3.cross(Vec3(), n, u);
+  let walked = 0;
+  let theta = 0;
+  let arc = 0;
+  let px = 0;
+  let py = 0;
+  let ended = !(p.step > 0 && b > 0);
+  /** Its path on to `length` along it (or its end): the same points whatever the length asked (prefix-stable) */
+  const extend = (length: number) => {
+    while (!ended && walked < length) {
+      const h = stepAt(theta);
+      arc += h;
+      const next = spiralAngle(b, arc, theta);
+      const r = b * next;
+      const qx = r * Math.cos(next);
+      const qy = sense * r * Math.sin(next);
+      if (on) {
+        // the planar step, in the tangent plane of the point before
+        Vec3.scale(_t, u, qx - px);
+        Vec3.scaleAndAdd(_t, _t, w, qy - py);
+        Vec3.add(_c, at, _t);
+        if (!on.surface.project(_hit, _c, n, 4 * h) || Vec3.distance(_hit.position, _c) > 0.5 * h) {
+          ended = true;
+          break;
+        }
+        if (Vec3.dot(_hit.normal, n) < 0) Vec3.negate(_hit.normal, _hit.normal);
+        walked += Vec3.distance(_hit.position, at);
+        Vec3.copy(at, _hit.position);
+        Vec3.copy(n, _hit.normal);
+        if (!tangent(u, n)) fiberOffsetDirection(u, 'auto', n);
+        Vec3.cross(w, n, u);
+      } else {
+        Vec3.scaleAndAdd(_p, source.position, u, qx);
+        Vec3.scaleAndAdd(_p, _p, w, qy);
+        walked += Vec3.distance(_p, at);
+        Vec3.copy(at, _p);
+      }
+      theta = next;
+      px = qx;
+      py = qy;
+      all.push(at[0], at[1], at[2]);
+      ns?.push(n[0], n[1], n[2]);
+      thetas.push(theta);
+      along.push(walked);
+    }
+  };
+  const crowd = SpiralCrowd * p.spacing;
+  // a copy kept more than 2 Arm spacings behind (i − j > that in Steps; 3b review 7)
+  const behind = Math.floor((SpiralAlong * p.spacing) / p.step);
+  let out: number[] = [];
+  let outNormals: number[] | undefined;
+  let skip: number[] = [];
+  let kept = 0;
+  let last = -1;
+  // the path long enough for Count copies, longer while some are skipped, to its bound
+  for (let length = Math.min(bound, p.step + count * p.step + p.step / 2); ; ) {
+    extend(length);
+    outNormals = normals ? [] : undefined;
+    out = trimStart(all, ns, p.step, outNormals);
+    const units = resamplePath(out, p.step);
+    // the copies kept by cell (of the crowding distance), filed once more than 2 Arm spacings behind along it
+    const cells = new Map<number, number[]>();
+    const cell = (x: number) => Math.floor(x / crowd);
+    const keptAt: number[] = [];
+    let filed = 0;
+    skip = [];
+    kept = 0;
+    last = -1;
+    for (let i = 0; i < units.length / 3 && kept < count; ++i) {
+      for (; filed < keptAt.length && keptAt[filed] < i - behind; ++filed) {
+        const o = keptAt[filed];
+        const key = cellKey(cell(units[o * 3]), cell(units[o * 3 + 1]), cell(units[o * 3 + 2]));
+        const list = cells.get(key);
+        if (list) list.push(o);
+        else cells.set(key, [o]);
+      }
+      const [x, y, zz] = [units[i * 3], units[i * 3 + 1], units[i * 3 + 2]];
+      let close = false;
+      for (let di = -1; di <= 1 && !close; ++di) {
+        for (let dj = -1; dj <= 1 && !close; ++dj) {
+          for (let dk = -1; dk <= 1 && !close; ++dk) {
+            for (const o of cells.get(cellKey(cell(x) + di, cell(y) + dj, cell(zz) + dk)) ?? []) {
+              const dx = units[o * 3] - x;
+              const dy = units[o * 3 + 1] - y;
+              const dz = units[o * 3 + 2] - zz;
+              if (dx * dx + dy * dy + dz * dz < crowd * crowd) {
+                close = true;
+                break;
+              }
+            }
+          }
+        }
+      }
+      if (close) {
+        skip.push(i);
+        continue;
+      }
+      keptAt.push(i);
+      ++kept;
+      last = i;
+    }
+    if (kept >= count || ended || length >= bound) break;
+    // on: as many again as are missing, and a half more
+    // (or twice as long: a few passes, whatever it skips; 3b review 3)
+    length = Math.min(bound, Math.max(2 * length, length + (count - kept) * p.step * 1.5 + p.step));
+  }
+  // to half a Step past its last copy kept; the skips before it
+  const end = Math.max(0, last) * p.step + p.step / 2;
+  const cut = trimEnd(out, outNormals, end);
+  if (normals && outNormals) for (let i = 0; i < cut; ++i) normals.push(outNormals[i]);
+  out.length = cut;
+  if (info) {
+    // the turns at its end (a Step from the source, then its length)
+    let k = 0;
+    while (k + 1 < along.length && along[k] < p.step + end) ++k;
+    info.turns = thetas[k] / (2 * Math.PI);
+    info.copies = kept;
+    info.skip = skip.filter((i) => i < last);
+  }
+  return out;
+}
+
+/** How much of a path (its numbers) is within a `length` along it, its last point moved to that length if past it */
+function trimEnd(path: number[], values: number[] | undefined, length: number): number {
+  let walked = 0;
+  for (let i = 1; i < path.length / 3; ++i) {
+    const len = Math.hypot(
+      path[i * 3] - path[i * 3 - 3],
+      path[i * 3 + 1] - path[i * 3 - 2],
+      path[i * 3 + 2] - path[i * 3 - 1],
+    );
+    if (walked + len <= length) {
+      walked += len;
+      continue;
+    }
+    const t = len > 0 ? (length - walked) / len : 0;
+    for (let c = 0; c < 3; ++c) {
+      path[i * 3 + c] = path[i * 3 - 3 + c] * (1 - t) + path[i * 3 + c] * t;
+      if (values) values[i * 3 + c] = values[i * 3 - 3 + c] * (1 - t) + values[i * 3 + c] * t;
+    }
+    return (i + 1) * 3;
+  }
+  return path.length;
+}
+
+/**
+ * The path from a `length` along it (arc length; the point there interpolated), its values (3 a point) likewise into
+ * `valuesOut`; empty when it is shorter
+ */
+function trimStart(path: number[], values: number[] | undefined, length: number, valuesOut?: number[]): number[] {
+  let walked = 0;
+  for (let i = 1; i < path.length / 3; ++i) {
+    const len = Math.hypot(
+      path[i * 3] - path[i * 3 - 3],
+      path[i * 3 + 1] - path[i * 3 - 2],
+      path[i * 3 + 2] - path[i * 3 - 1],
+    );
+    if (walked + len < length) {
+      walked += len;
+      continue;
+    }
+    const t = len > 0 ? (length - walked) / len : 0;
+    const lerp = (xs: number[]) => [0, 1, 2].map((c) => xs[i * 3 - 3 + c] * (1 - t) + xs[i * 3 + c] * t);
+    // the first point the one there, the next ones the path's after it (not stacked on it)
+    const next = t >= 1 - 1e-9 ? i + 1 : i;
+    const out = [...lerp(path), ...path.slice(next * 3)];
+    // one by one: a long path's values are more than a call takes as arguments (review M1)
+    if (values && valuesOut) {
+      valuesOut.push(...lerp(values));
+      for (let j = next * 3; j < values.length; ++j) valuesOut.push(values[j]);
+    }
+    return out;
+  }
+  return [];
 }
 
 // --- On a surface (progress/2026-11-13-grow-mesh.md) -------------------------------------------------------------------

@@ -120,6 +120,12 @@ maintainer first (2026-10-25). All are v6 (master); the MRC reader and the parti
 
 ## Backlog
 
+- **Grow › Helix, what it left** (lane `grow-helix`, 2026-11-13; progress/2026-11-13-grow-helix.md): the mesoscale
+  package's `test:scaling` tier does not start (its config's `heapTests` and the `*.scaling.ts` harness import
+  `sequences/core/_test/model/scaling.js` are gone: `@molstar/test-harness/scaling` now); `meshSurface.project`
+  allocates about 170 KB a pick (the helix's scaling guard; the walk and Tiling share it); `mesoscale.fiber` run before
+  a list's move was inserted put the painted copies above the move in a test (drawn unmoved; not checked in the app); a
+  helix's Turns only (the brief's "or the length the path reaches" not built).
 - **Paint, what rounds 1 and 2 left** (lane `paint`, 2026-11-08/09; progress/2026-11-08-paint.md): a fibre edited and
   wrapped on a surface after it is painted (round 2 paints a new one); collision checks (mesobuild's) so copies do not
   overlap; an eraser (a stroke removing copies) and a stroke's undo kept apart from the list's other edits; painting

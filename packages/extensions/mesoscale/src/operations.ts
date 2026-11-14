@@ -65,7 +65,9 @@ import {
   paintRotations,
   fiberAxisVector,
   principalAxisOf,
+  strokeCounts,
   toListFrame,
+  withStructures,
 } from './paint.js';
 import { FiberBankHelix, FiberBanks } from './fiber-units.js';
 import {
@@ -73,6 +75,12 @@ import {
   type GrowMode,
   type GrowOn,
   type GrowPoses,
+  type GrowRecord,
+  HelixAxes,
+  type HelixAxis,
+  helixPath,
+  type SpiralInfo,
+  spiralPath,
   SurfaceHit,
   type ListMove,
   offsetPose,
@@ -83,7 +91,7 @@ import {
   tilingTotal,
   walkPath,
 } from './grow.js';
-import { sceneMesh, sceneMeshes, sceneMeshSurface } from './mesh-surface.js';
+import { meshAxis, sceneMesh, sceneMeshes, sceneMeshSurface } from './mesh-surface.js';
 import { isMembranePath } from './pick-surface.js';
 import {
   findGroup,
@@ -246,7 +254,14 @@ export interface GrowSettings {
   readonly mesh?: string;
   /** Tiling on a mesh: its points, the source's counted; unset: the plane's for Rings */
   readonly tiles?: number;
-  /** A walk's own rise, twist and jitter (paint-refine); unset: the entity's */
+  /** A helix (grow-helix): its pitch (unset: 4 × the copy's diameter), turns, hand, direction, axis on a mesh, radius in space (unset: the copy's diameter) */
+  readonly pitch?: number;
+  readonly turns: number;
+  readonly hand: 'right' | 'left';
+  readonly direction: 'up' | 'down';
+  readonly axis: HelixAxis;
+  readonly helixRadius?: number;
+  /** A walk's, a helix's or a spiral's own rise (a spiral's Step), twist and jitter (paint-refine); unset: the entity's */
   readonly rise?: number;
   readonly twist?: number;
   readonly jitter?: number;
@@ -266,25 +281,44 @@ export const DefaultGrowSettings: GrowSettings = {
   rings: 3,
   count: 50,
   turn: 'random',
+  turns: 5,
+  hand: 'right',
+  direction: 'up',
+  axis: 'auto',
 };
 
 /** `mesoscale.grow`'s params of a source and the settings: the mode's own only */
 export function growParams(source: GrowSource, s: GrowSettings) {
   const own: Record<GrowMode, readonly (keyof GrowSettings)[]> = {
     walk: ['steps', 'persistence', 'rise', 'twist', 'jitter'],
+    helix: ['pitch', 'turns', 'hand', 'direction', 'axis', 'helixRadius', 'rise', 'twist', 'jitter'],
+    spiral: ['spacing', 'count', 'hand', 'rise', 'twist', 'jitter'],
     crystal: ['a', 'b', 'c', 'alpha', 'beta', 'gamma', 'na', 'nb', 'nc'],
     tiling: ['pattern', 'spacing', 'rings'],
     sphere: ['count', 'radius', 'turn'],
   };
   const out: Record<string, unknown> = { particles: source.particles, index: source.index, mode: s.mode };
   for (const k of [...own[s.mode], 'seed' as const]) if (s[k] !== undefined) out[k] = s[k];
-  // on a mesh (grow-mesh): a crystal grows in space; Tiling's Count
+  // on a mesh (grow-mesh): a crystal grows in space; Tiling's Count; a helix's axis there, its radius in space
   if (s.mesh && s.mode !== 'crystal') {
     out.mesh = s.mesh;
     if (s.mode === 'tiling' && s.tiles !== undefined) out.count = s.tiles;
-  }
+    delete out.helixRadius;
+  } else delete out.axis;
   return out;
 }
+
+/** A path's length (x, y, z a point) */
+function pathLength(ps: ArrayLike<number>) {
+  let length = 0;
+  for (let i = 3; i < ps.length; i += 3) {
+    length += Math.hypot(ps[i] - ps[i - 3], ps[i + 1] - ps[i - 2], ps[i + 2] - ps[i - 1]);
+  }
+  return length;
+}
+
+/** The most turns of a helix */
+const MaxHelixTurns = 200;
 
 /** The most copies one grow makes */
 const MaxGrown = 20000;
@@ -326,7 +360,7 @@ const WalkFiberParams = (what: string) => ({
     PD.Numeric(
       10,
       { min: 0.1, max: 1000, step: 0.1 },
-      { description: `${what}its units' rise, Å; absent: the entity's` },
+      { description: `${what}its units' rise (Spiral: its Step between copies along it), Å; absent: the entity's` },
     ),
   ),
   twist: OptionalParam(
@@ -418,7 +452,8 @@ export class MesoscaleApi extends ApiArea {
       }
       return;
     }
-    // a walk's rise, twist and jitter too: the new source's entity's (paint-refine, review 4)
+    // a walk's rise, twist and jitter too: the new source's entity's (paint-refine, review 4); a helix's pitch and
+    // radius (grow-helix review S1)
     const {
       a: _a,
       b: _b,
@@ -429,6 +464,8 @@ export class MesoscaleApi extends ApiArea {
       rise: _rise,
       twist: _t,
       jitter: _j,
+      pitch: _pitch,
+      helixRadius: _hr,
       ...kept
     } = this.growSettings.value;
     this.growSettings.set(mesh ? { ...kept, mesh } : kept);
@@ -461,10 +498,11 @@ export class MesoscaleApi extends ApiArea {
         const l = lists(ctx).find((x) => x.cell.transform.ref === s.particles);
         const src = l && growSourceOf(plugin.state.data, l, s.index);
         if (!src || isFailure(src)) return undefined;
-        const id = brushIdOf(src.data, src);
+        // as its fibers are drawn (round 2: not their step measured on the drawn list)
+        const id = brushIdOf(src.fibers, src);
         const structures = paintedStructures(plugin.state.data, s.particles);
         const fibers = paintedFibers(plugin.state.data, s.particles);
-        const { rise, twist, jitter } = fiberSettingsOf(src.data, id, src.target, fibers, structures);
+        const { rise, twist, jitter } = fiberSettingsOf(src.fibers, id, src.target, fibers, structures);
         return { ...s, name: `${src.name} #${s.index}`, radius: src.radius, rise, twist, jitter };
       },
       () => [plugin.state.data.events.changed, this.growSource.asReadonly],
@@ -485,14 +523,47 @@ export class MesoscaleApi extends ApiArea {
         const painted = at.value && decoratorUnder(state, at.value.particles, ParticleListPainted);
         const p = painted?.transform.params as PaintedParams | undefined;
         const stroke = p?.strokes.find((x) => x.fiber && x.grow?.id === at.value?.grow);
-        // the list as painted (a structure's target is there, as a grow's source reads it)
-        const data = painted?.obj?.data as ParticleList | undefined;
-        if (!stroke || !data) return undefined;
+        // the list its fibers are made from (a structure's target is there, as a grow's source reads it)
+        const drawn = painted?.obj?.data as ParticleList | undefined;
+        if (!stroke || !drawn) return undefined;
+        const data = fiberListOf(state, painted, drawn);
         const id = brushIdOf(data, stroke);
         return { ...fiberSettingsOf(data, id, stroke.target, p?.fibers, p?.structures), ...stroke.own };
       },
       () => [state.events.changed, at],
       { compare: (a, b) => JSON.stringify(a) === JSON.stringify(b) },
+    );
+  }
+
+  /** A grow's record while its stroke is there (round 2: the last grow live), following the state tree while watched */
+  grownState(
+    at: ReadonlyState<{ readonly particles: string; readonly grow: number } | undefined>,
+  ): ReadonlyState<GrowRecord | undefined> {
+    const state = this.ctx.plugin.state.data;
+    return watchedState(
+      () => {
+        const painted = at.value && decoratorUnder(state, at.value.particles, ParticleListPainted);
+        const strokes = (painted?.transform.params as PaintedParams | undefined)?.strokes;
+        return strokes?.find((x) => x.grow?.id === at.value?.grow)?.grow;
+      },
+      () => [state.events.changed, at],
+      { compare: (a, b) => JSON.stringify(a) === JSON.stringify(b) },
+    );
+  }
+
+  /**
+   * The grows from a source (round 2, Clear): its grow strokes, by its key (`GrowRecord.source.key`), following the state
+   * tree while watched
+   */
+  grownFromState(source: ReadonlyState<GrowSource | undefined>): ReadonlyState<number> {
+    const state = this.ctx.plugin.state.data;
+    return watchedState(
+      () => {
+        const at = source.value;
+        const l = at && lists(this.ctx).find((x) => x.cell.transform.ref === at.particles);
+        return (l && grownFrom(state, l, at.index)?.length) ?? 0;
+      },
+      () => [state.events.changed, source],
     );
   }
 
@@ -1154,9 +1225,10 @@ export class MesoscaleApi extends ApiArea {
    * Grow (progress/2026-11-11-grow.md; Ludo, 2026-11-11): copies of a particle (its index in the list as drawn) by a
    * rule from its pose, one stroke of the list's painted copies (one step). The copies go exactly where the rule says,
    * overlaps allowed. Crystal, Tiling and Sphere grow in the scene's Å from the source as its list's move and scale put
-   * it (before the offsets of its kind, which its copies take too); Random walk is a new fiber, in the list's frame.
-   * On a mesh (progress/2026-11-13-grow-mesh.md): Tiling, Random walk and Sphere grow on its surface in the scene (a
-   * walk's rise the list's times its scale, as drawn), each copy's axis along its normal; Crystal is refused.
+   * it (before the offsets of its kind, which its copies take too); Random walk is a new fiber, in the list's frame;
+   * Helix and Spiral new fibers made in the scene (their lengths as drawn), then in the list's frame (grow-helix).
+   * On a mesh (progress/2026-11-13-grow-mesh.md): Tiling, Random walk, Helix, Spiral and Sphere grow on its surface in the scene
+   * (a fiber's rise the list's times its scale, as drawn), each copy's axis along its normal; Crystal is refused.
    */
   readonly grow = this.operation({
     id: 'mesoscale.grow',
@@ -1168,6 +1240,8 @@ export class MesoscaleApi extends ApiArea {
         'crystal',
         [
           ['walk', 'Random walk: a new fiber from the source'],
+          ['helix', 'Helix: a new fiber from the source winding as a helix (on a mesh, about its axis)'],
+          ['spiral', 'Spiral: a new fiber winding flat outward from the source, its center (on a mesh, over it)'],
           ['crystal', "Crystal: a lattice in the source's frame"],
           ['tiling', "Tiling: a plane of copies in the source's own plane"],
           ['sphere', 'Sphere: copies at random in a ball about the source'],
@@ -1179,7 +1253,57 @@ export class MesoscaleApi extends ApiArea {
       persistence: OptionalParam(
         PD.Numeric(30, { min: 0, max: 180, step: 1 }, { description: 'Random walk: the most it turns a step, °' }),
       ),
-      ...WalkFiberParams('Random walk: '),
+      pitch: OptionalParam(
+        PD.Numeric(
+          0,
+          { min: 0, step: 0.1 },
+          { description: "Helix: along its axis a turn, Å; absent: 4 × the copy's diameter" },
+        ),
+      ),
+      turns: OptionalParam(
+        PD.Numeric(
+          5,
+          { min: 0, max: MaxHelixTurns, step: 0.1 },
+          { description: 'Helix: its turns (a Spiral: its Count and Step)' },
+        ),
+      ),
+      hand: OptionalParam(
+        PD.Select(
+          'right',
+          [
+            ['right', 'Right-handed'],
+            ['left', 'Left-handed'],
+          ] as const,
+          { description: 'Helix, Spiral: its hand (Spiral: right, counterclockwise about its normal)' },
+        ),
+      ),
+      direction: OptionalParam(
+        PD.Select(
+          'up',
+          [
+            ['up', 'Up the axis'],
+            ['down', 'Down the axis'],
+          ] as const,
+          { description: 'Helix: the way it goes along its axis from the source' },
+        ),
+      ),
+      axis: OptionalParam(
+        PD.Select('auto', PD.arrayToOptions(HelixAxes), {
+          description:
+            "Helix on a mesh: the axis it winds about, through the mesh's center (auto: its longest; view: toward the viewer)",
+        }),
+      ),
+      helixRadius: OptionalParam(
+        PD.Numeric(
+          0,
+          { min: 0, step: 0.1 },
+          {
+            description:
+              "Helix in space: its radius about the source's Fiber Axis, Å (the source on it); absent: the copy's diameter",
+          },
+        ),
+      ),
+      ...WalkFiberParams('Random walk, Helix, Spiral: '),
       ...CellParams,
       pattern: OptionalParam(
         PD.Select('hex', [
@@ -1188,7 +1312,11 @@ export class MesoscaleApi extends ApiArea {
         ] as const),
       ),
       spacing: OptionalParam(
-        PD.Numeric(0, { min: 0, step: 0.1 }, { description: "Tiling: between copies, Å; absent: the copy's diameter" }),
+        PD.Numeric(
+          0,
+          { min: 0, step: 0.1 },
+          { description: "Tiling: between copies; Spiral: between its arms, Å; absent: the copy's diameter" },
+        ),
       ),
       rings: OptionalParam(
         PD.Numeric(3, { min: 0, max: 50, step: 1 }, { description: 'Tiling: rings about the source' }),
@@ -1199,7 +1327,7 @@ export class MesoscaleApi extends ApiArea {
           { min: 1, step: 1 },
           {
             description:
-              "Sphere: its copies; Tiling on a mesh: its points, the source's counted (absent: the plane's for Rings)",
+              "Sphere, Spiral: its copies; Tiling on a mesh: its points, the source's counted (absent: the plane's for Rings)",
           },
         ),
       ),
@@ -1215,8 +1343,18 @@ export class MesoscaleApi extends ApiArea {
       mesh: OptionalParam(
         PD.Text('', {
           description:
-            'Grow on a mesh of the scene (OBJ, PLY, VTP) by state ref or file name: Tiling, Random walk, Sphere; absent: in space',
+            'Grow on a mesh of the scene (OBJ, PLY, VTP) by state ref or file name: Tiling, Random walk, Helix, Spiral, Sphere; absent: in space',
         }),
+      ),
+      replace: OptionalParam(
+        PD.Numeric(
+          0,
+          { step: 1 },
+          {
+            description:
+              "A grow of this source to make again by these params, in place (its id, `mesoscale.grow`'s value); its seed kept unless given",
+          },
+        ),
       ),
     },
     async run(values, ctx) {
@@ -1225,6 +1363,9 @@ export class MesoscaleApi extends ApiArea {
           pattern?: 'hex' | 'square';
           turn?: 'random' | 'source';
           mesh?: string;
+          hand?: 'right' | 'left';
+          direction?: 'up' | 'down';
+          axis?: HelixAxis;
         };
       const { particles, index, mode } = values;
       const l = oneList(ctx, particles || undefined);
@@ -1235,8 +1376,23 @@ export class MesoscaleApi extends ApiArea {
       const src = growSourceOf(state, l, index);
       if (isFailure(src)) return src;
       const { data, target, entity, compartment, radius, name, instance } = src;
-      const seed = v.seed ?? Math.floor(Math.random() * 2 ** 31);
-      const growId = Math.floor(Math.random() * 2 ** 31);
+      // a grow made again (round 2, the last grow live): its stroke, of this source; its seed and id kept
+      const old =
+        v.replace === undefined
+          ? undefined
+          : (
+              decoratorUnder(state, l.cell.transform.ref, ParticleListPainted)?.transform.params as
+                | PaintedParams
+                | undefined
+            )?.strokes.find((s) => s.grow?.id === v.replace);
+      if (v.replace !== undefined && !old) {
+        return ApiResult.fail('not-found', 'That grow is not there (undone, cleared or removed).');
+      }
+      if (old && old.grow!.source.key !== data.keys[index]) {
+        return ApiResult.fail('invalid', `That grow is not from ${name} #${index}.`);
+      }
+      const seed = v.seed ?? old?.grow?.seed ?? Math.floor(Math.random() * 2 ** 31);
+      const growId = old ? old.grow!.id! : Math.floor(Math.random() * 2 ** 31);
       const move = decoratorUnder(state, l.cell.transform.ref, ParticleListTransform)?.transform.params as
         | ListMove
         | undefined;
@@ -1274,12 +1430,16 @@ export class MesoscaleApi extends ApiArea {
           `${name} #${index} is not on ${mesh!.label} (none of it within ${Math.round(reach)} Å).`,
           'Grow from a copy painted on the mesh.',
         );
-      const sizes: Record<string, number> = {};
+      const sizes: Record<string, number | string> = {};
       let made: GrowPoses | undefined;
       let path: number[] | undefined;
       let own: PaintStroke['own'] = {};
       /** A walk's surface normals a point (on a mesh): its units' up follows them (paint-refine round 2) */
       let normals: number[] | undefined;
+      /** A fiber's units (`makeFiber`'s: its path's length a rise each), its count (review S2) */
+      let units: number | undefined;
+      /** A spiral's units skipped (crowding an arm of its own; round 3b) */
+      let skip: number[] | undefined;
       if (mode === 'crystal') {
         const p = {
           a: v.a ?? diameter,
@@ -1329,37 +1489,127 @@ export class MesoscaleApi extends ApiArea {
         if (!made) return offMesh();
         Object.assign(sizes, p);
       } else {
-        const p = { steps: Math.floor(v.steps ?? 20), persistence: v.persistence ?? 30 };
-        // a fiber of two points or more (a point alone would be a copy unturned; review N1)
-        if (!(p.steps >= 2)) return ApiResult.fail('invalid', 'Give 2 steps or more.');
-        if (p.steps > MaxGrown) return tooMany(p.steps);
         // a fiber of the source's: its rise and axis (its Fiber Axis, else its own fibers', else its principal axis;
         // as `makeFiber` turns its units, review S6), in the list's frame
-        const id = brushIdOf(data, { target, entity });
+        const base = src.fibers;
+        const id = brushIdOf(base, { target, entity });
         const structures = paintedStructures(state, l.cell.transform.ref);
-        const fiber = fiberSettingsOf(data, id, target, paintedFibers(state, l.cell.transform.ref), structures);
+        const fiber = fiberSettingsOf(base, id, target, paintedFibers(state, l.cell.transform.ref), structures);
         // its own rise, twist and jitter when given (paint-refine), else the entity's
-        own = ownFiberOf(v);
+        // made again: the fiber's own kept where not given (its rise set live by `grown-fiber`)
+        own = { ...(old?.fiber ? old.own : undefined), ...ownFiberOf(v) };
         if (own.rise !== undefined && !(own.rise > 0)) return ApiResult.fail('invalid', 'The rise is above 0 Å.');
         const rise = own.rise ?? fiber.rise;
         const axis =
           fiber.axis !== 'auto'
             ? Vec3.create(fiber.axis === 'x' ? 1 : 0, fiber.axis === 'y' ? 1 : 0, fiber.axis === 'z' ? 1 : 0)
-            : (fiberConventionOf(data, id)?.axis ?? principalAxisOf(data.targetMapping?.get(target)));
-        if (on) {
-          // on a mesh, in the scene: the rise as drawn (the list's units times its scale), then back in the list's frame
-          normals = [];
-          path = walkPath(scene, axis, rise * (move?.scale ?? 1), p, seed, { ...on, axis: surfaceAxis() }, normals);
-          if (!path) return offMesh();
-          // a walk that left the mesh at once (an open edge: review M1)
-          if (path.length < 6) {
-            return ApiResult.fail('invalid', `The walk leaves ${mesh!.label} at once.`, 'Grow from further in.');
+            : (fiberConventionOf(base, id)?.axis ?? principalAxisOf(base.targetMapping?.get(target)));
+        if (mode === 'walk') {
+          const p = { steps: Math.floor(v.steps ?? 20), persistence: v.persistence ?? 30 };
+          // a fiber of two points or more (a point alone would be a copy unturned; review N1)
+          if (!(p.steps >= 2)) return ApiResult.fail('invalid', 'Give 2 steps or more.');
+          if (p.steps > MaxGrown) return tooMany(p.steps);
+          if (on) {
+            // on a mesh, in the scene: the rise as drawn (the list's units times its scale), then back in the list's frame
+            normals = [];
+            path = walkPath(scene, axis, rise * (move?.scale ?? 1), p, seed, { ...on, axis: surfaceAxis() }, normals);
+            if (!path) return offMesh();
+            // a walk that left the mesh at once (an open edge: review M1)
+            if (path.length < 6) {
+              return ApiResult.fail('invalid', `The walk leaves ${mesh!.label} at once.`, 'Grow from further in.');
+            }
+            toListFrame(move, path, normals);
+          } else {
+            path = walkPath(pose, axis, rise, p, seed);
+          }
+          Object.assign(sizes, p);
+        } else if (mode === 'spiral') {
+          // a flat spiral from the source (round 3; Ludo: "the distance between arms, and the distance along the path
+          // between instances"): Count copies, its Step the fiber's rise, its arms Arm spacing apart; in the scene (as
+          // drawn), then in the list's frame; its plane's normal the copy's axis by paint's rule (a membrane protein's
+          // +z, else its Fiber Axis, else +z)
+          const p = { spacing: v.spacing ?? diameter, count: Math.floor(v.count ?? 50), hand: v.hand ?? 'right' };
+          if (!(p.spacing > 0)) return ApiResult.fail('invalid', 'The arm spacing is above 0 Å.');
+          if (!(p.count >= 2)) return ApiResult.fail('invalid', 'Give 2 copies or more.');
+          if (p.count > MaxGrown) return tooMany(p.count);
+          const scaled = rise * (move?.scale ?? 1);
+          const info: SpiralInfo = { turns: 0 };
+          // its units made (kept and skipped) as many as a grow makes at most (3b review N1)
+          const params = { ...p, step: scaled, units: MaxGrown };
+          if (on) {
+            normals = [];
+            path = spiralPath(scene, surfaceAxis(), params, on, normals, info);
+            if (!path) return offMesh();
+          } else {
+            path = spiralPath(scene, surfaceAxis(), params, undefined, undefined, info)!;
+          }
+          // the turns it reached and its copies made: for the section to show
+          Object.assign(sizes, p, { turns: Math.round(info.turns * 100) / 100, copies: info.copies ?? 0 });
+          toListFrame(move, path, normals);
+          units = info.copies ?? 0;
+          if (info.skip?.length) skip = info.skip;
+          // its Step its own: its copies and skips are its units at that rise, whatever the entity's later (3b review 2)
+          own = { ...own, rise };
+          if (units < 2) {
+            return ApiResult.fail(
+              'invalid',
+              `The spiral leaves ${mesh?.label ?? 'the mesh'} at once.`,
+              'Grow from further in, or a shorter step.',
+            );
+          }
+        } else {
+          // a helix (grow-helix), in the scene (its pitch and radius as drawn), then in the list's frame
+          const p = {
+            pitch: v.pitch ?? 4 * diameter,
+            turns: v.turns ?? 5,
+            hand: v.hand ?? 'right',
+            direction: v.direction ?? 'up',
+            radius: v.helixRadius ?? diameter,
+          };
+          if (!(p.pitch > 0)) return ApiResult.fail('invalid', 'The pitch is above 0 Å.');
+          if (!(p.turns > 0)) return ApiResult.fail('invalid', 'Give a turn or a part of one.');
+          // a point every 5° (on a mesh, a projection each): the turns bounded, the length at the cap (review M1)
+          if (p.turns > MaxHelixTurns) return ApiResult.fail('invalid', `Give ${MaxHelixTurns} turns or fewer.`);
+          if (!on && !(p.radius > 0)) return ApiResult.fail('invalid', 'The radius is above 0 Å.');
+          const scaled = rise * (move?.scale ?? 1);
+          // its length in space before it is made: no 1000 turns of a long radius at a short rise (its points every 5°)
+          if (!on && (p.turns * Math.hypot(2 * Math.PI * p.radius, p.pitch)) / scaled + 1 > MaxGrown) {
+            return tooMany(Math.floor((p.turns * Math.hypot(2 * Math.PI * p.radius, p.pitch)) / scaled) + 1);
+          }
+          if (on) {
+            const which = v.axis ?? 'auto';
+            const camera = ctx.plugin.canvas3d?.camera.state;
+            const view = camera && Vec3.sub(Vec3(), camera.position, camera.target);
+            const line = meshAxis(mesh!.shape.geometry, mesh!.shape.transforms[0], which, view);
+            normals = [];
+            const limit = (MaxGrown + 1) * scaled;
+            path = helixPath(scene, axis, scaled, { ...p, limit }, { ...on, axis: surfaceAxis(), line }, normals);
+            if (!path) return offMesh();
+            if (path.length < 6) {
+              return ApiResult.fail(
+                'invalid',
+                `The helix leaves ${mesh!.label} at once, ${name} #${index} is on its axis, or it is shorter than a rise.`,
+                'Another Axis, or grow from further in.',
+              );
+            }
+            Object.assign(sizes, { ...p, axis: which });
+            delete sizes.radius;
+          } else {
+            path = helixPath(scene, axis, scaled, p);
+            Object.assign(sizes, p);
           }
           toListFrame(move, path, normals);
-        } else {
-          path = walkPath(pose, axis, rise, p, seed);
+          units = Math.floor(pathLength(path) / rise + 1e-6) + 1;
+          if (units > MaxGrown) return tooMany(units);
+          // a unit alone would be a copy unturned, as a walk of one point (review New 1)
+          if (units < 2) {
+            return ApiResult.fail(
+              'invalid',
+              `The helix is shorter than two units ${round1(rise)} Å (its rise) apart.`,
+              'More turns, or a shorter rise.',
+            );
+          }
         }
-        Object.assign(sizes, p);
       }
       if (made) {
         toListFrame(move, made.positions, undefined);
@@ -1372,7 +1622,13 @@ export class MesoscaleApi extends ApiArea {
         positions: path ?? made!.positions,
         rotations: path ? [] : made!.rotations,
         ...(path
-          ? { fiber: true, seed, ...(Object.keys(own).length ? { own } : {}), ...(normals ? { normals } : {}) }
+          ? {
+              fiber: true,
+              seed,
+              ...(Object.keys(own).length ? { own } : {}),
+              ...(normals ? { normals } : {}),
+              ...(skip ? { skip } : {}),
+            }
           : {}),
         grow: {
           mode,
@@ -1383,10 +1639,22 @@ export class MesoscaleApi extends ApiArea {
           id: growId,
         },
       };
-      const count = stroke.positions.length / 3;
+      const count = units ?? stroke.positions.length / 3;
       // no copy, no step (review S2): one cell, no ring
       if (!count) return ApiResult.fail('invalid', 'That rule makes no copy.', 'More cells or rings.');
-      await updatePainted(ctx, l, (p) => ({ ...p, strokes: [...p.strokes, stroke] }));
+      await updatePainted(ctx, l, (p) => ({
+        ...p,
+        // made again: the grows from later painted copies kept on their copy (review M1)
+        strokes: old
+          ? followSources(
+              state,
+              l,
+              p.strokes,
+              p.strokes.map((s) => (s.grow?.id === growId ? stroke : s)),
+              p.strokes.map((_, i) => i),
+            )
+          : [...p.strokes, stroke],
+      }));
       return ApiResult.ok(
         path
           ? `Grew a fiber of ${name} from #${index}.`
@@ -1425,22 +1693,33 @@ export class MesoscaleApi extends ApiArea {
       const strokes = (painted?.transform.params as PaintedParams | undefined)?.strokes ?? [];
       const at = strokes.findIndex((s) => s.fiber && s.grow?.id === values.grow);
       if (at < 0) return ApiResult.fail('not-found', 'That grown fiber is not there (undone or removed).');
+      // a spiral's rise is its Step: its Count copies a Step apart, made again by its grow (second review 2)
+      if (given.rise !== undefined && strokes[at].grow?.mode === 'spiral') {
+        return ApiResult.fail(
+          'invalid',
+          "A spiral's rise is its Step: its copies are made again.",
+          '`mesoscale.grow { replace, rise }` (the Grow section: Step).',
+        );
+      }
       const own = { ...strokes[at].own, ...given };
       // its units: the path's length a rise each (`makeFiber`), as many as a grow makes at most (review 9)
       if (own.rise !== undefined) {
-        const ps = strokes[at].positions;
-        let length = 0;
-        for (let i = 3; i < ps.length; i += 3) {
-          length += Math.hypot(ps[i] - ps[i - 3], ps[i + 1] - ps[i - 2], ps[i + 2] - ps[i - 1]);
-        }
+        const length = pathLength(strokes[at].positions);
         if (length / own.rise + 1 > MaxGrown) return tooMany(Math.floor(length / own.rise) + 1);
       }
       if ((Object.keys(given) as (keyof typeof given)[]).every((k) => strokes[at].own?.[k] === given[k])) {
         return ApiResult.already('The fiber is already so.');
       }
+      // its units as many as its rise makes: the grows from later painted copies kept on their copy (review M1)
       await updatePainted(ctx, l, (p) => ({
         ...p,
-        strokes: p.strokes.map((s, i) => (i === at ? { ...s, own } : s)),
+        strokes: followSources(
+          ctx.plugin.state.data,
+          l,
+          p.strokes,
+          p.strokes.map((s, i) => (i === at ? { ...s, own } : s)),
+          p.strokes.map((_, i) => i),
+        ),
       }));
       return ApiResult.ok(
         `The grown fiber: ${[
@@ -1452,6 +1731,49 @@ export class MesoscaleApi extends ApiArea {
           .join(', ')}.`,
         { nodes: [l.cell.transform.ref] },
         { value: own },
+      );
+    },
+  });
+
+  /**
+   * Clear (grow-helix round 2, Ludo 2026-11-13: "clear all growth from that instance"): every grow stroke from a source
+   * (its key), whatever its mode, removed; the source and the other strokes stay. One step.
+   */
+  readonly clearGrown = this.operation({
+    id: 'mesoscale.clear-grown',
+    title: 'Clear the grows from an instance',
+    params: {
+      particles: ListParam(),
+      index: PD.Numeric(0, { min: 0, step: 1 }, { description: 'The source: a particle by its index in the list' }),
+    },
+    async run(values, ctx) {
+      const l = oneList(ctx, values.particles || undefined);
+      if (isFailure(l)) return l;
+      const state = ctx.plugin.state.data;
+      const src = growSourceOf(state, l, values.index);
+      if (isFailure(src)) return src;
+      const ids = grownFrom(state, l, values.index);
+      if (!ids?.length) return ApiResult.fail('not-found', `Nothing is grown from ${src.name} #${values.index}.`);
+      const key = ids[0].grow!.source.key;
+      await updatePainted(ctx, l, (p) => {
+        const from = p.strokes.map((_, i) => i).filter((i) => p.strokes[i].grow?.source.key !== key);
+        // the grows from the cleared copies go too, the later ones kept on their copy (review M1)
+        return {
+          ...p,
+          strokes: followSources(
+            state,
+            l,
+            p.strokes,
+            from.map((i) => p.strokes[i]),
+            from,
+          ),
+        };
+      });
+      const n = ids.length;
+      return ApiResult.ok(
+        `Cleared ${n} ${n === 1 ? 'grow' : 'grows'} from ${src.name} #${values.index}.`,
+        { nodes: [l.cell.transform.ref] },
+        { value: { count: n } },
       );
     },
   });
@@ -2598,7 +2920,107 @@ export function growSourceOf(state: State, l: ParticleListRef, index: number) {
     translation: Vec3.fromArray(Vec3(), moved.coordinates, 0),
     turn: Quat.fromArray(Quat(), moved.rotations!, 0),
   };
-  return { data, target, entity, compartment, pose, radius, name, surface, instance };
+  const fibers = fiberListOf(state, painted, data);
+  return { data, target, entity, compartment, pose, radius, name, surface, instance, fibers };
+}
+
+/**
+ * The list a list's painted fibers are made from, as the painted decorator makes them (its input with the structures
+ * painted, `withStructures`), else `drawn`: the drawn list's own painted fibers would give their step, measured on its
+ * float coordinates, as the rise (round 2: a grow made again read its own stroke's)
+ */
+function fiberListOf(state: State, painted: StateObjectCell | undefined, drawn: ParticleList): ParticleList {
+  const input = painted && (state.cells.get(painted.transform.parent)?.obj?.data as ParticleList | undefined);
+  if (!input) return drawn;
+  const structures = (painted.transform.params as PaintedParams | undefined)?.structures ?? [];
+  return withStructures(
+    input,
+    structures,
+    structures.map((s) => drawn.targetMapping?.get(s.target)),
+  );
+}
+
+/**
+ * The strokes `after` of a list's painted strokes changed (each `before[from[i]]`, made again or not; -1, new), the grows
+ * from painted copies kept on their copy (round 2 review M1, New 1): a painted copy's key is its place among them
+ * (`paintParticles`), so a stroke before it with another count, or gone, moves it. Each such grow's source (its key
+ * and index) follows its copy, by its stroke and its place in it; a grow whose copy is gone (its stroke cleared, or cut
+ * shorter) goes too, and so the grows from its copies, until none goes.
+ */
+function followSources(
+  state: State,
+  l: ParticleListRef,
+  before: readonly PaintStroke[],
+  after: readonly PaintStroke[],
+  from: readonly number[],
+): PaintStroke[] {
+  const painted = decoratorUnder(state, l.cell.transform.ref, ParticleListPainted);
+  const drawn = painted?.obj?.data as ParticleList | undefined;
+  const input = painted && (state.cells.get(painted.transform.parent)?.obj?.data as ParticleList | undefined);
+  if (!painted || !drawn || !input) return [...after];
+  const p = painted.transform.params as PaintedParams;
+  const list = fiberListOf(state, painted, drawn);
+  const counts = (ss: readonly PaintStroke[]) => strokeCounts(list, ss, p.fibers, p.structures);
+  const startsOf = (cs: number[]) => {
+    const out: number[] = [];
+    let at = 0;
+    for (const c of cs) {
+      out.push(at);
+      at += c;
+    }
+    return out;
+  };
+  let base = 0;
+  for (let i = 0; i < input.count; ++i) base = Math.max(base, input.keys[i] + 1);
+  const oldCounts = counts(before);
+  const oldStarts = startsOf(oldCounts);
+  // each grow's source as a painted copy: its stroke (in `before`) and its place in it
+  const copyOf = after.map((s) => {
+    const key = s.grow?.source.key;
+    if (key === undefined || key < base) return undefined;
+    const k = key - base;
+    for (let j = 0; j < before.length; ++j) {
+      if (k >= oldStarts[j] && k < oldStarts[j] + oldCounts[j]) return { stroke: j, at: k - oldStarts[j] };
+    }
+    return undefined;
+  });
+  const keep = after.map(() => true);
+  for (;;) {
+    const kept = after.map((_, i) => i).filter((i) => keep[i]);
+    const newCounts = counts(kept.map((i) => after[i]));
+    const newStarts = startsOf(newCounts);
+    const place = new Map(kept.map((i, m) => [from[i], m] as const));
+    let dropped = false;
+    for (const i of kept) {
+      const c = copyOf[i];
+      if (!c) continue;
+      const m = place.get(c.stroke);
+      if (m === undefined || c.at >= newCounts[m]) {
+        keep[i] = false;
+        dropped = true;
+      }
+    }
+    if (dropped) continue;
+    return kept.map((i) => {
+      const c = copyOf[i];
+      const s = after[i];
+      if (!c) return s;
+      const start = newStarts[place.get(c.stroke)!];
+      const key = base + start + c.at;
+      if (key === s.grow!.source.key) return s;
+      return { ...s, grow: { ...s.grow!, source: { index: input.count + start + c.at, key } } };
+    });
+  }
+}
+
+/** The grow strokes from a list's particle (its index as drawn): those whose record names its key; undefined: none there */
+function grownFrom(state: State, l: ParticleListRef, index: number): PaintStroke[] | undefined {
+  const painted = decoratorUnder(state, l.cell.transform.ref, ParticleListPainted);
+  const data = (painted?.obj?.data as ParticleList | undefined) ?? l.cell.obj?.data;
+  const strokes = (painted?.transform.params as PaintedParams | undefined)?.strokes;
+  if (!data || !strokes || !Number.isInteger(index) || index < 0 || index >= data.count) return undefined;
+  const key = data.keys[index];
+  return strokes.filter((s) => s.grow?.source.key === key);
 }
 
 /**

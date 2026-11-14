@@ -126,7 +126,7 @@ column (`--msp-label-width`) and its control, Prism's (styling.md §4).
 | Clip              | a clip's row (Clips)                                                                                                                                     | its editor (its Handles, its numbers on demand: position, turn, size; remove; its shape, Prism's five, and invert, one `clipping.update` each: Ludovic, 2026-10-25, 2026-10-27), then What it cuts: every object or part it is given, each its name (a click picks its row), on particles its way (Keeps a layer, Cuts it, Cuts it wider; graded: Band, Fuzziness) and × (one step each), Cut also… (one step), Ghosts (all clips: a faint ghost of what they remove, a tint and its edges); each model or list it cuts: Clip whole                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | Labels            | every node but a category                                                                                                                                | its labels (§5: those made at it, its row's key), each: text, size, remove (one step each); a label's row: also its color, plate and tether                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | Paint             | a model's entity                                                                                                                                         | the entity as a brush (lane `paint`, 2026-11-08): Paint (the canvas's paint mode) or Stop; Spacing (Å, 0: the copies touch); Paint on (its button, Paint with) picks the brush's row and opens its Paint section in view (round 3). Turn: Auto (on a surface along its normal, any brush: +z or its Fiber Axis; a membrane protein always; else at random), Normal, Axis (its principal axis along the surface), View, Random; Side (Out, In: along or against the surface's normal); Random spin, or a Spin angle; Fiber (Auto, On, Off); Place (Auto, Surface, Depth). The brush's settings are the mode's: no step                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| Grow              | a particle list, a model, a target, a model's group or entity                                                                                            | the source of a grow (a particle's right-click › Grow from this instance…, or the last copy painted), its Mode (Random walk, Crystal, Tiling, Sphere) and params, On (None or a mesh of the scene: lane `grow-mesh`), a Seed, Grow (§5, lane `grow`): one step                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| Grow              | a particle list, a model, a target, a model's group or entity                                                                                            | the source of a grow (a particle's right-click › Grow from this instance…, or the last copy painted), its Mode (Random walk, Helix, Spiral, Crystal, Tiling, Sphere) and params, On (None or a mesh of the scene: lane `grow-mesh`), a Seed, Grow (§5, lane `grow`): one step                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | Graphics & Motion | every object (a structure, a model, a particle list, a volume; not a part)                                                                               | quality (Ultra, Quality, Balanced, Fast) of that object alone; wiggle and tumble (a toggle at 1 Å, an amplitude) where it moves: not a volume                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | Group by          | a model with compartments                                                                                                                                | Compartment or Function: how the tree groups its entities; above the sections, not folded; view state (no operation, no step)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 
@@ -541,21 +541,21 @@ still completes its distance.
   the particle is the source of the next grow, and its row's **Grow** section opens. While painting, the last copy
   painted is the source as well. The Grow section (on a particle list, a model, a target, a group or an entity: the
   source when it is a particle of that list, else how to set one) names its source ("From CA #1204") and offers **Mode**
-  (Random walk, Crystal, Tiling, Sphere), each mode's own params, a **Seed** (empty: at random each time) and **Grow**:
-  one step (`mesoscale.grow`), the copies the source's list's painted copies (its target, entity and compartment; saved
-  in sessions). Copies go exactly where the rule says, overlaps allowed (Ludo, 2026-11-11). Random walk: a new fiber of
-  Steps points (20) a rise apart (the entity's Fiber rise, in the list's units: on a scaled list, its scale × that in Å,
-  as paint's fibers), the first a rise from the source along its fiber axis, each step turned at most Persistence (30°).
-  Crystal: a, b, c (Å; unset: the copy's diameter), α, β, γ (90°), na, nb, nc (3, 3, 1; the source's cell counted, so
-  na·nb·nc − 1 copies), each copy turned as the source. Tiling: Hex or Square, Spacing (the copy's diameter), Rings (3),
-  in the source's own plane (normal: +z for a membrane protein, else its principal axis), each turned as the source.
-  Sphere: Count (50) copies uniform in a ball of Radius (5 × the copy's radius), turned at random or as the source. The
-  source is where it is drawn: its list's move and scale and its own move (Move this instance), before the offsets of
-  its kind (its copies take them too). Round 2: Symmetry. A walk's **Rise**, **Twist** and **Jitter** (paint-refine,
-  Ludo 2026-11-13; unset: the entity's Fiber settings) are its own, kept in its stroke: only that fiber has them. After
-  a walk is grown, they are live on it: a drag redraws that fiber in place (the same path, its units made again: one
-  step a drag, `mesoscale.grown-fiber`), the sliders following an undo; another Grow, another source or the section
-  closed ends it.
+  (Random walk, Helix, Spiral, Crystal, Tiling, Sphere), each mode's own params, a **Seed** (empty: at random each time)
+  and **Grow**: one step (`mesoscale.grow`), the copies the source's list's painted copies (its target, entity and
+  compartment; saved in sessions). Copies go exactly where the rule says, overlaps allowed (Ludo, 2026-11-11). Random
+  walk: a new fiber of Steps points (20) a rise apart (the entity's Fiber rise, in the list's units: on a scaled list,
+  its scale × that in Å, as paint's fibers), the first a rise from the source along its fiber axis, each step turned at
+  most Persistence (30°). Crystal: a, b, c (Å; unset: the copy's diameter), α, β, γ (90°), na, nb, nc (3, 3, 1; the
+  source's cell counted, so na·nb·nc − 1 copies), each copy turned as the source. Tiling: Hex or Square, Spacing (the
+  copy's diameter), Rings (3), in the source's own plane (normal: +z for a membrane protein, else its principal axis),
+  each turned as the source. Sphere: Count (50) copies uniform in a ball of Radius (5 × the copy's radius), turned at
+  random or as the source. The source is where it is drawn: its list's move and scale and its own move (Move this
+  instance), before the offsets of its kind (its copies take them too). Round 2: Symmetry. A walk's **Rise**, **Twist**
+  and **Jitter** (paint-refine, Ludo 2026-11-13; unset: the entity's Fiber settings) are its own, kept in its stroke:
+  only that fiber has them. After a walk is grown, they are live on it: a drag redraws that fiber in place (the same
+  path, its units made again: one step a drag, `mesoscale.grown-fiber`), the sliders following an undo; another Grow,
+  another source, another Mode or the section closed ends it.
 - Grow on a mesh (lane `grow-mesh`, Ludo 2026-11-13): a paint stroke over a file mesh (OBJ, PLY, VTP) puts its copies on
   the mesh's surface at its triangle's point, turned to its normal (a membrane protein upright in it; others as Turn
   says). The Grow section's **On** picks None (in space) or a mesh of the scene by its file's name; it is the mesh the
@@ -569,6 +569,42 @@ still completes its distance.
   paint's does (round 3: +z for a membrane protein, else its Fiber Axis when set, else +z; a copy painted on the surface
   and the copies grown from it share it), its spin carried from the source. Crystal (a 3D lattice) grows in space: On
   says so. The copies are explicit: the mesh can go, they stay.
+- Grow › Helix (lane `grow-helix`, Ludo 2026-11-13: "an helical path on the surface, the instance picked is the start of
+  the helix/spiral"): a new fiber from the source, as Random walk's (its Rise, Twist and Jitter its own, live on the
+  last grown), its path a helix of **Pitch** (Å along its axis a turn; unset: 4 × the copy's diameter), **Turns** (5),
+  **Hand** (Right, Left: the helix's own, whichever way it goes) and **Direction** (Up, Down its axis from the source).
+  In space it winds about the source's Fiber Axis a **Radius** away (unset: the copy's diameter), the source on it. On a
+  mesh it winds about an **Axis** through the mesh's center (Auto: its longest principal axis; View: toward the viewer;
+  X, Y, Z), each point brought onto the surface along its line from the axis, so it follows a tube's or a cone's radius
+  and spirals over a closed round mesh to its pole; it ends where the surface does. Its units' up along the surface's
+  normal, as the walk's. The first unit is a rise along the helix from the source.
+- Grow › Spiral (lane `grow-helix` round 3, Ludo 2026-11-13: "can we also have spiral", then "the copy/count slider …
+  the distance between arms, and the distance along the path between instances. Regular spiral parameters"): a new fiber
+  from the source winding flat outward about it (the source its center, copy 0), an Archimedean spiral: **Count** copies
+  (50), **Step** apart along it (the fiber's rise: one distance, live as the grow; unset: the entity's), so copy k is k
+  × Step along it from the source; **Arm spacing** between its arms (its radius that more a turn; unset: the copy's
+  diameter, so they touch); **Hand** (Right: counterclockwise about its normal); its **Turns** shown, read only (the
+  ones it reaches). Twist and Jitter as a fiber's. Near the center the arc curls: copies within its first turn sit
+  closer than a Step in a straight line (overlaps allowed, Ludo 2026-11-11). In space it lies in the source's plane, its
+  normal the copy's axis by paint's rule (+z for a membrane protein, else its Fiber Axis, else +z). On a mesh it is
+  rolled over the surface from the source's point: each step (by arc length) the planar spiral's own, taken in the
+  tangent plane of the point before and brought onto the surface, its direction carried along; so it is the flat spiral
+  on a plane, a cylinder or a cone (the capsid's body), and its arms close up on a surface curved both ways (a cap, a
+  vesicle). Where it crosses an arm of its own (round a tube, on a closed surface; Ludo 2026-11-13: "Skip crowded, keep
+  going"), a copy within 0.6 × Arm spacing of a copy kept more than 2 Arm spacings behind along it is skipped and it
+  goes on until Count copies are kept, its length 4 × Count × Step at most (a surface full ahead: fewer, the section
+  shows the copies made beside its turns). The copies kept are turned as along the whole chain (their twist by their
+  place along it). It ends where the surface does. Its units' up along the surface's normal.
+- The last grow live (lane `grow-helix` round 2, Ludo 2026-11-13: "all the parameters in the grow properties to update
+  the latest grow … more will continue the distribution, less will remove the excedent copies … a clear button"): after
+  a Grow, every setting of the section (each mode's, its Seed, On, and its Mode) makes that grow again in place, from
+  the same source, by the settings shown (`mesoscale.grow { replace }`; its seed kept while Seed is empty): one step a
+  drag or a pick. A Mode picked turns the last grow into one of that mode. Rise, Twist and Jitter still redraw a fiber
+  on its path. Its count is prefix-stable: more Steps, Turns, Rings or Count keep every copy where it was and add the
+  next ones (a fiber's last unit turned to the next); fewer cut the last ones; Crystal's cells are nested (each cell
+  stays where it was). Another Grow, another source, Clear or the section closed ends it; an undone grow is not live (a
+  change is the next grow's). **Clear** removes every grow from the source (any mode; the source stays), and the grows
+  from their copies, one step (`mesoscale.clear-grown`), disabled when there is none.
 - Models decorated too (2026-10-23, Ludovic: "why can't we change the target in Simularium"): a model (a list with
   entities: Simularium, cellPACK, PetWorld) has the Decoration section, so each of its targets (an agent, an entity) can
   be drawn as another object of the scene. A particle list's own shape (a Simularium simulation box) is not listed as a

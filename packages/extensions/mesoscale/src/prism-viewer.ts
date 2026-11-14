@@ -170,8 +170,14 @@ export const MesoscaleExtension: ViewerExtension = {
       operationCommand(api, m.grow, {
         category,
         icon: 'paintbrush',
-        alias: ['grow', 'crystal', 'lattice', 'tiling', 'random walk', 'grow copies'],
+        alias: ['grow', 'crystal', 'lattice', 'tiling', 'random walk', 'helix', 'spiral', 'grow copies'],
         action: 'Grow',
+      }),
+      operationCommand(api, m.clearGrown, {
+        category,
+        icon: 'trash-2',
+        alias: ['clear grow', 'clear grown', 'remove grown copies'],
+        action: 'Clear',
       }),
       operationCommand(api, m.grownFiber, {
         category,

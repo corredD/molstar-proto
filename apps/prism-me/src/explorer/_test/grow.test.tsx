@@ -305,20 +305,20 @@ describe("A grown fiber's Rise and Twist (paint-refine)", () => {
   });
 });
 
-describe('Grow on a mesh (grow-mesh)', () => {
-  /** An OBJ of a sphere of `radius` about `center` (an icosahedron subdivided: its vertices on the sphere) */
-  function sphereObj(radius: number, center: [number, number, number]) {
-    const { vertices, indices } = Sphere(3);
-    const lines: string[] = [];
-    for (let i = 0; i < vertices.length; i += 3) {
-      lines.push(`v ${center.map((c, k) => c + radius * vertices[i + k]).join(' ')}`);
-    }
-    for (let i = 0; i < indices.length; i += 3) {
-      lines.push(`f ${indices[i] + 1} ${indices[i + 1] + 1} ${indices[i + 2] + 1}`);
-    }
-    return lines.join('\n');
+/** An OBJ of a sphere of `radius` about `center` (an icosahedron subdivided: its vertices on the sphere) */
+function sphereObj(radius: number, center: [number, number, number]) {
+  const { vertices, indices } = Sphere(3);
+  const lines: string[] = [];
+  for (let i = 0; i < vertices.length; i += 3) {
+    lines.push(`v ${center.map((c, k) => c + radius * vertices[i + k]).join(' ')}`);
   }
+  for (let i = 0; i < indices.length; i += 3) {
+    lines.push(`f ${indices[i] + 1} ${indices[i + 1] + 1} ${indices[i + 2] + 1}`);
+  }
+  return lines.join('\n');
+}
 
+describe('Grow on a mesh (grow-mesh)', () => {
   it('picks the mesh in On, tiles over it by Count, one step; Crystal grows in space, the select gone', async () => {
     const { v, hiv } = await viewer();
     // CA #1 at (10, 0, 0) on a vesicle of 50 Å about (10, -50, 0)
@@ -383,17 +383,303 @@ describe('Grow on a mesh (grow-mesh)', () => {
   });
 });
 
+describe('Grow › Helix (grow-helix)', () => {
+  it('shows Pitch, Turns, Hand, Direction and Radius in space (Axis on a mesh), grows a helix, its Rise live', async () => {
+    const { v, hiv } = await viewer();
+    const m = v.api.mesoscale!;
+    const host = mountScene(v);
+    await until(() => !!rowOf(host, 'HIV'));
+    rowOf(host, 'HIV')!.click();
+    await until(() => !!button(host, 'Grow'));
+    const section = button(host, 'Grow')!;
+    if (section.getAttribute('aria-expanded') !== 'true') section.click();
+    m.growSource.set({ particles: hiv, index: 2 });
+    await until(() => !!host.textContent?.includes('NC #2'));
+    choice(host, 'Mode', 'Helix')!.click();
+    await until(() => !!host.querySelector('input[aria-label="Grow Pitch"]'));
+    for (const label of ['Turns', 'Radius', 'Rise', 'Twist', 'Jitter']) {
+      expect(host.querySelector(`input[aria-label="Grow ${label}"]`)).not.toBe(null);
+    }
+    expect(host.querySelector('[aria-label="Grow Steps"]')).toBe(null);
+    expect(host.querySelector('[aria-label="Grow Axis"]')).toBe(null);
+    choice(host, 'Hand', 'Left')!.click();
+    choice(host, 'Direction', 'Down')!.click();
+    expect(m.growSettings.value).toMatchObject({ mode: 'helix', hand: 'left', direction: 'down' });
+    m.growSettings.set({ ...m.growSettings.value, pitch: 40, turns: 2, helixRadius: 15 });
+    const grow = Array.from(host.querySelectorAll<HTMLButtonElement>('button')).filter(
+      (b) => b.textContent?.trim() === 'Grow',
+    );
+    grow[grow.length - 1].click();
+    // NC without radii: 10 Å a unit along 2 turns of √((2π·15)² + 40²) ≈ 102 Å: 20 units
+    await until(() => count(v) > 3);
+    const units = count(v) - 3;
+    expect(units).toBe(20);
+    const steps = v.api.history.steps.value.length;
+    // Rise live on the helix as on a walk: 5 Å along its 195 Å (two turns less the first rise), 39 units; one step
+    const range = host.querySelector<HTMLInputElement>('input[type=range][aria-label="Grow Rise"]')!;
+    range.value = String(Math.log10(5));
+    range.dispatchEvent(new Event('input', { bubbles: true }));
+    range.dispatchEvent(new Event('change', { bubbles: true }));
+    await until(() => count(v) - 3 === 39);
+    await until(() => v.api.history.steps.value.length === steps + 1);
+    // on a mesh: Axis in place of Radius
+    const loaded = await v.api.load.files({ files: [new File([sphereObj(50, [10, -50, 0])], 'vesicle.obj')] });
+    if (!loaded.ok) throw new Error(loaded.message);
+    const shape = Array.from(v.plugin.state.data.cells.values()).find((c) => SO.Shape.Provider.is(c.obj))!;
+    const repr = Array.from(v.plugin.state.data.cells.values()).find(
+      (c) => c.transform.parent === shape.transform.ref,
+    )!;
+    m.growSettings.set({ ...m.growSettings.value, mesh: repr.transform.ref });
+    await until(() => !!host.querySelector('[aria-label="Grow Axis"]'));
+    expect(host.querySelector('input[aria-label="Grow Radius"]')).toBe(null);
+  });
+});
+
+/** The Grow section of the list's row open, `index` its source */
+async function openGrow(v: PrismViewer, hiv: string, index: number) {
+  const host = mountScene(v);
+  await until(() => !!rowOf(host, 'HIV'));
+  rowOf(host, 'HIV')!.click();
+  await until(() => !!button(host, 'Grow'));
+  const section = button(host, 'Grow')!;
+  if (section.getAttribute('aria-expanded') !== 'true') section.click();
+  v.api.mesoscale!.growSource.set({ particles: hiv, index });
+  await until(() => !!host.textContent?.includes(`#${index}`));
+  return host;
+}
+
+/** The Grow button (the section's header is named Grow too: the last) */
+const growButton = (host: HTMLElement) =>
+  Array.from(host.querySelectorAll<HTMLButtonElement>('button'))
+    .filter((b) => b.textContent?.trim() === 'Grow')
+    .at(-1)!;
+
+/** A slider of the Grow section dragged through `values` (its knob's) and let go */
+function dragGrow(host: HTMLElement, label: string, values: number[]) {
+  const range = host.querySelector<HTMLInputElement>(`input[type=range][aria-label="Grow ${label}"]`)!;
+  for (const k of values) {
+    range.value = String(k);
+    range.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+  range.dispatchEvent(new Event('change', { bubbles: true }));
+}
+
+const strokesOf = (v: PrismViewer) =>
+  (
+    Array.from(v.plugin.state.data.cells.values()).find((c) => Array.isArray(c.transform.params?.strokes))?.transform
+      .params as { strokes: { grow?: { mode: string; id: number; params?: Record<string, unknown> } }[] } | undefined
+  )?.strokes ?? [];
+
+const coordinates = (v: PrismViewer, from: number, to: number) =>
+  Array.from(
+    (
+      v.plugin.managers.particles.hierarchy.current.lists[0].representations[0].cell.obj!.data as unknown as {
+        sourceData: ParticleList;
+      }
+    ).sourceData.coordinates.slice(from * 3, to * 3),
+  );
+
+describe('The last grow live (grow-helix round 2)', () => {
+  it('re-grows on any of its settings, one step a drag: Count up continues it, down cuts it; Mode replaces it', async () => {
+    const { v, hiv } = await viewer();
+    const m = v.api.mesoscale!;
+    const host = await openGrow(v, hiv, 2);
+    choice(host, 'Mode', 'Sphere')!.click();
+    m.growSettings.set({ ...m.growSettings.value, count: 10, radius: 30 });
+    growButton(host).click();
+    await until(() => count(v) === 3 + 10);
+    const first = coordinates(v, 3, 13);
+    const steps = v.api.history.steps.value.length;
+    // Count dragged to 20 through 15: the same grow, 20 copies, the first ten where they were; one step
+    dragGrow(host, 'Count', [15, 20]);
+    await until(() => count(v) === 3 + 20);
+    await until(() => v.api.history.steps.value.length === steps + 1);
+    expect(coordinates(v, 3, 13)).toEqual(first);
+    expect(strokesOf(v).length).toBe(1);
+    // down to 4: the first four
+    dragGrow(host, 'Count', [4]);
+    await until(() => count(v) === 3 + 4);
+    expect(coordinates(v, 3, 7)).toEqual(first.slice(0, 12));
+    // its Mode: the same grow, now a tiling
+    await until(() => v.api.history.steps.value.length === steps + 2);
+    choice(host, 'Mode', 'Tiling')!.click();
+    await until(() => strokesOf(v)[0]?.grow?.mode === 'tiling');
+    expect(strokesOf(v).length).toBe(1);
+    // a walk grown, then Helix picked: the walk becomes a helix, its Rise live on it
+    choice(host, 'Mode', 'Random walk')!.click();
+    await until(() => strokesOf(v)[0]?.grow?.mode === 'walk');
+    choice(host, 'Mode', 'Helix')!.click();
+    await until(() => strokesOf(v)[0]?.grow?.mode === 'helix');
+    const units = count(v);
+    const before = v.api.history.steps.value.length;
+    dragGrow(host, 'Rise', [Math.log10(5)]);
+    await until(() => count(v) > units);
+    await until(() => v.api.history.steps.value.length === before + 1);
+    expect(strokesOf(v).length).toBe(1);
+    // another source: not live anymore; a drag sets the next grow's only
+    m.setGrowSource({ particles: hiv, index: 1 });
+    await until(() => !!host.textContent?.includes('CA #1'));
+    const now = v.api.history.steps.value.length;
+    dragGrow(host, 'Turns', [2]);
+    await new Promise((r) => setTimeout(r, 800));
+    expect(v.api.history.steps.value.length).toBe(now);
+  });
+
+  it('one step a drag: let go, the step ends, as a real drag lands its preview a frame before (review M2)', async () => {
+    const { v, hiv } = await viewer();
+    const m = v.api.mesoscale!;
+    const host = await openGrow(v, hiv, 2);
+    choice(host, 'Mode', 'Sphere')!.click();
+    m.growSettings.set({ ...m.growSettings.value, count: 10, radius: 30 });
+    growButton(host).click();
+    await until(() => count(v) === 3 + 10);
+    const steps = v.api.history.steps.value.length;
+    const drag = async (value: number) => {
+      const range = host.querySelector<HTMLInputElement>('input[type=range][aria-label="Grow Count"]')!;
+      range.value = String(value);
+      range.dispatchEvent(new Event('input', { bubbles: true }));
+      // the preview lands (once a frame) before the release
+      await new Promise((r) => setTimeout(r, 40));
+      range.dispatchEvent(new Event('change', { bubbles: true }));
+    };
+    await drag(20);
+    await new Promise((r) => setTimeout(r, 100));
+    await drag(5);
+    await until(() => count(v) === 3 + 5);
+    await until(() => v.api.history.steps.value.length >= steps + 2, 3000);
+    expect(v.api.history.steps.value.length).toBe(steps + 2);
+  });
+
+  it('the settings follow the last grow back: an undo, a Mode undone, a drag refused (review S1)', async () => {
+    const { v, hiv } = await viewer();
+    const m = v.api.mesoscale!;
+    const host = await openGrow(v, hiv, 2);
+    choice(host, 'Mode', 'Sphere')!.click();
+    m.growSettings.set({ ...m.growSettings.value, count: 10, radius: 30 });
+    growButton(host).click();
+    await until(() => count(v) === 3 + 10);
+    dragGrow(host, 'Count', [20]);
+    await until(() => count(v) === 3 + 20);
+    await new Promise((r) => setTimeout(r, 100));
+    await v.api.history.undo();
+    await until(() => count(v) === 3 + 10);
+    await until(() => m.growSettings.value.count === 10);
+    // a Radius drag now: 10 copies still (not the undone 20)
+    dragGrow(host, 'Radius', [Math.log10(40)]);
+    await until(() => strokesOf(v)[0] && v.api.history.steps.value.length > 0 && m.growSettings.value.radius !== 30);
+    await new Promise((r) => setTimeout(r, 800));
+    expect(count(v)).toBe(3 + 10);
+    // a Mode picked, then undone: the settings' mode is the grow's again
+    choice(host, 'Mode', 'Tiling')!.click();
+    await until(() => strokesOf(v)[0]?.grow?.mode === 'tiling');
+    await new Promise((r) => setTimeout(r, 100));
+    await v.api.history.undo();
+    await until(() => strokesOf(v)[0]?.grow?.mode === 'sphere');
+    await until(() => m.growSettings.value.mode === 'sphere');
+    // a crystal whose β makes no cell: refused, the settings back to the grow's
+    choice(host, 'Mode', 'Crystal')!.click();
+    await until(() => strokesOf(v)[0]?.grow?.mode === 'crystal');
+    dragGrow(host, 'α', [10]);
+    await until(() => (strokesOf(v)[0]?.grow as { params?: { alpha?: number } })?.params?.alpha === 10);
+    dragGrow(host, 'β', [10]);
+    await new Promise((r) => setTimeout(r, 1200));
+    expect((strokesOf(v)[0]?.grow as { params?: { beta?: number } })?.params?.beta).toBe(90);
+    await until(() => m.growSettings.value.beta === 90);
+  });
+
+  it('Clear removes every grow from the source, one step; disabled when none; Undo brings them back', async () => {
+    const { v, hiv } = await viewer();
+    const m = v.api.mesoscale!;
+    const host = await openGrow(v, hiv, 2);
+    const clear = () => button(host, 'Clear')!;
+    await until(() => !!clear());
+    expect(clear().disabled).toBe(true);
+    choice(host, 'Mode', 'Sphere')!.click();
+    m.growSettings.set({ ...m.growSettings.value, count: 6 });
+    growButton(host).click();
+    await until(() => count(v) === 3 + 6);
+    growButton(host).click();
+    await until(() => count(v) === 3 + 12);
+    await until(() => !clear().disabled);
+    const steps = v.api.history.steps.value.length;
+    clear().click();
+    await until(() => count(v) === 3);
+    expect(v.api.history.steps.value.length).toBe(steps + 1);
+    await until(() => clear().disabled);
+    await v.api.history.undo();
+    await until(() => count(v) === 3 + 12);
+    await until(() => !clear().disabled);
+  });
+});
+
+describe('Grow › Spiral (grow-helix round 3)', () => {
+  it('shows Count, Arm spacing, Hand, Step and the Turns it reaches; Count and Step live (more continue it)', async () => {
+    const { v, hiv } = await viewer();
+    const m = v.api.mesoscale!;
+    const host = await openGrow(v, hiv, 2);
+    choice(host, 'Mode', 'Spiral')!.click();
+    await until(() => !!host.querySelector('input[aria-label="Grow Arm spacing"]'));
+    for (const label of ['Count', 'Step', 'Twist', 'Jitter']) {
+      expect(host.querySelector(`input[aria-label="Grow ${label}"]`)).not.toBe(null);
+    }
+    for (const label of ['Turns', 'Rise', 'Pitch'])
+      expect(host.querySelector(`input[aria-label="Grow ${label}"]`)).toBe(null);
+    expect(choice(host, 'Hand', 'Left')).toBeDefined();
+    m.growSettings.set({ ...m.growSettings.value, spacing: 20, count: 20 });
+    growButton(host).click();
+    await until(() => count(v) === 3 + 20);
+    expect(strokesOf(v)[0]?.grow?.mode).toBe('spiral');
+    // the turns it reached, shown
+    const turns = (strokesOf(v)[0]?.grow?.params as { turns: number }).turns;
+    await until(() => !!host.textContent?.includes(`${turns}, 20 copies`));
+    const first = coordinates(v, 3, 23);
+    const steps = v.api.history.steps.value.length;
+    dragGrow(host, 'Count', [30, 40]);
+    await until(() => count(v) === 3 + 40);
+    await until(() => v.api.history.steps.value.length === steps + 1);
+    expect(coordinates(v, 3, 23)).toEqual(first);
+    // Step: the grow made again, its Count kept
+    dragGrow(host, 'Step', [Math.log10(6)]);
+    await until(() => (strokesOf(v)[0] as { own?: { rise?: number } })?.own?.rise === 6);
+    await until(() => v.api.history.steps.value.length === steps + 2);
+    expect(count(v)).toBe(3 + 40);
+    choice(host, 'Hand', 'Left')!.click();
+    await until(() => (strokesOf(v)[0]?.grow?.params as { hand?: string } | undefined)?.hand === 'left');
+    expect(v.api.history.steps.value.length).toBe(steps + 3);
+  });
+});
+
+describe('Grow › Spiral from a Sphere of one copy (second review 4)', () => {
+  it('Mode Spiral on a live Sphere of Count 1 makes a spiral of 2 (its least), not a refusal', async () => {
+    const { v, hiv } = await viewer();
+    const m = v.api.mesoscale!;
+    const host = await openGrow(v, hiv, 2);
+    choice(host, 'Mode', 'Sphere')!.click();
+    m.growSettings.set({ ...m.growSettings.value, count: 1 });
+    growButton(host).click();
+    await until(() => count(v) === 3 + 1);
+    choice(host, 'Mode', 'Spiral')!.click();
+    await until(() => strokesOf(v)[0]?.grow?.mode === 'spiral');
+    expect(count(v)).toBe(3 + 2);
+    expect(m.growSettings.value.count).toBe(2);
+  });
+});
+
 describe('Grow settings', () => {
   it("leave a length set for one source to the next source's size (review G1)", async () => {
     const { v, hiv } = await viewer();
     const m = v.api.mesoscale!;
     m.setGrowSource({ particles: hiv, index: 0 });
-    m.growSettings.set({ ...m.growSettings.value, a: 30, spacing: 12, na: 5 });
+    m.growSettings.set({ ...m.growSettings.value, a: 30, spacing: 12, na: 5, pitch: 200, helixRadius: 40, turns: 3 });
     m.setGrowSource({ particles: hiv, index: 0 });
     expect(m.growSettings.value.a).toBe(30);
     m.setGrowSource({ particles: hiv, index: 2 });
     expect(m.growSettings.value.a).toBeUndefined();
     expect(m.growSettings.value.spacing).toBeUndefined();
     expect(m.growSettings.value.na).toBe(5);
+    // a helix's Pitch and Radius too (grow-helix review S1); its Turns kept
+    expect(m.growSettings.value.pitch).toBeUndefined();
+    expect(m.growSettings.value.helixRadius).toBeUndefined();
+    expect(m.growSettings.value.turns).toBe(3);
   });
 });

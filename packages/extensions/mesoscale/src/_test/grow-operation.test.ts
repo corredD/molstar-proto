@@ -17,7 +17,7 @@ import {
   ParticleListTargetsFromAttribute,
   ParticleListTransform,
 } from '@molstar/plugin/state/transforms/particles/ops';
-import { ParticleListPainted, type PaintStroke } from '../paint.js';
+import { makeFiber, ParticleListPainted, type PaintStroke } from '../paint.js';
 import { MesoscaleExtension } from '../prism-viewer.js';
 import { observableState } from '@molstar/prism-ui/reactive/observable-state';
 import { Sphere } from '@molstar/graphics/geo/primitive/sphere';
@@ -26,6 +26,7 @@ import { OrderedSet } from '@molstar/core/data/int';
 import { ShapeGroup } from '@molstar/model/model/shape';
 import type { PluginContext } from '@molstar/plugin/context';
 import { sceneMeshes } from '../mesh-surface.js';
+import { DefaultGrowSettings, growParams } from '../operations.js';
 import { pluginPaintHost } from '../paint-host.js';
 import { DefaultPaintSettings } from '../paint-mode.js';
 import { SurfacePoint } from '../pick-surface.js';
@@ -236,6 +237,20 @@ describe('mesoscale.grow', () => {
     expect(Array.from(drawn(v).coordinates.slice(21, 36))).toEqual(other);
   });
 
+  it('a walk of an entity with fibers takes the rise its fibers are drawn with, not their measured step (round 2)', async () => {
+    const v = await viewer();
+    const ref = entry(v).cell.transform.ref;
+    expectOk(await v.api.run('mesoscale.grow', { particles: ref, index: 3, mode: 'walk', steps: 8, seed: 1 }));
+    expectOk(await v.api.run('mesoscale.grow', { particles: ref, index: 3, mode: 'walk', steps: 20, seed: 2 }));
+    // its path's points 10 Å apart (the entity's rise), not the first fiber's step as the drawn list's floats measure it
+    const ps = strokes(v)[1].positions;
+    for (let i = 1; i < ps.length / 3; ++i) {
+      const d = Math.hypot(ps[i * 3] - ps[i * 3 - 3], ps[i * 3 + 1] - ps[i * 3 - 2], ps[i * 3 + 2] - ps[i * 3 - 1]);
+      expect(d).toBeCloseTo(10, 12);
+    }
+    expect(drawn(v).count).toBe(7 + 8 + 20);
+  });
+
   it('refuses a grown fiber of more units than a grow makes (review 9): no step', async () => {
     const v = await viewer();
     const ref = entry(v).cell.transform.ref;
@@ -265,6 +280,27 @@ describe('mesoscale.grow', () => {
     const grown = m.grownFiberState(at.asReadonly).value!;
     expect(source.rise).not.toBe(10);
     expect(grown.rise).toBeCloseTo(source.rise, 6);
+  });
+
+  it('a structure painted: a helix made again by the same settings is the same, bit for bit (round 2)', async () => {
+    const v = await viewer();
+    const structure = v.plugin.managers.structure.hierarchy.current.structures[0].cell.transform.ref;
+    expectOk(await v.api.run('mesoscale.paint', { structure, particles: '', positions: [0, 0, 0] }));
+    const painting = v.plugin.managers.particles.hierarchy.current.lists.find((l) => l.cell.obj?.label === 'Painting')!;
+    const particles = painting.cell.transform.ref;
+    const helix = { particles, index: 0, mode: 'helix', pitch: 60, turns: 3, helixRadius: 30 };
+    const r = await v.api.run('mesoscale.grow', helix);
+    expectOk(r);
+    const path = () =>
+      (
+        Array.from(v.plugin.state.data.cells.values()).find((c) => c.transform.transformer === ParticleListPainted)!
+          .transform.params as { strokes: PaintStroke[] }
+      ).strokes.at(-1)!.positions;
+    const first = Array.from(path());
+    expect(first.length).toBeGreaterThan(0);
+    expectOk(await v.api.run('mesoscale.grow', { ...helix, replace: (r.value as { id: number }).id }));
+    // its rise the structure's as drawn, not its fiber's step measured on the drawn list: the same path
+    expect(Array.from(path())).toEqual(first);
   });
 
   it('grows from the source where it is drawn after Move this instance (review S1)', async () => {
@@ -622,5 +658,584 @@ describe('mesoscale.grow on a mesh', () => {
     expect(Vec3.magnitude(xyz(copy, copy.count - 1))).toBeCloseTo(50, 0);
     const up = Vec3.transformQuat(Vec3(), Vec3.create(0, 0, 1), quat(copy, copy.count - 1));
     expect(Vec3.dot(up, radial)).toBeGreaterThan(0.999);
+  });
+});
+
+// Grow › Helix (apps/prism-me/progress/2026-11-13-grow-helix.md, Tests): a fiber stroke as the walk's, its path a helix.
+
+describe('mesoscale.grow helix', () => {
+  /** The distance from `p` to the line through `at` along z */
+  const offZ = (p: Vec3, at: Vec3) => Math.hypot(p[0] - at[0], p[1] - at[1]);
+
+  it("winds a fiber in space about the source's Fiber Axis, Radius away, Pitch a turn; one step, undo and redo", async () => {
+    const v = await viewer();
+    const ref = entry(v).cell.transform.ref;
+    // NC (#3) at (30, 0, 0), unturned, its Fiber Axis z: the helix about the line along z through (45, 0, 0)
+    expectOk(await v.api.run('mesoscale.fiber', { entity: 'NC', axis: 'z' }));
+    const before = steps(v);
+    const helix = { particles: ref, index: 3, mode: 'helix', pitch: 40, turns: 3, helixRadius: 15, rise: 5, seed: 1 };
+    const r = await v.api.run('mesoscale.grow', helix);
+    expectOk(r);
+    expect(steps(v)).toBe(before + 1);
+    // its count the units drawn, not its path's points (review S2)
+    expect((r.value as { count: number }).count).toBe(drawn(v).count - 7);
+    const [stroke] = strokes(v);
+    expect(stroke).toMatchObject({
+      fiber: true,
+      grow: { mode: 'helix', params: { pitch: 40, turns: 3, hand: 'right' } },
+    });
+    // the path: a point of its 5° grid and the one a turn later (72 points) Pitch apart along z (its first, a rise from
+    // the source, off the grid)
+    const ps = stroke.positions;
+    for (let i = 1; i + 72 < ps.length / 3; ++i) {
+      expect(ps[(i + 72) * 3 + 2] - ps[i * 3 + 2]).toBeCloseTo(40, 6);
+      expect(ps[(i + 72) * 3] - ps[i * 3]).toBeCloseTo(0, 6);
+    }
+    const list = drawn(v);
+    expect(list.count).toBeGreaterThan(7 + 40);
+    for (let i = 7; i < list.count; ++i) {
+      expect(offZ(xyz(list, i), Vec3.create(45, 0, 0))).toBeCloseTo(15, 1);
+      if (i > 7) expect(Vec3.distance(xyz(list, i), xyz(list, i - 1))).toBeCloseTo(5, 1);
+    }
+    // the first unit a rise along the helix from the source, not on it
+    expect(Vec3.distance(xyz(list, 7), Vec3.create(30, 0, 0))).toBeCloseTo(5, 0);
+    const count = list.count;
+    expectOk(await v.api.run('history.undo', {}));
+    expect(drawn(v).count).toBe(7);
+    expectOk(await v.api.run('history.redo', {}));
+    expect(drawn(v).count).toBe(count);
+    // Hand left: the other way about the axis
+    expectOk(await v.api.run('history.undo', {}));
+    expectOk(await v.api.run('mesoscale.grow', { ...helix, hand: 'left' }));
+    expect(xyz(drawn(v), 9)[1] * xyz(list, 9)[1]).toBeLessThan(0);
+  });
+
+  it("winds in the scene's Å on a list moved and scaled: Radius and Pitch as drawn (review S4)", async () => {
+    const v = await viewer();
+    const ref = entry(v).cell.transform.ref;
+    const m = Mat4.fromTranslation(Mat4(), Vec3.create(100, 0, 0));
+    await v.plugin.build().to(ref).insert(ParticleListTransform, { transform: m, scale: 2 }).commit();
+    expectOk(await v.api.run('mesoscale.fiber', { entity: 'NC', axis: 'z' }));
+    // NC (#3) drawn at (160, 0, 0); its rise 10 list units, 20 Å drawn
+    expect(Vec3.distance(xyz(drawn(v), 3), Vec3.create(160, 0, 0))).toBeLessThan(1e-3);
+    const helix = { particles: ref, index: 3, mode: 'helix', pitch: 40, turns: 2, helixRadius: 15 };
+    expectOk(await v.api.run('mesoscale.grow', helix));
+    const list = drawn(v);
+    // the first unit 20 Å along the helix (a chord of 19)
+    expect(Vec3.distance(xyz(list, 7), Vec3.create(160, 0, 0))).toBeCloseTo(19, 0);
+    for (let i = 7; i < list.count; ++i) {
+      expect(offZ(xyz(list, i), Vec3.create(175, 0, 0))).toBeCloseTo(15, 1);
+      expect(xyz(list, i)[2]).toBeGreaterThan(0);
+      expect(xyz(list, i)[2]).toBeLessThanOrEqual(80 + 1e-3);
+    }
+    expect(xyz(list, list.count - 1)[2]).toBeGreaterThan(80 - 20);
+  });
+
+  it("its params (growParams): Axis on a mesh, Radius in space, the walk's none (review S4)", () => {
+    const src = { particles: 'L', index: 1 };
+    const s = {
+      ...DefaultGrowSettings,
+      mode: 'helix' as const,
+      pitch: 50,
+      helixRadius: 9,
+      axis: 'x' as const,
+      steps: 7,
+    };
+    const space = growParams(src, s);
+    expect(space).toMatchObject({ mode: 'helix', pitch: 50, turns: 5, hand: 'right', direction: 'up', helixRadius: 9 });
+    expect(space).not.toHaveProperty('axis');
+    expect(space).not.toHaveProperty('steps');
+    const onMesh = growParams(src, { ...s, mesh: 'M' });
+    expect(onMesh).toMatchObject({ mesh: 'M', axis: 'x', pitch: 50 });
+    expect(onMesh).not.toHaveProperty('helixRadius');
+    expect(growParams(src, { ...s, mode: 'walk', mesh: 'M' })).not.toHaveProperty('axis');
+  });
+
+  it("a helix's own Rise live (paint-refine's grown fiber): the same path, its units r apart, one step", async () => {
+    const v = await viewer();
+    const ref = entry(v).cell.transform.ref;
+    expectOk(await v.api.run('mesoscale.fiber', { entity: 'NC', axis: 'z' }));
+    const r = await v.api.run('mesoscale.grow', {
+      particles: ref,
+      index: 3,
+      mode: 'helix',
+      pitch: 40,
+      turns: 2,
+      helixRadius: 15,
+      rise: 5,
+    });
+    expectOk(r);
+    const id = (r.value as { id: number }).id;
+    const path = [...strokes(v)[0].positions];
+    const count = drawn(v).count;
+    const before = steps(v);
+    expectOk(await v.api.run('mesoscale.grown-fiber', { particles: ref, grow: id, rise: 2.5 }));
+    expect(steps(v)).toBe(before + 1);
+    expect(strokes(v)[0].positions).toEqual(path);
+    const list = drawn(v);
+    expect(list.count - 7).toBeCloseTo(2 * (count - 7), -1);
+    for (let i = 7; i < list.count; ++i) expect(offZ(xyz(list, i), Vec3.create(45, 0, 0))).toBeCloseTo(15, 1);
+  });
+
+  it('spirals over a vesicle about its axis (Z) to its pole, each unit on it, its normals kept', async () => {
+    const v = await viewer();
+    const ref = entry(v).cell.transform.ref;
+    // CA (#2) at (20, 0, 0) on a vesicle of 100 Å about (-80, 0, 0): on its equator about z
+    expectOk(await v.api.load.files({ files: [new File([sphereObj(100, Vec3.create(-80, 0, 0))], 'vesicle.obj')] }));
+    const { repr } = meshCells(v);
+    const centre = Vec3.create(-80, 0, 0);
+    const grow = (p: object) =>
+      v.api.run('mesoscale.grow', { particles: ref, index: 2, mesh: repr, mode: 'helix', rise: 10, ...p });
+    expectOk(await grow({ pitch: 30, turns: 10, axis: 'z' }));
+    const [stroke] = strokes(v);
+    expect(stroke.normals?.length).toBe(stroke.positions.length);
+    expect(stroke.grow).toMatchObject({ mode: 'helix', params: { axis: 'z' }, mesh: { ref: repr } });
+    const list = drawn(v);
+    // on its faces (an icosphere of detail 3: within 0.3 Å of the sphere) or their chords of 5°
+    for (let i = 7; i < list.count; ++i) {
+      expect(Vec3.distance(xyz(list, i), centre)).toBeGreaterThan(99.4);
+      expect(Vec3.distance(xyz(list, i), centre)).toBeLessThan(100.001);
+    }
+    // up to the north pole, not past it: some 3⅓ turns of the 10
+    expect(xyz(list, list.count - 1)[2]).toBeGreaterThan(90);
+    // undo and redo on a mesh (review S4): the same units again
+    const units = Array.from(list.coordinates);
+    expectOk(await v.api.run('history.undo', {}));
+    expect(drawn(v).count).toBe(7);
+    expectOk(await v.api.run('history.redo', {}));
+    expect(Array.from(drawn(v).coordinates)).toEqual(units);
+    // the source on the axis (X through the vesicle's center): refused, no step
+    const s = steps(v);
+    expect(await grow({ pitch: 30, turns: 2, axis: 'x' })).toMatchObject({ ok: false, code: 'invalid' });
+    expect(steps(v)).toBe(s);
+  });
+
+  it('refuses more than 200 turns, and a helix on a mesh of more units than a grow makes, before it is all made (review M1)', async () => {
+    const v = await viewer();
+    const ref = entry(v).cell.transform.ref;
+    expectOk(await v.api.load.files({ files: [new File([sphereObj(100, Vec3.create(-80, 0, 0))], 'vesicle.obj')] }));
+    const { repr } = meshCells(v);
+    const grow = (p: object) =>
+      v.api.run('mesoscale.grow', { particles: ref, index: 2, mesh: repr, mode: 'helix', axis: 'z', ...p });
+    const s = steps(v);
+    expect(await grow({ turns: 201 })).toMatchObject({ ok: false, code: 'invalid' });
+    // a spiral of 1 Å a turn over the vesicle's half (some 31000 Å) at 0.1 Å a unit
+    const t0 = Date.now();
+    const r = await grow({ turns: 200, pitch: 1, rise: 0.1 });
+    expect(r).toMatchObject({ ok: false, code: 'invalid' });
+    expect(r.ok ? '' : r.message).toContain('a grow makes 20000 at most');
+    expect(steps(v)).toBe(s);
+    expect(Date.now() - t0).toBeLessThan(5000);
+  });
+
+  it('refuses a pitch, turns or radius of no helix, and more units than a grow makes: no step', async () => {
+    const v = await viewer();
+    const ref = entry(v).cell.transform.ref;
+    const grow = (p: object) => v.api.run('mesoscale.grow', { particles: ref, index: 3, mode: 'helix', ...p });
+    const s = steps(v);
+    expect(await grow({ pitch: 0 })).toMatchObject({ ok: false, code: 'invalid' });
+    expect(await grow({ turns: 0 })).toMatchObject({ ok: false, code: 'invalid' });
+    expect(await grow({ helixRadius: 0 })).toMatchObject({ ok: false, code: 'invalid' });
+    expect(await grow({ turns: 200, helixRadius: 1000, rise: 0.5 })).toMatchObject({ ok: false, code: 'invalid' });
+    // a helix of one unit or none, shorter than two rises (review New 1): its rise named
+    for (const rise of [20, 30]) {
+      const r = await grow({ turns: 0.25, pitch: 40, helixRadius: 15, rise });
+      expect(r).toMatchObject({ ok: false, code: 'invalid' });
+      expect(r.ok ? '' : r.message).toContain('rise');
+    }
+    expect(steps(v)).toBe(s);
+    expect(painted(v).length).toBe(0);
+  });
+});
+
+// The last grow live (grow-helix round 2, Ludo 2026-11-13: "all the parameters … update the latest grow"): a grow given
+// `replace` (a grow's id) makes that grow's stroke again by its params, in place, one step; its seed kept unless given.
+
+describe('mesoscale.grow replace', () => {
+  const poses = (l: ParticleList, from: number, to: number) => ({
+    positions: Array.from(l.coordinates.slice(from * 3, to * 3)),
+    rotations: Array.from(l.rotations!.slice(from * 4, to * 4)),
+  });
+
+  it('makes a sphere again with more copies (the first ones where they were), then fewer, one step each', async () => {
+    const v = await viewer();
+    const ref = entry(v).cell.transform.ref;
+    const r = await v.api.run('mesoscale.grow', { particles: ref, index: 2, mode: 'sphere', count: 10, radius: 30 });
+    expectOk(r);
+    const id = (r.value as { id: number }).id;
+    const first = poses(drawn(v), 7, 17);
+    const before = steps(v);
+    const more = await v.api.run('mesoscale.grow', {
+      particles: ref,
+      index: 2,
+      mode: 'sphere',
+      count: 25,
+      radius: 30,
+      replace: id,
+    });
+    expectOk(more);
+    expect((more.value as { id: number }).id).toBe(id);
+    expect(steps(v)).toBe(before + 1);
+    expect(strokes(v).length).toBe(1);
+    expect(drawn(v).count).toBe(7 + 25);
+    // its seed kept: the first ten bit for bit
+    expect(poses(drawn(v), 7, 17)).toEqual(first);
+    expectOk(
+      await v.api.run('mesoscale.grow', {
+        particles: ref,
+        index: 2,
+        mode: 'sphere',
+        count: 4,
+        radius: 30,
+        replace: id,
+      }),
+    );
+    expect(drawn(v).count).toBe(7 + 4);
+    expect(poses(drawn(v), 7, 11)).toEqual({
+      positions: first.positions.slice(0, 12),
+      rotations: first.rotations.slice(0, 16),
+    });
+    expectOk(await v.api.run('history.undo', {}));
+    expect(drawn(v).count).toBe(7 + 25);
+  });
+
+  it('continues a walk with more steps (its units where they were, the last one turned to the next) and changes its mode in place', async () => {
+    const v = await viewer();
+    const ref = entry(v).cell.transform.ref;
+    const walk = { particles: ref, index: 3, mode: 'walk', steps: 8, persistence: 30, twist: 15 };
+    const r = await v.api.run('mesoscale.grow', walk);
+    expectOk(r);
+    const id = (r.value as { id: number }).id;
+    const first = poses(drawn(v), 7, 15);
+    expectOk(await v.api.run('mesoscale.grow', { ...walk, steps: 20, replace: id }));
+    expect(drawn(v).count).toBe(7 + 20);
+    const now = poses(drawn(v), 7, 15);
+    expect(now.positions).toEqual(first.positions);
+    expect(now.rotations.slice(0, -4)).toEqual(first.rotations.slice(0, -4));
+    // another mode: the same grow, now a sphere
+    expectOk(await v.api.run('mesoscale.grow', { particles: ref, index: 3, mode: 'sphere', count: 5, replace: id }));
+    expect(strokes(v).length).toBe(1);
+    expect(strokes(v)[0].grow).toMatchObject({ mode: 'sphere', id });
+    expect(drawn(v).count).toBe(7 + 5);
+  });
+
+  it("keeps a fiber's own rise set by grown-fiber when made again without one (review nit, minor)", async () => {
+    const v = await viewer();
+    const ref = entry(v).cell.transform.ref;
+    const r = await v.api.run('mesoscale.grow', { particles: ref, index: 3, mode: 'walk', steps: 8 });
+    expectOk(r);
+    const id = (r.value as { id: number }).id;
+    expectOk(await v.api.run('mesoscale.grown-fiber', { particles: ref, grow: id, rise: 15 }));
+    expectOk(await v.api.run('mesoscale.grow', { particles: ref, index: 3, mode: 'walk', steps: 12, replace: id }));
+    expect(strokes(v)[0].own).toMatchObject({ rise: 15 });
+    // given, it wins
+    expectOk(
+      await v.api.run('mesoscale.grow', { particles: ref, index: 3, mode: 'walk', steps: 12, rise: 7, replace: id }),
+    );
+    expect(strokes(v)[0].own).toMatchObject({ rise: 7 });
+  });
+
+  it('refuses a grow that is not there or is of another source: no step', async () => {
+    const v = await viewer();
+    const ref = entry(v).cell.transform.ref;
+    const r = await v.api.run('mesoscale.grow', { particles: ref, index: 2, mode: 'sphere', count: 3 });
+    expectOk(r);
+    const id = (r.value as { id: number }).id;
+    const s = steps(v);
+    expect(
+      await v.api.run('mesoscale.grow', { particles: ref, index: 2, mode: 'sphere', count: 4, replace: id + 1 }),
+    ).toMatchObject({ ok: false, code: 'not-found' });
+    expect(
+      await v.api.run('mesoscale.grow', { particles: ref, index: 3, mode: 'sphere', count: 4, replace: id }),
+    ).toMatchObject({ ok: false, code: 'invalid' });
+    expect(steps(v)).toBe(s);
+  });
+});
+
+// Clear (grow-helix round 2, Ludo 2026-11-13: "a clear button, that will clear all growth from that instance").
+
+describe('mesoscale.clear-grown', () => {
+  it('removes every grow from the source (any mode), one step; the source and the other grows stay; redo clears again', async () => {
+    const v = await viewer();
+    const ref = entry(v).cell.transform.ref;
+    const grow = (p: object) => v.api.run('mesoscale.grow', { particles: ref, ...p });
+    expectOk(await grow({ index: 2, mode: 'sphere', count: 4 }));
+    expectOk(await grow({ index: 3, mode: 'sphere', count: 3 }));
+    expectOk(await grow({ index: 2, mode: 'walk', steps: 5 }));
+    expectOk(await grow({ index: 2, mode: 'crystal', na: 2, nb: 1, nc: 1 }));
+    const m = v.api.mesoscale!;
+    const count = m.grownFromState(observableState({ particles: ref, index: 2 }).asReadonly);
+    const sub = count.subscribe(() => undefined);
+    expect(count.value).toBe(3);
+    const all = drawn(v).count;
+    const before = steps(v);
+    const r = await v.api.run('mesoscale.clear-grown', { particles: ref, index: 2 });
+    expectOk(r);
+    expect(steps(v)).toBe(before + 1);
+    expect(drawn(v).count).toBe(7 + 3);
+    expect(strokes(v).map((s) => s.grow?.source.index)).toEqual([3]);
+    expect(Array.from(xyz(drawn(v), 2))).toEqual([20, 0, 0]);
+    expect(count.value).toBe(0);
+    // nothing more to clear: refused, no step
+    expect(await v.api.run('mesoscale.clear-grown', { particles: ref, index: 2 })).toMatchObject({ ok: false });
+    expect(steps(v)).toBe(before + 1);
+    expectOk(await v.api.run('history.undo', {}));
+    expect(drawn(v).count).toBe(all);
+    expect(count.value).toBe(3);
+    expectOk(await v.api.run('history.redo', {}));
+    expect(drawn(v).count).toBe(7 + 3);
+    sub.unsubscribe();
+  });
+
+  it('keeps a painted source: the grows from it go, the copy it is stays', async () => {
+    const v = await viewer();
+    const ref = entry(v).cell.transform.ref;
+    expectOk(await v.api.run('mesoscale.grow', { particles: ref, index: 2, mode: 'sphere', count: 2, seed: 1 }));
+    // copy #7 (grown) the next source
+    expectOk(await v.api.run('mesoscale.grow', { particles: ref, index: 7, mode: 'sphere', count: 5 }));
+    const seven = Array.from(xyz(drawn(v), 7));
+    expectOk(await v.api.run('mesoscale.clear-grown', { particles: ref, index: 7 }));
+    expect(drawn(v).count).toBe(7 + 2);
+    expect(Array.from(xyz(drawn(v), 7))).toEqual(seven);
+  });
+});
+
+// A grow from a painted copy (round 2 review M1, New 1): a copy's key is its place among the painted copies, so when a
+// stroke before it changes its count or goes, the grows from later copies follow their copy (their record's key and
+// index); when their copy goes, they go with it.
+
+describe('grows from painted copies when the strokes before them change', () => {
+  const sources = (v: PrismViewer) => strokes(v).map((s) => s.grow?.source.index);
+
+  it("Clear: the grows from the cleared grows' copies go too; a grow from a later copy follows it", async () => {
+    const v = await viewer();
+    const ref = entry(v).cell.transform.ref;
+    const grow = (p: object) => v.api.run('mesoscale.grow', { particles: ref, mode: 'sphere', ...p });
+    // G1: #7..#10 from #2; G2: #11..#13 from #3; G3 from #9 (G1's); G4 from #12 (G2's)
+    expectOk(await grow({ index: 2, count: 4 }));
+    expectOk(await grow({ index: 3, count: 3 }));
+    expectOk(await grow({ index: 9, count: 2 }));
+    expectOk(await grow({ index: 12, count: 2 }));
+    const g4 = Array.from(drawn(v).coordinates.slice(-6));
+    expectOk(await v.api.run('mesoscale.clear-grown', { particles: ref, index: 2 }));
+    // G1 and G3 gone; G2 now #7..#9, G4 from #8, its copies as they were
+    expect(sources(v)).toEqual([3, 8]);
+    expect(drawn(v).count).toBe(7 + 3 + 2);
+    expect(Array.from(drawn(v).coordinates.slice(-6))).toEqual(g4);
+    const m = v.api.mesoscale!;
+    expect(m.grownFromState(observableState({ particles: ref, index: 8 }).asReadonly).value).toBe(1);
+    expect(m.grownFromState(observableState({ particles: ref, index: 10 }).asReadonly).value).toBe(0);
+    expect(await v.api.run('mesoscale.clear-grown', { particles: ref, index: 10 })).toMatchObject({ ok: false });
+    expectOk(await v.api.run('mesoscale.clear-grown', { particles: ref, index: 8 }));
+    expect(sources(v)).toEqual([3]);
+  });
+
+  it('replace: fewer copies take the grows from the cut ones with them; more keep a later grow on its copy', async () => {
+    const v = await viewer();
+    const ref = entry(v).cell.transform.ref;
+    const grow = (p: object) => v.api.run('mesoscale.grow', { particles: ref, mode: 'sphere', ...p });
+    const r = await grow({ index: 2, count: 4, seed: 1 });
+    expectOk(r);
+    const g1 = (r.value as { id: number }).id;
+    // G2 from #8 (G1's second), G3 from #11 (G2's first)
+    expectOk(await grow({ index: 8, count: 3 }));
+    expectOk(await grow({ index: 11, count: 2 }));
+    const g3 = Array.from(drawn(v).coordinates.slice(-6));
+    // G1 with 6: G2 still from #8; G3's source now #13, its copies as they were
+    expectOk(await grow({ index: 2, count: 6, seed: 1, replace: g1 }));
+    expect(sources(v)).toEqual([2, 8, 13]);
+    expect(Array.from(drawn(v).coordinates.slice(-6))).toEqual(g3);
+    expectOk(await grow({ index: 13, count: 3, replace: strokes(v)[2].grow!.id }));
+    // G1 with 1: its second copy (G2's source) cut, so G2 and G3 go
+    expectOk(await grow({ index: 2, count: 1, seed: 1, replace: g1 }));
+    expect(sources(v)).toEqual([2]);
+    expect(drawn(v).count).toBe(7 + 1);
+    expectOk(await v.api.run('history.undo', {}));
+    expect(sources(v)).toEqual([2, 8, 13]);
+  });
+});
+
+// Grow › Spiral (grow-helix round 3): a fiber stroke as the walk's and the helix's, its path a flat spiral from the source:
+// Count copies, Step (its rise) apart along it, its arms Arm spacing apart.
+
+describe('mesoscale.grow spiral', () => {
+  it('Count copies flat about the source, Step apart; one step, undo, redo; more continue it, fewer cut it', async () => {
+    const v = await viewer();
+    const ref = entry(v).cell.transform.ref;
+    // NC (#3) at (30, 0, 0), unturned, its Fiber Axis z: the spiral in z = 0 about it
+    expectOk(await v.api.run('mesoscale.fiber', { entity: 'NC', axis: 'z' }));
+    const spiral = { particles: ref, index: 3, mode: 'spiral', spacing: 20, count: 30, rise: 5, seed: 1 };
+    const before = steps(v);
+    const r = await v.api.run('mesoscale.grow', spiral);
+    expectOk(r);
+    expect(steps(v)).toBe(before + 1);
+    expect(strokes(v)[0]).toMatchObject({
+      fiber: true,
+      own: { rise: 5 },
+      grow: { mode: 'spiral', params: { spacing: 20, count: 30, hand: 'right' } },
+    });
+    // the turns it reached, for the section to show
+    expect((strokes(v)[0].grow!.params as { turns: number }).turns).toBeGreaterThan(1);
+    const list = drawn(v);
+    expect(list.count).toBe(7 + 30);
+    expect((r.value as { count: number }).count).toBe(30);
+    const centre = Vec3.create(30, 0, 0);
+    for (let i = 7; i < list.count; ++i) {
+      expect(xyz(list, i)[2]).toBeCloseTo(0, 4);
+      if (i > 7) expect(Vec3.distance(xyz(list, i), xyz(list, i - 1))).toBeLessThanOrEqual(5 + 1e-3);
+    }
+    expect(Vec3.distance(xyz(list, 7), centre)).toBeGreaterThan(3);
+    const first = Array.from(list.coordinates.slice(21, list.count * 3));
+    expectOk(await v.api.run('history.undo', {}));
+    expect(drawn(v).count).toBe(7);
+    expectOk(await v.api.run('history.redo', {}));
+    expect(drawn(v).count).toBe(7 + 30);
+    // live: more copies continue it, their first where they were; fewer cut it
+    const id = (r.value as { id: number }).id;
+    expectOk(await v.api.run('mesoscale.grow', { ...spiral, count: 50, replace: id }));
+    expect(drawn(v).count).toBe(7 + 50);
+    expect(Array.from(drawn(v).coordinates.slice(21, 37 * 3))).toEqual(first);
+    expectOk(await v.api.run('mesoscale.grow', { ...spiral, count: 12, replace: id }));
+    expect(drawn(v).count).toBe(7 + 12);
+    expect(Array.from(drawn(v).coordinates.slice(21, 19 * 3))).toEqual(first.slice(0, 12 * 3));
+    // another Step: the same count, Step apart
+    expectOk(await v.api.run('mesoscale.grow', { ...spiral, count: 12, rise: 8, replace: id }));
+    expect(drawn(v).count).toBe(7 + 12);
+    // (its last two, out of the curl at the center, where the straight distance is a little less than the Step along it)
+    expect(Vec3.distance(xyz(drawn(v), 18), xyz(drawn(v), 17))).toBeCloseTo(8, 1);
+    // Clear takes it
+    expectOk(await v.api.run('mesoscale.clear-grown', { particles: ref, index: 3 }));
+    expect(drawn(v).count).toBe(7);
+  });
+
+  it("refuses a spiral's rise by grown-fiber (its Step is the grow's: replace), its Twist kept live (second review 2)", async () => {
+    const v = await viewer();
+    const ref = entry(v).cell.transform.ref;
+    const r = await v.api.run('mesoscale.grow', {
+      particles: ref,
+      index: 3,
+      mode: 'spiral',
+      spacing: 20,
+      count: 30,
+      rise: 5,
+    });
+    expectOk(r);
+    const id = (r.value as { id: number }).id;
+    const s = steps(v);
+    expect(await v.api.run('mesoscale.grown-fiber', { particles: ref, grow: id, rise: 2 })).toMatchObject({
+      ok: false,
+      code: 'invalid',
+    });
+    expect(steps(v)).toBe(s);
+    expect(drawn(v).count).toBe(7 + 30);
+    expectOk(await v.api.run('mesoscale.grown-fiber', { particles: ref, grow: id, twist: 20 }));
+    expect(drawn(v).count).toBe(7 + 30);
+  });
+
+  it('skips the copies crowding an earlier arm and goes on (round 3b): its skips with its stroke, the rest turned as before', async () => {
+    const v = await viewer();
+    const ref = entry(v).cell.transform.ref;
+    expectOk(await v.api.load.files({ files: [new File([sphereObj(100, Vec3.create(-80, 0, 0))], 'vesicle.obj')] }));
+    const { repr } = meshCells(v);
+    // CA's units' axis z (known), for the chain made again below
+    expectOk(await v.api.run('mesoscale.fiber', { entity: 'CA', axis: 'z' }));
+    const spiral = { particles: ref, index: 2, mesh: repr, mode: 'spiral', rise: 8, spacing: 20, twist: 15 };
+    const r = await v.api.run('mesoscale.grow', { ...spiral, count: 400 });
+    expectOk(r);
+    const [stroke] = strokes(v);
+    expect(stroke.skip?.length).toBeGreaterThan(0);
+    const made = (r.value as { count: number }).count;
+    expect(drawn(v).count).toBe(7 + made);
+    expect((stroke.grow!.params as { copies: number }).copies).toBe(made);
+    // the copies kept turned as in the chain unskipped (by their place along it; 3b review 4): the drawn copies are the
+    // whole chain's units, made by makeFiber from the stroke's path, less those skipped
+    const list = drawn(v);
+    const skip = stroke.skip!;
+    const chain = makeFiber(
+      stroke.positions,
+      { rise: 8, twist: 15, jitter: 0, axis: 'z' },
+      Vec3.create(0, 0, 1),
+      stroke.seed ?? 0,
+      stroke.normals,
+    );
+    const gone = new Set(skip);
+    let at = 7;
+    for (let u = 0; u < chain.positions.length / 3; ++u) {
+      if (gone.has(u)) continue;
+      for (let c = 0; c < 4; ++c) expect(list.rotations![at * 4 + c]).toBeCloseTo(chain.rotations[u * 4 + c], 4);
+      for (let c = 0; c < 3; ++c) expect(list.coordinates[at * 3 + c]).toBeCloseTo(chain.positions[u * 3 + c], 2);
+      ++at;
+    }
+    expect(at).toBe(list.count);
+    // fewer copies, past the first skip: the first of them, the same skips before
+    const fewer = skip[0] + 20;
+    expectOk(await v.api.run('mesoscale.grow', { ...spiral, count: fewer, replace: (r.value as { id: number }).id }));
+    expect(drawn(v).count).toBe(7 + fewer);
+    expect(strokes(v)[0].skip).toEqual(skip.filter((x) => x < strokes(v)[0].skip!.at(-1)! + 1));
+    expect(Array.from(drawn(v).coordinates.slice(21, (7 + fewer) * 3))).toEqual(
+      Array.from(list.coordinates.slice(21, (7 + fewer) * 3)),
+    );
+  });
+
+  it('is a fiber a run of copies kept: no link across its skips (3b review 1)', async () => {
+    const v = await viewer();
+    const ref = entry(v).cell.transform.ref;
+    expectOk(await v.api.load.files({ files: [new File([sphereObj(100, Vec3.create(-80, 0, 0))], 'vesicle.obj')] }));
+    const { repr } = meshCells(v);
+    const spiral = { particles: ref, index: 2, mesh: repr, mode: 'spiral', rise: 8, spacing: 20, count: 400 };
+    expectOk(await v.api.run('mesoscale.grow', spiral));
+    expect(strokes(v)[0].skip!.length).toBeGreaterThan(0);
+    // a fiber a run of two copies or more kept between its skips: many, each a rise a link
+    const list = drawn(v);
+    const f = list.fibers!;
+    expect(f.count).toBeGreaterThan(5);
+    for (let k = 0; k < f.count; ++k) {
+      for (let j = f.offsets[k] + 1; j < f.offsets[k + 1]; ++j) {
+        expect(Vec3.distance(xyz(list, f.indices[j]), xyz(list, f.indices[j - 1]))).toBeLessThanOrEqual(8 + 1e-3);
+      }
+    }
+  });
+
+  it("keeps its Step when the entity's fiber rise changes after it (its skips its own units; 3b review 2)", async () => {
+    const v = await viewer();
+    const ref = entry(v).cell.transform.ref;
+    expectOk(await v.api.load.files({ files: [new File([sphereObj(100, Vec3.create(-80, 0, 0))], 'vesicle.obj')] }));
+    const { repr } = meshCells(v);
+    // CA's rise 10 (the entity's): no rise given
+    const r = await v.api.run('mesoscale.grow', {
+      particles: ref,
+      index: 2,
+      mesh: repr,
+      mode: 'spiral',
+      spacing: 20,
+      count: 400,
+    });
+    expectOk(r);
+    const made = (r.value as { count: number }).count;
+    expect(strokes(v)[0].own).toMatchObject({ rise: 10 });
+    expectOk(await v.api.run('mesoscale.fiber', { entity: 'CA', rise: 4 }));
+    expect(drawn(v).count).toBe(7 + made);
+  });
+
+  it('rolls over a vesicle from the source, each copy on it, its normals kept; refuses no spacing or count', async () => {
+    const v = await viewer();
+    const ref = entry(v).cell.transform.ref;
+    expectOk(await v.api.load.files({ files: [new File([sphereObj(100, Vec3.create(-80, 0, 0))], 'vesicle.obj')] }));
+    const { repr } = meshCells(v);
+    const grow = (p: object) =>
+      v.api.run('mesoscale.grow', { particles: ref, index: 2, mesh: repr, mode: 'spiral', rise: 8, ...p });
+    expectOk(await grow({ spacing: 20, count: 40 }));
+    expect(strokes(v)[0].normals?.length).toBe(strokes(v)[0].positions.length);
+    const list = drawn(v);
+    expect(list.count).toBe(7 + 40);
+    for (let i = 7; i < list.count; ++i) {
+      expect(Vec3.distance(xyz(list, i), Vec3.create(-80, 0, 0))).toBeGreaterThan(99.4);
+      expect(Vec3.distance(xyz(list, i), Vec3.create(-80, 0, 0))).toBeLessThan(100.001);
+    }
+    const s = steps(v);
+    expect(await grow({ spacing: 0 })).toMatchObject({ ok: false, code: 'invalid' });
+    expect(await grow({ count: 1 })).toMatchObject({ ok: false, code: 'invalid' });
+    expect(await grow({ count: 30000 })).toMatchObject({ ok: false, code: 'invalid' });
+    expect(steps(v)).toBe(s);
   });
 });
