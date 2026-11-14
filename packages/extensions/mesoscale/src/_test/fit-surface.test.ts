@@ -15,6 +15,7 @@ import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
 import type { PrismViewer } from '@molstar/prism-viewer/viewer';
 import { envelopeOf, fitMapOf, fitPose, fitScore, PaintReach, sceneVolumes, SurfaceTilt } from '../fit.js';
 import { sceneMeshes } from '../mesh-surface.js';
+import { pluginCursorFit } from '../paint-host.js';
 import { MesoscaleExtension } from '../prism-viewer.js';
 import { angleBetween, crnAtoms, crnSites, density, gridOf, seeded, type Site, turn } from './density.js';
 import { setTestTargetStructure, TestTargetList } from './fixtures.js';
@@ -177,7 +178,7 @@ describe('a fit on a surface', () => {
 });
 
 describe('a grow on a mesh fitted to a density', () => {
-  it('grows from a copy placed on the surface, unfitted: copies only where the wall is, all on the surface', async () => {
+  it('grows from a copy placed on the surface, unfitted: copies only where the wall is, all on the surface; a click fits on it', async () => {
     const v = await viewer();
     const obj = sphereObj();
     expectOk(await v.api.load.files({ files: [new File([obj], 'vesicle.obj')] }));
@@ -237,6 +238,28 @@ describe('a grow on a mesh fitted to a density', () => {
       expect(Math.abs(Vec3.distance(q, C) - R)).toBeLessThan(0.5);
       expect(q[0]).toBeGreaterThan(from - 20);
     }
+    expectOk(await v.api.run('history.undo', {}));
+    // a click on the mesh with Fit to: the copy fitted on it, the copy under the pointer where the click puts it
+    const data = drawn(v);
+    const cursor = pluginCursorFit(v.plugin, data.targetMapping?.get(data.targets[index]), 10);
+    const rotation = quat(data, index);
+    const shown = cursor.fit(at, rotation, volume, 'dark', n)!;
+    cursor.dispose();
+    expectOk(
+      await v.api.run('mesoscale.paint', {
+        entity: 'CA',
+        positions: Array.from(at),
+        normals: Array.from(n),
+        surface: true,
+        orient: 'normal',
+        seed: 1,
+        mesh,
+        fit: volume,
+      }),
+    );
+    const copy = xyz(drawn(v), drawn(v).count - 1);
+    expect(Math.abs(Vec3.distance(copy, C) - R)).toBeLessThan(0.5);
+    expect(Vec3.distance(copy, shown.position)).toBeLessThan(1e-3);
   });
 
   it("grows from a copy placed in a lattice's hole (refused before: its whole shell's score below 0)", async () => {

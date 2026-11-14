@@ -211,7 +211,7 @@ function copyCursor(
     .catch((e) => plugin.log.warn(`The paint brush's copy could not be drawn: ${e}`));
 
   return {
-    move(position, normal, settings, seed, onSurface, fitTo) {
+    move(position, normal, settings, seed, onSurface, fitTo, onMesh) {
       // Turn Auto: along the normal on a surface (paint-refine round 2) or for a membrane protein, else at random
       const how: PaintOrient =
         settings.orient !== 'auto' ? settings.orient : surface || onSurface ? 'normal' : 'random';
@@ -225,7 +225,7 @@ function copyCursor(
       turn.spin = settings.spin;
       paintRotation(_q, _dir, how, seed, 0, turn);
       // fitted to a volume (density-fit): shown where a click puts it
-      const fitted = fitTo ? fit?.(position, _q, fitTo, settings.contrast) : undefined;
+      const fitted = fitTo ? fit?.(position, _q, fitTo, settings.contrast, onMesh ? normal : undefined) : undefined;
       if (fitted) Quat.copy(_q, fitted.rotation);
       Mat4.fromQuat(_m, _q);
       Mat4.setTranslation(_m, fitted?.position ?? position);
@@ -251,6 +251,8 @@ export type CursorFit = (
   rotation: Quat,
   volume: string,
   contrast: FitContrast,
+  /** On a mesh: its normal there, the fit kept on it (`FitOptions.normal`) */
+  normal?: Vec3,
 ) => FitResult | undefined;
 
 /** The copy's own axis put along the normal (its Fiber Axis when set; none: +z), by the brush's settings (`into`) */

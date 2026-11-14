@@ -114,15 +114,21 @@ export function pluginCursorFit(
   // made once: a move allocates nothing (review M3)
   const from = { position: Vec3(), rotation: Quat() };
   const out = { position: Vec3(), rotation: Quat(), score: 0, shift: 0, angle: 0 };
-  const options = { reach: PaintReach.shift * envelope.radius, turn: PaintReach.turn, contrast: 'dark' as FitContrast };
+  const options = {
+    reach: PaintReach.shift * envelope.radius,
+    turn: PaintReach.turn,
+    contrast: 'dark' as FitContrast,
+    normal: undefined as Vec3 | undefined,
+  };
   return {
-    fit(position, rotation, ref, contrast) {
+    fit(position, rotation, ref, contrast, normal) {
       if (!grids) grids = new Map(sceneVolumes(plugin.state.data).map((v) => [v.ref, v.volume]));
       const volume = grids.get(ref);
       if (!volume) return undefined;
       Vec3.copy(from.position, position);
       Quat.copy(from.rotation, rotation);
       options.contrast = contrast;
+      options.normal = normal;
       return fitPose(fitMapOf(volume.grid), envelope, from, options, out);
     },
     dispose: () => sub.unsubscribe(),

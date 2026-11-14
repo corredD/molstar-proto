@@ -502,10 +502,11 @@ export class MesoscaleApi extends ApiArea {
   /** The paint mode's host, made with the area: it follows the pointer from the start (paint-refine, the first moment) */
   private readonly paintHost = pluginPaintHost(
     this.ctx.plugin,
-    // the last copy painted is a grow's source as well (progress/2026-11-11-grow.md), on the mesh it was painted on
-    async ({ mesh, ...params }) => {
+    // the last copy painted is a grow's source as well (progress/2026-11-11-grow.md), on the mesh it was painted on (a
+    // copy fitted to a volume is fitted on it: density-fit)
+    async (params) => {
       const r = await this.paint(params as never);
-      if (r.ok) this.growFromLast(r.changed?.nodes?.[0], mesh as string | undefined);
+      if (r.ok) this.growFromLast(r.changed?.nodes?.[0], params.mesh as string | undefined);
       return r;
     },
     // the copy under the pointer in the entity's color (its look's)
@@ -1243,6 +1244,12 @@ export class MesoscaleApi extends ApiArea {
             "The normals are a surface's (picked: a mesh, a structure, particles): with no orient, every copy along them",
         }),
       ),
+      mesh: OptionalParam(
+        PD.Text('', {
+          description:
+            'The mesh the copies are painted on (its state ref; with normals): a copy fitted to a volume stays on it',
+        }),
+      ),
       spin: OptionalParam(
         PD.Numeric(0, { min: 0, max: 360, step: 1 }, { description: 'Turn about that axis, °; absent: at random' }),
       ),
@@ -1271,22 +1278,37 @@ export class MesoscaleApi extends ApiArea {
     },
     async run(values, ctx) {
       const { entity, positions, side, particles } = values;
-      const { structure, normals, orient, spin, seed, fiber, sequence, start, end, surface, group, fit, contrast } =
-        values as typeof values & {
-          group?: number;
-          fit?: string;
-          contrast?: FitContrast;
-          structure?: string;
-          surface?: boolean;
-          normals?: number[];
-          orient?: PaintOrient;
-          spin?: number;
-          seed?: number;
-          fiber?: boolean;
-          sequence?: string;
-          start?: number;
-          end?: number;
-        };
+      const {
+        structure,
+        normals,
+        orient,
+        spin,
+        seed,
+        fiber,
+        sequence,
+        start,
+        end,
+        surface,
+        group,
+        fit,
+        contrast,
+        mesh,
+      } = values as typeof values & {
+        mesh?: string;
+        group?: number;
+        fit?: string;
+        contrast?: FitContrast;
+        structure?: string;
+        surface?: boolean;
+        normals?: number[];
+        orient?: PaintOrient;
+        spin?: number;
+        seed?: number;
+        fiber?: boolean;
+        sequence?: string;
+        start?: number;
+        end?: number;
+      };
       if (!positions.length || positions.length % 3) {
         return ApiResult.fail('invalid', "Give the copies' positions, x, y, z each.");
       }
@@ -1373,7 +1395,9 @@ export class MesoscaleApi extends ApiArea {
         };
         const map = fitMapOf(volume.volume.grid);
         const move = moved?.transform.params as ListMove | undefined;
-        fitted = { volume: volume.label, ...fitCopies(map, envelope, move, local, rotations, reach) };
+        // painted on a mesh: each copy fitted on it, along its normal there (in the scene: `normals`)
+        const on = mesh?.trim() && normals ? normals : undefined;
+        fitted = { volume: volume.label, ...fitCopies(map, envelope, move, local, rotations, reach, on) };
       }
       const stroke: PaintStroke = {
         target: brush.target,

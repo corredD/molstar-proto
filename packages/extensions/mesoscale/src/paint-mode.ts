@@ -162,7 +162,8 @@ export interface PaintHost {
 export interface PaintCursor {
   /**
    * Shows it at `position`, turned as a stroke's first copy of `seed` with that normal would be; `onSurface`, the normal
-   * a surface's (Turn Auto: along it); `fit`, the volume it is fitted to (density-fit), shown at its fitted pose: the fit
+   * a surface's (Turn Auto: along it); `fit`, the volume it is fitted to (density-fit), shown at its fitted pose: the fit;
+   * `onMesh`, the normal a mesh's: fitted on it (as the click's copy)
    */
   move(
     position: Vec3,
@@ -171,6 +172,7 @@ export interface PaintCursor {
     seed: number,
     onSurface?: boolean,
     fit?: string,
+    onMesh?: boolean,
   ): FitResult | undefined | void;
   hide(): void;
   dispose(): void;
@@ -557,6 +559,8 @@ function paintLayer(mode: PaintMode, host: PaintHost, canvas: HTMLElement, brush
       where === 'surface',
       // a fiber's path is not fitted (its units are made from it): nor its copy here (review S10)
       fiber ? undefined : fitOf(settings, slice ? _point.volume : undefined),
+      // on a mesh, fitted on it as the click's copy is (`mesoscale.paint` with `mesh`)
+      !slice && where === 'surface' && !!_point.mesh,
     );
     const text = fitted ? fitLabel(fitted) : '';
     if (text !== fitText) {
