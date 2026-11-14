@@ -317,7 +317,11 @@ function paintLayer(mode: PaintMode, host: PaintHost, canvas: HTMLElement, brush
     const r = surfaceAt(host.identify, x, y, NormalStep, host.eye(_eye), probe);
     if (r === 'pending') return;
     if (r) host.refine(probe, upright);
-    where = r && probe.mesh ? 'surface' : placeOf(s, upright);
+    const next = r && probe.mesh ? 'surface' : placeOf(s, upright);
+    if (next === where) return;
+    where = next;
+    // the hint says where the copies go
+    hintNext.request();
   };
 
   /** The point at the stroke's depth along the pointer's ray at (x, y), facing the viewer */
