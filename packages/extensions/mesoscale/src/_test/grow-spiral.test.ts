@@ -196,6 +196,22 @@ describe('spiral on a mesh', () => {
     expect(length).toBeLessThanOrEqual(4 * 5000 * 5 + 1e-6);
   });
 
+  it("makes at most `units` units, kept and skipped (a grow's cap; 3b review N1, 6)", () => {
+    const vesicle = meshSurface(sphereMesh(100, 4));
+    const north: GrowPose = { position: Vec3.create(0, 0, 100), rotation: Quat.identity() };
+    const info = { turns: 0, copies: 0, skip: [] as number[] };
+    const path = spiralPath(
+      north,
+      z,
+      { spacing: 20, step: 5, count: 20000, hand: 'right', units: 3000 },
+      { surface: vesicle, reach: 20 },
+      undefined,
+      info,
+    )!;
+    expect(copies(path, 5).length / 3).toBeLessThanOrEqual(3000);
+    expect(info.copies + info.skip.length).toBeLessThanOrEqual(3000);
+  });
+
   it('has a bounded number of points, whatever Step and Arm spacing (second review 1, N1)', () => {
     const center: GrowPose = { position: Vec3.create(0, 0, 0), rotation: Quat.identity() };
     // a long Step over thin arms: its points follow its turns, not 8 a Step

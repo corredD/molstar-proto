@@ -89,6 +89,8 @@ export interface SpiralParams {
   readonly step: number;
   readonly count: number;
   readonly hand: 'right' | 'left';
+  /** Its units made at most, kept and skipped (a grow's cap; 3b review N1): its length that many Steps at most */
+  readonly units?: number;
 }
 
 /** The axis a helix winds about on a mesh (the scene's): a point of it and its unit direction, up */
@@ -512,7 +514,7 @@ export function spiralPath(
   const stepAt = (t: number) => Math.min(p.step / 4, 0.1 * Math.max(b * t, b));
   const count = Math.max(0, Math.floor(p.count));
   // its length at most: Count copies, and as many again thrice for those skipped (a surface full ahead)
-  const bound = p.step + 4 * count * p.step;
+  const bound = p.step + Math.min(4 * count, p.units ?? Number.POSITIVE_INFINITY) * p.step;
   const all = [at[0], at[1], at[2]];
   const ns: number[] | undefined = on ? [n[0], n[1], n[2]] : undefined;
   const thetas = [0];
@@ -564,7 +566,8 @@ export function spiralPath(
     }
   };
   const crowd = SpiralCrowd * p.spacing;
-  const behind = Math.ceil((SpiralAlong * p.spacing) / p.step);
+  // a copy kept more than 2 Arm spacings behind (i − j > that in Steps; 3b review 7)
+  const behind = Math.floor((SpiralAlong * p.spacing) / p.step);
   let out: number[] = [];
   let outNormals: number[] | undefined;
   let skip: number[] = [];
@@ -619,7 +622,8 @@ export function spiralPath(
     }
     if (kept >= count || ended || length >= bound) break;
     // on: as many again as are missing, and a half more
-    length = Math.min(bound, length + (count - kept) * p.step * 1.5 + p.step);
+    // (or twice as long: a few passes, whatever it skips; 3b review 3)
+    length = Math.min(bound, Math.max(2 * length, length + (count - kept) * p.step * 1.5 + p.step));
   }
   // to half a Step past its last copy kept; the skips before it
   const end = Math.max(0, last) * p.step + p.step / 2;

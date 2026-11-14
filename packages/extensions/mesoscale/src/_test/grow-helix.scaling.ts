@@ -9,7 +9,7 @@ import { Quat, Vec3 } from '@molstar/core/math/linear-algebra';
 import { checkLinear, quadraticControl, scaling } from '../../../../sequences/core/_test/model/scaling.js';
 import { type GrowPose, type HelixParams, helixPath, spiralPath } from '../grow.js';
 import { meshSurface } from '../mesh-surface.js';
-import { flatMesh, tubeMesh } from './fixtures.js';
+import { flatMesh, sphereMesh, tubeMesh } from './fixtures.js';
 
 // A helix on a mesh of N turns (`test:scaling`; apps/prism-me/AGENTS.md, no accidental quadratic; grow-helix review
 // S3): a point every 5°, each projected onto the tube (a pick each), its normals kept and its first rise cut off, at n
@@ -77,4 +77,26 @@ it('a spiral of N copies on a mesh: a long Step over thin arms, and a short Step
     );
     checkLinear(`spiralPath on a mesh, N copies, Arm spacing ${spacing}, Step ${step}`, s);
   }
+});
+
+it('a spiral of N copies on a vesicle past its capacity: its skips, its path extended (3b review 3)', () => {
+  // a vesicle holding some 600 (its arms closing): n and 4n both past it, so both run to its bound (4 × Count Steps)
+  const vesicle = meshSurface(sphereMesh(100, 4));
+  const north: GrowPose = { position: Vec3.create(0, 0, 100), rotation: Quat.identity() };
+  const s = scaling(
+    {
+      setup: (n) => ({ count: n }),
+      run: ({ count }) => {
+        const path = spiralPath(
+          north,
+          z,
+          { spacing: 20, step: 5, count, hand: 'right' },
+          { surface: vesicle, reach: 20 },
+        );
+        if (!path) throw new Error('none');
+      },
+    },
+    1000,
+  );
+  checkLinear('spiralPath on a vesicle past its capacity, N copies', s);
 });

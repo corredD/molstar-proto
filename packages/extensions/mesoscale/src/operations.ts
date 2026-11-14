@@ -1534,7 +1534,8 @@ export class MesoscaleApi extends ApiArea {
           if (p.count > MaxGrown) return tooMany(p.count);
           const scaled = rise * (move?.scale ?? 1);
           const info: SpiralInfo = { turns: 0 };
-          const params = { ...p, step: scaled };
+          // its units made (kept and skipped) as many as a grow makes at most (3b review N1)
+          const params = { ...p, step: scaled, units: MaxGrown };
           if (on) {
             normals = [];
             path = spiralPath(scene, surfaceAxis(), params, on, normals, info);
