@@ -438,8 +438,10 @@ function paintLayer(mode: PaintMode, host: PaintHost, canvas: HTMLElement, brush
         const d = pickedDepth(hoverX, hoverY);
         // not read yet: shown at the depth it has meanwhile (review 8), read again next frame
         if (d === 'pending' && ++retries < MaxPendingFrames) follow.request();
-        if (d !== undefined && d !== 'pending' && d !== depth) {
-          depth = d;
+        // over nothing: where it was, kept in the drawn range as the camera moves (review N2)
+        const next = d !== undefined && d !== 'pending' ? d : inRange(depth);
+        if (next !== depth) {
+          depth = next;
           hintNext.request();
         }
       }

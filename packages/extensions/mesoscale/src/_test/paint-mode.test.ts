@@ -511,6 +511,21 @@ describe('paint mode', () => {
     mode.stop();
   });
 
+  it('over nothing, the depth is kept in the drawn range as the camera zooms (review N2)', async () => {
+    const range: [number, number] = [10, 200];
+    const { mode, copy } = setup(0, { upright: false, pointerAt: [30, 20], pick: () => undefined, depthRange: range });
+    mode.start(brush);
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    expect(copy.at).toEqual([30, -20, 0]);
+    // zoomed out: the camera draws from 150 Å; the copy a radius (5) inside it
+    range[0] = 150;
+    range[1] = 300;
+    mode.set({ spin: 10 });
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    expect(copy.at).toEqual([30, -20, -55]);
+    mode.stop();
+  });
+
   it("the viewer's host knows where the pointer is over the canvas, from its last move in the page", () => {
     const canvas = document.createElement('canvas');
     document.body.append(canvas);
