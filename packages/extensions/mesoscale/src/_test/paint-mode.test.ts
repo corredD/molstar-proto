@@ -55,7 +55,9 @@ function setup(
   const uprights: boolean[] = [];
   const camera = { held: 0, released: 0 };
   /** The copy under the pointer: where it was last shown (undefined: hidden), its seed, disposed */
-  const copy = { at: undefined as number[] | undefined, seed: -1, disposed: false };
+  const copy = { at: undefined as number[] | undefined, seed: -1, disposed: false, onSurface: undefined as unknown };
+  /** Each stroke's flag: its normals a surface's (paint-refine round 2) */
+  const surfaces: unknown[] = [];
   const seeds: number[] = [];
   const fibers: boolean[] = [];
   const host: PaintHost = {
@@ -92,9 +94,10 @@ function setup(
     project: (out, p) => Vec3.set(out, p[0], -p[1], 0),
     radius: () => 5,
     cursor: () => ({
-      move: (p, _n, _s, seed) => {
+      move: (p, _n, _s, seed, onSurface) => {
         copy.at = [p[0], p[1], p[2]];
         copy.seed = seed;
+        copy.onSurface = onSurface;
       },
       hide: () => {
         copy.at = undefined;
@@ -104,7 +107,8 @@ function setup(
       },
     }),
     fiberStep: (_b, into) => (intos.push(into), options.fiberStep),
-    paint: async (_b, _s, positions, normals, seed, fiber, mesh) => {
+    paint: async (_b, _s, positions, normals, seed, fiber, mesh, surface) => {
+      surfaces.push(surface);
       strokes.push({ positions, normals, ...(mesh ? { mesh } : {}) });
       seeds.push(seed);
       fibers.push(fiber);
@@ -138,6 +142,7 @@ function setup(
     copy,
     seeds,
     fibers,
+    surfaces,
     intos,
     removeList: () => (lists = false),
   };
@@ -424,6 +429,21 @@ describe('paint mode', () => {
     el.dispatchEvent(pointer('pointerup', { x: 10, y: 10 }));
     expect(strokes[0].positions[2]).toBe(55);
     mode.stop();
+  });
+
+  it('on a surface (paint-refine round 2): the stroke and the copy say so, any brush; at a depth not', async () => {
+    for (const place of ['surface', 'depth'] as const) {
+      const { mode, canvas, surfaces, copy } = setup(0, { upright: false, pointerAt: [10, 10] });
+      mode.set({ place });
+      mode.start(brush);
+      await new Promise((resolve) => setTimeout(resolve, 40));
+      expect(copy.onSurface, place).toBe(place === 'surface');
+      canvas.dispatchEvent(pointer('pointerdown', { x: 10, y: 10 }));
+      canvas.dispatchEvent(pointer('pointerup', { x: 10, y: 10 }));
+      expect(surfaces, place).toEqual([place === 'surface']);
+      mode.stop();
+      document.body.innerHTML = '';
+    }
   });
 
   it('Place: a membrane protein on the surface by default, at the depth when asked; anything else the other way', () => {

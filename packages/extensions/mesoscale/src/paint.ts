@@ -203,6 +203,11 @@ export function resamplePath(path: ArrayLike<number>, step: number): number[] {
 
 const UnitAxes = { x: Vec3.create(1, 0, 0), y: Vec3.create(0, 1, 0), z: Vec3.create(0, 0, 1) } as const;
 
+/** The unit's own axis a Fiber Axis names; `auto`: none (paint's surface copies then take +z; paint-refine round 2) */
+export function fiberAxisVector(axis: FiberAxis | undefined): Vec3 | undefined {
+  return axis && axis !== 'auto' ? UnitAxes[axis] : undefined;
+}
+
 /**
  * The way a fiber's points are moved by its offset, in the unit's frame (Round 4): a perpendicular of its axis that
  * follows the path; x's is y, y's z, z's x; another axis's (`auto`), the one of the three least along it, made
@@ -858,8 +863,9 @@ const _v = Vec3();
 
 /**
  * The orientation of each copy (x, y, z, w per copy) from the normals at its point (unit or not; `normal`, `axis`,
- * `view`: the direction to align with). `axis` is the target's own principal axis (its frame); `spin`, degrees about
- * that axis for every copy, else random. `random` ignores the normals.
+ * `view`: the direction to align with). `axis` is the copy's own axis put along it: for `axis` its principal axis, for
+ * `normal` its Fiber Axis when set (paint-refine round 2; else +z); `spin`, degrees about that axis for every copy, else
+ * random. `random` ignores the normals.
  */
 export function paintRotations(
   normals: ArrayLike<number>,
@@ -901,7 +907,7 @@ export function paintRotation(
     const s2 = Math.sqrt(u1);
     return Quat.set(out, s1 * Math.sin(u2), s1 * Math.cos(u2), s2 * Math.sin(u3), s2 * Math.cos(u3));
   }
-  const from = orient === 'axis' && options.axis ? Vec3.normalize(_a, options.axis) : _z;
+  const from = (orient === 'axis' || orient === 'normal') && options.axis ? Vec3.normalize(_a, options.axis) : _z;
   Vec3.copy(_n, normal);
   if (Vec3.squaredMagnitude(_n) === 0) Vec3.copy(_n, from);
   Vec3.normalize(_n, _n);

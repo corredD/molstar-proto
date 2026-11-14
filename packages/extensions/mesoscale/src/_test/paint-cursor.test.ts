@@ -86,6 +86,43 @@ describe('the copy under the pointer', () => {
     expect(removed).toHaveBeenCalledWith(repr);
   });
 
+  it('on a surface (paint-refine round 2): any brush along the normal, +z or its Fiber Axis; elsewhere at random', async () => {
+    const v = await viewer();
+    const added: Representation<any, any, any>[] = [];
+    const canvas = {
+      graphics: undefined as never,
+      add: (r: Representation<any, any, any>) => void added.push(r),
+      remove: () => {},
+      update: () => true,
+      requestDraw: () => {},
+    } as unknown as VisualSetCanvas;
+    const list = v.plugin.managers.particles.hierarchy.current.lists[0];
+    const data = list.cell.obj!.data;
+    const loose = [...data.entityInfo!].find(([, e]) => e.name === 'loose')![0];
+    const brush = { particles: list.cell.transform.ref, entity: loose, name: 'loose' };
+    let along: Vec3 | undefined;
+    const cursor = pluginPaintCursor(v.plugin, list, brush, undefined, false, canvas, () => along);
+    const n = Vec3.normalize(Vec3(), Vec3.create(1, 0, 1));
+    const axisOf = (a: Vec3) => {
+      const q = Mat4.getRotation(Quat(), added[0].state.transform);
+      return Vec3.transformQuat(Vec3(), a, q);
+    };
+    cursor.move(Vec3.create(1, 2, 3), n, DefaultPaintSettings, 7, true);
+    await vi.waitFor(() => expect(added.length).toBe(1));
+    expect(Vec3.distance(axisOf(Vec3.create(0, 0, 1)), n)).toBeLessThan(1e-5);
+    along = Vec3.create(1, 0, 0);
+    cursor.move(Vec3.create(1, 2, 3), n, DefaultPaintSettings, 7, true);
+    expect(Vec3.distance(axisOf(Vec3.create(1, 0, 0)), n)).toBeLessThan(1e-5);
+    // at a depth: at random, as the stroke's copy
+    cursor.move(Vec3.create(1, 2, 3), n, DefaultPaintSettings, 7, false);
+    const [x, y, z, w] = paintRotations([0, 0, 1], 'random', 7);
+    expect(Math.abs(Quat.dot(Mat4.getRotation(Quat(), added[0].state.transform), Quat.create(x, y, z, w)))).toBeCloseTo(
+      1,
+      5,
+    );
+    cursor.dispose();
+  });
+
   it("a structure brush's copy is drawn in a scene with no particle list yet (paint-refine, the first Paint)", async () => {
     const base = DefaultPrismViewerSpec();
     const v = await createPrismViewerHeadless({

@@ -63,6 +63,7 @@ import {
   structureBuildName,
   structureSourceOf,
   paintRotations,
+  fiberAxisVector,
   principalAxisOf,
   toListFrame,
 } from './paint.js';
@@ -371,6 +372,11 @@ export class MesoscaleApi extends ApiArea {
     },
     // a structure brush's copy in a scene without particles: Mol*'s particles first, as its stroke loads them
     () => this.ctx.extensions.ensureFor({ transformers: ['ms-plugin.particles-representation-3d'] }),
+    // a structure brush's Fiber Axis where it paints: its copies' axis along a surface's normal (paint-refine round 2)
+    (structure, into) => {
+      const b = structureBrushOf(this.ctx, structure, into);
+      return b && fiberInfo(this.ctx.plugin.state.data, this.ctx, b.particles, b.entity)?.axis;
+    },
   );
 
   /**
@@ -980,13 +986,22 @@ export class MesoscaleApi extends ApiArea {
             ['view', 'Its +z toward the viewer'],
             ['random', 'At random'],
           ] as const,
-          { description: 'How each copy is turned; absent: normal for a surface compartment, else random' },
+          {
+            description:
+              'How each copy is turned; absent: normal on a surface (surface) or for a surface compartment, else random',
+          },
         ),
       ),
       side: PD.Select('out', [
         ['out', 'Along the normal'],
         ['in', 'Against the normal'],
       ] as const),
+      surface: OptionalParam(
+        PD.Boolean(false, {
+          description:
+            "The normals are a surface's (picked: a mesh, a structure, particles): with no orient, every copy along them",
+        }),
+      ),
       spin: OptionalParam(
         PD.Numeric(0, { min: 0, max: 360, step: 1 }, { description: 'Turn about that axis, °; absent: at random' }),
       ),
@@ -1014,17 +1029,19 @@ export class MesoscaleApi extends ApiArea {
     },
     async run(values, ctx) {
       const { entity, positions, side, particles } = values;
-      const { structure, normals, orient, spin, seed, fiber, sequence, start, end } = values as typeof values & {
-        structure?: string;
-        normals?: number[];
-        orient?: PaintOrient;
-        spin?: number;
-        seed?: number;
-        fiber?: boolean;
-        sequence?: string;
-        start?: number;
-        end?: number;
-      };
+      const { structure, normals, orient, spin, seed, fiber, sequence, start, end, surface } =
+        values as typeof values & {
+          structure?: string;
+          surface?: boolean;
+          normals?: number[];
+          orient?: PaintOrient;
+          spin?: number;
+          seed?: number;
+          fiber?: boolean;
+          sequence?: string;
+          start?: number;
+          end?: number;
+        };
       if (!positions.length || positions.length % 3) {
         return ApiResult.fail('invalid', "Give the copies' positions, x, y, z each.");
       }
@@ -1041,8 +1058,22 @@ export class MesoscaleApi extends ApiArea {
       if (letters && ((start ?? 1) > letters || (end !== undefined && end < (start ?? 1)))) {
         return ApiResult.fail('invalid', `The range has no letter of the sequence (${letters} letters).`);
       }
-      const how: PaintOrient = orient ?? (brush.surface ? 'normal' : 'random');
+      // on a surface (its pick's normals: paint-refine round 2) any copy along them; a membrane protein always
+      const how: PaintOrient = orient ?? (brush.surface || (surface && normals) ? 'normal' : 'random');
       const state = ctx.plugin.state.data;
+      // along the normal: its Fiber Axis when set, else +z
+      const along =
+        how === 'normal' && l
+          ? fiberAxisVector(
+              fiberSettingsOf(
+                data,
+                brushIdOf(data, brush),
+                brush.target,
+                paintedFibers(state, l.cell.transform.ref),
+                paintedStructures(state, l.cell.transform.ref),
+              ).axis,
+            )
+          : undefined;
       const moved = l && decoratorUnder(state, l.cell.transform.ref, ParticleListTransform);
       const local = [...positions];
       const k = local.length / 3;
@@ -1067,7 +1098,7 @@ export class MesoscaleApi extends ApiArea {
       const rotations = asFiber
         ? []
         : paintRotations(dirs ?? new Array(k * 3).fill(0), how, drawn, {
-            axis: how === 'axis' ? principalAxisOf(brush.object ?? data.targetMapping?.get(brush.target)) : undefined,
+            axis: how === 'axis' ? principalAxisOf(brush.object ?? data.targetMapping?.get(brush.target)) : along,
             spin,
           });
       const stroke: PaintStroke = {

@@ -34,7 +34,10 @@ export interface PaintBrushTarget {
 export interface PaintSettings {
   /** Å between copies; 0: a copy's diameter (they touch) */
   readonly spacing: number;
-  /** How each copy is turned; `auto`: upright on a membrane (+z along the normal), else at random (Decided 2) */
+  /**
+   * How each copy is turned; `auto`: along the normal on a surface (paint-refine round 2: any brush; +z, or its Fiber
+   * Axis when set) and always for a membrane protein, else at random (Decided 2)
+   */
   readonly orient: 'auto' | PaintOrient;
   /** Along the normal (out of the surface toward the viewer, a membrane's outside) or against it */
   readonly side: 'out' | 'in';
@@ -124,6 +127,8 @@ export interface PaintHost {
     seed: number,
     fiber: boolean,
     mesh?: string,
+    /** Its normals a surface's (a pick: paint-refine round 2): with Turn Auto, every copy along them */
+    surface?: boolean,
   ): Promise<unknown>;
   /** The copy of the brush drawn under the pointer (Round 2), gone with `dispose` */
   cursor(brush: PaintBrushTarget): PaintCursor;
@@ -135,8 +140,11 @@ export interface PaintHost {
 
 /** The copy under the pointer (progress/2026-11-08-paint.md, Round 2): moved once a frame, hidden off the canvas */
 export interface PaintCursor {
-  /** Shows it at `position`, turned as a stroke's first copy of `seed` with that normal would be */
-  move(position: Vec3, normal: Vec3, settings: PaintSettings, seed: number): void;
+  /**
+   * Shows it at `position`, turned as a stroke's first copy of `seed` with that normal would be; `onSurface`, the normal
+   * a surface's (Turn Auto: along it)
+   */
+  move(position: Vec3, normal: Vec3, settings: PaintSettings, seed: number, onSurface?: boolean): void;
   hide(): void;
   dispose(): void;
 }
@@ -458,7 +466,7 @@ function paintLayer(mode: PaintMode, host: PaintHost, canvas: HTMLElement, brush
       if (!r) return cursor.hide();
       host.refine(_point, upright);
     }
-    cursor.move(_point.position, _point.normal, mode.settings.value, seed);
+    cursor.move(_point.position, _point.normal, mode.settings.value, seed, where === 'surface');
   });
   on<PointerEvent>(
     canvas,
@@ -541,7 +549,7 @@ function paintLayer(mode: PaintMode, host: PaintHost, canvas: HTMLElement, brush
       if (how === 'up' && s.positions.length) {
         committing++;
         void host
-          .paint(brush, mode.settings.value, s.positions, s.normals, seed, fiber, s.mesh)
+          .paint(brush, mode.settings.value, s.positions, s.normals, seed, fiber, s.mesh, where === 'surface')
           .finally(() => committing--);
         // the next copy under the pointer: the next stroke's
         seed = nextSeed();

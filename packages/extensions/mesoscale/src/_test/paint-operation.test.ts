@@ -267,6 +267,45 @@ describe('mesoscale.paint', () => {
     sub.unsubscribe();
   });
 
+  it('on a surface (paint-refine round 2): any entity along its normal, +z or its Fiber Axis; at a depth as before', async () => {
+    const v = await viewer();
+    const n = Vec3.normalize(Vec3(), Vec3.create(1, 0, 1));
+    const at = (i: number, axis: Vec3) => {
+      const l = drawn(v);
+      const q = Quat.create(
+        l.rotations![i * 4],
+        l.rotations![i * 4 + 1],
+        l.rotations![i * 4 + 2],
+        l.rotations![i * 4 + 3],
+      );
+      return Vec3.transformQuat(Vec3(), axis, q);
+    };
+    // loose: not a membrane protein; its points on a tilted surface (a mesh's pick)
+    const stroke = {
+      entity: 'loose',
+      positions: [0, 50, 0, 10, 50, 0],
+      normals: [n[0], n[1], n[2], n[0], n[1], n[2]],
+      seed: 3,
+    };
+    const r = await v.api.run('mesoscale.paint', { ...stroke, surface: true });
+    expectOk(r);
+    expect((r.value as { orient: string }).orient).toBe('normal');
+    for (const i of [7, 8]) expect(Vec3.distance(at(i, Vec3.create(0, 0, 1)), n)).toBeLessThan(1e-5);
+    // its spin about the normal at random, by its seed: the two copies' x differ
+    expect(Vec3.distance(at(7, Vec3.create(1, 0, 0)), at(8, Vec3.create(1, 0, 0)))).toBeGreaterThan(1e-3);
+    // Side In: against it
+    expectOk(await v.api.run('mesoscale.paint', { ...stroke, surface: true, side: 'in' }));
+    expect(Vec3.distance(at(9, Vec3.create(0, 0, 1)), Vec3.negate(Vec3(), n))).toBeLessThan(1e-5);
+    // its Fiber Axis set (x): x along the normal
+    expectOk(await v.api.run('mesoscale.fiber', { entity: 'loose', axis: 'x' }));
+    expectOk(await v.api.run('mesoscale.paint', { ...stroke, surface: true }));
+    expect(Vec3.distance(at(11, Vec3.create(1, 0, 0)), n)).toBeLessThan(1e-5);
+    // not on a surface (at a depth): at random, as before
+    const d = await v.api.run('mesoscale.paint', stroke);
+    expectOk(d);
+    expect((d.value as { orient: string }).orient).toBe('random');
+  });
+
   it('turns a copy of an entity not on a surface at random, repeatably by its seed', async () => {
     const v = await viewer();
     const r = await v.api.run('mesoscale.paint', { entity: 'loose', positions: [0, 0, 0, 1, 1, 1], seed: 5 });

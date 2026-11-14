@@ -23,6 +23,8 @@ import {
   brushIdOf,
   brushOf,
   decoratorUnder,
+  type FiberAxis,
+  fiberAxisVector,
   type FiberSettingsMap,
   fiberSettingsOf,
   parseRange,
@@ -78,7 +80,8 @@ export function withAltCamera(bindings: TrackballBindings): TrackballBindings {
 /**
  * The host of a paint mode on `plugin`; `paint` runs the operation, `colorOf` reads an entity's color from its look
  * (the copy under the pointer's), `structureFiberStep` a structure brush's fibers' rise in a list (none: it makes none),
- * `ensureParticles` loads Mol*'s particles (lazy) for a structure brush's copy in a scene without them
+ * `ensureParticles` loads Mol*'s particles (lazy) for a structure brush's copy in a scene without them,
+ * `structureFiberAxis` a structure brush's Fiber Axis where it paints (its copies' axis along a surface's normal)
  */
 export function pluginPaintHost(
   plugin: PluginContext,
@@ -86,6 +89,7 @@ export function pluginPaintHost(
   colorOf?: (list: ParticleListRef, entity: number) => number | undefined,
   structureFiberStep?: (structure: string, into: string) => number | undefined,
   ensureParticles?: () => Promise<void>,
+  structureFiberAxis?: (structure: string, into: string) => FiberAxis | undefined,
 ): PaintHost & { dispose(): void } {
   const listOf = (ref: string) =>
     plugin.managers.particles.hierarchy.current.lists.find((l) => l.cell.transform.ref === ref);
@@ -187,14 +191,24 @@ export function pluginPaintHost(
     cursor(brush) {
       if (brush.structure) {
         const structure = structureOf(brush);
+        const along = (s: PaintSettings) =>
+          fiberAxisVector(structureFiberAxis?.(brush.structure!, s.into && listOf(s.into) ? s.into : ''));
         return structure
-          ? pluginStructureCursor(plugin, structure, plugin.canvas3d, ensureParticles)
+          ? pluginStructureCursor(plugin, structure, plugin.canvas3d, ensureParticles, along)
           : { move() {}, hide() {}, dispose() {} };
       }
       const list = listOf(brush.particles);
       const data = list?.cell.obj?.data;
       const color = list ? colorOf?.(list, brush.entity) : undefined;
-      return pluginPaintCursor(plugin, list, brush, color, !!data && !!brushOf(data, brush.entity)?.surface);
+      const surface = !!data && !!brushOf(data, brush.entity)?.surface;
+      return pluginPaintCursor(plugin, list, brush, color, surface, plugin.canvas3d, () => {
+        // its Fiber Axis as it is now (its settings changed while painting)
+        const b = data && brushOf(data, brush.entity);
+        if (!list || !data || !b) return undefined;
+        const painted = decoratorUnder(plugin.state.data, list.cell.transform.ref, ParticleListPainted);
+        const p = painted?.transform.params as { fibers?: FiberSettingsMap; structures?: PaintStructure[] } | undefined;
+        return fiberAxisVector(fiberSettingsOf(data, brushIdOf(data, b), b.target, p?.fibers, p?.structures).axis);
+      });
     },
     fiberStep(brush, into) {
       // the entity's rise (Round 3): its own settings, else its file's fibers'; none when it makes no fibers (a
@@ -211,7 +225,7 @@ export function pluginPaintHost(
       if (!own?.[id] && !isFiberBrush(data, id)) return undefined;
       return fiberSettingsOf(data, id, b.target, own, p?.structures).rise;
     },
-    async paint(brush: PaintBrushTarget, s: PaintSettings, positions, normals, seed, fiber, mesh) {
+    async paint(brush: PaintBrushTarget, s: PaintSettings, positions, normals, seed, fiber, mesh, surface) {
       const r = (await paint({
         ...(brush.structure
           ? // its list gone since it was chosen: the Painting list (review S3)
@@ -228,6 +242,7 @@ export function pluginPaintHost(
             }
           : {}),
         side: s.side,
+        ...(surface ? { surface: true } : {}),
         ...(mesh ? { mesh } : {}),
         ...(s.orient !== 'auto' ? { orient: s.orient } : {}),
         ...(s.spin !== undefined ? { spin: s.spin } : {}),
