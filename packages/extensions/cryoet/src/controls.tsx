@@ -811,7 +811,11 @@ function MeshColorBy(props: {
               if (next === by.value) return;
               if (next === 'uniform') set({ color: props.color() });
               else if (next === 'array' && firstArray()) set({ array: firstArray() });
-              else if (next === 'volume' && props.volumes.value[0]) set({ volume: props.volumes.value[0].ref });
+              else if (next === 'volume') {
+                // the volume it kept the values of, else the scene's first
+                const volume = mesh.value?.volumeKept?.volume ?? props.volumes.value[0]?.ref;
+                if (volume) set({ volume });
+              }
             }}
           />
         )}

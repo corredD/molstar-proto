@@ -175,6 +175,8 @@ export interface MeshInfo {
   readonly colorBy?: MeshColorBy;
   /** Its color by a volume, when it is so colored */
   readonly volumeColor?: MeshVolumeColorBy;
+  /** The volume it was colored by and keeps the values of, when it is colored otherwise now (Volume again: this one) */
+  readonly volumeKept?: { readonly volume: string; readonly label: string };
   /** Its scale (1: as in the file; a mesh in pixels: the pixel size, Å) */
   readonly scale: number;
 }
@@ -1738,6 +1740,7 @@ function meshes(ctx: Pick<ApiContext, 'plugin'>): MeshInfo[] {
     const node = volumeNodeOf(ctx, cell.transform.ref);
     const arrays = arraysOf(cell, cells.get(cell.transform.parent));
     const byVolume = node && volumeColorByOf(ctx, node);
+    const kept = node && !byVolume ? volumeColorByOf(ctx, node, true) : undefined;
     out.push({
       ref: cell.transform.ref,
       label: data.label,
@@ -1751,6 +1754,7 @@ function meshes(ctx: Pick<ApiContext, 'plugin'>): MeshInfo[] {
         ? { colorBy: colorByOf(p.colorTheme.params) }
         : {}),
       ...(byVolume ? { volumeColor: byVolume } : {}),
+      ...(kept ? { volumeKept: { volume: kept.volume, label: kept.label } } : {}),
       scale: scaleOf(shapeCellOf(ctx, cell.transform.ref)),
     });
   }
@@ -1871,10 +1875,14 @@ function volumeNodeOf(ctx: Pick<ApiContext, 'plugin'>, repr: string): StateObjec
   return parent?.transform.transformer === MeshVolumeColor ? parent : undefined;
 }
 
-/** A mesh's color by a volume as `cryoet.meshes` gives it, when shown: its volume found by its drawn cell */
-function volumeColorByOf(ctx: Pick<ApiContext, 'plugin'>, node: StateObjectCell): MeshVolumeColorBy | undefined {
+/** A mesh's color by a volume as `cryoet.meshes` gives it, when shown (or `hidden` too): its volume by its drawn cell */
+function volumeColorByOf(
+  ctx: Pick<ApiContext, 'plugin'>,
+  node: StateObjectCell,
+  hidden = false,
+): MeshVolumeColorBy | undefined {
   const p = node.transform.params as MeshVolumeColorProps;
-  if (!p.show) return undefined;
+  if (!p.show && !hidden) return undefined;
   const v = ctx.plugin.managers.volume.hierarchy.current.volumes.find(
     (x) => x.cell.transform.ref === p.volume || lastDecorator(ctx, x).transform.ref === p.volume,
   );
