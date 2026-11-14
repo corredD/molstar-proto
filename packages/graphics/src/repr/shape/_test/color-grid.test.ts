@@ -6,6 +6,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { Vec3, Vec4 } from '@molstar/core/math/linear-algebra';
+import { ValueCell } from '@molstar/core/util';
 import { Color } from '@molstar/core/util/color';
 import { Shape } from '@molstar/model/model/shape';
 import { Mesh } from '@molstar/graphics/geo/geometry/mesh/mesh';
@@ -152,5 +153,30 @@ describe('shape representation, color grid', () => {
     const cpu = ShapeRepresentation((_, s: Shape<Mesh>) => s, Mesh.Utils);
     await cpu.createOrUpdate({}, getShape(grid)).run();
     expect(cpu.renderObjects[0].values.tColor.ref.value.array[8]).toBe(grid.colors[4 * (1 + 305 * (1 + 7 * 3))]);
+  });
+
+  // review S4: the texture the scene copied into a new context is the one refilled and destroyed; none kept without
+  // a grid
+  it('refills the copy of its texture in a new context, and destroys it once colored otherwise', async () => {
+    const a = getGraphics();
+    const repr = ShapeRepresentation((_, s: Shape<Mesh>) => s, Mesh.Utils, { graphics: a.graphics });
+    await repr.createOrUpdate({}, getShape(getGrid([2, 2, 4]))).run();
+    const values = repr.renderObjects[0].values;
+    // the scene's copy in context b (`transferTextures`), then the representation told of b
+    const b = getGraphics();
+    const copy = b.graphics.resources.texture('image-uint8', 'rgba', 'ubyte', 'linear');
+    ValueCell.update(values.tColorGrid, copy);
+    repr.setGraphics!(b.graphics);
+    await repr.createOrUpdate({}, getShape(getGrid([3, 2, 4]))).run();
+    expect(values.tColorGrid.ref.value).toBe(copy);
+    expect(b.textures.length).toBe(1);
+
+    await repr.createOrUpdate({}, getShape()).run();
+    expect(copy.destroyed).toBe(true);
+    expect(values.tColorGrid.ref.value).not.toBe(copy);
+
+    await repr.createOrUpdate({}, getShape(getGrid([2, 2, 4]))).run();
+    repr.destroy();
+    expect(b.textures.every((t) => t.destroyed)).toBe(true);
   });
 });
