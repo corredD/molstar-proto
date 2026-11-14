@@ -1295,6 +1295,7 @@ export class MesoscaleApi extends ApiArea {
       const input = painted && (state.cells.get(painted.transform.parent)?.obj?.data as ParticleList | undefined);
       const structures = p?.structures ?? [];
       const groups = p?.groups ?? [];
+      const structureTargets = new Set(structures.map((x) => x.target));
       const picks: GroupPick[] = [];
       const seen = new Set<string>();
       for (const index of indices) {
@@ -1323,7 +1324,7 @@ export class MesoscaleApi extends ApiArea {
         seen.add(`#${index}`);
         const target = data.targets[index];
         // a unit of a fiber's bank (its id made by the decorator, not kept) is no brush of the list's
-        if (input && !input.targetInfo.has(target) && !structures.some((x) => x.target === target)) {
+        if (input && !input.targetInfo.has(target) && !structureTargets.has(target)) {
           return ApiResult.fail('invalid', `#${index} is a unit of a fiber's bank: it is not grouped.`);
         }
         const object = data.targetMapping?.get(target);
@@ -3339,9 +3340,22 @@ function groupCopyOf(state: State, painted: StateObjectCell | undefined, drawn: 
   const input = painted && (state.cells.get(painted.transform.parent)?.obj?.data as ParticleList | undefined);
   if (!p?.groups?.length || !input || index < input.count) return undefined;
   const list = fiberListOf(state, painted, drawn);
-  const copy = groupCopyAt(makeFibers(list, p.strokes, p.fibers, p.structures), p.groups, index - input.count);
+  const copy = groupCopyAt(madeOnce(list, p), p.groups, index - input.count);
   const group = copy && p.groups.find((g) => g.id === copy.group);
   return copy && group ? { copy, group, p, input, list } : undefined;
+}
+
+const madeKept = new WeakMap<readonly PaintStroke[], { list: ParticleList; p: PaintedParams; made: PaintStroke[] }>();
+/**
+ * A decorator's strokes with their copies made (`makeFibers`), once for its params and list (review M3: not again for
+ * each instance picked, each click while picking, each right-click)
+ */
+function madeOnce(list: ParticleList, p: PaintedParams): PaintStroke[] {
+  const kept = madeKept.get(p.strokes);
+  if (kept && kept.list === list && kept.p.fibers === p.fibers && kept.p.structures === p.structures) return kept.made;
+  const made = makeFibers(list, p.strokes, p.fibers, p.structures);
+  madeKept.set(p.strokes, { list, p, made });
+  return made;
 }
 
 /** A grow's source on a group copy: the copy, at its pose (the list's frame), its radius, from its first particle */
