@@ -10,10 +10,37 @@ the app, in his words; the lane turns it into spec and tests.
 
 <!-- - **Title**: what I want to see. Check: what I do in the app and what I expect. -->
 
-- **MesoViewSpec usable like Seq\*** (Ludo, 2026-11-08: "both, app first"; "library lanes only for now"). Running:
-  `mvs-prism-design`, `mvs-skill-cli` (and `mesoviewspec-streaming`). Queued, in order:
-  - The app lanes, from `mvs-prism-design`'s briefs, once Ludo decides their base (a PR of `me/mesoviewspec` to prism-me
-    first, or stacking on it).
+### Paint and grow (Ludo, 2026-11-13), in this order
+
+1. **grow-helix round 3b** (running, `me/grow-helix`, port 1368): a spiral skips copies that would land on an earlier
+   arm and goes on until Count is placed. Then merge into prism-me, push, and update mesoscope (decisions 10, 15).
+2. **Decisions lane** (waits on Ludo's OK; after the merge), from the
+   [decisions doc](https://claude.ai/artifact/Jh985ir9vUiRxaUagxuKqV): a fiber unit as Grow source uses its offset as
+   up (1); Place Auto switches to Surface over a mesh (2); painted fibers keep their helix settings, a plain walk's up
+   follows the normal (3); Helix and Spiral get Count and Turns, linked (8, 21); Tiling uses Count in space too, no
+   Rings (11); Color… leaves a VTP's array theme alone (13). The spec records all answered decisions.
+3. **Symmetry** (decision 12 open): point groups only, Cn, Dn, T, O, I about the source with a Radius; live settings,
+   Clear, Undo. Helical is Grow › Helix; a space group is a structure built with its symmetry, painted, plus Crystal.
+4. **density-weight** (decision 12: before or after Symmetry): paint and grow follow a density map
+   ([plans/2026-11-10-paint-on-density.md](plans/2026-11-10-paint-on-density.md)).
+5. **Geodesic spiral** (only if decision 23 says geodesic): the spiral by distance over the surface, even on caps
+   and vesicles.
+6. **Paint speed on cellpack-mg** (a stroke ~1.3 s on 2.1 M particles): one lane per cost of the paint-layer profile:
+   per-target transforms (~300 ms), fiber tubes (~340 ms), the culler (~175 ms).
+7. **Cleanup**: the mesoscale package's `test:scaling` tier does not start (old harness path, `heapTests`); a surface
+   projection allocates ~170 KB a pick (walk, Tiling, Helix, Spiral); `check:workspace` fails on prism-me
+   (`@molstar/plugin-ui ./*.css`).
+8. **Not built yet**: a protein bank for fibers (only `alanine.pdb`); the Seq\* link (part B); editing a fiber's
+   sequence after it is painted.
+
+### MesoViewSpec and lipids (see progress/current.md)
+
+- **MesoViewSpec app lanes**: `mvs-drive` (lane 4) last marked running; then `mvs-views` with `mvs-model-edits`,
+  `mvs-agent`, `mvs-streaming-app` (prism.md §12.2).
+- **Lipid membranes** (`lipid-tiles`, `lipid-procedural`): wait on Ludo's try on 1353 and 1354; then shells, the clip
+  pop and the PR (rounds 4–9).
+
+### Older items (2026-10-25)
 
 In this order (Ludo, 2026-10-25), one at a time; the looks' owner (PR #8), the measure hint (PR #7) and the app as a
 spec (lane `app-spec`) are built. From the architecture's decisions ([_spec/architecture.md](_spec/architecture.md) §7:
