@@ -1190,8 +1190,9 @@ export class MesoscaleApi extends ApiArea {
         positions: local,
         rotations,
         ...(asFiber ? { fiber: true, seed: drawn } : {}),
-        // a fiber on a surface keeps its normals: a plain walk's units' up along them (`makeFibers`; decisions 3)
-        ...(asFiber && surface && normals && dirs ? { normals: dirs } : {}),
+        // a fiber on a surface keeps its normals (not Turn View's camera): a plain walk's units' up along them
+        // (`makeFibers`; decisions 3)
+        ...(asFiber && surface && normals && dirs && how !== 'view' ? { normals: dirs } : {}),
         ...(asFiber && sequence?.trim()
           ? {
               sequence: {

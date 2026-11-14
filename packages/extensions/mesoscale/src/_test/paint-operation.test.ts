@@ -460,5 +460,19 @@ describe('mesoscale.paint: a fiber on a surface (decisions 3)', () => {
     }
     expectOk(await v.api.run('mesoscale.fiber', { entity: 'loose', twist: 0, offset: 0, jitter: 0 }));
     expect(upAlong()).toBe(true);
+    // Turn View: its directions the camera's, not the surface's; none kept
+    expectOk(
+      await v.api.run('mesoscale.paint', {
+        entity: 'loose',
+        positions,
+        normals,
+        surface: true,
+        fiber: true,
+        orient: 'view',
+      }),
+    );
+    expect(
+      (painted(v)[0].transform.params as { strokes: { normals?: number[] }[] }).strokes[2].normals,
+    ).toBeUndefined();
   });
 });
