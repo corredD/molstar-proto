@@ -73,6 +73,7 @@ import {
   type GrowMode,
   type GrowOn,
   type GrowPoses,
+  type GrowRecord,
   HelixAxes,
   type HelixAxis,
   helixPath,
@@ -524,6 +525,21 @@ export class MesoscaleApi extends ApiArea {
       },
       () => [state.events.changed, at],
       { compare: (a, b) => JSON.stringify(a) === JSON.stringify(b) },
+    );
+  }
+
+  /** A grow's record while its stroke is there (round 2: the last grow live), following the state tree while watched */
+  grownState(
+    at: ReadonlyState<{ readonly particles: string; readonly grow: number } | undefined>,
+  ): ReadonlyState<GrowRecord | undefined> {
+    const state = this.ctx.plugin.state.data;
+    return watchedState(
+      () => {
+        const painted = at.value && decoratorUnder(state, at.value.particles, ParticleListPainted);
+        const strokes = (painted?.transform.params as PaintedParams | undefined)?.strokes;
+        return strokes?.find((x) => x.grow?.id === at.value?.grow)?.grow;
+      },
+      () => [state.events.changed, at],
     );
   }
 

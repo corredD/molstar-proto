@@ -435,37 +435,118 @@ describe('Grow › Helix (grow-helix)', () => {
   });
 });
 
-describe('Grow › Helix after a walk (grow-helix review S5)', () => {
-  it("another mode ends the walk's live Rise: a drag sets the next grow's only, no step", async () => {
+/** The Grow section of the list's row open, `index` its source */
+async function openGrow(v: PrismViewer, hiv: string, index: number) {
+  const host = mountScene(v);
+  await until(() => !!rowOf(host, 'HIV'));
+  rowOf(host, 'HIV')!.click();
+  await until(() => !!button(host, 'Grow'));
+  const section = button(host, 'Grow')!;
+  if (section.getAttribute('aria-expanded') !== 'true') section.click();
+  v.api.mesoscale!.growSource.set({ particles: hiv, index });
+  await until(() => !!host.textContent?.includes(`#${index}`));
+  return host;
+}
+
+/** The Grow button (the section's header is named Grow too: the last) */
+const growButton = (host: HTMLElement) =>
+  Array.from(host.querySelectorAll<HTMLButtonElement>('button'))
+    .filter((b) => b.textContent?.trim() === 'Grow')
+    .at(-1)!;
+
+/** A slider of the Grow section dragged through `values` (its knob's) and let go */
+function dragGrow(host: HTMLElement, label: string, values: number[]) {
+  const range = host.querySelector<HTMLInputElement>(`input[type=range][aria-label="Grow ${label}"]`)!;
+  for (const k of values) {
+    range.value = String(k);
+    range.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+  range.dispatchEvent(new Event('change', { bubbles: true }));
+}
+
+const strokesOf = (v: PrismViewer) =>
+  (
+    Array.from(v.plugin.state.data.cells.values()).find((c) => Array.isArray(c.transform.params?.strokes))?.transform
+      .params as { strokes: { grow?: { mode: string; id: number } }[] } | undefined
+  )?.strokes ?? [];
+
+const coordinates = (v: PrismViewer, from: number, to: number) =>
+  Array.from(
+    (
+      v.plugin.managers.particles.hierarchy.current.lists[0].representations[0].cell.obj!.data as unknown as {
+        sourceData: ParticleList;
+      }
+    ).sourceData.coordinates.slice(from * 3, to * 3),
+  );
+
+describe('The last grow live (grow-helix round 2)', () => {
+  it('re-grows on any of its settings, one step a drag: Count up continues it, down cuts it; Mode replaces it', async () => {
     const { v, hiv } = await viewer();
     const m = v.api.mesoscale!;
-    const host = mountScene(v);
-    await until(() => !!rowOf(host, 'HIV'));
-    rowOf(host, 'HIV')!.click();
-    await until(() => !!button(host, 'Grow'));
-    const section = button(host, 'Grow')!;
-    if (section.getAttribute('aria-expanded') !== 'true') section.click();
-    m.growSource.set({ particles: hiv, index: 2 });
-    await until(() => !!host.textContent?.includes('NC #2'));
-    choice(host, 'Mode', 'Random walk')!.click();
-    m.growSettings.set({ ...m.growSettings.value, steps: 10, persistence: 0, seed: 3 });
-    await until(() => !!host.querySelector('input[aria-label="Grow Rise"]'));
-    const grow = Array.from(host.querySelectorAll<HTMLButtonElement>('button')).filter(
-      (b) => b.textContent?.trim() === 'Grow',
-    );
-    grow[grow.length - 1].click();
+    const host = await openGrow(v, hiv, 2);
+    choice(host, 'Mode', 'Sphere')!.click();
+    m.growSettings.set({ ...m.growSettings.value, count: 10, radius: 30 });
+    growButton(host).click();
     await until(() => count(v) === 3 + 10);
+    const first = coordinates(v, 3, 13);
     const steps = v.api.history.steps.value.length;
+    // Count dragged to 20 through 15: the same grow, 20 copies, the first ten where they were; one step
+    dragGrow(host, 'Count', [15, 20]);
+    await until(() => count(v) === 3 + 20);
+    await until(() => v.api.history.steps.value.length === steps + 1);
+    expect(coordinates(v, 3, 13)).toEqual(first);
+    expect(strokesOf(v).length).toBe(1);
+    // down to 4: the first four
+    dragGrow(host, 'Count', [4]);
+    await until(() => count(v) === 3 + 4);
+    expect(coordinates(v, 3, 7)).toEqual(first.slice(0, 12));
+    // its Mode: the same grow, now a tiling
+    await until(() => v.api.history.steps.value.length === steps + 2);
+    choice(host, 'Mode', 'Tiling')!.click();
+    await until(() => strokesOf(v)[0]?.grow?.mode === 'tiling');
+    expect(strokesOf(v).length).toBe(1);
+    // a walk grown, then Helix picked: the walk becomes a helix, its Rise live on it
+    choice(host, 'Mode', 'Random walk')!.click();
+    await until(() => strokesOf(v)[0]?.grow?.mode === 'walk');
     choice(host, 'Mode', 'Helix')!.click();
-    await until(() => !!host.querySelector('input[aria-label="Grow Pitch"]'));
-    const range = host.querySelector<HTMLInputElement>('input[type=range][aria-label="Grow Rise"]')!;
-    range.value = String(Math.log10(5));
-    range.dispatchEvent(new Event('input', { bubbles: true }));
-    range.dispatchEvent(new Event('change', { bubbles: true }));
-    await new Promise((r) => setTimeout(r, 300));
-    expect(v.api.history.steps.value.length).toBe(steps);
-    expect(count(v)).toBe(3 + 10);
-    expect(m.growSettings.value.rise).toBe(5);
+    await until(() => strokesOf(v)[0]?.grow?.mode === 'helix');
+    const units = count(v);
+    const before = v.api.history.steps.value.length;
+    dragGrow(host, 'Rise', [Math.log10(5)]);
+    await until(() => count(v) > units);
+    await until(() => v.api.history.steps.value.length === before + 1);
+    expect(strokesOf(v).length).toBe(1);
+    // another source: not live anymore; a drag sets the next grow's only
+    m.setGrowSource({ particles: hiv, index: 1 });
+    await until(() => !!host.textContent?.includes('CA #1'));
+    const now = v.api.history.steps.value.length;
+    dragGrow(host, 'Turns', [2]);
+    await new Promise((r) => setTimeout(r, 800));
+    expect(v.api.history.steps.value.length).toBe(now);
+  });
+
+  it('Clear removes every grow from the source, one step; disabled when none; Undo brings them back', async () => {
+    const { v, hiv } = await viewer();
+    const m = v.api.mesoscale!;
+    const host = await openGrow(v, hiv, 2);
+    const clear = () => button(host, 'Clear')!;
+    await until(() => !!clear());
+    expect(clear().disabled).toBe(true);
+    choice(host, 'Mode', 'Sphere')!.click();
+    m.growSettings.set({ ...m.growSettings.value, count: 6 });
+    growButton(host).click();
+    await until(() => count(v) === 3 + 6);
+    growButton(host).click();
+    await until(() => count(v) === 3 + 12);
+    await until(() => !clear().disabled);
+    const steps = v.api.history.steps.value.length;
+    clear().click();
+    await until(() => count(v) === 3);
+    expect(v.api.history.steps.value.length).toBe(steps + 1);
+    await until(() => clear().disabled);
+    await v.api.history.undo();
+    await until(() => count(v) === 3 + 12);
+    await until(() => !clear().disabled);
   });
 });
 

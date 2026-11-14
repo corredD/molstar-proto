@@ -590,13 +590,20 @@ const GrowModeChoices = [
  */
 export function GrowBlock(props: { area: MesoscaleApi; api: ViewerApi; particles: string }) {
   const area = props.area;
-  /** The last walk or helix grown here, live: its list and its grow's id */
+  /** The last grow made here, live (round 2: every setting of it): its list and its grow's id */
   const live = observableState<{ particles: string; grow: number } | undefined>(undefined);
   const redraw = gestureSteps<Partial<Record<'rise' | 'twist' | 'jitter', number>>>(props.api, {
-    label: "Set the grown fiber's rise and twist",
-    apply: (g, _, change) => {
+    label: 'Change the last grow',
+    apply: (g, key, change) => {
       const at = live.value;
-      return at ? g.run('mesoscale.grown-fiber', { ...at, ...change }) : Promise.resolve();
+      if (!at) return Promise.resolve();
+      // a fiber's rise, twist and jitter: its units made again on the same path
+      if (key === 'fiber') return g.run('mesoscale.grown-fiber', { ...at, ...change });
+      // any other setting: the grow made again in place by the settings shown (its seed kept unless set)
+      const src = source.value;
+      const s = area.growSettings.value;
+      if (!src) return Promise.resolve();
+      return g.run('mesoscale.grow', { ...growParams(src, { ...s, mesh: onMesh(s, meshes.value) }), replace: at.grow });
     },
     // what a drag has not applied yet is shown (its overlay), not the state's last (review 6)
     changed: () => overlaid.set(overlaid.value + 1),
@@ -605,35 +612,45 @@ export function GrowBlock(props: { area: MesoscaleApi; api: ViewerApi; particles
   onCleanup(() => redraw.settle());
   /** The live fiber's rise, twist and jitter as the state has them (an undo) */
   const grown = area.grownFiberState(live.asReadonly);
+  /** The live grow while its stroke is there (undone: a change is the next grow's only) */
+  const liveGrow = area.grownState(live.asReadonly);
   const source = mapState(area.growSourceState(), (s) => (s?.particles === props.particles ? s : undefined));
+  /** The grows from the source, for Clear */
+  const grownFrom = area.grownFromState(source);
   // another source: the last walk is not live anymore
   effect(
     mapState(source, (s) => s && `${s.particles}:${s.index}`),
     () => live.set(undefined),
   );
   const settings = area.growSettings.asReadonly;
-  // another mode: the last walk or helix is not live anymore (grow-helix review S5: Helix shows the same sliders)
-  effect(
-    mapState(settings, (s) => s.mode),
-    () => {
-      redraw.settle();
-      live.set(undefined);
-    },
-  );
   const meshes = area.growMeshesState();
   /** The mesh chosen while it is in the scene */
   const onMesh = (s: GrowSettings, list: readonly { ref: string }[]) =>
     s.mesh && list.some((m) => m.ref === s.mesh) ? s.mesh : undefined;
   // following both: a mesh deleted after it was chosen is none (review S3)
   const chosen = derive([settings, meshes], (s, list) => onMesh(s, list));
-  const set = (patch: Partial<GrowSettings>) => area.growSettings.set({ ...area.growSettings.value, ...patch });
+  /** The settings changed, nothing grown */
+  const store = (patch: Partial<GrowSettings>) => area.growSettings.set({ ...area.growSettings.value, ...patch });
+  /**
+   * The settings changed, and the last grow made again by them while it is there (round 2, Ludo 2026-11-13: "all the
+   * parameters … update the latest grow"; its Mode too: it becomes a grow of that mode); `end`, the change done (a
+   * slider let go, a pick): its step taken at once
+   */
+  const set = (patch: Partial<GrowSettings>, end = true) => {
+    const s = area.growSettings.value;
+    if ((Object.keys(patch) as (keyof GrowSettings)[]).every((k) => s[k] === patch[k])) return;
+    store(patch);
+    if (!live.value || !liveGrow.value) return;
+    redraw.change('grow', {});
+    if (end) redraw.settle();
+  };
   // the state's values kept in the settings set (an undo): the next Grow uses what is shown (review 7)
   effect(grown, (f) => {
     if (!f || redraw.overlay('fiber')) return;
     const s = area.growSettings.value;
     const patch: { rise?: number; twist?: number; jitter?: number } = {};
     for (const k of ['rise', 'twist', 'jitter'] as const) if (s[k] !== undefined && s[k] !== f[k]) patch[k] = f[k];
-    if (Object.keys(patch).length) set(patch);
+    if (Object.keys(patch).length) store(patch);
   });
   const line = (label: string, title: string, control: Node) => (
     <div class={classes.line}>
@@ -661,6 +678,7 @@ export function GrowBlock(props: { area: MesoscaleApi; api: ViewerApi; particles
         step={range.step}
         scale={range.scale}
         unit={range.unit}
+        onPreview={(v) => set({ [key]: v }, false)}
         onCommit={(v) => set({ [key]: v })}
       />,
     );
@@ -678,7 +696,7 @@ export function GrowBlock(props: { area: MesoscaleApi; api: ViewerApi; particles
       (s, fiber): number => redraw.overlay('fiber')?.[key] ?? fiber?.[key] ?? s[key] ?? entity(),
     );
     const change = (v: number, end: boolean) => {
-      set({ [key]: v });
+      store({ [key]: v });
       // the live fiber while it is there (undone: the next grow's only; review 5)
       if (live.value && grown.value) redraw.change('fiber', { [key]: v });
       if (end) redraw.settle();
@@ -943,7 +961,7 @@ export function GrowBlock(props: { area: MesoscaleApi; api: ViewerApi; particles
                 value={mapState(settings, (s) => (s.seed === undefined ? '' : String(s.seed)))}
                 onInput={(t) => {
                   const n = Number.parseInt(t, 10);
-                  set({ seed: Number.isFinite(n) ? n : undefined });
+                  set({ seed: Number.isFinite(n) ? n : undefined }, false);
                 }}
               />,
             )}
@@ -954,18 +972,31 @@ export function GrowBlock(props: { area: MesoscaleApi; api: ViewerApi; particles
                 icon={<Icon name="sparkles" />}
                 title="Grow the copies by the rule: one step"
                 onClick={() => {
-                  // another Grow: the walk before it is not live anymore; this one is, when it is a walk
+                  // another Grow: the one before it is not live anymore; this one is
                   redraw.settle();
                   live.set(undefined);
                   const s = settings.value;
                   void area.grow(growParams(src, { ...s, mesh: onMesh(s, meshes.value) }) as never).then((r) => {
-                    const fiber = s.mode === 'walk' || s.mode === 'helix';
-                    const id = r.ok && fiber ? (r.value as { id?: number } | undefined)?.id : undefined;
+                    const id = r.ok ? (r.value as { id?: number } | undefined)?.id : undefined;
                     if (id !== undefined) live.set({ particles: src.particles, grow: id });
                   });
                 }}
               >
                 Grow
+              </Button>
+              <Button
+                size="xs"
+                variant="ghost"
+                icon={<Icon name="trash-2" />}
+                title="Clear every grow from this instance (it stays): one step"
+                disabled={mapState(grownFrom, (n) => !n)}
+                onClick={() => {
+                  redraw.settle();
+                  live.set(undefined);
+                  void area.clearGrown({ particles: src.particles, index: src.index });
+                }}
+              >
+                Clear
               </Button>
             </div>
           </div>
