@@ -239,12 +239,14 @@ export function PaintBrush(props: {
   name: string;
   /** A structure of the scene as the brush (paint-layer round 2): painted into a list or the Painting list */
   structure?: string;
+  /** A group of the list as the brush (paint-group; its id, `entity` too) */
+  group?: number;
 }) {
   const mode = props.area.paintMode;
   const on = mapState(mode.brush.asReadonly, (b) =>
     props.structure
       ? b?.structure === props.structure
-      : !b?.structure && b?.particles === props.particles && b.entity === props.entity,
+      : !b?.structure && b?.particles === props.particles && b.entity === props.entity && b.group === props.group,
   );
   const settings = mode.settings.asReadonly;
   const brush = () => ({
@@ -252,6 +254,7 @@ export function PaintBrush(props: {
     entity: props.entity,
     name: props.name,
     ...(props.structure ? { structure: props.structure } : {}),
+    ...(props.group !== undefined ? { group: props.group } : {}),
   });
   return (
     <div class={classes.tight}>

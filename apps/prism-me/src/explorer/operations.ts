@@ -125,6 +125,8 @@ export type NodeRef =
         readonly compartments?: number[];
         readonly targets?: number[];
       };
+      /** A group of instances of the list (paint-group; its id): a brush, no particle of its own */
+      readonly paintGroup?: number;
     };
 
 /** The particle representation types as the explorer names them (the others by their own label) */

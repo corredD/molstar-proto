@@ -453,6 +453,8 @@ export function nodeMenuItems(
   const { node, kind, label } = picked;
   const items: ContextMenuItem[] = [];
   if (kind === 'distance') return distanceItems(api, area, picked);
+  // a group of instances (paint-group): a brush only
+  if (kind === 'paint group') return paintItems(api, picked);
   if (kind === 'label') {
     // a label's: its text, its place first
     const editText = actions.editText;
@@ -564,6 +566,23 @@ function paintItems(api: ViewerApi, picked: PickedNode): ContextMenuItem[] {
         label: `Paint with ${label}`,
         icon: 'paintbrush',
         run: () => void mode.start({ particles: '', entity: -1, name: label, structure: node.ref }),
+      },
+    ];
+  }
+  // a group of instances (paint-group): Paint with it, all its members a copy
+  const group = 'particles' in node ? node.paintGroup : undefined;
+  if (mode && kind === 'paint group' && group !== undefined) {
+    const b = mode.brush.value;
+    if (b?.particles === node.ref && b.group === group) {
+      return [{ id: 'paint', label: 'Stop painting', icon: 'paintbrush', run: () => mode.stop() }];
+    }
+    const name = label.replace(/ · .*$/, '');
+    return [
+      {
+        id: 'paint',
+        label: `Paint with ${name}`,
+        icon: 'paintbrush',
+        run: () => void mode.start({ particles: node.ref, entity: group, name, group }),
       },
     ];
   }

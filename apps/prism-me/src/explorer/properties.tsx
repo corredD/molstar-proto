@@ -58,6 +58,7 @@ import { gestureSteps } from '@molstar/prism-viewer/sources/gesture-steps';
 import { VolumeTransfer } from '@molstar/prism-viewer/views/volume/volume-transfer';
 import { PlainCut, type Way, wayOf } from './clips.js';
 import { DistanceProps } from './distance-properties.js';
+import { GroupProps } from './group-properties.js';
 import { addClip, clippable, hideHandles, movable, showClipHandles, showHandles, showTheme } from './menu.js';
 import type { ExplorerApi, NodeRef, RepresentationInfo } from './operations.js';
 import { Hint, Line, PropertiesFrame, PropertiesSlot, propertiesClasses as classes } from './properties-view.js';
@@ -418,6 +419,33 @@ export const Sections: readonly Section[] = [
         />
       );
     },
+  },
+  {
+    // a group of instances as a brush (paint-group): Paint with it, all its members a copy
+    id: 'paint-group-brush',
+    title: 'Paint',
+    when: ({ api, picked }) =>
+      !!api.mesoscale && picked.kind === 'paint group' && !!picked.node && 'particles' in picked.node,
+    render: ({ api, picked }) => {
+      const node = picked.node as Extract<NodeRef, { particles: unknown }>;
+      return (
+        <PaintBrush
+          area={api.mesoscale!}
+          particles={node.ref}
+          entity={node.paintGroup!}
+          group={node.paintGroup!}
+          name={picked.label.replace(/ · .*$/, '')}
+        />
+      );
+    },
+  },
+  {
+    // a list's instances made a group (paint-group; cellPAINT's grouping): Pick instances, Make group
+    id: 'group',
+    title: 'Group',
+    when: ({ api, picked }) =>
+      !!api.mesoscale && !!picked.node && (picked.kind === 'mesoscale model' || picked.kind === 'particle list'),
+    render: ({ api, picked }) => <GroupProps api={api} particles={picked.node!.ref} />,
   },
   {
     // a grow from an instance (progress/2026-11-11-grow.md): on a list, its model, its entities and targets; its source
