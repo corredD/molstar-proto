@@ -74,6 +74,8 @@ export interface HelixParams {
   readonly hand: 'right' | 'left';
   readonly direction: 'up' | 'down';
   readonly radius: number;
+  /** Its length at most (Å, from the source): it ends there whatever its turns (review M1: a grow's cap before it is made) */
+  readonly limit?: number;
 }
 
 /** The axis a helix winds about on a mesh (the scene's): a point of it and its unit direction, up */
@@ -374,6 +376,7 @@ export function helixPath(
   if (from >= end) return [];
   const all: number[] = [];
   const ns: number[] | undefined = on ? [] : undefined;
+  let walked = 0;
   for (let i = 0; ; ++i) {
     const theta = Math.min(from + i * HelixStep, end);
     Vec3.scale(_u, e1, Math.cos(theta));
@@ -396,9 +399,11 @@ export function helixPath(
       if (Vec3.dot(_hit.normal, n) < 0) Vec3.negate(_hit.normal, _hit.normal);
       Vec3.copy(n, _hit.normal);
     }
+    const k = all.length;
+    if (k) walked += Math.hypot(_p[0] - all[k - 3], _p[1] - all[k - 2], _p[2] - all[k - 1]);
     all.push(_p[0], _p[1], _p[2]);
     ns?.push(n[0], n[1], n[2]);
-    if (theta >= end) break;
+    if (theta >= end || (p.limit !== undefined && walked >= p.limit)) break;
   }
   return on ? trimStart(all, ns, rise, normals) : all;
 }
@@ -424,7 +429,11 @@ function trimStart(path: number[], values: number[] | undefined, length: number,
     // the first point the one there, the next ones the path's after it (not stacked on it)
     const next = t >= 1 - 1e-9 ? i + 1 : i;
     const out = [...lerp(path), ...path.slice(next * 3)];
-    if (values && valuesOut) valuesOut.push(...lerp(values), ...values.slice(next * 3));
+    // one by one: a long path's values are more than a call takes as arguments (review M1)
+    if (values && valuesOut) {
+      valuesOut.push(...lerp(values));
+      for (let j = next * 3; j < values.length; ++j) valuesOut.push(values[j]);
+    }
     return out;
   }
   return [];

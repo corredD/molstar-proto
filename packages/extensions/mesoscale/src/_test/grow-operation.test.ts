@@ -724,6 +724,24 @@ describe('mesoscale.grow helix', () => {
     expect(steps(v)).toBe(s);
   });
 
+  it('refuses more than 200 turns, and a helix on a mesh of more units than a grow makes, before it is all made (review M1)', async () => {
+    const v = await viewer();
+    const ref = entry(v).cell.transform.ref;
+    expectOk(await v.api.load.files({ files: [new File([sphereObj(100, Vec3.create(-80, 0, 0))], 'vesicle.obj')] }));
+    const { repr } = meshCells(v);
+    const grow = (p: object) =>
+      v.api.run('mesoscale.grow', { particles: ref, index: 2, mesh: repr, mode: 'helix', axis: 'z', ...p });
+    const s = steps(v);
+    expect(await grow({ turns: 201 })).toMatchObject({ ok: false, code: 'invalid' });
+    // a spiral of 1 Å a turn over the vesicle's half (some 31000 Å) at 0.1 Å a unit
+    const t0 = Date.now();
+    const r = await grow({ turns: 200, pitch: 1, rise: 0.1 });
+    expect(r).toMatchObject({ ok: false, code: 'invalid' });
+    expect(r.ok ? '' : r.message).toContain('a grow makes 20000 at most');
+    expect(steps(v)).toBe(s);
+    expect(Date.now() - t0).toBeLessThan(5000);
+  });
+
   it('refuses a pitch, turns or radius of no helix, and more units than a grow makes: no step', async () => {
     const v = await viewer();
     const ref = entry(v).cell.transform.ref;
@@ -732,7 +750,7 @@ describe('mesoscale.grow helix', () => {
     expect(await grow({ pitch: 0 })).toMatchObject({ ok: false, code: 'invalid' });
     expect(await grow({ turns: 0 })).toMatchObject({ ok: false, code: 'invalid' });
     expect(await grow({ helixRadius: 0 })).toMatchObject({ ok: false, code: 'invalid' });
-    expect(await grow({ turns: 1000, helixRadius: 1000, rise: 0.5 })).toMatchObject({ ok: false, code: 'invalid' });
+    expect(await grow({ turns: 200, helixRadius: 1000, rise: 0.5 })).toMatchObject({ ok: false, code: 'invalid' });
     expect(steps(v)).toBe(s);
     expect(painted(v).length).toBe(0);
   });

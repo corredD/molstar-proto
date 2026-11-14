@@ -311,6 +311,9 @@ function pathLength(ps: ArrayLike<number>) {
   return length;
 }
 
+/** The most turns of a helix */
+const MaxHelixTurns = 200;
+
 /** The most copies one grow makes */
 const MaxGrown = 20000;
 const tooMany = (n: number) =>
@@ -1212,7 +1215,9 @@ export class MesoscaleApi extends ApiArea {
           { description: "Helix: along its axis a turn, Å; absent: 4 × the copy's diameter" },
         ),
       ),
-      turns: OptionalParam(PD.Numeric(5, { min: 0, max: 1000, step: 0.1 }, { description: 'Helix: its turns' })),
+      turns: OptionalParam(
+        PD.Numeric(5, { min: 0, max: MaxHelixTurns, step: 0.1 }, { description: 'Helix: its turns' }),
+      ),
       hand: OptionalParam(
         PD.Select(
           'right',
@@ -1445,6 +1450,8 @@ export class MesoscaleApi extends ApiArea {
           };
           if (!(p.pitch > 0)) return ApiResult.fail('invalid', 'The pitch is above 0 Å.');
           if (!(p.turns > 0)) return ApiResult.fail('invalid', 'Give a turn or a part of one.');
+          // a point every 5° (on a mesh, a projection each): the turns bounded, the length at the cap (review M1)
+          if (p.turns > MaxHelixTurns) return ApiResult.fail('invalid', `Give ${MaxHelixTurns} turns or fewer.`);
           if (!on && !(p.radius > 0)) return ApiResult.fail('invalid', 'The radius is above 0 Å.');
           const scaled = rise * (move?.scale ?? 1);
           // its length in space before it is made: no 1000 turns of a long radius at a short rise (its points every 5°)
@@ -1457,7 +1464,8 @@ export class MesoscaleApi extends ApiArea {
             const view = camera && Vec3.sub(Vec3(), camera.position, camera.target);
             const line = meshAxis(mesh!.shape.geometry, mesh!.shape.transforms[0], which, view);
             normals = [];
-            path = helixPath(scene, axis, scaled, p, { ...on, axis: surfaceAxis(), line }, normals);
+            const limit = (MaxGrown + 1) * scaled;
+            path = helixPath(scene, axis, scaled, { ...p, limit }, { ...on, axis: surfaceAxis(), line }, normals);
             if (!path) return offMesh();
             if (path.length < 6) {
               return ApiResult.fail(

@@ -6,7 +6,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { Mat4, Quat, Vec3 } from '@molstar/core/math/linear-algebra';
-import { type GrowPose, type HelixLine, type HelixParams, helixPath } from '../grow.js';
+import { type GrowPose, type GrowSurface, type HelixLine, type HelixParams, helixPath } from '../grow.js';
 import { meshAxis, meshSurface } from '../mesh-surface.js';
 import { fiberOffsetDirection } from '../paint.js';
 import { sphereMesh, tubeMesh } from './fixtures.js';
@@ -199,5 +199,38 @@ describe('the axis of a mesh', () => {
     const view = meshAxis(mesh, move, 'view', Vec3.create(0, 3, 4));
     expect(Vec3.distance(view.direction, Vec3.create(0, 0.6, 0.8))).toBeLessThan(1e-6);
     expect(Vec3.distance(view.center, auto.center)).toBe(0);
+  });
+});
+
+/** A cylinder of radius `r` about z as a surface, exactly (no mesh: a long helix without the cost of its picks) */
+function cylinderSurface(r: number): GrowSurface {
+  return {
+    project(out, p) {
+      const m = Math.hypot(p[0], p[1]);
+      if (!(m > 0)) return false;
+      Vec3.set(out.normal, p[0] / m, p[1] / m, 0);
+      Vec3.set(out.position, out.normal[0] * r, out.normal[1] * r, p[2]);
+      return true;
+    },
+    triangles: () => ({ positions: [], normals: [] }),
+  };
+}
+
+describe('a long helix on a surface (review M1)', () => {
+  it('keeps its normals for 1000 turns (no argument list of them) and stops at a length limit', () => {
+    const on = { surface: cylinderSurface(50), reach: 20, line: { center: Vec3(), direction: z } };
+    const source: GrowPose = { position: Vec3.create(50, 0, 0), rotation: Quat.identity() };
+    const p: HelixParams = { pitch: 1, turns: 1000, hand: 'right', direction: 'up', radius: 0 };
+    const normals: number[] = [];
+    const path = helixPath(source, z, 100, p, on, normals)!;
+    // 72000 points of 5° less the first rise's (some 23)
+    expect(path.length / 3).toBeGreaterThan(71950);
+    expect(normals.length).toBe(path.length);
+    // a limit: the path no longer than it (and a step), however many turns
+    const short = helixPath(source, z, 100, { ...p, limit: 1000 }, on)!;
+    let length = 0;
+    for (let i = 1; i < short.length / 3; ++i) length += Vec3.distance(at(short, i), at(short, i - 1));
+    expect(length).toBeGreaterThan(1000 - 100);
+    expect(length).toBeLessThan(1000 + 5);
   });
 });
