@@ -1347,6 +1347,15 @@ export class MesoscaleApi extends ApiArea {
       const at = strokes.findIndex((s) => s.fiber && s.grow?.id === values.grow);
       if (at < 0) return ApiResult.fail('not-found', 'That grown fiber is not there (undone or removed).');
       const own = { ...strokes[at].own, ...given };
+      // its units: the path's length a rise each (`makeFiber`), as many as a grow makes at most (review 9)
+      if (own.rise !== undefined) {
+        const ps = strokes[at].positions;
+        let length = 0;
+        for (let i = 3; i < ps.length; i += 3) {
+          length += Math.hypot(ps[i] - ps[i - 3], ps[i + 1] - ps[i - 2], ps[i + 2] - ps[i - 1]);
+        }
+        if (length / own.rise + 1 > MaxGrown) return tooMany(Math.floor(length / own.rise) + 1);
+      }
       if ((Object.keys(given) as (keyof typeof given)[]).every((k) => strokes[at].own?.[k] === given[k])) {
         return ApiResult.already('The fiber is already so.');
       }

@@ -236,6 +236,20 @@ describe('mesoscale.grow', () => {
     expect(Array.from(drawn(v).coordinates.slice(21, 36))).toEqual(other);
   });
 
+  it('refuses a grown fiber of more units than a grow makes (review 9): no step', async () => {
+    const v = await viewer();
+    const ref = entry(v).cell.transform.ref;
+    // 1000 points 50 Å apart: about 50000 Å of path, 100000 units at 0.5 Å
+    const walk = { particles: ref, index: 3, mode: 'walk', steps: 1000, rise: 50, seed: 1 };
+    const r = await v.api.run('mesoscale.grow', walk);
+    expectOk(r);
+    const before = steps(v);
+    expect(
+      await v.api.run('mesoscale.grown-fiber', { particles: ref, grow: (r.value as { id: number }).id, rise: 0.5 }),
+    ).toMatchObject({ ok: false, code: 'invalid' });
+    expect(steps(v)).toBe(before);
+  });
+
   it("reads a grown fiber's rise in effect as its source's (a structure painted: its length along its axis)", async () => {
     const v = await viewer();
     const structure = v.plugin.managers.structure.hierarchy.current.structures[0].cell.transform.ref;
