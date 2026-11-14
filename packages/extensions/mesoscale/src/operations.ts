@@ -1361,6 +1361,8 @@ export class MesoscaleApi extends ApiArea {
       let own: PaintStroke['own'] = {};
       /** A walk's surface normals a point (on a mesh): its units' up follows them (paint-refine round 2) */
       let normals: number[] | undefined;
+      /** A fiber's units (`makeFiber`'s: its path's length a rise each), its count (review S2) */
+      let units: number | undefined;
       if (mode === 'crystal') {
         const p = {
           a: v.a ?? diameter,
@@ -1473,7 +1475,7 @@ export class MesoscaleApi extends ApiArea {
             if (path.length < 6) {
               return ApiResult.fail(
                 'invalid',
-                `The helix leaves ${mesh!.label} at once, or ${name} #${index} is on its axis.`,
+                `The helix leaves ${mesh!.label} at once, ${name} #${index} is on its axis, or it is shorter than a rise.`,
                 'Another Axis, or grow from further in.',
               );
             }
@@ -1484,8 +1486,16 @@ export class MesoscaleApi extends ApiArea {
             Object.assign(sizes, p);
           }
           toListFrame(move, path, normals);
-          const units = pathLength(path) / rise + 1;
-          if (units > MaxGrown) return tooMany(Math.floor(units));
+          units = Math.floor(pathLength(path) / rise + 1e-6) + 1;
+          if (units > MaxGrown) return tooMany(units);
+          // a unit alone would be a copy unturned, as a walk of one point (review New 1)
+          if (units < 2) {
+            return ApiResult.fail(
+              'invalid',
+              `The helix is shorter than two units ${round1(rise)} Å (its rise) apart.`,
+              'More turns, or a shorter rise.',
+            );
+          }
         }
       }
       if (made) {
@@ -1510,7 +1520,7 @@ export class MesoscaleApi extends ApiArea {
           id: growId,
         },
       };
-      const count = stroke.positions.length / 3;
+      const count = units ?? stroke.positions.length / 3;
       // no copy, no step (review S2): one cell, no ring
       if (!count) return ApiResult.fail('invalid', 'That rule makes no copy.', 'More cells or rings.');
       await updatePainted(ctx, l, (p) => ({ ...p, strokes: [...p.strokes, stroke] }));

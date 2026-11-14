@@ -641,6 +641,8 @@ describe('mesoscale.grow helix', () => {
     const r = await v.api.run('mesoscale.grow', helix);
     expectOk(r);
     expect(steps(v)).toBe(before + 1);
+    // its count the units drawn, not its path's points (review S2)
+    expect((r.value as { count: number }).count).toBe(drawn(v).count - 7);
     const [stroke] = strokes(v);
     expect(stroke).toMatchObject({
       fiber: true,
@@ -751,6 +753,12 @@ describe('mesoscale.grow helix', () => {
     expect(await grow({ turns: 0 })).toMatchObject({ ok: false, code: 'invalid' });
     expect(await grow({ helixRadius: 0 })).toMatchObject({ ok: false, code: 'invalid' });
     expect(await grow({ turns: 200, helixRadius: 1000, rise: 0.5 })).toMatchObject({ ok: false, code: 'invalid' });
+    // a helix of one unit or none, shorter than two rises (review New 1): its rise named
+    for (const rise of [20, 30]) {
+      const r = await grow({ turns: 0.25, pitch: 40, helixRadius: 15, rise });
+      expect(r).toMatchObject({ ok: false, code: 'invalid' });
+      expect(r.ok ? '' : r.message).toContain('rise');
+    }
     expect(steps(v)).toBe(s);
     expect(painted(v).length).toBe(0);
   });
