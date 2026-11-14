@@ -203,7 +203,7 @@ export interface ColorBand {
 
 /**
  * The color grid of a mesh drawn at `transform` in `grid`'s voxels, and its band: the cells about each point of its
- * triangles (sampled every half cell, each the 4³ cells about it, which hold the 8 a pixel between them reads), each
+ * triangles (sampled every half cell, each the 3³ cells about it, which hold the 8 a pixel within half a cell reads), each
  * with the normal (vertex normals interpolated) of the nearest of those points. A grid over `maxCells` takes every
  * k-th voxel.
  */
@@ -232,7 +232,7 @@ export function colorBand(mesh: SampledMesh, transform: Mat4, grid: Grid, maxCel
       hi[d] = Math.max(hi[d], v[3 * i + d]);
     }
   }
-  // two cells about the box (the 4³ cells about a point), every k-th voxel within the cap
+  // two cells about the box (the 3³ cells about a point), every k-th voxel within the cap
   const extent = Vec3.sub(Vec3(), hi, lo);
   const cellsAt = (h: number) =>
     (Math.floor(extent[0] / h) + 6) * (Math.floor(extent[1] / h) + 6) * (Math.floor(extent[2] / h) + 6);
@@ -280,12 +280,13 @@ export function colorBand(mesh: SampledMesh, transform: Mat4, grid: Grid, maxCel
           p[d] = fa * a[d] + fb * b[d] + fc * c[d];
           n[d] = fa * normals[3 * i0 + d] + fb * normals[3 * i1 + d] + fc * normals[3 * i2 + d];
         }
-        const x0 = Math.floor(p[0]) - 1;
-        const y0 = Math.floor(p[1]) - 1;
-        const z0 = Math.floor(p[2]) - 1;
-        for (let z = Math.max(0, z0); z < Math.min(zn, z0 + 4); z++) {
-          for (let y = Math.max(0, y0); y < Math.min(yn, y0 + 4); y++) {
-            for (let x = Math.max(0, x0); x < Math.min(xn, x0 + 4); x++) {
+        // a pixel within half a cell of the point reads cells ⌊p − ½⌋ … ⌊p − ½⌋ + 2 along each axis
+        const x0 = Math.floor(p[0] - 0.5);
+        const y0 = Math.floor(p[1] - 0.5);
+        const z0 = Math.floor(p[2] - 0.5);
+        for (let z = Math.max(0, z0); z < Math.min(zn, z0 + 3); z++) {
+          for (let y = Math.max(0, y0); y < Math.min(yn, y0 + 3); y++) {
+            for (let x = Math.max(0, x0); x < Math.min(xn, x0 + 3); x++) {
               const d2 = (x - p[0]) ** 2 + (y - p[1]) ** 2 + (z - p[2]) ** 2;
               const cell = x + xn * (y + yn * z);
               let s = slot[cell];
