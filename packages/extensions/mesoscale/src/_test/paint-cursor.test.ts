@@ -121,6 +121,13 @@ describe('the copy under the pointer', () => {
       5,
     );
     cursor.dispose();
+    // a membrane protein: upright (+z) whatever its Fiber Axis (review S1)
+    const membrane = pluginPaintCursor(v.plugin, list, brush, undefined, true, canvas, () => Vec3.create(1, 0, 0));
+    membrane.move(Vec3.create(1, 2, 3), n, DefaultPaintSettings, 7, true);
+    await vi.waitFor(() => expect(added.length).toBe(2));
+    const q = Mat4.getRotation(Quat(), added[1].state.transform);
+    expect(Vec3.distance(Vec3.transformQuat(Vec3(), Vec3.create(0, 0, 1), q), n)).toBeLessThan(1e-5);
+    membrane.dispose();
   });
 
   it("a structure brush's copy is drawn in a scene with no particle list yet (paint-refine, the first Paint)", async () => {

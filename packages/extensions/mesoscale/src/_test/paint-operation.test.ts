@@ -306,6 +306,22 @@ describe('mesoscale.paint', () => {
     expect((d.value as { orient: string }).orient).toBe('random');
   });
 
+  it('a membrane protein stays upright (+z along the normal) whatever its Fiber Axis (round 2 review S1)', async () => {
+    const v = await viewer();
+    const n = Vec3.normalize(Vec3(), Vec3.create(1, 0, 1));
+    expectOk(await v.api.run('mesoscale.fiber', { entity: 'CA', axis: 'x' }));
+    expectOk(
+      await v.api.run('mesoscale.paint', {
+        entity: 'CA',
+        positions: [0, 50, 0],
+        normals: [...n],
+        surface: true,
+        seed: 1,
+      }),
+    );
+    expect(Vec3.distance(zOf(drawn(v), 7), n)).toBeLessThan(1e-5);
+  });
+
   it('turns a copy of an entity not on a surface at random, repeatably by its seed', async () => {
     const v = await viewer();
     const r = await v.api.run('mesoscale.paint', { entity: 'loose', positions: [0, 0, 0, 1, 1, 1], seed: 5 });

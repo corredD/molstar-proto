@@ -186,7 +186,8 @@ function copyCursor(
       const camera = plugin.canvas3d?.camera.state;
       if (how === 'view' && camera) Vec3.normalize(_dir, Vec3.sub(_dir, camera.position, camera.target));
       if (settings.side === 'in') Vec3.negate(_dir, _dir);
-      turn.axis = how === 'axis' ? axis : how === 'normal' ? along?.(settings) : undefined;
+      // a membrane protein upright (+z) whatever its Fiber Axis (round 2 review S1)
+      turn.axis = how === 'axis' ? axis : how === 'normal' && !surface ? along?.(settings) : undefined;
       turn.spin = settings.spin;
       paintRotation(_q, _dir, how, seed, 0, turn);
       Mat4.fromQuat(_m, _q);

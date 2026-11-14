@@ -1061,9 +1061,9 @@ export class MesoscaleApi extends ApiArea {
       // on a surface (its pick's normals: paint-refine round 2) any copy along them; a membrane protein always
       const how: PaintOrient = orient ?? (brush.surface || (surface && normals) ? 'normal' : 'random');
       const state = ctx.plugin.state.data;
-      // along the normal: its Fiber Axis when set, else +z
+      // along the normal: its Fiber Axis when set, else +z; a membrane protein upright always (+z: its mid-plane's; S1)
       const along =
-        how === 'normal' && l
+        how === 'normal' && l && !brush.surface && !(fiber && positions.length >= 6)
           ? fiberAxisVector(
               fiberSettingsOf(
                 data,
