@@ -202,12 +202,8 @@ describe('symmetryPoses', () => {
     for (const x of ps) expect(Vec3.dot(Vec3.sub(Vec3(), x, center), n)).toBeCloseTo(0, 9);
   });
 
-  it('Dn about a chosen axis: two rings at ± a height along it, its 2-folds across it', () => {
-    const flat: GrowPose = {
-      position: Vec3.create(50, 0, 0),
-      rotation: Quat.rotationTo(Quat(), up, Vec3.create(1, 0, 0)),
-    };
-    // the source on the equator (its axis across z): a flat ring of 2n; Auto puts it off the equator, a barrel
+  it('Dn: two rings at ± a height along its axis, Auto and about a chosen axis', () => {
+    // Auto puts the source off the equator: a barrel
     const made = symmetryPoses(source, up, p('d', 7))!;
     const ps = points(source, made);
     const a = Vec3.transformQuat(Vec3(), up, source.rotation);
@@ -222,8 +218,18 @@ describe('symmetryPoses', () => {
     const [h1, h2] = [...heights];
     expect(h1).toBeCloseTo(-h2, 6);
     expect(Math.abs(h1)).toBeGreaterThan(0.3 * radius);
-    // on the equator about a chosen axis it is refused only when on an axis; here 14 copies − 1
-    expect(symmetryPoses(flat, up, p('d', 7), Vec3.create(0, 0, 1))!.positions.length / 3).toBe(13);
+    // about a chosen axis (z), a source off its equator: two rings of 7 at ± its height along z (review S4)
+    const t = Vec3.normalize(Vec3(), Vec3.create(1, 0, 0.5));
+    const tilted: GrowPose = { position: Vec3.scale(Vec3(), t, radius), rotation: Quat.rotationTo(Quat(), up, t) };
+    const about = points(tilted, symmetryPoses(tilted, up, p('d', 7), Vec3.create(0, 0, 1))!);
+    expect(about.length).toBe(14);
+    // the center at 0: the source a Radius along its axis from it
+    const zs = about.map((x) => Math.round(x[2] * 1e6) / 1e6).sort((x, y) => x - y);
+    expect(new Set(zs).size).toBe(2);
+    expect(zs[0]).toBeCloseTo(-radius * t[2], 6);
+    expect(zs[13]).toBeCloseTo(radius * t[2], 6);
+    // each ring about z: its points a ring's radius from the axis
+    for (const x of about) expect(Math.hypot(x[0], x[1])).toBeCloseTo(radius * t[0], 6);
   });
 
   it.each(orders)(
