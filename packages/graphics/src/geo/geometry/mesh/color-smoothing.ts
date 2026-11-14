@@ -5,7 +5,7 @@
  * @author David Sehnal <david.sehnal@gmail.com>
  */
 
-import { setColorType } from '../color-data.js';
+import { createGridColor, createTextureColor, setColorType } from '../color-data.js';
 import { setEmissiveType } from '../emissive-data.js';
 import { setOverpaintType } from '../overpaint-data.js';
 import { setSubstanceType } from '../substance-data.js';
@@ -19,6 +19,7 @@ import { lerp } from '@molstar/core/math/interpolate';
 import { Mat4, Vec2, Vec3, Vec4 } from '@molstar/core/math/linear-algebra';
 import { getVolumeTexture2dLayout } from '@molstar/graphics/repr/volume/util';
 import { ValueCell } from '@molstar/core/util';
+import type { Shape } from '@molstar/model/model/shape';
 
 interface ColorSmoothingInput {
   vertexCount: number;
@@ -752,6 +753,54 @@ export function applyMeshColorSmoothing(
     setColorType(values, smoothingData.type);
     ValueCell.update(values.tColor, smoothingData.texture);
   }
+}
+
+/**
+ * Colors `values` by `grid`: read per fragment with a graphics context whose textures fit its 2d layout (uploaded into
+ * `texture` when that context's, else into a new one, returned), else trilinear at the vertices
+ */
+export function applyMeshColorGrid(
+  values: MeshValues,
+  grid: Shape.ColorGrid,
+  graphics?: GraphicsContext,
+  texture?: Texture,
+): Texture | undefined {
+  const { dimension, transform } = grid;
+  const [xn, yn, zn] = dimension;
+  const { width, height } = getVolumeTexture2dLayout(dimension);
+  const array = new Uint8Array(width * height * 4);
+  const zOff = getSliceOffsets(dimension, width);
+  for (let z = 0; z < zn; ++z) {
+    for (let y = 0; y < yn; ++y) {
+      const row = 4 * xn * (z * yn + y);
+      array.set(grid.colors.subarray(row, row + 4 * xn), 4 * (zOff[z] + y * width));
+    }
+  }
+
+  if (graphics && Math.max(width, height) <= graphics.resources.limits.maxTextureSize) {
+    if (!texture || !graphics.resources.ownsTexture(texture)) {
+      texture = graphics.resources.texture('image-uint8', 'rgba', 'ubyte', 'linear');
+    }
+    texture.load({ array, width, height, filter: 'linear' });
+    createGridColor({ colors: texture, dimension, transform, fragment: true }, 'volume', values);
+    return texture;
+  }
+
+  const colors = getTrilinearlyInterpolated({
+    vertexCount: values.uVertexCount.ref.value,
+    instanceCount: 1,
+    transformBuffer: values.aTransform.ref.value,
+    positionBuffer: values.aPosition.ref.value,
+    colorType: 'volume',
+    grid: array,
+    gridDim: dimension,
+    gridTexDim: Vec2.create(width, height),
+    gridTransform: transform,
+    vertexStride: 3,
+    colorStride: 4,
+    outputStride: 4,
+  });
+  createTextureColor(colors, 'vertex', values);
 }
 
 function isSupportedOverpaintType(x: string): x is 'groupInstance' {

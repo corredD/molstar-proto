@@ -12,6 +12,7 @@ import { Mat4 } from '@molstar/core/math/linear-algebra';
 import type { Sphere3D } from '@molstar/core/math/geometry/primitives/sphere3d';
 import type { Ray3D } from '@molstar/core/math/geometry/primitives/ray3d';
 import type { Vec3 } from '@molstar/core/math/linear-algebra/3d/vec3';
+import type { Vec4 } from '@molstar/core/math/linear-algebra/3d/vec4';
 
 /** Data shared by a shape and its graphics integrations. `G` is deliberately
  * structural so the model package does not need to own graphics geometry. */
@@ -39,9 +40,21 @@ export interface Shape<G extends ShapeGeometry = ShapeGeometry> {
   getColor(groupId: number, instanceId: number): Color;
   getSize(groupId: number, instanceId: number): number;
   getLabel(groupId: number, instanceId: number): string;
+  /** Colors the shape's mesh in place of `getColor`, read per pixel where drawn with a graphics context */
+  colorGrid?: Shape.ColorGrid;
 }
 
 export namespace Shape {
+  /**
+   * Colors on a grid in the shape's own frame (before its transforms), trilinear between the cells: RGBA per cell, x
+   * fastest; cell (i, j, k) at `transform.xyz + (i, j, k) / transform.w`
+   */
+  export interface ColorGrid {
+    readonly colors: Uint8Array;
+    readonly dimension: Vec3;
+    readonly transform: Vec4;
+  }
+
   /** Create model-side shape data; rendering consumers should use the graphics Shape.create factory. */
   export function create<G extends ShapeGeometry>(
     name: string,
