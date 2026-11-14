@@ -551,11 +551,11 @@ still completes its distance.
   copy's diameter), Rings (3), in the source's own plane (normal: +z for a membrane protein, else its principal axis),
   each turned as the source. Sphere: Count (50) copies uniform in a ball of Radius (5 × the copy's radius), turned at
   random or as the source. The source is where it is drawn: its list's move and scale and its own move (Move this
-  instance), before the offsets of its kind (its copies take them too). Round 2: Symmetry. A walk's **Rise**, **Twist**
-  and **Jitter** (paint-refine, Ludo 2026-11-13; unset: the entity's Fiber settings) are its own, kept in its stroke:
-  only that fiber has them. After a walk is grown, they are live on it: a drag redraws that fiber in place (the same
-  path, its units made again: one step a drag, `mesoscale.grown-fiber`), the sliders following an undo; another Grow,
-  another source, another Mode or the section closed ends it.
+  instance), before the offsets of its kind (its copies take them too). A walk's **Rise**, **Twist** and **Jitter**
+  (paint-refine, Ludo 2026-11-13; unset: the entity's Fiber settings) are its own, kept in its stroke: only that fiber
+  has them. After a walk is grown, they are live on it: a drag redraws that fiber in place (the same path, its units
+  made again: one step a drag, `mesoscale.grown-fiber`), the sliders following an undo; another Grow, another source,
+  another Mode or the section closed ends it.
 - Grow on a mesh (lane `grow-mesh`, Ludo 2026-11-13): a paint stroke over a file mesh (OBJ, PLY, VTP) puts its copies on
   the mesh's surface at its triangle's point, turned to its normal (a membrane protein upright in it; others as Turn
   says). The Grow section's **On** picks None (in space) or a mesh of the scene by its file's name; it is the mesh the
@@ -605,6 +605,22 @@ still completes its distance.
   stays where it was). Another Grow, another source, Clear or the section closed ends it; an undone grow is not live (a
   change is the next grow's). **Clear** removes every grow from the source (any mode; the source stays), and the grows
   from their copies, one step (`mesoscale.clear-grown`), disabled when there is none.
+- Grow › Symmetry (lane `symmetry`, Ludo 2026-11-13): copies of the source by a point group about a center, the source
+  copy 0 (not placed again), each copy the source's pose turned about the center (exact orientations). **Group**: Cn (n
+  copies, a ring), Dn (2n: Cn and n 2-folds across its axis, a barrel), T (12), O (24), I (60, a shell); **n** (2–60, Cn
+  and Dn). The center is a **Radius** from the source along its axis (paint's: its Fiber Axis when set, else +z; a
+  membrane protein's +z), against it (**Side** Inside: a subunit pointing out) or along it (Outside); unset, the copies
+  touch (their nearest two a copy's diameter apart). **Axis**, the group's principal axis through the center (Cn's and
+  Dn's n-fold, O's 4-fold, T's and I's 2-fold, I's 5-folds through (0, ±1, ±φ)): Auto puts the source at the group's
+  general position (the middle of a triangle of adjacent axes: on none, so no copy lands on another; Cn on the ring's
+  equator, Dn off it, so D7 is a barrel of two rings), the axis turned with the source's own frame (the assembly turns
+  with the source); View (toward the viewer), X, Y or Z set the axis, the source where it is about it (refused when it
+  is on an axis of the group: copies would coincide). On a mesh, **Snap** (off by default: a symmetry is exact) projects
+  each copy onto the surface along its line from the center (within two copy diameters; else it stays where the group
+  puts it) and turns its axis to the normal. Every setting is live on the last grow (Group, n, Radius, Side, Axis,
+  Snap); Clear, Undo, sessions, ⌘K and the assistant
+  (`mesoscale.grow { mode: 'symmetry', group, n, symmetryRadius, side, symmetryAxis, snap }`) as every grow. A symmetry
+  is a set, not an order: n is not prefix-stable (a C6 made C8 moves every copy).
 - Models decorated too (2026-10-23, Ludovic: "why can't we change the target in Simularium"): a model (a list with
   entities: Simularium, cellPACK, PetWorld) has the Decoration section, so each of its targets (an agent, an entity) can
   be drawn as another object of the scene. A particle list's own shape (a Simularium simulation box) is not listed as a
