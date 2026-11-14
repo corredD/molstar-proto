@@ -91,6 +91,17 @@ export const MesoscaleSkill: ViewerSkill = {
         'Paints copies of an entity at points of the scene (a stroke, one step): a membrane protein upright along the normals given, anything else turned at random.',
     },
     {
+      id: 'group_mesoscale_instances',
+      operation: 'mesoscale.group',
+      description:
+        "Makes a group of a list's instances (particles by index; a group copy's member stands for the copy): a brush of its own, painted and grown as one (mesoscale.paint group), one step.",
+    },
+    {
+      id: 'ungroup_mesoscale_copy',
+      operation: 'mesoscale.ungroup',
+      description: 'Ungroups a painted group copy (a particle of it by index): its members instances of their own, one step.',
+    },
+    {
       id: 'grow_mesoscale_copies',
       operation: 'mesoscale.grow',
       description:
@@ -166,6 +177,18 @@ export const MesoscaleExtension: ViewerExtension = {
         icon: 'paintbrush',
         alias: ['paint', 'cellpaint', 'paint copies', 'brush'],
         action: 'Paint',
+      }),
+      operationCommand(api, m.group, {
+        category,
+        icon: 'paintbrush',
+        alias: ['group', 'make group', 'cellpaint group', 'ultrastructure'],
+        action: 'Group',
+      }),
+      operationCommand(api, m.ungroup, {
+        category,
+        icon: 'paintbrush',
+        alias: ['ungroup', 'ungroup copy'],
+        action: 'Ungroup',
       }),
       operationCommand(api, m.grow, {
         category,

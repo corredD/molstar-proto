@@ -45,6 +45,7 @@ import {
   decoratorUnder,
   fiberConventionOf,
   isFiberBrush,
+  makeFibers,
   FiberAxes,
   type FiberSettings,
   type FiberSettingsIn,
@@ -70,6 +71,7 @@ import {
   withStructures,
 } from './paint.js';
 import { FiberBankHelix, FiberBanks } from './fiber-units.js';
+import { type GroupPick, groupCopyAt, makeGroup, nextGroupId, type PaintGroup } from './paint-group.js';
 import {
   crystalPoses,
   type GrowMode,
@@ -1052,6 +1054,9 @@ export class MesoscaleApi extends ApiArea {
             'list it is painted into (particles; absent: the Painting list, made on the first stroke)',
         }),
       ),
+      group: OptionalParam(
+        PD.Numeric(0, { step: 1 }, { description: 'The brush: a group of the list by id (mesoscale.group), all its members' }),
+      ),
       positions: PD.Value<number[]>([], { description: 'Where the copies go: x, y, z per copy (Å, the scene)' }),
       normals: OptionalParam(
         PD.Value<number[]>([], {
@@ -1110,8 +1115,9 @@ export class MesoscaleApi extends ApiArea {
     },
     async run(values, ctx) {
       const { entity, positions, side, particles } = values;
-      const { structure, normals, orient, spin, seed, fiber, sequence, start, end, surface } =
+      const { structure, normals, orient, spin, seed, fiber, sequence, start, end, surface, group } =
         values as typeof values & {
+          group?: number;
           structure?: string;
           surface?: boolean;
           normals?: number[];
@@ -1131,7 +1137,7 @@ export class MesoscaleApi extends ApiArea {
       }
       // a structure painted into a scene without particles: Mol*'s particles (opt-in) loaded first
       if (structure) await ctx.extensions.ensureFor({ transformers: ['ms-plugin.particles-representation-3d'] });
-      const into = paintInto(ctx, structure, particles, entity);
+      const into = group !== undefined ? groupInto(ctx, particles, group) : paintInto(ctx, structure, particles, entity);
       if (isFailure(into)) return into;
       const { l, data, brush, name } = into;
       // a range with no letter of the sequence in it (review X1)
@@ -1188,6 +1194,7 @@ export class MesoscaleApi extends ApiArea {
         compartment: brush.compartment,
         positions: local,
         rotations,
+        ...(group !== undefined ? { group } : {}),
         ...(asFiber ? { fiber: true, seed: drawn } : {}),
         ...(asFiber && sequence?.trim()
           ? {
@@ -1218,6 +1225,116 @@ export class MesoscaleApi extends ApiArea {
         { nodes: [ref] },
         { value: { count: k, orient: asFiber ? 'fiber' : how } },
       );
+    },
+  });
+
+  /**
+   * Make a group (paint-group; cellPAINT's grouping, Ludo 2026-11-13): instances of a list (its particles by index as
+   * drawn; a member of a group copy stands for the copy) made a brush of its own, kept in its painted decorator. Its
+   * frame: their centroid, their principal axes (+z the smallest), its radius their bounds. The instances stay. One step
+   */
+  readonly group = this.operation({
+    id: 'mesoscale.group',
+    title: 'Make a group of instances',
+    params: {
+      particles: ListParam(),
+      indices: PD.Value<number[]>([], { description: 'The instances: particles by index in the list as drawn' }),
+      name: OptionalParam(PD.Text('', { description: 'Its name; absent: Group 1, Group 2, …' })),
+    },
+    async run(values, ctx) {
+      const { particles, indices } = values;
+      const l = oneList(ctx, particles || undefined);
+      if (isFailure(l)) return l;
+      const state = ctx.plugin.state.data;
+      const refused = classTargets(state, l);
+      if (refused) return refused;
+      const painted = decoratorUnder(state, l.cell.transform.ref, ParticleListPainted);
+      const data = (painted?.obj?.data as ParticleList | undefined) ?? l.cell.obj?.data;
+      if (!data) return ApiResult.fail('not-found', 'The particle list is not loaded yet.');
+      const p = painted?.transform.params as PaintedParams | undefined;
+      const input = painted && (state.cells.get(painted.transform.parent)?.obj?.data as ParticleList | undefined);
+      const structures = p?.structures ?? [];
+      const groups = p?.groups ?? [];
+      const picks: GroupPick[] = [];
+      const seen = new Set<string>();
+      for (const index of indices) {
+        if (!Number.isInteger(index) || index < 0 || index >= data.count) {
+          return ApiResult.fail('not-found', `No particle #${index} in ${l.cell.obj?.label ?? 'the list'}.`);
+        }
+        const at = groupCopyOf(state, painted, data, index);
+        if (at) {
+          const key = `${at.copy.stroke}:${at.copy.path}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          const { position, rotation } = at.copy.pose;
+          const entity = data.entityInfo?.size ? at.group.id : -1;
+          picks.push({ target: at.group.id, entity, compartment: -1, group: at.group.id, position, rotation, radius: at.group.radius });
+          continue;
+        }
+        if (seen.has(`#${index}`)) continue;
+        seen.add(`#${index}`);
+        const target = data.targets[index];
+        // a unit of a fiber's bank (its id made by the decorator, not kept) is no brush of the list's
+        if (input && !input.targetInfo.has(target) && !structures.some((x) => x.target === target)) {
+          return ApiResult.fail('invalid', `#${index} is a unit of a fiber's bank: it is not grouped.`);
+        }
+        const object = data.targetMapping?.get(target);
+        const radius =
+          data.radii?.[index] || (object?.kind === 'structure' ? object.structure.boundary.sphere.radius : 0) || 10;
+        picks.push({
+          target,
+          entity: data.entityInfo?.size ? Particle.entityOf(data, index) : -1,
+          compartment: data.compartments?.[index] ?? -1,
+          position: data.coordinates.subarray(index * 3, index * 3 + 3),
+          rotation: data.rotations ? data.rotations.subarray(index * 4, index * 4 + 4) : [0, 0, 0, 1],
+          radius,
+        });
+      }
+      if (!picks.length) return ApiResult.fail('invalid', 'Pick one instance or more.');
+      const names = new Set(groups.map((g) => g.name));
+      let name = values.name?.trim() ?? '';
+      for (let i = groups.length + 1; !name || names.has(name); ++i) name = `Group ${i}`;
+      const id = nextGroupId(data, structures, groups);
+      const { group } = makeGroup(id, name, picks);
+      await updatePainted(ctx, l, (q) => ({
+        ...q,
+        groups: [...(q.groups ?? []), group],
+        // its copies a fiber (a grown walk, helix, spiral) every diameter, its +z along it (no spread at first)
+        fibers: { ...q.fibers, [id]: { rise: 2 * group.radius, twist: 0, jitter: 0 } },
+      }));
+      return ApiResult.ok(
+        `Made ${name} of ${picks.length} ${picks.length === 1 ? 'member' : 'members'}.`,
+        { nodes: [l.cell.transform.ref] },
+        { value: { group: id, members: picks.length } },
+      );
+    },
+  });
+
+  /**
+   * Ungroup a group copy (paint-group): the copy a particle (by index as drawn) is of made its members, one level
+   * down (a member group's copy a group copy still), where they are: its particles kept (no key moves). One step
+   */
+  readonly ungroup = this.operation({
+    id: 'mesoscale.ungroup',
+    title: 'Ungroup a group copy',
+    params: {
+      particles: ListParam(),
+      index: PD.Numeric(0, { min: 0, step: 1 }, { description: 'A particle of the copy, by its index as drawn' }),
+    },
+    async run(values, ctx) {
+      const l = oneList(ctx, values.particles || undefined);
+      if (isFailure(l)) return l;
+      const state = ctx.plugin.state.data;
+      const painted = decoratorUnder(state, l.cell.transform.ref, ParticleListPainted);
+      const data = painted?.obj?.data as ParticleList | undefined;
+      const at = data && groupCopyOf(state, painted, data, values.index);
+      if (!at) return ApiResult.fail('invalid', `#${values.index} is no copy of a group.`);
+      const { stroke, path } = at.copy;
+      await updatePainted(ctx, l, (q) => ({
+        ...q,
+        strokes: q.strokes.map((x, i) => (i === stroke ? { ...x, split: [...(x.split ?? []), path] } : x)),
+      }));
+      return ApiResult.ok(`Ungrouped a copy of ${at.group.name}.`, { nodes: [l.cell.transform.ref] });
     },
   });
 
@@ -1388,7 +1505,7 @@ export class MesoscaleApi extends ApiArea {
       if (v.replace !== undefined && !old) {
         return ApiResult.fail('not-found', 'That grow is not there (undone, cleared or removed).');
       }
-      if (old && old.grow!.source.key !== data.keys[index]) {
+      if (old && old.grow!.source.key !== data.keys[src.first]) {
         return ApiResult.fail('invalid', `That grow is not from ${name} #${index}.`);
       }
       const seed = v.seed ?? old?.grow?.seed ?? Math.floor(Math.random() * 2 ** 31);
@@ -1619,6 +1736,7 @@ export class MesoscaleApi extends ApiArea {
         target,
         entity,
         compartment,
+        ...(src.group !== undefined ? { group: src.group } : {}),
         positions: path ?? made!.positions,
         rotations: path ? [] : made!.rotations,
         ...(path
@@ -1634,7 +1752,7 @@ export class MesoscaleApi extends ApiArea {
           mode,
           params: sizes,
           seed,
-          source: { index, key: data.keys[index] },
+          source: { index: src.first, key: data.keys[src.first] },
           ...(mesh ? { mesh: { ref: mesh.ref, label: mesh.label } } : {}),
           id: growId,
         },
@@ -2735,7 +2853,12 @@ export { cssColor };
 
 const round1 = (x: number) => Math.round(x * 10) / 10;
 
-type PaintedParams = { strokes: PaintStroke[]; fibers: FiberSettingsMap; structures?: PaintStructure[] };
+type PaintedParams = {
+  strokes: PaintStroke[];
+  fibers: FiberSettingsMap;
+  structures?: PaintStructure[];
+  groups?: PaintGroup[];
+};
 
 /** The fiber settings of a list's painted decorator (none: none painted, no settings) */
 function paintedFibers(state: State, list: string): FiberSettingsMap | undefined {
@@ -2868,7 +2991,8 @@ function paintInto(ctx: ApiContext, structure: string | undefined, particles: st
     known.some((x) => x.name === name) || [...(base.entityInfo?.values() ?? [])].some((e) => e.name === name);
   const entry: PaintStructure = known.find((x) => structureSourceKey(x) === key) ?? {
     name: taken ? structureBuildName(name, definition) : name,
-    ...nextStructureIds(base, known),
+    // above the groups' ids too (paint-group)
+    ...nextStructureIds(base, [...known, ...groupIds(painted)]),
     source,
     ...(definition ? { definition } : {}),
   };
@@ -2889,6 +3013,10 @@ export function growSourceOf(state: State, l: ParticleListRef, index: number) {
   if (!Number.isInteger(index) || index < 0 || index >= data.count) {
     return ApiResult.fail('not-found', `No particle #${index} in ${l.cell.obj?.label ?? 'the list'}.`);
   }
+  // a member of a group copy: the copy (paint-group), at its pose, from its first particle
+  const copy = groupSourceOf(state, painted, data, index);
+  if (copy) return copy;
+  const group = undefined as number | undefined;
   const target = data.targets[index];
   // a unit of a fiber's bank (made by the decorator, its id not kept) is no target of the list's to copy
   const input = painted && (state.cells.get(painted.transform.parent)?.obj?.data as ParticleList | undefined);
@@ -2921,7 +3049,7 @@ export function growSourceOf(state: State, l: ParticleListRef, index: number) {
     turn: Quat.fromArray(Quat(), moved.rotations!, 0),
   };
   const fibers = fiberListOf(state, painted, data);
-  return { data, target, entity, compartment, pose, radius, name, surface, instance, fibers };
+  return { data, target, entity, compartment, pose, radius, name, surface, instance, fibers, first: index, group };
 }
 
 /**
@@ -2960,7 +3088,7 @@ function followSources(
   if (!painted || !drawn || !input) return [...after];
   const p = painted.transform.params as PaintedParams;
   const list = fiberListOf(state, painted, drawn);
-  const counts = (ss: readonly PaintStroke[]) => strokeCounts(list, ss, p.fibers, p.structures);
+  const counts = (ss: readonly PaintStroke[]) => strokeCounts(list, ss, p.fibers, p.structures, p.groups);
   const startsOf = (cs: number[]) => {
     const out: number[] = [];
     let at = 0;
@@ -3019,7 +3147,8 @@ function grownFrom(state: State, l: ParticleListRef, index: number): PaintStroke
   const data = (painted?.obj?.data as ParticleList | undefined) ?? l.cell.obj?.data;
   const strokes = (painted?.transform.params as PaintedParams | undefined)?.strokes;
   if (!data || !strokes || !Number.isInteger(index) || index < 0 || index >= data.count) return undefined;
-  const key = data.keys[index];
+  // a member of a group copy: the copy's (its first particle's; paint-group)
+  const key = data.keys[groupSourceOf(state, painted, data, index)?.first ?? index];
   return strokes.filter((s) => s.grow?.source.key === key);
 }
 
@@ -3129,4 +3258,63 @@ function fiberInfo(state: State, ctx: Pick<ApiContext, 'plugin'>, particles: str
     banks: !!data.entityInfo?.size && entity >= 0 && !paintedStructureOf(structures, id),
     fibers: !!own?.[id] || isFiberBrush(data, id),
   };
+}
+
+// --- Groups (paint-group; progress/2026-11-13-paint-group.md) ---------------------------------------------------------
+
+/** The groups' ids of a list's painted decorator, as structures' ids (a structure painted after takes the next) */
+function groupIds(painted: StateObjectCell | undefined) {
+  const groups = (painted?.transform.params as PaintedParams | undefined)?.groups ?? [];
+  return groups.map((g) => ({ target: g.id, entity: g.id }) as PaintStructure);
+}
+
+/** A painted particle's group copy (its index as drawn; `groupCopyAt`), with what it is read from */
+function groupCopyOf(state: State, painted: StateObjectCell | undefined, drawn: ParticleList, index: number) {
+  const p = painted?.transform.params as PaintedParams | undefined;
+  const input = painted && (state.cells.get(painted.transform.parent)?.obj?.data as ParticleList | undefined);
+  if (!p?.groups?.length || !input || index < input.count) return undefined;
+  const list = fiberListOf(state, painted, drawn);
+  const copy = groupCopyAt(makeFibers(list, p.strokes, p.fibers, p.structures), p.groups, index - input.count);
+  const group = copy && p.groups.find((g) => g.id === copy.group);
+  return copy && group ? { copy, group, p, input, list } : undefined;
+}
+
+/** A grow's source on a group copy: the copy, at its pose (the list's frame), its radius, from its first particle */
+function groupSourceOf(state: State, painted: StateObjectCell | undefined, data: ParticleList, index: number) {
+  const at = groupCopyOf(state, painted, data, index);
+  if (!at) return undefined;
+  const { copy, group, list } = at;
+  return {
+    data,
+    target: group.id,
+    entity: data.entityInfo?.size ? group.id : -1,
+    compartment: -1,
+    pose: copy.pose,
+    radius: group.radius,
+    name: group.name,
+    surface: false,
+    instance: undefined as { translation: Vec3; turn: Quat } | undefined,
+    fibers: list,
+    first: at.input.count + copy.first,
+    group: group.id as number | undefined,
+  };
+}
+
+/** A group as the brush (`mesoscale.paint { group }`): its id its target and entity (a list without entities: -1) */
+function groupInto(ctx: ApiContext, particles: string, id: number) {
+  const l = oneList(ctx, particles || undefined);
+  if (isFailure(l)) return l;
+  const state = ctx.plugin.state.data;
+  const painted = decoratorUnder(state, l.cell.transform.ref, ParticleListPainted);
+  const data = (painted?.obj?.data as ParticleList | undefined) ?? l.cell.obj?.data;
+  const g = (painted?.transform.params as PaintedParams | undefined)?.groups?.find((x) => x.id === id);
+  if (!data || !g) return ApiResult.fail('not-found', `No group ${id} in ${l.cell.obj?.label ?? 'the list'}.`);
+  const brush = {
+    target: g.id,
+    entity: data.entityInfo?.size ? g.id : -1,
+    compartment: -1,
+    surface: false,
+    object: undefined as ParticleTarget | undefined,
+  };
+  return { l, data, brush, name: g.name, structure: undefined as PaintStructure | undefined };
 }

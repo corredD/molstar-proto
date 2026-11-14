@@ -80,6 +80,8 @@ export interface PaintStroke {
    * fiber's unit) expanded to the group's leaves (`expandGroups`)
    */
   readonly group?: number;
+  /** A group stroke's copies ungrouped (`mesoscale.ungroup`): a copy's place, then a member's ("3", "3.1"); kept drawn */
+  readonly split?: readonly string[];
 }
 
 /** A fiber's sequence or a range of it (Round 5): one-letter codes, 1-based, `end` inclusive */

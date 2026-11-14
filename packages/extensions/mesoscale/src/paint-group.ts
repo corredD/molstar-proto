@@ -207,8 +207,6 @@ export interface StrokeMembers {
   readonly compartments: Int32Array;
 }
 
-type Posed = { readonly group?: number; readonly positions: readonly number[]; readonly rotations: readonly number[] };
-
 /**
  * The strokes with each group stroke's copies expanded to the group's leaves, a copy's in a row: each at the copy's
  * pose · its own; its `members` their targets, entities and compartments; no fiber of them (a grown walk of a group is
@@ -257,38 +255,81 @@ export function expandGroups<S extends Posed>(
   });
 }
 
-/** A copy of a group painted: its stroke, its place in it, its pose, and its particles (`first`, `count` after the input) */
+/**
+ * A copy of a group painted: its stroke, its place in it (`path`: the copy's, then the member's in each copy ungrouped,
+ * "3.1"), its group and pose, and its particles (`first`, `count` after the decorator's input)
+ */
 export interface GroupCopy {
   readonly stroke: number;
   readonly copy: number;
+  readonly path: string;
   readonly group: number;
   readonly first: number;
   readonly count: number;
   readonly pose: GroupPose;
 }
 
+type Posed = {
+  readonly group?: number;
+  readonly split?: readonly string[];
+  readonly positions: readonly number[];
+  readonly rotations: readonly number[];
+};
+
 /**
  * The group copy a painted particle is of: `offset`, its place after the decorator's input; `made`, the strokes with
- * their copies made (a fiber's units: `makeFibers`), before the groups' expansion. None: a copy of no group
+ * their copies made (a fiber's units: `makeFibers`), before the groups' expansion. A copy ungrouped (its path in its
+ * stroke's `split`) is its members: the particle's member if a group (the next level down), else none. None: a copy of
+ * no group
  */
-export function groupCopyAt(made: readonly Posed[], groups: readonly PaintGroup[] | undefined, offset: number) {
-  if (!(offset >= 0)) return undefined;
+export function groupCopyAt(
+  made: readonly Posed[],
+  groups: readonly PaintGroup[] | undefined,
+  offset: number,
+): GroupCopy | undefined {
+  if (!(offset >= 0) || !groups?.length) return undefined;
   let at = 0;
   for (let s = 0; s < made.length; ++s) {
     const st = made[s];
     const k = Math.floor(st.positions.length / 3);
     const L = st.group !== undefined ? (groupLeaves(groups, st.group)?.count ?? 0) : 1;
-    const n = k * L;
-    if (offset < at + n) {
-      if (st.group === undefined) return undefined;
-      const copy = Math.floor((offset - at) / L);
-      const pose = {
-        position: Vec3.fromArray(Vec3(), st.positions, copy * 3),
-        rotation: Quat.normalize(Quat(), Quat.fromArray(Quat(), st.rotations, copy * 4)),
-      };
-      return { stroke: s, copy, group: st.group, first: at + copy * L, count: L, pose } satisfies GroupCopy;
+    if (offset >= at + k * L) {
+      at += k * L;
+      continue;
     }
-    at += n;
+    if (st.group === undefined) return undefined;
+    const copy = Math.floor((offset - at) / L);
+    const position = Vec3.fromArray(Vec3(), st.positions as number[], copy * 3);
+    const rotation = Quat.normalize(Quat(), Quat.fromArray(Quat(), st.rotations as number[], copy * 4));
+    let group = st.group;
+    let path = `${copy}`;
+    let first = at + copy * L;
+    let leaf = offset - first;
+    const split = st.split?.length ? new Set(st.split) : undefined;
+    while (split?.has(path)) {
+      const g = groups.find((x) => x.id === group);
+      if (!g) return undefined;
+      let acc = 0;
+      let j = 0;
+      for (; j < g.members.length; ++j) {
+        const m = g.members[j];
+        const n = m.group !== undefined ? (groupLeaves(groups, m.group)?.count ?? 0) : 1;
+        if (leaf < acc + n) break;
+        acc += n;
+      }
+      const m = g.members[j];
+      if (m?.group === undefined) return undefined;
+      // the member's pose: the copy's · its own
+      const q = Quat.create(m.rotation[0], m.rotation[1], m.rotation[2], m.rotation[3]);
+      Vec3.add(position, position, Vec3.transformQuat(Vec3(), Vec3.create(m.position[0], m.position[1], m.position[2]), rotation));
+      Quat.multiply(rotation, rotation, q);
+      group = m.group;
+      path += `.${j}`;
+      first += acc;
+      leaf -= acc;
+    }
+    const count = groupLeaves(groups, group)?.count ?? 0;
+    return { stroke: s, copy, path, group, first, count, pose: { position, rotation } };
   }
   return undefined;
 }
