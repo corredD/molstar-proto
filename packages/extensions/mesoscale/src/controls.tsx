@@ -601,7 +601,7 @@ function settingsOfGrow(g: GrowRecord): Partial<GrowSettings> {
     ],
     spiral: [
       ['spacing', 'spacing'],
-      ['turns', 'turns'],
+      ['count', 'count'],
       ['hand', 'hand'],
     ],
     crystal: [

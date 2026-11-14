@@ -291,7 +291,7 @@ export function growParams(source: GrowSource, s: GrowSettings) {
   const own: Record<GrowMode, readonly (keyof GrowSettings)[]> = {
     walk: ['steps', 'persistence', 'rise', 'twist', 'jitter'],
     helix: ['pitch', 'turns', 'hand', 'direction', 'axis', 'helixRadius', 'rise', 'twist', 'jitter'],
-    spiral: ['spacing', 'turns', 'hand', 'rise', 'twist', 'jitter'],
+    spiral: ['spacing', 'count', 'hand', 'rise', 'twist', 'jitter'],
     crystal: ['a', 'b', 'c', 'alpha', 'beta', 'gamma', 'na', 'nb', 'nc'],
     tiling: ['pattern', 'spacing', 'rings'],
     sphere: ['count', 'radius', 'turn'],
@@ -359,7 +359,7 @@ const WalkFiberParams = (what: string) => ({
     PD.Numeric(
       10,
       { min: 0.1, max: 1000, step: 0.1 },
-      { description: `${what}its units' rise, Å; absent: the entity's` },
+      { description: `${what}its units' rise (Spiral: its Step between copies along it), Å; absent: the entity's` },
     ),
   ),
   twist: OptionalParam(
@@ -1322,7 +1322,7 @@ export class MesoscaleApi extends ApiArea {
           { min: 1, step: 1 },
           {
             description:
-              "Sphere: its copies; Tiling on a mesh: its points, the source's counted (absent: the plane's for Rings)",
+              "Sphere, Spiral: its copies; Tiling on a mesh: its points, the source's counted (absent: the plane's for Rings)",
           },
         ),
       ),
@@ -1517,34 +1517,33 @@ export class MesoscaleApi extends ApiArea {
           }
           Object.assign(sizes, p);
         } else if (mode === 'spiral') {
-          // a flat spiral from the source (round 3), in the scene (its spacing as drawn), then in the list's frame; its
-          // plane's normal the copy's axis by paint's rule (a membrane protein's +z, else its Fiber Axis, else +z)
-          const p = { spacing: v.spacing ?? diameter, turns: v.turns ?? 5, hand: v.hand ?? 'right' };
-          if (!(p.spacing > 0)) return ApiResult.fail('invalid', 'The spacing is above 0 Å.');
-          if (!(p.turns > 0)) return ApiResult.fail('invalid', 'Give a turn or a part of one.');
-          if (p.turns > MaxHelixTurns) return ApiResult.fail('invalid', `Give ${MaxHelixTurns} turns or fewer.`);
+          // a flat spiral from the source (round 3; Ludo: "the distance between arms, and the distance along the path
+          // between instances"): Count copies, its Step the fiber's rise, its arms Arm spacing apart; in the scene (as
+          // drawn), then in the list's frame; its plane's normal the copy's axis by paint's rule (a membrane protein's
+          // +z, else its Fiber Axis, else +z)
+          const p = { spacing: v.spacing ?? diameter, count: Math.floor(v.count ?? 50), hand: v.hand ?? 'right' };
+          if (!(p.spacing > 0)) return ApiResult.fail('invalid', 'The arm spacing is above 0 Å.');
+          if (!(p.count >= 2)) return ApiResult.fail('invalid', 'Give 2 copies or more.');
+          if (p.count > MaxGrown) return tooMany(p.count);
           const scaled = rise * (move?.scale ?? 1);
-          // its length (π × Spacing × Turns², about) at the cap before it is made, in space; on a mesh it stops there
-          if (!on && (Math.PI * p.spacing * p.turns * p.turns) / scaled + 1 > MaxGrown) {
-            return tooMany(Math.floor((Math.PI * p.spacing * p.turns * p.turns) / scaled) + 1);
-          }
-          const limit = (MaxGrown + 1) * scaled;
+          const info = { turns: 0 };
+          const params = { ...p, step: scaled };
           if (on) {
             normals = [];
-            path = spiralPath(scene, surfaceAxis(), scaled, { ...p, limit }, on, normals);
+            path = spiralPath(scene, surfaceAxis(), params, on, normals, info);
             if (!path) return offMesh();
           } else {
-            path = spiralPath(scene, surfaceAxis(), scaled, { ...p, limit });
+            path = spiralPath(scene, surfaceAxis(), params, undefined, undefined, info)!;
           }
-          Object.assign(sizes, p);
+          // the turns it reached: for the section to show
+          Object.assign(sizes, p, { turns: Math.round(info.turns * 100) / 100 });
           toListFrame(move, path, normals);
           units = Math.floor(pathLength(path) / rise + 1e-6) + 1;
-          if (units > MaxGrown) return tooMany(units);
           if (units < 2) {
             return ApiResult.fail(
               'invalid',
-              `The spiral is shorter than two units ${round1(rise)} Å (its rise) apart${on ? `, or it leaves ${mesh!.label} at once` : ''}.`,
-              'More turns, a wider spacing or a shorter rise.',
+              `The spiral leaves ${mesh?.label ?? 'the mesh'} at once.`,
+              'Grow from further in, or a shorter step.',
             );
           }
         } else {

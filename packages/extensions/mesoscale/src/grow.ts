@@ -79,14 +79,16 @@ export interface HelixParams {
 }
 
 /**
- * A flat Archimedean spiral (grow-helix round 3): its radius Spacing (Å) more a turn from 0 at the source, Turns, its
- * Hand (right: counterclockwise about its normal); `limit`, its length at most (Å, from the source)
+ * A flat Archimedean spiral (grow-helix round 3; Ludo 2026-11-13: "the distance between arms, and the distance along
+ * the path between instances"): its arms `spacing` (Å) apart (its radius that more a turn, from 0 at the source),
+ * `count` copies `step` (Å) apart along it (the source copy 0, the first a Step from it), its Hand (right:
+ * counterclockwise about its normal)
  */
 export interface SpiralParams {
   readonly spacing: number;
-  readonly turns: number;
+  readonly step: number;
+  readonly count: number;
   readonly hand: 'right' | 'left';
-  readonly limit?: number;
 }
 
 /** The axis a helix winds about on a mesh (the scene's): a point of it and its unit direction, up */
@@ -421,38 +423,62 @@ export function helixPath(
   return on ? trimStart(all, ns, rise, normals) : all;
 }
 
-/** A spiral's points crowd an arm a turn behind closer than this share of its Spacing: it would cross it (round 3) */
+/** A spiral's point crowds an arm behind it closer than this share of its Arm spacing: it would cross it (round 3) */
 const SpiralCrowd = 0.6;
+/** Its arms' points along it nearer than this many Arm spacings are its own neighbours, not an arm behind */
+const SpiralAlong = 2;
+
+/** The arc length of the Archimedean spiral r = b·θ from 0 to θ */
+const spiralArc = (b: number, t: number) => (b / 2) * (t * Math.sqrt(1 + t * t) + Math.asinh(t));
+
+/** The angle of the spiral r = b·θ at arc length `s`, from `t` (Newton's, its arc's derivative b·√(1 + θ²)) */
+function spiralAngle(b: number, s: number, t: number) {
+  for (let i = 0; i < 32; ++i) {
+    const d = (spiralArc(b, t) - s) / (b * Math.sqrt(1 + t * t));
+    t = Math.max(0, t - d);
+    if (Math.abs(d) < 1e-14 * (1 + t)) break;
+  }
+  return t;
+}
+
+/** The turns an Archimedean spiral of arms `spacing` apart makes over a `length` from its center */
+export function spiralTurns(spacing: number, length: number): number {
+  const b = spacing / (2 * Math.PI);
+  return spiralAngle(b, length, Math.sqrt((2 * length) / b)) / (2 * Math.PI);
+}
 
 /**
- * A flat Archimedean spiral from the source, its center, outward (a fiber's path, grow-helix round 3): its radius
- * Spacing × θ / 2π, a point every 5° (`HelixStep`) of θ, Turns turns, turning counterclockwise about its normal for Hand
- * right; its normal the source's `axis` (in its frame), its angle 0 along that axis's offset direction
- * (`fiberOffsetDirection`), turned. The path starts a rise along it from the source (the source is not a unit).
+ * A flat Archimedean spiral from the source, its center, outward (a fiber's path, grow-helix round 3): its radius Arm
+ * spacing × θ / 2π, a point every h = min(Step, Arm spacing) / 8 of its length (by arc, so its steps stay bounded), long
+ * enough for Count copies a Step apart (`makeFiber` places them): from a Step along it from the source (the source is
+ * copy 0) to half a Step past the last. It turns counterclockwise about its normal for Hand right; its normal the
+ * source's `axis` (in its frame), its angle 0 along that axis's offset direction (`fiberOffsetDirection`), turned.
  * - In space (no `on`): in the source's plane.
- * - On a surface (`on`): from the source's point on it, as the walk goes: each step the planar spiral's own step (the
- *   same length and turn) in the tangent plane of the point before, projected onto the surface along its normal, the
- *   angle-0 direction carried from tangent plane to tangent plane; a flat mesh gives the space spiral. Its normal in
- *   `normals` (the source's side, then continuous). It ends where the surface does (no point, or the nearest a quarter
- *   of a step off: an open edge) or where its arm comes within 0.6 × Spacing of the arm a turn and more behind (on a
- *   closed surface it would cross itself). Undefined for a source off the surface.
+ * - On a surface (`on`): from the source's point on it, as the walk goes: each step the planar spiral's own (its length
+ *   and turn) in the tangent plane of the point before, projected onto the surface along its normal, the angle-0
+ *   direction carried from tangent plane to tangent plane: exact on a plane, a cylinder or a cone; on a surface curved
+ *   both ways its arms close up. Its normal in `normals` (the source's side, then continuous). It ends where the
+ *   surface does (no point, or the nearest a quarter of a step off: an open edge) or where it comes within 0.6 × Arm
+ *   spacing of a point of itself more than 2 Arm spacings behind along it (an arm it would cross: on a tube when it
+ *   wraps round, on a closed surface).
+ * `info.turns`: the turns it reached. Undefined for a source off the surface.
  */
-export function spiralPath(source: GrowPose, axis: Vec3, rise: number, p: SpiralParams): number[];
+export function spiralPath(source: GrowPose, axis: Vec3, p: SpiralParams): number[];
 export function spiralPath(
   source: GrowPose,
   axis: Vec3,
-  rise: number,
   p: SpiralParams,
   on: GrowOn | undefined,
   normals?: number[],
+  info?: { turns: number },
 ): number[] | undefined;
 export function spiralPath(
   source: GrowPose,
   axis: Vec3,
-  rise: number,
   p: SpiralParams,
   on?: GrowOn,
   normals?: number[],
+  info?: { turns: number },
 ): number[] | undefined {
   const local = Vec3.normalize(Vec3(), axis);
   const n = Vec3.transformQuat(Vec3(), local, source.rotation);
@@ -468,14 +494,16 @@ export function spiralPath(
   }
   const b = p.spacing / (2 * Math.PI);
   const sense = p.hand === 'left' ? -1 : 1;
-  const last = Math.floor(((Math.max(0, p.turns) * 2 * Math.PI) / HelixStep) * (1 + 1e-12));
+  const h = Math.min(p.step, p.spacing) / 8;
+  // its length from the source: Count copies, the last half a Step before its end
+  const length = Math.max(0, Math.floor(p.count)) * p.step + p.step / 2;
   const all = [at[0], at[1], at[2]];
   const ns: number[] | undefined = on ? [n[0], n[1], n[2]] : undefined;
   const w = Vec3.cross(Vec3(), n, u);
-  // on a surface: the points kept by cell (of the crowding distance) with their angle, to find an arm behind
+  // on a surface: its points by cell (of the crowding distance) and how far along it each is
   const crowd = SpiralCrowd * p.spacing;
   const cells = new Map<number, number[]>();
-  const thetas: number[] = [0];
+  const along: number[] = [0];
   const cell = (x: number) => Math.floor(x / crowd);
   const keep = (q: Vec3, index: number) => {
     const key = cellKey(cell(q[0]), cell(q[1]), cell(q[2]));
@@ -483,13 +511,13 @@ export function spiralPath(
     if (list) list.push(index);
     else cells.set(key, [index]);
   };
-  const crowded = (q: Vec3, theta: number) => {
+  const crowded = (q: Vec3, walked: number) => {
     const [i, j, k] = [cell(q[0]), cell(q[1]), cell(q[2])];
     for (let di = -1; di <= 1; ++di) {
       for (let dj = -1; dj <= 1; ++dj) {
         for (let dk = -1; dk <= 1; ++dk) {
           for (const o of cells.get(cellKey(i + di, j + dj, k + dk)) ?? []) {
-            if (thetas[o] > theta - 1.5 * Math.PI) continue;
+            if (along[o] > walked - SpiralAlong * p.spacing) continue;
             const dx = all[o * 3] - q[0];
             const dy = all[o * 3 + 1] - q[1];
             const dz = all[o * 3 + 2] - q[2];
@@ -502,25 +530,25 @@ export function spiralPath(
   };
   if (on) keep(at, 0);
   let walked = 0;
+  let theta = 0;
   let px = 0;
   let py = 0;
-  for (let k = 1; k <= last; ++k) {
-    const theta = k * HelixStep;
-    const r = b * theta;
-    const qx = r * Math.cos(theta);
-    const qy = sense * r * Math.sin(theta);
+  for (let k = 1; walked < length && h > 0; ++k) {
+    const next = spiralAngle(b, k * h, theta);
+    const r = b * next;
+    const qx = r * Math.cos(next);
+    const qy = sense * r * Math.sin(next);
     if (on) {
       // the planar step, in the tangent plane of the point before
       Vec3.scale(_t, u, qx - px);
       Vec3.scaleAndAdd(_t, _t, w, qy - py);
-      const step = Vec3.magnitude(_t);
       Vec3.add(_c, at, _t);
-      const scale = Math.max(step, p.spacing / 8);
-      if (!on.surface.project(_hit, _c, n, Math.max(step, p.spacing / 2))) break;
-      if (Vec3.distance(_hit.position, _c) > 0.25 * scale) break;
-      if (crowded(_hit.position, theta)) break;
+      if (!on.surface.project(_hit, _c, n, Math.max(4 * h, p.spacing / 4))) break;
+      if (Vec3.distance(_hit.position, _c) > 0.25 * h) break;
+      const moved = walked + Vec3.distance(_hit.position, at);
+      if (crowded(_hit.position, moved)) break;
       if (Vec3.dot(_hit.normal, n) < 0) Vec3.negate(_hit.normal, _hit.normal);
-      walked += Vec3.distance(_hit.position, at);
+      walked = moved;
       Vec3.copy(at, _hit.position);
       Vec3.copy(n, _hit.normal);
       if (!tangent(u, n)) fiberOffsetDirection(u, 'auto', n);
@@ -531,17 +559,47 @@ export function spiralPath(
       walked += Vec3.distance(_p, at);
       Vec3.copy(at, _p);
     }
+    theta = next;
     px = qx;
     py = qy;
     all.push(at[0], at[1], at[2]);
     ns?.push(n[0], n[1], n[2]);
     if (on) {
-      thetas.push(theta);
+      along.push(walked);
       keep(at, k);
     }
-    if (p.limit !== undefined && walked >= p.limit) break;
   }
-  return trimStart(all, ns, rise, normals);
+  if (info) info.turns = theta / (2 * Math.PI);
+  // from a Step along it (copy 1), to half a Step past copy Count
+  const outNormals: number[] | undefined = normals ? [] : undefined;
+  const out = trimStart(all, ns, p.step, outNormals);
+  const cut = trimEnd(out, outNormals, (Math.max(1, Math.floor(p.count)) - 1) * p.step + p.step / 2);
+  if (normals && outNormals) for (let i = 0; i < cut; ++i) normals.push(outNormals[i]);
+  out.length = cut;
+  return out;
+}
+
+/** How much of a path (its numbers) is within a `length` along it, its last point moved to that length if past it */
+function trimEnd(path: number[], values: number[] | undefined, length: number): number {
+  let walked = 0;
+  for (let i = 1; i < path.length / 3; ++i) {
+    const len = Math.hypot(
+      path[i * 3] - path[i * 3 - 3],
+      path[i * 3 + 1] - path[i * 3 - 2],
+      path[i * 3 + 2] - path[i * 3 - 1],
+    );
+    if (walked + len <= length) {
+      walked += len;
+      continue;
+    }
+    const t = len > 0 ? (length - walked) / len : 0;
+    for (let c = 0; c < 3; ++c) {
+      path[i * 3 + c] = path[i * 3 - 3 + c] * (1 - t) + path[i * 3 + c] * t;
+      if (values) values[i * 3 + c] = values[i * 3 - 3 + c] * (1 - t) + values[i * 3 + c] * t;
+    }
+    return (i + 1) * 3;
+  }
+  return path.length;
 }
 
 /**
