@@ -296,6 +296,16 @@ describe("a mesh's Color by › Volume", () => {
     dispose();
   });
 
+  it('Volume again is the volume it kept, not the first of the scene (review S4)', () => {
+    vi.useFakeTimers();
+    const two = [...Tomo, { ref: 'v2', label: 'ramp.mrc' }];
+    const { area, choice, dispose } = mounted({ ...Vtp, volumeKept: { volume: 'v2', label: 'ramp.mrc' } }, two);
+    choice('Color by', 'Volume')!.click();
+    vi.advanceTimersByTime(500);
+    expect(area.mesh).toHaveBeenLastCalledWith({ mesh: 'm', volume: 'v2' });
+    dispose();
+  });
+
   it('Array from Volume colors by the array it keeps the values in', () => {
     vi.useFakeTimers();
     const { area, choice, dispose } = mounted(ByVolume, Tomo);

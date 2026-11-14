@@ -277,3 +277,72 @@ describe("a mesh's Color by › Volume, its volume", () => {
     expect(Float32Array.from(await read())).toEqual(values);
   });
 });
+
+describe("a mesh's Color by › Volume, with Prism's shapes (review)", () => {
+  /** The shape a mesh's representation draws from (its file's), by the mesh's label */
+  const shapeOf = async (v: PrismViewer, label: string) => {
+    const r = await v.api.cryoet!.meshes({});
+    expectOk(r);
+    const m = (r.value as MeshInfo[]).find((x) => x.label === label)!;
+    const { cells } = v.plugin.state.data;
+    let cell = cells.get(cells.get(m.ref)!.transform.parent)!;
+    while (cell.transform.transformer.definition.isDecorator) cell = cells.get(cell.transform.parent)!;
+    return { mesh: m, shape: cell.transform.ref };
+  };
+  const drawnAt = (v: PrismViewer, ref: string) => {
+    const loci = (v.plugin.state.data.cells.get(ref)!.obj as SO.Shape.Representation3D).data.repr.getAllLoci()[0] as {
+      shape: Shape;
+    };
+    return loci.shape.transforms[0][12];
+  };
+
+  it('M1: a VTP moved by shape.transform stays where it is drawn when colored, and after', async () => {
+    const { v, c } = await viewer();
+    const { mesh, shape } = await shapeOf(v, 'points.vtp');
+    expectOk(await v.api.run('shape.transform', { node: shape, translation: [12, 0, 0] } as never));
+    expect(drawnAt(v, mesh.ref)).toBeCloseTo(12);
+    expectOk(await c.mesh({ mesh: mesh.ref, volume: 'shell.mrc' } as never));
+    expect(drawnAt(v, mesh.ref)).toBeCloseTo(12);
+    expectOk(await v.api.run('shape.transform', { node: shape, translation: [20, 0, 0] } as never));
+    expect(drawnAt(v, mesh.ref)).toBeCloseTo(20);
+  });
+
+  it("M2: shape.list and shape.focus find a colored mesh's representation", async () => {
+    const { v, c } = await viewer();
+    const { mesh, shape } = await shapeOf(v, 'points.vtp');
+    expectOk(await c.mesh({ mesh: mesh.ref, volume: 'shell.mrc' } as never));
+    const list = await v.api.run('shape.list', {});
+    expectOk(list);
+    const entry = (list.value as { ref: string; representations: { ref: string }[] }[]).find((e) => e.ref === shape)!;
+    expect(entry.representations.map((r) => r.ref)).toEqual([mesh.ref]);
+    expectOk(await v.api.run('shape.focus', { node: shape } as never));
+  });
+
+  it('NEW-1: the Look scale after a shape.transform scales the mesh (its file shape, past the move)', async () => {
+    const { v, c, read } = await viewer();
+    const { shape } = await shapeOf(v, 'ball.obj');
+    expectOk(await v.api.run('shape.transform', { node: shape, translation: [5, 0, 0] } as never));
+    expectOk(await c.mesh({ mesh: 'ball.obj', scale: 2 } as never));
+    expect((await read('ball.obj')).scale).toBeCloseTo(2);
+  });
+
+  it('S3: a change of colors only does not sample or build the mesh again', async () => {
+    const { v, c } = await viewer();
+    expectOk(await c.mesh({ mesh: 'cells.vtp', volume: 'shell.mrc', sample: 'min', depth: 8 } as never));
+    const { mesh } = await shapeOf(v, 'cells.vtp');
+    const node = () => v.plugin.state.data.cells.get(v.plugin.state.data.cells.get(mesh.ref)!.transform.parent)!;
+    const base = () => (node().obj as SO.Shape.Provider).data.data.volumeColor.base;
+    const before = base();
+    expectOk(await c.mesh({ mesh: mesh.ref, invert: true, colorList: 'plasma' } as never));
+    expect(base()).toBe(before);
+  });
+
+  it('S4: Volume again after Uniform is the volume it was colored by, not the first', async () => {
+    const { v, c, read } = await viewer();
+    expectOk(await v.api.load.files({ files: [new File([mrcOf(48, 2, (x) => x)], 'ramp.mrc')] }));
+    expectOk(await c.mesh({ mesh: 'points.vtp', volume: 'ramp.mrc' } as never));
+    expectOk(await c.mesh({ mesh: 'points.vtp', color: 'tomato' } as never));
+    const m = await read('points.vtp');
+    expect(m.volumeKept).toMatchObject({ label: 'ramp.mrc' });
+  });
+});
