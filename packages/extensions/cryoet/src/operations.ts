@@ -1851,13 +1851,16 @@ function arrayTheme(
 }
 
 /**
- * The shape a mesh representation draws (its `transforms` param: the OBJ, PLY, VTP shapes'): its parent, past its color
- * by a volume
+ * The shape a mesh representation draws (its `transforms` param: the OBJ, PLY, VTP shapes'): its parent, past the
+ * decorators of the shape
  */
 function shapeCellOf(ctx: Pick<ApiContext, 'plugin'>, repr: string): StateObjectCell | undefined {
   const { cells, tree } = ctx.plugin.state.data;
   let parent = cells.get(tree.transforms.get(repr)?.parent ?? '');
-  while (parent?.transform.transformer === MeshVolumeColor) parent = cells.get(parent.transform.parent);
+  // past the decorators of a shape: its color by a volume, a move (`shape.transform`)
+  while (parent?.transform.transformer.definition.isDecorator && SO.Shape.Provider.is(parent.obj)) {
+    parent = cells.get(parent.transform.parent);
+  }
   return parent && SO.Shape.Provider.is(parent.obj) ? parent : undefined;
 }
 
