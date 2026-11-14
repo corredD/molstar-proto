@@ -826,3 +826,91 @@ describe('mesoscale.grow helix', () => {
     expect(painted(v).length).toBe(0);
   });
 });
+
+// The last grow live (grow-helix round 2, Ludo 2026-11-13: "all the parameters … update the latest grow"): a grow given
+// `replace` (a grow's id) makes that grow's stroke again by its params, in place, one step; its seed kept unless given.
+
+describe('mesoscale.grow replace', () => {
+  const poses = (l: ParticleList, from: number, to: number) => ({
+    positions: Array.from(l.coordinates.slice(from * 3, to * 3)),
+    rotations: Array.from(l.rotations!.slice(from * 4, to * 4)),
+  });
+
+  it('makes a sphere again with more copies (the first ones where they were), then fewer, one step each', async () => {
+    const v = await viewer();
+    const ref = entry(v).cell.transform.ref;
+    const r = await v.api.run('mesoscale.grow', { particles: ref, index: 2, mode: 'sphere', count: 10, radius: 30 });
+    expectOk(r);
+    const id = (r.value as { id: number }).id;
+    const first = poses(drawn(v), 7, 17);
+    const before = steps(v);
+    const more = await v.api.run('mesoscale.grow', {
+      particles: ref,
+      index: 2,
+      mode: 'sphere',
+      count: 25,
+      radius: 30,
+      replace: id,
+    });
+    expectOk(more);
+    expect((more.value as { id: number }).id).toBe(id);
+    expect(steps(v)).toBe(before + 1);
+    expect(strokes(v).length).toBe(1);
+    expect(drawn(v).count).toBe(7 + 25);
+    // its seed kept: the first ten bit for bit
+    expect(poses(drawn(v), 7, 17)).toEqual(first);
+    expectOk(
+      await v.api.run('mesoscale.grow', {
+        particles: ref,
+        index: 2,
+        mode: 'sphere',
+        count: 4,
+        radius: 30,
+        replace: id,
+      }),
+    );
+    expect(drawn(v).count).toBe(7 + 4);
+    expect(poses(drawn(v), 7, 11)).toEqual({
+      positions: first.positions.slice(0, 12),
+      rotations: first.rotations.slice(0, 16),
+    });
+    expectOk(await v.api.run('history.undo', {}));
+    expect(drawn(v).count).toBe(7 + 25);
+  });
+
+  it('continues a walk with more steps (its units where they were, the last one turned to the next) and changes its mode in place', async () => {
+    const v = await viewer();
+    const ref = entry(v).cell.transform.ref;
+    const walk = { particles: ref, index: 3, mode: 'walk', steps: 8, persistence: 30, twist: 15 };
+    const r = await v.api.run('mesoscale.grow', walk);
+    expectOk(r);
+    const id = (r.value as { id: number }).id;
+    const first = poses(drawn(v), 7, 15);
+    expectOk(await v.api.run('mesoscale.grow', { ...walk, steps: 20, replace: id }));
+    expect(drawn(v).count).toBe(7 + 20);
+    const now = poses(drawn(v), 7, 15);
+    expect(now.positions).toEqual(first.positions);
+    expect(now.rotations.slice(0, -4)).toEqual(first.rotations.slice(0, -4));
+    // another mode: the same grow, now a sphere
+    expectOk(await v.api.run('mesoscale.grow', { particles: ref, index: 3, mode: 'sphere', count: 5, replace: id }));
+    expect(strokes(v).length).toBe(1);
+    expect(strokes(v)[0].grow).toMatchObject({ mode: 'sphere', id });
+    expect(drawn(v).count).toBe(7 + 5);
+  });
+
+  it('refuses a grow that is not there or is of another source: no step', async () => {
+    const v = await viewer();
+    const ref = entry(v).cell.transform.ref;
+    const r = await v.api.run('mesoscale.grow', { particles: ref, index: 2, mode: 'sphere', count: 3 });
+    expectOk(r);
+    const id = (r.value as { id: number }).id;
+    const s = steps(v);
+    expect(
+      await v.api.run('mesoscale.grow', { particles: ref, index: 2, mode: 'sphere', count: 4, replace: id + 1 }),
+    ).toMatchObject({ ok: false, code: 'not-found' });
+    expect(
+      await v.api.run('mesoscale.grow', { particles: ref, index: 3, mode: 'sphere', count: 4, replace: id }),
+    ).toMatchObject({ ok: false, code: 'invalid' });
+    expect(steps(v)).toBe(s);
+  });
+});

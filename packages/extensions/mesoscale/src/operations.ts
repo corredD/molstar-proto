@@ -1297,6 +1297,16 @@ export class MesoscaleApi extends ApiArea {
             'Grow on a mesh of the scene (OBJ, PLY, VTP) by state ref or file name: Tiling, Random walk, Helix, Sphere; absent: in space',
         }),
       ),
+      replace: OptionalParam(
+        PD.Numeric(
+          0,
+          { step: 1 },
+          {
+            description:
+              "A grow of this source to make again by these params, in place (its id, `mesoscale.grow`'s value); its seed kept unless given",
+          },
+        ),
+      ),
     },
     async run(values, ctx) {
       const v = values as typeof values &
@@ -1317,8 +1327,23 @@ export class MesoscaleApi extends ApiArea {
       const src = growSourceOf(state, l, index);
       if (isFailure(src)) return src;
       const { data, target, entity, compartment, radius, name, instance } = src;
-      const seed = v.seed ?? Math.floor(Math.random() * 2 ** 31);
-      const growId = Math.floor(Math.random() * 2 ** 31);
+      // a grow made again (round 2, the last grow live): its stroke, of this source; its seed and id kept
+      const old =
+        v.replace === undefined
+          ? undefined
+          : (
+              decoratorUnder(state, l.cell.transform.ref, ParticleListPainted)?.transform.params as
+                | PaintedParams
+                | undefined
+            )?.strokes.find((s) => s.grow?.id === v.replace);
+      if (v.replace !== undefined && !old) {
+        return ApiResult.fail('not-found', 'That grow is not there (undone, cleared or removed).');
+      }
+      if (old && old.grow!.source.key !== data.keys[index]) {
+        return ApiResult.fail('invalid', `That grow is not from ${name} #${index}.`);
+      }
+      const seed = v.seed ?? old?.grow?.seed ?? Math.floor(Math.random() * 2 ** 31);
+      const growId = old ? old.grow!.id! : Math.floor(Math.random() * 2 ** 31);
       const move = decoratorUnder(state, l.cell.transform.ref, ParticleListTransform)?.transform.params as
         | ListMove
         | undefined;
@@ -1525,7 +1550,10 @@ export class MesoscaleApi extends ApiArea {
       const count = units ?? stroke.positions.length / 3;
       // no copy, no step (review S2): one cell, no ring
       if (!count) return ApiResult.fail('invalid', 'That rule makes no copy.', 'More cells or rings.');
-      await updatePainted(ctx, l, (p) => ({ ...p, strokes: [...p.strokes, stroke] }));
+      await updatePainted(ctx, l, (p) => ({
+        ...p,
+        strokes: old ? p.strokes.map((s) => (s.grow?.id === growId ? stroke : s)) : [...p.strokes, stroke],
+      }));
       return ApiResult.ok(
         path
           ? `Grew a fiber of ${name} from #${index}.`
