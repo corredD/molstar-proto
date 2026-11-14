@@ -238,24 +238,24 @@ on a tree row (its right-click or its ⋯), the same menu, in this order:
   made its entity where it paints; its rise its length along its principal axis until set (its units touching), no Bank.
   The mouse (paint-refine, Ludo 2026-11-13): a plain left click paints one copy, a plain left drag a stroke; every other
   gesture is the viewer's camera as outside Paint (right drag pans, the wheel zooms, a modifier with the left drag as
-  its bindings say), and Alt+left drag turns (the canvas's bindings take Alt until the mode ends); **Alt+wheel** moves
-  the depth. **Place**: a membrane protein on the surface, anything else at a depth along the pointer's ray: the depth
-  of what is under the pointer (a particle, a structure, a mesh), elsewhere where it was (the camera's focus at the
-  start); Alt+wheel moves it a copy's diameter a notch (shown in the hint) and holds it for the next stroke; a stroke
-  keeps the depth of its first point. Surface or Depth to override. **Place Auto** goes to Surface whenever the pointer
-  is over a mesh of the scene (any brush; decisions 2, Ludo 2026-11-13), at a depth elsewhere as above; read at the
-  pointer as it moves, and for a stroke at its press. A copy of the brush follows the pointer (drawn in the scene,
-  depth-tested, not picked, in the entity's look color), where a click puts it and turned as it will be (the stroke's
-  seed), from the mode's start; hidden off the canvas. **Fiber**: an entity with fibers in its list paints a new fiber
-  (its points its fibers' step apart, a line on the canvas while drawn, each point turned as its fibers are: their axis
-  along the way, their twist a point); On or Off to override. A fiber's points are made from its path by the entity's
-  **Fiber** settings (round 3): Rise (Å a point), Twist (° a point), Jitter (± ° a point, random); in the entity's own
-  Fiber section and in Paint. A change makes every painted fiber of the entity again, one step; the file's fibers stay.
-  Default: the entity's fibers' step and twist. Round 4: Axis (Auto, X, Y, Z: the unit's own axis along the path) and
-  Offset (Å off the path, along a perpendicular of that axis, turned with the unit). The copy under the pointer is drawn
-  in the scene, depth-tested (round 4); the depth stays inside the camera's near and far planes. Round 5: Bank (None,
-  DNA, RNA: the units the fibers switch between, a letter each), and in Paint a Sequence (one-letter codes; empty: at
-  random) and its Range (`3-120`).
+  its bindings say), and Alt+left drag turns, the only way to rotate while painting (OK, Ludo 2026-11-13; the canvas's
+  bindings take Alt until the mode ends); **Alt+wheel** moves the depth. **Place**: a membrane protein on the surface,
+  anything else at a depth along the pointer's ray: the depth of what is under the pointer (a particle, a structure, a
+  mesh), elsewhere where it was (the camera's focus at the start); Alt+wheel moves it a copy's diameter a notch (shown
+  in the hint) and holds it for the next stroke; a stroke keeps the depth of its first point. Surface or Depth to
+  override. **Place Auto** goes to Surface whenever the pointer is over a mesh of the scene (any brush; decisions 2,
+  Ludo 2026-11-13), at a depth elsewhere as above; read at the pointer as it moves, and for a stroke at its press. A
+  copy of the brush follows the pointer (drawn in the scene, depth-tested, not picked, in the entity's look color),
+  where a click puts it and turned as it will be (the stroke's seed), from the mode's start; hidden off the canvas.
+  **Fiber**: an entity with fibers in its list paints a new fiber (its points its fibers' step apart, a line on the
+  canvas while drawn, each point turned as its fibers are: their axis along the way, their twist a point); On or Off to
+  override. A fiber's points are made from its path by the entity's **Fiber** settings (round 3): Rise (Å a point),
+  Twist (° a point), Jitter (± ° a point, random); in the entity's own Fiber section and in Paint. A change makes every
+  painted fiber of the entity again, one step; the file's fibers stay. Default: the entity's fibers' step and twist.
+  Round 4: Axis (Auto, X, Y, Z: the unit's own axis along the path) and Offset (Å off the path, along a perpendicular of
+  that axis, turned with the unit). The copy under the pointer is drawn in the scene, depth-tested (round 4); the depth
+  stays inside the camera's near and far planes. Round 5: Bank (None, DNA, RNA: the units the fibers switch between, a
+  letter each), and in Paint a Sequence (one-letter codes; empty: at random) and its Range (`3-120`).
 - **Grow from this instance…** (lane `grow`, 2026-11-11), on a particle, after Move this instance and Offset all like
   it: the particle the source of the next grow, its row's Grow section opened (§4; the rules in Status, Grow).
 - **Remove** (an object: with its file and labels).
@@ -595,7 +595,9 @@ still completes its distance.
   its longest principal axis; View: toward the viewer; X, Y, Z), each point brought onto the surface along its line from
   the axis, so it follows a tube's or a cone's radius and spirals over a closed round mesh to its pole; it ends where
   the surface does. Its units' up along the surface's normal, as the walk's. The first unit is a rise along the helix
-  from the source.
+  from the source, the source not one of its copies (Ludo, 2026-11-13). Defaults Pitch 4 × the copy's diameter, Radius 1
+  × the diameter in space, Turns 5, and Down keeps the hand: the same helix going the other way, not a mirror; Turns end
+  on the 5° grid of its points (Ludo, 2026-11-13).
 - Grow › Spiral (lane `grow-helix` round 3, Ludo 2026-11-13: "can we also have spiral", then "the copy/count slider …
   the distance between arms, and the distance along the path between instances. Regular spiral parameters"): a new fiber
   from the source winding flat outward about it (the source its center, copy 0), an Archimedean spiral: **Count** copies
@@ -603,17 +605,20 @@ still completes its distance.
   × Step along it from the source; **Arm spacing** between its arms (its radius that more a turn; unset: the copy's
   diameter, so they touch); **Hand** (Right: counterclockwise about its normal); its **Turns** beside Count, both
   editable and linked (decisions 21, Ludo 2026-11-13): Count sets the turns it reaches, Turns the copies those turns
-  hold (`mesoscale.grow { turns }`). Twist and Jitter as a fiber's. Near the center the arc curls: copies within its
-  first turn sit closer than a Step in a straight line (overlaps allowed, Ludo 2026-11-11). In space it lies in the
-  source's plane, its normal the copy's axis by paint's rule (+z for a membrane protein, else its Fiber Axis, else +z).
-  On a mesh it is rolled over the surface from the source's point: each step (by arc length) the planar spiral's own,
-  taken in the tangent plane of the point before and brought onto the surface, its direction carried along; so it is the
-  flat spiral on a plane, a cylinder or a cone (the capsid's body), and its arms close up on a surface curved both ways
-  (a cap, a vesicle). Where it crosses an arm of its own (round a tube, on a closed surface; Ludo 2026-11-13: "Skip
-  crowded, keep going"), a copy within 0.6 × Arm spacing of a copy kept more than 2 Arm spacings behind along it is
-  skipped and it goes on until Count copies are kept, its length 4 × Count × Step at most (a surface full ahead: fewer
-  copies made). The copies kept are turned as along the whole chain (their twist by their place along it). It ends where
-  the surface does. Its units' up along the surface's normal.
+  hold (`mesoscale.grow { turns }`). Step is the spiral's Rise, one distance, not two (Ludo, 2026-11-13); copy k sits k
+  × Step along it, no minimum radius at the center (Ludo, 2026-11-13); Arm spacing shares its value with Tiling's
+  Spacing and Count with Sphere's Count (Ludo, 2026-11-13). Rolled over a curved mesh, not a geodesic spiral: not
+  answered, open. Twist and Jitter as a fiber's. Near the center the arc curls: copies within its first turn sit closer
+  than a Step in a straight line (overlaps allowed, Ludo 2026-11-11). In space it lies in the source's plane, its normal
+  the copy's axis by paint's rule (+z for a membrane protein, else its Fiber Axis, else +z). On a mesh it is rolled over
+  the surface from the source's point: each step (by arc length) the planar spiral's own, taken in the tangent plane of
+  the point before and brought onto the surface, its direction carried along; so it is the flat spiral on a plane, a
+  cylinder or a cone (the capsid's body), and its arms close up on a surface curved both ways (a cap, a vesicle). Where
+  it crosses an arm of its own (round a tube, on a closed surface; Ludo 2026-11-13: "Skip crowded, keep going"), a copy
+  within 0.6 × Arm spacing of a copy kept more than 2 Arm spacings behind along it is skipped and it goes on until Count
+  copies are kept (Ludo, 2026-11-13), its length 4 × Count × Step at most (a surface full ahead: fewer copies made). The
+  copies kept are turned as along the whole chain (their twist by their place along it). It ends where the surface does.
+  Its units' up along the surface's normal.
 - The last grow live (lane `grow-helix` round 2, Ludo 2026-11-13: "all the parameters in the grow properties to update
   the latest grow … more will continue the distribution, less will remove the excedent copies … a clear button"): after
   a Grow, every setting of the section (each mode's, its Seed, On, and its Mode) makes that grow again in place, from
@@ -621,9 +626,11 @@ still completes its distance.
   drag or a pick. A Mode picked turns the last grow into one of that mode. Rise, Twist and Jitter still redraw a fiber
   on its path. Its count is prefix-stable: more Steps, Turns or Count keep every copy where it was and add the next ones
   (a fiber's last unit turned to the next); fewer cut the last ones; Crystal's cells are nested (each cell stays where
-  it was). Another Grow, another source, Clear or the section closed ends it; an undone grow is not live (a change is
-  the next grow's). **Clear** removes every grow from the source (any mode; the source stays), and the grows from their
-  copies, one step (`mesoscale.clear-grown`), disabled when there is none.
+  it was). A Mode picked replaces the live grow, it keeps its seed while Seed is empty, and Clear and fewer Count also
+  take the grows built on the removed copies (Ludo, 2026-11-13). Undo after a Grow: fixed (Ludo, 2026-11-13). Another
+  Grow, another source, Clear or the section closed ends it; an undone grow is not live (a change is the next grow's).
+  **Clear** removes every grow from the source (any mode; the source stays), and the grows from their copies, one step
+  (`mesoscale.clear-grown`), disabled when there is none.
 - Models decorated too (2026-10-23, Ludovic: "why can't we change the target in Simularium"): a model (a list with
   entities: Simularium, cellPACK, PetWorld) has the Decoration section, so each of its targets (an agent, an entity) can
   be drawn as another object of the scene. A particle list's own shape (a Simularium simulation box) is not listed as a
