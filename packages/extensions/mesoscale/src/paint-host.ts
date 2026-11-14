@@ -18,11 +18,13 @@ import {
 import { PluginStateObject as SO } from '@molstar/plugin/state/objects';
 import type { PluginContext } from '@molstar/plugin/context';
 import type { ParticleListRef } from '@molstar/plugin/state/manager/particles/hierarchy-state';
-import type { PaintBrushTarget, PaintHost, PaintSettings } from './paint-mode.js';
+import type { PaintBrushTarget, PaintCursor, PaintHost, PaintSettings } from './paint-mode.js';
 import {
   brushIdOf,
   brushOf,
   decoratorUnder,
+  type FiberAxis,
+  fiberAxisVector,
   type FiberSettingsMap,
   fiberSettingsOf,
   parseRange,
@@ -56,9 +58,10 @@ const AltCameraGestures = [
 ] as const;
 
 /**
- * `bindings` with each camera gesture's triggers also taken with Alt held (Alt+left turns, Alt+right pans, Alt+wheel
- * zooms): the paint layer takes the plain ones, and a trigger's modifiers match exactly (`Binding.Trigger.match`). A
- * trigger without modifiers already matches any, and one with Alt is kept as it is.
+ * `bindings` with each camera gesture's triggers also taken with Alt held (Alt+left turns, Alt+right pans; Alt+wheel is
+ * paint's depth, taken before the canvas: paint-refine): paint takes the plain left press, and a trigger's modifiers
+ * match exactly (`Binding.Trigger.match`). A trigger without modifiers already matches any, and one with Alt is kept as
+ * it is.
  */
 export function withAltCamera(bindings: TrackballBindings): TrackballBindings {
   const out: Record<string, Binding> = { ...bindings };
@@ -76,14 +79,18 @@ export function withAltCamera(bindings: TrackballBindings): TrackballBindings {
 
 /**
  * The host of a paint mode on `plugin`; `paint` runs the operation, `colorOf` reads an entity's color from its look
- * (the copy under the pointer's), `structureFiberStep` a structure brush's fibers' rise in a list (none: it makes none)
+ * (the copy under the pointer's), `structureFiberStep` a structure brush's fibers' rise in a list (none: it makes none),
+ * `ensureParticles` loads Mol*'s particles (lazy) for a structure brush's copy in a scene without them,
+ * `structureFiberAxis` a structure brush's Fiber Axis where it paints (its copies' axis along a surface's normal)
  */
 export function pluginPaintHost(
   plugin: PluginContext,
   paint: (params: Record<string, unknown>) => Promise<unknown>,
   colorOf?: (list: ParticleListRef, entity: number) => number | undefined,
   structureFiberStep?: (structure: string, into: string) => number | undefined,
-): PaintHost {
+  ensureParticles?: () => Promise<void>,
+  structureFiberAxis?: (structure: string, into: string) => FiberAxis | undefined,
+): PaintHost & { dispose(): void } {
   const listOf = (ref: string) =>
     plugin.managers.particles.hierarchy.current.lists.find((l) => l.cell.transform.ref === ref);
   /** A structure brush's structure (paint-layer round 2), if it is still in the scene */
@@ -91,8 +98,26 @@ export function pluginPaintHost(
     const obj = brush.structure ? plugin.state.data.cells.get(brush.structure)?.obj : undefined;
     return obj && SO.Molecule.Structure.is(obj) ? obj.data : undefined;
   };
+  // where the pointer last was in the page (paint-refine): a mode started under a still pointer shows its copy there
+  let pointerX = Number.NaN;
+  let pointerY = Number.NaN;
+  const track = (e: PointerEvent) => {
+    pointerX = e.clientX;
+    pointerY = e.clientY;
+  };
+  globalThis.document?.addEventListener('pointermove', track, { capture: true, passive: true });
   return {
+    dispose: () => globalThis.document?.removeEventListener('pointermove', track, { capture: true }),
     canvas: () => plugin.canvas3dContext?.canvas ?? undefined,
+    pointer() {
+      const canvas = plugin.canvas3dContext?.canvas;
+      if (!canvas || Number.isNaN(pointerX)) return undefined;
+      // what is there now: a menu over the canvas that just closed leaves its :hover stale (review 11)
+      const root = canvas.getRootNode() as Document | ShadowRoot;
+      if (root.elementFromPoint?.(pointerX, pointerY) !== canvas) return undefined;
+      const rect = canvas.getBoundingClientRect();
+      return [pointerX - rect.left, pointerY - rect.top];
+    },
     holdCamera() {
       const canvas = plugin.canvas3d;
       if (!canvas) return () => {};
@@ -164,14 +189,54 @@ export function pluginPaintHost(
       return (set && OrderedSet.size(set) && data.radii?.[OrderedSet.start(set)]) || 10;
     },
     cursor(brush) {
+      // the Fiber Axis read when the settings or the state changed, not a frame (round 2 review S4)
+      let key: PaintSettings | undefined;
+      let value: Vec3 | undefined;
+      let fresh = false;
+      const sub = plugin.state.data.events.changed.subscribe(() => {
+        fresh = false;
+      });
+      const cached =
+        (read: (s: PaintSettings) => Vec3 | undefined) =>
+        (s: PaintSettings): Vec3 | undefined => {
+          if (!fresh || s !== key) {
+            key = s;
+            value = read(s);
+            fresh = true;
+          }
+          return value;
+        };
+      const withSub = (c: PaintCursor): PaintCursor => ({
+        move: c.move,
+        hide: c.hide,
+        dispose() {
+          sub.unsubscribe();
+          c.dispose();
+        },
+      });
       if (brush.structure) {
         const structure = structureOf(brush);
-        return structure ? pluginStructureCursor(plugin, structure) : { move() {}, hide() {}, dispose() {} };
+        const along = cached((s) =>
+          fiberAxisVector(structureFiberAxis?.(brush.structure!, s.into && listOf(s.into) ? s.into : '')),
+        );
+        return withSub(
+          structure
+            ? pluginStructureCursor(plugin, structure, plugin.canvas3d, ensureParticles, along)
+            : { move() {}, hide() {}, dispose() {} },
+        );
       }
       const list = listOf(brush.particles);
       const data = list?.cell.obj?.data;
       const color = list ? colorOf?.(list, brush.entity) : undefined;
-      return pluginPaintCursor(plugin, list, brush, color, !!data && !!brushOf(data, brush.entity)?.surface);
+      const surface = !!data && !!brushOf(data, brush.entity)?.surface;
+      const along = cached(() => {
+        const b = data && brushOf(data, brush.entity);
+        if (!list || !data || !b) return undefined;
+        const painted = decoratorUnder(plugin.state.data, list.cell.transform.ref, ParticleListPainted);
+        const p = painted?.transform.params as { fibers?: FiberSettingsMap; structures?: PaintStructure[] } | undefined;
+        return fiberAxisVector(fiberSettingsOf(data, brushIdOf(data, b), b.target, p?.fibers, p?.structures).axis);
+      });
+      return withSub(pluginPaintCursor(plugin, list, brush, color, surface, plugin.canvas3d, along));
     },
     fiberStep(brush, into) {
       // the entity's rise (Round 3): its own settings, else its file's fibers'; none when it makes no fibers (a
@@ -188,7 +253,7 @@ export function pluginPaintHost(
       if (!own?.[id] && !isFiberBrush(data, id)) return undefined;
       return fiberSettingsOf(data, id, b.target, own, p?.structures).rise;
     },
-    async paint(brush: PaintBrushTarget, s: PaintSettings, positions, normals, seed, fiber, mesh) {
+    async paint(brush: PaintBrushTarget, s: PaintSettings, positions, normals, seed, fiber, mesh, surface) {
       const r = (await paint({
         ...(brush.structure
           ? // its list gone since it was chosen: the Painting list (review S3)
@@ -205,6 +270,7 @@ export function pluginPaintHost(
             }
           : {}),
         side: s.side,
+        ...(surface ? { surface: true } : {}),
         ...(mesh ? { mesh } : {}),
         ...(s.orient !== 'auto' ? { orient: s.orient } : {}),
         ...(s.spin !== undefined ? { spin: s.spin } : {}),

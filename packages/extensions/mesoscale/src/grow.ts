@@ -73,6 +73,8 @@ export interface GrowRecord {
   readonly source: { readonly index: number; readonly key: number };
   /** The mesh it grew on (its representation's state ref and file name), for the report: the copies stay without it */
   readonly mesh?: { readonly ref: string; readonly label: string };
+  /** Which grow it was (paint-refine): a walk's own rise and twist are set by it (`mesoscale.grown-fiber`) */
+  readonly id?: number;
 }
 
 /**
@@ -104,6 +106,7 @@ function push(out: GrowPoses, p: Vec3, q: Quat) {
   out.rotations.push(q[0], q[1], q[2], q[3]);
 }
 
+const _up = Vec3.create(0, 0, 1);
 const _t = Vec3();
 const _p = Vec3();
 
@@ -228,7 +231,9 @@ export function walkPath(
   p: WalkParams,
   seed: number,
   on: GrowOn | undefined,
+  normals?: number[],
 ): number[] | undefined;
+/** `normals`, on a surface: filled with its normal at each point (paint-refine round 2: the units' up follows it) */
 export function walkPath(
   source: GrowPose,
   axis: Vec3,
@@ -236,6 +241,7 @@ export function walkPath(
   p: WalkParams,
   seed: number,
   on?: GrowOn,
+  normals?: number[],
 ): number[] | undefined {
   const out: number[] = [];
   const d = Vec3.normalize(Vec3(), Vec3.transformQuat(Vec3(), axis, source.rotation));
@@ -246,6 +252,9 @@ export function walkPath(
     if (!on.surface.project(_hit, source.position, _zero, on.reach)) return undefined;
     Vec3.copy(at, _hit.position);
     Vec3.copy(n, _hit.normal);
+    // on the source's side (its axis along a surface: `on.axis`, else +z), not the file's winding: the units' up follows
+    // it (round 2 review S7, round 3)
+    if (Vec3.dot(n, Vec3.transformQuat(_t, on.axis ?? _up, source.rotation)) < -1e-3) Vec3.negate(n, n);
     if (!tangent(d, n)) fiberOffsetDirection(d, 'auto', n);
   }
   for (let i = 0; i < Math.max(0, Math.floor(p.steps)); ++i) {
@@ -267,6 +276,7 @@ export function walkPath(
       if (!tangent(d, n)) fiberOffsetDirection(d, 'auto', n);
     }
     out.push(at[0], at[1], at[2]);
+    if (on) normals?.push(n[0], n[1], n[2]);
   }
   return out;
 }

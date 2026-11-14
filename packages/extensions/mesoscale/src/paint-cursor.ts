@@ -19,7 +19,7 @@ import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
 import { VisualSet, type VisualSetCanvas } from '@molstar/graphics/util/visual-set';
 import type { PluginContext } from '@molstar/plugin/context';
 import type { ParticleListRef } from '@molstar/plugin/state/manager/particles/hierarchy-state';
-import type { PaintBrushTarget, PaintCursor } from './paint-mode.js';
+import type { PaintBrushTarget, PaintCursor, PaintSettings } from './paint-mode.js';
 import { type PaintOrient, paintingList, paintRotation, principalAxisOf, withStructures } from './paint.js';
 
 // The copy under the pointer (progress/2026-11-08-paint.md, Round 2): one copy of the brush drawn before it is painted,
@@ -80,6 +80,7 @@ export function pluginPaintCursor(
   color: number | undefined,
   surface: boolean,
   canvas: VisualSetCanvas | undefined = plugin.canvas3d,
+  along?: Along,
 ): PaintCursor {
   const r = list?.representations[0];
   const data = r?.cell.obj?.data.sourceData as ParticleList | undefined;
@@ -87,25 +88,33 @@ export function pluginPaintCursor(
   const params = r?.cell.params?.values;
   if (!data || i === undefined || !params) return NoCursor;
   const colorTheme = color !== undefined ? { name: 'uniform', params: { value: color } } : params.colorTheme;
-  return copyCursor(plugin, oneCopyOf(data, i), { ...params, colorTheme }, surface, canvas);
+  return copyCursor(plugin, oneCopyOf(data, i), Promise.resolve({ ...params, colorTheme }), surface, canvas, along);
 }
 
 /**
  * The copy under the pointer of a structure brush (paint-layer round 2): one copy of the structure, drawn as a target
- * representation draws it (its default themes)
+ * representation draws it (its default themes). In a scene without particles yet, Mol*'s particles (lazy) are not
+ * there: `ensure` loads them first (paint-refine: the first Paint showed no copy), else it draws nothing
  */
 export function pluginStructureCursor(
   plugin: PluginContext,
   structure: Structure,
   canvas: VisualSetCanvas | undefined = plugin.canvas3d,
+  ensure?: () => Promise<void>,
+  along?: Along,
 ): PaintCursor {
-  if (!plugin.representation.particles.registry.has('target')) return NoCursor;
+  const registered = () => plugin.representation.particles.registry.has('target');
+  if (!registered() && !ensure) return NoCursor;
   const one = withStructures(
     { ...paintingList(), count: 1, keys: Int32Array.of(0), targets: Int32Array.of(0), entities: Int32Array.of(0) },
     [{ name: 'Paint brush', target: 0, entity: 0, source: { kind: 'url', url: '' } }],
     [{ kind: 'structure', structure }],
   );
-  return copyCursor(plugin, oneCopyOf(one, 0), targetRepresentationParams(plugin, one), false, canvas);
+  const params = async () => {
+    if (!registered()) await ensure?.();
+    return registered() ? targetRepresentationParams(plugin, one) : undefined;
+  };
+  return copyCursor(plugin, oneCopyOf(one, 0), params(), false, canvas, along);
 }
 
 /** A target representation's params, the type's default themes (as `particles.representation` makes them) */
@@ -128,35 +137,39 @@ export function targetRepresentationParams(plugin: PluginContext, data: Particle
   };
 }
 
-/** The copy `one` (a list of one particle) under the pointer, drawn by a representation of `params` */
+/** The copy `one` (a list of one particle) under the pointer, drawn by a representation of `params` (none: nothing) */
 function copyCursor(
   plugin: PluginContext,
   one: ParticleList,
-  params: { type: { name: string; params: any }; colorTheme: any; sizeTheme: any },
+  params: Promise<{ type: { name: string; params: any }; colorTheme: any; sizeTheme: any } | undefined>,
   surface: boolean,
   canvas: VisualSetCanvas | undefined,
+  along?: Along,
 ): PaintCursor {
   if (!canvas) return NoCursor;
   const set = new VisualSet(canvas);
-  const provider = plugin.representation.particles.registry.get(params.type.name);
   const axis = principalAxisOf(one.targetMapping?.get(one.targets[0]));
   let repr: Representation<any, any, any> | undefined;
   let shown = false;
   /** The copy's turn options, set in place each move */
   const turn: { axis?: Vec3; spin?: number } = {};
   let gone = false;
-  void set
-    .fromProvider(provider, one, {
-      themes: plugin.representation.particles.themes,
-      themeData: { particles: one },
-      properties: { runtime: RuntimeContext.Synchronous, assetManager: plugin.managers.asset },
-      props: params.type.params,
-      colorTheme: params.colorTheme,
-      sizeTheme: params.sizeTheme,
-      state: { pickable: false, layer: 'scene', visible: false },
-    })
+  void params
+    .then((p) =>
+      p && !gone
+        ? set.fromProvider(plugin.representation.particles.registry.get(p.type.name), one, {
+            themes: plugin.representation.particles.themes,
+            themeData: { particles: one },
+            properties: { runtime: RuntimeContext.Synchronous, assetManager: plugin.managers.asset },
+            props: p.type.params,
+            colorTheme: p.colorTheme,
+            sizeTheme: p.sizeTheme,
+            state: { pickable: false, layer: 'scene', visible: false },
+          })
+        : undefined,
+    )
     .then((built) => {
-      if (gone) return;
+      if (gone || !built) return;
       repr = built;
       // where the pointer was while it was built
       if (shown) set.setState(repr, Shown);
@@ -164,14 +177,17 @@ function copyCursor(
     .catch((e) => plugin.log.warn(`The paint brush's copy could not be drawn: ${e}`));
 
   return {
-    move(position, normal, settings, seed) {
-      const how: PaintOrient = settings.orient !== 'auto' ? settings.orient : surface ? 'normal' : 'random';
+    move(position, normal, settings, seed, onSurface) {
+      // Turn Auto: along the normal on a surface (paint-refine round 2) or for a membrane protein, else at random
+      const how: PaintOrient =
+        settings.orient !== 'auto' ? settings.orient : surface || onSurface ? 'normal' : 'random';
       // the operation's directions (`mesoscale.paint`): toward the viewer for `view`, the normal else; `in` turns it
       Vec3.copy(_dir, normal);
       const camera = plugin.canvas3d?.camera.state;
       if (how === 'view' && camera) Vec3.normalize(_dir, Vec3.sub(_dir, camera.position, camera.target));
       if (settings.side === 'in') Vec3.negate(_dir, _dir);
-      turn.axis = how === 'axis' ? axis : undefined;
+      // a membrane protein upright (+z) whatever its Fiber Axis (round 2 review S1)
+      turn.axis = how === 'axis' ? axis : how === 'normal' && !surface ? along?.(settings) : undefined;
       turn.spin = settings.spin;
       paintRotation(_q, _dir, how, seed, 0, turn);
       Mat4.fromQuat(_m, _q);
@@ -190,5 +206,8 @@ function copyCursor(
     },
   };
 }
+
+/** The copy's own axis put along the normal (its Fiber Axis when set; none: +z), by the brush's settings (`into`) */
+export type Along = (settings: PaintSettings) => Vec3 | undefined;
 
 const NoCursor: PaintCursor = { move() {}, hide() {}, dispose() {} };

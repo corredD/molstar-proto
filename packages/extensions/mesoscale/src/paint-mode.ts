@@ -12,10 +12,11 @@ import type { PaintOrient } from './paint.js';
 import { type Identify, SurfacePoint, surfaceAt } from './pick-surface.js';
 
 // Paint mode (progress/2026-11-08-paint.md, Design 3; apps/prism-me/_spec/ui.md §5, Paint with …): an entity is the
-// brush; a stroke is a drag on a layer over the canvas: once a frame the surface under the pointer (its point and
-// normal, `surfaceAt`), a point every spacing along the way, each previewed as a disc oriented on the surface (a 2D
-// layer, no change of the state); the release paints them, one `mesoscale.paint` (one step). Esc, or Stop painting,
-// leaves the mode. Not a view: a mode of the canvas, its listeners in a scope of its own (`createRoot`), gone with it.
+// brush; a stroke is a left drag on the canvas: once a frame the surface under the pointer (its point and normal,
+// `surfaceAt`), a point every spacing along the way, each previewed as a disc oriented on the surface (a 2D layer over
+// the canvas, no change of the state); the release paints them, one `mesoscale.paint` (one step). Every other gesture
+// is the viewer's camera (paint-refine, Ludo 2026-11-13), Alt+wheel the depth. Esc, or Stop painting, leaves the mode.
+// Not a view: a mode of the canvas, its listeners in a scope of its own (`createRoot`), gone with it.
 
 /** What a brush paints with: an entity of a particle list (its state ref) */
 export interface PaintBrushTarget {
@@ -33,7 +34,10 @@ export interface PaintBrushTarget {
 export interface PaintSettings {
   /** Å between copies; 0: a copy's diameter (they touch) */
   readonly spacing: number;
-  /** How each copy is turned; `auto`: upright on a membrane (+z along the normal), else at random (Decided 2) */
+  /**
+   * How each copy is turned; `auto`: along the normal on a surface (paint-refine round 2: any brush; +z, or its Fiber
+   * Axis when set) and always for a membrane protein, else at random (Decided 2)
+   */
   readonly orient: 'auto' | PaintOrient;
   /** Along the normal (out of the surface toward the viewer, a membrane's outside) or against it */
   readonly side: 'out' | 'in';
@@ -41,7 +45,8 @@ export interface PaintSettings {
   readonly spin?: number;
   /**
    * Where a copy goes (progress/2026-11-08-paint.md, Round 2, Decided 3): on the surface under the pointer, or at a depth
-   * along the pointer's ray (the wheel moves it); `auto`: a membrane protein on the surface, anything else at the depth
+   * along the pointer's ray (what is under it, Alt+wheel moves it); `auto`: a membrane protein on the surface, anything
+   * else at the depth
    */
   readonly place: 'auto' | PaintPlace;
   /**
@@ -76,7 +81,7 @@ export const DefaultPaintSettings: PaintSettings = {
 export interface PaintHost {
   /** The canvas the layer goes over */
   canvas(): HTMLElement | undefined;
-  /** The camera's gestures also with Alt held while painting (`withAltCamera`); returns their restoring */
+  /** The camera's gestures also with Alt held while painting (`withAltCamera`: Alt+drag turns); returns their restoring */
   holdCamera(): () => void;
   /** The pick at a point of the canvas (CSS pixels from its top left) */
   readonly identify: Identify;
@@ -84,6 +89,8 @@ export interface PaintHost {
   eye(out: Vec3): Vec3;
   /** The pointer's ray at a point of the canvas (CSS pixels): its origin and unit direction, in the scene */
   ray(x: number, y: number, origin: Vec3, direction: Vec3): boolean;
+  /** Where the pointer is over the canvas now (CSS pixels from its top left), if it is: the copy shows there at once */
+  pointer?(): readonly [x: number, y: number] | undefined;
   /** The distance from the camera to its focus (its target), Å: where a copy at a depth starts */
   focus(): number;
   /**
@@ -120,6 +127,8 @@ export interface PaintHost {
     seed: number,
     fiber: boolean,
     mesh?: string,
+    /** Its normals a surface's (a pick: paint-refine round 2): with Turn Auto, every copy along them */
+    surface?: boolean,
   ): Promise<unknown>;
   /** The copy of the brush drawn under the pointer (Round 2), gone with `dispose` */
   cursor(brush: PaintBrushTarget): PaintCursor;
@@ -131,8 +140,11 @@ export interface PaintHost {
 
 /** The copy under the pointer (progress/2026-11-08-paint.md, Round 2): moved once a frame, hidden off the canvas */
 export interface PaintCursor {
-  /** Shows it at `position`, turned as a stroke's first copy of `seed` with that normal would be */
-  move(position: Vec3, normal: Vec3, settings: PaintSettings, seed: number): void;
+  /**
+   * Shows it at `position`, turned as a stroke's first copy of `seed` with that normal would be; `onSurface`, the normal
+   * a surface's (Turn Auto: along it)
+   */
+  move(position: Vec3, normal: Vec3, settings: PaintSettings, seed: number, onSurface?: boolean): void;
   hide(): void;
   dispose(): void;
 }
@@ -221,7 +233,8 @@ function paintLayer(mode: PaintMode, host: PaintHost, canvas: HTMLElement, brush
   const root = canvas.closest<HTMLElement>('.msp-root') ?? canvas.parentElement ?? document.body;
   const layer = document.createElement('div');
   layer.className = 'msp-paint-layer';
-  layer.style.cssText = 'position: absolute; z-index: 50; cursor: crosshair; touch-action: none';
+  // the preview and the hint over the canvas; the pointer goes through to it (paint-refine: its camera as outside Paint)
+  layer.style.cssText = 'position: absolute; z-index: 50; pointer-events: none';
   layer.setAttribute('aria-label', `Painting with ${brush.name}`);
   const preview = document.createElement('canvas');
   preview.style.cssText = 'position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none';
@@ -253,8 +266,13 @@ function paintLayer(mode: PaintMode, host: PaintHost, canvas: HTMLElement, brush
   let upright = host.upright(brush);
   /** Where the stroke's copies go (the settings' place, or the brush's own: `placeOf`) */
   let where: PaintPlace = placeOf(mode.settings.value, upright);
-  /** How far along the pointer's ray a copy at a depth goes, Å (Round 2, Decided 2): the camera's focus at the start */
+  /**
+   * How far along the pointer's ray a copy at a depth goes, Å (Round 2, Decided 2): what is under the pointer's
+   * (paint-refine), elsewhere where it was (the camera's focus at the start)
+   */
   let depth = Math.max(host.focus(), radius);
+  /** The depth Alt+wheel set: kept for the next stroke wherever it starts (what is under the pointer moves it no more) */
+  let held = false;
   /** A depth kept a copy's radius inside the camera's drawn range (Round 4), when it is wider than a copy */
   const inRange = (d: number) => {
     const range = host.depthRange?.();
@@ -273,11 +291,20 @@ function paintLayer(mode: PaintMode, host: PaintHost, canvas: HTMLElement, brush
   const clear = () => ctx?.clearRect(0, 0, preview.width, preview.height);
 
   const writeHint = () => {
-    const how = where === 'depth' ? `click or drag · wheel: depth ${Math.round(depth)} Å` : 'drag on a surface';
+    const how =
+      where === 'depth' ? `click or drag · Alt+wheel: depth ${Math.round(depth)} Å` : 'click or drag on a surface';
     const what = fiber ? `a fiber of ${brush.name}` : brush.name;
-    hint.textContent = `Painting with ${what} · ${how} · Alt to move the camera · Esc to stop`;
+    hint.textContent = `Painting with ${what} · ${how} · Alt+drag to turn the camera · Esc to stop`;
   };
   writeHint();
+
+  /** The depth of what is under (x, y) (its pick's point along the ray), kept in range; 'pending' while it is read */
+  const pickedDepth = (x: number, y: number): number | 'pending' | undefined => {
+    const pick = host.identify(x, y);
+    if (pick === 'pending') return pick;
+    if (!pick || !host.ray(x, y, _eye, _t)) return undefined;
+    return inRange(Math.max(radius, Vec3.dot(Vec3.sub(_s, pick.position, _eye), _t)));
+  };
 
   /** The point at the stroke's depth along the pointer's ray at (x, y), facing the viewer */
   const atDepth = (x: number, y: number): boolean => {
@@ -401,19 +428,31 @@ function paintLayer(mode: PaintMode, host: PaintHost, canvas: HTMLElement, brush
   const hintNext = frames(writeHint);
 
   // the copy under the pointer (Round 2): where a click puts it, turned as it will be (the next stroke's seed), moved
-  // once a frame; hidden off the canvas and while Alt hands the pointer to the camera
+  // once a frame; hidden off the canvas
   const cursor = host.cursor(brush);
   /** The next stroke's random turns: its first copy is the one under the pointer */
   let seed = nextSeed();
-  /** The pointer over the layer, CSS pixels from its top left (the canvas's) */
+  /** The pointer over the canvas, CSS pixels from its top left */
   let hoverX = 0;
   let hoverY = 0;
   let hovering = false;
   /** Frames a pending pick was read again for this place: a pick that stays pending (a paused canvas) is let go */
   let retries = 0;
   const follow = frames(() => {
-    if (!hovering || passing) return cursor.hide();
+    if (!hovering) return cursor.hide();
     if (where === 'depth') {
+      // at the depth of what is under the pointer (paint-refine), unless Alt+wheel set it or a stroke is drawn
+      if (!stroke && !held) {
+        const d = pickedDepth(hoverX, hoverY);
+        // not read yet: shown at the depth it has meanwhile (review 8), read again next frame
+        if (d === 'pending' && ++retries < MaxPendingFrames) follow.request();
+        // over nothing: where it was, kept in the drawn range as the camera moves (review N2)
+        const next = d !== undefined && d !== 'pending' ? d : inRange(depth);
+        if (next !== depth) {
+          depth = next;
+          hintNext.request();
+        }
+      }
       if (!atDepth(hoverX, hoverY)) return cursor.hide();
     } else {
       // still during a stroke on a surface: a move redraws, and the stroke's next pick would draw the pick pass again
@@ -427,10 +466,10 @@ function paintLayer(mode: PaintMode, host: PaintHost, canvas: HTMLElement, brush
       if (!r) return cursor.hide();
       host.refine(_point, upright);
     }
-    cursor.move(_point.position, _point.normal, mode.settings.value, seed);
+    cursor.move(_point.position, _point.normal, mode.settings.value, seed, where === 'surface');
   });
   on<PointerEvent>(
-    layer,
+    canvas,
     'pointermove',
     (e) => {
       hoverX = e.offsetX;
@@ -441,14 +480,27 @@ function paintLayer(mode: PaintMode, host: PaintHost, canvas: HTMLElement, brush
     },
     { passive: true },
   );
-  on(layer, 'pointerleave', () => {
+  on(canvas, 'pointerleave', () => {
     hovering = false;
     follow.request();
   });
+  // the pointer already over the canvas (a mode started from a key or a menu over it): the copy there now, not at its
+  // first move (paint-refine)
+  const at = host.pointer?.();
+  if (at) {
+    hoverX = at[0];
+    hoverY = at[1];
+    hovering = true;
+    follow.request();
+  }
 
-  const gesture = drag<Stroke>(layer, {
+  // a plain left press paints (paint-refine, Ludo 2026-11-13); any other button or modifier is the camera's. Its default
+  // prevented: no mouse events follow it, so the canvas's camera and click never see it
+  const gesture = drag<Stroke>(canvas, {
     start(e) {
-      if (e.button !== 0 || e.altKey) return undefined;
+      if (e.button !== 0 || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return undefined;
+      e.preventDefault();
+      e.stopPropagation();
       const rect = canvas.getBoundingClientRect();
       const settings = mode.settings.value;
       radius = Math.max(host.radius(brush), 1e-3);
@@ -460,6 +512,11 @@ function paintLayer(mode: PaintMode, host: PaintHost, canvas: HTMLElement, brush
       // a fiber's path read a rise apart (the entity's: the points the decorator makes), else copies that touch
       spacing = settings.spacing > 0 ? settings.spacing : fiber && fiberStep ? fiberStep : 2 * radius;
       clear();
+      // at a depth: what is under the press's (a pick not read yet: the one the copy shows), unless Alt+wheel set it
+      if (where === 'depth' && !held) {
+        const d = pickedDepth(e.clientX - rect.left, e.clientY - rect.top);
+        if (d !== undefined && d !== 'pending') depth = d;
+      }
       const s: Stroke = {
         positions: [],
         normals: [],
@@ -474,7 +531,6 @@ function paintLayer(mode: PaintMode, host: PaintHost, canvas: HTMLElement, brush
       stroke = s;
       // the press's own place now (a read of the pick: it may be pending, then in the next frame)
       if (!sample(s)) reader.request();
-      e.preventDefault();
       return s;
     },
     move(e, s) {
@@ -485,13 +541,15 @@ function paintLayer(mode: PaintMode, host: PaintHost, canvas: HTMLElement, brush
     },
     end(s, how) {
       stroke = undefined;
+      // a depth Alt+wheel set was this stroke's: what is under the pointer leads again
+      held = false;
       // the release's own place, read now when the pick is there
       if (how === 'up' && s.pending) sample(s);
       clear();
       if (how === 'up' && s.positions.length) {
         committing++;
         void host
-          .paint(brush, mode.settings.value, s.positions, s.normals, seed, fiber, s.mesh)
+          .paint(brush, mode.settings.value, s.positions, s.normals, seed, fiber, s.mesh, where === 'surface')
           .finally(() => committing--);
         // the next copy under the pointer: the next stroke's
         seed = nextSeed();
@@ -507,29 +565,12 @@ function paintLayer(mode: PaintMode, host: PaintHost, canvas: HTMLElement, brush
     if (stroke && !committing) gesture.cancel();
     if (!host.has(brush)) mode.stop();
   });
-  // Alt held: the camera (progress/2026-11-08-paint.md, Round 2, Decided 1): the layer lets the pointer through to the
-  // canvas, whose gestures also take Alt while the mode is on; never in the middle of a stroke. Read from the keys and
-  // from every pointer move (Alt pressed outside the page), reset when the page loses the focus
+  // Alt+drag turns the camera (the plain left drag paints): the canvas's gestures also take Alt while the mode is on
   const releaseCamera = host.holdCamera();
-  let passing = false;
-  const pass = (alt: boolean) => {
-    if (alt === passing || (alt && stroke)) return;
-    passing = alt;
-    layer.style.pointerEvents = alt ? 'none' : '';
-    // the pointer moves unseen while the camera has it: the copy shows again at its next move over the layer (review N4)
-    if (alt) hovering = false;
-    follow.request();
-  };
   on<KeyboardEvent>(
     window,
     'keydown',
     (e) => {
-      if (e.key === 'Alt') {
-        // not the browser's menu (Windows moves the focus there on a lone Alt)
-        e.preventDefault();
-        pass(true);
-        return;
-      }
       if (e.key !== 'Escape') return;
       e.preventDefault();
       e.stopPropagation();
@@ -537,31 +578,39 @@ function paintLayer(mode: PaintMode, host: PaintHost, canvas: HTMLElement, brush
     },
     { capture: true },
   );
-  on<KeyboardEvent>(
-    window,
-    'keyup',
-    (e) => {
-      if (e.key !== 'Alt') return;
-      e.preventDefault();
-      pass(false);
-    },
-    { capture: true },
-  );
-  on<PointerEvent>(window, 'pointermove', (e) => pass(e.altKey), { capture: true, passive: true });
-  // the wheel: the depth along the pointer's ray (Round 2, Decided 2), a copy's diameter a notch (100 px of delta);
-  // with Alt it reaches the canvas (the layer steps aside) and zooms
+  // one finger paints (its pointer events, `drag` above): its touch events kept from the canvas, whose camera would turn
+  // under the stroke (review 3); two fingers or more are the camera's (pinch, pan)
+  for (const type of ['touchstart', 'touchmove'] as const) {
+    on<TouchEvent>(
+      canvas.parentElement ?? root,
+      type,
+      (e) => {
+        if (e.target !== canvas || e.touches.length !== 1) return;
+        e.preventDefault();
+        e.stopPropagation();
+      },
+      { capture: true, passive: false },
+    );
+  }
+  // Alt+wheel: the depth along the pointer's ray (paint-refine; Round 2, Decided 2), a copy's diameter a notch (100 px
+  // of delta), kept for the next stroke; the plain wheel is the camera's zoom. Read before the canvas's own listener
+  // (captured on its parent) and kept from it
   on<WheelEvent>(
-    layer,
+    canvas.parentElement ?? root,
     'wheel',
     (e) => {
-      if (e.altKey) return;
+      if (!e.altKey || e.target !== canvas) return;
       e.preventDefault();
-      const delta = e.deltaMode === 1 ? e.deltaY * 33 : e.deltaMode === 2 ? e.deltaY * 100 : e.deltaY;
+      e.stopPropagation();
+      // Alt turns a vertical wheel horizontal on some systems
+      const dy = e.deltaY || e.deltaX;
+      const delta = e.deltaMode === 1 ? dy * 33 : e.deltaMode === 2 ? dy * 100 : dy;
       depth = inRange(Math.max(radius, depth + (delta / 100) * 2 * radius));
+      held = true;
       hintNext.request();
       follow.request();
     },
-    { passive: false },
+    { capture: true, passive: false },
   );
   // the settings changed (Place, Turn in the properties): the hint says where copies go, the copy turns
   effect(mode.settings.asReadonly, (s) => {
@@ -571,8 +620,10 @@ function paintLayer(mode: PaintMode, host: PaintHost, canvas: HTMLElement, brush
     hintNext.request();
     follow.request();
   });
-  on(window, 'blur', () => pass(false));
+  const cursorStyle = canvas.style.cursor;
+  canvas.style.cursor = 'crosshair';
   onCleanup(() => {
+    canvas.style.cursor = cursorStyle;
     unchanged();
     releaseCamera();
     cursor.dispose();

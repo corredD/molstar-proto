@@ -148,6 +148,11 @@ describe('Grow from this instance', () => {
     // 3 rings of Square: 48 copies
     await until(() => count(v) === 3 + 48);
     expect(v.api.history.steps.value.length).toBe(steps + 1);
+    // Undo (⌘Z's and History's: history.undo) takes exactly that grow back, Redo puts it back (paint-refine, item 3)
+    expect((await v.api.run('history.undo', {})).ok).toBe(true);
+    await until(() => count(v) === 3);
+    expect((await v.api.run('history.redo', {})).ok).toBe(true);
+    await until(() => count(v) === 3 + 48);
   });
 
   it("makes a paint's last copy the grow's source", async () => {
@@ -179,6 +184,124 @@ describe('Grow from this instance', () => {
     await mode.host.paint(brush, DefaultPaintSettings, [0, 70, 0], [0, 1, 0], 1, false, 'vesicle-ref');
     m.setGrowSource({ particles: hiv, index: 0 });
     expect(m.growSettings.value.mesh).toBe(undefined);
+  });
+});
+
+describe('Grow On after a paint (paint-refine round 3)', () => {
+  it('a copy painted again at the same index (after an undo) on a mesh: On follows it', async () => {
+    const { v, hiv } = await viewer();
+    const m = v.api.mesoscale!;
+    const mode = m.paintMode as unknown as { host: { paint(...a: unknown[]): Promise<unknown> } };
+    const brush = { particles: hiv, entity: 1, name: 'NC' };
+    await mode.host.paint(brush, DefaultPaintSettings, [0, 500, 0], [0, 1, 0], 1, false);
+    expect(m.growSource.value).toEqual({ particles: hiv, index: 3 });
+    expect(m.growSettings.value.mesh).toBe(undefined);
+    await v.api.history.undo();
+    await mode.host.paint(brush, DefaultPaintSettings, [0, 50, 0], [0, 1, 0], 1, false, 'vesicle-ref');
+    expect(m.growSource.value).toEqual({ particles: hiv, index: 3 });
+    expect(m.growSettings.value.mesh).toBe('vesicle-ref');
+    // the other way: painted in space at that index again, On None (review 2)
+    await v.api.history.undo();
+    await mode.host.paint(brush, DefaultPaintSettings, [0, 500, 0], [0, 1, 0], 1, false);
+    expect(m.growSource.value).toEqual({ particles: hiv, index: 3 });
+    expect(m.growSettings.value.mesh).toBe(undefined);
+  });
+});
+
+describe("A grown fiber's Rise and Twist (paint-refine)", () => {
+  /** Drags a slider of the Grow block to `value` (its knob's: a log slider's power of ten), released there */
+  const drag = (host: HTMLElement, label: string, values: number[]) => {
+    const range = host.querySelector<HTMLInputElement>(`input[type=range][aria-label="Grow ${label}"]`)!;
+    for (const k of values) {
+      range.value = String(k);
+      range.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+    range.dispatchEvent(new Event('change', { bubbles: true }));
+  };
+
+  it('a drag of Rise or Twist after a walk redraws that fiber in place, one step a drag; another source ends it', async () => {
+    const { v, hiv } = await viewer();
+    const m = v.api.mesoscale!;
+    const host = mountScene(v);
+    await until(() => !!rowOf(host, 'HIV'));
+    rowOf(host, 'HIV')!.click();
+    await until(() => !!button(host, 'Grow'));
+    const section = button(host, 'Grow')!;
+    if (section.getAttribute('aria-expanded') !== 'true') section.click();
+    m.growSource.set({ particles: hiv, index: 2 });
+    await until(() => !!host.textContent?.includes('NC #2'));
+    choice(host, 'Mode', 'Random walk')!.click();
+    await until(() => !!host.querySelector('input[aria-label="Grow Rise"]'));
+    m.growSettings.set({ ...m.growSettings.value, steps: 10, persistence: 0, seed: 3 });
+    const grow = Array.from(host.querySelectorAll<HTMLButtonElement>('button')).filter(
+      (b) => b.textContent?.trim() === 'Grow',
+    );
+    grow[grow.length - 1].click();
+    // NC without radii: 10 Å a unit, 10 units
+    await until(() => count(v) === 3 + 10);
+    const steps = v.api.history.steps.value.length;
+    // Rise dragged to 5 Å (log knob) through 7: the same 90 Å path, 19 units; one step
+    drag(host, 'Rise', [Math.log10(7), Math.log10(5)]);
+    await until(() => count(v) === 3 + 19);
+    await until(() => v.api.history.steps.value.length === steps + 1);
+    expect(m.growSettings.value.rise).toBe(5);
+    // Twist: one more step, the units as many
+    drag(host, 'Twist', [10, 20]);
+    await until(() => v.api.history.steps.value.length === steps + 2);
+    expect(count(v)).toBe(3 + 19);
+    // undone: 5 Å, then 10 Å again
+    await v.api.history.undo();
+    await v.api.history.undo();
+    await until(() => count(v) === 3 + 10);
+    // the slider follows the fiber's own as the state has it (the undo), not the drag's
+    const box = () =>
+      host
+        .querySelector<HTMLInputElement>('input[type=range][aria-label="Grow Rise"]')!
+        .parentElement!.querySelector<HTMLInputElement>('input:not([type=range])')!;
+    await until(() => box().value === '10');
+    // and the next Grow's is the value shown (review 7)
+    await until(() => m.growSettings.value.rise === 10);
+    expect(m.growSettings.value.twist).toBe(0);
+    // another source: the fiber is not live anymore; its Rise, Twist and Jitter unset, the entity's again (review 4)
+    m.setGrowSource({ particles: hiv, index: 1 });
+    await until(() => !!host.textContent?.includes('CA #1'));
+    expect(m.growSettings.value.rise).toBeUndefined();
+    expect(m.growSettings.value.twist).toBeUndefined();
+    const now = v.api.history.steps.value.length;
+    drag(host, 'Rise', [Math.log10(4)]);
+    await new Promise((r) => setTimeout(r, 300));
+    expect(v.api.history.steps.value.length).toBe(now);
+    expect(m.growSettings.value.rise).toBe(4);
+    expect(count(v)).toBe(3 + 10);
+  });
+
+  it('a drag after the walk was undone changes the next grow only: no grown-fiber run (review 5)', async () => {
+    const { v, hiv } = await viewer();
+    const m = v.api.mesoscale!;
+    const host = mountScene(v);
+    await until(() => !!rowOf(host, 'HIV'));
+    rowOf(host, 'HIV')!.click();
+    await until(() => !!button(host, 'Grow'));
+    const section = button(host, 'Grow')!;
+    if (section.getAttribute('aria-expanded') !== 'true') section.click();
+    m.growSource.set({ particles: hiv, index: 2 });
+    await until(() => !!host.textContent?.includes('NC #2'));
+    choice(host, 'Mode', 'Random walk')!.click();
+    await until(() => !!host.querySelector('input[aria-label="Grow Rise"]'));
+    const grow = Array.from(host.querySelectorAll<HTMLButtonElement>('button')).filter(
+      (b) => b.textContent?.trim() === 'Grow',
+    );
+    grow[grow.length - 1].click();
+    await until(() => count(v) > 3);
+    await v.api.history.undo();
+    await until(() => count(v) === 3);
+    const runs: string[] = [];
+    const sub = v.api.events.finished.subscribe((r) => runs.push(r.operation));
+    drag(host, 'Rise', [Math.log10(4)]);
+    await new Promise((r) => setTimeout(r, 300));
+    sub.unsubscribe();
+    expect(runs).not.toContain('mesoscale.grown-fiber');
+    expect(m.growSettings.value.rise).toBe(4);
   });
 });
 

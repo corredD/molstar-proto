@@ -10,6 +10,8 @@ import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { Vec3 } from '@molstar/core/math/linear-algebra';
 import type { PickResult } from '@molstar/graphics/canvas3d/passes/pick';
 import { countListeners, lostReleases, pointer, stubPointerCapture } from '@molstar/prism-ui/testing/gestures';
+import type { PluginContext } from '@molstar/plugin/context';
+import { pluginPaintHost } from '../paint-host.js';
 import { type PaintHost, PaintMode } from '../paint-mode.js';
 
 // Paint mode's gesture (progress/2026-11-08-paint.md, Tests: gesture; prism AGENTS.md, gestures attach once): a stroke
@@ -31,6 +33,10 @@ function setup(
     depthRange?: [number, number];
     /** The mesh every surface read is on (grow-mesh): its state ref */
     mesh?: string;
+    /** The z of what is under (x, y) (paint-refine): undefined, nothing; default the plane z = 0 everywhere */
+    pick?: (x: number, y: number) => number | undefined;
+    /** Where the pointer is over the canvas when the mode starts (paint-refine) */
+    pointerAt?: readonly [number, number];
   } = {},
 ) {
   vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null);
@@ -49,7 +55,9 @@ function setup(
   const uprights: boolean[] = [];
   const camera = { held: 0, released: 0 };
   /** The copy under the pointer: where it was last shown (undefined: hidden), its seed, disposed */
-  const copy = { at: undefined as number[] | undefined, seed: -1, disposed: false };
+  const copy = { at: undefined as number[] | undefined, seed: -1, disposed: false, onSurface: undefined as unknown };
+  /** Each stroke's flag: its normals a surface's (paint-refine round 2) */
+  const surfaces: unknown[] = [];
   const seeds: number[] = [];
   const fibers: boolean[] = [];
   const host: PaintHost = {
@@ -63,7 +71,9 @@ function setup(
         reads--;
         return 'pending';
       }
-      return { id: { objectId: 0, instanceId: 0, groupId: 0 }, position: Vec3.create(x, -y, 0) } as PickResult;
+      const z = options.pick ? options.pick(x, y) : 0;
+      if (z === undefined) return undefined;
+      return { id: { objectId: 0, instanceId: 0, groupId: 0 }, position: Vec3.create(x, -y, z) } as PickResult;
     },
     eye: (out) => Vec3.set(out, 0, 0, 100),
     // an orthographic view down -z from z = 100, 1 Å a pixel: the ray at (x, y) from (x, -y, 100)
@@ -73,6 +83,7 @@ function setup(
       return true;
     },
     focus: () => 100,
+    pointer: () => options.pointerAt,
     ...(options.depthRange ? { depthRange: () => options.depthRange! } : {}),
     refine: (p, upright) => {
       refined.push(p.position[0]);
@@ -83,9 +94,10 @@ function setup(
     project: (out, p) => Vec3.set(out, p[0], -p[1], 0),
     radius: () => 5,
     cursor: () => ({
-      move: (p, _n, _s, seed) => {
+      move: (p, _n, _s, seed, onSurface) => {
         copy.at = [p[0], p[1], p[2]];
         copy.seed = seed;
+        copy.onSurface = onSurface;
       },
       hide: () => {
         copy.at = undefined;
@@ -95,7 +107,8 @@ function setup(
       },
     }),
     fiberStep: (_b, into) => (intos.push(into), options.fiberStep),
-    paint: async (_b, _s, positions, normals, seed, fiber, mesh) => {
+    paint: async (_b, _s, positions, normals, seed, fiber, mesh, surface) => {
+      surfaces.push(surface);
       strokes.push({ positions, normals, ...(mesh ? { mesh } : {}) });
       seeds.push(seed);
       fibers.push(fiber);
@@ -119,6 +132,7 @@ function setup(
   return {
     mode,
     layer,
+    canvas,
     strokes,
     change,
     listeners,
@@ -128,6 +142,7 @@ function setup(
     copy,
     seeds,
     fibers,
+    surfaces,
     intos,
     removeList: () => (lists = false),
   };
@@ -137,12 +152,12 @@ const brush = { particles: 'list', entity: 1, name: 'CD9' };
 
 describe('paint mode', () => {
   it('reads the fiber step for the list the brush paints into, at its start and at each stroke (follow-up review S4)', () => {
-    const { mode, layer, intos } = setup();
+    const { mode, layer, canvas, intos } = setup();
     mode.set({ into: 'hiv' });
     expect(mode.start(brush)).toBe(true);
     expect(intos).toEqual(['hiv']);
     mode.set({ into: 'model' });
-    const el = layer();
+    const el = canvas;
     el.dispatchEvent(pointer('pointerdown', { x: 10, y: 10 }));
     el.dispatchEvent(pointer('pointerup', { x: 10, y: 10 }));
     expect(intos.at(-1)).toBe('model');
@@ -150,10 +165,10 @@ describe('paint mode', () => {
   });
 
   it('a stroke: lost releases leave no listener and paint nothing; a whole stroke paints once, a copy a spacing', () => {
-    const { mode, layer, strokes } = setup();
+    const { mode, layer, canvas, strokes } = setup();
     expect(mode.start(brush)).toBe(true);
     const r = lostReleases({
-      target: layer,
+      target: () => canvas,
       from: { x: 10, y: 10 },
       to: { x: 60, y: 10 },
       reset: () => {
@@ -178,9 +193,9 @@ describe('paint mode', () => {
   });
 
   it('reads a pending pick in a later frame, and paints at the release what it read', async () => {
-    const { mode, layer, strokes } = setup(3);
+    const { mode, layer, canvas, strokes } = setup(3);
     mode.start(brush);
-    const el = layer();
+    const el = canvas;
     el.dispatchEvent(pointer('pointerdown', { x: 10, y: 10 }));
     el.dispatchEvent(pointer('pointermove', { x: 30, y: 10 }));
     // a few frames: the pick read
@@ -193,10 +208,10 @@ describe('paint mode', () => {
 
   it("refines every surface read (a mesh's for any brush), a membrane's mid-plane only for an upright brush", () => {
     for (const upright of [true, false]) {
-      const { mode, layer, strokes, refined, uprights } = setup(0, { upright });
+      const { mode, layer, canvas, strokes, refined, uprights } = setup(0, { upright });
       mode.set({ place: 'surface' });
       mode.start(brush);
-      const el = layer();
+      const el = canvas;
       el.dispatchEvent(pointer('pointerdown', { x: 10, y: 10 }));
       el.dispatchEvent(pointer('pointerup', { x: 10, y: 10 }));
       expect(strokes.length).toBe(1);
@@ -208,10 +223,10 @@ describe('paint mode', () => {
 
   it('paints a stroke on a mesh with the mesh it was read on (grow-mesh), a stroke at a depth with none', () => {
     for (const place of ['surface', 'depth'] as const) {
-      const { mode, layer, strokes } = setup(0, { upright: false, mesh: 'vesicle-ref' });
+      const { mode, layer, canvas, strokes } = setup(0, { upright: false, mesh: 'vesicle-ref' });
       mode.set({ place });
       mode.start(brush);
-      const el = layer();
+      const el = canvas;
       el.dispatchEvent(pointer('pointerdown', { x: 10, y: 10 }));
       el.dispatchEvent(pointer('pointerup', { x: 10, y: 10 }));
       expect(strokes[0].mesh).toBe(place === 'surface' ? 'vesicle-ref' : undefined);
@@ -220,9 +235,9 @@ describe('paint mode', () => {
   });
 
   it("the previous stroke's commit does not cancel the stroke drawn after it", async () => {
-    const { mode, layer, strokes } = setup(0, { changeOnPaint: true });
+    const { mode, layer, canvas, strokes } = setup(0, { changeOnPaint: true });
     mode.start(brush);
-    const el = layer();
+    const el = canvas;
     el.dispatchEvent(pointer('pointerdown', { x: 10, y: 10 }));
     el.dispatchEvent(pointer('pointerup', { x: 10, y: 10 }));
     el.dispatchEvent(pointer('pointerdown', { x: 40, y: 10 }));
@@ -235,7 +250,7 @@ describe('paint mode', () => {
   });
 
   it("its hint is drawn in Prism's tokens (light and dark), no literal color or size", () => {
-    const { mode, layer } = setup();
+    const { mode, layer, canvas } = setup();
     mode.start(brush);
     const hint = layer().querySelector<HTMLElement>('div')!;
     const css = hint.getAttribute('style') ?? '';
@@ -246,30 +261,70 @@ describe('paint mode', () => {
     mode.stop();
   });
 
-  it('Alt held lets the pointer through to the camera, never in a stroke; an Alt press paints nothing', () => {
-    const { mode, layer, strokes } = setup();
+  it('input (paint-refine): a plain left press paints; any other button, a modifier or the plain wheel is the camera', async () => {
+    const { mode, layer, canvas, strokes } = setup(0, { upright: false });
     mode.start(brush);
-    const el = layer();
-    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Alt', altKey: true }));
-    expect(el.style.pointerEvents).toBe('none');
-    window.dispatchEvent(new KeyboardEvent('keyup', { key: 'Alt' }));
-    expect(el.style.pointerEvents).toBe('');
-    // Alt pressed outside the page: read from the pointer
-    window.dispatchEvent(new PointerEvent('pointermove', { altKey: true }));
-    expect(el.style.pointerEvents).toBe('none');
-    window.dispatchEvent(new Event('blur'));
-    expect(el.style.pointerEvents).toBe('');
-    // in a stroke the layer keeps the pointer
-    el.dispatchEvent(pointer('pointerdown', { x: 10, y: 10 }));
-    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Alt', altKey: true }));
-    expect(el.style.pointerEvents).toBe('');
-    el.dispatchEvent(pointer('pointerup', { x: 10, y: 10 }));
+    // the layer over the canvas lets the pointer through
+    expect(layer().style.pointerEvents).toBe('none');
+    // a left click paints, its default prevented (no mouse events after it: the canvas's camera does not see it)
+    const down = pointer('pointerdown', { x: 10, y: 10 });
+    canvas.dispatchEvent(down);
+    canvas.dispatchEvent(pointer('pointerup', { x: 10, y: 10 }));
+    expect(down.defaultPrevented).toBe(true);
     expect(strokes.length).toBe(1);
-    // a press with Alt is the camera's
-    const init = { bubbles: true, cancelable: true, clientX: 20, clientY: 10, button: 0, buttons: 1, pointerId: 1 };
-    el.dispatchEvent(new PointerEvent('pointerdown', { ...init, altKey: true }));
-    el.dispatchEvent(pointer('pointerup', { x: 20, y: 10 }));
+    // a right press, a middle press, a left press with a modifier: not taken, nothing painted
+    const init = { bubbles: true, cancelable: true, clientX: 20, clientY: 10, pointerId: 1 };
+    for (const press of [
+      { button: 2, buttons: 2 },
+      { button: 1, buttons: 4 },
+      { button: 0, buttons: 1, altKey: true },
+      { button: 0, buttons: 1, ctrlKey: true },
+      { button: 0, buttons: 1, shiftKey: true },
+      { button: 0, buttons: 1, metaKey: true },
+    ]) {
+      const e = new PointerEvent('pointerdown', { ...init, ...press });
+      canvas.dispatchEvent(e);
+      canvas.dispatchEvent(new PointerEvent('pointermove', { ...init, ...press, clientX: 40 }));
+      canvas.dispatchEvent(new PointerEvent('pointerup', { ...init, ...press, clientX: 40, buttons: 0 }));
+      expect(e.defaultPrevented, JSON.stringify(press)).toBe(false);
+    }
     expect(strokes.length).toBe(1);
+    // the plain wheel zooms (not taken); Alt+wheel is the depth (taken, kept from the canvas)
+    const wheel = new WheelEvent('wheel', { deltaY: 100, bubbles: true, cancelable: true });
+    canvas.dispatchEvent(wheel);
+    expect(wheel.defaultPrevented).toBe(false);
+    const reached = vi.fn();
+    canvas.addEventListener('wheel', reached);
+    const alt = new WheelEvent('wheel', { deltaY: 100, altKey: true, bubbles: true, cancelable: true });
+    canvas.dispatchEvent(alt);
+    expect(alt.defaultPrevented).toBe(true);
+    expect(reached).not.toHaveBeenCalled();
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    expect(layer().textContent).toContain('Alt+wheel: depth 110 Å');
+    mode.stop();
+  });
+
+  it('touch (review 3): one finger paints and is kept from the canvas (no turn); two fingers are the camera', () => {
+    const { mode, canvas, strokes } = setup(0, { upright: false });
+    mode.start(brush);
+    const seen: number[] = [];
+    canvas.addEventListener('touchstart', (e) => seen.push((e as unknown as { touches: unknown[] }).touches.length));
+    canvas.addEventListener('touchmove', (e) => seen.push((e as unknown as { touches: unknown[] }).touches.length));
+    const touch = (type: string, n: number) => {
+      const e = new Event(type, { bubbles: true, cancelable: true });
+      Object.defineProperty(e, 'touches', { value: Array.from({ length: n }, () => ({ pageX: 0, pageY: 0 })) });
+      canvas.dispatchEvent(e);
+    };
+    const finger = { bubbles: true, cancelable: true, clientX: 10, clientY: 10, pointerId: 2, pointerType: 'touch' };
+    canvas.dispatchEvent(new PointerEvent('pointerdown', { ...finger, button: 0, buttons: 1 }));
+    touch('touchstart', 1);
+    touch('touchmove', 1);
+    canvas.dispatchEvent(new PointerEvent('pointerup', { ...finger, button: 0, buttons: 0 }));
+    expect(strokes.length).toBe(1);
+    expect(seen).toEqual([]);
+    touch('touchstart', 2);
+    touch('touchmove', 2);
+    expect(seen).toEqual([2, 2]);
     mode.stop();
   });
 
@@ -291,58 +346,104 @@ describe('paint mode', () => {
     }
   });
 
-  it('a soluble brush paints at the depth along the ray, from the focus; the wheel moves it, not with Alt', () => {
-    const { mode, layer, strokes } = setup(0, { upright: false });
+  it('a soluble brush paints at the depth along the ray, from the focus; Alt+wheel moves it, not the plain wheel', () => {
+    // nothing under the pointer: the depth is the focus's, then where Alt+wheel put it
+    const { mode, layer, canvas, strokes } = setup(0, { upright: false, pick: () => undefined });
     mode.start(brush);
-    const el = layer();
-    expect(el.textContent).toContain('depth 100 Å');
-    // a click: one copy, at the focus (100 Å from z = 100), facing the viewer, no pick read
+    const el = canvas;
+    expect(layer().textContent).toContain('Alt+wheel: depth 100 Å');
+    // a click: one copy, at the focus (100 Å from z = 100), facing the viewer
     el.dispatchEvent(pointer('pointerdown', { x: 10, y: 10 }));
     el.dispatchEvent(pointer('pointerup', { x: 10, y: 10 }));
     expect(strokes[0].positions).toEqual([10, -10, 0]);
     expect(strokes[0].normals).toEqual([-0, -0, 1]);
-    // a notch farther: a copy's diameter (10 Å)
-    el.dispatchEvent(new WheelEvent('wheel', { deltaY: 100, bubbles: true, cancelable: true }));
-    // with Alt: the camera's zoom, the depth unchanged
+    // with Alt, a notch farther: a copy's diameter (10 Å)
     el.dispatchEvent(new WheelEvent('wheel', { deltaY: 100, altKey: true, bubbles: true, cancelable: true }));
+    // without: the camera's zoom, the depth unchanged
+    el.dispatchEvent(new WheelEvent('wheel', { deltaY: 100, bubbles: true, cancelable: true }));
     el.dispatchEvent(pointer('pointerdown', { x: 20, y: 10 }));
     el.dispatchEvent(pointer('pointerup', { x: 20, y: 10 }));
     expect(strokes[1].positions).toEqual([20, -10, -10]);
     // never nearer than a copy's radius
-    el.dispatchEvent(new WheelEvent('wheel', { deltaY: -10000, bubbles: true, cancelable: true }));
+    el.dispatchEvent(new WheelEvent('wheel', { deltaY: -10000, altKey: true, bubbles: true, cancelable: true }));
     el.dispatchEvent(pointer('pointerdown', { x: 20, y: 10 }));
     el.dispatchEvent(pointer('pointerup', { x: 20, y: 10 }));
     expect(strokes[2].positions[2]).toBe(95);
     mode.stop();
   });
 
+  it('the depth (paint-refine): what is under the press, else where it was; Alt+wheel holds it for the next stroke', () => {
+    // a particle at z = -30 under x < 50, nothing elsewhere; the eye at z = 100, the focus 100 Å away
+    const { mode, canvas, strokes } = setup(0, { upright: false, pick: (x) => (x < 50 ? -30 : undefined) });
+    mode.start(brush);
+    const click = (x: number) => {
+      canvas.dispatchEvent(pointer('pointerdown', { x, y: 10 }));
+      canvas.dispatchEvent(pointer('pointerup', { x, y: 10 }));
+      return strokes[strokes.length - 1].positions[2];
+    };
+    // over nothing: the focus
+    expect(click(80)).toBe(0);
+    // on the particle: its depth
+    expect(click(10)).toBe(-30);
+    // over nothing again: where it was last
+    expect(click(80)).toBe(-30);
+    // Alt+wheel a notch nearer (10 Å): kept for the next stroke, even on the particle
+    canvas.dispatchEvent(new WheelEvent('wheel', { deltaY: -100, altKey: true, bubbles: true, cancelable: true }));
+    expect(click(10)).toBe(-20);
+    // then what is under the press again
+    expect(click(20)).toBe(-30);
+    // a drag keeps the depth of its first point
+    canvas.dispatchEvent(pointer('pointerdown', { x: 10, y: 10 }));
+    canvas.dispatchEvent(pointer('pointermove', { x: 90, y: 10 }));
+    canvas.dispatchEvent(pointer('pointerup', { x: 90, y: 10 }));
+    const ps = strokes[strokes.length - 1].positions;
+    for (let i = 2; i < ps.length; i += 3) expect(ps[i]).toBe(-30);
+    expect(ps.length / 3).toBeGreaterThan(1);
+    mode.stop();
+  });
+
   it("keeps the depth in the camera's drawn range (Round 4): the copy never past its near or far plane", () => {
     // the camera draws 60 to 130 Å from the eye; a copy's radius 5
-    const { mode, layer, strokes } = setup(0, { upright: false, depthRange: [60, 130] });
+    const { mode, layer, canvas, strokes } = setup(0, { upright: false, depthRange: [60, 130] });
     mode.start(brush);
-    const el = layer();
+    const el = canvas;
     const at = (x: number) => {
       el.dispatchEvent(pointer('pointerdown', { x, y: 10 }));
       el.dispatchEvent(pointer('pointerup', { x, y: 10 }));
       return strokes[strokes.length - 1].positions[2];
     };
-    el.dispatchEvent(new WheelEvent('wheel', { deltaY: -10000, bubbles: true, cancelable: true }));
+    el.dispatchEvent(new WheelEvent('wheel', { deltaY: -10000, altKey: true, bubbles: true, cancelable: true }));
     // 65 Å from the eye at z = 100
     expect(at(10)).toBe(35);
-    el.dispatchEvent(new WheelEvent('wheel', { deltaY: 10000, bubbles: true, cancelable: true }));
+    el.dispatchEvent(new WheelEvent('wheel', { deltaY: 10000, altKey: true, bubbles: true, cancelable: true }));
     expect(at(20)).toBe(-25);
     mode.stop();
   });
 
   it("N2: starts the depth inside the camera's drawn range too", () => {
     // the focus 100 Å away, the camera drawing 10 to 50 Å: a copy's radius (5) inside the far plane
-    const { mode, layer, strokes } = setup(0, { upright: false, depthRange: [10, 50] });
+    const { mode, layer, canvas, strokes } = setup(0, { upright: false, depthRange: [10, 50] });
     mode.start(brush);
-    const el = layer();
+    const el = canvas;
     el.dispatchEvent(pointer('pointerdown', { x: 10, y: 10 }));
     el.dispatchEvent(pointer('pointerup', { x: 10, y: 10 }));
     expect(strokes[0].positions[2]).toBe(55);
     mode.stop();
+  });
+
+  it('on a surface (paint-refine round 2): the stroke and the copy say so, any brush; at a depth not', async () => {
+    for (const place of ['surface', 'depth'] as const) {
+      const { mode, canvas, surfaces, copy } = setup(0, { upright: false, pointerAt: [10, 10] });
+      mode.set({ place });
+      mode.start(brush);
+      await new Promise((resolve) => setTimeout(resolve, 40));
+      expect(copy.onSurface, place).toBe(place === 'surface');
+      canvas.dispatchEvent(pointer('pointerdown', { x: 10, y: 10 }));
+      canvas.dispatchEvent(pointer('pointerup', { x: 10, y: 10 }));
+      expect(surfaces, place).toEqual([place === 'surface']);
+      mode.stop();
+      document.body.innerHTML = '';
+    }
   });
 
   it('Place: a membrane protein on the surface by default, at the depth when asked; anything else the other way', () => {
@@ -351,10 +452,10 @@ describe('paint mode', () => {
       [true, 'depth', 0],
       [false, 'surface', 0],
     ] as const) {
-      const { mode, layer, strokes, refined } = setup(0, { upright });
+      const { mode, layer, canvas, strokes, refined } = setup(0, { upright });
       mode.set({ place });
       mode.start(brush);
-      const el = layer();
+      const el = canvas;
       el.dispatchEvent(pointer('pointerdown', { x: 10, y: 10 }));
       el.dispatchEvent(pointer('pointerup', { x: 10, y: 10 }));
       expect(strokes[0].positions[2]).toBe(z);
@@ -365,9 +466,9 @@ describe('paint mode', () => {
   });
 
   it('a copy follows the pointer where a click puts it; the click paints it with its seed; hidden off the canvas', async () => {
-    const { mode, layer, strokes, copy, seeds } = setup(0, { upright: false });
+    const { mode, layer, canvas, strokes, copy, seeds } = setup(0, { upright: false });
     mode.start(brush);
-    const el = layer();
+    const el = canvas;
     const frame = () => new Promise((resolve) => setTimeout(resolve, 40));
     const over = (x: number, y: number) =>
       el.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, clientX: x, clientY: y }));
@@ -391,11 +492,6 @@ describe('paint mode', () => {
     await frame();
     // the next copy shown is the next stroke's
     expect(copy.seed).not.toBe(shown);
-    // Alt: the camera's, no copy
-    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Alt', altKey: true }));
-    await frame();
-    expect(copy.at).toBeUndefined();
-    window.dispatchEvent(new KeyboardEvent('keyup', { key: 'Alt' }));
     over(40, 20);
     await frame();
     expect(copy.at).toEqual([40, -20, 0]);
@@ -406,6 +502,74 @@ describe('paint mode', () => {
     expect(copy.disposed).toBe(true);
   });
 
+  it('the first moment (paint-refine): started with the pointer over the canvas, the copy shows there before any move', async () => {
+    const { mode, canvas, strokes, copy, seeds } = setup(0, { upright: false, pointerAt: [30, 20] });
+    mode.start(brush);
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    // no pointer event yet: shown where the pointer is, at the depth of what is under it (the plane z = 0)
+    expect(copy.at).toEqual([30, -20, 0]);
+    const shown = copy.seed;
+    // the first click paints where it was shown
+    canvas.dispatchEvent(pointer('pointerdown', { x: 30, y: 20 }));
+    canvas.dispatchEvent(pointer('pointerup', { x: 30, y: 20 }));
+    expect(strokes[0].positions).toEqual([30, -20, 0]);
+    expect(seeds[0]).toBe(shown);
+    mode.stop();
+    // off the canvas at the start: nothing shown until it comes over
+    const off = setup(0, { upright: false });
+    off.mode.start(brush);
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    expect(off.copy.at).toBeUndefined();
+    off.mode.stop();
+  });
+
+  it('at a depth, a pick not read yet still shows the copy, at the depth it has (review 8)', async () => {
+    const { mode, copy } = setup(1000, { upright: false, pointerAt: [30, 20] });
+    mode.start(brush);
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    expect(copy.at).toEqual([30, -20, 0]);
+    mode.stop();
+  });
+
+  it('over nothing, the depth is kept in the drawn range as the camera zooms (review N2)', async () => {
+    const range: [number, number] = [10, 200];
+    const { mode, copy } = setup(0, { upright: false, pointerAt: [30, 20], pick: () => undefined, depthRange: range });
+    mode.start(brush);
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    expect(copy.at).toEqual([30, -20, 0]);
+    // zoomed out: the camera draws from 150 Å; the copy a radius (5) inside it
+    range[0] = 150;
+    range[1] = 300;
+    mode.set({ spin: 10 });
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    expect(copy.at).toEqual([30, -20, -55]);
+    mode.stop();
+  });
+
+  it("the viewer's host knows where the pointer is over the canvas, from its last move in the page", () => {
+    const canvas = document.createElement('canvas');
+    document.body.append(canvas);
+    vi.spyOn(canvas, 'getBoundingClientRect').mockReturnValue({ left: 100, top: 50 } as DOMRect);
+    // what is under the point now (a menu over the canvas just closed: its :hover is not read again yet; review 11)
+    let under: Element | null = canvas;
+    vi.spyOn(canvas, 'matches').mockReturnValue(false);
+    Object.defineProperty(document, 'elementFromPoint', { configurable: true, value: () => under });
+    const plugin = { canvas3dContext: { canvas } } as unknown as PluginContext;
+    const host = pluginPaintHost(plugin, async () => ({ ok: true }));
+    // no move yet: not known
+    expect(host.pointer!()).toBeUndefined();
+    document.dispatchEvent(new PointerEvent('pointermove', { clientX: 110, clientY: 70 }));
+    expect(host.pointer!()).toEqual([10, 20]);
+    // something else there (a panel): none
+    under = document.body;
+    expect(host.pointer!()).toBeUndefined();
+    under = canvas;
+    host.dispose();
+    document.dispatchEvent(new PointerEvent('pointermove', { clientX: 130, clientY: 70 }));
+    expect(host.pointer!()).toEqual([10, 20]);
+    delete (document as { elementFromPoint?: unknown }).elementFromPoint;
+  });
+
   it("a brush with fibers paints a fiber by default, its points its fibers' step apart; Fiber overrides it", () => {
     for (const [fiberStep, setting, painted, points] of [
       [3, 'auto', true, 11],
@@ -413,11 +577,11 @@ describe('paint mode', () => {
       [3, 'off', false, 3],
       [undefined, 'on', true, 4],
     ] as const) {
-      const { mode, layer, fibers, strokes } = setup(0, { upright: true, fiberStep });
+      const { mode, layer, canvas, fibers, strokes } = setup(0, { upright: true, fiberStep });
       mode.set({ fiber: setting });
       mode.start(brush);
-      const el = layer();
-      expect(el.textContent?.includes('a fiber of'), `${fiberStep} ${setting}`).toBe(painted);
+      const el = canvas;
+      expect(layer().textContent?.includes('a fiber of'), `${fiberStep} ${setting}`).toBe(painted);
       el.dispatchEvent(pointer('pointerdown', { x: 10, y: 10 }));
       el.dispatchEvent(pointer('pointermove', { x: 40, y: 10 }));
       el.dispatchEvent(pointer('pointerup', { x: 40, y: 10 }));
@@ -433,9 +597,9 @@ describe('paint mode', () => {
   });
 
   it('the copy under the pointer stays still during a stroke on a surface: no redraw of the pick a frame (review S2)', async () => {
-    const { mode, layer, copy } = setup(0, { upright: true });
+    const { mode, layer, canvas, copy } = setup(0, { upright: true });
     mode.start(brush);
-    const el = layer();
+    const el = canvas;
     vi.spyOn(MouseEvent.prototype, 'offsetX', 'get').mockImplementation(function (this: MouseEvent) {
       return this.clientX;
     });
@@ -457,7 +621,7 @@ describe('paint mode', () => {
   it('Esc leaves the mode: its layer, its listeners and its brush gone', () => {
     const counter = countListeners();
     try {
-      const { mode, layer, listeners } = setup();
+      const { mode, layer, canvas, listeners } = setup();
       const before = counter.count;
       mode.start(brush);
       expect(layer()).toBeTruthy();
@@ -472,9 +636,9 @@ describe('paint mode', () => {
   });
 
   it('a change of the state while drawing cancels the stroke; the list removed ends the mode', () => {
-    const { mode, layer, strokes, change, removeList } = setup();
+    const { mode, layer, canvas, strokes, change, removeList } = setup();
     mode.start(brush);
-    const el = layer();
+    const el = canvas;
     el.dispatchEvent(pointer('pointerdown', { x: 10, y: 10 }));
     el.dispatchEvent(pointer('pointermove', { x: 40, y: 10 }));
     change();
@@ -487,7 +651,7 @@ describe('paint mode', () => {
   });
 
   it('another brush replaces the first; nothing to paint over without a canvas', () => {
-    const { mode, layer } = setup();
+    const { mode, layer, canvas } = setup();
     mode.start(brush);
     mode.start({ ...brush, entity: 2, name: 'CD63' });
     expect(document.querySelectorAll('.msp-paint-layer').length).toBe(1);

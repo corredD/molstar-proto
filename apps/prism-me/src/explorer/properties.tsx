@@ -428,7 +428,7 @@ export const Sections: readonly Section[] = [
       !!api.mesoscale &&
       !!picked.node &&
       ('particles' in picked.node || picked.kind === 'mesoscale model' || picked.kind === 'particle list'),
-    render: ({ api, picked }) => <GrowBlock area={api.mesoscale!} particles={picked.node!.ref} />,
+    render: ({ api, picked }) => <GrowBlock area={api.mesoscale!} api={api} particles={picked.node!.ref} />,
   },
   {
     // a model's entity's fibers (progress/2026-11-08-paint.md, Round 3): its painted fibers' rise, twist and jitter

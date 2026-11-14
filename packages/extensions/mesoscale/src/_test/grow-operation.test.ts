@@ -19,6 +19,7 @@ import {
 } from '@molstar/plugin/state/transforms/particles/ops';
 import { ParticleListPainted, type PaintStroke } from '../paint.js';
 import { MesoscaleExtension } from '../prism-viewer.js';
+import { observableState } from '@molstar/prism-ui/reactive/observable-state';
 import { Sphere } from '@molstar/graphics/geo/primitive/sphere';
 import { PluginStateObject as SO } from '@molstar/plugin/state/objects';
 import { OrderedSet } from '@molstar/core/data/int';
@@ -189,6 +190,83 @@ describe('mesoscale.grow', () => {
     expect(Array.from(list.entities!.slice(7))).toEqual(new Array(12).fill(2));
   });
 
+  it("a walk's own Rise and Twist (paint-refine): its units r apart, each turned t; Rise changed after: the same path, one step, the entity's other fibers as they were", async () => {
+    const v = await viewer();
+    const ref = entry(v).cell.transform.ref;
+    // a fiber of NC grown first, by the entity's settings (10 Å, no twist): it stays as it is
+    expectOk(await v.api.run('mesoscale.grow', { particles: ref, index: 3, mode: 'walk', steps: 5, seed: 1 }));
+    const other = Array.from(drawn(v).coordinates.slice(21, 36));
+    const walk = { particles: ref, index: 3, mode: 'walk', steps: 6, persistence: 0, seed: 2 };
+    const r = await v.api.run('mesoscale.grow', { ...walk, rise: 6, twist: 30 });
+    expectOk(r);
+    const id = (r.value as { id: number }).id;
+    let list = drawn(v);
+    expect(list.count).toBe(7 + 5 + 6);
+    const angle = (a: Quat, b: Quat) => (2 * Math.acos(Math.min(1, Math.abs(Quat.dot(a, b)))) * 180) / Math.PI;
+    for (let i = 13; i < 18; ++i) {
+      expect(Vec3.distance(xyz(list, i), xyz(list, i - 1))).toBeCloseTo(6, 3);
+      expect(angle(quat(list, i), quat(list, i - 1))).toBeCloseTo(30, 3);
+    }
+    const start = xyz(list, 12);
+    const along = Vec3.normalize(Vec3(), Vec3.sub(Vec3(), xyz(list, 17), start));
+    const before = steps(v);
+    // Rise changed: the same path, its units 4 Å apart, the twist kept; one step
+    expectOk(await v.api.run('mesoscale.grown-fiber', { particles: ref, grow: id, rise: 4 }));
+    expect(steps(v)).toBe(before + 1);
+    list = drawn(v);
+    expect(Array.from(list.coordinates.slice(21, 36))).toEqual(other);
+    expect(list.count).toBeGreaterThan(7 + 5 + 6);
+    expect(Vec3.distance(xyz(list, 12), start)).toBeCloseTo(0, 3);
+    for (let i = 13; i < list.count; ++i) {
+      const d = Vec3.sub(Vec3(), xyz(list, i), xyz(list, i - 1));
+      expect(Vec3.magnitude(d)).toBeCloseTo(4, 3);
+      expect(Vec3.dot(Vec3.normalize(d, d), along)).toBeCloseTo(1, 4);
+      expect(angle(quat(list, i), quat(list, i - 1))).toBeCloseTo(30, 3);
+    }
+    // undone: 6 Å again; the grow undone: the fiber gone, nothing to change, no step
+    expectOk(await v.api.run('history.undo', {}));
+    expect(drawn(v).count).toBe(7 + 5 + 6);
+    expectOk(await v.api.run('history.undo', {}));
+    const after = steps(v);
+    expect(await v.api.run('mesoscale.grown-fiber', { particles: ref, grow: id, twist: 10 })).toMatchObject({
+      ok: false,
+      code: 'not-found',
+    });
+    expect(steps(v)).toBe(after);
+    expect(Array.from(drawn(v).coordinates.slice(21, 36))).toEqual(other);
+  });
+
+  it('refuses a grown fiber of more units than a grow makes (review 9): no step', async () => {
+    const v = await viewer();
+    const ref = entry(v).cell.transform.ref;
+    // 1000 points 50 Å apart: about 50000 Å of path, 100000 units at 0.5 Å
+    const walk = { particles: ref, index: 3, mode: 'walk', steps: 1000, rise: 50, seed: 1 };
+    const r = await v.api.run('mesoscale.grow', walk);
+    expectOk(r);
+    const before = steps(v);
+    expect(
+      await v.api.run('mesoscale.grown-fiber', { particles: ref, grow: (r.value as { id: number }).id, rise: 0.5 }),
+    ).toMatchObject({ ok: false, code: 'invalid' });
+    expect(steps(v)).toBe(before);
+  });
+
+  it("reads a grown fiber's rise in effect as its source's (a structure painted: its length along its axis)", async () => {
+    const v = await viewer();
+    const structure = v.plugin.managers.structure.hierarchy.current.structures[0].cell.transform.ref;
+    expectOk(await v.api.run('mesoscale.paint', { structure, particles: '', positions: [0, 0, 0] }));
+    const painting = v.plugin.managers.particles.hierarchy.current.lists.find((l) => l.cell.obj?.label === 'Painting')!;
+    const particles = painting.cell.transform.ref;
+    const r = await v.api.run('mesoscale.grow', { particles, index: 0, mode: 'walk', steps: 3, seed: 1 });
+    expectOk(r);
+    const m = v.api.mesoscale!;
+    m.growSource.set({ particles, index: 0 });
+    const source = m.growSourceState().value!;
+    const at = observableState({ particles, grow: (r.value as { id: number }).id });
+    const grown = m.grownFiberState(at.asReadonly).value!;
+    expect(source.rise).not.toBe(10);
+    expect(grown.rise).toBeCloseTo(source.rise, 6);
+  });
+
   it('grows from the source where it is drawn after Move this instance (review S1)', async () => {
     const v = await viewer();
     const ref = entry(v).cell.transform.ref;
@@ -290,7 +368,7 @@ describe('mesoscale.grow', () => {
 // it.
 
 /** An OBJ of a sphere of `radius` about `center` (an icosphere, detail 3) */
-function sphereObj(radius: number, center: Vec3) {
+function sphereObj(radius: number, center: Vec3, inward = false) {
   const { vertices, indices } = Sphere(3);
   const lines: string[] = [];
   for (let i = 0; i < vertices.length; i += 3) {
@@ -299,7 +377,11 @@ function sphereObj(radius: number, center: Vec3) {
     );
   }
   for (let i = 0; i < indices.length; i += 3)
-    lines.push(`f ${indices[i] + 1} ${indices[i + 1] + 1} ${indices[i + 2] + 1}`);
+    lines.push(
+      inward
+        ? `f ${indices[i] + 1} ${indices[i + 2] + 1} ${indices[i + 1] + 1}`
+        : `f ${indices[i] + 1} ${indices[i + 1] + 1} ${indices[i + 2] + 1}`,
+    );
   return lines.join('\n');
 }
 
@@ -364,6 +446,76 @@ describe('mesoscale.grow on a mesh', () => {
     for (let i = 7; i < 19; ++i) {
       expect(Vec3.distance(xyz(drawn(v), i), centre)).toBeCloseTo(100, 0);
       expect(Vec3.distance(xyz(drawn(v), i), Vec3.create(20, 0, 0))).toBeLessThanOrEqual(15.001);
+    }
+  });
+
+  it("a walk on a mesh (paint-refine round 2): its units' up (their offset) along the normal, turned by the twist", async () => {
+    const v = await viewer();
+    const ref = entry(v).cell.transform.ref;
+    expectOk(await v.api.load.files({ files: [new File([sphereObj(100, Vec3.create(-80, 0, 0))], 'vesicle.obj')] }));
+    const { repr } = meshCells(v);
+    const centre = Vec3.create(-80, 0, 0);
+    // each unit 5 Å off the path along its up
+    expectOk(await v.api.run('mesoscale.fiber', { entity: 'CA', offset: 5 }));
+    const walk = { particles: ref, index: 2, mesh: repr, mode: 'walk', steps: 8, seed: 1 };
+    // no twist: every unit 5 Å off the surface, on one side
+    expectOk(await v.api.run('mesoscale.grow', { ...walk, twist: 0 }));
+    const off = (i: number) => Vec3.distance(xyz(drawn(v), i), centre) - 100;
+    const side = Math.sign(off(7));
+    for (let i = 7; i < 15; ++i) expect(off(i) * side).toBeCloseTo(5, 0);
+    expectOk(await v.api.run('history.undo', {}));
+    // half a turn a unit: the sides alternate
+    expectOk(await v.api.run('mesoscale.grow', { ...walk, twist: 180 }));
+    for (let i = 7; i < 15; ++i) expect(off(i) * side * (i % 2 ? 1 : -1)).toBeCloseTo(5, 0);
+  });
+
+  it("a walk on a mesh: its units' up on the source's side (its +z), whatever the mesh's winding (review S7)", async () => {
+    for (const inward of [false, true]) {
+      const v = await viewer();
+      const ref = entry(v).cell.transform.ref;
+      // CA #2 at (20, 0, 0), unturned (+z up), at the top of a vesicle of 100 Å about (20, 0, -100)
+      const centre = Vec3.create(20, 0, -100);
+      const obj = sphereObj(100, centre, inward);
+      expectOk(await v.api.load.files({ files: [new File([obj], 'vesicle.obj')] }));
+      const { repr } = meshCells(v);
+      expectOk(await v.api.run('mesoscale.fiber', { entity: 'CA', offset: 5 }));
+      const walk = { particles: ref, index: 2, mesh: repr, mode: 'walk', steps: 6, seed: 1, twist: 0 };
+      expectOk(await v.api.run('mesoscale.grow', walk));
+      for (let i = 7; i < 13; ++i) expect(Vec3.distance(xyz(drawn(v), i), centre) - 100, `${inward}`).toBeCloseTo(5, 0);
+      await v.dispose();
+      viewers.splice(viewers.indexOf(v), 1);
+    }
+  });
+
+  it('a copy painted on a tilted mesh and the Tiling and Sphere grown from it share its axis along the normal (round 3)', async () => {
+    const v = await viewer();
+    const ref = entry(v).cell.transform.ref;
+    // a plane through (0, 50, 0), its normal (1, 0, 1)/√2: 400 Å a side, two triangles wound toward the normal
+    const n = Vec3.normalize(Vec3(), Vec3.create(1, 0, 1));
+    const u = Vec3.create(0, 1, 0);
+    const w = Vec3.cross(Vec3(), u, n);
+    const c = Vec3.create(0, 50, 0);
+    const corner = (a: number, b: number) =>
+      Vec3.scaleAndAdd(Vec3(), Vec3.scaleAndAdd(Vec3(), c, w, a * 200), u, b * 200);
+    const vs = [corner(-1, -1), corner(1, -1), corner(1, 1), corner(-1, 1)];
+    const obj = `${vs.map((x) => `v ${x[0]} ${x[1]} ${x[2]}`).join('\n')}\nf 1 2 3\nf 1 3 4\n`;
+    expectOk(await v.api.load.files({ files: [new File([obj], 'plane.obj')] }));
+    const { repr } = meshCells(v);
+    // loose (1CRN, not a membrane protein: its principal axis ~47° off +z) painted on it: +z along the normal
+    expectOk(
+      await v.api.run('mesoscale.paint', { entity: 'loose', positions: [...c], normals: [...n], surface: true }),
+    );
+    const zAt = (i: number) => Vec3.transformQuat(Vec3(), Vec3.create(0, 0, 1), quat(drawn(v), i));
+    expect(Vec3.dot(zAt(7), n)).toBeCloseTo(1, 5);
+    for (const params of [
+      { mode: 'tiling', spacing: 40, count: 7 },
+      { mode: 'sphere', count: 6, radius: 80, seed: 2 },
+    ]) {
+      expectOk(await v.api.run('mesoscale.grow', { particles: ref, index: 7, mesh: repr, ...params }));
+      const list = drawn(v);
+      expect(list.count, params.mode).toBeGreaterThan(8);
+      for (let i = 8; i < list.count; ++i) expect(Vec3.dot(zAt(i), n), `${params.mode} ${i}`).toBeCloseTo(1, 4);
+      expectOk(await v.api.run('history.undo', {}));
     }
   });
 

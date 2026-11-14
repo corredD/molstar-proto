@@ -14,6 +14,7 @@ import { ShellModel } from '@molstar/prism-ui/shell/shell';
 import { DefaultPrismViewerSpec } from '@molstar/prism-viewer/default-spec';
 import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
 import type { PrismViewer } from '@molstar/prism-viewer/viewer';
+import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it } from 'vitest';
 import { MesoscaleExplorerExtensions } from '../../extensions.js';
 import { nodeMenuItems } from '../menu.js';
@@ -150,5 +151,53 @@ describe('Paint with …', () => {
     expect(mode.settings.value.spin).toBe(0);
     // the brush's settings are the mode's: no history step
     expect(v.api.history.steps.value.length).toBe(steps);
+  });
+});
+
+describe('Paint on: its section in the properties (paint-refine round 3)', () => {
+  it("opens the brush's row and its Paint section, in view, from anywhere the mode starts; off leaves them", async () => {
+    const { v, hiv } = await viewer();
+    const crn = readFileSync('data/examples/1crn.cif');
+    const loaded = await v.api.load.files({ files: [new File([crn], '1crn.cif')] });
+    if (!loaded.ok) throw new Error(loaded.message);
+    const structure = v.plugin.managers.structure.hierarchy.current.structures[0].cell.transform.ref;
+    const scrolled: string[] = [];
+    // jsdom has no scrolling: what is brought into view, recorded
+    Object.defineProperty(Element.prototype, 'scrollIntoView', {
+      configurable: true,
+      value(this: Element) {
+        const id = this.getAttribute('data-section');
+        if (id) scrolled.push(id);
+      },
+    });
+    try {
+      const host = mountScene(v);
+      await until(() => !!rowOf(host, 'HIV'));
+      const section = (id: string) => host.querySelector<HTMLElement>(`[data-section="${id}"]`);
+      const open = (id: string) => section(id)?.querySelector('button')?.getAttribute('aria-expanded') === 'true';
+      const picked = () => host.querySelector('[aria-selected="true"] [data-tip-overflow]')?.textContent;
+      const mode = v.api.mesoscale!.paintMode;
+      // an entity brush (as Paint with, the Paint button, ⌘K, the assistant: the mode's brush set)
+      mode.brush.set({ particles: hiv, entity: 0, name: 'CA' });
+      await until(() => open('paint'));
+      expect(picked()).toBe('CA');
+      await until(() => scrolled.includes('paint'));
+      // a brush with no row (review 4): the person's pick kept
+      mode.brush.set(undefined);
+      mode.brush.set({ particles: hiv, entity: 999, name: 'x' });
+      await new Promise((r) => setTimeout(r, 50));
+      expect(picked()).toBe('CA');
+      // off: the panel as it is
+      mode.brush.set(undefined);
+      await new Promise((r) => setTimeout(r, 50));
+      expect(open('paint')).toBe(true);
+      // a structure brush: its row, its Paint
+      mode.brush.set({ particles: '', entity: -1, name: '1CRN', structure });
+      await until(() => open('paint-structure'));
+      expect(picked()).toBe('1CRN');
+      await until(() => scrolled.includes('paint-structure'));
+    } finally {
+      delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+    }
   });
 });
