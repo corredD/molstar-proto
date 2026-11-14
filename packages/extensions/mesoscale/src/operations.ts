@@ -1219,7 +1219,8 @@ export class MesoscaleApi extends ApiArea {
       // a fiber stroke keeps its path and a seed: its points are made by the decorator from the entity's fiber settings
       // (progress/2026-11-08-paint.md, Round 3); a click (one point) is a copy, turned as the one shown under the pointer
       // (review S4)
-      const asFiber = !!fiber && k >= 2;
+      // a group's strokes are copies (paint-group, review S2): its fibers are grown
+      const asFiber = !!fiber && k >= 2 && group === undefined;
       const drawn = seed ?? Math.floor(Math.random() * 2 ** 31);
       const rotations = asFiber
         ? []

@@ -286,7 +286,9 @@ function paintLayer(mode: PaintMode, host: PaintHost, canvas: HTMLElement, brush
   /** The brush's fibers' rise (Round 3): undefined when it makes none; read again at each stroke's start */
   let fiberStep = host.fiberStep(brush, mode.settings.value.into);
   /** Whether the stroke is a new fiber (the settings' Fiber, or the brush's own: `auto`, when it has fibers) */
-  const fiberOf = (s: PaintSettings) => s.fiber === 'on' || (s.fiber === 'auto' && fiberStep !== undefined);
+  // a group's strokes are copies (paint-group, review S2): its fibers are grown
+  const fiberOf = (s: PaintSettings) =>
+    brush.group === undefined && (s.fiber === 'on' || (s.fiber === 'auto' && fiberStep !== undefined));
   let fiber = fiberOf(mode.settings.value);
   /** Strokes painted and not committed yet: their own change of the state is not an undo */
   let committing = 0;

@@ -349,4 +349,45 @@ describe('mesoscale.group', () => {
     expect(m.groupPick.state.value?.instances).toEqual([]);
     m.groupPick.stop();
   });
+
+  it("paints a group's stroke as copies, Fiber On or not (its fibers are grown; review S2)", async () => {
+    const v = await viewer();
+    const g = await grouped(v);
+    expectOk(
+      await v.api.run('mesoscale.paint', {
+        entity: '',
+        group: g.group,
+        positions: [0, 0, 300, 200, 0, 300],
+        normals: [0, 0, 1, 0, 0, 1],
+        fiber: true,
+        seed: 4,
+      }),
+    );
+    const last = params(v).strokes.at(-1)!;
+    expect(last.fiber).toBeUndefined();
+    expect(drawn(v).count).toBe(10 + 6);
+  });
+
+  it('grows a random walk from a group copy: its points group copies, each found again (review S6)', async () => {
+    const v = await viewer();
+    const g = await grouped(v);
+    expectOk(
+      await v.api.run('mesoscale.paint', {
+        entity: '',
+        group: g.group,
+        positions: [0, 0, 300],
+        normals: [0, 0, 1],
+        seed: 4,
+      }),
+    );
+    const r = await v.api.run('mesoscale.grow', { particles: ref(v), index: 12, mode: 'walk', steps: 5, seed: 2 });
+    expectOk(r);
+    const grown = params(v).strokes.at(-1)!;
+    expect(grown).toMatchObject({ group: g.group, fiber: true });
+    const n = drawn(v).count;
+    expect((n - 13) % 3).toBe(0);
+    expect(n - 13).toBeGreaterThanOrEqual(6);
+    // its last copy a group copy whole
+    expect(v.api.mesoscale!.instanceAt(ref(v), n - 1)).toEqual({ first: n - 3, count: 3, group: 'Group 1' });
+  });
 });
