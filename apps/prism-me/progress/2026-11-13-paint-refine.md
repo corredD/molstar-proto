@@ -260,3 +260,63 @@ prism-me tests 430 passed (54 files).
 - A fiber painted on a surface (Fiber On) keeps no normals: its units' up does not follow the surface (a grown walk's
   does).
 - No test through the real host that the copy shown equals the copy painted (S5).
+
+# Round 3 (Ludo, 2026-11-13, via the coordinator)
+
+## Built (round 3)
+
+1. **Tiles not aligned to the surface** ("after placing an instance on a surface with painting, then grow tiling, the
+   tiled instances are not aligned"). Cause 1 (reproduced in a test, 0.68 = cos 47°): on a mesh, Tiling and Sphere
+   turned a non-membrane source's **principal axis** onto the normal, paint its +z (round 2's S2): 1CRN's principal axis
+   is ~47° off +z, so every tile stood tilted against the copy it grew from. On a mesh Tiling, Sphere and the walk's
+   first normal now take paint's axis (797eb3430); in space (On None) Tiling's plane is still the principal axis's.
+   Cause 2, checked: Grow's On defaulted to the capsid after a paint (Place Surface and Place Auto alike) in the app;
+   the one way it stayed wrong was a copy painted again at the same index after an undo (setGrowSource returned early):
+   On now follows it, onto a mesh (29c09f799) or off it (17d3529fc); the same source picked by its right-click keeps the
+   person's On.
+2. **Paint on opens its Paint section** (d31cfc2bc, 3594173c9). The toggles: the Paint/Stop button in the Paint section
+   (controls.tsx PaintBrush) and the row's right-click Paint with (menu.ts paintItems); no ⌘K command or assistant tool
+   starts the mode (`mesoscale.paint` paints a stroke), a script through `paintMode.start` does. All set the mode's
+   brush: the explorer follows it, picks the brush's row (an entity's `me:`, a structure's `o:`), opens its Paint
+   section and brings it into view. Off leaves the panel. A brush with no row yet keeps the pick; pressed in the section
+   itself it only scrolls.
+
+## Review (round 3: lane-reviewer, then lane-skeptic)
+
+| Finding                                                        | Skeptic                             | Outcome             |
+| -------------------------------------------------------------- | ----------------------------------- | ------------------- |
+| 1 ui.md 566/568, Paint-on not in the spec, no changelog (must) | confirmed                           | fixed (this commit) |
+| 2 repainted in space at the same index: On stays the mesh      | confirmed                           | fixed 17d3529fc     |
+| 3 a fiber unit as the source: its axis is tangent to the mesh  | confirmed, wider (every fiber unit) | open (below)        |
+| 4 the pick cleared for a brush with no row                     | confirmed / plausible               | fixed 3594173c9     |
+| 5 Paint pressed in its section remade the properties           | confirmed                           | fixed 3594173c9     |
+| 6 a section not found stays asked for (raised should)          | confirmed                           | fixed 3594173c9     |
+| 7 meshUnder computed then discarded                            | confirmed                           | fixed 17d3529fc     |
+| 8 the scrollIntoView stub not in a finally                     | confirmed                           | fixed 3594173c9     |
+| 9 the brush subscription never unsubscribed                    | plausible (a UI re-attach)          | open                |
+| N1 a source painted with Turn Axis/View/Random is turned too   | plausible (since grow-mesh)         | open                |
+| N2 a fiber unit's walk side should be its offset direction     | confirmed                           | open (with 3)       |
+
+## Checked in the app (round 3, port 1367)
+
+The HIV capsid VTP and 1CRN: Paint with 1CRN, Place Surface, three clicks on the capsid, then the Grow section's Tiling
+and its Grow button: On showed capsid_tiling.vtp; 36 tiles; each tile's +z against its nearest triangle's normal ≥
+0.9995, the source's 1.0000 (the VTP read in node). With Place Auto: On the capsid too. Screenshots in
+/private/tmp/claude-501/-Users-ludovicautin-molstar-proto-git/bc8a7dcf-b4ed-4027-911e-5f56df74a469/scratchpad/paint-refine/:
+`n-6-tiling-aligned.png`, `n-6-tiling-aligned-place-auto.png`. Paint on from a script with no row picked: the 1CRN row
+picked, its Paint section open (`n-5-paint-panel.png`). Scripts: ~/prism-me-lanes/paint-refine-capsid6.cjs,
+paint-refine-panel.cjs.
+
+## Checks (round 3)
+
+`npx tsc -b`, `npx tsc --noEmit -p apps/prism-me`: clean; `pnpm lint` clean; `format:check` only `progress/current.md`
+(as on origin); mesoscale and prism-me tests 433 passed (54 files).
+
+## Open (round 3)
+
+- A fiber painted on a surface: its units' axis follows the path (tangent), so a Grow from its last unit turns the
+  copies ~90° off it and the walk's side is the winding's (reviews 3, N2). One rule for a fiber unit as a source (its
+  offset direction as its up?) is a decision.
+- A source painted with Turn Axis, View or Random is turned onto the normal by grow on a mesh anyway (N1, since
+  grow-mesh).
+- The explorer's brush subscription lives as long as the viewer (a UI re-attach would add one).

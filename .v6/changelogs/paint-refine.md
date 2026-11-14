@@ -15,3 +15,7 @@
   stays upright), spun at random about it; at a depth as before. `mesoscale.paint` takes `surface`. A Random walk grown
   on a mesh keeps the surface's normal at each point: its units' up (their offset) follows it, on the source's side,
   turned from there by the twist.
+- Round 3: Grow on a mesh turns its copies as paint does (a membrane protein's +z, else the Fiber Axis when set, else
+  +z), so a tiling or sphere grown from a copy painted on the surface lines up with it (it used the source's principal
+  axis). Grow's On follows a copy painted again at the same index after an undo. Paint on (its button, Paint with)
+  picks the brush's row and opens its Paint section in view.
