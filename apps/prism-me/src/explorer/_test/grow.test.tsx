@@ -631,7 +631,7 @@ describe('Grow › Spiral (grow-helix round 3)', () => {
     expect(strokesOf(v)[0]?.grow?.mode).toBe('spiral');
     // the turns it reached, shown
     const turns = (strokesOf(v)[0]?.grow?.params as { turns: number }).turns;
-    await until(() => !!host.textContent?.includes(`${turns}`));
+    await until(() => !!host.textContent?.includes(`${turns}, 20 copies`));
     const first = coordinates(v, 3, 23);
     const steps = v.api.history.steps.value.length;
     dragGrow(host, 'Count', [30, 40]);

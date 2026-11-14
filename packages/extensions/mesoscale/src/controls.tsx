@@ -959,10 +959,14 @@ export function GrowBlock(props: { area: MesoscaleApi; api: ViewerApi; particles
                   />
                   {line(
                     'Turns',
-                    'The turns it reaches: Count × Step along it (on a mesh, fewer where it ends)',
+                    'The turns it reaches and its copies made (on a mesh, fewer where it ends or is full ahead)',
                     <div class={classes.label}>
                       {derive([settings, liveGrow] as const, (s, g) => {
-                        if (g?.mode === 'spiral' && typeof g.params.turns === 'number') return `${g.params.turns}`;
+                        // the live spiral's: its turns and the copies it made (fewer than Count where the surface is
+                        // full ahead or ends; round 3b)
+                        if (g?.mode === 'spiral' && typeof g.params.turns === 'number') {
+                          return `${g.params.turns}, ${g.params.copies ?? g.params.count} copies`;
+                        }
                         const step = s.rise ?? src.rise;
                         const turns = spiralTurns(s.spacing ?? diameter(), Math.floor(s.count) * step);
                         return `≈ ${Math.round(turns * 100) / 100}`;
