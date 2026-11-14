@@ -242,7 +242,9 @@ on a tree row (its right-click or its ⋯), the same menu, in this order:
   the depth. **Place**: a membrane protein on the surface, anything else at a depth along the pointer's ray: the depth
   of what is under the pointer (a particle, a structure, a mesh), elsewhere where it was (the camera's focus at the
   start); Alt+wheel moves it a copy's diameter a notch (shown in the hint) and holds it for the next stroke; a stroke
-  keeps the depth of its first point. Surface or Depth to override. A copy of the brush follows the pointer (drawn in
+  keeps the depth of its first point. Surface or Depth to override. **Place Auto** goes to Surface whenever the pointer is over a
+  mesh of the scene (any brush; decisions 2, Ludo 2026-11-13), at a depth elsewhere as above; read at the pointer as it
+  moves, and for a stroke at its press. A copy of the brush follows the pointer (drawn in
   the scene, depth-tested, not picked, in the entity's look color), where a click puts it and turned as it will be (the
   stroke's seed), from the mode's start; hidden off the canvas. **Fiber**: an entity with fibers in its list paints a
   new fiber (its points its fibers' step apart, a line on the canvas while drawn, each point turned as its fibers are:
@@ -548,8 +550,10 @@ still completes its distance.
   its scale × that in Å, as paint's fibers), the first a rise from the source along its fiber axis, each step turned at
   most Persistence (30°). Crystal: a, b, c (Å; unset: the copy's diameter), α, β, γ (90°), na, nb, nc (3, 3, 1; the
   source's cell counted, so na·nb·nc − 1 copies), each copy turned as the source. Tiling: Hex or Square, Spacing (the
-  copy's diameter), Rings (3), in the source's own plane (normal: +z for a membrane protein, else its principal axis),
-  each turned as the source. Sphere: Count (50) copies uniform in a ball of Radius (5 × the copy's radius), turned at
+  copy's diameter), Count (the points, the source's counted; unset: 37 Hex, 49 Square, the plane's 3 rings), in the
+  source's own plane (normal: +z for a membrane protein, else its principal axis), filled ring by ring up to Count (a
+  count inside a ring stops inside it), each turned as the source. Rings are gone (decisions 11): a session's Rings are
+  read as their count (`mesoscale.grow { rings }` too). Sphere: Count (50) copies uniform in a ball of Radius (5 × the copy's radius), turned at
   random or as the source. The source is where it is drawn: its list's move and scale and its own move (Move this
   instance), before the offsets of its kind (its copies take them too). Round 2: Symmetry. A walk's **Rise**, **Twist**
   and **Jitter** (paint-refine, Ludo 2026-11-13; unset: the entity's Fiber settings) are its own, kept in its stroke:
@@ -562,17 +566,30 @@ still completes its distance.
   source was painted on when it was, else the mesh under it (within its radius), else None. On a mesh: Tiling grows over
   the surface ring by ring, each new point a Spacing from one kept in its tangent plane, projected onto the surface; a
   point closer than 0.8 × Spacing to one kept is dropped (TomoNet's rule), so a closed surface fills without piling up;
-  its **Count** (the points, the source's counted; unset: the plane's for Rings) takes Rings' place. Random walk keeps
+  its **Count** is the same in space (decisions 11). Random walk keeps
   each step in the tangent plane, its point projected back; its units' up (their offset) along the surface's normal on
   the source's side (its axis along the normal, as below), turned from there by the twist (paint-refine round 2). Sphere
   puts its Count copies uniform by area on the surface within Radius. Each copy's axis follows the surface's normal as
   paint's does (round 3: +z for a membrane protein, else its Fiber Axis when set, else +z; a copy painted on the surface
   and the copies grown from it share it), its spin carried from the source. Crystal (a 3D lattice) grows in space: On
   says so. The copies are explicit: the mesh can go, they stay.
+- A fiber unit as a Grow source (lane `decisions`, Ludo 2026-11-13): its "up" is its offset direction, the axis put along
+  the surface's normal (not its path-tangent axis): Tiling, Sphere, a walk's or a helix's side and a spiral's plane from
+  a fiber's unit take that axis, so the copies stand as the fiber's units do.
+- A fiber painted on a surface (decisions 3, Ludo 2026-11-13): a plain walk (Twist 0, Jitter 0, no Offset) has its units'
+  up along the surface's normal (as a grown walk's); with a Twist, a Jitter or an Offset it keeps those settings (its
+  units turned about the path as set). Changed live, a fiber goes from one to the other. A fiber painted with Turn View
+  (its directions the camera's) follows no normal. Fibers painted before have none.
+- Color… on a mesh (decisions 13, Ludo 2026-11-13): a VTP colored by an array of its file (Properties' Color by) keeps it;
+  Color… is for uniform-colored meshes, and its swatches say so ("Colored by Cell: Labels") instead of replacing it.
 - Grow › Helix (lane `grow-helix`, Ludo 2026-11-13: "an helical path on the surface, the instance picked is the start of
   the helix/spiral"): a new fiber from the source, as Random walk's (its Rise, Twist and Jitter its own, live on the
-  last grown), its path a helix of **Pitch** (Å along its axis a turn; unset: 4 × the copy's diameter), **Turns** (5),
-  **Hand** (Right, Left: the helix's own, whichever way it goes) and **Direction** (Up, Down its axis from the source).
+  last grown), its path a helix of **Pitch** (Å along its axis a turn; unset: 4 × the copy's diameter), **Turns** (5) and **Count**
+  (its copies a rise apart along it, the first a rise from the source) both editable and linked (decisions 8, Ludo
+  2026-11-13): setting Turns sets Count (the copies those turns hold), setting Count sets Turns (the turns reached;
+  `mesoscale.grow { count }` ends the helix at that many copies, its record keeping the turns reached); in space the
+  other is shown at once, on a mesh once the grow gives it back; the grow is made by the one set last, Turns when both
+  are given, and the other follows it. **Hand** (Right, Left: the helix's own, whichever way it goes) and **Direction** (Up, Down its axis from the source).
   In space it winds about the source's Fiber Axis a **Radius** away (unset: the copy's diameter), the source on it. On a
   mesh it winds about an **Axis** through the mesh's center (Auto: its longest principal axis; View: toward the viewer;
   X, Y, Z), each point brought onto the surface along its line from the axis, so it follows a tube's or a cone's radius
@@ -583,8 +600,9 @@ still completes its distance.
   from the source winding flat outward about it (the source its center, copy 0), an Archimedean spiral: **Count** copies
   (50), **Step** apart along it (the fiber's rise: one distance, live as the grow; unset: the entity's), so copy k is k
   × Step along it from the source; **Arm spacing** between its arms (its radius that more a turn; unset: the copy's
-  diameter, so they touch); **Hand** (Right: counterclockwise about its normal); its **Turns** shown, read only (the
-  ones it reaches). Twist and Jitter as a fiber's. Near the center the arc curls: copies within its first turn sit
+  diameter, so they touch); **Hand** (Right: counterclockwise about its normal); its **Turns** beside Count, both
+  editable and linked (decisions 21, Ludo 2026-11-13): Count sets the turns it reaches, Turns the copies those turns hold
+  (`mesoscale.grow { turns }`). Twist and Jitter as a fiber's. Near the center the arc curls: copies within its first turn sit
   closer than a Step in a straight line (overlaps allowed, Ludo 2026-11-11). In space it lies in the source's plane, its
   normal the copy's axis by paint's rule (+z for a membrane protein, else its Fiber Axis, else +z). On a mesh it is
   rolled over the surface from the source's point: each step (by arc length) the planar spiral's own, taken in the
@@ -592,15 +610,14 @@ still completes its distance.
   on a plane, a cylinder or a cone (the capsid's body), and its arms close up on a surface curved both ways (a cap, a
   vesicle). Where it crosses an arm of its own (round a tube, on a closed surface; Ludo 2026-11-13: "Skip crowded, keep
   going"), a copy within 0.6 × Arm spacing of a copy kept more than 2 Arm spacings behind along it is skipped and it
-  goes on until Count copies are kept, its length 4 × Count × Step at most (a surface full ahead: fewer, the section
-  shows the copies made beside its turns). The copies kept are turned as along the whole chain (their twist by their
+  goes on until Count copies are kept, its length 4 × Count × Step at most (a surface full ahead: fewer copies made). The copies kept are turned as along the whole chain (their twist by their
   place along it). It ends where the surface does. Its units' up along the surface's normal.
 - The last grow live (lane `grow-helix` round 2, Ludo 2026-11-13: "all the parameters in the grow properties to update
   the latest grow … more will continue the distribution, less will remove the excedent copies … a clear button"): after
   a Grow, every setting of the section (each mode's, its Seed, On, and its Mode) makes that grow again in place, from
   the same source, by the settings shown (`mesoscale.grow { replace }`; its seed kept while Seed is empty): one step a
   drag or a pick. A Mode picked turns the last grow into one of that mode. Rise, Twist and Jitter still redraw a fiber
-  on its path. Its count is prefix-stable: more Steps, Turns, Rings or Count keep every copy where it was and add the
+  on its path. Its count is prefix-stable: more Steps, Turns or Count keep every copy where it was and add the
   next ones (a fiber's last unit turned to the next); fewer cut the last ones; Crystal's cells are nested (each cell
   stays where it was). Another Grow, another source, Clear or the section closed ends it; an undone grow is not live (a
   change is the next grow's). **Clear** removes every grow from the source (any mode; the source stays), and the grows
