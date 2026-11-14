@@ -1547,6 +1547,8 @@ export class MesoscaleApi extends ApiArea {
           toListFrame(move, path, normals);
           units = info.copies ?? 0;
           if (info.skip?.length) skip = info.skip;
+          // its Step its own: its copies and skips are its units at that rise, whatever the entity's later (3b review 2)
+          own = { ...own, rise };
           if (units < 2) {
             return ApiResult.fail(
               'invalid',

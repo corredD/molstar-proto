@@ -1161,6 +1161,27 @@ describe('mesoscale.grow spiral', () => {
     );
   });
 
+  it("keeps its Step when the entity's fiber rise changes after it (its skips its own units; 3b review 2)", async () => {
+    const v = await viewer();
+    const ref = entry(v).cell.transform.ref;
+    expectOk(await v.api.load.files({ files: [new File([sphereObj(100, Vec3.create(-80, 0, 0))], 'vesicle.obj')] }));
+    const { repr } = meshCells(v);
+    // CA's rise 10 (the entity's): no rise given
+    const r = await v.api.run('mesoscale.grow', {
+      particles: ref,
+      index: 2,
+      mesh: repr,
+      mode: 'spiral',
+      spacing: 20,
+      count: 400,
+    });
+    expectOk(r);
+    const made = (r.value as { count: number }).count;
+    expect(strokes(v)[0].own).toMatchObject({ rise: 10 });
+    expectOk(await v.api.run('mesoscale.fiber', { entity: 'CA', rise: 4 }));
+    expect(drawn(v).count).toBe(7 + made);
+  });
+
   it('rolls over a vesicle from the source, each copy on it, its normals kept; refuses no spacing or count', async () => {
     const v = await viewer();
     const ref = entry(v).cell.transform.ref;
