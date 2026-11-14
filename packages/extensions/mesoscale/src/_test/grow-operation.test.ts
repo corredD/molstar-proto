@@ -282,6 +282,27 @@ describe('mesoscale.grow', () => {
     expect(grown.rise).toBeCloseTo(source.rise, 6);
   });
 
+  it('a structure painted: a helix made again by the same settings is the same, bit for bit (round 2)', async () => {
+    const v = await viewer();
+    const structure = v.plugin.managers.structure.hierarchy.current.structures[0].cell.transform.ref;
+    expectOk(await v.api.run('mesoscale.paint', { structure, particles: '', positions: [0, 0, 0] }));
+    const painting = v.plugin.managers.particles.hierarchy.current.lists.find((l) => l.cell.obj?.label === 'Painting')!;
+    const particles = painting.cell.transform.ref;
+    const helix = { particles, index: 0, mode: 'helix', pitch: 60, turns: 3, helixRadius: 30 };
+    const r = await v.api.run('mesoscale.grow', helix);
+    expectOk(r);
+    const path = () =>
+      (
+        Array.from(v.plugin.state.data.cells.values()).find((c) => c.transform.transformer === ParticleListPainted)!
+          .transform.params as { strokes: PaintStroke[] }
+      ).strokes.at(-1)!.positions;
+    const first = Array.from(path());
+    expect(first.length).toBeGreaterThan(0);
+    expectOk(await v.api.run('mesoscale.grow', { ...helix, replace: (r.value as { id: number }).id }));
+    // its rise the structure's as drawn, not its fiber's step measured on the drawn list: the same path
+    expect(Array.from(path())).toEqual(first);
+  });
+
   it('grows from the source where it is drawn after Move this instance (review S1)', async () => {
     const v = await viewer();
     const ref = entry(v).cell.transform.ref;

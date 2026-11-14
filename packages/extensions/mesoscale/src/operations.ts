@@ -66,6 +66,7 @@ import {
   fiberAxisVector,
   principalAxisOf,
   toListFrame,
+  withStructures,
 } from './paint.js';
 import { FiberBankHelix, FiberBanks } from './fiber-units.js';
 import {
@@ -493,10 +494,11 @@ export class MesoscaleApi extends ApiArea {
         const l = lists(ctx).find((x) => x.cell.transform.ref === s.particles);
         const src = l && growSourceOf(plugin.state.data, l, s.index);
         if (!src || isFailure(src)) return undefined;
-        const id = brushIdOf(src.data, src);
+        // as its fibers are drawn (round 2: not their step measured on the drawn list)
+        const id = brushIdOf(src.fibers, src);
         const structures = paintedStructures(plugin.state.data, s.particles);
         const fibers = paintedFibers(plugin.state.data, s.particles);
-        const { rise, twist, jitter } = fiberSettingsOf(src.data, id, src.target, fibers, structures);
+        const { rise, twist, jitter } = fiberSettingsOf(src.fibers, id, src.target, fibers, structures);
         return { ...s, name: `${src.name} #${s.index}`, radius: src.radius, rise, twist, jitter };
       },
       () => [plugin.state.data.events.changed, this.growSource.asReadonly],
@@ -517,9 +519,10 @@ export class MesoscaleApi extends ApiArea {
         const painted = at.value && decoratorUnder(state, at.value.particles, ParticleListPainted);
         const p = painted?.transform.params as PaintedParams | undefined;
         const stroke = p?.strokes.find((x) => x.fiber && x.grow?.id === at.value?.grow);
-        // the list as painted (a structure's target is there, as a grow's source reads it)
-        const data = painted?.obj?.data as ParticleList | undefined;
-        if (!stroke || !data) return undefined;
+        // the list its fibers are made from (a structure's target is there, as a grow's source reads it)
+        const drawn = painted?.obj?.data as ParticleList | undefined;
+        if (!stroke || !drawn) return undefined;
+        const data = fiberListOf(state, painted, drawn);
         const id = brushIdOf(data, stroke);
         return { ...fiberSettingsOf(data, id, stroke.target, p?.fibers, p?.structures), ...stroke.own };
       },
@@ -2823,10 +2826,24 @@ export function growSourceOf(state: State, l: ParticleListRef, index: number) {
     translation: Vec3.fromArray(Vec3(), moved.coordinates, 0),
     turn: Quat.fromArray(Quat(), moved.rotations!, 0),
   };
-  // the list its painted fibers are made from (the painted decorator's input, as `paintParticles` reads it): the drawn
-  // list's own painted fibers would give their step as the rise (round 2: a grow made again read its own stroke)
-  const fibers = input?.targetInfo.has(target) ? input : data;
+  const fibers = fiberListOf(state, painted, data);
   return { data, target, entity, compartment, pose, radius, name, surface, instance, fibers };
+}
+
+/**
+ * The list a list's painted fibers are made from, as the painted decorator makes them (its input with the structures
+ * painted, `withStructures`), else `drawn`: the drawn list's own painted fibers would give their step, measured on its
+ * float coordinates, as the rise (round 2: a grow made again read its own stroke's)
+ */
+function fiberListOf(state: State, painted: StateObjectCell | undefined, drawn: ParticleList): ParticleList {
+  const input = painted && (state.cells.get(painted.transform.parent)?.obj?.data as ParticleList | undefined);
+  if (!input) return drawn;
+  const structures = (painted.transform.params as PaintedParams | undefined)?.structures ?? [];
+  return withStructures(
+    input,
+    structures,
+    structures.map((s) => drawn.targetMapping?.get(s.target)),
+  );
 }
 
 /** The grow strokes from a list's particle (its index as drawn): those whose record names its key; undefined: none there */
