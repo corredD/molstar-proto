@@ -615,7 +615,7 @@ export class MesoscaleApi extends ApiArea {
   /** The paint mode ends with the viewer: its layer, its keys and its subscription go (review should-fix 5) */
   dispose() {
     this._paintMode?.stop();
-    this.groupPick.stop();
+    this.groupPick.dispose();
     this.paintHost.dispose();
   }
 

@@ -332,10 +332,21 @@ describe('mesoscale.group', () => {
     expect(m.groupPick.state.value).toBeUndefined();
     expect(v.plugin.selectionMode).toBe(false);
     m.paintMode.stop();
-    // leaving selection mode ends the picking too (the explorer's Esc); one on before stays on
+    // leaving selection mode ends the picking (review N1)
+    m.startGroupPick(ref(v));
+    v.plugin.selectionMode = false;
+    expect(m.groupPick.state.value).toBeUndefined();
+    // one on before stays on after
     v.plugin.selectionMode = true;
     m.startGroupPick(ref(v));
     m.groupPick.stop();
     expect(v.plugin.selectionMode).toBe(true);
+    v.plugin.selectionMode = false;
+    // a change of what is drawn (an undo) lets the picks go: their indices are of the list as it was (review S4)
+    m.startGroupPick(ref(v));
+    m.groupPick.toggle(ref(v), 12);
+    expectOk(await v.api.run('history.undo', {}));
+    expect(m.groupPick.state.value?.instances).toEqual([]);
+    m.groupPick.stop();
   });
 });
