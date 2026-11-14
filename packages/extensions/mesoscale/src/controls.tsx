@@ -727,7 +727,8 @@ export function GrowBlock(props: { area: MesoscaleApi; api: ViewerApi; particles
   effect(liveGrow, resync);
   // the state's values kept in the settings set (an undo): the next Grow uses what is shown (review 7)
   effect(grown, (f) => {
-    if (!f || redraw.overlay('fiber')) return;
+    // a change of the grow pending (a spiral's Step drag): not the state's older rise back (second review, note)
+    if (!f || redraw.overlay('fiber') || redraw.overlay('grow')) return;
     const s = area.growSettings.value;
     const patch: { rise?: number; twist?: number; jitter?: number } = {};
     for (const k of ['rise', 'twist', 'jitter'] as const) if (s[k] !== undefined && s[k] !== f[k]) patch[k] = f[k];
