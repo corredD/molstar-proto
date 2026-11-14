@@ -605,7 +605,7 @@ export function GrowBlock(props: { area: MesoscaleApi; api: ViewerApi; particles
   effect(grown, (f) => {
     if (!f || redraw.overlay('fiber')) return;
     const s = area.growSettings.value;
-    const patch: Partial<GrowSettings> = {};
+    const patch: { rise?: number; twist?: number; jitter?: number } = {};
     for (const k of ['rise', 'twist', 'jitter'] as const) if (s[k] !== undefined && s[k] !== f[k]) patch[k] = f[k];
     if (Object.keys(patch).length) set(patch);
   });
@@ -648,8 +648,8 @@ export function GrowBlock(props: { area: MesoscaleApi; api: ViewerApi; particles
     entity: () => number,
   ) => {
     const shown = derive(
-      [settings, grown, overlaid],
-      (s, fiber) => redraw.overlay('fiber')?.[key] ?? fiber?.[key] ?? s[key] ?? entity(),
+      [settings, grown, overlaid.asReadonly] as const,
+      (s, fiber): number => redraw.overlay('fiber')?.[key] ?? fiber?.[key] ?? s[key] ?? entity(),
     );
     const change = (v: number, end: boolean) => {
       set({ [key]: v });
