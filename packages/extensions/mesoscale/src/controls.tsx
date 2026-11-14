@@ -959,11 +959,11 @@ export function GrowBlock(props: { area: MesoscaleApi; api: ViewerApi; particles
                   />
                   {line(
                     'Turns',
-                    'The turns it reaches and its copies made (on a mesh, fewer where it ends or is full ahead)',
+                    'The turns it reaches and its copies made (on a mesh, fewer where it ends, or where it skips so many that it reaches 4 × Count Steps)',
                     <div class={classes.label}>
                       {derive([settings, liveGrow] as const, (s, g) => {
-                        // the live spiral's: its turns and the copies it made (fewer than Count where the surface is
-                        // full ahead or ends; round 3b)
+                        // the live spiral's: its turns and the copies it made (fewer than Count where it ends, or where
+                        // it reached its bound of 4 × Count Steps skipping; round 3b)
                         if (g?.mode === 'spiral' && typeof g.params.turns === 'number') {
                           return `${g.params.turns}, ${g.params.copies ?? g.params.count} copies`;
                         }
