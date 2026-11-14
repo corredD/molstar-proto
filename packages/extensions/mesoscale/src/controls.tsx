@@ -262,7 +262,7 @@ export function PaintBrush(props: {
             variant="ghost"
             icon={<Icon name="paintbrush" />}
             pressed={on}
-            title="Click or drag to paint copies (on a surface or at a depth); Alt moves the camera; Esc stops"
+            title="Click or drag to paint copies (on a surface or at a depth); the rest is the camera; Alt+wheel: the depth; Esc stops"
             onClick={() => (on.value ? mode.stop() : void mode.start(brush()))}
           >
             {mapState(on, (o) => (o ? 'Stop' : 'Paint'))}
@@ -340,7 +340,7 @@ export function PaintBrush(props: {
         choices={[
           { id: 'auto', label: 'Auto', title: 'A membrane protein on the surface, anything else at the depth' },
           { id: 'surface', label: 'Surface', title: 'On the surface under the pointer' },
-          { id: 'depth', label: 'Depth', title: "At a depth along the pointer's ray; the wheel moves it" },
+          { id: 'depth', label: 'Depth', title: "At a depth along the pointer's ray: what is under it; Alt+wheel moves it" },
         ]}
         active={mapState(settings, (s) => s.place)}
         onPick={(id) => mode.set({ place: id as PaintSettings['place'] })}

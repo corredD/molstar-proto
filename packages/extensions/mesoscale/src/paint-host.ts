@@ -56,9 +56,10 @@ const AltCameraGestures = [
 ] as const;
 
 /**
- * `bindings` with each camera gesture's triggers also taken with Alt held (Alt+left turns, Alt+right pans, Alt+wheel
- * zooms): the paint layer takes the plain ones, and a trigger's modifiers match exactly (`Binding.Trigger.match`). A
- * trigger without modifiers already matches any, and one with Alt is kept as it is.
+ * `bindings` with each camera gesture's triggers also taken with Alt held (Alt+left turns, Alt+right pans; Alt+wheel is
+ * paint's depth, taken before the canvas: paint-refine): paint takes the plain left press, and a trigger's modifiers
+ * match exactly (`Binding.Trigger.match`). A trigger without modifiers already matches any, and one with Alt is kept as
+ * it is.
  */
 export function withAltCamera(bindings: TrackballBindings): TrackballBindings {
   const out: Record<string, Binding> = { ...bindings };
