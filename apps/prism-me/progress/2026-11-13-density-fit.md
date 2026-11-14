@@ -80,7 +80,9 @@ Ludo's morning try.
    dropped (TomoNet's duplicate rule, at the radius).
 7. **A fitted fiber is its units' poses** (the plan's "stored as its points"); a fiber of a bank's units (DNA, RNA) is
    refused with a fit (its units differ a point).
-8. **The source is scored, not fitted** (it stays where it is); off the density (score ≤ 0) the grow is refused.
+8. **The source is fitted, not moved** (2026-11-14, was: scored at its pose): its score within paint's reach (on a mesh,
+   on it) is the one Threshold multiplies; ≤ 0: the grow refused. In space too: a fitted grow keeps fewer copies at a
+   Threshold than before.
 9. **No low-pass** (optional in the plan): a copy of a whole tomogram's grid is too large; on the test map it helped the
    shift, not the turn. The score is the 300-point mean.
 10. **A slice's volume instance transform is not read** (cryoet moves a volume by its decorators' grid, its instance is
@@ -172,10 +174,14 @@ rest wiring.
 - Frames checked: the MRC (512 × 720 × 225, 13.36 Å, origin 0) is drawn and sampled in one frame; the VTP is in nm
   (Scale 10 in the Segmentations tab lines it up); 8CKV loads as its hexamer (assembly 1, 9900 atoms, radius 54 Å), its
   envelope about its centroid, as the copies are drawn. The fit reads the 3D grid, not the slice's image.
-- "Goes to the brightest" not reproduced: every path measured (a click on a slice, Fit to Auto: −2.15 → −3.39σ at the
-  atoms; paint on the mesh with Fit to the MRC: −0.97 → −1.37σ) went darker. What was wrong: on a capsid's wall the
-  shell's points along the wall lie on the neighbouring hexamers (−0.8 to −2.0σ), as dark as the copy, so a copy put on
-  the mesh scored −0.9 to +1.1σ; a grow from one was refused at ≤ 0 (3 of 7) and a fit free in space left the surface.
+- "Goes to the brightest" not reproduced at the atoms, seen at the copy's middle: 6 wall points of the middle Z slice
+  painted as a click there (random turn, seed 7), each fitted and not (`fit-real-slice-op.cjs`): the atoms' mean −1.81 →
+  −2.07σ (none brighter), but 5 of 6 fits at the reach (17.5 Å) or the turn's limit, 4 of them 7–14 Å off the wall, and
+  the hexamer's middle (its pore: no atom) brighter on 3 (−4.42 → +0.31σ for one). On a slice the fit is still free in
+  space with the whole shell: on a lattice's wall its neighbours are as dark as it (−0.8 to −2.0σ in the shell along the
+  wall), the score has no optimum near the wall. Not changed here: a slice has no wall normal (the mesh has).
+- On the mesh the same: a copy put on it scored −0.9 to +1.1σ; a grow from one was refused at ≤ 0 (3 of 7); a fit free
+  in space left the surface.
 - Decided: **on a mesh a fit stays on it** (its shift in the tangent plane, a spin about the normal, a tilt of 5° at
   most) and **its score's shell is the points within 45° of the normal** (the wall against either side); **a grow keeps
   copies by the source's fitted score** (within paint's reach, on the mesh on it; the source not moved), refused only
@@ -183,4 +189,5 @@ rest wiring.
   on a slice the fit stays free.
 - Ludo's grow (Tiling Hex 108.5 Å, Count 376, Fit to the MRC, Dark, 0.6) headless (`~/prism-me-lanes/fit-real-*.cjs`,
   `fit-real/dens.py`): from each of 7 copies put on the capsids, all grow (81–237 kept); from #6 97 kept, −2.47σ at
-  their atoms (−3.47σ at their centers; the surface cells −2.23σ), 0.1 Å off the surface (median, 0.5 at most).
+  their atoms (−3.47σ at their centers; the surface cells −2.23σ), 0.1 Å off the surface (median, 0.5 at most). Count
+  376 is not reached: #6's capsid (23 400 nm²) holds about 229 hexamers at 108.5 Å.
