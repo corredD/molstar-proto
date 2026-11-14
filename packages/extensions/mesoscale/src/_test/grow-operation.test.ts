@@ -1108,6 +1108,30 @@ describe('mesoscale.grow spiral', () => {
     expect(drawn(v).count).toBe(7);
   });
 
+  it("refuses a spiral's rise by grown-fiber (its Step is the grow's: replace), its Twist kept live (second review 2)", async () => {
+    const v = await viewer();
+    const ref = entry(v).cell.transform.ref;
+    const r = await v.api.run('mesoscale.grow', {
+      particles: ref,
+      index: 3,
+      mode: 'spiral',
+      spacing: 20,
+      count: 30,
+      rise: 5,
+    });
+    expectOk(r);
+    const id = (r.value as { id: number }).id;
+    const s = steps(v);
+    expect(await v.api.run('mesoscale.grown-fiber', { particles: ref, grow: id, rise: 2 })).toMatchObject({
+      ok: false,
+      code: 'invalid',
+    });
+    expect(steps(v)).toBe(s);
+    expect(drawn(v).count).toBe(7 + 30);
+    expectOk(await v.api.run('mesoscale.grown-fiber', { particles: ref, grow: id, twist: 20 }));
+    expect(drawn(v).count).toBe(7 + 30);
+  });
+
   it('rolls over a vesicle from the source, each copy on it, its normals kept; refuses no spacing or count', async () => {
     const v = await viewer();
     const ref = entry(v).cell.transform.ref;

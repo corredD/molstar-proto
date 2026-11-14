@@ -1260,7 +1260,11 @@ export class MesoscaleApi extends ApiArea {
         ),
       ),
       turns: OptionalParam(
-        PD.Numeric(5, { min: 0, max: MaxHelixTurns, step: 0.1 }, { description: 'Helix, Spiral: its turns' }),
+        PD.Numeric(
+          5,
+          { min: 0, max: MaxHelixTurns, step: 0.1 },
+          { description: 'Helix: its turns (a Spiral: its Count and Step)' },
+        ),
       ),
       hand: OptionalParam(
         PD.Select(
@@ -1676,6 +1680,14 @@ export class MesoscaleApi extends ApiArea {
       const strokes = (painted?.transform.params as PaintedParams | undefined)?.strokes ?? [];
       const at = strokes.findIndex((s) => s.fiber && s.grow?.id === values.grow);
       if (at < 0) return ApiResult.fail('not-found', 'That grown fiber is not there (undone or removed).');
+      // a spiral's rise is its Step: its Count copies a Step apart, made again by its grow (second review 2)
+      if (given.rise !== undefined && strokes[at].grow?.mode === 'spiral') {
+        return ApiResult.fail(
+          'invalid',
+          "A spiral's rise is its Step: its copies are made again.",
+          '`mesoscale.grow { replace, rise }` (the Grow section: Step).',
+        );
+      }
       const own = { ...strokes[at].own, ...given };
       // its units: the path's length a rise each (`makeFiber`), as many as a grow makes at most (review 9)
       if (own.rise !== undefined) {
