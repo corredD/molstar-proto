@@ -17,7 +17,7 @@ import {
 } from '@molstar/model/model/particles/particle-list';
 import { PluginStateObject as SO } from '@molstar/plugin/state/objects';
 import { type Grid, Volume } from '@molstar/model/model/volume';
-import type { ParticleTarget } from '@molstar/model/model/particles/particle-list';
+import type { ParticleList, ParticleTarget } from '@molstar/model/model/particles/particle-list';
 import type { PluginContext } from '@molstar/plugin/context';
 import type { ParticleListRef } from '@molstar/plugin/state/manager/particles/hierarchy-state';
 import type { PaintBrushTarget, PaintCursor, PaintHost, PaintSettings } from './paint-mode.js';
@@ -37,9 +37,11 @@ import {
 import { meshFrame, sceneMeshes } from './mesh-surface.js';
 import { type CursorFit, pluginGroupCursor, pluginPaintCursor, pluginStructureCursor } from './paint-cursor.js';
 import { groupLeaves, type PaintGroup } from './paint-group.js';
+import { groupEnvelope } from './fit-group.js';
 import {
   envelopeOf,
   type FitContrast,
+  type FitEnvelope,
   fitMapOf,
   fitPose,
   PaintReach,
@@ -102,13 +104,14 @@ export function pluginCursorFit(
   plugin: PluginContext,
   object: ParticleTarget | undefined,
   radius: number,
+  /** Its envelope when not its object's (a group's: fit-group.ts) */
+  envelope: FitEnvelope = envelopeOf(object, radius),
 ): { fit: CursorFit; dispose(): void } {
   let grids: Map<string, Volume> | undefined;
   const sub = plugin.state.data.events.changed.subscribe(() => {
     grids = undefined;
   });
   // made once: a move allocates nothing (review M3)
-  const envelope = envelopeOf(object, radius);
   const from = { position: Vec3(), rotation: Quat() };
   const out = { position: Vec3(), rotation: Quat(), score: 0, shift: 0, angle: 0 };
   const options = { reach: PaintReach.shift * envelope.radius, turn: PaintReach.turn, contrast: 'dark' as FitContrast };
@@ -148,7 +151,8 @@ export function pluginPaintHost(
     const painted = l && decoratorUnder(plugin.state.data, l.cell.transform.ref, ParticleListPainted);
     const groups = (painted?.transform.params as { groups?: PaintGroup[] } | undefined)?.groups;
     const group = groups?.find((g) => g.id === brush.group);
-    return group && { group, groups: groups!, list: l };
+    const data = (painted?.obj?.data as ParticleList | undefined) ?? l?.cell.obj?.data;
+    return group && { group, groups: groups!, list: l, data };
   };
   /** A structure brush's structure (paint-layer round 2), if it is still in the scene */
   const structureOf = (brush: PaintBrushTarget) => {
@@ -309,8 +313,8 @@ export function pluginPaintHost(
         };
       // the copy fitted where a click would fit it (density-fit)
       const fits: { dispose(): void }[] = [];
-      const fitWith = (object: ParticleTarget | undefined, radius: number) => {
-        const f = pluginCursorFit(plugin, object, radius);
+      const fitWith = (object: ParticleTarget | undefined, radius: number, envelope?: FitEnvelope) => {
+        const f = pluginCursorFit(plugin, object, radius, envelope);
         fits.push(f);
         return f.fit;
       };
@@ -325,7 +329,17 @@ export function pluginPaintHost(
       });
       if (brush.group !== undefined) {
         const g = groupOf(brush);
-        return withSub(pluginGroupCursor(plugin, g?.list, g && groupLeaves(g.groups, g.group.id), plugin.canvas3d));
+        const leaves = g && groupLeaves(g.groups, g.group.id);
+        return withSub(
+          pluginGroupCursor(
+            plugin,
+            g?.list,
+            leaves,
+            plugin.canvas3d,
+            // fitted as the click fits it: its leaves' envelope (fit-group.ts)
+            fitWith(undefined, radiusOf(brush), g?.data && leaves ? groupEnvelope(g.data, leaves) : undefined),
+          ),
+        );
       }
       if (brush.structure) {
         const structure = structureOf(brush);

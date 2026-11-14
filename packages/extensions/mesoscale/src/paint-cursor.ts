@@ -138,13 +138,14 @@ export function pluginGroupCursor(
   list: ParticleListRef | undefined,
   leaves: GroupLeaves | undefined,
   canvas: VisualSetCanvas | undefined = plugin.canvas3d,
+  fit?: CursorFit,
 ): PaintCursor {
   const r = list?.representations[0];
   const data = r?.cell.obj?.data.sourceData as ParticleList | undefined;
   const params = r?.cell.params?.values;
   if (!data || !leaves?.count || !params) return NoCursor;
   const one = groupCopyList(data, leaves);
-  return copyCursor(plugin, one, Promise.resolve(params), false, canvas, undefined, undefined, Vec3.create(0, 0, 1));
+  return copyCursor(plugin, one, Promise.resolve(params), false, canvas, undefined, fit, Vec3.create(0, 0, 1));
 }
 
 /** A target representation's params, the type's default themes (as `particles.representation` makes them) */

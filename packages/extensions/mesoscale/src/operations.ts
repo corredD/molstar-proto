@@ -74,7 +74,16 @@ import {
   withStructures,
 } from './paint.js';
 import { FiberBankHelix, FiberBanks } from './fiber-units.js';
-import { type GroupPick, groupCopyAt, makeGroup, nextGroupId, type PaintGroup } from './paint-group.js';
+import {
+  type GroupLeaves,
+  type GroupPick,
+  groupCopyAt,
+  groupLeaves,
+  makeGroup,
+  nextGroupId,
+  type PaintGroup,
+} from './paint-group.js';
+import { groupEnvelope } from './fit-group.js';
 import {
   crystalPoses,
   type GrowMode,
@@ -1331,11 +1340,15 @@ export class MesoscaleApi extends ApiArea {
         if (isFailure(volume)) return volume;
         // the copy's object, else a ball of its radius (as the copy under the pointer's: `PaintHost.radius`)
         const object = brush.object ?? data.targetMapping?.get(brush.target);
+        // a group: its radius (its id is no target of the list), a ball's when it has no leaves
         const radius =
+          (group !== undefined ? (into as { radius?: number }).radius : 0) ||
           targetRadius(data, brush.target) ||
           (object?.kind === 'structure' ? object.structure.boundary.sphere.radius : 0) ||
           10;
-        const envelope = envelopeOf(object, radius);
+        // a group: its leaves' envelope (fit-group.ts)
+        const leaves = group !== undefined ? (into as { leaves?: GroupLeaves }).leaves : undefined;
+        const envelope = leaves ? groupEnvelope(data, leaves) : envelopeOf(object, radius);
         const reach = {
           reach: PaintReach.shift * envelope.radius,
           turn: PaintReach.turn,
@@ -2065,7 +2078,9 @@ export class MesoscaleApi extends ApiArea {
         const tried = (made ?? fiberCopies)!.positions.length / 3;
         if (tried > MaxFitted) return tooManyFits(tried);
         const map = fitMapOf(fitTo.volume.grid);
-        const envelope = envelopeOf(data.targetMapping?.get(target), radius);
+        // a group copy: its leaves' envelope (fit-group.ts)
+        const leaves = 'leaves' in src ? src.leaves : undefined;
+        const envelope = leaves ? groupEnvelope(data, leaves) : envelopeOf(data.targetMapping?.get(target), radius);
         const contrast = v.contrast ?? 'dark';
         const score = map ? fitScore(map, envelope, scene, contrast) : 0;
         if (!map) return ApiResult.fail('invalid', `${fitTo.label} is flat (σ 0): nothing to fit to.`, 'Fit to None.');
@@ -3699,6 +3714,8 @@ function groupSourceOf(state: State, painted: StateObjectCell | undefined, data:
     fibers: list,
     first: at.input.count + copy.first,
     group: group.id as number | undefined,
+    // its leaves: its envelope for a fit (density-fit)
+    leaves: groupLeaves((painted?.transform.params as PaintedParams | undefined)?.groups, group.id),
   };
 }
 
@@ -3718,5 +3735,13 @@ function groupInto(ctx: ApiContext, particles: string, id: number) {
     surface: false,
     object: undefined as ParticleTarget | undefined,
   };
-  return { l, data, brush, name: g.name, structure: undefined as PaintStructure | undefined };
+  return {
+    l,
+    data,
+    brush,
+    name: g.name,
+    structure: undefined as PaintStructure | undefined,
+    radius: g.radius,
+    leaves: groupLeaves((painted?.transform.params as PaintedParams | undefined)?.groups, g.id),
+  };
 }

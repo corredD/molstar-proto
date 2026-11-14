@@ -179,7 +179,7 @@ function ball(radius: number, count: number): Float32Array {
   return out;
 }
 
-function envelopeOfPoints(points: Float32Array): FitEnvelope {
+export function envelopeOfPoints(points: Float32Array): FitEnvelope {
   let r2 = 0;
   for (let i = 0; i < points.length; i += 3) {
     r2 = Math.max(r2, points[i] * points[i] + points[i + 1] * points[i + 1] + points[i + 2] * points[i + 2]);
