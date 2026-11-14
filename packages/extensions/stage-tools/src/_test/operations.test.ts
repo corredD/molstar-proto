@@ -8,7 +8,7 @@ import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it } from 'vitest';
 import { Mat4, Vec3 } from '@molstar/core/math/linear-algebra';
 import { EmptyLoci } from '@molstar/model/model/loci';
-import { PluginStateObject as SO } from '@molstar/plugin/state/objects';
+import { PluginStateObject as SO, PluginStateTransform } from '@molstar/plugin/state/objects';
 import { ParticleListWithTargets } from '@molstar/plugin/state/transforms/particles/ops';
 import { ParticlesRepresentation3D } from '@molstar/plugin/state/transforms/particles/representation';
 import { ShapeRepresentation3D } from '@molstar/plugin/state/transforms/shape/representation';
@@ -30,6 +30,20 @@ afterEach(async () => {
 function expectOk<R>(r: ApiResult<R>): asserts r is Extract<ApiResult<R>, { ok: true }> {
   if (!r.ok) expect.fail(`${r.code}: ${r.message}${r.hint ? ` (${r.hint})` : ''}`);
 }
+
+/** A decorator of a shape that draws it as it is (as a mesh's color by a volume sits between its shape and its drawing) */
+const PassThroughShape = PluginStateTransform.BuiltIn({
+  name: 'stage-tools-test-pass-through-shape',
+  display: { name: 'Pass through (test)' },
+  from: SO.Shape.Provider,
+  to: SO.Shape.Provider,
+  isDecorator: true,
+  params: {},
+})({
+  apply({ a }) {
+    return new SO.Shape.Provider(a.data, { label: a.label });
+  },
+});
 
 async function viewer() {
   const base = DefaultPrismViewerSpec();
@@ -266,6 +280,30 @@ describe('stage', () => {
     expect(Mat4.getMaxScaleOnAxis(m)).toBeCloseTo(2);
     expect(m[12]).toBeCloseTo(5);
     cut().forEach((x, i) => expect(x).toBeCloseTo(cut0[i] + (i === 0 ? 5 : 0), 4));
+  });
+
+  it("moves a mesh drawn through a decorator of its shape (a mesh colored by a volume): its shape's transform", async () => {
+    const v = await viewer();
+    const s = v.api.stage!;
+    expectOk(await v.api.load.files({ files: [new File(['v 0 0 0\nv 10 0 0\nv 0 10 0\nf 1 2 3\n'], 'seg.obj')] }));
+    const mesh = Array.from(v.plugin.state.data.cells.values()).find(
+      (c) => SO.Shape.Representation3D.is(c.obj) && c.obj.label !== 'Unit Cell' && !c.state.isGhost,
+    )!;
+    const shape = mesh.transform.parent;
+    await v.plugin.build().to(shape).insert(PassThroughShape, {}).commit();
+    const decorator = v.plugin.state.data.cells.get(mesh.transform.ref)!.transform.parent;
+    expect(decorator).not.toBe(shape);
+    expect(s.placementOf(mesh.transform.ref)).toBeDefined();
+    expectOk(
+      await s.move({
+        target: mesh.transform.ref,
+        matrix: Array.from(Mat4.fromTranslation(Mat4(), Vec3.create(5, 0, 0))),
+      } as never),
+    );
+    const m = (v.plugin.state.data.cells.get(shape)!.transform.params as any).transforms[0] as Mat4;
+    expect(m[12]).toBeCloseTo(5);
+    expect(v.plugin.state.data.cells.get(decorator)!.transform.params).toEqual({});
+    expect(s.placementOf(mesh.transform.ref)!.matrix[12]).toBeCloseTo(5);
   });
 
   it("runs from ⌘K: 'label A:10' labels the residue; an object's label needs no selection", async () => {

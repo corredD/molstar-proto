@@ -1037,6 +1037,11 @@ function linkCells(target: StateObjectCell, ctx: UpdateContext) {
   for (const ref of effective) {
     const t = ctx.tree.transforms.get(ref);
     if (!t) {
+      // a weak dependency not in the tree: waited for
+      if (target.transform.transformer.definition.weakDependencies) {
+        ctx.dependencyWaiters.wait(target, ref);
+        continue;
+      }
       throw new Error(`Cannot depend on a non-existent transform.`);
     }
     linkDependency(target, ref, ctx);
@@ -1110,6 +1115,11 @@ function relinkCells(target: StateObjectCell, ctx: UpdateContext): boolean {
     if (!t) {
       // a deleted dependency it waits for: still unresolved
       if (ctx.dependencyWaiters.isWaitingFor(target, ref)) continue;
+      // a weak dependency not in the tree: waited for
+      if (target.transform.transformer.definition.weakDependencies) {
+        ctx.dependencyWaiters.wait(target, ref);
+        continue;
+      }
       throw new Error(`Cannot depend on a non-existent transform.`);
     }
     if (linkDependency(target, ref, ctx)) changed = true;
@@ -1513,14 +1523,16 @@ function runTask<T>(t: T | Task<T>, ctx: RuntimeContext) {
 }
 
 function resolveDependencies(ctx: UpdateContext, cell: StateObjectCell) {
-  // a dependency with no cell is not linked (`DependencyWaiters`)
-  if (ctx.dependencyWaiters.isWaiting(cell)) throw new Error('Unresolved dependency.');
+  // a dependency with no cell is not linked (`DependencyWaiters`); a weak one is left out
+  const weak = !!cell.transform.transformer.definition.weakDependencies;
+  if (!weak && ctx.dependencyWaiters.isWaiting(cell)) throw new Error('Unresolved dependency.');
   if (cell.dependencies.dependsOn.length === 0) return void 0;
 
   const deps = Object.create(null);
 
   for (const dep of cell.dependencies.dependsOn) {
     if (!dep.obj) {
+      if (weak) continue;
       throw new Error('Unresolved dependency.');
     }
     deps[dep.transform.ref] = dep.obj;

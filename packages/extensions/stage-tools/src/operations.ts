@@ -49,7 +49,7 @@ import { parseColor } from '@molstar/prism-ui/components/color/parse-color';
 import type { ReadonlyState } from '@molstar/prism-ui/reactive/readonly-state';
 import { ObjectMoveGizmos } from './move-gizmos.js';
 import { ParticleHandles } from './particle-handle.js';
-import { drawnObject } from './drawn.js';
+import { drawnObject, shapeCellOf } from './drawn.js';
 import {
   type DistancePoint,
   hiddenMeshShapes,
@@ -251,8 +251,8 @@ export class StageApi extends ApiArea {
       };
     }
     if (SO.Shape.Representation3D.is(cell.obj)) {
-      const shape = cells.get(cell.transform.parent);
-      if (!shape || !SO.Shape.Provider.is(shape.obj)) return undefined;
+      const shape = shapeCellOf(ctx, cell);
+      if (!shape) return undefined;
       const matrix: Mat4 = Mat4.clone(
         (shape.transform.params as { transforms?: Mat4[] }).transforms?.[0] ?? Mat4.identity(),
       );
@@ -491,8 +491,8 @@ export class StageApi extends ApiArea {
         else b.to(cell).insert(VolumeTransform, { transform });
       } else if (SO.Shape.Representation3D.is(cell.obj)) {
         // a mesh: its shape's instance transform (its scale kept)
-        const shape = cells.get(cell.transform.parent);
-        if (!shape || !SO.Shape.Provider.is(shape.obj)) return ApiResult.fail('blocked', `${name} cannot be moved.`);
+        const shape = shapeCellOf(ctx, cell);
+        if (!shape) return ApiResult.fail('blocked', `${name} cannot be moved.`);
         b.to(shape).update((p: any) => {
           const prev: Mat4 = p.transforms?.[0] ?? Mat4.identity();
           return { ...p, transforms: [Mat4.mul(Mat4(), m, prev)] };

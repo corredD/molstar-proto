@@ -663,14 +663,17 @@ export function MeshControls(props: {
   const set = (values: Record<string, unknown>, delay = 0) => {
     // a color and an array are each the other's undoing: the last one asked for stays (`cryoet.mesh` takes one)
     const next = { ...pending };
-    if ('color' in values) for (const k of ArrayKeys) delete next[k];
+    if ('color' in values) for (const k of [...ArrayKeys, ...VolumeKeys]) delete next[k];
+    if ('array' in values) for (const k of VolumeKeys) delete next[k];
     if (ArrayKeys.some((k) => k in values)) delete next.color;
+    if (VolumeKeys.some((k) => k in values)) for (const k of ['color', 'array']) delete next[k];
     pending = { ...next, ...values };
     timer.start(delay);
   };
   const opacity = live<{ opacity: number }>(api, 'Mesh opacity', (g, _key, v) =>
     g.cryoet!.mesh({ mesh: ref, ...v } as never),
   );
+  const volumes = area.volumesState?.() ?? observableState<readonly { ref: string; label: string }[]>([]);
   const color = new ParamsFormModel({ color: PD.Color(Color(0xcccccc)) }, undefined, {
     onChange: ({ color }) => set({ color: Color.toHexStyle(color) }, 120),
   });
@@ -694,10 +697,17 @@ export function MeshControls(props: {
         />
         <strong class={classes.name}>{mapState(mesh, (m) => m?.label ?? '')}</strong>
       </div>
-      <Show when={mapState(mesh, (m) => !!m?.arrays?.length)}>
-        {() => <MeshColorBy mesh={mesh} color={() => Color.toHexStyle(color.values.value.color)} set={set} />}
+      <Show when={derive([mesh, volumes], (m, v) => !!m?.arrays?.length || v.length > 0 || !!m?.volumeColor)}>
+        {() => (
+          <MeshColorBy
+            mesh={mesh}
+            volumes={volumes}
+            color={() => Color.toHexStyle(color.values.value.color)}
+            set={set}
+          />
+        )}
       </Show>
-      <Show when={mapState(mesh, (m) => !m?.colorBy)}>{() => <ParamsForm form={color} />}</Show>
+      <Show when={mapState(mesh, (m) => !m?.colorBy && !m?.volumeColor)}>{() => <ParamsForm form={color} />}</Show>
       <Choices
         choices={[
           { id: 'mesh', label: 'Surface' },
@@ -736,84 +746,189 @@ export function MeshControls(props: {
 
 /** What colors a mesh by an array (`cryoet.mesh`) */
 const ArrayKeys = ['array', 'colorList', 'range'] as const;
+/** What colors a mesh by a volume (with the colors and range) */
+const VolumeKeys = ['volume', 'sample', 'depth', 'invert'] as const;
 
 /**
- * A mesh's Color by, when its file has arrays (a VTP's point and cell arrays): Uniform (the color picker) or Array, its
- * array, its colors (a color scale) and its range (Auto: the array's; Custom: a min and a max, from the array's)
+ * A mesh's Color by: Uniform (the color picker); Array, when its file has arrays (a VTP's point and cell arrays): its
+ * array, its colors (a color scale) and its range (Auto: the array's; Custom: a min and a max, from the array's); Volume,
+ * when the scene has one: the volume, At surface or Projected (the Mean, Min or Max along the normal within ±Depth Å),
+ * its colors, its range in σ (Auto ±2σ, or Custom) and its color order as is or inverted
  */
 function MeshColorBy(props: {
   mesh: ReadonlyState<MeshInfo | undefined>;
+  volumes: ReadonlyState<readonly { ref: string; label: string }[]>;
   /** The color the picker shows (Uniform writes it) */
   color: () => string;
   set(values: Record<string, unknown>, delay?: number): void;
 }) {
   const { mesh, set } = props;
   const colorBy = mapState(mesh, (m) => m?.colorBy);
-  // Array again: the array it was colored by, else a cell array first (as a VTP opens)
+  const byVolume = mapState(mesh, (m) => m?.volumeColor);
+  // Array again: the array it was colored by, else the volume's values, else a cell array first (as a VTP opens)
   let last: string | undefined;
   bind(colorBy, (c) => {
     if (c) last = c.array;
   });
   const arrays = () => mesh.value?.arrays ?? [];
-  const firstArray = () => last ?? (arrays().find((a) => a.key.startsWith('cell:')) ?? arrays()[0])?.key;
-  const custom = mapState(colorBy, (c) => !!c && c.range !== 'auto');
+  const firstArray = () =>
+    last ?? byVolume.value?.array ?? (arrays().find((a) => a.key.startsWith('cell:')) ?? arrays()[0])?.key;
+  const by = derive([colorBy, byVolume], (c, v) => (v ? 'volume' : c ? 'array' : 'uniform'));
+  const custom = derive([colorBy, byVolume], (c, v) => (v ? v.range !== 'auto' : !!c && c.range !== 'auto'));
   const range = new ParamsFormModel({ range: PD.Interval([0, 1], { step: 0.001 }, { label: 'Min, max' }) }, undefined, {
     onChange: ({ range }) => set({ range: [range[0], range[1]] }, 300),
   });
-  bind(colorBy, (c) => {
-    if (c && c.range !== 'auto') range.load({ range: [c.range[0], c.range[1]] });
-  });
-  // Custom starts at the array's range; an array of one value, half a unit about it (a range has two ends)
-  const arrayRange = (): [number, number] => {
+  bind(
+    derive([colorBy, byVolume], (c, v) => v ?? c),
+    (c) => {
+      if (c && c.range !== 'auto') range.load({ range: [c.range[0], c.range[1]] });
+    },
+  );
+  // Custom starts at the array's range (an array of one value, half a unit about it: a range has two ends); a
+  // volume's at ±2σ
+  const customRange = (): [number, number] => {
+    if (byVolume.value) return [-2, 2];
     const [lo, hi] = arrays().find((a) => a.key === colorBy.value?.array)?.range ?? [0, 1];
     return lo < hi ? [lo, hi] : [lo - 0.5, hi + 0.5];
   };
+  // the choices it has (Array with arrays, Volume with a volume), by a key: made again when one comes or goes
+  const choices = derive([mesh, props.volumes], (m, v) =>
+    ['uniform', ...(m?.arrays?.length ? ['array'] : []), ...(v.length || m?.volumeColor ? ['volume'] : [])].join(' '),
+  );
+  const ChoiceLabels: Record<string, string> = { uniform: 'Uniform', array: 'Array', volume: 'Volume' };
+  // the volumes to pick from, by a key: the select made again when one comes or goes
+  const volumeKey = mapState(props.volumes, (l) => JSON.stringify(l));
+  const projected = mapState(byVolume, (v) => !!v && v.sample !== 'surface');
   return (
     <>
-      <Choices
-        label="Color by"
-        choices={[
-          { id: 'uniform', label: 'Uniform' },
-          { id: 'array', label: 'Array' },
-        ]}
-        active={mapState(colorBy, (c) => (c ? 'array' : 'uniform'))}
-        onPick={(by) => {
-          if (by === 'uniform' && colorBy.value) set({ color: props.color() });
-          else if (by === 'array' && !colorBy.value && firstArray()) set({ array: firstArray() });
-        }}
-      />
-      <Show when={mapState(colorBy, (c) => !!c)}>
+      <Show when={choices}>
+        {(key) => (
+          <Choices
+            label="Color by"
+            choices={key.split(' ').map((id) => ({ id, label: ChoiceLabels[id] }))}
+            active={by}
+            onPick={(next) => {
+              if (next === by.value) return;
+              if (next === 'uniform') set({ color: props.color() });
+              else if (next === 'array' && firstArray()) set({ array: firstArray() });
+              else if (next === 'volume') {
+                // the volume it kept the values of, else the scene's first
+                const volume = mesh.value?.volumeKept?.volume ?? props.volumes.value[0]?.ref;
+                if (volume) set({ volume });
+              }
+            }}
+          />
+        )}
+      </Show>
+      <Show when={mapState(by, (b) => b === 'array')}>
+        {() => (
+          <Line label="Array">
+            <Select
+              aria-label="Array"
+              options={arrays().map((a): SelectOption => [a.key, a.label])}
+              value={mapState(colorBy, (c) => c?.array ?? '')}
+              onChange={(array) => set({ array })}
+            />
+          </Line>
+        )}
+      </Show>
+      <Show when={mapState(by, (b) => b === 'volume')}>
         {() => (
           <>
-            <Line label="Array">
-              <Select
-                aria-label="Array"
-                options={arrays().map((a): SelectOption => [a.key, a.label])}
-                value={mapState(colorBy, (c) => c?.array ?? '')}
-                onChange={(array) => set({ array })}
-              />
-            </Line>
+            <Show when={volumeKey}>
+              {() => (
+                <Line label="Volume">
+                  <Select
+                    aria-label="Volume"
+                    options={props.volumes.value.map((v): SelectOption => [v.ref, v.label])}
+                    value={mapState(byVolume, (v) => v?.volume ?? '')}
+                    onChange={(volume) => set({ volume })}
+                  />
+                </Line>
+              )}
+            </Show>
+            <Choices
+              label="Sample"
+              choices={[
+                { id: 'surface', label: 'At surface' },
+                { id: 'projected', label: 'Projected' },
+              ]}
+              active={mapState(projected, (p) => (p ? 'projected' : 'surface'))}
+              onPick={(s) => {
+                if (s === 'surface' && projected.value) set({ sample: 'surface' });
+                else if (s === 'projected' && !projected.value) set({ sample: 'mean' });
+              }}
+            />
+            <Show when={projected}>
+              {() => (
+                <>
+                  <Choices
+                    label="Along the normal"
+                    choices={[
+                      { id: 'mean', label: 'Mean' },
+                      { id: 'min', label: 'Min' },
+                      { id: 'max', label: 'Max' },
+                    ]}
+                    active={mapState(byVolume, (v) => v?.sample ?? 'mean')}
+                    onPick={(sample) => set({ sample })}
+                  />
+                  <Line label="Depth (± Å)">
+                    <Slider
+                      aria-label="Depth"
+                      value={mapState(byVolume, (v) => v?.depth ?? 10)}
+                      min={1}
+                      max={200}
+                      step={0.5}
+                      clamp={false}
+                      onCommit={(depth) => set({ depth })}
+                    />
+                  </Line>
+                </>
+              )}
+            </Show>
+          </>
+        )}
+      </Show>
+      {/* made again from Array to Volume: its range's Auto is ±2σ there */}
+      <Show when={mapState(by, (b) => (b === 'uniform' ? '' : b))}>
+        {(b) => (
+          <>
             <Line label="Colors">
               <Select
                 aria-label="Colors"
                 options={MeshColorLists as readonly SelectOption[]}
-                value={mapState(colorBy, (c) => c?.colorList ?? '')}
+                value={derive([colorBy, byVolume], (c, v) => (v ?? c)?.colorList ?? '')}
                 onChange={(colorList) => set({ colorList })}
               />
             </Line>
             <Choices
               label="Range"
               choices={[
-                { id: 'auto', label: 'Auto' },
+                { id: 'auto', label: b === 'volume' ? 'Auto ±2σ' : 'Auto' },
                 { id: 'custom', label: 'Custom' },
               ]}
               active={mapState(custom, (c) => (c ? 'custom' : 'auto'))}
               onPick={(r) => {
                 if (r === 'auto' && custom.value) set({ range: 'auto' });
-                else if (r === 'custom' && !custom.value) set({ range: arrayRange() });
+                else if (r === 'custom' && !custom.value) set({ range: customRange() });
               }}
             />
             <Show when={custom}>{() => <ParamsForm form={range} />}</Show>
+            <Show when={b === 'volume'}>
+              {() => (
+                <Choices
+                  label="Color order"
+                  choices={[
+                    { id: 'as-is', label: 'As is' },
+                    { id: 'inverted', label: 'Inverted' },
+                  ]}
+                  active={mapState(byVolume, (v) => (v?.invert ? 'inverted' : 'as-is'))}
+                  onPick={(s) => {
+                    if ((s === 'inverted') !== !!byVolume.value?.invert) set({ invert: s === 'inverted' });
+                  }}
+                />
+              )}
+            </Show>
           </>
         )}
       </Show>
