@@ -1161,6 +1161,25 @@ describe('mesoscale.grow spiral', () => {
     );
   });
 
+  it('is a fiber a run of copies kept: no link across its skips (3b review 1)', async () => {
+    const v = await viewer();
+    const ref = entry(v).cell.transform.ref;
+    expectOk(await v.api.load.files({ files: [new File([sphereObj(100, Vec3.create(-80, 0, 0))], 'vesicle.obj')] }));
+    const { repr } = meshCells(v);
+    const spiral = { particles: ref, index: 2, mesh: repr, mode: 'spiral', rise: 8, spacing: 20, count: 400 };
+    expectOk(await v.api.run('mesoscale.grow', spiral));
+    expect(strokes(v)[0].skip!.length).toBeGreaterThan(0);
+    // a fiber a run of two copies or more kept between its skips: many, each a rise a link
+    const list = drawn(v);
+    const f = list.fibers!;
+    expect(f.count).toBeGreaterThan(5);
+    for (let k = 0; k < f.count; ++k) {
+      for (let j = f.offsets[k] + 1; j < f.offsets[k + 1]; ++j) {
+        expect(Vec3.distance(xyz(list, f.indices[j]), xyz(list, f.indices[j - 1]))).toBeLessThanOrEqual(8 + 1e-3);
+      }
+    }
+  });
+
   it("keeps its Step when the entity's fiber rise changes after it (its skips its own units; 3b review 2)", async () => {
     const v = await viewer();
     const ref = entry(v).cell.transform.ref;

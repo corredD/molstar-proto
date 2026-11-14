@@ -330,7 +330,16 @@ export function paintParticles(
   for (const s of strokes) {
     const k = Math.floor(s.positions.length / 3);
     // a fiber of two points or more: a click (one) is a copy (review S4)
-    if (s.fiber && k >= 2) newFibers.push(at, k);
+    if (s.fiber && k >= 2) {
+      // a fiber with units left out: a fiber a run of those kept (of two or more)
+      if (s.runs) {
+        let from = at;
+        for (const r of s.runs) {
+          if (r >= 2) newFibers.push(from, r);
+          from += r;
+        }
+      } else newFibers.push(at, k);
+    }
     const set = groups?.sets[groups.groupOfTarget.get(s.target) ?? -1];
     const radius = set && OrderedSet.size(set) ? list.radii![OrderedSet.start(set)] : 0;
     const of = s.units ? units.idOf(s) : undefined;
@@ -375,13 +384,24 @@ export function paintParticles(
 }
 
 /** A fiber's units but those `skip` names (their indices), each kept as it was made */
-function dropUnits(made: { positions: number[]; rotations: number[] }, skip: readonly number[] | undefined) {
+function dropUnits(
+  made: { positions: number[]; rotations: number[] },
+  skip: readonly number[] | undefined,
+): { positions: number[]; rotations: number[]; runs?: number[] } {
   if (!skip?.length) return made;
   const gone = new Set(skip);
   const positions: number[] = [];
   const rotations: number[] = [];
+  // the runs of units kept, each its own fiber (no link across a skip; round 3b review 1)
+  const runs: number[] = [];
+  let run = 0;
   for (let i = 0; i < made.positions.length / 3; ++i) {
-    if (gone.has(i)) continue;
+    if (gone.has(i)) {
+      if (run) runs.push(run);
+      run = 0;
+      continue;
+    }
+    ++run;
     positions.push(made.positions[i * 3], made.positions[i * 3 + 1], made.positions[i * 3 + 2]);
     rotations.push(
       made.rotations[i * 4],
@@ -390,7 +410,8 @@ function dropUnits(made: { positions: number[]; rotations: number[] }, skip: rea
       made.rotations[i * 4 + 3],
     );
   }
-  return { positions, rotations };
+  if (run) runs.push(run);
+  return { positions, rotations, runs };
 }
 
 /** The copies each stroke makes as the painted decorator makes them (a fiber's units every rise along its path) */
@@ -433,6 +454,8 @@ function makeFibers(
 
 /** A made stroke: a fiber's units a point (`fiberUnits`) and their letters */
 type MadeStroke = PaintStroke & {
+  /** A fiber with units left out (`skip`): the units kept in runs, each a fiber */
+  readonly runs?: readonly number[];
   readonly units?: readonly string[];
   readonly letters?: string;
   /** a point's place in the sequence (1-based), 0 for a unit at random */
