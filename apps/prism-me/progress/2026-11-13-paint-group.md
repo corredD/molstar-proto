@@ -93,14 +93,15 @@ Ludo's morning try.
   selection mode (or Esc) ends the picking; the mode was off: it is off again after.
 - **A file's particle** picked is a member by its target, entity and compartment, at its pose in the list's frame; its
   own Move this instance (an offset) is not read (the pose before it).
-- **Replace with a group copy** is not built: the file's particles cannot be removed by a stroke, and removing painted
-  copies moves later keys; left open with export (features.md, Deferred).
+- **Not built**: Shift-drag box add (the brief's "if it fits the size"; clicks do it). **Replace with a group copy**:
+  the file's particles cannot be removed by a stroke, and removing painted copies moves later keys; left open with
+  export (features.md, Deferred).
 
 ## Learned
 
-- The mesoscale `vitest.scaling.config.ts` and the guards' harness path (`sequences/core/_test/model/scaling.js`) are
-  gone from the tree: this lane's guard imports `test-harness/src/scaling.js` and runs with a config pointed at it (the
-  package's config still fails on `heapTests`).
+- The guards' harness path (`sequences/core/_test/model/scaling.js`) is gone from the tree, and the mesoscale
+  `vitest.scaling.config.ts` fails to load (`heapTests` is not in `sequences/vitest.shared.js`): this lane's guard
+  imports `test-harness/src/scaling.js` and was run with a scratch config pointed at it (3 of 3 pass).
 - TS formatting is biome's (`pnpm format`), prettier only for Markdown and YAML.
 - A plain left click on the canvas centers the camera (Mol*'s `FocusLoci`), and on nothing resets it; selection mode
   takes both off the plain click.
@@ -110,3 +111,24 @@ Ludo's morning try.
 About 1,050 production lines (tests and docs apart) against ~500: `paint-group.ts` 412 (with its doc comments and the
 cursor's list), the operations 250 (two operations, the grow's group source, the brush), the explorer ~180, the pick
 state 90. The ungroup's paths and the group cursor took the room past the brief.
+
+## Review
+
+Gate: lane-reviewer (3 must-fix, 6 should-fix, 8 nits), then lane-skeptic (M1 kept as must-fix, M2 and M3 lowered to
+should-fix, one new should-fix, N1).
+
+| Finding                                                                                                   | Severity              | Verdict              | Commit / open                                                                    |
+| --------------------------------------------------------------------------------------------------------- | --------------------- | -------------------- | -------------------------------------------------------------------------------- |
+| M1 the group's row read as the whole list: Look, Labels, Grow acted on every particle                     | must-fix              | confirmed            | 96594187a                                                                        |
+| M2 a grow made again from a source copy since ungrouped became a grow of one member                       | should-fix (was must) | confirmed            | 6cdaf888b (refused)                                                              |
+| M3 every fiber made again for each instance picked (and each click, right-click)                          | should-fix (was must) | confirmed            | da187da2a (made once a decorator's params; no failing test: a hoist)             |
+| S1a a grown copy's ungrouping lost when its grow is made again                                            | should-fix            | confirmed            | 6cdaf888b                                                                        |
+| S1b `split` names places: after a rise change it names other copies                                       | nit                   | plausible            | open (by design, lookup only)                                                    |
+| S2 Fiber On from an earlier brush made a group's strokes fibers, its control hidden                       | should-fix            | confirmed            | 3e07de0e1                                                                        |
+| S3 the Group section on a plain list, no row to paint the group from                                      | nit                   | confirmed            | dd0e17a91                                                                        |
+| S4 picks kept as indices across an undo                                                                   | should-fix            | confirmed            | f49328d7d                                                                        |
+| S5 shared files: controls.tsx re-indent, paint.ts rename; ~250 lines of operations in operations.ts       | should-fix (low)      | partly               | 0d243f6b7; open: the two operations stay in `MesoscaleApi` (its private helpers) |
+| S6 tests overclaimed: click diversion, Esc, selection mode, own-pose title, only tiling                   | should-fix            | confirmed            | f49328d7d, 3e07de0e1, dd0e17a91, 53f79dca8                                       |
+| N1 leaving selection mode did not end the picking                                                         | should-fix (new)      | confirmed            | f49328d7d                                                                        |
+| Nits: comment orphaned, moments twice, a taken name renamed silently, Learned note, Shift-drag unrecorded | nit                   | confirmed            | 53f79dca8, this file; open: the Name field not cleared after Make group          |
+| Nits: `const group` placeholder; a bank's unit id equal to a group id                                     | nit                   | refuted / unverified | —                                                                                |
