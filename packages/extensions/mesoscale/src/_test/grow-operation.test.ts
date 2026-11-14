@@ -26,6 +26,7 @@ import { OrderedSet } from '@molstar/core/data/int';
 import { ShapeGroup } from '@molstar/model/model/shape';
 import type { PluginContext } from '@molstar/plugin/context';
 import { sceneMeshes } from '../mesh-surface.js';
+import { DefaultGrowSettings, growParams } from '../operations.js';
 import { pluginPaintHost } from '../paint-host.js';
 import { DefaultPaintSettings } from '../paint-mode.js';
 import { SurfacePoint } from '../pick-surface.js';
@@ -673,6 +674,47 @@ describe('mesoscale.grow helix', () => {
     expect(xyz(drawn(v), 9)[1] * xyz(list, 9)[1]).toBeLessThan(0);
   });
 
+  it("winds in the scene's Å on a list moved and scaled: Radius and Pitch as drawn (review S4)", async () => {
+    const v = await viewer();
+    const ref = entry(v).cell.transform.ref;
+    const m = Mat4.fromTranslation(Mat4(), Vec3.create(100, 0, 0));
+    await v.plugin.build().to(ref).insert(ParticleListTransform, { transform: m, scale: 2 }).commit();
+    expectOk(await v.api.run('mesoscale.fiber', { entity: 'NC', axis: 'z' }));
+    // NC (#3) drawn at (160, 0, 0); its rise 10 list units, 20 Å drawn
+    expect(Vec3.distance(xyz(drawn(v), 3), Vec3.create(160, 0, 0))).toBeLessThan(1e-3);
+    const helix = { particles: ref, index: 3, mode: 'helix', pitch: 40, turns: 2, helixRadius: 15 };
+    expectOk(await v.api.run('mesoscale.grow', helix));
+    const list = drawn(v);
+    // the first unit 20 Å along the helix (a chord of 19)
+    expect(Vec3.distance(xyz(list, 7), Vec3.create(160, 0, 0))).toBeCloseTo(19, 0);
+    for (let i = 7; i < list.count; ++i) {
+      expect(offZ(xyz(list, i), Vec3.create(175, 0, 0))).toBeCloseTo(15, 1);
+      expect(xyz(list, i)[2]).toBeGreaterThan(0);
+      expect(xyz(list, i)[2]).toBeLessThanOrEqual(80 + 1e-3);
+    }
+    expect(xyz(list, list.count - 1)[2]).toBeGreaterThan(80 - 20);
+  });
+
+  it("its params (growParams): Axis on a mesh, Radius in space, the walk's none (review S4)", () => {
+    const src = { particles: 'L', index: 1 };
+    const s = {
+      ...DefaultGrowSettings,
+      mode: 'helix' as const,
+      pitch: 50,
+      helixRadius: 9,
+      axis: 'x' as const,
+      steps: 7,
+    };
+    const space = growParams(src, s);
+    expect(space).toMatchObject({ mode: 'helix', pitch: 50, turns: 5, hand: 'right', direction: 'up', helixRadius: 9 });
+    expect(space).not.toHaveProperty('axis');
+    expect(space).not.toHaveProperty('steps');
+    const onMesh = growParams(src, { ...s, mesh: 'M' });
+    expect(onMesh).toMatchObject({ mesh: 'M', axis: 'x', pitch: 50 });
+    expect(onMesh).not.toHaveProperty('helixRadius');
+    expect(growParams(src, { ...s, mode: 'walk', mesh: 'M' })).not.toHaveProperty('axis');
+  });
+
   it("a helix's own Rise live (paint-refine's grown fiber): the same path, its units r apart, one step", async () => {
     const v = await viewer();
     const ref = entry(v).cell.transform.ref;
@@ -720,6 +762,12 @@ describe('mesoscale.grow helix', () => {
     }
     // up to the north pole, not past it: some 3⅓ turns of the 10
     expect(xyz(list, list.count - 1)[2]).toBeGreaterThan(90);
+    // undo and redo on a mesh (review S4): the same units again
+    const units = Array.from(list.coordinates);
+    expectOk(await v.api.run('history.undo', {}));
+    expect(drawn(v).count).toBe(7);
+    expectOk(await v.api.run('history.redo', {}));
+    expect(Array.from(drawn(v).coordinates)).toEqual(units);
     // the source on the axis (X through the vesicle's center): refused, no step
     const s = steps(v);
     expect(await grow({ pitch: 30, turns: 2, axis: 'x' })).toMatchObject({ ok: false, code: 'invalid' });
