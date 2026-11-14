@@ -252,8 +252,9 @@ export function walkPath(
     if (!on.surface.project(_hit, source.position, _zero, on.reach)) return undefined;
     Vec3.copy(at, _hit.position);
     Vec3.copy(n, _hit.normal);
-    // on the source's side (its +z), not the file's winding: the units' up follows it (round 2 review S7)
-    if (Vec3.dot(n, Vec3.transformQuat(_t, _up, source.rotation)) < -1e-3) Vec3.negate(n, n);
+    // on the source's side (its axis along a surface: `on.axis`, else +z), not the file's winding: the units' up follows
+    // it (round 2 review S7, round 3)
+    if (Vec3.dot(n, Vec3.transformQuat(_t, on.axis ?? _up, source.rotation)) < -1e-3) Vec3.negate(n, n);
     if (!tangent(d, n)) fiberOffsetDirection(d, 'auto', n);
   }
   for (let i = 0; i < Math.max(0, Math.floor(p.steps)); ++i) {

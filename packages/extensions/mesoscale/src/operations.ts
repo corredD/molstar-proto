@@ -1242,6 +1242,22 @@ export class MesoscaleApi extends ApiArea {
       if (isFailure(mesh)) return mesh;
       const reach = 2 * diameter;
       const on: GrowOn | undefined = mesh && { surface: sceneMeshSurface(mesh), reach };
+      /**
+       * The copy's own axis along a surface's normal, as paint puts it (round 3, Ludo 2026-11-13: a tiling grown from a
+       * painted copy aligned with it): a membrane protein's +z, else its Fiber Axis when set, else +z
+       */
+      const surfaceAxis = () =>
+        (!src.surface &&
+          fiberAxisVector(
+            fiberSettingsOf(
+              data,
+              brushIdOf(data, { target, entity }),
+              target,
+              paintedFibers(state, l.cell.transform.ref),
+              paintedStructures(state, l.cell.transform.ref),
+            ).axis,
+          )) ||
+        Vec3.create(0, 0, 1);
       const offMesh = () =>
         ApiResult.fail(
           'invalid',
@@ -1284,7 +1300,13 @@ export class MesoscaleApi extends ApiArea {
         const total = (p.count ?? tilingTotal(p.pattern, p.rings)) - 1;
         if (total > MaxGrown) return tooMany(total);
         // its plane: a membrane protein's +z is its normal, anything else's its principal axis
-        const normal = src.surface ? Vec3.create(0, 0, 1) : principalAxisOf(data.targetMapping?.get(target));
+        // on a mesh, paint's axis along the normal (round 3); in space its plane: a membrane protein's +z is its normal,
+        // anything else's its principal axis
+        const normal = on
+          ? surfaceAxis()
+          : src.surface
+            ? Vec3.create(0, 0, 1)
+            : principalAxisOf(data.targetMapping?.get(target));
         made = tilingPoses(scene, normal, p, on);
         if (!made) return offMesh();
         Object.assign(sizes, p);
@@ -1293,8 +1315,7 @@ export class MesoscaleApi extends ApiArea {
         if (!(p.radius > 0)) return ApiResult.fail('invalid', 'The radius is above 0 Å.');
         if (!(p.count >= 1)) return ApiResult.fail('invalid', 'Give 1 copy or more.');
         if (p.count > MaxGrown) return tooMany(p.count);
-        const axis = src.surface ? Vec3.create(0, 0, 1) : principalAxisOf(data.targetMapping?.get(target));
-        made = spherePoses(scene, p, seed, on && { ...on, axis });
+        made = spherePoses(scene, p, seed, on && { ...on, axis: surfaceAxis() });
         if (!made) return offMesh();
         Object.assign(sizes, p);
       } else {
@@ -1318,7 +1339,7 @@ export class MesoscaleApi extends ApiArea {
         if (on) {
           // on a mesh, in the scene: the rise as drawn (the list's units times its scale), then back in the list's frame
           normals = [];
-          path = walkPath(scene, axis, rise * (move?.scale ?? 1), p, seed, on, normals);
+          path = walkPath(scene, axis, rise * (move?.scale ?? 1), p, seed, { ...on, axis: surfaceAxis() }, normals);
           if (!path) return offMesh();
           // a walk that left the mesh at once (an open edge: review M1)
           if (path.length < 6) {

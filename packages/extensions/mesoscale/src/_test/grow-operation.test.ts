@@ -487,6 +487,38 @@ describe('mesoscale.grow on a mesh', () => {
     }
   });
 
+  it('a copy painted on a tilted mesh and the Tiling and Sphere grown from it share its axis along the normal (round 3)', async () => {
+    const v = await viewer();
+    const ref = entry(v).cell.transform.ref;
+    // a plane through (0, 50, 0), its normal (1, 0, 1)/√2: 400 Å a side, two triangles wound toward the normal
+    const n = Vec3.normalize(Vec3(), Vec3.create(1, 0, 1));
+    const u = Vec3.create(0, 1, 0);
+    const w = Vec3.cross(Vec3(), u, n);
+    const c = Vec3.create(0, 50, 0);
+    const corner = (a: number, b: number) =>
+      Vec3.scaleAndAdd(Vec3(), Vec3.scaleAndAdd(Vec3(), c, w, a * 200), u, b * 200);
+    const vs = [corner(-1, -1), corner(1, -1), corner(1, 1), corner(-1, 1)];
+    const obj = `${vs.map((x) => `v ${x[0]} ${x[1]} ${x[2]}`).join('\n')}\nf 1 2 3\nf 1 3 4\n`;
+    expectOk(await v.api.load.files({ files: [new File([obj], 'plane.obj')] }));
+    const { repr } = meshCells(v);
+    // loose (1CRN, not a membrane protein: its principal axis ~47° off +z) painted on it: +z along the normal
+    expectOk(
+      await v.api.run('mesoscale.paint', { entity: 'loose', positions: [...c], normals: [...n], surface: true }),
+    );
+    const zAt = (i: number) => Vec3.transformQuat(Vec3(), Vec3.create(0, 0, 1), quat(drawn(v), i));
+    expect(Vec3.dot(zAt(7), n)).toBeCloseTo(1, 5);
+    for (const params of [
+      { mode: 'tiling', spacing: 40, count: 7 },
+      { mode: 'sphere', count: 6, radius: 80, seed: 2 },
+    ]) {
+      expectOk(await v.api.run('mesoscale.grow', { particles: ref, index: 7, mesh: repr, ...params }));
+      const list = drawn(v);
+      expect(list.count, params.mode).toBeGreaterThan(8);
+      for (let i = 8; i < list.count; ++i) expect(Vec3.dot(zAt(i), n), `${params.mode} ${i}`).toBeCloseTo(1, 4);
+      expectOk(await v.api.run('history.undo', {}));
+    }
+  });
+
   it('refuses Crystal on a mesh, a mesh not in the scene, and a source off the mesh: no step', async () => {
     const v = await viewer();
     const ref = entry(v).cell.transform.ref;
