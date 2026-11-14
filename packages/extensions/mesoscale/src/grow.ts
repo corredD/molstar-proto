@@ -41,14 +41,13 @@ export interface CrystalParams {
 }
 
 /**
- * A planar tiling in the source's own plane: its pattern, the spacing between copies (Å) and its rings; on a surface,
- * its points (the source's counted; absent: the plane's for its rings)
+ * A planar tiling in the source's own plane: its pattern, the spacing between copies (Å) and its points, the source's
+ * counted (decisions 11: Count in space too, filled ring by ring; Rings are gone)
  */
 export interface TilingParams {
   readonly pattern: 'hex' | 'square';
   readonly spacing: number;
-  readonly rings: number;
-  readonly count?: number;
+  readonly count: number;
 }
 
 /** Copies uniform in a ball about the source (Å), turned at random or as the source */
@@ -174,9 +173,9 @@ export function crystalPoses(source: GrowPose, p: CrystalParams): GrowPoses | un
 }
 
 /**
- * A tiling of the source's own plane (`normal`, in its frame: its axis), ring by ring: Hex, 1 + 3r(r+1) points with
- * r rings, Square, (2r+1)², the source's among them (not a copy); each a spacing from its neighbours, turned as the
- * source. On a surface (`on`), grown over it (`tilingOnSurface`); undefined for a source off it.
+ * A tiling of the source's own plane (`normal`, in its frame: its axis), ring by ring up to Count points (Hex rings
+ * hold 1 + 3r(r+1) points, Square's (2r+1)²), the source's among them (not a copy); each a spacing from its neighbours,
+ * turned as the source. On a surface (`on`), grown over it (`tilingOnSurface`); undefined for a source off it.
  */
 export function tilingPoses(source: GrowPose, normal: Vec3, p: TilingParams): GrowPoses;
 export function tilingPoses(
@@ -195,10 +194,10 @@ export function tilingPoses(source: GrowPose, normal: Vec3, p: TilingParams, on?
   const e1 = u;
   const e2 = hex ? Vec3.scaleAndAdd(Vec3(), Vec3.scale(Vec3(), u, 0.5), w, Math.sqrt(3) / 2) : w;
   const out: GrowPoses = { positions: [], rotations: [] };
-  const rings = Math.max(0, Math.floor(p.rings));
-  for (let ring = 1; ring <= rings; ++ring) {
+  const limit = Math.floor(p.count) - 1;
+  for (let ring = 1; out.positions.length / 3 < limit; ++ring) {
     for (let q = -ring; q <= ring; ++q) {
-      for (let r = -ring; r <= ring; ++r) {
+      for (let r = -ring; r <= ring && out.positions.length / 3 < limit; ++r) {
         const at = hex ? Math.max(Math.abs(q), Math.abs(r), Math.abs(q + r)) : Math.max(Math.abs(q), Math.abs(r));
         if (at !== ring) continue;
         Vec3.scale(_t, e1, q * p.spacing);
@@ -731,7 +730,7 @@ export interface GrowOn {
   readonly axis?: Vec3;
 }
 
-/** The points of the plane's tiling with `rings` rings, the source's counted */
+/** The points of the plane's tiling with `rings` rings, the source's counted (a session's Rings read as this count) */
 export function tilingTotal(pattern: TilingParams['pattern'], rings: number): number {
   const r = Math.max(0, Math.floor(rings));
   return pattern === 'hex' ? 1 + 3 * r * (r + 1) : (2 * r + 1) ** 2;
@@ -831,7 +830,7 @@ function tilingOnSurface(source: GrowPose, axis: Vec3, p: TilingParams, on: Grow
     }
   }
   const s = p.spacing;
-  const limit = Math.floor(p.count ?? tilingTotal(p.pattern, p.rings)) - 1;
+  const limit = Math.floor(p.count) - 1;
   const apart = apartGrid(0.8 * s);
   // the points kept (the source's first): position, normal, the lattice's first direction
   const kept: number[] = [];

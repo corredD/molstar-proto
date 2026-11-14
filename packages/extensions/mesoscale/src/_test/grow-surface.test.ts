@@ -41,7 +41,7 @@ describe('tiling on a mesh', () => {
     const out = tilingPoses(
       north,
       z,
-      { pattern: 'hex', spacing: s, rings: 3, count: 20000 },
+      { pattern: 'hex', spacing: s, count: 20000 },
       {
         surface: vesicle,
         reach: 20,
@@ -81,7 +81,7 @@ describe('tiling on a mesh', () => {
     const out = tilingPoses(
       { position: north.position, rotation },
       axis,
-      { pattern: 'hex', spacing: 10, rings: 3 },
+      { pattern: 'hex', spacing: 10, count: 37 },
       {
         surface: vesicle,
         reach: 20,
@@ -98,7 +98,7 @@ describe('tiling on a mesh', () => {
     const ten = tilingPoses(
       north,
       z,
-      { pattern: 'square', spacing: 10, rings: 3, count: 11 },
+      { pattern: 'square', spacing: 10, count: 11 },
       {
         surface: vesicle,
         reach: 20,
@@ -114,7 +114,7 @@ describe('tiling on a mesh', () => {
       rotation: Quat.setAxisAngle(Quat(), z, 0.4),
     };
     for (const pattern of ['hex', 'square'] as const) {
-      const p = { pattern, spacing: 10, rings: 3 };
+      const p = { pattern, spacing: 10, count: pattern === 'hex' ? 37 : 49 };
       const flat = tilingPoses(source, z, p);
       const on = tilingPoses(source, z, p, { surface: plane, reach: 10 })!;
       expect(on.positions.length).toBe(flat!.positions.length);
@@ -131,7 +131,7 @@ describe('tiling on a mesh', () => {
 
   it('is undefined for a source off the mesh', () => {
     const far: GrowPose = { position: Vec3.create(0, 0, 300), rotation: Quat.identity() };
-    expect(tilingPoses(far, z, { pattern: 'hex', spacing: 10, rings: 1 }, { surface: vesicle, reach: 20 })).toBe(
+    expect(tilingPoses(far, z, { pattern: 'hex', spacing: 10, count: 7 }, { surface: vesicle, reach: 20 })).toBe(
       undefined,
     );
   });

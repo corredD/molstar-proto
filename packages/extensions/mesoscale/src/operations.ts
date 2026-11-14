@@ -247,13 +247,12 @@ export interface GrowSettings {
   readonly nc: number;
   readonly pattern: 'hex' | 'square';
   readonly spacing?: number;
-  readonly rings: number;
   readonly count: number;
   readonly radius?: number;
   readonly turn: 'random' | 'source';
   /** The mesh it grows on (its representation's state ref; grow-mesh): none, in space; not for Crystal */
   readonly mesh?: string;
-  /** Tiling on a mesh: its points, the source's counted; unset: the plane's for Rings */
+  /** Tiling's points, the source's counted; unset: 3 rings' (decisions 11) */
   readonly tiles?: number;
   /** A helix (grow-helix): its pitch (unset: 4 × the copy's diameter), turns, hand, direction, axis on a mesh, radius in space (unset: the copy's diameter) */
   readonly pitch?: number;
@@ -279,7 +278,6 @@ export const DefaultGrowSettings: GrowSettings = {
   nb: 3,
   nc: 1,
   pattern: 'hex',
-  rings: 3,
   count: 50,
   turn: 'random',
   turns: 5,
@@ -295,15 +293,16 @@ export function growParams(source: GrowSource, s: GrowSettings) {
     helix: ['pitch', 'turns', 'hand', 'direction', 'axis', 'helixRadius', 'rise', 'twist', 'jitter'],
     spiral: ['spacing', 'count', 'hand', 'rise', 'twist', 'jitter'],
     crystal: ['a', 'b', 'c', 'alpha', 'beta', 'gamma', 'na', 'nb', 'nc'],
-    tiling: ['pattern', 'spacing', 'rings'],
+    tiling: ['pattern', 'spacing'],
     sphere: ['count', 'radius', 'turn'],
   };
   const out: Record<string, unknown> = { particles: source.particles, index: source.index, mode: s.mode };
   for (const k of [...own[s.mode], 'seed' as const]) if (s[k] !== undefined) out[k] = s[k];
-  // on a mesh (grow-mesh): a crystal grows in space; Tiling's Count; a helix's axis there, its radius in space
+  // Tiling's Count, in space too (decisions 11)
+  if (s.mode === 'tiling' && s.tiles !== undefined) out.count = s.tiles;
+  // on a mesh (grow-mesh): a crystal grows in space; a helix's axis there, its radius in space
   if (s.mesh && s.mode !== 'crystal') {
     out.mesh = s.mesh;
-    if (s.mode === 'tiling' && s.tiles !== undefined) out.count = s.tiles;
     delete out.helixRadius;
   } else delete out.axis;
   return out;
@@ -1323,7 +1322,11 @@ export class MesoscaleApi extends ApiArea {
         ),
       ),
       rings: OptionalParam(
-        PD.Numeric(3, { min: 0, max: 50, step: 1 }, { description: 'Tiling: rings about the source' }),
+        PD.Numeric(
+          3,
+          { min: 0, max: 50, step: 1 },
+          { description: "Tiling, as older sessions had it: read as its count (the rings' points, the source's counted)" },
+        ),
       ),
       count: OptionalParam(
         PD.Numeric(
@@ -1331,7 +1334,7 @@ export class MesoscaleApi extends ApiArea {
           { min: 1, step: 1 },
           {
             description:
-              "Sphere, Spiral: its copies; Tiling on a mesh: its points, the source's counted (absent: the plane's for Rings)",
+              "Sphere, Spiral: its copies; Tiling: its points, the source's counted (absent: 3 rings')",
           },
         ),
       ),
@@ -1466,12 +1469,11 @@ export class MesoscaleApi extends ApiArea {
         const p = {
           pattern: v.pattern ?? 'hex',
           spacing: v.spacing ?? diameter,
-          rings: Math.floor(v.rings ?? 3),
-          // on a mesh, Count points (the plane's for Rings when absent)
-          ...(on && v.count !== undefined ? { count: Math.floor(v.count) } : {}),
+          // Count, the source's counted; a session's Rings read as their count, else 3 rings'
+          count: Math.floor(v.count ?? tilingTotal(v.pattern ?? 'hex', v.rings ?? 3)),
         };
         if (!(p.spacing > 0)) return ApiResult.fail('invalid', 'The spacing is above 0 Å.');
-        const total = (p.count ?? tilingTotal(p.pattern, p.rings)) - 1;
+        const total = p.count - 1;
         if (total > MaxGrown) return tooMany(total);
         // its plane: a membrane protein's +z is its normal, anything else's its principal axis
         // on a mesh, paint's axis along the normal (round 3); in space its plane: a membrane protein's +z is its normal,

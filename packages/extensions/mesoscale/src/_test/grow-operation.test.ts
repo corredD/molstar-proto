@@ -161,6 +161,12 @@ describe('mesoscale.grow', () => {
     );
     expect(drawn(v).count).toBe(7 + 18);
     expectOk(await v.api.run('history.undo', {}));
+    // Count in space (Rings gone): the source counted; a session's Rings reads as its count (decisions 11)
+    expectOk(
+      await v.api.run('mesoscale.grow', { particles: ref, index: 2, mode: 'tiling', pattern: 'hex', spacing: 20, count: 10 }),
+    );
+    expect(drawn(v).count).toBe(7 + 9);
+    expectOk(await v.api.run('history.undo', {}));
 
     const sphere = { particles: ref, index: 6, mode: 'sphere', count: 12, radius: 40, seed: 4 };
     expectOk(await v.api.run('mesoscale.grow', sphere));

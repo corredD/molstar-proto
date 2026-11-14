@@ -14,6 +14,7 @@ import {
   rotationsToListFrame,
   spherePoses,
   tilingPoses,
+  tilingTotal,
   walkPath,
 } from '../grow.js';
 import { toListFrame } from '../paint.js';
@@ -63,7 +64,7 @@ describe('tiling', () => {
   const normal = Vec3.create(0, 0, 1);
   it('tiles Hex in rings: 1 + 3r(r+1) points with the source, in its plane, each a spacing from a neighbour', () => {
     for (const rings of [1, 2, 3]) {
-      const out = tilingPoses(source, normal, { pattern: 'hex', spacing: 20, rings });
+      const out = tilingPoses(source, normal, { pattern: 'hex', spacing: 20, count: tilingTotal('hex', rings) });
       const k = out.positions.length / 3;
       expect(k + 1).toBe(1 + 3 * rings * (rings + 1));
       const all = [Vec3.create(0, 0, 0), ...Array.from({ length: k }, (_, i) => local(at(out.positions, i)))];
@@ -77,8 +78,17 @@ describe('tiling', () => {
     }
   });
 
+  it('tiles in space by Count, the source counted, ring by ring: a count between two rings stops inside the ring', () => {
+    const hex = tilingPoses(source, normal, { pattern: 'hex', spacing: 20, count: 20 });
+    expect(hex.positions.length / 3).toBe(19);
+    expect(tilingPoses(source, normal, { pattern: 'square', spacing: 20, count: 12 }).positions.length / 3).toBe(11);
+    // the first ring (6 copies) comes before any of the second's
+    for (let i = 0; i < 6; ++i) expect(Vec3.magnitude(local(at(hex.positions, i)))).toBeCloseTo(20, 6);
+    expect(Vec3.magnitude(local(at(hex.positions, 6)))).toBeGreaterThan(20.001);
+  });
+
   it('tiles Square in rings: (2r+1)² points with the source, ring by ring', () => {
-    const out = tilingPoses(source, Vec3.create(1, 1, 0), { pattern: 'square', spacing: 15, rings: 2 });
+    const out = tilingPoses(source, Vec3.create(1, 1, 0), { pattern: 'square', spacing: 15, count: 25 });
     expect(out.positions.length / 3 + 1).toBe(25);
     // the first ring first: its 8 within √2 spacings
     for (let i = 0; i < 8; ++i)

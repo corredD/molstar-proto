@@ -339,14 +339,16 @@ describe('Grow on a mesh (grow-mesh)', () => {
       );
     await until(() => !!on());
     expect(on()!.textContent).toBe('None');
-    expect(host.querySelector('[aria-label="Grow Rings"]')).not.toBe(null);
+    // Count in space too, Rings gone (decisions 11)
+    expect(host.querySelector('[aria-label="Grow Count"]')).not.toBe(null);
+    expect(host.querySelector('[aria-label="Grow Rings"]')).toBe(null);
     on()!.click();
     await until(() => !!host.querySelector('[role=option]'));
     Array.from(host.querySelectorAll<HTMLElement>('[role=option]'))
       .find((o) => o.textContent === 'vesicle.obj')!
       .click();
     await until(() => !!v.api.mesoscale!.growSettings.value.mesh);
-    // on a mesh, Count (the plane's for Rings: 37) in place of Rings
+    // on a mesh, Count (the plane's 3 rings: 37)
     await until(() => !!host.querySelector('[aria-label="Grow Count"]'));
     expect(host.querySelector('[aria-label="Grow Rings"]')).toBe(null);
     const steps = v.api.history.steps.value.length;
@@ -366,7 +368,7 @@ describe('Grow on a mesh (grow-mesh)', () => {
       expect(Math.hypot(x, y, z)).toBeCloseTo(50, 0);
     }
 
-    // the mesh deleted: On None, Rings back in place of Count (review S3)
+    // the mesh deleted: On None, still Count (review S3; decisions 11)
     const shape = Array.from(v.plugin.state.data.cells.values()).find((c) => SO.Shape.Provider.is(c.obj))!;
     let root = shape.transform.ref;
     while (v.plugin.state.data.tree.transforms.get(root)!.parent !== v.plugin.state.data.tree.root.ref) {
@@ -374,8 +376,8 @@ describe('Grow on a mesh (grow-mesh)', () => {
     }
     await v.plugin.build().delete(root).commit();
     await until(() => on()?.textContent === 'None');
-    await until(() => !!host.querySelector('[aria-label="Grow Rings"]'));
-    expect(host.querySelector('[aria-label="Grow Count"]')).toBe(null);
+    await until(() => !!host.querySelector('[aria-label="Grow Count"]'));
+    expect(host.querySelector('[aria-label="Grow Rings"]')).toBe(null);
 
     choice(host, 'Mode', 'Crystal')!.click();
     await until(() => !on());

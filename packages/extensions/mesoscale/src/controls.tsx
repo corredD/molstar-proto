@@ -618,7 +618,6 @@ function settingsOfGrow(g: GrowRecord): Partial<GrowSettings> {
     tiling: [
       ['pattern', 'pattern'],
       ['spacing', 'spacing'],
-      ['rings', 'rings'],
       ['count', 'tiles'],
     ],
     sphere: [
@@ -631,6 +630,10 @@ function settingsOfGrow(g: GrowRecord): Partial<GrowSettings> {
   // On: the grow's mesh (a crystal grows in space whatever On says)
   if (g.mode !== 'crystal') out.mesh = g.mesh?.ref;
   for (const [from, to] of keys[g.mode]) if (p[from] !== undefined) out[to] = p[from];
+  // a session's Tiling by Rings reads as its count (decisions 11)
+  if (g.mode === 'tiling' && out.tiles === undefined && typeof p.rings === 'number') {
+    out.tiles = tilingTotal(p.pattern === 'square' ? 'square' : 'hex', p.rings);
+  }
   return out as Partial<GrowSettings>;
 }
 
@@ -639,7 +642,7 @@ function settingsOfGrow(g: GrowRecord): Partial<GrowSettings> {
  * one step a Grow (`mesoscale.grow`). It names its source (set by a particle's right-click, Grow from this instance…,
  * or by a paint, its last copy), its mode, the mode's params (a length unset: the source's size), a seed (none: at
  * random) and Grow. The settings are the area's (`growSettings`), no step. On (grow-mesh): None or a file mesh of the
- * scene (the one the source was painted on by default); on a mesh, Tiling's Rings becomes its Count; Crystal grows in
+ * scene (the one the source was painted on by default); Tiling's Count is in space too; Crystal grows in
  * space. The last grow made here is live (round 2): any setting (each mode's, Seed, On and Mode: a Mode picked turns it
  * into one of that mode) makes it again in place (`mesoscale.grow { replace }`), one step a drag or a pick, and the
  * settings follow it back (an undo, a drag refused); a fiber's Rise, Twist and Jitter redraw it on its path
@@ -1054,20 +1057,13 @@ export function GrowBlock(props: { area: MesoscaleApi; api: ViewerApi; particles
                     { min: 1, max: 1000, scale: 'log', unit: 'Å' },
                     diameter,
                   )}
-                  <Show
-                    when={mapState(chosen, (m) => !!m)}
-                    fallback={() => number('rings', 'Rings', 'Rings about the source', { min: 1, max: 30, step: 1 })}
-                  >
-                    {() =>
-                      number(
-                        'tiles',
-                        'Count',
-                        "Its points on the mesh, the source's counted (unset: Rings' on a plane)",
-                        { min: 2, max: 5000, step: 1 },
-                        () => tilingTotal(settings.value.pattern, settings.value.rings),
-                      )
-                    }
-                  </Show>
+                  {number(
+                    'tiles',
+                    'Count',
+                    "Its points, the source's counted (unset: 3 rings')",
+                    { min: 2, max: 5000, step: 1 },
+                    () => tilingTotal(settings.value.pattern, 3),
+                  )}
                 </div>
               )}
             </Show>
