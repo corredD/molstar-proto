@@ -148,6 +148,11 @@ describe('Grow from this instance', () => {
     // 3 rings of Square: 48 copies
     await until(() => count(v) === 3 + 48);
     expect(v.api.history.steps.value.length).toBe(steps + 1);
+    // Undo (⌘Z's and History's: history.undo) takes exactly that grow back, Redo puts it back (paint-refine, item 3)
+    expect((await v.api.run('history.undo', {})).ok).toBe(true);
+    await until(() => count(v) === 3);
+    expect((await v.api.run('history.redo', {})).ok).toBe(true);
+    await until(() => count(v) === 3 + 48);
   });
 
   it("makes a paint's last copy the grow's source", async () => {
