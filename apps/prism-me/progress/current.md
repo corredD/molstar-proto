@@ -84,12 +84,10 @@ is not built is [../TODO.md](../TODO.md).
   `me/night-integration` with the surface fit) and `mesh-volume-color`, as `me/all` (a08cbf8e7, 834 tests); pushed,
   published on mesoscope. [Morning summary](2026-11-14-morning.md). Lanes closed 2026-11-14 (worktrees, local
   branches, dev servers 1369–1376).
-- **`mesh-volume-texture`** (Ludo, 2026-11-14; Opus, `~/prism-me-lanes/mesh-volume-texture`, port 1377): Color by ›
-  Volume with a Texture toggle (a 3D color grid sampled per pixel, the volume's detail on any mesh), At surface and
-  Projected; [brief](2026-11-14-mesh-volume-texture.md) on its branch. **Stopped before code**: Mol*'s `volume` color
-  type samples the grid in the vertex shader (still per vertex) and a Shape cannot take a grid theme. Ludo chose A
-  (2026-11-14): per-fragment grid lookup and a Shape color-grid hook in packages/graphics as separate commits (to
-  cherry-pick onto master later), then the toggle. Running.
+- **Merged 2026-11-14** (Ludo's word): `mesh-volume-texture`, Color by › Volume Detail Vertex | Texture (a color grid
+  read per pixel; option A, core changes in [core-changes.md](../_spec/core-changes.md)); 3,248 tests, tsc clean;
+  [progress](2026-11-14-mesh-volume-texture.md). Open for Ludo: Projected from the voxel vs the nearest surface point at
+  coarse voxels, the 256³ cap (single voxels or block averages), S6 before upstream, color smoothing's half cell.
 - **Merged 2026-11-13**: `grow-helix` (Ludo's word, decisions doc point 10): Grow › Helix and Spiral (Archimedean,
   Count, Arm spacing, Step; crowded copies skipped), every Grow setting live on the last grow, Count prefix-stable, Clear;
   [progress](2026-11-13-grow-helix.md). Next: the night lanes ([plan](../plans/2026-11-13-night-lanes.md)).

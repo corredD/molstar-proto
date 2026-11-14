@@ -34,7 +34,7 @@ lane that adds such a change adds an entry here.
 | core                        |       4 |            6 |           +74 / -9 |          3 (+112)   |
 | model                       |       6 |            9 |         +514 / -20 |          7 (+752)   |
 | io                          |       5 |           12 |        +1449 / -6  |   8 (+1059) + fixtures |
-| graphics                    |      22 |           93 |       +4595 / -564 |         40 (+4873)  |
+| graphics                    |      25 |           93 |       +4595 / -564 |         40 (+4873)  |
 | plugin (core, headless)     |       7 |           16 |       +1180 / -79  |         14 (+3811)  |
 | mvs                         |       1 |            1 |            +2 / -1 |           2 (+43)   |
 | prism/viewer                |       9 |           55 |       +1881 / -354 |         26 (+2103)  |
@@ -256,6 +256,26 @@ specs (`.md`) these changes added are listed in the entries.
   `graphics/src/geo/geometry/{emissive,marker,overpaint,size,substance,wiggle}-data.ts`. Commit: `c3e191f1c`. Tests:
   `geo/geometry/_test/empty-layer-data.test.ts`. Upstream: candidate. Not mixed.
 
+- **Color grid per fragment** (mesh-volume-texture, 2026-11-14) — `ColorVolume.fragment` → define
+  `dColorGridFragment`: the grid color types read in the fragment stage at the interpolated grid position (cell
+  centers); palette, emissive, tracing consistent; pick, depth and marking ignore it. WebGL and WebGPU. Why: the grid
+  types were read per vertex, so a triangle lost the grid's detail (Color by › Volume, Detail Texture). Files:
+  `graphics/src/geo/geometry/color-data.ts`, `theme/color.ts`, `gl/renderable/schema.ts`, `gl/shader-code.ts`, GLSL
+  chunks `color-{vert,frag}-params`, `assign-color-varying`, `assign-material-color`, `mesh.frag`; WGSL `varyings`,
+  `material`, `output`. Commits: `67181b462`, `b7586aea9`, `0b3549fa8`, `60a381d9b`. Tests:
+  `gl/_test/color-grid-fragment.test.ts`, `geo/geometry/_test/color-data.test.ts`. Upstream: needs work (a partial
+  overpaint still pre-mixes the vertex color, review S6; precompile signatures do not predict the define). Not mixed.
+- **A Shape's color grid** (mesh-volume-texture, 2026-11-14) — `Shape.colorGrid` (model) as data; the shape
+  representation makes the texture with its graphics context (`applyMeshColorGrid`), reads it per fragment, else
+  colors the vertices; reused, moved to a new context, destroyed. Why: a shape's colors were fixed to `getColor` per
+  group, and a context-free getter cannot make a texture. Files: `model/src/shape/shape.ts`,
+  `graphics/src/geo/geometry/mesh/color-smoothing.ts`, `repr/shape/representation.ts`. Commits: `88452e74d`,
+  `ad167aa28`. Tests: `repr/shape/_test/color-grid.test.ts`. Upstream: candidate. Not mixed.
+- **A 2d grid layout of one column at least** (mesh-volume-texture, 2026-11-14) — `getVolumeTexture2dLayout`:
+  `columns ≥ 1`; a grid longer in x than its slices' area gave width 0 and height Infinity (a crash). Files:
+  `graphics/src/repr/volume/util.ts`. Commit: `e65fa0712`. Tests: `repr/shape/_test/color-grid.test.ts` (a [305, 7, 7]
+  grid). Upstream: candidate (a fix on its own). Not mixed.
+
 ## plugin
 
 - **glTF meshes open as shapes** — format `gltf` (`.glb`, `.gltf`), listed after the shapes. Why: portal GLBs
@@ -421,3 +441,7 @@ specs (`.md`) these changes added are listed in the entries.
   type and scissors icons, the mesh-marks fix and the WebGPU draw-list fix is not recorded in a note.
 - `graphics` entry "Target representation" and the plugin entries on layers, the list transform and targets grew over
   many master merges (`50ff64bcb`, `e5b10d9bd`, `f0a63ca45`, `a3eab8dcc`); a cherry-pick needs a diff against current master.
+- Color smoothing's vertex-stage grid lookup reads half a cell off in x and y against its CPU twin
+  (`getTrilinearlyInterpolated`); seen by mesh-volume-texture, not changed: needs work, a lane of its own.
+- `gl/_test/backend-neutral.test.ts` fails on prism-me: it takes `ctx.extensions.ensureFor` in
+  `extensions/mesoscale/src/operations.ts` for a WebGL extension call (a false match); to fix in the test's pattern.
