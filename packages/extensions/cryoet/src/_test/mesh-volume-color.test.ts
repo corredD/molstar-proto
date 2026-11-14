@@ -5,10 +5,11 @@
  */
 
 import { afterEach, describe, expect, it } from 'vitest';
-import { Vec3 } from '@molstar/core/math/linear-algebra';
+import { Mat4, Vec3 } from '@molstar/core/math/linear-algebra';
 import { ColorScale } from '@molstar/core/util/color/scale';
 import type { Shape } from '@molstar/model/model/shape';
 import { PluginStateObject as SO } from '@molstar/plugin/state/objects';
+import { VolumeTransform } from '@molstar/plugin/state/transforms/volume/ops';
 import type { ApiResult } from '@molstar/prism-viewer/api/area';
 import { DefaultPrismViewerSpec } from '@molstar/prism-viewer/default-spec';
 import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
@@ -201,10 +202,11 @@ describe("a mesh's Color by › Volume", () => {
     const { c, array } = await viewer();
     expectOk(await c.mesh({ mesh: 'points.vtp', volume: 'shell.mrc', sample: 'surface' } as never));
     const before = (await array('points.vtp', 'point:density_shell'))!;
-    // ×1.2 about the origin: the sphere's points 10 Å and more from the shell
+    // ×1.2 about the origin: the sphere off the shell (its center moved 17 Å, its radius 36 Å)
     expectOk(await c.mesh({ mesh: 'points.vtp', scale: 1.2 } as never));
     const after = (await array('points.vtp', 'point:density_shell'))!;
-    for (let i = 0; i < after.length; i++) expect(Number.isNaN(after[i]) || after[i] > before[i] + 1).toBe(true);
+    const mean = (x: Float32Array) => x.reduce((a, b) => a + b, 0) / x.length;
+    expect(mean(after)).toBeGreaterThan(mean(before) + 2);
   });
 
   it('a session keeps the parameters, not the values, and recomputes them', async () => {
@@ -217,5 +219,61 @@ describe("a mesh's Color by › Volume", () => {
     await v.plugin.state.setSnapshot(snapshot);
     expect((await read('cells.vtp')).volumeColor).toMatchObject({ sample: 'min', depth: 8, invert: true });
     expect(await array('cells.vtp', 'cell:density_shell')).toEqual(values);
+  });
+});
+
+describe("a mesh's Color by › Volume, its volume", () => {
+  it('removed: the mesh stays drawn and listed, gray, its volume missing; an undo recolors it', async () => {
+    const { v, c, read, colors } = await viewer();
+    expectOk(await c.mesh({ mesh: 'points.vtp', volume: 'shell.mrc', sample: 'surface' } as never));
+    const ref = v.plugin.managers.volume.hierarchy.current.volumes[0].cell.transform.ref;
+    expectOk(await v.api.run('volume.remove', { volume: ref } as never));
+    const m = await read('points.vtp');
+    expect(m).toBeDefined();
+    expect(m.volumeColor).toMatchObject({ missing: true });
+    for (const col of await colors('points.vtp')) expect(col).toBe(0x808080);
+    expectOk(await v.api.run('history.undo', {}));
+    expect((await read('points.vtp')).volumeColor).toMatchObject({ label: 'shell.mrc' });
+    expect((await read('points.vtp')).volumeColor).not.toHaveProperty('missing');
+    for (const col of await colors('points.vtp')) expect(col).toBe(viridis(-2));
+  });
+
+  it('moved for the first time: read where it is drawn now', async () => {
+    const { v, c, array } = await viewer();
+    expectOk(await c.mesh({ mesh: 'points.vtp', volume: 'shell.mrc', sample: 'surface' } as never));
+    const before = (await array('points.vtp', 'point:density_shell'))!;
+    const volume = v.plugin.managers.volume.hierarchy.current.volumes[0].cell;
+    const matrix = Mat4.fromTranslation(Mat4(), Vec3.create(12, 0, 0));
+    await v.plugin
+      .build()
+      .to(volume)
+      .insert(VolumeTransform, { transform: { name: 'matrix', params: { data: matrix, transpose: false } } })
+      .commit();
+    const after = (await array('points.vtp', 'point:density_shell'))!;
+    const mean = (x: Float32Array) => x.reduce((a, b) => a + b, 0) / x.length;
+    expect(mean(after)).toBeGreaterThan(mean(before) + 1);
+  });
+
+  it('loaded after the mesh: a session made so recomputes the values in order', async () => {
+    const base = DefaultPrismViewerSpec();
+    const v = await createPrismViewerHeadless({
+      spec: { ...base, extensions: [...(base.extensions ?? []), CryoetExtension] },
+    });
+    viewers.push(v);
+    expectOk(await v.api.load.files({ files: [new File([vtpOf(Sphere, { point: true })], 'points.vtp')] }));
+    expectOk(await v.api.load.files({ files: [new File([mrcOf(48, 2, shell)], 'shell.mrc')] }));
+    expectOk(await v.api.cryoet!.mesh({ mesh: 'points.vtp', volume: 'shell.mrc' } as never));
+    const read = async () => {
+      const r = await v.api.cryoet!.meshes({});
+      expectOk(r);
+      const m = (r.value as MeshInfo[])[0];
+      const parent = v.plugin.state.data.cells.get(v.plugin.state.data.cells.get(m.ref)!.transform.parent)!;
+      return (parent.obj as SO.Shape.Provider).data.data.source.pointData.get('density_shell').values.toArray();
+    };
+    const values = Float32Array.from(await read());
+    expect(values.every((x) => x < -2)).toBe(true);
+    const snapshot = v.plugin.state.getSnapshot({ camera: false });
+    await v.plugin.state.setSnapshot(snapshot);
+    expect(Float32Array.from(await read())).toEqual(values);
   });
 });

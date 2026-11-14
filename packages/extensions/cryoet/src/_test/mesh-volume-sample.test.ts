@@ -34,7 +34,7 @@ function gridOf(n: number, voxel: number, origin: Vec3, f: (x: number, y: number
   return {
     transform: { kind: 'matrix', matrix },
     cells: Tensor.create(Tensor.Space([n, n, n], [2, 1, 0], Float32Array), Tensor.Data1(values)),
-    stats: { min: Math.min(...values), max: Math.max(...values), mean, sigma: Math.sqrt(sq / values.length) },
+    stats: { min: values.reduce((a, b) => Math.min(a, b)), max: values.reduce((a, b) => Math.max(a, b)), mean, sigma: Math.sqrt(sq / values.length) },
   };
 }
 
@@ -67,15 +67,15 @@ describe('a mesh sampled in a volume', () => {
       expect(surface[i]).toBeGreaterThan(expected / 2);
       expect(Math.abs(min[i] - expected)).toBeLessThan(0.25);
     }
-    // the shell is 4 Å under the mesh: ±3 Å does not reach it
-    const short = sampleVolume(points, Mat4.identity(), ShellGrid, 'min', 3);
-    for (const v of short) expect(v).toBeGreaterThan(expected / 2);
+    // the shell is 4 Å under the mesh: ±2 Å only reaches its side
+    const short = sampleVolume(points, Mat4.identity(), ShellGrid, 'min', 2);
+    for (let i = 0; i < points.count; i++) expect(short[i]).toBeGreaterThan(min[i] + 0.5);
   });
 
   it('Mean, Min and Max along the normal: of the samples within ±Depth', () => {
     // a square at z = 20 (its normal z) in a linear field: its samples are f(z - D) … f(z + D), evenly
     const g = gridOf(48, 1, Vec3(), linear);
-    const points = meshSamplePoints(squareMesh(10, 20, 20, 10));
+    const points = meshSamplePoints(squareMesh(10, 20, 20, 20));
     const at = (z: number) => sigmaOf(g, linear(20, 20, z));
     for (const [sample, z] of [
       ['surface', 20],
@@ -119,7 +119,7 @@ describe('a mesh sampled in a volume', () => {
   it('per cell: each cell at its center along its normal, when the mesh has cells', () => {
     const g = gridOf(48, 1, Vec3(), linear);
     // two cells: the square's two triangles each their own, then both in one
-    const square = squareMesh(10, 20, 20, 10);
+    const square = squareMesh(10, 20, 20, 20);
     const two = meshSamplePoints(square, { triangleCell: Int32Array.of(0, 1), count: 2 });
     expect(two.count).toBe(2);
     const one = meshSamplePoints(square, { triangleCell: Int32Array.of(0, 0), count: 1 });
