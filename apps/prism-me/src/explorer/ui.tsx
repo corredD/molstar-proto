@@ -82,7 +82,7 @@ export function explorerUI(ctx: ViewerUIContext): ViewerExtensionUI {
   if (!area) return {};
   const model = sceneModel(area, ctx.api.stage);
   scenes.set(area, model);
-  area.setOnReveal((key) => {
+  const revealKey = (key: string) => {
     // a clip's row: in the Clips category, by its tag
     const clip = key.startsWith('k:')
       ? ctx.api.clipping?.cuts.value.find((c) => `k:${c.object.tag}` === key)
@@ -109,6 +109,18 @@ export function explorerUI(ctx: ViewerUIContext): ViewerExtensionUI {
         ...(row.clip ? { clip: row.clip } : {}),
       });
     }
+  };
+  area.setOnReveal(revealKey);
+  // Paint on, from anywhere (its button, Paint with, ⌘K, the assistant): the brush's row picked, its Paint section open
+  // and brought into view (paint-refine round 3, Ludo 2026-11-13); off leaves the panel as it is
+  ctx.api.mesoscale?.paintMode.brush.asReadonly.subscribe((brush) => {
+    if (!brush) return;
+    const section = brush.structure ? 'paint-structure' : 'paint';
+    model.sections.setSectionOpen(PropertiesSlot, section, true);
+    // made again to open it when the row is picked already
+    model.picked.set(undefined);
+    revealKey(brush.structure ? `o:${brush.structure}` : `me:${brush.particles}:${brush.entity}`);
+    model.section.set(section);
   });
   // a distance by two ⌘/Ctrl+clicks in selection mode (_spec/ui.md §7); Esc, a plain click or leaving the mode lets
   // its first point go
@@ -252,6 +264,8 @@ export interface SceneModel {
   readonly groupings: KeyedState<string, MesoGroupBy>;
   /** The row to bring into view (a pick in 3D) */
   readonly scrollTo: ObservableState<string | undefined>;
+  /** A properties' section to bring into view (Paint on), once the properties are made */
+  readonly section: ObservableState<string | undefined>;
   /** Picks a node's row, unfolding the way to it */
   reveal(p: Picked): void;
   /** A model's grouping as its rows show it (its info's), for what acts on its groups */
@@ -273,6 +287,7 @@ function sceneModel(area: ExplorerApi, stage: ViewerApi['stage']): SceneModel {
     parts,
     groupings,
     scrollTo,
+    section: observableState<string | undefined>(undefined),
     sections: new ShellModel(),
     groupByOf: (ref) => (parts.value.get(ref) as MesoscaleInfo | undefined)?.groupBy,
     reveal(p) {
@@ -513,6 +528,22 @@ function ScenePanel(props: { ctx: ViewerUIContext; area: ExplorerApi; model: Sce
   });
   effect(model.scrollTo.asReadonly, (key) => {
     if (key !== undefined) scroll.request();
+  });
+  // a section asked for (Paint on): into view once made (the properties are made again a frame after the pick)
+  const section = frames(() => {
+    const id = model.section.value;
+    const el = id && panelEl?.querySelector<HTMLElement>(`[data-section="${CSS.escape(id)}"]`);
+    if (!el) {
+      if (id && ++tries < 30) section.request();
+      return;
+    }
+    el.scrollIntoView({ block: 'nearest' });
+    model.section.set(undefined);
+  });
+  let tries = 0;
+  effect(model.section.asReadonly, (id) => {
+    tries = 0;
+    if (id !== undefined) section.request();
   });
 
   // the properties' height, dragged on the line above them or moved by its arrows (tree-view.tsx)
