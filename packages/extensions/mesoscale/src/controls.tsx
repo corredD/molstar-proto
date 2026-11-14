@@ -15,7 +15,10 @@ import { gestureSteps } from '@molstar/prism-viewer/sources/gesture-steps';
 import { derive } from '@molstar/prism-ui/reactive/state';
 import type { ReadonlyState } from '@molstar/prism-ui/reactive/readonly-state';
 import { classes } from './_generated/controls.module.css.js';
-import { type GrowRecord, spiralTurns, tilingTotal } from './grow.js';
+import { GrowFit, PaintFit } from './fit-controls.js';
+import { type GrowRecord, tilingTotal } from './grow.js';
+import { linkedValue } from './grow-link.js';
+import { symmetryContact } from './grow-symmetry.js';
 import {
   type GraphicsInfo,
   type GraphicsMode,
@@ -239,19 +242,23 @@ export function PaintBrush(props: {
   name: string;
   /** A structure of the scene as the brush (paint-layer round 2): painted into a list or the Painting list */
   structure?: string;
+  /** A group of the list as the brush (paint-group; its id, `entity` too): its strokes copies, no Fiber */
+  group?: number;
 }) {
   const mode = props.area.paintMode;
   const on = mapState(mode.brush.asReadonly, (b) =>
     props.structure
       ? b?.structure === props.structure
-      : !b?.structure && b?.particles === props.particles && b.entity === props.entity,
+      : !b?.structure && b?.particles === props.particles && b.entity === props.entity && b.group === props.group,
   );
+  const fibers = props.group === undefined;
   const settings = mode.settings.asReadonly;
   const brush = () => ({
     particles: props.particles,
     entity: props.entity,
     name: props.name,
     ...(props.structure ? { structure: props.structure } : {}),
+    ...(props.group !== undefined ? { group: props.group } : {}),
   });
   return (
     <div class={classes.tight}>
@@ -285,26 +292,31 @@ export function PaintBrush(props: {
         onPick={(id) => mode.set({ orient: id as PaintSettings['orient'] })}
       />
       {props.structure ? <PaintInto area={props.area} /> : null}
-      <Choices
-        label="Fiber"
-        choices={[
-          {
-            id: 'auto',
-            label: 'Auto',
-            title: props.structure
-              ? 'A new fiber when the structure has fibers where it paints, else copies'
-              : 'A new fiber when the entity has fibers, else copies',
-          },
-          { id: 'on', label: 'On', title: 'A stroke is a new fiber: its points a step apart, turned along it' },
-          { id: 'off', label: 'Off', title: 'A stroke is copies' },
-        ]}
-        active={mapState(settings, (s) => s.fiber)}
-        onPick={(id) => mode.set({ fiber: id as PaintSettings['fiber'] })}
-      />
-      <Show when={mapState(settings, (st) => !!props.structure && st.fiber !== 'off')}>
+      {/* a group's strokes are copies (paint-group): its fibers are grown */}
+      <Show when={fibers}>
+        {() => (
+          <Choices
+            label="Fiber"
+            choices={[
+              {
+                id: 'auto',
+                label: 'Auto',
+                title: props.structure
+                  ? 'A new fiber when the structure has fibers where it paints, else copies'
+                  : 'A new fiber when the entity has fibers, else copies',
+              },
+              { id: 'on', label: 'On', title: 'A stroke is a new fiber: its points a step apart, turned along it' },
+              { id: 'off', label: 'Off', title: 'A stroke is copies' },
+            ]}
+            active={mapState(settings, (s) => s.fiber)}
+            onPick={(id) => mode.set({ fiber: id as PaintSettings['fiber'] })}
+          />
+        )}
+      </Show>
+      <Show when={mapState(settings, (st) => fibers && !!props.structure && st.fiber !== 'off')}>
         {() => <StructureFiberSettings area={props.area} structure={props.structure!} />}
       </Show>
-      <Show when={mapState(settings, (st) => !props.structure && st.fiber !== 'off')}>
+      <Show when={mapState(settings, (st) => fibers && !props.structure && st.fiber !== 'off')}>
         {() => (
           <div class={classes.tight}>
             <FiberSettings area={props.area} particles={props.particles} entity={props.entity} />
@@ -358,6 +370,7 @@ export function PaintBrush(props: {
         active={mapState(settings, (s) => s.side)}
         onPick={(id) => mode.set({ side: id as PaintSettings['side'] })}
       />
+      <PaintFit area={props.area} />
       <div class={classes.line}>
         <div class={classes.label}>
           <Button
@@ -581,6 +594,19 @@ const GrowModeChoices = [
   { id: 'crystal', label: 'Crystal', title: "A lattice in the source's frame, each copy turned as the source" },
   { id: 'tiling', label: 'Tiling', title: "A plane of copies in the source's own plane, ring by ring" },
   { id: 'sphere', label: 'Sphere', title: 'Copies at random in a ball about the source' },
+  {
+    id: 'symmetry',
+    label: 'Symmetry',
+    title: 'Copies by a point group (Cn, Dn, T, O, I) about a center a Radius from the source',
+  },
+];
+
+const SymmetryGroupChoices = [
+  { id: 'c', label: 'Cn', title: 'Cyclic: n copies about an axis (a ring)' },
+  { id: 'd', label: 'Dn', title: 'Dihedral: 2n, Cn and n 2-folds across its axis (a barrel)' },
+  { id: 't', label: 'T', title: 'Tetrahedral: 12' },
+  { id: 'o', label: 'O', title: 'Octahedral: 24' },
+  { id: 'i', label: 'I', title: 'Icosahedral: 60 (a shell)' },
 ];
 
 /** A grow's record as the Grow section's settings (round 2: the section follows the live grow back) */
@@ -594,6 +620,7 @@ function settingsOfGrow(g: GrowRecord): Partial<GrowSettings> {
     helix: [
       ['pitch', 'pitch'],
       ['turns', 'turns'],
+      ['count', 'count'],
       ['hand', 'hand'],
       ['direction', 'direction'],
       ['axis', 'axis'],
@@ -602,6 +629,7 @@ function settingsOfGrow(g: GrowRecord): Partial<GrowSettings> {
     spiral: [
       ['spacing', 'spacing'],
       ['count', 'count'],
+      ['turns', 'turns'],
       ['hand', 'hand'],
     ],
     crystal: [
@@ -618,7 +646,6 @@ function settingsOfGrow(g: GrowRecord): Partial<GrowSettings> {
     tiling: [
       ['pattern', 'pattern'],
       ['spacing', 'spacing'],
-      ['rings', 'rings'],
       ['count', 'tiles'],
     ],
     sphere: [
@@ -626,11 +653,37 @@ function settingsOfGrow(g: GrowRecord): Partial<GrowSettings> {
       ['radius', 'radius'],
       ['turn', 'turn'],
     ],
+    symmetry: [
+      ['group', 'group'],
+      ['n', 'n'],
+      ['radius', 'symmetryRadius'],
+      ['side', 'side'],
+      ['axis', 'symmetryAxis'],
+    ],
   };
   const out: Record<string, unknown> = { mode: g.mode };
   // On: the grow's mesh (a crystal grows in space whatever On says)
   if (g.mode !== 'crystal') out.mesh = g.mesh?.ref;
   for (const [from, to] of keys[g.mode]) if (p[from] !== undefined) out[to] = p[from];
+  // Helix, Spiral: the driver of Count and Turns comes back with `by`, never the follower (a shared value: the
+  // follower is the grow's to show, not the settings' to keep; review S1, M6)
+  if (g.mode === 'helix' || g.mode === 'spiral') {
+    const by = p.by === 'count' || p.by === 'turns' ? p.by : g.mode === 'spiral' ? 'count' : 'turns';
+    out.by = by;
+    delete out[by === 'turns' ? 'count' : 'turns'];
+  }
+  // a session's Tiling by Rings reads as its count (decisions 11)
+  if (g.mode === 'tiling' && out.tiles === undefined && typeof p.rings === 'number') {
+    out.tiles = tilingTotal(p.pattern === 'square' ? 'square' : 'hex', p.rings);
+  }
+  if (g.mode === 'symmetry') {
+    out.snap = p.snap === 1;
+    // its Radius unset: touching as it changes (review S1)
+    if (p.touching === 1) out.symmetryRadius = undefined;
+  }
+  // fitted (density-fit): its volume, contrast and threshold; none: not fitted
+  out.fit = p.fit;
+  if (p.fit !== undefined) Object.assign(out, { contrast: p.contrast, threshold: p.threshold });
   return out as Partial<GrowSettings>;
 }
 
@@ -639,7 +692,7 @@ function settingsOfGrow(g: GrowRecord): Partial<GrowSettings> {
  * one step a Grow (`mesoscale.grow`). It names its source (set by a particle's right-click, Grow from this instance…,
  * or by a paint, its last copy), its mode, the mode's params (a length unset: the source's size), a seed (none: at
  * random) and Grow. The settings are the area's (`growSettings`), no step. On (grow-mesh): None or a file mesh of the
- * scene (the one the source was painted on by default); on a mesh, Tiling's Rings becomes its Count; Crystal grows in
+ * scene (the one the source was painted on by default); Tiling's Count is in space too; Crystal grows in
  * space. The last grow made here is live (round 2): any setting (each mode's, Seed, On and Mode: a Mode picked turns it
  * into one of that mode) makes it again in place (`mesoscale.grow { replace }`), one step a drag or a pick, and the
  * settings follow it back (an undo, a drag refused); a fiber's Rise, Twist and Jitter redraw it on its path
@@ -656,12 +709,18 @@ export function GrowBlock(props: { area: MesoscaleApi; api: ViewerApi; particles
       const at = live.value;
       if (!at) return Promise.resolve();
       // a fiber's rise, twist and jitter: its units made again on the same path
-      if (key === 'fiber') return g.run('mesoscale.grown-fiber', { ...at, ...change });
+      // (fitted: its units are copies, the grow made again by the settings)
+      if (key === 'fiber' && liveGrow.value?.params.fit === undefined) {
+        return g.run('mesoscale.grown-fiber', { ...at, ...change });
+      }
       // any other setting: the grow made again in place by the settings shown (its seed kept unless set)
       const src = source.value;
       const s = area.growSettings.value;
       if (!src) return Promise.resolve();
-      return g.run('mesoscale.grow', { ...growParams(src, { ...s, mesh: onMesh(s, meshes.value) }), replace: at.grow });
+      return g.run('mesoscale.grow', {
+        ...growParams(src, { ...s, mesh: onMesh(s, meshes.value), fit: onVolume(s, volumes.value) }),
+        replace: at.grow,
+      });
     },
     // what a drag has not applied yet is shown (its overlay), not the state's last (review 6); a drag ended (refused:
     // nothing applied) shows the grow as it is (round 2 review S1)
@@ -686,6 +745,10 @@ export function GrowBlock(props: { area: MesoscaleApi; api: ViewerApi; particles
   );
   const settings = area.growSettings.asReadonly;
   const meshes = area.growMeshesState();
+  const volumes = area.fitVolumesState();
+  /** The volume chosen to fit to while it is in the scene (density-fit review M2) */
+  const onVolume = (s: GrowSettings, list: readonly { ref: string }[]) =>
+    s.fit && list.some((v) => v.ref === s.fit) ? s.fit : undefined;
   /** The mesh chosen while it is in the scene */
   const onMesh = (s: GrowSettings, list: readonly { ref: string }[]) =>
     s.mesh && list.some((m) => m.ref === s.mesh) ? s.mesh : undefined;
@@ -764,6 +827,42 @@ export function GrowBlock(props: { area: MesoscaleApi; api: ViewerApi; particles
         onCommit={(v) => set({ [key]: v })}
       />,
     );
+  /**
+   * Count and Turns of a Helix or a Spiral, linked (decisions 8 and 21): setting one makes the grow by it; the other is
+   * shown as the live grow made it, else (in space) as flat geometry says
+   */
+  const linked = (
+    key: 'turns' | 'count',
+    label: string,
+    title: string,
+    range: { min: number; max: number; step?: number },
+  ) => {
+    const by = (s: GrowSettings) => s.by ?? (s.mode === 'spiral' ? 'count' : 'turns');
+    const shown = derive([settings, liveGrow, chosen] as const, (s, g, m): number | undefined => {
+      if (by(s) === key) return s[key];
+      if (g && g.mode === s.mode) {
+        const v = key === 'count' ? (g.params.copies ?? g.params.count) : g.params.turns;
+        if (typeof v === 'number') return v;
+      }
+      const src = source.value;
+      const other = src && linkedValue(s, by(s), src.rise, Math.round(2 * src.radius * 10) / 10, !!m);
+      return other ? (other as Record<string, number>)[key] : s[key];
+    });
+    const change = (v: number, end: boolean) => set({ [key]: v, by: key }, end);
+    return line(
+      label,
+      title,
+      <Slider
+        aria-label={`Grow ${label}`}
+        value={shown}
+        min={range.min}
+        max={range.max}
+        step={range.step}
+        onPreview={(v) => change(v, false)}
+        onCommit={(v) => change(v, true)}
+      />,
+    );
+  };
   const mode = (m: GrowSettings['mode']) => mapState(settings, (s) => s.mode === m);
   /** A walk's fiber setting: the live fiber's own (it follows an undo), else the settings', else the entity's */
   const fiberSlider = (
@@ -779,8 +878,8 @@ export function GrowBlock(props: { area: MesoscaleApi; api: ViewerApi; particles
     );
     const change = (v: number, end: boolean) => {
       store({ [key]: v });
-      // the live fiber while it is there (undone: the next grow's only; review 5)
-      if (live.value && grown.value) redraw.change('fiber', { [key]: v });
+      // the live fiber while it is there (undone: the next grow's only; review 5); a fitted one's grow made again
+      if (live.value && (grown.value || liveGrow.value?.params.fit !== undefined)) redraw.change('fiber', { [key]: v });
       if (end) redraw.settle();
     };
     return line(
@@ -850,6 +949,7 @@ export function GrowBlock(props: { area: MesoscaleApi; api: ViewerApi; particles
                 </Show>
               )}
             </Show>
+            <GrowFit area={area} set={set} />
             <Show when={mode('walk')}>
               {() => (
                 <div class={classes.tight}>
@@ -873,10 +973,15 @@ export function GrowBlock(props: { area: MesoscaleApi; api: ViewerApi; particles
                     { min: 1, max: 5000, scale: 'log', unit: 'Å' },
                     () => 4 * diameter(),
                   )}
-                  {number('turns', 'Turns', 'Its turns (on a mesh, fewer where the surface ends)', {
+                  {linked('turns', 'Turns', 'Its turns (on a mesh, fewer where the surface ends); sets Count', {
                     min: 0.5,
                     max: 50,
                     step: 0.5,
+                  })}
+                  {linked('count', 'Count', 'Its copies, a rise apart along it from the source; sets Turns', {
+                    min: 2,
+                    max: 5000,
+                    step: 1,
                   })}
                   <Choices
                     label="Hand"
@@ -929,7 +1034,7 @@ export function GrowBlock(props: { area: MesoscaleApi; api: ViewerApi; particles
             <Show when={mode('spiral')}>
               {() => (
                 <div class={classes.tight}>
-                  {number('count', 'Count', 'Its copies, a Step apart along it from the source (copy 0)', {
+                  {linked('count', 'Count', 'Its copies, a Step apart along it from the source (copy 0); sets Turns', {
                     min: 2,
                     max: 2000,
                     step: 1,
@@ -957,21 +1062,11 @@ export function GrowBlock(props: { area: MesoscaleApi; api: ViewerApi; particles
                     active={mapState(settings, (s) => s.hand)}
                     onPick={(id) => set({ hand: id as GrowSettings['hand'] })}
                   />
-                  {line(
+                  {linked(
+                    'turns',
                     'Turns',
-                    'The turns it reaches and its copies made (on a mesh, fewer where it ends, or where it skips so many that it reaches 4 × Count Steps)',
-                    <div class={classes.label}>
-                      {derive([settings, liveGrow] as const, (s, g) => {
-                        // the live spiral's: its turns and the copies it made (fewer than Count where it ends, or where
-                        // it reached its bound of 4 × Count Steps skipping; round 3b)
-                        if (g?.mode === 'spiral' && typeof g.params.turns === 'number') {
-                          return `${g.params.turns}, ${g.params.copies ?? g.params.count} copies`;
-                        }
-                        const step = s.rise ?? src.rise;
-                        const turns = spiralTurns(s.spacing ?? diameter(), Math.floor(s.count) * step);
-                        return `≈ ${Math.round(turns * 100) / 100}`;
-                      })}
-                    </div>,
+                    'Its turns (on a mesh, fewer where it ends, or where it skips so many that it reaches 4 × Count Steps); sets Count',
+                    { min: 0.5, max: 50, step: 0.5 },
                   )}
                 </div>
               )}
@@ -1054,20 +1149,13 @@ export function GrowBlock(props: { area: MesoscaleApi; api: ViewerApi; particles
                     { min: 1, max: 1000, scale: 'log', unit: 'Å' },
                     diameter,
                   )}
-                  <Show
-                    when={mapState(chosen, (m) => !!m)}
-                    fallback={() => number('rings', 'Rings', 'Rings about the source', { min: 1, max: 30, step: 1 })}
-                  >
-                    {() =>
-                      number(
-                        'tiles',
-                        'Count',
-                        "Its points on the mesh, the source's counted (unset: Rings' on a plane)",
-                        { min: 2, max: 5000, step: 1 },
-                        () => tilingTotal(settings.value.pattern, settings.value.rings),
-                      )
-                    }
-                  </Show>
+                  {number(
+                    'tiles',
+                    'Count',
+                    "Its points, the source's counted (unset: 3 rings')",
+                    { min: 2, max: 5000, step: 1 },
+                    () => tilingTotal(settings.value.pattern, 3),
+                  )}
                 </div>
               )}
             </Show>
@@ -1091,6 +1179,76 @@ export function GrowBlock(props: { area: MesoscaleApi; api: ViewerApi; particles
                     active={mapState(settings, (s) => s.turn)}
                     onPick={(id) => set({ turn: id as GrowSettings['turn'] })}
                   />
+                </div>
+              )}
+            </Show>
+            <Show when={mode('symmetry')}>
+              {() => (
+                <div class={classes.tight}>
+                  <Choices
+                    label="Group"
+                    choices={SymmetryGroupChoices}
+                    active={mapState(settings, (s) => s.group)}
+                    onPick={(id) => set({ group: id as GrowSettings['group'] })}
+                  />
+                  <Show when={mapState(settings, (s) => s.group === 'c' || s.group === 'd')}>
+                    {() => number('n', 'n', 'Cn: n copies; Dn: 2n (the source counted)', { min: 2, max: 60, step: 1 })}
+                  </Show>
+                  {line(
+                    'Radius',
+                    "The center's distance from the source along its axis, Å (unset: the copies touching)",
+                    <Slider
+                      aria-label="Grow Radius"
+                      value={derive([settings, liveGrow] as const, (s, g) => {
+                        if (s.symmetryRadius !== undefined) return s.symmetryRadius;
+                        // unset: the live grow's (touching where the source is), else the general position's
+                        if (g?.mode === 'symmetry' && typeof g.params.radius === 'number') {
+                          return Math.round(g.params.radius * 10) / 10;
+                        }
+                        return Math.round((diameter() / symmetryContact(s.group, s.n)) * 10) / 10;
+                      })}
+                      min={1}
+                      max={5000}
+                      scale="log"
+                      unit="Å"
+                      onPreview={(v) => set({ symmetryRadius: v }, false)}
+                      onCommit={(v) => set({ symmetryRadius: v })}
+                    />,
+                  )}
+                  <Choices
+                    label="Side"
+                    choices={[
+                      { id: 'inside', label: 'Inside', title: 'The center against its axis (a subunit pointing out)' },
+                      { id: 'outside', label: 'Outside', title: 'The center along its axis' },
+                    ]}
+                    active={mapState(settings, (s) => s.side)}
+                    onPick={(id) => set({ side: id as GrowSettings['side'] })}
+                  />
+                  {line(
+                    'Axis',
+                    "The group's principal axis through the center: Auto, across the source's (it sits on the shell); View, toward the viewer",
+                    <Select
+                      size="sm"
+                      over
+                      aria-label="Grow Symmetry Axis"
+                      options={HelixAxisOptions}
+                      value={mapState(settings, (s) => s.symmetryAxis)}
+                      onChange={(axis) => set({ symmetryAxis: axis as GrowSettings['symmetryAxis'] })}
+                    />,
+                  )}
+                  <Show when={mapState(chosen, (m) => !!m)}>
+                    {() => (
+                      <Choices
+                        label="Snap"
+                        choices={[
+                          { id: 'off', label: 'Exact', title: 'The copies where the group puts them' },
+                          { id: 'on', label: 'Snap', title: 'Each copy projected onto the mesh, turned to its normal' },
+                        ]}
+                        active={mapState(settings, (s) => (s.snap ? 'on' : 'off'))}
+                        onPick={(id) => set({ snap: id === 'on' })}
+                      />
+                    )}
+                  </Show>
                 </div>
               )}
             </Show>
@@ -1119,10 +1277,18 @@ export function GrowBlock(props: { area: MesoscaleApi; api: ViewerApi; particles
                   redraw.settle();
                   live.set(undefined);
                   const s = settings.value;
-                  void area.grow(growParams(src, { ...s, mesh: onMesh(s, meshes.value) }) as never).then((r) => {
-                    const id = r.ok ? (r.value as { id?: number } | undefined)?.id : undefined;
-                    if (id !== undefined) live.set({ particles: src.particles, grow: id });
-                  });
+                  void area
+                    .grow(
+                      growParams(src, {
+                        ...s,
+                        mesh: onMesh(s, meshes.value),
+                        fit: onVolume(s, volumes.value),
+                      }) as never,
+                    )
+                    .then((r) => {
+                      const id = r.ok ? (r.value as { id?: number } | undefined)?.id : undefined;
+                      if (id !== undefined) live.set({ particles: src.particles, grow: id });
+                    });
                 }}
               >
                 Grow

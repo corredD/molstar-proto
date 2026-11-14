@@ -161,6 +161,19 @@ describe('mesoscale.grow', () => {
     );
     expect(drawn(v).count).toBe(7 + 18);
     expectOk(await v.api.run('history.undo', {}));
+    // Count in space (Rings gone): the source counted; a session's Rings reads as its count (decisions 11)
+    expectOk(
+      await v.api.run('mesoscale.grow', {
+        particles: ref,
+        index: 2,
+        mode: 'tiling',
+        pattern: 'hex',
+        spacing: 20,
+        count: 10,
+      }),
+    );
+    expect(drawn(v).count).toBe(7 + 9);
+    expectOk(await v.api.run('history.undo', {}));
 
     const sphere = { particles: ref, index: 6, mode: 'sphere', count: 12, radius: 40, seed: 4 };
     expectOk(await v.api.run('mesoscale.grow', sphere));
@@ -552,6 +565,65 @@ describe('mesoscale.grow on a mesh', () => {
       expect(list.count, params.mode).toBeGreaterThan(8);
       for (let i = 8; i < list.count; ++i) expect(Vec3.dot(zAt(i), n), `${params.mode} ${i}`).toBeCloseTo(1, 4);
       expectOk(await v.api.run('history.undo', {}));
+    }
+  });
+
+  it('a fiber unit painted on a mesh grows Tiling and Sphere with its up (its offset direction) along the normal (decisions 1)', async () => {
+    const v = await viewer();
+    const ref = entry(v).cell.transform.ref;
+    // the tilted plane of round 3: through (0, 50, 0), its normal (1, 0, 1)/√2, +y along it
+    const n = Vec3.normalize(Vec3(), Vec3.create(1, 0, 1));
+    const u = Vec3.create(0, 1, 0);
+    const w = Vec3.cross(Vec3(), u, n);
+    const c = Vec3.create(0, 50, 0);
+    const corner = (a: number, b: number) =>
+      Vec3.scaleAndAdd(Vec3(), Vec3.scaleAndAdd(Vec3(), c, w, a * 200), u, b * 200);
+    const vs = [corner(-1, -1), corner(1, -1), corner(1, 1), corner(-1, 1)];
+    const obj = `${vs.map((x) => `v ${x[0]} ${x[1]} ${x[2]}`).join('\n')}\nf 1 2 3\nf 1 3 4\n`;
+    expectOk(await v.api.load.files({ files: [new File([obj], 'plane.obj')] }));
+    const { repr } = meshCells(v);
+    // loose's Fiber Axis x (along the path), so its offset direction is y; a fiber painted along +y on the plane
+    expectOk(await v.api.run('mesoscale.fiber', { entity: 'loose', axis: 'x' }));
+    const positions = [0, 50, 0, 0, 90, 0];
+    expectOk(
+      await v.api.run('mesoscale.paint', {
+        entity: 'loose',
+        positions,
+        normals: [...n, ...n],
+        surface: true,
+        fiber: true,
+      }),
+    );
+    const yAt = (i: number) => Vec3.transformQuat(Vec3(), Vec3.create(0, 1, 0), quat(drawn(v), i));
+    const last = drawn(v).count - 1;
+    expect(last).toBeGreaterThan(7);
+    expect(Vec3.dot(yAt(last), n)).toBeCloseTo(1, 4);
+    for (const params of [
+      { mode: 'tiling', spacing: 40, count: 7 },
+      { mode: 'sphere', count: 6, radius: 80, seed: 2 },
+    ]) {
+      expectOk(await v.api.run('mesoscale.grow', { particles: ref, index: last, mesh: repr, ...params }));
+      const list = drawn(v);
+      expect(list.count, params.mode).toBeGreaterThan(last + 2);
+      for (let i = last + 1; i < list.count; ++i) expect(Vec3.dot(yAt(i), n), `${params.mode} ${i}`).toBeCloseTo(1, 4);
+      expectOk(await v.api.run('history.undo', {}));
+    }
+    // its Fiber Axis auto: its up already along the normal (a plain walk painted), so each tile turned as it is
+    expectOk(await v.api.run('mesoscale.fiber', { entity: 'loose', axis: 'auto' }));
+    expectOk(
+      await v.api.run('mesoscale.grow', {
+        particles: ref,
+        index: last,
+        mode: 'tiling',
+        spacing: 40,
+        count: 7,
+        mesh: repr,
+      }),
+    );
+    const list = drawn(v);
+    expect(list.count).toBeGreaterThan(last + 2);
+    for (let i = last + 1; i < list.count; ++i) {
+      expect(Math.abs(Quat.dot(quat(list, i), quat(list, last))), `auto ${i}`).toBeCloseTo(1, 4);
     }
   });
 
@@ -1057,6 +1129,93 @@ describe('grows from painted copies when the strokes before them change', () => 
 
 // Grow › Spiral (grow-helix round 3): a fiber stroke as the walk's and the helix's, its path a flat spiral from the source:
 // Count copies, Step (its rise) apart along it, its arms Arm spacing apart.
+
+describe('mesoscale.grow, Count and Turns linked (decisions 8 and 21)', () => {
+  const lengthOf = (ps: ArrayLike<number>) => {
+    let l = 0;
+    for (let i = 3; i < ps.length; i += 3)
+      l += Math.hypot(ps[i] - ps[i - 3], ps[i + 1] - ps[i - 2], ps[i + 2] - ps[i - 1]);
+    return l;
+  };
+  it('a helix by Count: that many copies, the turns it reached in its record; more continue it, fewer cut it', async () => {
+    const v = await viewer();
+    const ref = entry(v).cell.transform.ref;
+    const helix = { particles: ref, index: 3, mode: 'helix', pitch: 40, helixRadius: 15, rise: 5, seed: 1 };
+    const grown = async (count: number) => {
+      expectOk(await v.api.run('mesoscale.grow', { ...helix, count }));
+      const list = drawn(v);
+      const out = { n: list.count - 7, params: strokes(v).at(-1)!.grow!.params as Record<string, number> };
+      const ps = Array.from(list.coordinates.slice(7 * 3));
+      expectOk(await v.api.run('history.undo', {}));
+      return { ...out, ps };
+    };
+    const [few, many] = [await grown(12), await grown(30)];
+    expect([few.n, many.n]).toEqual([12, 30]);
+    expect(few.params.count).toBe(12);
+    // 12 units of 5 Å along √((2π·15)² + 40²) ≈ 102 Å a turn: about 0.59 turns
+    // the turns at its last copy, not past it (review M4): 12 × 5 Å over the arc a turn
+    const arc = Math.hypot(2 * Math.PI * 15, 40);
+    expect(Math.abs(few.params.turns - (12 * 5) / arc)).toBeLessThan(0.006);
+    expect(Math.abs(many.params.turns - (30 * 5) / arc)).toBeLessThan(0.006);
+    // the grow's own record: by, the asked count, the copies made
+    expect(few.params).toMatchObject({ by: 'count', copies: 12 });
+    expect(many.ps.slice(0, few.ps.length)).toEqual(few.ps);
+    expect(lengthOf(few.ps)).toBeCloseTo(11 * 5, 0);
+  });
+
+  it('a helix by Turns records the copies they hold, Turns winning over Count', async () => {
+    const v = await viewer();
+    const ref = entry(v).cell.transform.ref;
+    expectOk(
+      await v.api.run('mesoscale.grow', {
+        particles: ref,
+        index: 3,
+        mode: 'helix',
+        pitch: 40,
+        helixRadius: 15,
+        rise: 5,
+        turns: 2,
+        count: 7,
+      }),
+    );
+    const { count, turns } = strokes(v)[0].grow!.params as { count: number; turns: number };
+    expect(turns).toBe(2);
+    expect(count).toBe(drawn(v).count - 7);
+    expect(count).toBe(40);
+    expect(strokes(v)[0].grow!.params).toMatchObject({ by: 'turns', copies: 40 });
+  });
+
+  it('a helix by Count that needs more than the 200 turns a grow has says so, not fewer copies (review N4)', async () => {
+    const v = await viewer();
+    const ref = entry(v).cell.transform.ref;
+    const r = await v.api.run('mesoscale.grow', {
+      particles: ref,
+      index: 3,
+      mode: 'helix',
+      pitch: 40,
+      helixRadius: 15,
+      rise: 5,
+      count: 5000,
+    });
+    expect(r).toMatchObject({ ok: false, code: 'invalid' });
+  });
+
+  it('a spiral by Turns: the copies those turns hold, Count the turns reached', async () => {
+    const v = await viewer();
+    const ref = entry(v).cell.transform.ref;
+    expectOk(await v.api.run('mesoscale.fiber', { entity: 'NC', axis: 'z' }));
+    const spiral = { particles: ref, index: 3, mode: 'spiral', spacing: 20, rise: 5, seed: 1 };
+    expectOk(await v.api.run('mesoscale.grow', { ...spiral, turns: 2 }));
+    const byTurns = strokes(v)[0].grow!.params as { count: number; turns: number; copies: number };
+    expect(byTurns.turns).toBe(2);
+    expect(byTurns.copies).toBe(byTurns.count);
+    expect(strokes(v)[0].grow!.params).toMatchObject({ by: 'turns' });
+    expect(drawn(v).count - 7).toBe(byTurns.count);
+    expectOk(await v.api.run('history.undo', {}));
+    expectOk(await v.api.run('mesoscale.grow', { ...spiral, count: byTurns.count }));
+    expect((strokes(v)[0].grow!.params as { turns: number }).turns).toBeCloseTo(2, 1);
+  });
+});
 
 describe('mesoscale.grow spiral', () => {
   it('Count copies flat about the source, Step apart; one step, undo, redo; more continue it, fewer cut it', async () => {

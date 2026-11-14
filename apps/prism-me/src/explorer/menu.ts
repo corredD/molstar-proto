@@ -248,11 +248,18 @@ export function colorItems(
     }
     return api.run('representation.color', { target: { loci: area.loci(node) }, structure: node.ref, color });
   };
+  // a mesh colored by an array of its file (a VTP's) keeps it: Color… is for uniform-colored meshes (decisions 13)
+  const mesh = kind === 'mesh' ? api.cryoet?.meshesState().value.find((m) => m.ref === node.ref) : undefined;
+  const by = mesh?.colorBy;
+  const disabled = by
+    ? `Colored by ${mesh!.arrays?.find((a) => a.key === by.array)?.label ?? by.array}: change it in Properties`
+    : undefined;
   const items: ContextMenuItem[] = Swatches.map(([color, label]) => ({
     id: `color-${color}`,
     label,
     icon: 'palette',
-    run: () => void paint(color),
+    ...(disabled ? { disabled } : {}),
+    run: () => void (disabled || paint(color)),
   }));
   if (kind === 'mesoscale model' || kind === 'group') {
     const part = partOf(node);
@@ -453,6 +460,8 @@ export function nodeMenuItems(
   const { node, kind, label } = picked;
   const items: ContextMenuItem[] = [];
   if (kind === 'distance') return distanceItems(api, area, picked);
+  // a group of instances (paint-group): a brush only
+  if (kind === 'paint group') return paintItems(api, picked);
   if (kind === 'label') {
     // a label's: its text, its place first
     const editText = actions.editText;
@@ -564,6 +573,23 @@ function paintItems(api: ViewerApi, picked: PickedNode): ContextMenuItem[] {
         label: `Paint with ${label}`,
         icon: 'paintbrush',
         run: () => void mode.start({ particles: '', entity: -1, name: label, structure: node.ref }),
+      },
+    ];
+  }
+  // a group of instances (paint-group): Paint with it, all its members a copy
+  const group = 'particles' in node ? node.paintGroup : undefined;
+  if (mode && kind === 'paint group' && group !== undefined) {
+    const b = mode.brush.value;
+    if (b?.particles === node.ref && b.group === group) {
+      return [{ id: 'paint', label: 'Stop painting', icon: 'paintbrush', run: () => mode.stop() }];
+    }
+    const name = label.replace(/ · .*$/, '');
+    return [
+      {
+        id: 'paint',
+        label: `Paint with ${name}`,
+        icon: 'paintbrush',
+        run: () => void mode.start({ particles: node.ref, entity: group, name, group }),
       },
     ];
   }

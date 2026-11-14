@@ -8,9 +8,12 @@
  */
 
 import { Sphere } from '@molstar/graphics/geo/primitive/sphere';
+import { Mat4, Tensor } from '@molstar/core/math/linear-algebra';
+import { CCP4Writer } from '@molstar/model/formats/writer/ccp4/ccp4';
 import { CustomProperties } from '@molstar/model/model/custom-property';
 import type { ParticleList } from '@molstar/model/model/particles/particle-list';
 import { DefaultPaintSettings } from '@molstar/mesoscale-extension/paint-mode';
+import { growParams } from '@molstar/mesoscale-extension/operations';
 import { PluginStateObject as SO, PluginStateTransform } from '@molstar/plugin/state/objects';
 import { ShellModel } from '@molstar/prism-ui/shell/shell';
 import { DefaultPrismViewerSpec } from '@molstar/prism-viewer/default-spec';
@@ -339,14 +342,16 @@ describe('Grow on a mesh (grow-mesh)', () => {
       );
     await until(() => !!on());
     expect(on()!.textContent).toBe('None');
-    expect(host.querySelector('[aria-label="Grow Rings"]')).not.toBe(null);
+    // Count in space too, Rings gone (decisions 11)
+    expect(host.querySelector('[aria-label="Grow Count"]')).not.toBe(null);
+    expect(host.querySelector('[aria-label="Grow Rings"]')).toBe(null);
     on()!.click();
     await until(() => !!host.querySelector('[role=option]'));
     Array.from(host.querySelectorAll<HTMLElement>('[role=option]'))
       .find((o) => o.textContent === 'vesicle.obj')!
       .click();
     await until(() => !!v.api.mesoscale!.growSettings.value.mesh);
-    // on a mesh, Count (the plane's for Rings: 37) in place of Rings
+    // on a mesh, Count (the plane's 3 rings: 37)
     await until(() => !!host.querySelector('[aria-label="Grow Count"]'));
     expect(host.querySelector('[aria-label="Grow Rings"]')).toBe(null);
     const steps = v.api.history.steps.value.length;
@@ -366,7 +371,7 @@ describe('Grow on a mesh (grow-mesh)', () => {
       expect(Math.hypot(x, y, z)).toBeCloseTo(50, 0);
     }
 
-    // the mesh deleted: On None, Rings back in place of Count (review S3)
+    // the mesh deleted: On None, still Count (review S3; decisions 11)
     const shape = Array.from(v.plugin.state.data.cells.values()).find((c) => SO.Shape.Provider.is(c.obj))!;
     let root = shape.transform.ref;
     while (v.plugin.state.data.tree.transforms.get(root)!.parent !== v.plugin.state.data.tree.root.ref) {
@@ -374,8 +379,8 @@ describe('Grow on a mesh (grow-mesh)', () => {
     }
     await v.plugin.build().delete(root).commit();
     await until(() => on()?.textContent === 'None');
-    await until(() => !!host.querySelector('[aria-label="Grow Rings"]'));
-    expect(host.querySelector('[aria-label="Grow Count"]')).toBe(null);
+    await until(() => !!host.querySelector('[aria-label="Grow Count"]'));
+    expect(host.querySelector('[aria-label="Grow Rings"]')).toBe(null);
 
     choice(host, 'Mode', 'Crystal')!.click();
     await until(() => !on());
@@ -613,6 +618,62 @@ describe('The last grow live (grow-helix round 2)', () => {
 });
 
 describe('Grow › Spiral (grow-helix round 3)', () => {
+  it('Helix: Count and Turns both set, each setting the other (decisions 8)', async () => {
+    const { v, hiv } = await viewer();
+    const m = v.api.mesoscale!;
+    const host = await openGrow(v, hiv, 2);
+    choice(host, 'Mode', 'Helix')!.click();
+    await until(() => !!host.querySelector('input[aria-label="Grow Pitch"]'));
+    m.growSettings.set({ ...m.growSettings.value, pitch: 40, helixRadius: 15, rise: 5 });
+    const shown = (label: string) =>
+      Number(host.querySelector<HTMLInputElement>(`input[type=range][aria-label="Grow ${label}"]`)!.value);
+    // 3 turns of √((2π·15)² + 40²) ≈ 102.4 Å, 5 Å a copy: the 61 copies of its 5° polyline
+    dragGrow(host, 'Turns', [3]);
+    expect(m.growSettings.value).toMatchObject({ turns: 3, by: 'turns' });
+    await until(() => shown('Count') === 61);
+    // Count sets Turns, and the grow is made by it; the Count not set is not kept (a shared value: review S1)
+    dragGrow(host, 'Count', [41]);
+    const s = m.growSettings.value;
+    expect(s).toMatchObject({ count: 41, by: 'count' });
+    await until(() => Math.abs(shown('Turns') - 2) < 0.1);
+    expect(growParams({ particles: 'L', index: 0 }, s)).toMatchObject({ count: 41 });
+    expect(growParams({ particles: 'L', index: 0 }, s)).not.toHaveProperty('turns');
+    expect(growParams({ particles: 'L', index: 0 }, { ...s, by: 'turns' })).not.toHaveProperty('count');
+  });
+
+  it('a Mode round trip keeps Count (the follower is not kept: review S1)', async () => {
+    const { v, hiv } = await viewer();
+    const m = v.api.mesoscale!;
+    const host = await openGrow(v, hiv, 2);
+    choice(host, 'Mode', 'Spiral')!.click();
+    await until(() => !!host.querySelector('input[aria-label="Grow Arm spacing"]'));
+    m.growSettings.set({ ...m.growSettings.value, spacing: 20, count: 20 });
+    growButton(host).click();
+    await until(() => count(v) === 3 + 20);
+    choice(host, 'Mode', 'Helix')!.click();
+    await until(() => !!host.querySelector('input[aria-label="Grow Pitch"]'));
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    choice(host, 'Mode', 'Spiral')!.click();
+    await until(() => count(v) === 3 + 20);
+    expect(m.growSettings.value.count).toBe(20);
+  });
+
+  it('an undone change by Turns brings by back as the grow was made (review M6)', async () => {
+    const { v, hiv } = await viewer();
+    const m = v.api.mesoscale!;
+    const host = await openGrow(v, hiv, 2);
+    choice(host, 'Mode', 'Spiral')!.click();
+    await until(() => !!host.querySelector('input[aria-label="Grow Arm spacing"]'));
+    m.growSettings.set({ ...m.growSettings.value, spacing: 20, count: 20 });
+    growButton(host).click();
+    await until(() => count(v) === 3 + 20);
+    dragGrow(host, 'Turns', [2]);
+    await until(() => m.growSettings.value.by === 'turns' && count(v) !== 3 + 20);
+    expect((await v.api.run('history.undo', {})).ok).toBe(true);
+    await until(() => count(v) === 3 + 20);
+    await until(() => m.growSettings.value.by === 'count');
+  });
+
   it('shows Count, Arm spacing, Hand, Step and the Turns it reaches; Count and Step live (more continue it)', async () => {
     const { v, hiv } = await viewer();
     const m = v.api.mesoscale!;
@@ -622,8 +683,9 @@ describe('Grow › Spiral (grow-helix round 3)', () => {
     for (const label of ['Count', 'Step', 'Twist', 'Jitter']) {
       expect(host.querySelector(`input[aria-label="Grow ${label}"]`)).not.toBe(null);
     }
-    for (const label of ['Turns', 'Rise', 'Pitch'])
-      expect(host.querySelector(`input[aria-label="Grow ${label}"]`)).toBe(null);
+    // Turns editable beside Count (decisions 21)
+    expect(host.querySelector('input[aria-label="Grow Turns"]')).not.toBe(null);
+    for (const label of ['Rise', 'Pitch']) expect(host.querySelector(`input[aria-label="Grow ${label}"]`)).toBe(null);
     expect(choice(host, 'Hand', 'Left')).toBeDefined();
     m.growSettings.set({ ...m.growSettings.value, spacing: 20, count: 20 });
     growButton(host).click();
@@ -631,7 +693,9 @@ describe('Grow › Spiral (grow-helix round 3)', () => {
     expect(strokesOf(v)[0]?.grow?.mode).toBe('spiral');
     // the turns it reached, shown
     const turns = (strokesOf(v)[0]?.grow?.params as { turns: number }).turns;
-    await until(() => !!host.textContent?.includes(`${turns}, 20 copies`));
+    await until(
+      () => Number(host.querySelector<HTMLInputElement>('input[type=range][aria-label="Grow Turns"]')!.value) === turns,
+    );
     const first = coordinates(v, 3, 23);
     const steps = v.api.history.steps.value.length;
     dragGrow(host, 'Count', [30, 40]);
@@ -681,5 +745,41 @@ describe('Grow settings', () => {
     expect(m.growSettings.value.pitch).toBeUndefined();
     expect(m.growSettings.value.helixRadius).toBeUndefined();
     expect(m.growSettings.value.turns).toBe(3);
+  });
+});
+
+describe('Grow › Fit to (density-fit)', () => {
+  it('a volume deleted after it was chosen: Fit to None, Grow grows unfitted (review M2)', async () => {
+    const { v, hiv } = await viewer();
+    const m = v.api.mesoscale!;
+    // a small map: its volume chosen in Fit to
+    const n = 8;
+    const space = Tensor.Space([n, n, n], [2, 1, 0], Float32Array);
+    const data = Float32Array.from({ length: n * n * n }, (_, i) => i % 5);
+    const grid = {
+      transform: { kind: 'matrix' as const, matrix: Mat4.identity() },
+      cells: Tensor.create(space, Tensor.Data1(data)),
+      stats: { min: 0, max: 4, mean: 2, sigma: 1.4 },
+    };
+    const r = await v.api.load.files({ files: [new File([CCP4Writer.writeMrc(grid, data)], 'tomo.mrc')] });
+    if (!r.ok) throw new Error(r.message);
+    const volume = v.plugin.managers.volume.hierarchy.current.volumes[0].cell.transform.ref;
+    const host = mountScene(v);
+    await until(() => !!rowOf(host, 'HIV'));
+    rowOf(host, 'HIV')!.click();
+    await until(() => !!button(host, 'Grow'));
+    const section = button(host, 'Grow')!;
+    if (section.getAttribute('aria-expanded') !== 'true') section.click();
+    m.growSource.set({ particles: hiv, index: 2 });
+    await until(() => !!host.textContent?.includes('NC #2'));
+    choice(host, 'Mode', 'Sphere')!.click();
+    m.growSettings.set({ ...m.growSettings.value, count: 3, fit: volume });
+    await v.plugin.build().delete(volume).commit();
+    const before = count(v);
+    const grow = Array.from(host.querySelectorAll<HTMLButtonElement>('button')).filter(
+      (b) => b.textContent?.trim() === 'Grow',
+    );
+    grow[grow.length - 1].click();
+    await until(() => count(v) === before + 3);
   });
 });

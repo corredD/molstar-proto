@@ -47,9 +47,13 @@ const Vtp: MeshInfo = {
 };
 
 /** The controls of one mesh, its picker opened (when it shows); the palette's hues and the area's calls */
-function mounted(mesh: MeshInfo = Obj) {
+function mounted(mesh: MeshInfo = Obj, volumes: readonly { ref: string; label: string }[] = []) {
   const list = observableState<readonly MeshInfo[]>([mesh]);
-  const area = { mesh: vi.fn(async () => ({ ok: true })) } as unknown as CryoetApi;
+  const scene = observableState(volumes);
+  const area = {
+    mesh: vi.fn(async () => ({ ok: true })),
+    volumesState: () => scene.asReadonly,
+  } as unknown as CryoetApi;
   const host = document.createElement('div');
   document.body.append(host);
   // a group's API is the same: its `cryoet` area is the one the controls are given
@@ -213,6 +217,101 @@ describe("a mesh's Color by", () => {
     choice('Color by', 'Uniform')!.click();
     vi.advanceTimersByTime(500);
     expect(area.mesh).toHaveBeenLastCalledWith({ mesh: 'm', color: '#cccccc' });
+    dispose();
+  });
+});
+
+/** A VTP colored by a volume: Projected Min ±40 Å, inverted */
+const ByVolume: MeshInfo = {
+  ...Vtp,
+  arrays: [...Vtp.arrays!, { key: 'cell:density_tomo', label: 'Cell: density_tomo', range: [-3, 2] }],
+  colorBy: undefined,
+  volumeColor: {
+    volume: 'v1',
+    label: 'tomo.mrc',
+    sample: 'min',
+    depth: 40,
+    colorList: 'viridis',
+    range: 'auto',
+    invert: true,
+    array: 'cell:density_tomo',
+  },
+};
+const Tomo = [{ ref: 'v1', label: 'tomo.mrc' }];
+
+describe("a mesh's Color by › Volume", () => {
+  it('is offered for any mesh when the scene has a volume (an OBJ too), and writes the first volume', () => {
+    vi.useFakeTimers();
+    const { area, choice, dispose } = mounted(Obj, Tomo);
+    expect(choice('Color by', 'Array')).toBeUndefined();
+    choice('Color by', 'Volume')!.click();
+    vi.advanceTimersByTime(500);
+    expect(area.mesh).toHaveBeenLastCalledWith({ mesh: 'm', volume: 'v1' });
+    dispose();
+  });
+
+  it('is not offered without a volume in the scene', () => {
+    const { choice, dispose } = mounted(Vtp);
+    expect(choice('Color by', 'Volume')).toBeUndefined();
+    dispose();
+  });
+
+  it('shows the volume, Projected Min, its depth, its scale inverted; no picker', () => {
+    const { host, choice, dispose } = mounted(ByVolume, Tomo);
+    expect(choice('Color by', 'Volume')!.getAttribute('aria-pressed')).toBe('true');
+    expect(host.querySelector('button[aria-haspopup][aria-label="Volume"]')!.textContent).toContain('tomo.mrc');
+    expect(choice('Sample', 'Projected')!.getAttribute('aria-pressed')).toBe('true');
+    expect(choice('Along the normal', 'Min')!.getAttribute('aria-pressed')).toBe('true');
+    expect(host.querySelector<HTMLInputElement>('input[type=range][aria-label="Depth"]')!.value).toBe('40');
+    expect(choice('Color order', 'Inverted')!.getAttribute('aria-pressed')).toBe('true');
+    expect(choice('Range', 'Auto ±2σ')!.getAttribute('aria-pressed')).toBe('true');
+    expect(host.querySelector('button[aria-haspopup][aria-label="Array"]')).toBeNull();
+    expect(host.querySelector('button[aria-expanded]:not([aria-haspopup])')).toBeNull();
+    dispose();
+  });
+
+  it('writes the sample, the depth on release, the scale, a custom range in σ; Uniform writes the color', () => {
+    vi.useFakeTimers();
+    const { host, area, choice, dispose } = mounted({ ...ByVolume, color: 0x00ff00 }, Tomo);
+    choice('Along the normal', 'Max')!.click();
+    vi.advanceTimersByTime(500);
+    expect(area.mesh).toHaveBeenLastCalledWith({ mesh: 'm', sample: 'max' });
+    choice('Sample', 'At surface')!.click();
+    vi.advanceTimersByTime(500);
+    expect(area.mesh).toHaveBeenLastCalledWith({ mesh: 'm', sample: 'surface' });
+    const depth = host.querySelector<HTMLInputElement>('input[type=range][aria-label="Depth"]')!;
+    depth.value = '20';
+    depth.dispatchEvent(new Event('change', { bubbles: true }));
+    vi.advanceTimersByTime(500);
+    expect(area.mesh).toHaveBeenLastCalledWith({ mesh: 'm', depth: 20 });
+    choice('Color order', 'As is')!.click();
+    vi.advanceTimersByTime(500);
+    expect(area.mesh).toHaveBeenLastCalledWith({ mesh: 'm', invert: false });
+    choice('Range', 'Custom')!.click();
+    vi.advanceTimersByTime(500);
+    expect(area.mesh).toHaveBeenLastCalledWith({ mesh: 'm', range: [-2, 2] });
+    choice('Color by', 'Uniform')!.click();
+    vi.advanceTimersByTime(500);
+    expect(area.mesh).toHaveBeenLastCalledWith({ mesh: 'm', color: '#00ff00' });
+    dispose();
+  });
+
+  it('Volume again is the volume it kept, not the first of the scene (review S4)', () => {
+    vi.useFakeTimers();
+    const two = [...Tomo, { ref: 'v2', label: 'ramp.mrc' }];
+    const { area, choice, dispose } = mounted({ ...Vtp, volumeKept: { volume: 'v2', label: 'ramp.mrc' } }, two);
+    choice('Color by', 'Volume')!.click();
+    vi.advanceTimersByTime(500);
+    expect(area.mesh).toHaveBeenLastCalledWith({ mesh: 'm', volume: 'v2' });
+    dispose();
+  });
+
+  it('Array from Volume colors by the array it keeps the values in', () => {
+    vi.useFakeTimers();
+    const { area, choice, dispose } = mounted(ByVolume, Tomo);
+    choice('Color by', 'Array')!.click();
+    vi.advanceTimersByTime(500);
+    expect(area.mesh).toHaveBeenLastCalledWith({ mesh: 'm', array: 'cell:density_tomo' });
     dispose();
   });
 });

@@ -145,6 +145,8 @@ function setup(
     surfaces,
     intos,
     removeList: () => (lists = false),
+    /** The next `n` picks read are pending */
+    pend: (n: number) => (reads = n),
   };
 }
 
@@ -232,6 +234,36 @@ describe('paint mode', () => {
       expect(strokes[0].mesh).toBe(place === 'surface' ? 'vesicle-ref' : undefined);
       mode.stop();
     }
+  });
+
+  it('Place Auto goes to the surface over a mesh (any brush), at a depth elsewhere (decisions 2)', () => {
+    for (const mesh of ['vesicle-ref', undefined]) {
+      const { mode, canvas, strokes, surfaces } = setup(0, { upright: false, mesh });
+      mode.start(brush);
+      canvas.dispatchEvent(pointer('pointerdown', { x: 10, y: 10 }));
+      canvas.dispatchEvent(pointer('pointerup', { x: 10, y: 10 }));
+      expect(strokes[0].mesh).toBe(mesh);
+      expect(surfaces).toEqual([!!mesh]);
+      mode.stop();
+    }
+  });
+
+  it('Place Auto keeps the mesh the pointer was over when its pick is pending at the press (decisions 2)', async () => {
+    const { mode, canvas, strokes, surfaces, pend } = setup(0, {
+      upright: false,
+      mesh: 'vesicle-ref',
+      pointerAt: [10, 10],
+    });
+    mode.start(brush);
+    // the pointer is over the mesh: some frames for its pick
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    pend(8);
+    canvas.dispatchEvent(pointer('pointerdown', { x: 10, y: 10 }));
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    canvas.dispatchEvent(pointer('pointerup', { x: 10, y: 10 }));
+    expect(surfaces).toEqual([true]);
+    expect(strokes[0].mesh).toBe('vesicle-ref');
+    mode.stop();
   });
 
   it("the previous stroke's commit does not cancel the stroke drawn after it", async () => {

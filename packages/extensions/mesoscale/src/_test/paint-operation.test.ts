@@ -416,3 +416,63 @@ describe('mesoscale.paint', () => {
     expect(painted(v).length).toBe(0);
   });
 });
+
+describe('mesoscale.paint: a fiber on a surface (decisions 3)', () => {
+  it("a plain walk's units up along the normals; with a Twist, Offset or Jitter turned as without them; live both ways", async () => {
+    const v = await viewer();
+    // a path along +y on a plane of normal (1, 0, 1)/√2; its Fiber Axis x, so its units' up (offset direction) is y
+    const n = Vec3.normalize(Vec3(), Vec3.create(1, 0, 1));
+    const positions = [0, 50, 0, 0, 90, 0, 0, 130, 0];
+    const normals = [...n, ...n, ...n];
+    expectOk(await v.api.run('mesoscale.fiber', { entity: 'loose', axis: 'x' }));
+    expectOk(
+      await v.api.run('mesoscale.paint', { entity: 'loose', positions, normals, surface: true, fiber: true, seed: 4 }),
+    );
+    // the same fiber painted in space (no normals), 300 Å along x
+    const away = positions.map((x, i) => (i % 3 ? x : x + 300));
+    expectOk(await v.api.run('mesoscale.paint', { entity: 'loose', positions: away, fiber: true, seed: 4 }));
+    const stroke = (painted(v)[0].transform.params as { strokes: { normals?: number[] }[] }).strokes[0];
+    expect(stroke.normals).toEqual(normals);
+    const quats = () => {
+      const list = drawn(v);
+      const k = (list.count - 7) / 2;
+      expect(k).toBeGreaterThan(1);
+      const of = (i: number) => Quat.fromArray(Quat(), list.rotations!, i * 4);
+      return { k, on: (j: number) => of(7 + j), off: (j: number) => of(7 + k + j) };
+    };
+    const upAlong = () => {
+      const { k, on } = quats();
+      for (let j = 0; j < k; ++j) {
+        if (Math.abs(Vec3.dot(Vec3.transformQuat(Vec3(), Vec3.create(0, 1, 0), on(j)), n) - 1) > 1e-4) return false;
+      }
+      return true;
+    };
+    const asInSpace = () => {
+      const { k, on, off } = quats();
+      for (let j = 0; j < k; ++j) if (Math.abs(Math.abs(Quat.dot(on(j), off(j))) - 1) > 1e-6) return false;
+      return true;
+    };
+    expect(upAlong()).toBe(true);
+    expect(asInSpace()).toBe(false);
+    for (const helix of [{ twist: 30 }, { offset: 5 }, { jitter: 20 }]) {
+      expectOk(await v.api.run('mesoscale.fiber', { entity: 'loose', twist: 0, offset: 0, jitter: 0, ...helix }));
+      expect(asInSpace(), JSON.stringify(helix)).toBe(true);
+    }
+    expectOk(await v.api.run('mesoscale.fiber', { entity: 'loose', twist: 0, offset: 0, jitter: 0 }));
+    expect(upAlong()).toBe(true);
+    // Turn View: its directions the camera's, not the surface's; none kept
+    expectOk(
+      await v.api.run('mesoscale.paint', {
+        entity: 'loose',
+        positions,
+        normals,
+        surface: true,
+        fiber: true,
+        orient: 'view',
+      }),
+    );
+    expect(
+      (painted(v)[0].transform.params as { strokes: { normals?: number[] }[] }).strokes[2].normals,
+    ).toBeUndefined();
+  });
+});

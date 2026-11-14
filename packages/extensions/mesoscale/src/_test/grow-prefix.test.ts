@@ -14,6 +14,7 @@ import {
   spherePoses,
   spiralPath,
   tilingPoses,
+  tilingTotal,
   walkPath,
 } from '../grow.js';
 import { meshSurface } from '../mesh-surface.js';
@@ -94,15 +95,20 @@ describe('a grow continues with more and is cut with fewer', () => {
     prefix(v1.rotations.slice(0, -4), v2.rotations);
   });
 
-  it('Tiling: Rings on a plane, Count on a mesh', () => {
-    const t = (rings: number) => tilingPoses(source, z, { pattern: 'hex', spacing: 10, rings });
+  it('Tiling: Count, in space (a whole ring or part of one) and on a mesh', () => {
+    const t = (rings: number) =>
+      tilingPoses(source, z, { pattern: 'hex', spacing: 10, count: tilingTotal('hex', rings) });
     prefix(t(2).positions, t(4).positions);
     prefix(t(2).rotations, t(4).rotations);
-    const sq = (rings: number) => tilingPoses(source, z, { pattern: 'square', spacing: 10, rings });
+    const sq = (rings: number) =>
+      tilingPoses(source, z, { pattern: 'square', spacing: 10, count: tilingTotal('square', rings) });
     prefix(sq(1).positions, sq(3).positions);
+    const part = (count: number) => tilingPoses(source, z, { pattern: 'hex', spacing: 10, count });
+    prefix(part(10).positions, part(25).positions);
+    prefix(part(10).rotations, part(25).rotations);
     const on = { surface: meshSurface(sphereMesh(100, 4)), reach: 20, axis: z };
     const north: GrowPose = { position: Vec3.create(0, 0, 100), rotation: Quat.identity() };
-    const m = (count: number) => tilingPoses(north, z, { pattern: 'hex', spacing: 10, rings: 3, count }, on)!;
+    const m = (count: number) => tilingPoses(north, z, { pattern: 'hex', spacing: 10, count }, on)!;
     prefix(m(20).positions, m(90).positions);
     prefix(m(20).rotations, m(90).rotations);
   });
