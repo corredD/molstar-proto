@@ -80,9 +80,9 @@ is not built is [../TODO.md](../TODO.md).
     "Colours from meshes" on; Ludo 2026-11-10) built and gated at 0fa72ac06, pushed: parts named by file, de-duplicated,
     mapped by index; a part's own colour where its mesh gives no tint (coordinator's call, Ludo to confirm). Next on
     Ludo’s word: shells, the clip pop, the PR (rounds 4–9).
-  - `grow-helix` (`me/grow-helix` from `prism-me` after the paint-refine merge; brief on its branch): started
-    2026-11-13. Grow › Helix: a helical path from the source, on a mesh (around its axis, each point onto the surface)
-    or in space (around the Fiber Axis); Pitch, Turns, Hand, Direction, Axis; a fiber stroke like the walk.
+- **Merged 2026-11-13**: `grow-helix` (Ludo's word, decisions doc point 10): Grow › Helix and Spiral (Archimedean,
+  Count, Arm spacing, Step; crowded copies skipped), every Grow setting live on the last grow, Count prefix-stable, Clear;
+  [progress](2026-11-13-grow-helix.md). Next: the night lanes ([plan](../plans/2026-11-13-night-lanes.md)).
 - **Merged 2026-11-13**: `paint-refine` (merged into prism-me directly, Ludo's word): the copy at the pointer from the
   first Paint; the standard camera in Paint (left paints, Alt+wheel the depth, the picked depth); a grown walk's own
   Rise/Twist/Jitter, live on the last grow; on a surface any brush's copies along the normal (Fiber Axis else +z), and
