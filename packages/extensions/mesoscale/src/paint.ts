@@ -121,7 +121,7 @@ export function brushIdOf(list: ParticleList, stroke: Pick<PaintStroke, 'entity'
 }
 
 /** The radius of a target's first particle (0 without radii) */
-function targetRadius(list: ParticleList, target: number): number {
+export function targetRadius(list: ParticleList, target: number): number {
   if (!list.radii) return 0;
   const groups = getParticleTargetGroups(list);
   const set = groups.sets[groups.groupOfTarget.get(target) ?? -1];

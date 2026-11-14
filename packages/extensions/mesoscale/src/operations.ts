@@ -67,6 +67,7 @@ import {
   fiberAxisVector,
   principalAxisOf,
   strokeCounts,
+  targetRadius,
   toListFrame,
   withStructures,
 } from './paint.js';
@@ -1246,7 +1247,13 @@ export class MesoscaleApi extends ApiArea {
       if (fit?.trim() && !asFiber) {
         const volume = sceneVolume(state, fit.trim());
         if (isFailure(volume)) return volume;
-        const envelope = envelopeOf(brush.object ?? data.targetMapping?.get(brush.target), 10);
+        // the copy's object, else a ball of its radius (as the copy under the pointer's: `PaintHost.radius`)
+        const object = brush.object ?? data.targetMapping?.get(brush.target);
+        const radius =
+          targetRadius(data, brush.target) ||
+          (object?.kind === 'structure' ? object.structure.boundary.sphere.radius : 0) ||
+          10;
+        const envelope = envelopeOf(object, radius);
         const reach = {
           reach: PaintReach.shift * envelope.radius,
           turn: PaintReach.turn,

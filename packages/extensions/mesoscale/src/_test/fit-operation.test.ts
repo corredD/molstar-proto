@@ -21,7 +21,23 @@ import { paintRotation } from '../paint.js';
 import { ParticleListPainted, type PaintStroke } from '../paint.js';
 import { MesoscaleExtension } from '../prism-viewer.js';
 import { angleBetween, crnAtoms, density, type Site, turn } from './density.js';
-import { setTestTargetStructure, TestTargetList } from './fixtures.js';
+import { PluginStateObject as SO, PluginStateTransform } from '@molstar/plugin/state/objects';
+import { pluginPaintHost } from '../paint-host.js';
+import { cellpackLike, setTestTargetStructure, TestTargetList } from './fixtures.js';
+
+/** A cellPACK-like list of 30 Å spheres, no objects (a list of picks), for the ball's envelope */
+const TestSphereList = PluginStateTransform.BuiltIn({
+  name: 'density-fit-test-sphere-list',
+  display: { name: 'Test Sphere List' },
+  from: SO.Root,
+  to: SO.Particle.List,
+  params: {},
+})({
+  apply() {
+    const list = cellpackLike();
+    return new SO.Particle.List({ ...list, radii: new Float32Array(list.count).fill(30) }, { label: 'Picks' });
+  },
+});
 
 // Paint and Grow fitted to a volume (density-fit) on the cellPACK-like list of paint's tests (four 1CRN targets, drawn
 // as targets; particle 2 is CA at (20, 0, 0)) and an MRC of 1CRN densities, Dark, with noise, made in memory.
@@ -157,6 +173,48 @@ describe('the copy under the pointer, fitted', () => {
     expect(Vec3.distance(xyz(drawn(v), n), shown.position)).toBeLessThan(1e-3);
     expect(angleBetween(quat(drawn(v), n), shown.rotation)).toBeLessThan(1e-2);
     fit.dispose();
+  });
+});
+
+describe('a copy without an object', () => {
+  it('is fitted as a ball of its radius, the cursor where the click paints it', async () => {
+    const base = DefaultPrismViewerSpec();
+    const v = await createPrismViewerHeadless({
+      spec: { ...base, extensions: [...(base.extensions ?? []), MesoscaleExtension] },
+    });
+    viewers.push(v);
+    await v.plugin.build().toRoot().apply(TestSphereList).commit();
+    expectOk(await v.api.particles.representation({ type: 'spacefill' }));
+    const volume = await loadMap(v, [{ position: Vec3.create(60, 40, 40), rotation: Quat.identity() }], [80, 60, 60]);
+    const list = entry(v).cell.transform.ref;
+    const host = pluginPaintHost(v.plugin, async () => undefined);
+    const radius = host.radius({ particles: list, entity: 1, name: 'CA' });
+    expect(radius).toBe(30);
+    const fit = pluginCursorFit(v.plugin, () => undefined, radius);
+    const rotation = paintRotation(Quat(), Vec3.create(0, 0, 1), 'random', 7, 0, {});
+    const shown = fit.fit(Vec3.create(66, 45, 40), rotation, volume, 'dark')!;
+    expectOk(
+      await v.api.run('mesoscale.paint', {
+        entity: 'CA',
+        positions: [66, 45, 40],
+        normals: [0, 0, 1],
+        orient: 'random',
+        seed: 7,
+        fit: volume,
+        particles: list,
+      }),
+    );
+    const data = entry(v).cell.obj!.data as ParticleList;
+    const painted = Array.from(
+      (
+        Array.from(v.plugin.state.data.cells.values()).find((c) => c.transform.transformer === ParticleListPainted)!
+          .obj!.data as ParticleList
+      ).coordinates.slice(-3),
+    );
+    expect(data.count).toBeGreaterThan(0);
+    expect(Vec3.distance(Vec3.fromArray(Vec3(), painted, 0), shown.position)).toBeLessThan(1e-3);
+    fit.dispose();
+    host.dispose();
   });
 });
 
