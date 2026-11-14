@@ -368,7 +368,7 @@ describe('mesoscale.grow', () => {
 // it.
 
 /** An OBJ of a sphere of `radius` about `center` (an icosphere, detail 3) */
-function sphereObj(radius: number, center: Vec3) {
+function sphereObj(radius: number, center: Vec3, inward = false) {
   const { vertices, indices } = Sphere(3);
   const lines: string[] = [];
   for (let i = 0; i < vertices.length; i += 3) {
@@ -377,7 +377,11 @@ function sphereObj(radius: number, center: Vec3) {
     );
   }
   for (let i = 0; i < indices.length; i += 3)
-    lines.push(`f ${indices[i] + 1} ${indices[i + 1] + 1} ${indices[i + 2] + 1}`);
+    lines.push(
+      inward
+        ? `f ${indices[i] + 1} ${indices[i + 2] + 1} ${indices[i + 1] + 1}`
+        : `f ${indices[i] + 1} ${indices[i + 1] + 1} ${indices[i + 2] + 1}`,
+    );
   return lines.join('\n');
 }
 
@@ -463,6 +467,24 @@ describe('mesoscale.grow on a mesh', () => {
     // half a turn a unit: the sides alternate
     expectOk(await v.api.run('mesoscale.grow', { ...walk, twist: 180 }));
     for (let i = 7; i < 15; ++i) expect(off(i) * side * (i % 2 ? 1 : -1)).toBeCloseTo(5, 0);
+  });
+
+  it("a walk on a mesh: its units' up on the source's side (its +z), whatever the mesh's winding (review S7)", async () => {
+    for (const inward of [false, true]) {
+      const v = await viewer();
+      const ref = entry(v).cell.transform.ref;
+      // CA #2 at (20, 0, 0), unturned (+z up), at the top of a vesicle of 100 Å about (20, 0, -100)
+      const centre = Vec3.create(20, 0, -100);
+      const obj = sphereObj(100, centre, inward);
+      expectOk(await v.api.load.files({ files: [new File([obj], 'vesicle.obj')] }));
+      const { repr } = meshCells(v);
+      expectOk(await v.api.run('mesoscale.fiber', { entity: 'CA', offset: 5 }));
+      const walk = { particles: ref, index: 2, mesh: repr, mode: 'walk', steps: 6, seed: 1, twist: 0 };
+      expectOk(await v.api.run('mesoscale.grow', walk));
+      for (let i = 7; i < 13; ++i) expect(Vec3.distance(xyz(drawn(v), i), centre) - 100, `${inward}`).toBeCloseTo(5, 0);
+      await v.dispose();
+      viewers.splice(viewers.indexOf(v), 1);
+    }
   });
 
   it('refuses Crystal on a mesh, a mesh not in the scene, and a source off the mesh: no step', async () => {
