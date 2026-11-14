@@ -66,6 +66,21 @@ up. Also a decimated mesh (e.g. 1/10 of the cells) to show Texture keeps the det
 
 UV textures (a VTP has no UVs); coloring other shapes than meshes; changing the per-vertex path.
 
+## Decided: Option A (Ludo, 2026-11-14)
+
+Ludo picked Option A after the stop below, to be built in this lane. The core changes stay on prism-me (Ludo,
+2026-11-14), and no master lane is made. They are still committed apart from the app, with no app or extension hunks,
+so they can be cherry-picked later. They are recorded under "Core changes" below.
+
+1. **Library (packages/graphics, packages/model):** a per-fragment color-grid lookup, opt in on the `volume` color
+   types, consistent with palette, overpaint, emissive, transparency, marking and picking, on WebGL and WebGPU. Also
+   a hook so that a Shape can carry a color grid as data. The representation uploads it where it has its graphics
+   context, and Shape getters stay context-free. Shader and unit tests.
+2. **App (cryoet, prism-me):** the brief's Vertex | Texture toggle in Color by › Volume. At surface and Projected (the
+   band of voxels) are as in "Wanted" above.
+
+Size: ~150–250 library lines + ~300–450 app lines. Report to the coordinator if it runs past ~1.5× that.
+
 ## Stopped (2026-11-14, before code)
 
 The lane stopped at the reading step, as the brief allows ("stop and report when the work turns out different").
