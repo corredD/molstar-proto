@@ -12,12 +12,13 @@ import {
   type HelixParams,
   helixPath,
   spherePoses,
+  spiralPath,
   tilingPoses,
   walkPath,
 } from '../grow.js';
 import { meshSurface } from '../mesh-surface.js';
 import { makeFiber } from '../paint.js';
-import { sphereMesh, tubeMesh } from './fixtures.js';
+import { flatMesh, sphereMesh, tubeMesh } from './fixtures.js';
 
 // The count of a grow is prefix-stable (grow-helix round 2, Ludo 2026-11-13: "more will continue the distribution,
 // less will remove the excedent copies"): its rule grown with more (Steps, Turns, Rings, Count) keeps the first ones
@@ -74,6 +75,23 @@ describe('a grow continues with more and is cut with fewer', () => {
     const b = helixPath(from, z, 4, { ...p, pitch: 40, turns: 3.5 }, on, n2)!;
     prefix(a, b);
     prefix(n1, n2);
+  });
+
+  it("Spiral: Count, its fiber's units (positions, turns but the last's) and its normals, in space and on a mesh", () => {
+    const settings = { ...fiber, rise: 5, axis: 'auto' as const };
+    const p = { spacing: 20, step: 5, hand: 'right' as const };
+    const [a, b] = [spiralPath(source, z, { ...p, count: 30 }), spiralPath(source, z, { ...p, count: 70 })];
+    const [u1, u2] = [makeFiber(a, settings, z, 5), makeFiber(b, settings, z, 5)];
+    prefix(u1.positions, u2.positions);
+    prefix(u1.rotations.slice(0, -4), u2.rotations);
+    const on = { surface: meshSurface(flatMesh(60, 10)), reach: 10 };
+    const center: GrowPose = { position: Vec3.create(0, 0, 0), rotation: Quat.identity() };
+    const [n1, n2]: number[][] = [[], []];
+    const c = spiralPath(center, z, { ...p, count: 30 }, on, n1)!;
+    const d = spiralPath(center, z, { ...p, count: 70 }, on, n2)!;
+    const [v1, v2] = [makeFiber(c, settings, z, 5, n1), makeFiber(d, settings, z, 5, n2)];
+    prefix(v1.positions, v2.positions);
+    prefix(v1.rotations.slice(0, -4), v2.rotations);
   });
 
   it('Tiling: Rings on a plane, Count on a mesh', () => {
