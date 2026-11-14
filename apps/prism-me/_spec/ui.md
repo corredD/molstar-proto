@@ -590,9 +590,11 @@ still completes its distance.
   rolled over the surface from the source's point: each step (by arc length) the planar spiral's own, taken in the
   tangent plane of the point before and brought onto the surface, its direction carried along; so it is the flat spiral
   on a plane, a cylinder or a cone (the capsid's body), and its arms close up on a surface curved both ways (a cap, a
-  vesicle). It ends where the surface does, or where it comes within 0.6 × Arm spacing of a point of itself more than 2
-  Arm spacings behind along it (an arm it would cross: round a tube, on a closed surface). Its units' up along the
-  surface's normal.
+  vesicle). Where it crosses an arm of its own (round a tube, on a closed surface; Ludo 2026-11-13: "Skip crowded, keep
+  going"), a copy within 0.6 × Arm spacing of a copy kept more than 2 Arm spacings behind along it is skipped and it
+  goes on until Count copies are kept, its length 4 × Count × Step at most (a surface full ahead: fewer, the section
+  shows the copies made beside its turns). The copies kept are turned as along the whole chain (their twist by their
+  place along it). It ends where the surface does. Its units' up along the surface's normal.
 - The last grow live (lane `grow-helix` round 2, Ludo 2026-11-13: "all the parameters in the grow properties to update
   the latest grow … more will continue the distribution, less will remove the excedent copies … a clear button"): after
   a Grow, every setting of the section (each mode's, its Seed, On, and its Mode) makes that grow again in place, from

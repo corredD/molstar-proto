@@ -11,5 +11,5 @@
   `mesoscale.clear-grown`.
 - Grow › Spiral: a new fiber winding flat outward from the source (its center), an Archimedean spiral of Count
   copies a Step apart along it, its arms Arm spacing apart, its Hand, the Turns it reaches shown; in the source's plane
-  in space, rolled over the surface on a mesh (ending at its edge or where its arms would cross).
+  in space, rolled over the surface on a mesh (ending at its edge; a copy that would land on an earlier arm is skipped and it goes on to Count).
   `mesoscale.grow { mode: 'spiral', count, spacing, rise, hand }`.
