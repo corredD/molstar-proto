@@ -96,10 +96,12 @@ describe('a grow continues with more and is cut with fewer', () => {
   });
 
   it('Tiling: Count, in space (a whole ring or part of one) and on a mesh', () => {
-    const t = (rings: number) => tilingPoses(source, z, { pattern: 'hex', spacing: 10, count: tilingTotal('hex', rings) });
+    const t = (rings: number) =>
+      tilingPoses(source, z, { pattern: 'hex', spacing: 10, count: tilingTotal('hex', rings) });
     prefix(t(2).positions, t(4).positions);
     prefix(t(2).rotations, t(4).rotations);
-    const sq = (rings: number) => tilingPoses(source, z, { pattern: 'square', spacing: 10, count: tilingTotal('square', rings) });
+    const sq = (rings: number) =>
+      tilingPoses(source, z, { pattern: 'square', spacing: 10, count: tilingTotal('square', rings) });
     prefix(sq(1).positions, sq(3).positions);
     const part = (count: number) => tilingPoses(source, z, { pattern: 'hex', spacing: 10, count });
     prefix(part(10).positions, part(25).positions);

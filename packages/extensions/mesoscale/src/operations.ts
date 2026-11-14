@@ -90,8 +90,10 @@ import {
   spherePoses,
   tilingPoses,
   tilingTotal,
+  trimEnd,
   walkPath,
 } from './grow.js';
+import { spiralCount } from './grow-link.js';
 import { meshAxis, sceneMesh, sceneMeshes, sceneMeshSurface } from './mesh-surface.js';
 import { isMembranePath } from './pick-surface.js';
 import {
@@ -1325,7 +1327,10 @@ export class MesoscaleApi extends ApiArea {
         PD.Numeric(
           3,
           { min: 0, max: 50, step: 1 },
-          { description: "Tiling, as older sessions had it: read as its count (the rings' points, the source's counted)" },
+          {
+            description:
+              "Tiling, as older sessions had it: read as its count (the rings' points, the source's counted)",
+          },
         ),
       ),
       count: OptionalParam(
@@ -1333,8 +1338,7 @@ export class MesoscaleApi extends ApiArea {
           50,
           { min: 1, step: 1 },
           {
-            description:
-              "Sphere, Spiral: its copies; Tiling: its points, the source's counted (absent: 3 rings')",
+            description: "Sphere, Spiral: its copies; Tiling: its points, the source's counted (absent: 3 rings')",
           },
         ),
       ),
@@ -1534,11 +1538,18 @@ export class MesoscaleApi extends ApiArea {
           // between instances"): Count copies, its Step the fiber's rise, its arms Arm spacing apart; in the scene (as
           // drawn), then in the list's frame; its plane's normal the copy's axis by paint's rule (a membrane protein's
           // +z, else its Fiber Axis, else +z)
-          const p = { spacing: v.spacing ?? diameter, count: Math.floor(v.count ?? 50), hand: v.hand ?? 'right' };
+          const scaled = rise * (move?.scale ?? 1);
+          // Turns, when given, set the copies those turns hold; else Count (decisions 21)
+          const spacing = v.spacing ?? diameter;
+          const byTurns = v.turns !== undefined && spacing > 0 && scaled > 0;
+          const p = {
+            spacing,
+            count: byTurns ? spiralCount(v.turns!, spacing, scaled) : Math.floor(v.count ?? 50),
+            hand: v.hand ?? 'right',
+          };
           if (!(p.spacing > 0)) return ApiResult.fail('invalid', 'The arm spacing is above 0 Å.');
           if (!(p.count >= 2)) return ApiResult.fail('invalid', 'Give 2 copies or more.');
           if (p.count > MaxGrown) return tooMany(p.count);
-          const scaled = rise * (move?.scale ?? 1);
           const info: SpiralInfo = { turns: 0 };
           // its units made (kept and skipped) as many as a grow makes at most (3b review N1)
           const params = { ...p, step: scaled, units: MaxGrown };
@@ -1550,7 +1561,10 @@ export class MesoscaleApi extends ApiArea {
             path = spiralPath(scene, surfaceAxis(), params, undefined, undefined, info)!;
           }
           // the turns it reached and its copies made: for the section to show
-          Object.assign(sizes, p, { turns: Math.round(info.turns * 100) / 100, copies: info.copies ?? 0 });
+          Object.assign(sizes, p, {
+            turns: byTurns ? v.turns! : Math.round(info.turns * 100) / 100,
+            copies: info.copies ?? 0,
+          });
           toListFrame(move, path, normals);
           units = info.copies ?? 0;
           if (info.skip?.length) skip = info.skip;
@@ -1565,9 +1579,14 @@ export class MesoscaleApi extends ApiArea {
           }
         } else {
           // a helix (grow-helix), in the scene (its pitch and radius as drawn), then in the list's frame
+          // Turns, when given, end it; else Count copies do (its turns the ones they reach); else 5 turns (decisions 8)
+          const byCount = v.turns === undefined && v.count !== undefined;
+          const count = Math.floor(v.count ?? 0);
+          if (byCount && !(count >= 2)) return ApiResult.fail('invalid', 'Give 2 copies or more.');
+          if (byCount && count > MaxGrown) return tooMany(count);
           const p = {
             pitch: v.pitch ?? 4 * diameter,
-            turns: v.turns ?? 5,
+            turns: byCount ? MaxHelixTurns : (v.turns ?? 5),
             hand: v.hand ?? 'right',
             direction: v.direction ?? 'up',
             radius: v.helixRadius ?? diameter,
@@ -1578,8 +1597,9 @@ export class MesoscaleApi extends ApiArea {
           if (p.turns > MaxHelixTurns) return ApiResult.fail('invalid', `Give ${MaxHelixTurns} turns or fewer.`);
           if (!on && !(p.radius > 0)) return ApiResult.fail('invalid', 'The radius is above 0 Å.');
           const scaled = rise * (move?.scale ?? 1);
+          const reached = { turns: 0 };
           // its length in space before it is made: no 1000 turns of a long radius at a short rise (its points every 5°)
-          if (!on && (p.turns * Math.hypot(2 * Math.PI * p.radius, p.pitch)) / scaled + 1 > MaxGrown) {
+          if (!byCount && !on && (p.turns * Math.hypot(2 * Math.PI * p.radius, p.pitch)) / scaled + 1 > MaxGrown) {
             return tooMany(Math.floor((p.turns * Math.hypot(2 * Math.PI * p.radius, p.pitch)) / scaled) + 1);
           }
           if (on) {
@@ -1588,8 +1608,16 @@ export class MesoscaleApi extends ApiArea {
             const view = camera && Vec3.sub(Vec3(), camera.position, camera.target);
             const line = meshAxis(mesh!.shape.geometry, mesh!.shape.transforms[0], which, view);
             normals = [];
-            const limit = (MaxGrown + 1) * scaled;
-            path = helixPath(scene, axis, scaled, { ...p, limit }, { ...on, axis: surfaceAxis(), line }, normals);
+            const limit = ((byCount ? count : MaxGrown) + 1) * scaled;
+            path = helixPath(
+              scene,
+              axis,
+              scaled,
+              { ...p, limit },
+              { ...on, axis: surfaceAxis(), line },
+              normals,
+              reached,
+            );
             if (!path) return offMesh();
             if (path.length < 6) {
               return ApiResult.fail(
@@ -1601,11 +1629,26 @@ export class MesoscaleApi extends ApiArea {
             Object.assign(sizes, { ...p, axis: which });
             delete sizes.radius;
           } else {
-            path = helixPath(scene, axis, scaled, p);
+            path = helixPath(
+              scene,
+              axis,
+              scaled,
+              byCount ? { ...p, limit: count * scaled } : p,
+              undefined,
+              undefined,
+              reached,
+            )!;
             Object.assign(sizes, p);
+          }
+          // by Count: the path ended at its copies' length (a rise apart, the first at its start), its turns the ones it reached
+          if (byCount) {
+            path.length = trimEnd(path, normals, (count - 1) * scaled);
+            if (normals) normals.length = path.length;
+            sizes.turns = Math.round(reached.turns * 100) / 100;
           }
           toListFrame(move, path, normals);
           units = Math.floor(pathLength(path) / rise + 1e-6) + 1;
+          sizes.count = units;
           if (units > MaxGrown) return tooMany(units);
           // a unit alone would be a copy unturned, as a walk of one point (review New 1)
           if (units < 2) {

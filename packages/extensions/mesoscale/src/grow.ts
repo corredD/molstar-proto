@@ -347,7 +347,9 @@ export function helixPath(
   p: HelixParams,
   on: (GrowOn & { readonly line: HelixLine }) | undefined,
   normals?: number[],
+  info?: { turns: number },
 ): number[] | undefined;
+/** `info.turns`: the turns the path (before any cut at a length) reached (decisions 8: Count's turns) */
 export function helixPath(
   source: GrowPose,
   axis: Vec3,
@@ -355,6 +357,7 @@ export function helixPath(
   p: HelixParams,
   on?: GrowOn & { readonly line: HelixLine },
   normals?: number[],
+  info?: { turns: number },
 ): number[] | undefined {
   const start = Vec3.copy(Vec3(), source.position);
   const n = Vec3();
@@ -419,6 +422,7 @@ export function helixPath(
     if (m) walked += Math.hypot(_p[0] - all[m - 3], _p[1] - all[m - 2], _p[2] - all[m - 1]);
     all.push(_p[0], _p[1], _p[2]);
     ns?.push(n[0], n[1], n[2]);
+    if (info) info.turns = theta / (2 * Math.PI);
     if (p.limit !== undefined && walked >= p.limit) break;
   }
   return on ? trimStart(all, ns, rise, normals) : all;
@@ -430,7 +434,7 @@ const SpiralCrowd = 0.6;
 const SpiralAlong = 2;
 
 /** The arc length of the Archimedean spiral r = b·θ from 0 to θ */
-const spiralArc = (b: number, t: number) => (b / 2) * (t * Math.sqrt(1 + t * t) + Math.asinh(t));
+export const spiralArc = (b: number, t: number) => (b / 2) * (t * Math.sqrt(1 + t * t) + Math.asinh(t));
 
 /** The angle of the spiral r = b·θ at arc length `s`, from `t` (Newton's, its arc's derivative b·√(1 + θ²)) */
 function spiralAngle(b: number, s: number, t: number) {
@@ -641,7 +645,7 @@ export function spiralPath(
 }
 
 /** How much of a path (its numbers) is within a `length` along it, its last point moved to that length if past it */
-function trimEnd(path: number[], values: number[] | undefined, length: number): number {
+export function trimEnd(path: number[], values: number[] | undefined, length: number): number {
   let walked = 0;
   for (let i = 1; i < path.length / 3; ++i) {
     const len = Math.hypot(
