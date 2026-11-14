@@ -96,6 +96,8 @@ design. Mechanical steps (checks, screenshots) may go to Sonnet subagents. Gate:
   path; in space before it too (its length is known), so 1000 turns are refused before they are made.
 - (author) **Defaults**: Pitch 4 × the copy's diameter, Turns 5, Right, Up, Auto, Radius the copy's diameter (the
   brief). Radius is its own key (`helixRadius`): Sphere's `radius` has another meaning and default.
+- (author) **Turns, not a length**: the brief's "Turns (or the length the path reaches)" built as Turns only (with the
+  grow's cap as a length limit inside); a Length setting left to TODO.md.
 - (author) **The Axis applies on a mesh only**: in space the helix winds about the Fiber Axis (the brief); X/Y/Z in
   space is not offered.
 
@@ -119,9 +121,11 @@ grow.test.tsx, the scaling guard, `tubeMesh`).
 `~/prism-me-lanes/grow-helix-capsid.cjs` (headless Chrome): `capsid_tiling.vtp` and 1CRN loaded, one copy painted on the
 capsid's wide end (Place Surface), Grow › Helix, Pitch 200, Turns 5, Axis Auto. Right/Up: 244 units winding up the cone
 to its narrow cap (4.8 turns); Left/Up the other sense, 243; Right/Down 55 units to the wide cap (1.4 turns); Rise
-dragged 29.4 → 30.1 Å (238 units, the same path, one step), Twist 19.1° (one step), two undos back to 29.4 Å and 244,
-one more the helix gone. Screenshots: scratchpad `grow-helix/h1-helix-right-up.png`, `h2-helix-left-up.png`,
-`h3-helix-right-down.png`, `h5-rise.png`, `h6-twist.png`, `h7-undone.png`.
+dragged 29.4 → 30.1 Å (238 units, the same path; one step a drag is proven by the unit and app tests), Twist 19.1° (one
+step), two undos back to 29.4 Å and 244, one more the helix gone. Screenshots in
+`/private/tmp/claude-501/-Users-ludovicautin-molstar-proto-git/bc8a7dcf-b4ed-4027-911e-5f56df74a469/scratchpad/grow-helix/`:
+`h1-helix-right-up.png`, `h2-helix-left-up.png`, `h3-helix-right-down.png`, `h5-rise.png`, `h6-twist.png`,
+`h7-undone.png`.
 
 ## Review (lane-reviewer, then lane-skeptic)
 
@@ -152,8 +156,10 @@ one more the helix gone. Screenshots: scratchpad `grow-helix/h1-helix-right-up.p
 - `meshSurface.project` allocates about 170 KB a pick on a 128 × 400 tube (the scaling guard's 250 MB for 20 turns): the
   walk and Tiling share it. Linear, but worth a look (grow-mesh's projector).
 - In a test, `mesoscale.fiber` run before a list's move was inserted put the painted copies above the move (they drew in
-  the scene's frame, unmoved); the app inserts the move first. Not the helix's; noted for the grow lanes.
+  the scene's frame, unmoved); not checked in the app. Not the helix's; noted for the grow lanes.
 - `pnpm check:workspace` fails on prism-me's base too
   (`@molstar/plugin-ui: Export pattern ./*.css has no matching files`).
+- Moved to TODO.md's Backlog (Grow › Helix, what it left). No Storybook story renders the Grow section (none did
+  before).
 - For Ludo: Pitch's default (4 × the copy's diameter), the hand kept when going Down (not a mirror), Axis on a mesh
   only.
