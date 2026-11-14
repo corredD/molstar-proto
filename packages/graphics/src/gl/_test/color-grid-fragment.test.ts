@@ -23,7 +23,9 @@ function glsl(values: { [k: string]: string | boolean | number }) {
   return { vert: preprocessProgram(program.vert, defines, all), frag: preprocessProgram(program.frag, defines, all) };
 }
 
-const FragmentSample = /texture3dFrom2dLinear\(tColorGrid, vColorGridPosition/;
+// at the cell centers: half a cell added in x and y (see 'the 2d layout of a grid read as the shaders read it')
+const FragmentSample =
+  /texture3dFrom2dLinear\(tColorGrid, vColorGridPosition \+ vec3\(0\.5 \/ uColorGridDim\.xy, 0\.0\), uColorGridDim, uColorGridTexDim\)/;
 
 describe('color grid read per fragment (GLSL)', () => {
   it('samples the grid in the fragment stage with the flag, in the vertex stage only without', () => {
@@ -73,6 +75,8 @@ describe('color grid read per fragment (WGSL)', () => {
     expect(on).toMatch(/@location\(7\) vColorGridPosition: vec3<f32>/);
     expect(on).toMatch(/out\.vColorGridPosition = /);
     expect(on).toMatch(/let varyingColor = colorGridFragment\(in\.vColorGridPosition\)/);
+    expect(on).toMatch(/let offset = vec3<f32>\(0\.5 \/ uObject\.uColorGridDim\.xy, 0\.0\);/);
+    expect(on).toMatch(/texture3dFrom2dLinear_tColorGrid\(pos \+ offset\)/);
     expect(on).toMatch(/var material = vec4<f32>\(varyingColor\.rgb, uMaterial\.uAlpha\)/);
 
     const off = preprocessShader(mesh_wgsl, new Map(base));
