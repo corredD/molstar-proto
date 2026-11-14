@@ -170,26 +170,34 @@ describe('Paint on: its section in the properties (paint-refine round 3)', () =>
         if (id) scrolled.push(id);
       },
     });
-    const host = mountScene(v);
-    await until(() => !!rowOf(host, 'HIV'));
-    const section = (id: string) => host.querySelector<HTMLElement>(`[data-section="${id}"]`);
-    const open = (id: string) => section(id)?.querySelector('button')?.getAttribute('aria-expanded') === 'true';
-    const picked = () => host.querySelector('[aria-selected="true"] [data-tip-overflow]')?.textContent;
-    const mode = v.api.mesoscale!.paintMode;
-    // an entity brush (as Paint with, the Paint button, ⌘K, the assistant: the mode's brush set)
-    mode.brush.set({ particles: hiv, entity: 0, name: 'CA' });
-    await until(() => open('paint'));
-    expect(picked()).toBe('CA');
-    await until(() => scrolled.includes('paint'));
-    // off: the panel as it is
-    mode.brush.set(undefined);
-    await new Promise((r) => setTimeout(r, 50));
-    expect(open('paint')).toBe(true);
-    // a structure brush: its row, its Paint
-    mode.brush.set({ particles: '', entity: -1, name: '1CRN', structure });
-    await until(() => open('paint-structure'));
-    expect(picked()).toBe('1CRN');
-    await until(() => scrolled.includes('paint-structure'));
-    delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+    try {
+      const host = mountScene(v);
+      await until(() => !!rowOf(host, 'HIV'));
+      const section = (id: string) => host.querySelector<HTMLElement>(`[data-section="${id}"]`);
+      const open = (id: string) => section(id)?.querySelector('button')?.getAttribute('aria-expanded') === 'true';
+      const picked = () => host.querySelector('[aria-selected="true"] [data-tip-overflow]')?.textContent;
+      const mode = v.api.mesoscale!.paintMode;
+      // an entity brush (as Paint with, the Paint button, ⌘K, the assistant: the mode's brush set)
+      mode.brush.set({ particles: hiv, entity: 0, name: 'CA' });
+      await until(() => open('paint'));
+      expect(picked()).toBe('CA');
+      await until(() => scrolled.includes('paint'));
+      // a brush with no row (review 4): the person's pick kept
+      mode.brush.set(undefined);
+      mode.brush.set({ particles: hiv, entity: 999, name: 'x' });
+      await new Promise((r) => setTimeout(r, 50));
+      expect(picked()).toBe('CA');
+      // off: the panel as it is
+      mode.brush.set(undefined);
+      await new Promise((r) => setTimeout(r, 50));
+      expect(open('paint')).toBe(true);
+      // a structure brush: its row, its Paint
+      mode.brush.set({ particles: '', entity: -1, name: '1CRN', structure });
+      await until(() => open('paint-structure'));
+      expect(picked()).toBe('1CRN');
+      await until(() => scrolled.includes('paint-structure'));
+    } finally {
+      delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+    }
   });
 });
