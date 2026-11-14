@@ -951,6 +951,8 @@ function structureLook(plugin: PluginContext, node: NodeRef): StructureLook | un
 
 /** The loci of a node: its object's, or its part's */
 function lociOf(plugin: PluginContext, node: NodeRef): Loci {
+  // a group of instances (paint-group) has no particle of its own: not the whole list
+  if ('particles' in node && node.paintGroup !== undefined) return EmptyLoci;
   const cell = plugin.state.data.cells.get(node.ref);
   const obj = cell?.obj;
   if (SO.Molecule.Structure.is(obj)) {

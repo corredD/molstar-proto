@@ -516,7 +516,11 @@ function registerSections(shell: ShellModel) {
       id: s.id,
       slot: PropertiesSlot,
       title: s.title,
-      when: (ctx: ShellViewContext) => s.when(ctx.subject as Subject),
+      // a group of instances' row (paint-group): its Paint only (its node would read as the whole list's; review M1)
+      when: (ctx: ShellViewContext) =>
+        (ctx.subject as Subject).picked.kind === 'paint group'
+          ? s.id === 'paint-group-brush'
+          : s.when(ctx.subject as Subject),
       render: domView<ShellViewContext>(({ ctx }) => s.render(ctx.subject as Subject)),
     })),
   );

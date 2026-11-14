@@ -163,4 +163,19 @@ describe('Group', () => {
     item!.run();
     await until(() => !v.api.mesoscale!.instanceAt(hiv, 4));
   });
+
+  it("shows the group's row its Paint only: no Look, Labels or Grow that would act on the whole list (review M1)", async () => {
+    const { v, hiv } = await viewer();
+    const g = await v.api.run('mesoscale.group', { particles: hiv, indices: [0, 2] });
+    if (!g.ok) throw new Error(g.message);
+    const host = mountScene(v);
+    await until(() => !!rowOf(host, 'HIV'));
+    (rowOf(host, 'HIV')!.querySelector('button[data-tree-toggle]') as HTMLButtonElement).click();
+    await until(() => !!rowOf(host, 'Group 1 · 2 members'));
+    rowOf(host, 'Group 1 · 2 members')!.click();
+    await until(() => !!button(host, 'Paint'));
+    await new Promise((r) => setTimeout(r, 100));
+    const titles = Array.from(host.querySelectorAll('button[aria-expanded]')).map((b) => b.textContent?.trim());
+    expect(titles.filter((t) => ['Look', 'Labels', 'Grow', 'Clips', 'Decoration'].includes(t ?? ''))).toEqual([]);
+  });
 });
