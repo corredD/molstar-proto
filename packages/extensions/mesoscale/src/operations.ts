@@ -315,33 +315,33 @@ const SelectionGroupByParam = () =>
 export class MesoscaleApi extends ApiArea {
   readonly id = 'mesoscale';
   private _paintMode?: PaintMode;
+  /** The paint mode's host, made with the area: it follows the pointer from the start (paint-refine, the first moment) */
+  private readonly paintHost = pluginPaintHost(
+    this.ctx.plugin,
+    // the last copy painted is a grow's source as well (progress/2026-11-11-grow.md), on the mesh it was painted on
+    async ({ mesh, ...params }) => {
+      const r = await this.paint(params as never);
+      if (r.ok) this.growFromLast(r.changed?.nodes?.[0], mesh as string | undefined);
+      return r;
+    },
+    // the copy under the pointer in the entity's color (its look's)
+    (l, entity) => readStyles(this.ctx, l).get(entity)?.color,
+    // a structure brush's entity's rise where it paints, when it makes fibers there
+    (structure, into) => {
+      const b = structureBrushOf(this.ctx, structure, into);
+      const f = b && fiberInfo(this.ctx.plugin.state.data, this.ctx, b.particles, b.entity);
+      return f?.fibers ? f.rise : undefined;
+    },
+    // a structure brush's copy in a scene without particles: Mol*'s particles first, as its stroke loads them
+    () => this.ctx.extensions.ensureFor({ transformers: ['ms-plugin.particles-representation-3d'] }),
+  );
 
   /**
    * Paint mode (paint-mode.ts; apps/prism-me/_spec/ui.md §5, Paint with …): a mode of the canvas, not an operation; its
    * strokes are `mesoscale.paint`, one step each
    */
   get paintMode(): PaintMode {
-    this._paintMode ??= new PaintMode(
-      pluginPaintHost(
-        this.ctx.plugin,
-        // the last copy painted is a grow's source as well (progress/2026-11-11-grow.md), on the mesh it was painted on
-        async ({ mesh, ...params }) => {
-          const r = await this.paint(params as never);
-          if (r.ok) this.growFromLast(r.changed?.nodes?.[0], mesh as string | undefined);
-          return r;
-        },
-        // the copy under the pointer in the entity's color (its look's)
-        (l, entity) => readStyles(this.ctx, l).get(entity)?.color,
-        // a structure brush's entity's rise where it paints, when it makes fibers there
-        (structure, into) => {
-          const b = structureBrushOf(this.ctx, structure, into);
-          const f = b && fiberInfo(this.ctx.plugin.state.data, this.ctx, b.particles, b.entity);
-          return f?.fibers ? f.rise : undefined;
-        },
-        // a structure brush's copy in a scene without particles: Mol*'s particles first, as its stroke loads them
-        () => this.ctx.extensions.ensureFor({ transformers: ['ms-plugin.particles-representation-3d'] }),
-      ),
-    );
+    this._paintMode ??= new PaintMode(this.paintHost);
     return this._paintMode;
   }
 
@@ -420,6 +420,7 @@ export class MesoscaleApi extends ApiArea {
   /** The paint mode ends with the viewer: its layer, its keys and its subscription go (review should-fix 5) */
   dispose() {
     this._paintMode?.stop();
+    this.paintHost.dispose();
   }
 
   /**

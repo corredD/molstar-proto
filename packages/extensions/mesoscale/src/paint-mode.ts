@@ -86,6 +86,8 @@ export interface PaintHost {
   eye(out: Vec3): Vec3;
   /** The pointer's ray at a point of the canvas (CSS pixels): its origin and unit direction, in the scene */
   ray(x: number, y: number, origin: Vec3, direction: Vec3): boolean;
+  /** Where the pointer is over the canvas now (CSS pixels from its top left), if it is: the copy shows there at once */
+  pointer?(): readonly [x: number, y: number] | undefined;
   /** The distance from the camera to its focus (its target), Å: where a copy at a depth starts */
   focus(): number;
   /**
@@ -474,6 +476,15 @@ function paintLayer(mode: PaintMode, host: PaintHost, canvas: HTMLElement, brush
     hovering = false;
     follow.request();
   });
+  // the pointer already over the canvas (a mode started from a key or a menu over it): the copy there now, not at its
+  // first move (paint-refine)
+  const at = host.pointer?.();
+  if (at) {
+    hoverX = at[0];
+    hoverY = at[1];
+    hovering = true;
+    follow.request();
+  }
 
   // a plain left press paints (paint-refine, Ludo 2026-11-13); any other button or modifier is the camera's. Its default
   // prevented: no mouse events follow it, so the canvas's camera and click never see it

@@ -10,6 +10,8 @@ import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { Vec3 } from '@molstar/core/math/linear-algebra';
 import type { PickResult } from '@molstar/graphics/canvas3d/passes/pick';
 import { countListeners, lostReleases, pointer, stubPointerCapture } from '@molstar/prism-ui/testing/gestures';
+import type { PluginContext } from '@molstar/plugin/context';
+import { pluginPaintHost } from '../paint-host.js';
 import { type PaintHost, PaintMode } from '../paint-mode.js';
 
 // Paint mode's gesture (progress/2026-11-08-paint.md, Tests: gesture; prism AGENTS.md, gestures attach once): a stroke
@@ -33,6 +35,8 @@ function setup(
     mesh?: string;
     /** The z of what is under (x, y) (paint-refine): undefined, nothing; default the plane z = 0 everywhere */
     pick?: (x: number, y: number) => number | undefined;
+    /** Where the pointer is over the canvas when the mode starts (paint-refine) */
+    pointerAt?: readonly [number, number];
   } = {},
 ) {
   vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null);
@@ -77,6 +81,7 @@ function setup(
       return true;
     },
     focus: () => 100,
+    pointer: () => options.pointerAt,
     ...(options.depthRange ? { depthRange: () => options.depthRange! } : {}),
     refine: (p, upright) => {
       refined.push(p.position[0]);
@@ -451,6 +456,48 @@ describe('paint mode', () => {
     expect(copy.at).toBeUndefined();
     mode.stop();
     expect(copy.disposed).toBe(true);
+  });
+
+  it('the first moment (paint-refine): started with the pointer over the canvas, the copy shows there before any move', async () => {
+    const { mode, canvas, strokes, copy, seeds } = setup(0, { upright: false, pointerAt: [30, 20] });
+    mode.start(brush);
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    // no pointer event yet: shown where the pointer is, at the depth of what is under it (the plane z = 0)
+    expect(copy.at).toEqual([30, -20, 0]);
+    const shown = copy.seed;
+    // the first click paints where it was shown
+    canvas.dispatchEvent(pointer('pointerdown', { x: 30, y: 20 }));
+    canvas.dispatchEvent(pointer('pointerup', { x: 30, y: 20 }));
+    expect(strokes[0].positions).toEqual([30, -20, 0]);
+    expect(seeds[0]).toBe(shown);
+    mode.stop();
+    // off the canvas at the start: nothing shown until it comes over
+    const off = setup(0, { upright: false });
+    off.mode.start(brush);
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    expect(off.copy.at).toBeUndefined();
+    off.mode.stop();
+  });
+
+  it("the viewer's host knows where the pointer is over the canvas, from its last move in the page", () => {
+    const canvas = document.createElement('canvas');
+    document.body.append(canvas);
+    vi.spyOn(canvas, 'getBoundingClientRect').mockReturnValue({ left: 100, top: 50 } as DOMRect);
+    let over = true;
+    vi.spyOn(canvas, 'matches').mockImplementation(() => over);
+    const plugin = { canvas3dContext: { canvas } } as unknown as PluginContext;
+    const host = pluginPaintHost(plugin, async () => ({ ok: true }));
+    // no move yet: not known
+    expect(host.pointer!()).toBeUndefined();
+    document.dispatchEvent(new PointerEvent('pointermove', { clientX: 110, clientY: 70 }));
+    expect(host.pointer!()).toEqual([10, 20]);
+    // elsewhere in the page: none
+    over = false;
+    expect(host.pointer!()).toBeUndefined();
+    over = true;
+    host.dispose();
+    document.dispatchEvent(new PointerEvent('pointermove', { clientX: 130, clientY: 70 }));
+    expect(host.pointer!()).toEqual([10, 20]);
   });
 
   it("a brush with fibers paints a fiber by default, its points its fibers' step apart; Fiber overrides it", () => {

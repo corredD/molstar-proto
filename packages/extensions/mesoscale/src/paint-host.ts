@@ -85,7 +85,7 @@ export function pluginPaintHost(
   colorOf?: (list: ParticleListRef, entity: number) => number | undefined,
   structureFiberStep?: (structure: string, into: string) => number | undefined,
   ensureParticles?: () => Promise<void>,
-): PaintHost {
+): PaintHost & { dispose(): void } {
   const listOf = (ref: string) =>
     plugin.managers.particles.hierarchy.current.lists.find((l) => l.cell.transform.ref === ref);
   /** A structure brush's structure (paint-layer round 2), if it is still in the scene */
@@ -93,8 +93,23 @@ export function pluginPaintHost(
     const obj = brush.structure ? plugin.state.data.cells.get(brush.structure)?.obj : undefined;
     return obj && SO.Molecule.Structure.is(obj) ? obj.data : undefined;
   };
+  // where the pointer last was in the page (paint-refine): a mode started under a still pointer shows its copy there
+  let pointerX = Number.NaN;
+  let pointerY = Number.NaN;
+  const track = (e: PointerEvent) => {
+    pointerX = e.clientX;
+    pointerY = e.clientY;
+  };
+  globalThis.document?.addEventListener('pointermove', track, { capture: true, passive: true });
   return {
+    dispose: () => globalThis.document?.removeEventListener('pointermove', track, { capture: true }),
     canvas: () => plugin.canvas3dContext?.canvas ?? undefined,
+    pointer() {
+      const canvas = plugin.canvas3dContext?.canvas;
+      if (!canvas || Number.isNaN(pointerX) || !canvas.matches(':hover')) return undefined;
+      const rect = canvas.getBoundingClientRect();
+      return [pointerX - rect.left, pointerY - rect.top];
+    },
     holdCamera() {
       const canvas = plugin.canvas3d;
       if (!canvas) return () => {};
