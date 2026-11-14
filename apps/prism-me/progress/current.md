@@ -80,6 +80,9 @@ is not built is [../TODO.md](../TODO.md).
     "Colours from meshes" on; Ludo 2026-11-10) built and gated at 0fa72ac06, pushed: parts named by file, de-duplicated,
     mapped by index; a part's own colour where its mesh gives no tint (coordinator's call, Ludo to confirm). Next on
     Ludo’s word: shells, the clip pop, the PR (rounds 4–9).
+  - Night lanes (Ludo, 2026-11-13; [plan](../plans/2026-11-13-night-lanes.md)), from prism-me at eaf253942, briefs on
+    their branches, start 00:00 2026-11-14: `decisions` (1369), `symmetry` (1370), `paint-group` (1371) running;
+    `density-fit` (1372) queued until the first reaches its gate. Nothing merged or pushed overnight.
 - **Merged 2026-11-13**: `grow-helix` (Ludo's word, decisions doc point 10): Grow › Helix and Spiral (Archimedean,
   Count, Arm spacing, Step; crowded copies skipped), every Grow setting live on the last grow, Count prefix-stable, Clear;
   [progress](2026-11-13-grow-helix.md). Next: the night lanes ([plan](../plans/2026-11-13-night-lanes.md)).
