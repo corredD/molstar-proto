@@ -92,6 +92,7 @@ import {
   walkPath,
 } from './grow.js';
 import { meshAxis, sceneMesh, sceneMeshes, sceneMeshSurface } from './mesh-surface.js';
+import { envelopeOf, type FitContrast, fitCopies, fitMapOf, PaintReach, sceneVolume, type StrokeFit } from './fit.js';
 import { isMembranePath } from './pick-surface.js';
 import {
   findGroup,
@@ -355,6 +356,25 @@ const SelectionGroupByParam = () =>
   );
 
 /** A walk's own fiber settings (paint-refine): absent, the entity's */
+/** A fit to a volume's params (density-fit): the volume, its contrast */
+const FitParams = (what: string) => ({
+  fit: OptionalParam(
+    PD.Text('', {
+      description: `${what} fitted to a volume of the scene (state ref or name): a shift and a turn within a reach toward its density; absent: none`,
+    }),
+  ),
+  contrast: OptionalParam(
+    PD.Select(
+      'dark',
+      [
+        ['dark', 'Dark: the object darker than around it (a tomogram)'],
+        ['bright', 'Bright: the object brighter (a map)'],
+      ] as const,
+      { description: "The volume's contrast" },
+    ),
+  ),
+});
+
 const WalkFiberParams = (what: string) => ({
   rise: OptionalParam(
     PD.Numeric(
@@ -1106,12 +1126,15 @@ export class MesoscaleApi extends ApiArea {
       end: OptionalParam(
         PD.Numeric(1, { min: 1, step: 1 }, { description: "The sequence's last letter used, inclusive" }),
       ),
+      ...FitParams('Each copy'),
       particles: ListParam(),
     },
     async run(values, ctx) {
       const { entity, positions, side, particles } = values;
-      const { structure, normals, orient, spin, seed, fiber, sequence, start, end, surface } =
+      const { structure, normals, orient, spin, seed, fiber, sequence, start, end, surface, fit, contrast } =
         values as typeof values & {
+          fit?: string;
+          contrast?: FitContrast;
           structure?: string;
           surface?: boolean;
           normals?: number[];
@@ -1182,12 +1205,29 @@ export class MesoscaleApi extends ApiArea {
             axis: how === 'axis' ? principalAxisOf(brush.object ?? data.targetMapping?.get(brush.target)) : along,
             spin,
           });
+      // each copy fitted to a volume (density-fit): within a third of its radius and 15°, pulled back toward the click; a
+      // fiber's path is not (its units are made from it)
+      let fitted: StrokeFit | undefined;
+      if (fit?.trim() && !asFiber) {
+        const volume = sceneVolume(state, fit.trim());
+        if (isFailure(volume)) return volume;
+        const envelope = envelopeOf(brush.object ?? data.targetMapping?.get(brush.target), 10);
+        const reach = {
+          reach: PaintReach.shift * envelope.radius,
+          turn: PaintReach.turn,
+          contrast: contrast ?? 'dark',
+        };
+        const map = fitMapOf(volume.volume.grid);
+        const move = moved?.transform.params as ListMove | undefined;
+        fitted = { volume: volume.label, ...fitCopies(map, envelope, move, local, rotations, reach) };
+      }
       const stroke: PaintStroke = {
         target: brush.target,
         entity: brush.entity,
         compartment: brush.compartment,
         positions: local,
         rotations,
+        ...(fitted ? { fit: fitted } : {}),
         ...(asFiber ? { fiber: true, seed: drawn } : {}),
         ...(asFiber && sequence?.trim()
           ? {

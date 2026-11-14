@@ -28,6 +28,7 @@ import { RootStructureDefinition } from '@molstar/plugin/state/helpers/root-stru
 import { PluginStateObject as SO, PluginStateTransform } from '@molstar/plugin/state/objects';
 import { Asset } from '@molstar/core/util/assets';
 import { type RuntimeContext, Task } from '@molstar/core/task';
+import type { StrokeFit } from './fit.js';
 import type { GrowRecord } from './grow.js';
 import { isMembranePath } from './pick-surface.js';
 
@@ -74,6 +75,11 @@ export interface PaintStroke {
    * others turned as along the whole chain (their twist by their place along it)
    */
   readonly skip?: readonly number[];
+  /**
+   * Its copies fitted to a volume (density-fit): each one's score (σ), shift (Å) and turn (°), and the volume's name;
+   * its poses the fitted ones (explicit: a session keeps them without the volume)
+   */
+  readonly fit?: StrokeFit;
 }
 
 /** A fiber's sequence or a range of it (Round 5): one-letter codes, 1-based, `end` inclusive */
