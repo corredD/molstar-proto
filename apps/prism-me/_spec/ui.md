@@ -667,10 +667,11 @@ still completes its distance.
   Å, 8°" (its score: the density inside its envelope minus a shell about it, in σ). Grow's **Fit to** (None, a volume),
   **Contrast** and **Threshold** (0.6 by default): every grown copy is fitted (a sixth of its radius, 7.5°) and kept
   when it scores at least Threshold × the source's (the source off the density is refused); a copy in a site already
-  taken is dropped. Count (Sphere, Spiral, Tiling on a mesh) counts the copies kept, the first ones the same for more;
-  Rings, cells, Steps and Turns bound the copies tried. A fitted fiber's units are copies (Rise, Twist and Jitter make
-  the grow again). The poses are kept: a session has them without the volume. A mirrored tomogram is not fitted (its
-  hand: TODO).
+  taken is dropped. Count (Sphere, Spiral, Tiling, in space too since Rings are gone) counts the copies kept, the first
+  ones the same for more (the rule drawn 4 × Count); cells, Steps and Turns bound the copies tried. A group copy (lane
+  `paint-group`) is fitted by its leaves' envelope, painted or grown from (me/night-integration). A fitted fiber's units
+  are copies (Rise, Twist and Jitter make the grow again). The poses are kept: a session has them without the volume. A
+  mirrored tomogram is not fitted (its hand: TODO).
 - Models decorated too (2026-10-23, Ludovic: "why can't we change the target in Simularium"): a model (a list with
   entities: Simularium, cellPACK, PetWorld) has the Decoration section, so each of its targets (an agent, an entity) can
   be drawn as another object of the scene. A particle list's own shape (a Simularium simulation box) is not listed as a

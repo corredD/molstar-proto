@@ -1668,7 +1668,7 @@ export class MesoscaleApi extends ApiArea {
           { min: 0, step: 0.05 },
           {
             description:
-              "Fit: a grown copy kept when its score is at least this × the source's; Count (Sphere, Spiral, Tiling's on a mesh) counts those kept",
+              "Fit: a grown copy kept when its score is at least this × the source's; Count (Sphere, Spiral, Tiling) counts those kept",
           },
         ),
       ),
@@ -1817,7 +1817,6 @@ export class MesoscaleApi extends ApiArea {
         if (!(p.spacing > 0)) return ApiResult.fail('invalid', 'The spacing is above 0 Å.');
         const total = p.count - 1;
         if (total > MaxGrown) return tooMany(total);
-        // its plane: a membrane protein's +z is its normal, anything else's its principal axis
         // on a mesh, paint's axis along the normal (round 3); in space its plane: a membrane protein's +z is its normal,
         // anything else's its principal axis
         const normal = on
@@ -1825,9 +1824,9 @@ export class MesoscaleApi extends ApiArea {
           : src.surface
             ? Vec3.create(0, 0, 1)
             : principalAxisOf(data.targetMapping?.get(target));
-        // its Count the source's counted, as unfitted (review S1)
-        if (p.count !== undefined) keep = p.count - 1;
-        made = tilingPoses(scene, normal, p.count !== undefined ? { ...p, count: draw(p.count) } : p, on);
+        // its Count the source's counted, as unfitted (review S1); in space too since Rings are gone (decisions 11)
+        keep = p.count - 1;
+        made = tilingPoses(scene, normal, { ...p, count: draw(p.count) }, on);
         if (!made) return offMesh();
         Object.assign(sizes, p);
       } else if (mode === 'sphere') {
