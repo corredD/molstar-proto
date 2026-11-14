@@ -15,7 +15,8 @@ import { gestureSteps } from '@molstar/prism-viewer/sources/gesture-steps';
 import { derive } from '@molstar/prism-ui/reactive/state';
 import type { ReadonlyState } from '@molstar/prism-ui/reactive/readonly-state';
 import { classes } from './_generated/controls.module.css.js';
-import { type GrowRecord, spiralTurns, tilingTotal } from './grow.js';
+import { type GrowRecord, tilingTotal } from './grow.js';
+import { helixCopies, helixTurns, spiralCount, spiralTurnsOf } from './grow-link.js';
 import {
   type GraphicsInfo,
   type GraphicsMode,
@@ -594,6 +595,7 @@ function settingsOfGrow(g: GrowRecord): Partial<GrowSettings> {
     helix: [
       ['pitch', 'pitch'],
       ['turns', 'turns'],
+      ['count', 'count'],
       ['hand', 'hand'],
       ['direction', 'direction'],
       ['axis', 'axis'],
@@ -602,6 +604,7 @@ function settingsOfGrow(g: GrowRecord): Partial<GrowSettings> {
     spiral: [
       ['spacing', 'spacing'],
       ['count', 'count'],
+      ['turns', 'turns'],
       ['hand', 'hand'],
     ],
     crystal: [
@@ -767,6 +770,53 @@ export function GrowBlock(props: { area: MesoscaleApi; api: ViewerApi; particles
         onCommit={(v) => set({ [key]: v })}
       />,
     );
+  /**
+   * Count and Turns of a Helix or a Spiral, linked (decisions 8 and 21): setting one sets the other (the copies those turns
+   * hold, the turns reached) and the grow is made by it; the other is shown as the settings give it (on a mesh, as the
+   * grow made it)
+   */
+  const linkOf = (s: GrowSettings, by: 'turns' | 'count'): Partial<GrowSettings> | undefined => {
+    const src = source.value;
+    if (!src) return undefined;
+    const diameter = () => Math.round(2 * src.radius * 10) / 10;
+    const rise = s.rise ?? src.rise;
+    if (s.mode === 'spiral') {
+      const spacing = s.spacing ?? diameter();
+      return by === 'turns'
+        ? { count: spiralCount(s.turns, spacing, rise) }
+        : { turns: spiralTurnsOf(s.count, spacing, rise) };
+    }
+    if (s.mesh) return undefined;
+    const [pitch, radius] = [s.pitch ?? 4 * diameter(), s.helixRadius ?? diameter()];
+    return by === 'turns'
+      ? { count: helixCopies(s.turns, pitch, radius, rise) }
+      : { turns: Math.round(helixTurns(s.count, pitch, radius, rise) * 100) / 100 };
+  };
+  const linked = (
+    key: 'turns' | 'count',
+    label: string,
+    title: string,
+    range: { min: number; max: number; step?: number },
+  ) => {
+    const by = (s: GrowSettings) => s.by ?? (s.mode === 'spiral' ? 'count' : 'turns');
+    const change = (v: number, end: boolean) => {
+      const s = { ...area.growSettings.value, [key]: v };
+      set({ [key]: v, by: key, ...linkOf(s, key) }, end);
+    };
+    return line(
+      label,
+      title,
+      <Slider
+        aria-label={`Grow ${label}`}
+        value={mapState(settings, (s) => (by(s) === key ? s[key] : (linkOf(s, by(s)) ?? s)[key]))}
+        min={range.min}
+        max={range.max}
+        step={range.step}
+        onPreview={(v) => change(v, false)}
+        onCommit={(v) => change(v, true)}
+      />,
+    );
+  };
   const mode = (m: GrowSettings['mode']) => mapState(settings, (s) => s.mode === m);
   /** A walk's fiber setting: the live fiber's own (it follows an undo), else the settings', else the entity's */
   const fiberSlider = (
@@ -876,10 +926,15 @@ export function GrowBlock(props: { area: MesoscaleApi; api: ViewerApi; particles
                     { min: 1, max: 5000, scale: 'log', unit: 'Å' },
                     () => 4 * diameter(),
                   )}
-                  {number('turns', 'Turns', 'Its turns (on a mesh, fewer where the surface ends)', {
+                  {linked('turns', 'Turns', 'Its turns (on a mesh, fewer where the surface ends); sets Count', {
                     min: 0.5,
                     max: 50,
                     step: 0.5,
+                  })}
+                  {linked('count', 'Count', 'Its copies, a rise apart along it from the source; sets Turns', {
+                    min: 2,
+                    max: 5000,
+                    step: 1,
                   })}
                   <Choices
                     label="Hand"
@@ -932,7 +987,7 @@ export function GrowBlock(props: { area: MesoscaleApi; api: ViewerApi; particles
             <Show when={mode('spiral')}>
               {() => (
                 <div class={classes.tight}>
-                  {number('count', 'Count', 'Its copies, a Step apart along it from the source (copy 0)', {
+                  {linked('count', 'Count', 'Its copies, a Step apart along it from the source (copy 0); sets Turns', {
                     min: 2,
                     max: 2000,
                     step: 1,
@@ -960,21 +1015,11 @@ export function GrowBlock(props: { area: MesoscaleApi; api: ViewerApi; particles
                     active={mapState(settings, (s) => s.hand)}
                     onPick={(id) => set({ hand: id as GrowSettings['hand'] })}
                   />
-                  {line(
+                  {linked(
+                    'turns',
                     'Turns',
-                    'The turns it reaches and its copies made (on a mesh, fewer where it ends, or where it skips so many that it reaches 4 × Count Steps)',
-                    <div class={classes.label}>
-                      {derive([settings, liveGrow] as const, (s, g) => {
-                        // the live spiral's: its turns and the copies it made (fewer than Count where it ends, or where
-                        // it reached its bound of 4 × Count Steps skipping; round 3b)
-                        if (g?.mode === 'spiral' && typeof g.params.turns === 'number') {
-                          return `${g.params.turns}, ${g.params.copies ?? g.params.count} copies`;
-                        }
-                        const step = s.rise ?? src.rise;
-                        const turns = spiralTurns(s.spacing ?? diameter(), Math.floor(s.count) * step);
-                        return `≈ ${Math.round(turns * 100) / 100}`;
-                      })}
-                    </div>,
+                    'Its turns (on a mesh, fewer where it ends, or where it skips so many that it reaches 4 × Count Steps); sets Count',
+                    { min: 0.5, max: 50, step: 0.5 },
                   )}
                 </div>
               )}

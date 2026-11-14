@@ -259,6 +259,8 @@ export interface GrowSettings {
   /** A helix (grow-helix): its pitch (unset: 4 × the copy's diameter), turns, hand, direction, axis on a mesh, radius in space (unset: the copy's diameter) */
   readonly pitch?: number;
   readonly turns: number;
+  /** Helix, Spiral: which of Count and Turns the grow is made by, the other following it (default: Turns for a helix, Count for a spiral) */
+  readonly by?: 'turns' | 'count';
   readonly hand: 'right' | 'left';
   readonly direction: 'up' | 'down';
   readonly axis: HelixAxis;
@@ -292,8 +294,19 @@ export const DefaultGrowSettings: GrowSettings = {
 export function growParams(source: GrowSource, s: GrowSettings) {
   const own: Record<GrowMode, readonly (keyof GrowSettings)[]> = {
     walk: ['steps', 'persistence', 'rise', 'twist', 'jitter'],
-    helix: ['pitch', 'turns', 'hand', 'direction', 'axis', 'helixRadius', 'rise', 'twist', 'jitter'],
-    spiral: ['spacing', 'count', 'hand', 'rise', 'twist', 'jitter'],
+    // Helix and Spiral: Count and Turns linked, the one set by (decisions 8 and 21) the grow's own
+    helix: [
+      'pitch',
+      s.by === 'count' ? 'count' : 'turns',
+      'hand',
+      'direction',
+      'axis',
+      'helixRadius',
+      'rise',
+      'twist',
+      'jitter',
+    ],
+    spiral: ['spacing', s.by === 'turns' ? 'turns' : 'count', 'hand', 'rise', 'twist', 'jitter'],
     crystal: ['a', 'b', 'c', 'alpha', 'beta', 'gamma', 'na', 'nb', 'nc'],
     tiling: ['pattern', 'spacing'],
     sphere: ['count', 'radius', 'turn'],

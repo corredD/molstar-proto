@@ -11,6 +11,7 @@ import { Sphere } from '@molstar/graphics/geo/primitive/sphere';
 import { CustomProperties } from '@molstar/model/model/custom-property';
 import type { ParticleList } from '@molstar/model/model/particles/particle-list';
 import { DefaultPaintSettings } from '@molstar/mesoscale-extension/paint-mode';
+import { growParams } from '@molstar/mesoscale-extension/operations';
 import { PluginStateObject as SO, PluginStateTransform } from '@molstar/plugin/state/objects';
 import { ShellModel } from '@molstar/prism-ui/shell/shell';
 import { DefaultPrismViewerSpec } from '@molstar/prism-viewer/default-spec';
@@ -615,6 +616,25 @@ describe('The last grow live (grow-helix round 2)', () => {
 });
 
 describe('Grow › Spiral (grow-helix round 3)', () => {
+  it('Helix: Count and Turns both set, each setting the other (decisions 8)', async () => {
+    const { v, hiv } = await viewer();
+    const m = v.api.mesoscale!;
+    const host = await openGrow(v, hiv, 2);
+    choice(host, 'Mode', 'Helix')!.click();
+    await until(() => !!host.querySelector('input[aria-label="Grow Pitch"]'));
+    m.growSettings.set({ ...m.growSettings.value, pitch: 40, helixRadius: 15, rise: 5 });
+    // A turn: √((2π·15)² + 40²) ≈ 102.4 Å, 20.5 copies a rise of 5 Å apart
+    dragGrow(host, 'Turns', [3]);
+    expect(m.growSettings.value).toMatchObject({ turns: 3, by: 'turns', count: 61 });
+    dragGrow(host, 'Count', [41]);
+    const s = m.growSettings.value;
+    expect(s).toMatchObject({ count: 41, by: 'count' });
+    expect(s.turns).toBeCloseTo(2, 1);
+    expect(growParams({ particles: 'L', index: 0 }, s)).toMatchObject({ count: 41 });
+    expect(growParams({ particles: 'L', index: 0 }, s)).not.toHaveProperty('turns');
+    expect(growParams({ particles: 'L', index: 0 }, { ...s, by: 'turns' })).not.toHaveProperty('count');
+  });
+
   it('shows Count, Arm spacing, Hand, Step and the Turns it reaches; Count and Step live (more continue it)', async () => {
     const { v, hiv } = await viewer();
     const m = v.api.mesoscale!;
@@ -624,8 +644,9 @@ describe('Grow › Spiral (grow-helix round 3)', () => {
     for (const label of ['Count', 'Step', 'Twist', 'Jitter']) {
       expect(host.querySelector(`input[aria-label="Grow ${label}"]`)).not.toBe(null);
     }
-    for (const label of ['Turns', 'Rise', 'Pitch'])
-      expect(host.querySelector(`input[aria-label="Grow ${label}"]`)).toBe(null);
+    // Turns editable beside Count (decisions 21)
+    expect(host.querySelector('input[aria-label="Grow Turns"]')).not.toBe(null);
+    for (const label of ['Rise', 'Pitch']) expect(host.querySelector(`input[aria-label="Grow ${label}"]`)).toBe(null);
     expect(choice(host, 'Hand', 'Left')).toBeDefined();
     m.growSettings.set({ ...m.growSettings.value, spacing: 20, count: 20 });
     growButton(host).click();
@@ -633,7 +654,7 @@ describe('Grow › Spiral (grow-helix round 3)', () => {
     expect(strokesOf(v)[0]?.grow?.mode).toBe('spiral');
     // the turns it reached, shown
     const turns = (strokesOf(v)[0]?.grow?.params as { turns: number }).turns;
-    await until(() => !!host.textContent?.includes(`${turns}, 20 copies`));
+    await until(() => m.growSettings.value.turns === turns);
     const first = coordinates(v, 3, 23);
     const steps = v.api.history.steps.value.length;
     dragGrow(host, 'Count', [30, 40]);
