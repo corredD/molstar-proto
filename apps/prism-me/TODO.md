@@ -19,8 +19,6 @@ the app, in his words; the lane turns it into spec and tests.
    up (1); Place Auto switches to Surface over a mesh (2); painted fibers keep their helix settings, a plain walk's up
    follows the normal (3); Helix and Spiral get Count and Turns, linked (8, 21); Tiling uses Count in space too, no
    Rings (11); Color… leaves a VTP's array theme alone (13). The spec records all answered decisions.
-3. **Symmetry** (decision 12 open): point groups only, Cn, Dn, T, O, I about the source with a Radius; live settings,
-   Clear, Undo. Helical is Grow › Helix; a space group is a structure built with its symmetry, painted, plus Crystal.
 4. **density-weight** (decision 12: before or after Symmetry): paint and grow follow a density map
    ([plans/2026-11-10-paint-on-density.md](plans/2026-11-10-paint-on-density.md)).
 5. **Geodesic spiral** (only if decision 23 says geodesic): the spiral by distance over the surface, even on caps

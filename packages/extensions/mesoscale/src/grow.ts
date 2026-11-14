@@ -11,8 +11,8 @@ import { fiberOffsetDirection, paintRandom, paintRotation, resamplePath } from '
 // Each mode gives the copies' poses (positions in Å, unit quaternions x, y, z, w) from the source's; the copies go
 // exactly where the rule says, overlaps allowed. The source itself is never one of them.
 
-/** The modes of round 1 (Symmetry is round 2) */
-export const GrowModes = ['walk', 'helix', 'spiral', 'crystal', 'tiling', 'sphere'] as const;
+/** The modes (Symmetry: grow-symmetry.ts) */
+export const GrowModes = ['walk', 'helix', 'spiral', 'crystal', 'tiling', 'sphere', 'symmetry'] as const;
 export type GrowMode = (typeof GrowModes)[number];
 
 /** A copy's place: its position and its orientation */
