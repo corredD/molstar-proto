@@ -23,7 +23,8 @@ afterEach(() => {
   document.body.innerHTML = '';
 });
 
-function setup() {
+function setup(pending = 0) {
+  let reads = pending;
   vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null);
   const root = document.createElement('div');
   const canvas = document.createElement('canvas');
@@ -45,6 +46,11 @@ function setup() {
     focus: () => 100,
     refine: () => {},
     sliceAt: (x, y, point) => {
+      // the canvas's pick not read yet (the copy under the pointer just moved): ask again next frame
+      if (reads > 0) {
+        reads--;
+        return 'pending';
+      }
       if (x >= 50) return false;
       Vec3.set(point.position, x, -y, 20);
       Vec3.set(point.normal, 0, 0, 1);
@@ -93,6 +99,26 @@ describe('paint on a slice', () => {
       expect(strokes[1].positions[2]).not.toBe(20);
       mode.stop();
     }
+  });
+
+  it('waits for a pending pick at the press (the slice and its volume read in a later frame)', async () => {
+    const { mode, canvas, strokes } = setup(2);
+    mode.start(brush);
+    canvas.dispatchEvent(pointer('pointerdown', { x: 10, y: 10 }));
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    canvas.dispatchEvent(pointer('pointerup', { x: 10, y: 10 }));
+    expect(strokes[0].positions).toEqual([10, -10, 20]);
+    expect(strokes[0].fit).toBe('tomogram');
+    mode.stop();
+  });
+
+  it('paints at the depth when the pick is still pending at the release', () => {
+    const { mode, canvas, strokes } = setup(100);
+    mode.start(brush);
+    click(canvas, 10, 10);
+    expect(strokes.length).toBe(1);
+    expect(strokes[0].fit).toBeUndefined();
+    mode.stop();
   });
 
   it("fits to the slice's volume with Fit to Auto, to none with None, to the one chosen elsewhere", () => {

@@ -203,7 +203,8 @@ export function pluginPaintHost(
     sliceAt(x, y, point) {
       const canvas = plugin.canvas3d;
       const pick = canvas?.identify(Vec2.set(_v, x, y));
-      if (!canvas || !pick || pick === 'pending') return false;
+      if (pick === 'pending') return pick;
+      if (!canvas || !pick) return false;
       const { loci, repr } = canvas.getLoci(pick.id);
       if (!Volume.isLoci(loci) && !Volume.Cell.isLoci(loci)) return false;
       // a slice's plane (its props: a grid index or a plane), not an isosurface's

@@ -116,9 +116,10 @@ export interface PaintHost {
   refine(point: SurfacePoint, upright: boolean): void;
   /**
    * A volume's slice under (x, y) (density-fit): the point where the pointer's ray meets its plane and the plane's
-   * normal toward the viewer (`point.volume`, the volume's state ref, when it is one of the scene's); false elsewhere
+   * normal toward the viewer (`point.volume`, the volume's state ref, when it is one of the scene's); false elsewhere;
+   * `'pending'` while the canvas's pick is read (ask again next frame)
    */
-  sliceAt?(x: number, y: number, point: SurfacePoint): boolean;
+  sliceAt?(x: number, y: number, point: SurfacePoint): boolean | 'pending';
   /** Whether the brush stands upright in a membrane (a membrane protein): only its copies go on the mid-plane */
   upright(brush: PaintBrushTarget): boolean;
   /** A point of the scene on the canvas: CSS pixels from its top left (out[0], out[1]) */
@@ -349,9 +350,12 @@ function paintLayer(mode: PaintMode, host: PaintHost, canvas: HTMLElement, brush
   };
 
   /** Reads the place at (x, y): a point kept a spacing from the last; false while the pick is read */
-  const sampleAt = (s: Stroke, x: number, y: number): boolean => {
-    // on a slice (density-fit): the copy's center on its plane, its normal the plane's, whatever the place
-    if (host.sliceAt?.(x, y, _point)) {
+  const sampleAt = (s: Stroke, x: number, y: number, last = false): boolean => {
+    // on a slice (density-fit): the copy's center on its plane, its normal the plane's, whatever the place; its pick
+    // read first (a press right after the copy under the pointer moved), unless the release is here
+    const slice = host.sliceAt?.(x, y, _point);
+    if (slice === 'pending' && !last) return false;
+    if (slice === true) {
       s.volume = _point.volume;
     } else if (where === 'depth') {
       if (!atDepth(x, y)) return true;
@@ -394,14 +398,14 @@ function paintLayer(mode: PaintMode, host: PaintHost, canvas: HTMLElement, brush
    * Reads the way from where the stroke was read to the pointer, every few pixels (a fast drag moves far in a frame;
    * the picks of one scene and camera are one read); false while the pick is read (again next frame, from there)
    */
-  const sample = (s: Stroke): boolean => {
+  const sample = (s: Stroke, last = false): boolean => {
     const fromX = Number.isNaN(s.readX) ? s.x : s.readX;
     const fromY = Number.isNaN(s.readY) ? s.y : s.readY;
     const steps = Math.max(1, Math.ceil(Math.hypot(s.x - fromX, s.y - fromY) / WayStep));
     for (let i = Number.isNaN(s.readX) ? steps : 1; i <= steps; ++i) {
       const x = fromX + ((s.x - fromX) * i) / steps;
       const y = fromY + ((s.y - fromY) * i) / steps;
-      if (!sampleAt(s, x, y)) return false;
+      if (!sampleAt(s, x, y, last)) return false;
       s.readX = x;
       s.readY = y;
     }
@@ -478,7 +482,12 @@ function paintLayer(mode: PaintMode, host: PaintHost, canvas: HTMLElement, brush
   const follow = frames(() => {
     if (!hovering) return cursor.hide();
     // on a slice (density-fit): there, its plane's normal
-    const slice = !stroke && !!host.sliceAt?.(hoverX, hoverY, _point);
+    const read = stroke ? false : host.sliceAt?.(hoverX, hoverY, _point);
+    if (read === 'pending' && ++retries < MaxPendingFrames) {
+      follow.request();
+      return;
+    }
+    const slice = read === true;
     if (slice) {
       // the next stroke's depth there (where the pointer leaves the slice)
       if (where === 'depth' && !held && host.ray(hoverX, hoverY, _eye, _t)) {
@@ -601,7 +610,7 @@ function paintLayer(mode: PaintMode, host: PaintHost, canvas: HTMLElement, brush
       // a depth Alt+wheel set was this stroke's: what is under the pointer leads again
       held = false;
       // the release's own place, read now when the pick is there
-      if (how === 'up' && s.pending) sample(s);
+      if (how === 'up' && s.pending) sample(s, true);
       clear();
       if (how === 'up' && s.positions.length) {
         committing++;
