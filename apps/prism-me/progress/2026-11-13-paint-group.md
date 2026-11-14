@@ -82,8 +82,8 @@ Ludo's morning try.
   still a group copy, ungrouped again on its own).
 - **The group's row is not an entity**: its members are their own entities, so a group entity would count nothing and
   Look, Show only and Paint would act on nothing; it is a row of kind `paint group` after the entities, with Paint
-  (`MesoscaleInfo.paintGroups`). Only lists with entities (models, the Painting list) show the rows; a plain list's
-  groups are there for the operations (none of the explorer's yet).
+  (`MesoscaleInfo.paintGroups`). Only lists with entities (models, the Painting list) show the rows and the Group
+  section; on a plain list groups are the operations' only (review S3).
 - **Its id** is above every target, entity, structure and group id of the list (one id, its target and its entity); a
   structure painted after a group takes the next.
 - **Orientation**: Turn Auto as any brush (along the normal on a surface, else random); along the normal its +z. Axis is
@@ -108,9 +108,10 @@ Ludo's morning try.
 
 ## Size
 
-About 1,050 production lines (tests and docs apart) against ~500: `paint-group.ts` 412 (with its doc comments and the
-cursor's list), the operations 250 (two operations, the grow's group source, the brush), the explorer ~180, the pick
-state 90. The ungroup's paths and the group cursor took the room past the brief.
+After the review: 1,138 production lines added and 53 removed (tests and docs apart; 16 of controls.tsx's a re-indent),
+about 1,120 against ~500: `paint-group.ts` 412 (with its doc comments and the cursor's list), the operations 250 (two
+operations, the grow's group source, the brush), the explorer ~180, the pick state 90. The ungroup's paths and the group
+cursor took the room past the brief.
 
 ## Review
 
