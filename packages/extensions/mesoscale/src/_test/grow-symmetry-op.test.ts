@@ -154,6 +154,37 @@ describe('mesoscale.grow symmetry', () => {
     for (let i = before; i < list.count; ++i) expect(xyz(list, i)[0]).toBeCloseTo(x, 3);
   });
 
+  it.each(['i', 'd', 't', 'o'] as const)(
+    '%s about a chosen axis, Radius unset: touching where the source is, its nearest two a diameter apart (review M2)',
+    async (group) => {
+      const v = await viewer();
+      const ref = entry(v).cell.transform.ref;
+      // C6 touching: its Radius is the copy's diameter (C6's contact is 1)
+      const c6 = await v.api.run('mesoscale.grow', { particles: ref, index: 2, mode: 'symmetry', group: 'c', n: 6 });
+      expectOk(c6);
+      const diameter = strokes(v)[0].grow!.params.radius as number;
+      for (const axis of ['x', 'y'] as const) {
+        const r = await v.api.run('mesoscale.grow', {
+          particles: ref,
+          index: 2,
+          mode: 'symmetry',
+          group,
+          n: 7,
+          symmetryAxis: axis,
+        });
+        expectOk(r);
+        const list = drawn(v);
+        const ps = [xyz(list, 2)];
+        for (let i = list.count - (r.value as { count: number }).count; i < list.count; ++i) ps.push(xyz(list, i));
+        let min = Infinity;
+        for (let i = 0; i < ps.length; ++i) {
+          for (let j = i + 1; j < ps.length; ++j) min = Math.min(min, Vec3.distance(ps[i], ps[j]));
+        }
+        expect(min).toBeCloseTo(diameter, 2);
+      }
+    },
+  );
+
   it('refuses a Radius of 0', async () => {
     const v = await viewer();
     const r = await v.api.run('mesoscale.grow', {

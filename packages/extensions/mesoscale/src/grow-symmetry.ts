@@ -114,9 +114,12 @@ export function symmetryPosition(group: SymmetryGroup, n: number): Vec3 {
   return sum(Z, Vec3.create(1, 1, 1), Vec3.create(1, 0, 1));
 }
 
-/** The nearest two of the general position's copies apart on the unit sphere: a Radius of diameter / this, touching */
-export function symmetryContact(group: SymmetryGroup, n: number): number {
-  const u = symmetryPosition(group, n);
+/**
+ * The nearest two copies of a point `at` (unit, in the group's frame; absent: the general position) apart on the unit
+ * sphere: a Radius of diameter / this makes them touch
+ */
+export function symmetryContact(group: SymmetryGroup, n: number, at?: Vec3): number {
+  const u = at ?? symmetryPosition(group, n);
   const x = Vec3();
   let min = Infinity;
   // every copy has the same neighbours: the source's nearest is the nearest two
@@ -145,6 +148,37 @@ function frame(out: Quat, e1: Vec3, e2: Vec3, f1: Vec3, f2: Vec3): boolean {
   return true;
 }
 
+/** The source's axis in the scene, its direction from the center, and the group's frame in the scene (`symmetryPoses`) */
+function placed(source: GrowPose, axis: Vec3, p: Omit<SymmetryParams, 'radius'>, direction?: Vec3) {
+  const u = symmetryPosition(p.group, p.n);
+  const local = Vec3.normalize(Vec3(), axis);
+  const a = Vec3.transformQuat(Vec3(), local, source.rotation);
+  const o = p.side === 'inside' ? a : Vec3.negate(Vec3(), a);
+  const m = Quat();
+  if (direction) {
+    if (!frame(m, Z, u, direction, o)) return undefined;
+  } else {
+    const side = Vec3.transformQuat(Vec3(), fiberOffsetDirection(Vec3(), 'auto', local), source.rotation);
+    frame(m, u, Z, o, side);
+  }
+  return { local, o, m };
+}
+
+/**
+ * Where the source is in the group's frame (unit; `symmetryPoses`'s rule): Auto, the general position; about a chosen
+ * axis, wherever its direction from the center is (review M2: its contact, not the general position's, makes them
+ * touch); undefined when it is along the chosen axis
+ */
+export function symmetryAt(
+  source: GrowPose,
+  axis: Vec3,
+  p: Omit<SymmetryParams, 'radius'>,
+  direction?: Vec3,
+): Vec3 | undefined {
+  const f = placed(source, axis, p, direction);
+  return f && Vec3.transformQuat(Vec3(), f.o, Quat.invert(Quat(), f.m));
+}
+
 const _hit = SurfaceHit();
 
 /**
@@ -165,19 +199,11 @@ export function symmetryPoses(
   on?: GrowOn,
 ): GrowPoses | undefined {
   const ops = symmetryOperators(p.group, p.n);
-  const u = symmetryPosition(p.group, p.n);
-  const local = Vec3.normalize(Vec3(), axis);
-  const a = Vec3.transformQuat(Vec3(), local, source.rotation);
+  const f = placed(source, axis, p, direction);
+  if (!f) return undefined;
+  const { local, o, m } = f;
   // the source's direction from the center
-  const o = p.side === 'inside' ? a : Vec3.negate(Vec3(), a);
   const center = Vec3.scaleAndAdd(Vec3(), source.position, o, -p.radius);
-  const m = Quat();
-  if (direction) {
-    if (!frame(m, Z, u, direction, o)) return undefined;
-  } else {
-    const side = Vec3.transformQuat(Vec3(), fiberOffsetDirection(Vec3(), 'auto', local), source.rotation);
-    frame(m, u, Z, o, side);
-  }
   const back = Quat.invert(Quat(), m);
   const rel = Vec3.sub(Vec3(), source.position, center);
   const out: GrowPoses = { positions: [], rotations: [] };

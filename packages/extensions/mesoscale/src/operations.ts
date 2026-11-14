@@ -91,7 +91,7 @@ import {
   tilingTotal,
   walkPath,
 } from './grow.js';
-import { type SymmetryGroup, SymmetryGrowParams, symmetryContact, symmetryPoses } from './grow-symmetry.js';
+import { type SymmetryGroup, SymmetryGrowParams, symmetryAt, symmetryContact, symmetryPoses } from './grow-symmetry.js';
 import { meshAxis, sceneMesh, sceneMeshes, sceneMeshSurface } from './mesh-surface.js';
 import { isMembranePath } from './pick-surface.js';
 import {
@@ -1514,14 +1514,7 @@ export class MesoscaleApi extends ApiArea {
         const cyclic = group === 'c' || group === 'd';
         const n = Math.floor(v.n ?? 6);
         if (cyclic && !(n >= 2 && n <= 60)) return ApiResult.fail('invalid', 'Give n from 2 to 60.');
-        // unset: the copies touching (their nearest two a diameter apart)
-        const p = {
-          group,
-          n,
-          radius: v.symmetryRadius ?? diameter / symmetryContact(group, n),
-          side: v.side ?? 'inside',
-        };
-        if (!(p.radius > 0)) return ApiResult.fail('invalid', 'The radius is above 0 Å.');
+        const side = v.side ?? 'inside';
         const which = v.symmetryAxis ?? 'auto';
         const camera = ctx.plugin.canvas3d?.camera.state;
         const direction =
@@ -1533,7 +1526,14 @@ export class MesoscaleApi extends ApiArea {
                 : Vec3.create(0, 0, 1)
               : Vec3.create(which === 'x' ? 1 : 0, which === 'y' ? 1 : 0, which === 'z' ? 1 : 0);
         const snap = v.snap && on ? on : undefined;
-        made = symmetryPoses(scene, surfaceAxis(), p, direction, snap);
+        // unset: the copies touching where the source is (their nearest two a diameter apart; review M2)
+        const at = symmetryAt(scene, surfaceAxis(), { group, n, side }, direction);
+        const contact = at ? symmetryContact(group, n, at) : 0;
+        const p = { group, n, radius: v.symmetryRadius ?? diameter / contact, side };
+        if (v.symmetryRadius !== undefined && !(p.radius > 0)) {
+          return ApiResult.fail('invalid', 'The radius is above 0 Å.');
+        }
+        made = contact > 1e-6 ? symmetryPoses(scene, surfaceAxis(), p, direction, snap) : undefined;
         if (!made) {
           return ApiResult.fail(
             'invalid',
