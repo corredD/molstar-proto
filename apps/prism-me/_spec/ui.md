@@ -602,23 +602,26 @@ still completes its distance.
   drag or a pick. A Mode picked turns the last grow into one of that mode. Rise, Twist and Jitter still redraw a fiber
   on its path. Its count is prefix-stable: more Steps, Turns, Rings or Count keep every copy where it was and add the
   next ones (a fiber's last unit turned to the next); fewer cut the last ones; Crystal's cells are nested (each cell
-  stays where it was). Another Grow, another source, Clear or the section closed ends it; an undone grow is not live (a
-  change is the next grow's). **Clear** removes every grow from the source (any mode; the source stays), and the grows
-  from their copies, one step (`mesoscale.clear-grown`), disabled when there is none.
+  stays where it was); Symmetry is a set (n moves every copy). Another Grow, another source, Clear or the section closed
+  ends it; an undone grow is not live (a change is the next grow's). **Clear** removes every grow from the source (any
+  mode; the source stays), and the grows from their copies, one step (`mesoscale.clear-grown`), disabled when there is
+  none.
 - Grow › Symmetry (lane `symmetry`, Ludo 2026-11-13): copies of the source by a point group about a center, the source
   copy 0 (not placed again), each copy the source's pose turned about the center (exact orientations). **Group**: Cn (n
   copies, a ring), Dn (2n: Cn and n 2-folds across its axis, a barrel), T (12), O (24), I (60, a shell); **n** (2–60, Cn
   and Dn). The center is a **Radius** from the source along its axis (paint's: its Fiber Axis when set, else +z; a
   membrane protein's +z), against it (**Side** Inside: a subunit pointing out) or along it (Outside); unset, the copies
-  touch (their nearest two a copy's diameter apart). **Axis**, the group's principal axis through the center (Cn's and
-  Dn's n-fold, O's 4-fold, T's and I's 2-fold, I's 5-folds through (0, ±1, ±φ)): Auto puts the source at the group's
-  general position (the middle of a triangle of adjacent axes: on none, so no copy lands on another; Cn on the ring's
-  equator, Dn off it, so D7 is a barrel of two rings), the axis turned with the source's own frame (the assembly turns
-  with the source); View (toward the viewer), X, Y or Z set the axis, the source where it is about it (refused when it
-  is on an axis of the group: copies would coincide). On a mesh, **Snap** (off by default: a symmetry is exact) projects
-  each copy onto the surface along its line from the center (within two copy diameters; else it stays where the group
-  puts it) and turns its axis to the normal. Every setting is live on the last grow (Group, n, Radius, Side, Axis,
-  Snap); Clear, Undo, sessions, ⌘K and the assistant
+  touch where the source is (their nearest two a copy's diameter apart), and stay so as the grow changes (another Group,
+  n, Side or Axis touches again). **Axis**, the group's principal axis through the center (Cn's and Dn's n-fold, O's
+  4-fold, T's and I's 2-fold, I's 5-folds through (0, ±1, ±φ)): Auto puts the source at the group's general position
+  (the middle of a triangle of adjacent axes, I's 2-, 3- and 5-fold, O's 4-, 3- and 2-fold for O and T, Dn's n-fold and
+  two 2-folds: on none, so no copy lands on another; Cn on the ring's equator, Dn off it, so D7 is a barrel of two
+  rings), the axis turned with the source's own frame (the assembly turns with the source); View (toward the viewer, as
+  the camera is at each change), X, Y or Z set the axis, the source where it is about it (refused when it is on an axis
+  of the group: copies would coincide). On a mesh, **Snap** (off by default: a symmetry is exact; refused from a source
+  off the mesh, as every grow on a mesh) projects each copy onto the surface along its line from the center (within two
+  copy diameters; else it stays where the group puts it) and turns its axis to the normal. Every setting is live on the
+  last grow (Group, n, Radius, Side, Axis, Snap); Clear, Undo, sessions, ⌘K and the assistant
   (`mesoscale.grow { mode: 'symmetry', group, n, symmetryRadius, side, symmetryAxis, snap }`) as every grow. A symmetry
   is a set, not an order: n is not prefix-stable (a C6 made C8 moves every copy).
 - Models decorated too (2026-10-23, Ludovic: "why can't we change the target in Simularium"): a model (a list with
