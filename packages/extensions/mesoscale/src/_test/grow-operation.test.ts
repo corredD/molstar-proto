@@ -17,7 +17,7 @@ import {
   ParticleListTargetsFromAttribute,
   ParticleListTransform,
 } from '@molstar/plugin/state/transforms/particles/ops';
-import { ParticleListPainted, type PaintStroke } from '../paint.js';
+import { makeFiber, ParticleListPainted, type PaintStroke } from '../paint.js';
 import { MesoscaleExtension } from '../prism-viewer.js';
 import { observableState } from '@molstar/prism-ui/reactive/observable-state';
 import { Sphere } from '@molstar/graphics/geo/primitive/sphere';
@@ -1137,6 +1137,8 @@ describe('mesoscale.grow spiral', () => {
     const ref = entry(v).cell.transform.ref;
     expectOk(await v.api.load.files({ files: [new File([sphereObj(100, Vec3.create(-80, 0, 0))], 'vesicle.obj')] }));
     const { repr } = meshCells(v);
+    // CA's units' axis z (known), for the chain made again below
+    expectOk(await v.api.run('mesoscale.fiber', { entity: 'CA', axis: 'z' }));
     const spiral = { particles: ref, index: 2, mesh: repr, mode: 'spiral', rise: 8, spacing: 20, twist: 15 };
     const r = await v.api.run('mesoscale.grow', { ...spiral, count: 400 });
     expectOk(r);
@@ -1145,19 +1147,33 @@ describe('mesoscale.grow spiral', () => {
     const made = (r.value as { count: number }).count;
     expect(drawn(v).count).toBe(7 + made);
     expect((stroke.grow!.params as { copies: number }).copies).toBe(made);
-    // the copies kept turned as in the chain unskipped (by their place along it): Twist 15° a unit, so two kept a
-    // skip apart are 30° apart
+    // the copies kept turned as in the chain unskipped (by their place along it; 3b review 4): the drawn copies are the
+    // whole chain's units, made by makeFiber from the stroke's path, less those skipped
     const list = drawn(v);
-    const first = stroke.skip![0];
-    const angle = (a: Quat, b: Quat) => (2 * Math.acos(Math.min(1, Math.abs(Quat.dot(a, b)))) * 180) / Math.PI;
-    if (!stroke.skip!.includes(first + 1) && first > 0) {
-      // units first - 1 and first + 1 are copies first - 1 and first (as drawn)
-      expect(angle(quat(list, 7 + first - 1), quat(list, 7 + first))).toBeGreaterThan(20);
+    const skip = stroke.skip!;
+    const chain = makeFiber(
+      stroke.positions,
+      { rise: 8, twist: 15, jitter: 0, axis: 'z' },
+      Vec3.create(0, 0, 1),
+      stroke.seed ?? 0,
+      stroke.normals,
+    );
+    const gone = new Set(skip);
+    let at = 7;
+    for (let u = 0; u < chain.positions.length / 3; ++u) {
+      if (gone.has(u)) continue;
+      for (let c = 0; c < 4; ++c) expect(list.rotations![at * 4 + c]).toBeCloseTo(chain.rotations[u * 4 + c], 4);
+      for (let c = 0; c < 3; ++c) expect(list.coordinates[at * 3 + c]).toBeCloseTo(chain.positions[u * 3 + c], 2);
+      ++at;
     }
-    // fewer copies: the first of them, the same skips before
-    expectOk(await v.api.run('mesoscale.grow', { ...spiral, count: 100, replace: (r.value as { id: number }).id }));
-    expect(Array.from(drawn(v).coordinates.slice(21, 107 * 3))).toEqual(
-      Array.from(list.coordinates.slice(21, 107 * 3)),
+    expect(at).toBe(list.count);
+    // fewer copies, past the first skip: the first of them, the same skips before
+    const fewer = skip[0] + 20;
+    expectOk(await v.api.run('mesoscale.grow', { ...spiral, count: fewer, replace: (r.value as { id: number }).id }));
+    expect(drawn(v).count).toBe(7 + fewer);
+    expect(strokes(v)[0].skip).toEqual(skip.filter((x) => x < strokes(v)[0].skip!.at(-1)! + 1));
+    expect(Array.from(drawn(v).coordinates.slice(21, (7 + fewer) * 3))).toEqual(
+      Array.from(list.coordinates.slice(21, (7 + fewer) * 3)),
     );
   });
 
