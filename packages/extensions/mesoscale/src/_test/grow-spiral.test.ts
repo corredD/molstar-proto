@@ -121,13 +121,13 @@ describe('spiral on a mesh', () => {
     expect(copies(out, 6).slice(0, 180)).toEqual(copies(onPlane, 6));
   });
 
-  it('on a cylinder (developable) is the space spiral rolled onto it, and stops before it wraps onto itself', () => {
+  it('on a cylinder (developable) is the space spiral rolled onto it', () => {
     const R = 50;
     const tube = meshSurface(tubeMesh(R, R, 1200, 256, 400));
     const side: GrowPose = { position: Vec3.create(R, 0, 0), rotation: Quat.identity() };
-    const p: SpiralParams = { spacing: 15, step: 5, count: 4000, hand: 'right' };
+    const p: SpiralParams = { spacing: 15, step: 5, count: 200, hand: 'right' };
     const path = spiralPath(side, z, p, { surface: tube, reach: 10 })!;
-    // unrolled: (the arc about z, z), r = b × θ
+    // unrolled: (the arc about z, z), r = b × θ (before it wraps round)
     let before = 0;
     const b = p.spacing / (2 * Math.PI);
     for (let i = 0; i < path.length / 3; ++i) {
@@ -138,40 +138,62 @@ describe('spiral on a mesh', () => {
       while (phi - before > Math.PI) phi -= 2 * Math.PI;
       while (phi - before < -Math.PI) phi += 2 * Math.PI;
       before = phi;
-      if (i > 3) expect(Math.abs(Math.hypot(x, q[2]) - b * Math.abs(phi))).toBeLessThan(0.2);
-    }
-    // it stops before its radius reaches half the circumference (πR, where it would meet itself on the far side)
-    const reach = Math.max(...Array.from({ length: path.length / 3 }, (_, i) => Math.abs(at(path, i)[2])));
-    expect(reach).toBeLessThan(Math.PI * R);
-    // no two points of it closer than half its Arm spacing but its neighbours along it (2 × Arm spacing)
-    let walked = 0;
-    const s = [0];
-    for (let i = 1; i < path.length / 3; ++i) s.push((walked += Vec3.distance(at(path, i), at(path, i - 1))));
-    for (let i = 0; i < path.length / 3; i += 3) {
-      for (let j = 0; j < i; j += 3) {
-        if (s[i] - s[j] < 2 * p.spacing) continue;
-        expect(Vec3.distance(at(path, i), at(path, j))).toBeGreaterThan(0.5 * p.spacing);
+      if (i > 3 && Math.hypot(x, q[2]) < 0.9 * Math.PI * R) {
+        expect(Math.abs(Math.hypot(x, q[2]) - b * Math.abs(phi))).toBeLessThan(0.2);
       }
     }
   });
 
-  it('on a vesicle: every point on it; rolled over it its arms close up, and it stops when they crowd', () => {
+  it("wrapping round a tube: skips the copies that would land on an earlier arm's, and goes on to Count (round 3b)", () => {
+    const R = 50;
+    const tube = meshSurface(tubeMesh(R, R, 2400, 256, 800));
+    const side: GrowPose = { position: Vec3.create(R, 0, 0), rotation: Quat.identity() };
+    const p: SpiralParams = { spacing: 15, step: 5, count: 1500, hand: 'right' };
+    const info = { turns: 0, copies: 0, skip: [] as number[] };
+    const path = spiralPath(side, z, p, { surface: tube, reach: 10 }, undefined, info)!;
+    expect(info.copies).toBe(1500);
+    expect(info.skip.length).toBeGreaterThan(0);
+    const all = copies(path, p.step);
+    const skipped = new Set(info.skip);
+    const kept = Array.from({ length: all.length / 3 }, (_, i) => i).filter((i) => !skipped.has(i));
+    expect(kept.length).toBe(1500);
+    // its last unit is a copy kept
+    expect(kept[kept.length - 1]).toBe(all.length / 3 - 1);
+    // no copy within 0.6 × Arm spacing of a copy more than 2 Arm spacings behind along it
+    for (const i of kept) {
+      for (const j of kept) {
+        if (j >= i || (i - j) * p.step <= 2 * p.spacing) continue;
+        expect(Vec3.distance(at(all, i), at(all, j))).toBeGreaterThanOrEqual(0.6 * p.spacing);
+      }
+    }
+    // more copies continue it, fewer cut it: the copies kept and the ones skipped bit for bit
+    const few = { turns: 0, copies: 0, skip: [] as number[] };
+    const fewer = spiralPath(side, z, { ...p, count: 900 }, { surface: tube, reach: 10 }, undefined, few)!;
+    const someCopies = copies(fewer, p.step);
+    expect(all.slice(0, someCopies.length)).toEqual(someCopies);
+    expect(info.skip.slice(0, few.skip.length)).toEqual(few.skip);
+    expect(few.copies).toBe(900);
+  });
+
+  it('on a vesicle: every point on it; its arms close up, crowded copies skipped, and it ends at its bound', () => {
     const R = 100;
     const vesicle = meshSurface(sphereMesh(R, 4));
     const north: GrowPose = { position: Vec3.create(0, 0, R), rotation: Quat.identity() };
     const p: SpiralParams = { spacing: 20, step: 5, count: 5000, hand: 'right' };
     const normals: number[] = [];
-    const path = spiralPath(north, z, p, { surface: vesicle, reach: 20 }, normals)!;
+    const info = { turns: 0, copies: 0, skip: [] as number[] };
+    const path = spiralPath(north, z, p, { surface: vesicle, reach: 20 }, normals, info)!;
     for (let i = 0; i < path.length / 3; ++i) expect(Math.abs(Vec3.magnitude(at(path, i)) - R)).toBeLessThan(0.5);
     for (let i = 0; i < normals.length / 3; ++i) {
       expect(Vec3.dot(at(normals, i), Vec3.normalize(Vec3(), at(path, i)))).toBeGreaterThan(0.99);
     }
-    const units = copies(path, p.step).length / 3;
-    expect(units).toBeLessThan(5000);
-    expect(units).toBeGreaterThan(50);
-    expect(Math.min(...Array.from({ length: path.length / 3 }, (_, i) => at(path, i)[2]))).toBeLessThan(0.9 * R);
-    // more copies: the same path (it had stopped)
-    expect(spiralPath(north, z, { ...p, count: 8000 }, { surface: vesicle, reach: 20 })).toEqual(path);
+    // the vesicle full before 5000: it ends at its bound (4 × Count × Step along it), its copies those it made
+    expect(info.copies).toBeLessThan(5000);
+    expect(info.copies).toBeGreaterThan(50);
+    expect(copies(path, p.step).length / 3 - info.skip.length).toBe(info.copies);
+    let length = 0;
+    for (let i = 1; i < path.length / 3; ++i) length += Vec3.distance(at(path, i), at(path, i - 1));
+    expect(length).toBeLessThanOrEqual(4 * 5000 * 5 + 1e-6);
   });
 
   it('has a bounded number of points, whatever Step and Arm spacing (second review 1, N1)', () => {

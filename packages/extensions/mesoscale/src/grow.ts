@@ -5,7 +5,7 @@
  */
 
 import { Mat3, type Mat4, Quat, Vec3 } from '@molstar/core/math/linear-algebra';
-import { fiberOffsetDirection, paintRandom, paintRotation } from './paint.js';
+import { fiberOffsetDirection, paintRandom, paintRotation, resamplePath } from './paint.js';
 
 // Grow (apps/prism-me/progress/2026-11-11-grow.md; Ludo, 2026-11-11): copies of an instance by a rule, from its pose.
 // Each mode gives the copies' poses (positions in Å, unit quaternions x, y, z, w) from the source's; the copies go
@@ -458,11 +458,21 @@ export function spiralTurns(spacing: number, length: number): number {
  *   and turn) in the tangent plane of the point before, projected onto the surface along its normal, the angle-0
  *   direction carried from tangent plane to tangent plane: exact on a plane, a cylinder or a cone; on a surface curved
  *   both ways its arms close up. Its normal in `normals` (the source's side, then continuous). It ends where the
- *   surface does (no point, or the nearest a quarter of a step off: an open edge) or where it comes within 0.6 × Arm
- *   spacing of a point of itself more than 2 Arm spacings behind along it (an arm it would cross: on a tube when it
- *   wraps round, on a closed surface).
+ *   surface does (no point, or the nearest a half step off: an open edge).
+ * Where it crosses an arm of its own (round a tube, on a closed surface; Ludo 2026-11-13: "Skip crowded, keep going"),
+ * a copy within 0.6 × Arm spacing of a copy kept more than 2 Arm spacings behind along it is skipped (`info.skip`, its
+ * index among its units) and it goes on to Count copies kept, its length 4 × Count × Step at most (a surface full
+ * ahead: fewer, `info.copies`). Its path ends half a Step past its last copy kept. Prefix-stable: its points, its
+ * units and its skips are the same for more Count, the further ones added.
  * `info.turns`: the turns it reached. Undefined for a source off the surface.
  */
+/** What a spiral made: the turns it reached, its copies kept and its units skipped (crowded) */
+export interface SpiralInfo {
+  turns: number;
+  copies?: number;
+  skip?: number[];
+}
+
 export function spiralPath(source: GrowPose, axis: Vec3, p: SpiralParams): number[];
 export function spiralPath(
   source: GrowPose,
@@ -470,7 +480,7 @@ export function spiralPath(
   p: SpiralParams,
   on: GrowOn | undefined,
   normals?: number[],
-  info?: { turns: number },
+  info?: SpiralInfo,
 ): number[] | undefined;
 export function spiralPath(
   source: GrowPose,
@@ -478,7 +488,7 @@ export function spiralPath(
   p: SpiralParams,
   on?: GrowOn,
   normals?: number[],
-  info?: { turns: number },
+  info?: SpiralInfo,
 ): number[] | undefined {
   const local = Vec3.normalize(Vec3(), axis);
   const n = Vec3.transformQuat(Vec3(), local, source.rotation);
@@ -500,90 +510,130 @@ export function spiralPath(
    * wide (second review 1, N1): their number bounded by its turns and its Count, not by Step / Arm spacing
    */
   const stepAt = (t: number) => Math.min(p.step / 4, 0.1 * Math.max(b * t, b));
-  // its length from the source: Count copies, the last half a Step before its end
-  const length = Math.max(0, Math.floor(p.count)) * p.step + p.step / 2;
+  const count = Math.max(0, Math.floor(p.count));
+  // its length at most: Count copies, and as many again thrice for those skipped (a surface full ahead)
+  const bound = p.step + 4 * count * p.step;
   const all = [at[0], at[1], at[2]];
   const ns: number[] | undefined = on ? [n[0], n[1], n[2]] : undefined;
+  const thetas = [0];
+  const along = [0];
   const w = Vec3.cross(Vec3(), n, u);
-  // on a surface: its points by cell (of the crowding distance) once they are 2 Arm spacings behind along it (an arm
-  // behind, not its own neighbours: only those are looked at; second review N1), and how far along it each is
-  const crowd = SpiralCrowd * p.spacing;
-  const cells = new Map<number, number[]>();
-  const along: number[] = [0];
-  let filed = 0;
-  const cell = (x: number) => Math.floor(x / crowd);
-  const file = (walked: number) => {
-    for (; filed < along.length && along[filed] <= walked - SpiralAlong * p.spacing; ++filed) {
-      const key = cellKey(cell(all[filed * 3]), cell(all[filed * 3 + 1]), cell(all[filed * 3 + 2]));
-      const list = cells.get(key);
-      if (list) list.push(filed);
-      else cells.set(key, [filed]);
-    }
-  };
-  const crowded = (q: Vec3, walked: number) => {
-    file(walked);
-    const [i, j, k] = [cell(q[0]), cell(q[1]), cell(q[2])];
-    for (let di = -1; di <= 1; ++di) {
-      for (let dj = -1; dj <= 1; ++dj) {
-        for (let dk = -1; dk <= 1; ++dk) {
-          for (const o of cells.get(cellKey(i + di, j + dj, k + dk)) ?? []) {
-            const dx = all[o * 3] - q[0];
-            const dy = all[o * 3 + 1] - q[1];
-            const dz = all[o * 3 + 2] - q[2];
-            if (dx * dx + dy * dy + dz * dz < crowd * crowd) return true;
-          }
-        }
-      }
-    }
-    return false;
-  };
   let walked = 0;
   let theta = 0;
   let arc = 0;
   let px = 0;
   let py = 0;
-  for (; walked < length && p.step > 0 && b > 0; ) {
-    const h = stepAt(theta);
-    arc += h;
-    const next = spiralAngle(b, arc, theta);
-    const r = b * next;
-    const qx = r * Math.cos(next);
-    const qy = sense * r * Math.sin(next);
-    if (on) {
-      // the planar step, in the tangent plane of the point before
-      Vec3.scale(_t, u, qx - px);
-      Vec3.scaleAndAdd(_t, _t, w, qy - py);
-      Vec3.add(_c, at, _t);
-      if (!on.surface.project(_hit, _c, n, 4 * h)) break;
-      if (Vec3.distance(_hit.position, _c) > 0.5 * h) break;
-      const moved = walked + Vec3.distance(_hit.position, at);
-      if (crowded(_hit.position, moved)) break;
-      if (Vec3.dot(_hit.normal, n) < 0) Vec3.negate(_hit.normal, _hit.normal);
-      walked = moved;
-      Vec3.copy(at, _hit.position);
-      Vec3.copy(n, _hit.normal);
-      if (!tangent(u, n)) fiberOffsetDirection(u, 'auto', n);
-      Vec3.cross(w, n, u);
-    } else {
-      Vec3.scaleAndAdd(_p, source.position, u, qx);
-      Vec3.scaleAndAdd(_p, _p, w, qy);
-      walked += Vec3.distance(_p, at);
-      Vec3.copy(at, _p);
+  let ended = !(p.step > 0 && b > 0);
+  /** Its path on to `length` along it (or its end): the same points whatever the length asked (prefix-stable) */
+  const extend = (length: number) => {
+    while (!ended && walked < length) {
+      const h = stepAt(theta);
+      arc += h;
+      const next = spiralAngle(b, arc, theta);
+      const r = b * next;
+      const qx = r * Math.cos(next);
+      const qy = sense * r * Math.sin(next);
+      if (on) {
+        // the planar step, in the tangent plane of the point before
+        Vec3.scale(_t, u, qx - px);
+        Vec3.scaleAndAdd(_t, _t, w, qy - py);
+        Vec3.add(_c, at, _t);
+        if (!on.surface.project(_hit, _c, n, 4 * h) || Vec3.distance(_hit.position, _c) > 0.5 * h) {
+          ended = true;
+          break;
+        }
+        if (Vec3.dot(_hit.normal, n) < 0) Vec3.negate(_hit.normal, _hit.normal);
+        walked += Vec3.distance(_hit.position, at);
+        Vec3.copy(at, _hit.position);
+        Vec3.copy(n, _hit.normal);
+        if (!tangent(u, n)) fiberOffsetDirection(u, 'auto', n);
+        Vec3.cross(w, n, u);
+      } else {
+        Vec3.scaleAndAdd(_p, source.position, u, qx);
+        Vec3.scaleAndAdd(_p, _p, w, qy);
+        walked += Vec3.distance(_p, at);
+        Vec3.copy(at, _p);
+      }
+      theta = next;
+      px = qx;
+      py = qy;
+      all.push(at[0], at[1], at[2]);
+      ns?.push(n[0], n[1], n[2]);
+      thetas.push(theta);
+      along.push(walked);
     }
-    theta = next;
-    px = qx;
-    py = qy;
-    all.push(at[0], at[1], at[2]);
-    ns?.push(n[0], n[1], n[2]);
-    if (on) along.push(walked);
+  };
+  const crowd = SpiralCrowd * p.spacing;
+  const behind = Math.ceil((SpiralAlong * p.spacing) / p.step);
+  let out: number[] = [];
+  let outNormals: number[] | undefined;
+  let skip: number[] = [];
+  let kept = 0;
+  let last = -1;
+  // the path long enough for Count copies, longer while some are skipped, to its bound
+  for (let length = Math.min(bound, p.step + count * p.step + p.step / 2); ; ) {
+    extend(length);
+    outNormals = normals ? [] : undefined;
+    out = trimStart(all, ns, p.step, outNormals);
+    const units = resamplePath(out, p.step);
+    // the copies kept by cell (of the crowding distance), filed once more than 2 Arm spacings behind along it
+    const cells = new Map<number, number[]>();
+    const cell = (x: number) => Math.floor(x / crowd);
+    const keptAt: number[] = [];
+    let filed = 0;
+    skip = [];
+    kept = 0;
+    last = -1;
+    for (let i = 0; i < units.length / 3 && kept < count; ++i) {
+      for (; filed < keptAt.length && keptAt[filed] < i - behind; ++filed) {
+        const o = keptAt[filed];
+        const key = cellKey(cell(units[o * 3]), cell(units[o * 3 + 1]), cell(units[o * 3 + 2]));
+        const list = cells.get(key);
+        if (list) list.push(o);
+        else cells.set(key, [o]);
+      }
+      const [x, y, zz] = [units[i * 3], units[i * 3 + 1], units[i * 3 + 2]];
+      let close = false;
+      for (let di = -1; di <= 1 && !close; ++di) {
+        for (let dj = -1; dj <= 1 && !close; ++dj) {
+          for (let dk = -1; dk <= 1 && !close; ++dk) {
+            for (const o of cells.get(cellKey(cell(x) + di, cell(y) + dj, cell(zz) + dk)) ?? []) {
+              const dx = units[o * 3] - x;
+              const dy = units[o * 3 + 1] - y;
+              const dz = units[o * 3 + 2] - zz;
+              if (dx * dx + dy * dy + dz * dz < crowd * crowd) {
+                close = true;
+                break;
+              }
+            }
+          }
+        }
+      }
+      if (close) {
+        skip.push(i);
+        continue;
+      }
+      keptAt.push(i);
+      ++kept;
+      last = i;
+    }
+    if (kept >= count || ended || length >= bound) break;
+    // on: as many again as are missing, and a half more
+    length = Math.min(bound, length + (count - kept) * p.step * 1.5 + p.step);
   }
-  if (info) info.turns = theta / (2 * Math.PI);
-  // from a Step along it (copy 1), to half a Step past copy Count
-  const outNormals: number[] | undefined = normals ? [] : undefined;
-  const out = trimStart(all, ns, p.step, outNormals);
-  const cut = trimEnd(out, outNormals, (Math.max(1, Math.floor(p.count)) - 1) * p.step + p.step / 2);
+  // to half a Step past its last copy kept; the skips before it
+  const end = Math.max(0, last) * p.step + p.step / 2;
+  const cut = trimEnd(out, outNormals, end);
   if (normals && outNormals) for (let i = 0; i < cut; ++i) normals.push(outNormals[i]);
   out.length = cut;
+  if (info) {
+    // the turns at its end (a Step from the source, then its length)
+    let k = 0;
+    while (k + 1 < along.length && along[k] < p.step + end) ++k;
+    info.turns = thetas[k] / (2 * Math.PI);
+    info.copies = kept;
+    info.skip = skip.filter((i) => i < last);
+  }
   return out;
 }
 
