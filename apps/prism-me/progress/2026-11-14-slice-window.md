@@ -286,3 +286,69 @@ the others are one cause each.
 | `VolumeVisualBuilder.setVisibility`; a hidden slice's windows freed | memory of hidden slices (Ludo: yes) | `graphics/src/repr/volume/visual.ts`, `slice.ts`, `slice-window.ts`                                                                 | 0f6030763, 0158dfe94            |
 | `SliceBinned`, `uSliceBin`, binned preview while a big slice moves  | big maps at frame rate              | `graphics/src/repr/volume/slice-window.ts`, `slice.ts`, `gl/renderable/image.ts`, `geo/geometry/image/image.ts`, both image shaders | 32ff54caa, 85063c790, 0158dfe94 |
 | `binGrid` averaging in memory order, yielding                       | a 2 GB map binned in the background | `model/src/model/volume/bin.ts`                                                                                                     | b1327a101                       |
+
+## A tilt series' slider (Ludo, 2026-11-15: a portal tilt series, 41 × 3000², ~2 GB, "does not respond")
+
+**Cause, measured (hypothesis a):** the window's 3d texture limit is 2048 (WebGPU `maxTextureDimension3D`, WebGL2
+`MAX_3D_TEXTURE_SIZE` here). A 3000-wide plane can't be allocated, so the slice fell back to the CPU path: 1.43–1.56 s a
+step. On a synthetic 3000 × 3000 × 41 float map, the windowed path was off. Hypothesis (b) followed from it: a 36 MB
+plane also failed the old minimum of 4 planes in the 128 MB budget. (c) didn't apply: the series loads as an MRC
+periodic tile and uses volume-value, as the tomograms do. (d) was right: 369 M voxels passes the binning threshold, and
+binning z by 2 would mix two tilt angles.
+
+### Built
+
+- **Tiles:** a plane wider or taller than the 3d texture limit is split into even tiles (3000² → 2 × 2 tiles of 1500²),
+  each tile a layer. The shader picks the tile's layer and the texel in it (`uSliceTiles`). The window's planes are
+  clamped so that their tiles fit the layer limit, at least 1 plane (a 3000² plane: 3 planes).
+- **Per-axis binning:** `binGrid` takes a factor per axis. A volume with fewer than 128 planes along z (a tilt series)
+  is binned 2× in x and y only, so a binned plane is the same tilt. The shader's bin is per column and row (`uSliceBin`,
+  v2).
+- **Idle fill:** off only where a plane is tiled or over 16 MB (one copy outlasts an idle slot); the plane shown is
+  still copied at once.
+- **`binGrid` holds one binned slab of sums at a time** (a 41 × 3000² series: 18 MB, not 738).
+- **WebGL fix:** the items rebind a kind-'texture' cell set to another texture at the next draw, as WebGPU's do. Without
+  it the tilt slice at rest drew the binned planes in tiles on WebGL2 (found by the WebGL2 screenshot).
+
+### Measured (synthetic 3000 × 3000 × 41 float, 1.5 GB, headless Chrome M1, one browser at a time)
+
+| What                                | prism-me (1343)                                               | after (1380)                                                                           |
+| ----------------------------------- | ------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| A Z step through the representation | 1430–1560 ms (CPU path)                                       | 3–9 ms (binned 1500², xy)                                                              |
+| Drag Z end to end (3 s of pointer)  | the drag took 60 s, 46 frames > 33 ms, max 1.58 s, 41 commits | 272 frames, 0 > 33 ms, max 16.8 ms, 1 commit                                           |
+| WebGL2 step                         | 1449 ms median                                                | 5.8 ms median                                                                          |
+| At rest                             |                                                               | full resolution in 2 × 2 tiles; WebGL2 screenshot vs the CPU path: 1 pixel > 3 (max 6) |
+| Ludo's tomogram (regression)        |                                                               | drag 0 > 33 ms, 1 commit                                                               |
+
+The headless renderer stayed under 4 GB. Ludo's own Chrome (not ours) had a 7.2 GB renderer and a 5 GB GPU process open
+at the time.
+
+### Tests (failing first)
+
+- graphics `slice-window.test.ts`: tiles and the planes they hold; the budget's depth (3 for 3000²); idle off for tiled
+  windows.
+- graphics `slice.test.ts`: a tilt-like volume binned [2,2,1]; binned and at rest, a step within the window is a full
+  plane.
+- model `bin.test.ts`: per-axis factors; one pass yielding per slab.
+- graphics `gl/_test/webgl-texture-rebind.test.ts` (native GL, medium lane): a replaced kind-'texture' cell is bound at
+  the next draw.
+- Dawn `webgpu-slice-window.test.ts`: a tiled window (tiles of 16) and a binned-xy window draw the CPU path's pixels
+  along z and x. The z-binned case now uses 131 planes.
+
+### Review (lane-reviewer, lane-skeptic)
+
+| #    | Finding                                                                          | Verdict            | Outcome                                                                                  |
+| ---- | -------------------------------------------------------------------------------- | ------------------ | ---------------------------------------------------------------------------------------- |
+| 1    | idle fill off for every binned volume: a step after rest showed the binned plane | confirmed (must)   | fixed (idle off by tile/size), test first                                                |
+| 2    | `idle()` re-armed after the flag went off                                        | confirmed (nit)    | fixed, same commit                                                                       |
+| 3    | `binGrid` sums 738 MB for a tilt series                                          | confirmed (should) | fixed: one slab of sums                                                                  |
+| 4    | WebGL2 path untested                                                             | confirmed (should) | checked in Chrome: it found a real WebGL bug (texture swap); fixed with a native-GL test |
+| nits | stacked JSDoc, "even sizes", "Binning 2×" text, the tilt test's x step           | confirmed          | fixed except the x-step assertion (rendered in Dawn)                                     |
+
+### Core changes (added)
+
+| What                                                          | Files                                                                                                                               | Commits                                   |
+| ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------- |
+| `binGrid` per-axis factors, one slab of sums                  | `model/src/model/volume/bin.ts`                                                                                                     | 9138693dc, and the slab commit            |
+| Slice window tiles, per-axis bins, idle policy                | `graphics/src/repr/volume/slice-window.ts`, `slice.ts`, `gl/renderable/image.ts`, `geo/geometry/image/image.ts`, both image shaders | c5dc72a79, 819b3a586, and the idle commit |
+| WebGL render items rebind replaced external textures per draw | `graphics/src/gl/webgl/render-item.ts`                                                                                              | the rebind commit                         |
