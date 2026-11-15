@@ -3,6 +3,7 @@
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { getItemIndices, isItemIndexing } from '../quad-indices.js';
@@ -873,6 +874,34 @@ export function createWebGPURenderItem<T extends ProgramVariant>(
   let textureBindingsVersion = 0;
   /** the linear-filtered textures the programs were selected for (`getLinearTextures`), see `update` */
   let boundLinearTextures = getLinearTextures();
+  // the textures owned outside the items (kind 'texture') by index: set to another texture object, rebound at the next
+  // draw without an update (a slice's switch between its binned and full planes on a timer, repr/volume/slice.ts)
+  const externalTextures: number[] = [];
+  for (let i = 0, il = textures.length; i < il; ++i) {
+    const spec = schema[textures[i][0]];
+    if (spec.type === 'texture' && spec.kind === 'texture') externalTextures.push(i);
+  }
+  function refreshExternalTextures() {
+    let replaced = false;
+    for (let j = 0, jl = externalTextures.length; j < jl; ++j) {
+      const i = externalTextures[j];
+      const value = textureValues[textures[i][0]];
+      if (value.ref.version === textureVersions[i]) continue;
+      textureVersions[i] = value.ref.version;
+      if (textures[i][1] === value.ref.value) continue;
+      textures[i][1] = value.ref.value as Texture;
+      replaced = true;
+    }
+    if (!replaced) return;
+    // as `update`: other filtering, other programs; else the bound textures resolved again
+    const linear = getLinearTextures();
+    if (linear !== boundLinearTextures) {
+      boundLinearTextures = linear;
+      invalidatePrograms(false);
+    } else {
+      textureBindingsVersion += 1;
+    }
+  }
   /**
    * per layout the groups made for other textures (at most `MaxAlternateGroups`, the oldest dropped): a pass binding
    * the same few textures in turn every frame finds its group again instead of making one per swap
@@ -1184,6 +1213,7 @@ export function createWebGPURenderItem<T extends ProgramVariant>(
 
     render: (variant: T, globals?: GlobalBindings, mdbDataList?: MultiDrawBaseData[]) => {
       if (drawCount === 0 || instanceCount === 0 || !layersFit) return;
+      if (externalTextures.length) refreshExternalTextures();
       const gpuGlobals = globals ? asWebGPUGlobalBindings(globals) : undefined;
       const program = getWebGPUProgram(variant);
       if (!program) return;
