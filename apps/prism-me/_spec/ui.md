@@ -673,6 +673,16 @@ still completes its distance.
   `paint-group`) is fitted by its leaves' envelope, painted or grown from (me/night-integration). A fitted fiber's units
   are copies (Rise, Twist and Jitter make the grow again). The poses are kept: a session has them without the volume. A
   mirrored tomogram is not fitted (its hand: TODO).
+- A slice is a surface (lane `slice-constraint`, Ludo 2026-11-14: "I am missing constraint on slice"): a copy painted on
+  a volume's slice is turned like on a surface (Turn Auto: its axis along the plane's normal) and, with Fit to, fitted
+  on the plane (its shift along it, a spin about the normal, a tilt of 5° at most; the shell scored along the normal),
+  the copy under the pointer too. Grow from it grows on the slice: the stroke's slice (its volume and plane then: a
+  slice moved later moves nothing) reaches the Grow section with its last copy, a source picked by its right-click takes
+  the slice shown through it (within its radius); **On** lists it as "Slice of <volume>" beside None and the meshes (a
+  mesh wins; None drops it). Tiling, Sphere, Random walk, Spiral and Symmetry's Snap grow on the plane as on a mesh,
+  each copy's up along its normal, the plane ending at the volume's box (its voxels' centers); with Fit to, each copy
+  fitted on it. Crystal grows in space; Helix is refused on a slice (its radial lines meet the plane only at its axis).
+  The grow keeps the slice (a session too).
 - Models decorated too (2026-10-23, Ludovic: "why can't we change the target in Simularium"): a model (a list with
   entities: Simularium, cellPACK, PetWorld) has the Decoration section, so each of its targets (an agent, an entity) can
   be drawn as another object of the scene. A particle list's own shape (a Simularium simulation box) is not listed as a
