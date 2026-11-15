@@ -65,6 +65,7 @@ import {
   paintedStructureOf,
   structureBuildName,
   structureSourceOf,
+  paintRotation,
   paintRotations,
   fiberAxisVector,
   principalAxisOf,
@@ -1320,7 +1321,7 @@ export class MesoscaleApi extends ApiArea {
       const { entity, positions, side, particles } = values;
       const {
         structure,
-        normals,
+        normals: given,
         orient,
         spin,
         seed,
@@ -1354,12 +1355,13 @@ export class MesoscaleApi extends ApiArea {
       if (!positions.length || positions.length % 3) {
         return ApiResult.fail('invalid', "Give the copies' positions, x, y, z each.");
       }
-      if (normals && normals.length !== positions.length) {
+      if (given && given.length !== positions.length) {
         return ApiResult.fail('invalid', 'Give a normal for each position, x, y, z each.');
       }
-      // on a slice (slice-constraint): its plane, a surface as a mesh's
+      // on a slice (slice-constraint): its plane, a surface as a mesh's; no normals given (the API): the plane's (review 11)
       const plane = slice && slicePlaneOf(slice);
       if (slice && !plane) return ApiResult.fail('invalid', "Give the slice's point and normal, x, y, z each.");
+      const normals = given ?? (plane ? positions.map((_, i) => plane.normal[i % 3]) : undefined);
       // a structure painted into a scene without particles: Mol*'s particles (opt-in) loaded first
       if (structure) await ctx.extensions.ensureFor({ transformers: ['ms-plugin.particles-representation-3d'] });
       const into =
@@ -1372,7 +1374,11 @@ export class MesoscaleApi extends ApiArea {
         return ApiResult.fail('invalid', `The range has no letter of the sequence (${letters} letters).`);
       }
       // on a surface (its pick's normals: paint-refine round 2) any copy along them; a membrane protein always
-      const how: PaintOrient = orient ?? (brush.surface || ((surface || plane) && normals) ? 'normal' : 'random');
+      // a copy on a slice along its normal too, one of its stroke off it (at a depth) as before (review 5)
+      const onSlice =
+        !orient && !brush.surface && !(surface && normals) && plane ? onPlane(plane, positions) : undefined;
+      const how: PaintOrient =
+        orient ?? (brush.surface || (surface && normals) || onSlice?.some((x) => x !== 0) ? 'normal' : 'random');
       const state = ctx.plugin.state.data;
       // along the normal: its Fiber Axis when set, else +z; a membrane protein upright always (+z: its mid-plane's; S1)
       const along =
@@ -1415,6 +1421,16 @@ export class MesoscaleApi extends ApiArea {
             axis: how === 'axis' ? principalAxisOf(brush.object ?? data.targetMapping?.get(brush.target)) : along,
             spin,
           });
+      if (onSlice && how === 'normal' && !asFiber) {
+        // the copies off the slice at random, as the stroke's own would be
+        const q = Quat();
+        const none = Vec3();
+        for (let i = 0; i < k; ++i) {
+          if (onSlice[i * 3] || onSlice[i * 3 + 1] || onSlice[i * 3 + 2]) continue;
+          paintRotation(q, none, 'random', drawn, i, { spin });
+          for (let c = 0; c < 4; ++c) rotations[i * 4 + c] = q[c];
+        }
+      }
       // each copy fitted to a volume (density-fit): within a third of its radius and 15°, pulled back toward the click; a
       // fiber's path is not (its units are made from it)
       let fitted: StrokeFit | undefined;

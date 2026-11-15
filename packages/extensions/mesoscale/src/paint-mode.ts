@@ -674,7 +674,8 @@ function paintLayer(mode: PaintMode, host: PaintHost, canvas: HTMLElement, brush
             seed,
             fiber,
             s.mesh,
-            where === 'surface' || !!s.slice,
+            // on a slice its copies there are turned along its normal by the operation, the rest as the place says
+            where === 'surface',
             fiber ? undefined : fitOf(settings, s.volume),
             s.slice,
           )

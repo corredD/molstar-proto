@@ -112,6 +112,28 @@ describe('paint on a slice, then off it (review 1)', () => {
   });
 });
 
+describe('a copy on a slice turned like on a surface, only there (review 5, 11)', () => {
+  it('a stroke from the slice to a depth: its copy at the depth turned as before (at random); without normals, the plane’s', async () => {
+    const v = await viewer();
+    const volume = await oneSite(v, 0);
+    const slice = { volume, point: [0, 0, 40], normal: [0, 0, 1] };
+    // a brush that is no membrane protein: at random off a surface
+    const stroke = { entity: 'loose', positions: [30, 30, 40, 30, 50, 70], normals: [0, 0, 1, 0, -0.6, 0.8], seed: 3 };
+    const last = () => quat(drawn(v), drawn(v).count - 1);
+    const first = () => quat(drawn(v), drawn(v).count - 2);
+    expectOk(await v.api.run('mesoscale.paint', stroke));
+    const random = last();
+    expectOk(await v.api.run('history.undo', {}));
+    expectOk(await v.api.run('mesoscale.paint', { ...stroke, slice }));
+    expect(tilt(first())).toBeLessThan(0.01);
+    expect(Array.from(last())).toEqual(Array.from(random));
+    expectOk(await v.api.run('history.undo', {}));
+    // the API without normals: the slice's normal on it
+    expectOk(await v.api.run('mesoscale.paint', { entity: 'loose', positions: [30, 30, 40], seed: 3, slice }));
+    expect(tilt(last())).toBeLessThan(0.01);
+  });
+});
+
 describe('grow from a copy on a slice', () => {
   /** A copy painted on the slice z = 40 of an empty 240 × 240 × 80 Å volume at (x, 120), along its normal */
   async function source(v: PrismViewer, x = 120) {

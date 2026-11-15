@@ -122,7 +122,8 @@ describe('paint on a slice', () => {
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(flags.at(-1)).toEqual({ onSurface: true, onMesh: true });
     click(canvas, 10, 10);
-    expect(strokes[0].surface).toBe(true);
+    // the slice sent: the operation turns its copies on it (review 5), the stroke at a depth as the place says
+    expect(strokes[0].surface).toBe(false);
     expect(strokes[0].slice).toEqual({ volume: 'tomogram', point: [10, -10, 20], normal: [0, 0, 1] });
     // off the slice, at a depth: as before
     click(canvas, 70, 10);
