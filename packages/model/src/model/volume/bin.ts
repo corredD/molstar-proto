@@ -10,17 +10,22 @@ import type { RuntimeContext } from '@molstar/core/task';
 import type { Grid } from './grid.js';
 
 /**
- * A grid binned by `factor` along each side (a side shorter than it: by its length): each voxel the mean of its block
- * of the grid, a partial block at the far edge the mean of what it holds; Float32 whatever the grid's type. Its voxels
+ * A grid binned by `factor` along each side, or by a factor per axis (x, y, z; a side shorter than it: by its length):
+ * each voxel the mean of its block of the grid, a partial block at the far edge the mean of what it holds; Float32 whatever the grid's type. Its voxels
  * are where their blocks' centers are (Å): the voxel size times the factor, voxel 0 moved half a block less one voxel.
  * Its stats are its own; periodic while its blocks tile its sides. The grid itself at 1×.
  */
-export async function binGrid(grid: Grid, factor: number, ctx?: RuntimeContext): Promise<Grid> {
-  const f = Math.floor(factor);
+export async function binGrid(
+  grid: Grid,
+  factor: number | readonly [number, number, number],
+  ctx?: RuntimeContext,
+): Promise<Grid> {
+  const factors = typeof factor === 'number' ? [factor, factor, factor] : factor;
+  const f = Math.max(...factors.map(Math.floor));
   if (!(f > 1)) return grid;
   const { space, data } = grid.cells;
   const dims = space.dimensions;
-  const by = [0, 1, 2].map((a) => Math.max(1, Math.min(f, dims[a])));
+  const by = [0, 1, 2].map((a) => Math.max(1, Math.min(Math.floor(factors[a]), dims[a])));
   const out = [0, 1, 2].map((a) => Math.ceil(dims[a] / by[a]));
   const [a0, a1, a2] = space.axisOrderSlowToFast;
   const binned = Tensor.Space(out, [a0, a1, a2], Float32Array);
