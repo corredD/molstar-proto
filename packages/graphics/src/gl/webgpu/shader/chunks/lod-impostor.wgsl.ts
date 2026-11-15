@@ -30,10 +30,17 @@ export const assign_lod_impostor_wgsl = /* wgsl */ `
     // a model scale draws every level (\`assign_lod_factor\`): the spheres there, not the impostors
     let lodImpostor = uDraw.uLod.w != 0.0 && lodImpostorScale < 0.0 && uGlobal.uModelScale == 1.0;
     var lodImpostorShare = -1.0;
-    let lodImpostorSphere = invariantBoundingSphere(in);
-    let lodImpostorCenter = (uGlobal.uModel * transform * vec4<f32>(lodImpostorSphere.xyz, 1.0)).xyz;
-    if (lodImpostor) {
-        position = lodImpostorSphere.xyz;
+    // the copy's sphere where the impostors and the last spheres meet (the band's levels: an overlap), by which a copy
+    // chooses its level whole; the other levels by sphere (the copy's sphere read per vertex costs where they are many)
+    let lodImpostorWhole = lodImpostor || (uDraw.uLod.w != 0.0 && uDraw.uLod.z != 0.0);
+    var lodImpostorSphere = vec4<f32>(0.0);
+    var lodImpostorCenter = vec3<f32>(0.0);
+    if (lodImpostorWhole) {
+        lodImpostorSphere = invariantBoundingSphere(in);
+        lodImpostorCenter = (uGlobal.uModel * (transform * vec4<f32>(lodImpostorSphere.xyz, 1.0))).xyz;
+        if (lodImpostor) {
+            position = lodImpostorSphere.xyz;
+        }
     }
 #endif
 `;
@@ -43,9 +50,12 @@ export const assign_lod_impostor_wgsl = /* wgsl */ `
  * copies switch; no level shrinks its spheres; the impostors' share over the band (the overlap) where both draw
  */
 export const assign_lod_impostor_factor_wgsl = /* wgsl */ `
-            let d = (dot(uGlobal.uCameraPlane.xyz, lodImpostorCenter) + uGlobal.uCameraPlane.w) / uGlobal.uModelScale;
+            // the sphere's distance at the start of a sphere level (as the level before ends), the copy's at the band
+            let plane = uGlobal.uCameraPlane;
+            let dSphere = (dot(plane.xyz, out.vModelPosition) + plane.w) / uGlobal.uModelScale;
+            let d = select(dSphere, (dot(plane.xyz, lodImpostorCenter) + plane.w) / uGlobal.uModelScale, lodImpostorWhole);
             lodFactor = select(lodScale, 1.0, lodImpostor);
-            lodCulled = d < lod.x || d > lod.y;
+            lodCulled = select(dSphere, d, lodImpostor) < lod.x || d > lod.y;
             // the band's share of the next level: a level fading in (its overlap negated) keeps where it is above the
             // dither, one fading out (-1 - share) where it is not
             if (lod.z < 0.0) {
@@ -62,15 +72,16 @@ export const assign_lod_impostor_factor_wgsl = /* wgsl */ `
 /** After \`radius *= lodFactor\`: the varyings, the impostor's radius */
 export const assign_lod_impostor_varyings_wgsl = /* wgsl */ `
 #if defined(dLodImpostor)
-    {
-        // the rows of the copy's rotation into view space: the view's axes in its frame
-        let m = uGlobal.uModelView * transform;
-        let entry = select(-1.0, -lodImpostorScale - 1.0, lodImpostor);
-        out.vImpostorX = vec4<f32>(normalize(vec3<f32>(m[0][0], m[1][0], m[2][0])), entry);
+    // the rows of the copy's rotation into view space: the view's axes in its frame (impostors only: per vertex, the
+    // spheres' vertex stage is what far views cost)
+    out.vImpostorX = vec4<f32>(0.0, 0.0, 0.0, -1.0);
+    out.vImpostorY = vec4<f32>(0.0, 0.0, 0.0, lodImpostorShare);
+    if (lodImpostor) {
+        let mv = uGlobal.uModelView;
+        let m = mat3x3<f32>(mv[0].xyz, mv[1].xyz, mv[2].xyz) * mat3x3<f32>(transform[0].xyz, transform[1].xyz, transform[2].xyz);
+        out.vImpostorX = vec4<f32>(normalize(vec3<f32>(m[0][0], m[1][0], m[2][0])), -lodImpostorScale - 1.0);
         out.vImpostorY = vec4<f32>(normalize(vec3<f32>(m[0][1], m[1][1], m[2][1])), lodImpostorShare);
-        if (lodImpostor) {
-            radius = lodImpostorSphere.w * modelScale;
-        }
+        radius = lodImpostorSphere.w * modelScale;
     }
 #endif
 `;
@@ -107,16 +118,20 @@ fn impostorEntry(code: f32) -> vec3<f32> {
     return vec3<f32>((rest - y * 512.0) * 8.0, y * 8.0, 8.0 * exp2(t));
 }
 
-/** coverage and front height (Å along the frame's direction) of frame \`frame\` at its plane coordinates \`uv\` (0 to 1) */
-fn impostorRead(entry: vec3<f32>, frame: vec2<f32>, uvIn: vec2<f32>, radius: f32) -> vec2<f32> {
+/**
+ * coverage, front height (Å along the frame's direction) and the front's normal's x, y in the frame, of frame \`frame\`
+ * at its plane coordinates \`uv\` (0 to 1)
+ */
+fn impostorRead(entry: vec3<f32>, frame: vec2<f32>, uvIn: vec2<f32>, radius: f32) -> vec4<f32> {
     if (uvIn.x < 0.0 || uvIn.y < 0.0 || uvIn.x > 1.0 || uvIn.y > 1.0) {
-        return vec2<f32>(0.0, -radius);
+        return vec4<f32>(0.0, -radius, 0.0, 0.0);
     }
     let tile = entry.z;
     let uv = clamp(uvIn, vec2<f32>(0.5 / tile), vec2<f32>(1.0 - 0.5 / tile));
     let s = textureSampleLevel(tImpostor, sLinear, (entry.xy + (frame + uv) * tile) / uObject.uImpostorTexDim, 0.0);
-    return vec2<f32>(s.r, (s.g * 2.0 - 1.0) * radius);
+    return vec4<f32>(s.r, (s.g * 2.0 - 1.0) * radius, s.ba * 2.0 - 1.0);
 }
+
 
 /** a frame's direction (toward the camera), right and up (right x up = d), from the pole (z), or y along it */
 struct ImpostorFrame {
@@ -136,6 +151,11 @@ fn impostorFrame(frame: vec2<f32>, o: vec3<f32>, r: vec3<f32>, radius: f32) -> I
     let p = o - r * (dot(o, f.d) / dot(r, f.d));
     f.uv = vec2<f32>(dot(p, f.right), dot(p, f.up)) / (2.0 * radius) + 0.5;
     return f;
+}
+
+/** a view's normal (x, y in its frame, z toward the camera) in the copy's frame */
+fn impostorNormal(n: vec2<f32>, f: ImpostorFrame) -> vec3<f32> {
+    return n.x * f.right + n.y * f.up + sqrt(max(1.0 - dot(n, n), 0.0)) * f.d;
 }
 
 struct ImpostorHit {
@@ -197,22 +217,8 @@ fn impostorHit(sphere: vec4<f32>, point: vec3<f32>, impostorX: vec4<f32>, impost
     h.modelPosition = (uGlobal.uInvView * vec4<f32>(h.viewPosition, 1.0)).xyz;
     h.depth = calcDepth(h.viewPosition);
 
-    // the normal from the height's slope in the nearest view, into view space
-    var fn_ = f0;
-    var vn = v0;
-    if (weight.y > weight.x && weight.y >= weight.z) {
-        fn_ = f1;
-        vn = v1;
-    } else if (weight.z > weight.x && weight.z > weight.y) {
-        fn_ = f2;
-        vn = v2;
-    }
-    let e = 1.0 / entry.z;
-    let hx = impostorRead(entry, fn_, vn.uv + vec2<f32>(e, 0.0), radius).y - impostorRead(entry, fn_, vn.uv - vec2<f32>(e, 0.0), radius).y;
-    let hy = impostorRead(entry, fn_, vn.uv + vec2<f32>(0.0, e), radius).y - impostorRead(entry, fn_, vn.uv - vec2<f32>(0.0, e), radius).y;
-    let span = 2.0 * e * 2.0 * radius;
-    let n = normalize(vec3<f32>(-hx / span, -hy / span, 1.0));
-    let nObject = n.x * vn.right + n.y * vn.up + n.z * vn.d;
+    // the views' normals blended as their heights, into view space
+    let nObject = coverage.x * impostorNormal(s0.zw, v0) + coverage.y * impostorNormal(s1.zw, v1) + coverage.z * impostorNormal(s2.zw, v2);
     h.normal = normalize(vec3<f32>(dot(nObject, X), dot(nObject, Y), dot(nObject, Z)));
     // far away flat: the normal toward the camera (the share 1 + flatness)
     h.normal = normalize(mix(h.normal, -normalize(h.viewPosition), clamp(impostorY.w - 1.0, 0.0, 1.0)));

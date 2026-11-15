@@ -722,8 +722,11 @@ export type ColorLevelsValues = Values<ColorLevelsSchema>;
 
 /** The last level of detail of spheres as octahedral impostors (`ImpostorAtlas`, `lod-impostor.md`) */
 export const LodImpostorSchema = {
-  /** the views of the items: coverage and front height, two bytes a texel */
-  tImpostor: TextureSpec('image-uint8', 'rg', 'ubyte', 'linear', undefined, { usedIf: ['dLodImpostor'] }),
+  /** the views of the items: coverage, front height and normal (x, y), a byte each; one texture for all its holders */
+  tImpostor: TextureSpec('image-uint8', 'rgba', 'ubyte', 'linear', undefined, {
+    usedIf: ['dLodImpostor'],
+    shared: true,
+  }),
   /** its size in texels */
   uImpostorTexDim: ObjectUniformSpec('v2'),
   dLodImpostor: DefineSpec('boolean'),

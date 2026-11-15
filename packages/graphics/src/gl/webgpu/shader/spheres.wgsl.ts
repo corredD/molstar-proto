@@ -487,7 +487,8 @@ fn fragmentMain(fragmentIn: VertexOutput) -> FragmentOutput {
             let clipSome = false;
         #endif
         #if defined(dLodImpostor)
-            if (impostorDithered(fragmentIn.position, in.vImpostorY)) {
+            // the band alone dithers (-1: a sphere of no band)
+            if (in.vImpostorY.w != -1.0 && impostorDithered(fragmentIn.position, in.vImpostorY)) {
                 discard;
             }
             var h: SphereHit;

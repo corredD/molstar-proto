@@ -33,7 +33,7 @@ function coveredArea(atlas: ImpostorAtlas, e: number, i: number, j: number) {
   let sum = 0;
   for (let t = 0; t < tile; ++t) {
     for (let s = 0; s < tile; ++s) {
-      sum += array[((y + j * tile + t) * width + x + i * tile + s) * 2] / 255;
+      sum += array[((y + j * tile + t) * width + x + i * tile + s) * 4] / 255;
     }
   }
   return sum * texel * texel;
@@ -168,11 +168,17 @@ describe('impostor atlas', () => {
     const [i, j] = nearestFrame(Vec3.create(0, 0, 1));
     const { x, y, tile } = ImpostorAtlas.decodeEntry(atlas.codes[0]);
     const { array, width } = atlas.image;
-    const at = (s: number, t: number) => ((y + j * tile + t) * width + x + i * tile + s) * 2;
+    const at = (s: number, t: number) => ((y + j * tile + t) * width + x + i * tile + s) * 4;
     const middle = at(tile / 2, tile / 2);
     expect(array[middle]).toBeGreaterThan(200);
     // height 12 of the radius 12: (12 + 12) / 24 of 255
     expect(array[middle + 1]).toBeGreaterThan(245);
     expect(array[at(1, 1)]).toBe(0);
+    // the front's normal toward the camera in the middle (x, y 0: 127.5), tilted at the sphere's side
+    // (the middle texel half a texel off the sphere's center: n.x 0.19)
+    expect(Math.abs(array[middle + 2] - 127.5)).toBeLessThan(32);
+    expect(Math.abs(array[middle + 3] - 127.5)).toBeLessThan(32);
+    const side = at(tile / 2 + 2, tile / 2);
+    expect(array[side + 2]).toBeGreaterThan(array[middle + 2] + 40);
   });
 });

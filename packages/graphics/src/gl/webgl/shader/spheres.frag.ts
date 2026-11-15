@@ -174,7 +174,8 @@ void main(void){
     float fragmentDepth;
 
     #if defined(dLodImpostor)
-        if (impostorDithered()) discard;
+        // the band alone dithers (-1: a sphere of no band)
+        if (vImpostorY.w != -1.0 && impostorDithered()) discard;
     #endif
 
     #ifdef dApproximate

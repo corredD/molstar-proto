@@ -14,12 +14,15 @@ import { sizeDataFactor } from './size-data.js';
 
 /**
  * Octahedral impostors (`lod-impostor.md`): per item (a particle target's structure) its spheres seen from `Views` ×
- * `Views` directions over the sphere, each a tile of coverage and front height, splatted on the CPU into one atlas. The
+ * `Views` directions over the sphere, each a tile of coverage, front height and normal, splatted on the CPU into one atlas. The
  * TS rule of the shaders' `lod_impostor` chunks (GLSL, WGSL): the octahedral map, the frames, the three views of a
  * direction, the entry's place.
  */
 export interface ImpostorAtlas {
-  /** two bytes a texel: coverage, the front's height along the view (0 at `-radius`, 255 at `radius`; 0 off the item) */
+  /**
+   * four bytes a texel: coverage, the front's height along the view (0 at `-radius`, 255 at `radius`; 0 off the item),
+   * the front's normal's x and y in the view's frame (`0.5 + 0.5 n`; z toward the camera)
+   */
   readonly image: TextureImage<Uint8Array>;
   /** per entry its place (`encodeEntry`), -1 where it did not fit */
   readonly codes: number[];
@@ -176,7 +179,7 @@ export namespace ImpostorAtlas {
       const layout = pack(items, limit, shrink);
       if (layout || shrink >= 3) {
         const l = layout ?? pack(items, limit, shrink, true)!;
-        const array = new Uint8Array(l.width * l.height * 2);
+        const array = new Uint8Array(l.width * l.height * 4);
         const codes: number[] = [];
         for (let e = 0; e < items.length; ++e) {
           const p = l.places[e];
@@ -238,7 +241,10 @@ export namespace ImpostorAtlas {
   function splat(array: Uint8Array, width: number, x0: number, y0: number, tile: number, item: Item) {
     const { positionGroup, radii, count, center, radius } = item;
     const n = tile * Supersample;
+    // per subsample the front's height and its normal's x and y in the frame
     const height = new Float32Array(n * n);
+    const nx = new Float32Array(n * n);
+    const ny = new Float32Array(n * n);
     const scale = n / (2 * radius);
     const cx = center[0];
     const cy = center[1];
@@ -271,16 +277,24 @@ export namespace ImpostorAtlas {
               if (q < 0) continue;
               const h = sz + Math.sqrt(q);
               const o = t * n + s;
-              if (h > height[o]) height[o] = h;
+              if (h > height[o]) {
+                height[o] = h;
+                nx[o] = dx / r;
+                ny[o] = dy / r;
+              }
             }
           }
         }
-        writeTile(array, width, x0 + i * tile, y0 + j * tile, tile, height, radius);
+        writeTile(array, width, x0 + i * tile, y0 + j * tile, tile, height, nx, ny, radius);
       }
     }
   }
 
-  /** a tile's texels from the subsamples: the share covered, the front's height (the covered subsamples' highest) */
+  /**
+   * a tile's texels from the subsamples: the share covered, the front's height (the covered subsamples' highest), its
+   * normal's x and y in the frame (the covered subsamples' mean; z toward the camera, positive); off the item its covered
+   * neighbors' height and normal, so that linear filtering at the outline reads the item's
+   */
   function writeTile(
     array: Uint8Array,
     width: number,
@@ -288,31 +302,48 @@ export namespace ImpostorAtlas {
     y0: number,
     tile: number,
     h: Float32Array,
+    hx: Float32Array,
+    hy: Float32Array,
     R: number,
   ) {
     const n = tile * Supersample;
-    const cover = new Float32Array(tile * tile);
-    const front = new Float32Array(tile * tile).fill(-Infinity);
+    const m = tile * tile;
+    const cover = new Float32Array(m);
+    const front = new Float32Array(m).fill(-Infinity);
+    const fx = new Float32Array(m);
+    const fy = new Float32Array(m);
     for (let t = 0; t < tile; ++t) {
       for (let s = 0; s < tile; ++s) {
         let c = 0;
         let f = -Infinity;
+        let x = 0;
+        let y = 0;
         for (let b = 0; b < Supersample; ++b) {
           for (let a = 0; a < Supersample; ++a) {
-            const v = h[(t * Supersample + b) * n + s * Supersample + a];
+            const o = (t * Supersample + b) * n + s * Supersample + a;
+            const v = h[o];
             if (v === -Infinity) continue;
             c += 1;
+            x += hx[o];
+            y += hy[o];
             if (v > f) f = v;
           }
         }
-        cover[t * tile + s] = c / (Supersample * Supersample);
-        front[t * tile + s] = f;
+        const k = t * tile + s;
+        cover[k] = c / (Supersample * Supersample);
+        front[k] = f;
+        if (c > 0) {
+          fx[k] = x / c;
+          fy[k] = y / c;
+        }
       }
     }
     for (let t = 0; t < tile; ++t) {
       for (let s = 0; s < tile; ++s) {
-        let f = front[t * tile + s];
-        // off the item: its covered neighbors' height, so that linear filtering at the outline reads the item's
+        const k = t * tile + s;
+        let f = front[k];
+        let x = fx[k];
+        let y = fy[k];
         if (f === -Infinity) {
           for (let b = -1; b <= 1; ++b) {
             for (let a = -1; a <= 1; ++a) {
@@ -320,19 +351,25 @@ export namespace ImpostorAtlas {
               const v = t + b;
               if (u < 0 || v < 0 || u >= tile || v >= tile) continue;
               const g = front[v * tile + u];
-              if (g > f) f = g;
+              if (g > f) {
+                f = g;
+                x = fx[v * tile + u];
+                y = fy[v * tile + u];
+              }
             }
           }
         }
-        const o = ((y0 + t) * width + x0 + s) * 2;
-        array[o] = Math.round(cover[t * tile + s] * 255);
+        const o = ((y0 + t) * width + x0 + s) * 4;
+        array[o] = Math.round(cover[k] * 255);
         array[o + 1] = f === -Infinity ? 0 : Math.max(1, Math.min(255, Math.round(((f + R) / (2 * R)) * 255)));
+        array[o + 2] = Math.round((x * 0.5 + 0.5) * 255);
+        array[o + 3] = Math.round((y * 0.5 + 0.5) * 255);
       }
     }
   }
 
   /** no views: one texel, shared by every item without impostors (`tImpostor` is a shared texture) */
-  const Empty: TextureImage<Uint8Array> = { array: new Uint8Array(2), width: 1, height: 1 };
+  const Empty: TextureImage<Uint8Array> = { array: new Uint8Array(4), width: 1, height: 1 };
 
   export function createValues(): LodImpostorValues {
     return {

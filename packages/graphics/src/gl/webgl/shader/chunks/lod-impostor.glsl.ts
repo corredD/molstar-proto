@@ -29,7 +29,9 @@ export function lod_impostor_varyings(qualifier: 'out' | 'in') {
 
 /**
  * After `transform` (before `vModelPosition`): the level's scale (the member's, merged) below 0 draws the copy as an
- * impostor at its bounding sphere; `lodImpostorCenter` the copy's center, by which a copy chooses its level whole
+ * impostor at its bounding sphere; `lodImpostorCenter` the copy's center, by which a copy chooses its level whole where
+ * the impostors and the last spheres meet (the band's levels: an overlap; the others by sphere, as without impostors:
+ * the copy's sphere read per vertex costs where the spheres are many)
  */
 export const assign_lod_impostor = `
 #if defined(dLodImpostor)
@@ -43,9 +45,14 @@ export const assign_lod_impostor = `
     // a model scale draws every level (\`assign_lod_factor\`): the spheres there, not the impostors
     bool lodImpostor = uLod.w != 0.0 && lodImpostorScale < 0.0 && uModelScale == 1.0;
     float lodImpostorShare = -1.0;
-    vec4 lodImpostorSphere = InvariantBoundingSphere;
-    vec3 lodImpostorCenter = (uModel * transform * vec4(lodImpostorSphere.xyz, 1.0)).xyz;
-    if (lodImpostor) position = lodImpostorSphere.xyz;
+    bool lodImpostorWhole = lodImpostor || (uLod.w != 0.0 && uLod.z != 0.0);
+    vec4 lodImpostorSphere = vec4(0.0);
+    vec3 lodImpostorCenter = vec3(0.0);
+    if (lodImpostorWhole) {
+        lodImpostorSphere = InvariantBoundingSphere;
+        lodImpostorCenter = (uModel * (transform * vec4(lodImpostorSphere.xyz, 1.0))).xyz;
+        if (lodImpostor) position = lodImpostorSphere.xyz;
+    }
 #endif
 `;
 
@@ -55,9 +62,11 @@ export const assign_lod_impostor = `
  * draw, the impostors fading in at their start and the last spheres out at their end
  */
 export const assign_lod_impostor_factor = `
-    float d = (dot(uCameraPlane.xyz, lodImpostorCenter) + uCameraPlane.w) / uModelScale;
+    // the sphere's distance at the start of a sphere level (as the level before ends), the copy's at the band
+    float dSphere = (dot(uCameraPlane.xyz, vModelPosition) + uCameraPlane.w) / uModelScale;
+    float d = lodImpostorWhole ? (dot(uCameraPlane.xyz, lodImpostorCenter) + uCameraPlane.w) / uModelScale : dSphere;
     lodFactor = lodImpostor ? 1.0 : lodScale;
-    lodCulled = d < uLod.x || d > uLod.y;
+    lodCulled = (lodImpostor ? d : dSphere) < uLod.x || d > uLod.y;
     // the band's share of the next level: a level fading in (its overlap negated) keeps where it is above the dither,
     // one fading out (\`lodImpostorShare\` -1 - share) where it is not
     if (uLod.z < 0.0) {
@@ -74,12 +83,16 @@ export const assign_lod_impostor_factor = `
 /** After the sphere's view-space center (\`mvPosition\`): the varyings */
 export const assign_lod_impostor_varyings = `
 #if defined(dLodImpostor)
-    {
-        // the rows of the copy's rotation into view space: the view's axes in its frame
-        mat3 m = mat3(uModelView * transform);
-        vImpostorX = vec4(normalize(vec3(m[0][0], m[1][0], m[2][0])), lodImpostor ? -lodImpostorScale - 1.0 : -1.0);
+    // the rows of the copy's rotation into view space: the view's axes in its frame (impostors only: per vertex, the
+    // spheres' vertex stage is what far views cost)
+    if (lodImpostor) {
+        mat3 m = mat3(uModelView) * mat3(transform);
+        vImpostorX = vec4(normalize(vec3(m[0][0], m[1][0], m[2][0])), -lodImpostorScale - 1.0);
         vImpostorY = vec4(normalize(vec3(m[0][1], m[1][1], m[2][1])), lodImpostorShare);
-        if (lodImpostor) vSphere.w = lodImpostorSphere.w * uModelScale;
+        vSphere.w = lodImpostorSphere.w * uModelScale;
+    } else {
+        vImpostorX = vec4(0.0, 0.0, 0.0, -1.0);
+        vImpostorY = vec4(0.0, 0.0, 0.0, lodImpostorShare);
     }
 #endif
 `;
@@ -121,13 +134,19 @@ export const lod_impostor_frag = `
         return vec3((rest - y * 512.0) * 8.0, y * 8.0, 8.0 * exp2(t));
     }
 
-    // coverage and front height (Å along the frame's direction) of frame \`frame\` at its plane coordinates \`uv\` (0 to 1)
-    vec2 impostorRead(const in vec3 entry, const in vec2 frame, vec2 uv, const in float radius) {
-        if (uv.x < 0.0 || uv.y < 0.0 || uv.x > 1.0 || uv.y > 1.0) return vec2(0.0, -radius);
+    // coverage, front height (Å along the frame's direction) and the front's normal's x, y in the frame, of frame
+    // \`frame\` at its plane coordinates \`uv\` (0 to 1)
+    vec4 impostorRead(const in vec3 entry, const in vec2 frame, vec2 uv, const in float radius) {
+        if (uv.x < 0.0 || uv.y < 0.0 || uv.x > 1.0 || uv.y > 1.0) return vec4(0.0, -radius, 0.0, 0.0);
         float tile = entry.z;
         uv = clamp(uv, 0.5 / tile, 1.0 - 0.5 / tile);
         vec4 s = texture2D(tImpostor, (entry.xy + (frame + uv) * tile) / uImpostorTexDim);
-        return vec2(s.r, (s.g * 2.0 - 1.0) * radius);
+        return vec4(s.r, (s.g * 2.0 - 1.0) * radius, s.ba * 2.0 - 1.0);
+    }
+
+    // a view's normal (x, y in its frame, z toward the camera) in the copy's frame
+    vec3 impostorNormal(const in vec2 n, const in vec3 d, const in vec3 right, const in vec3 up) {
+        return n.x * right + n.y * up + sqrt(max(1.0 - dot(n, n), 0.0)) * d;
     }
 
     // where the ray (\`o\` + t \`r\`, in the copy's frame from its center) meets the plane of frame \`frame\`, in its uv
@@ -170,9 +189,9 @@ export const lod_impostor_frag = `
         vec2 uv0 = impostorPlane(f0, o, r, radius, d0, r0, u0);
         vec2 uv1 = impostorPlane(f1, o, r, radius, d1, r1, u1);
         vec2 uv2 = impostorPlane(f2, o, r, radius, d2, r2, u2);
-        vec2 s0 = impostorRead(entry, f0, uv0, radius);
-        vec2 s1 = impostorRead(entry, f1, uv1, radius);
-        vec2 s2 = impostorRead(entry, f2, uv2, radius);
+        vec4 s0 = impostorRead(entry, f0, uv0, radius);
+        vec4 s1 = impostorRead(entry, f1, uv1, radius);
+        vec4 s2 = impostorRead(entry, f2, uv2, radius);
         vec3 coverage = vec3(s0.x, s1.x, s2.x) * weight;
         float c = coverage.x + coverage.y + coverage.z;
         if (c < 0.35) return false;
@@ -184,16 +203,8 @@ export const lod_impostor_frag = `
         modelPos = (uInvView * vec4(cameraPos, 1.0)).xyz;
         fragmentDepth = calcDepth(cameraPos);
 
-        // the normal from the height's slope in the nearest view, into view space
-        vec2 fn = f0; vec2 uvn = uv0; vec3 dn = d0; vec3 rn = r0; vec3 un = u0;
-        if (weight.y > weight.x && weight.y >= weight.z) { fn = f1; uvn = uv1; dn = d1; rn = r1; un = u1; }
-        else if (weight.z > weight.x && weight.z > weight.y) { fn = f2; uvn = uv2; dn = d2; rn = r2; un = u2; }
-        float e = 1.0 / entry.z;
-        float hx = impostorRead(entry, fn, uvn + vec2(e, 0.0), radius).y - impostorRead(entry, fn, uvn - vec2(e, 0.0), radius).y;
-        float hy = impostorRead(entry, fn, uvn + vec2(0.0, e), radius).y - impostorRead(entry, fn, uvn - vec2(0.0, e), radius).y;
-        float span = 2.0 * e * 2.0 * radius;
-        vec3 n = normalize(vec3(-hx / span, -hy / span, 1.0));
-        vec3 nObject = n.x * rn + n.y * un + n.z * dn;
+        // the views' normals blended as their heights, into view space
+        vec3 nObject = coverage.x * impostorNormal(s0.zw, d0, r0, u0) + coverage.y * impostorNormal(s1.zw, d1, r1, u1) + coverage.z * impostorNormal(s2.zw, d2, r2, u2);
         cameraNormal = normalize(vec3(dot(nObject, X), dot(nObject, Y), dot(nObject, Z)));
         // far away flat: the normal toward the camera (\`lodImpostorShare\` 1 + flatness)
         cameraNormal = normalize(mix(cameraNormal, -normalize(cameraPos), clamp(vImpostorY.w - 1.0, 0.0, 1.0)));
