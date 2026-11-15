@@ -100,7 +100,10 @@ export interface SliceWindow {
   readonly width: number;
   readonly height: number;
   readonly ring: SliceRing;
-  readonly texture: Texture;
+  /** its texture; made again by the next `show` once released (`release`) */
+  texture: Texture;
+  /** its texture freed (a slice hidden a while): `show` makes it again */
+  released: boolean;
   readonly layout: PlaneLayout;
   /** the indices in the window not copied yet */
   readonly pending: Set<number>;
@@ -120,6 +123,9 @@ export interface SliceWindow {
  */
 export const SliceWindowBudget = 128 * 1024 * 1024;
 const SliceWindowMinDepth = 4;
+
+/** A hidden slice's window is freed after this long hidden (ms), made again when shown */
+export const SliceWindowHiddenMs = 5000;
 
 /** Time spent copying pending planes per idle callback (ms) */
 export const SliceWindowFillMs = 4;
@@ -161,8 +167,6 @@ export namespace SliceWindow {
     const layout = planeLayout(grid, axis);
     const { width, height, count } = layout;
     const ring = SliceRing.create(count, getDepth(width * height, count));
-    const texture = graphics.resources.texture('volume-float32', 'r', 'float', 'nearest');
-    texture.define(width, height, ring.depth);
     return {
       graphics,
       grid,
@@ -170,7 +174,8 @@ export namespace SliceWindow {
       width,
       height,
       ring,
-      texture,
+      texture: createTexture(graphics, width, height, ring.depth),
+      released: false,
       layout,
       pending: new Set(),
       shown: -1,
@@ -186,7 +191,7 @@ export namespace SliceWindow {
       window.graphics === graphics &&
       window.grid.cells === grid.cells &&
       window.axis === axis &&
-      graphics.resources.ownsTexture(window.texture)
+      (window.released || graphics.resources.ownsTexture(window.texture))
     );
   }
 
@@ -195,6 +200,10 @@ export namespace SliceWindow {
    * time (`fill`); the layer holding it
    */
   export function show(window: SliceWindow, index: number) {
+    if (window.released) {
+      window.texture = createTexture(window.graphics, window.width, window.height, window.ring.depth);
+      window.released = false;
+    }
     const { ring, pending } = window;
     const entered = SliceRing.move(ring, index);
     if (entered.length) {
@@ -263,10 +272,27 @@ export namespace SliceWindow {
     window.copies += 1;
   }
 
+  /** Frees the texture (a slice hidden a while), the window emptied: the next `show` makes it again */
+  export function release(window: SliceWindow) {
+    if (window.released) return;
+    clearTimeout(window.timer);
+    window.timer = undefined;
+    window.pending.clear();
+    SliceRing.reset(window.ring);
+    window.texture.destroy();
+    window.released = true;
+  }
+
   export function destroy(window: SliceWindow) {
     clearTimeout(window.timer);
     window.timer = undefined;
     window.pending.clear();
     window.texture.destroy();
   }
+}
+
+function createTexture(graphics: GraphicsContext, width: number, height: number, depth: number) {
+  const texture = graphics.resources.texture('volume-float32', 'r', 'float', 'nearest');
+  texture.define(width, height, depth);
+  return texture;
 }

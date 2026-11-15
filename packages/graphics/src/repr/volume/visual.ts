@@ -130,6 +130,8 @@ interface VolumeVisualBuilder<P extends VolumeParams, G extends Geometry> {
     graphics: GraphicsContext | undefined,
   ) => boolean;
   mustRecreate?: (volumeKey: VolumeKey, props: PD.Values<P>) => boolean;
+  /** The visual shown or hidden (e.g. a slice frees its window of planes once hidden a while) */
+  setVisibility?: (geometry: G, visible: boolean) => void;
   dispose?: (geometry: G) => void;
 }
 
@@ -479,6 +481,7 @@ export function VolumeVisual<G extends Geometry, P extends VolumeParams & Geomet
     },
     setVisibility(visible: boolean) {
       Visual.setVisibility(renderObject, visible);
+      if (geometry) builder.setVisibility?.(geometry, visible);
     },
     setPickable(pickable: boolean) {
       Visual.setPickable(renderObject, pickable);

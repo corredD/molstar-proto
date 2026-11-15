@@ -35,7 +35,7 @@ import { Tensor } from '@molstar/core/math/linear-algebra/tensor';
 import { ValueCell } from '@molstar/core/util/value-cell';
 import type { GraphicsContext } from '@molstar/graphics/gl/context';
 import { VolumeValueColorTheme, getVolumeValueDomain } from '@molstar/graphics/theme/color/volume-value';
-import { type SliceAxis, SliceWindow } from './slice-window.js';
+import { type SliceAxis, SliceWindow, SliceWindowHiddenMs } from './slice-window.js';
 
 export const SliceParams = {
   ...Image.Params,
@@ -218,6 +218,8 @@ function getGridSlicePlacement(volume: Volume, props: SliceProps, corners: Float
 
 type SliceWindowState = {
   window: SliceWindow;
+  /** the release of a hidden slice's window, pending (`SliceWindowHiddenMs`) */
+  hidden?: ReturnType<typeof setTimeout>;
   /** the slice drawn, read by the mapping (picking, marking) */
   info: ReturnType<typeof getSliceInfo>;
 };
@@ -227,10 +229,37 @@ function getSliceWindowState(image: Image) {
   return image.meta.sliceWindow as SliceWindowState | undefined;
 }
 
+/**
+ * A slice hidden: its window freed after `SliceWindowHiddenMs` (also a slice made hidden, never shown); shown: made
+ * again at the slice drawn (its plane at once, the rest in idle time), a redraw asked for
+ */
+function setSliceWindowVisibility(image: Image, visible: boolean) {
+  const state = getSliceWindowState(image);
+  if (!state) return;
+  clearTimeout(state.hidden);
+  state.hidden = undefined;
+  const { window } = state;
+  if (!visible) {
+    if (!window.released) state.hidden = setTimeout(() => SliceWindow.release(window), SliceWindowHiddenMs);
+    return;
+  }
+  if (!window.released) return;
+  const index = getSliceIndex(state.info, window.axis);
+  ValueCell.update(image.sliceLayer, SliceWindow.show(window, index));
+  ValueCell.updateIfChanged(image.sliceTexture, window.texture);
+  // the canvas draws again once this settles
+  window.graphics.resources.pending.track(Promise.resolve(), 'slice window made again');
+}
+
+function getSliceIndex(info: SliceWindowState['info'], axis: SliceAxis) {
+  return axis === 0 ? info.x0 : axis === 1 ? info.y0 : info.z0;
+}
+
 /** Drawn on the CPU again: the window freed */
 function releaseSliceWindow(image: Image) {
   const state = getSliceWindowState(image);
   if (!state) return;
+  clearTimeout(state.hidden);
   SliceWindow.destroy(state.window);
   image.meta.sliceWindow = undefined;
   Image.setSliceWindow(image, undefined);
@@ -1105,9 +1134,13 @@ export function SliceVisual(materialId: number): VolumeVisual<SliceParams> {
       },
       updateGeometry: updateGridWindowImage,
       geometryUtils: Image.Utils,
+      setVisibility: setSliceWindowVisibility,
       dispose: (image: Image | undefined) => {
         const state = image && getSliceWindowState(image);
-        if (state) SliceWindow.destroy(state.window);
+        if (state) {
+          clearTimeout(state.hidden);
+          SliceWindow.destroy(state.window);
+        }
       },
     },
     materialId,

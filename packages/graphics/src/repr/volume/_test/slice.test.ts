@@ -4,7 +4,7 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { OrderedSet, Interval } from '@molstar/core/data/int';
 import { Grid, Volume } from '@molstar/model/model/volume';
 import { Mat4, Tensor, Vec3 } from '@molstar/core/math/linear-algebra';
@@ -32,7 +32,7 @@ import {
 } from '../slice.js';
 import { createPeriodicVolume } from '../util.js';
 import { SliceVisual } from '../slice.js';
-import { SliceWindowDepth } from '../slice-window.js';
+import { SliceWindowDepth, SliceWindowHiddenMs } from '../slice-window.js';
 import { createNullTexture, type Texture } from '@molstar/graphics/gl/texture';
 import type { GraphicsContext } from '@molstar/graphics/gl/context';
 import type { TextureImage } from '@molstar/graphics/gl/renderable/util';
@@ -645,6 +645,7 @@ function stubGraphics(texture3d = true) {
     capabilities: { texture3d },
     resources: {
       limits: { max3dTextureSize: 2048 },
+      pending: { track: <T>(p: Promise<T>) => p },
       ownsTexture: (t: Texture) => owned.has(t),
       texture: () => {
         const t = {
@@ -897,6 +898,36 @@ describe('a slice visual moved within its window', () => {
     await update({ dimension: { name: 'z', params: 101 } });
     expect(values.markerStatus.ref.value).toBe(0);
     expect(Array.from(values.tMarker.ref.value.array as Uint8Array).every((m) => m === 0)).toBe(true);
+  });
+
+  it('hidden a while, its window is freed; shown again, made again at the slice drawn', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      const { visual, owned, textures } = await setup(uniformTheme());
+      const values = visual.renderObject!.values as any;
+      expect(owned.size).toBe(1);
+      visual.setVisibility(false);
+      vi.advanceTimersByTime(SliceWindowHiddenMs - 1);
+      expect(owned.size).toBe(1);
+      // shown again before: kept
+      visual.setVisibility(true);
+      vi.advanceTimersByTime(SliceWindowHiddenMs * 2);
+      expect(owned.size).toBe(1);
+      visual.setVisibility(false);
+      vi.advanceTimersByTime(SliceWindowHiddenMs);
+      expect(owned.size).toBe(0);
+      visual.setVisibility(true);
+      expect(owned.size).toBe(1);
+      const texture = textures.at(-1)!;
+      expect(values.tSliceTex.ref.value).toBe(texture);
+      // the plane drawn copied at once: z 100
+      expect(texture.writes).toBeGreaterThanOrEqual(1);
+      expect(values.uSliceLayer.ref.value).toBe(100 % SliceWindowDepth);
+      visual.destroy();
+      expect(owned.size).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('destroy frees the window', async () => {
