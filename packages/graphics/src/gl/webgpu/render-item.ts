@@ -875,7 +875,8 @@ export function createWebGPURenderItem<T extends ProgramVariant>(
   /** the linear-filtered textures the programs were selected for (`getLinearTextures`), see `update` */
   let boundLinearTextures = getLinearTextures();
   // the textures owned outside the items (kind 'texture') by index: set to another texture object, rebound at the next
-  // draw without an update (a slice's switch between its binned and full planes on a timer, repr/volume/slice.ts)
+  // draw without an update (a slice's switch between its binned and full planes on a timer, repr/volume/slice.ts);
+  // not the material textures (compute items, updated by `update`)
   const externalTextures: number[] = [];
   for (let i = 0, il = textures.length; i < il; ++i) {
     const spec = schema[textures[i][0]];
@@ -1198,6 +1199,7 @@ export function createWebGPURenderItem<T extends ProgramVariant>(
 
     renderFullscreen: (variant: T, define: string, globals: GlobalBindings) => {
       if (drawCount === 0 || instanceCount === 0 || !layersFit) return false;
+      if (externalTextures.length) refreshExternalTextures();
       const gpuGlobals = asWebGPUGlobalBindings(globals);
       const program = getWebGPUProgram(variant, define);
       if (!program) return false;
