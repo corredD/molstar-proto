@@ -39,7 +39,22 @@ async function viewer(list = TestTargetList, type = 'target') {
   return v;
 }
 
-type Params = { type: { params: { structure: { lodImpostor?: boolean } } } };
+type Params = {
+  type: {
+    params: {
+      structure: {
+        lodImpostor?: boolean;
+        lodImpostorBy?: string;
+        lodImpostorPixels?: number;
+        lodImpostorDistance?: number;
+      };
+    };
+  };
+};
+const structures = (v: PrismViewer) =>
+  v.plugin.managers.particles.hierarchy.current.lists[0].representations.map(
+    (r) => (r.cell.transform.params as Params).type.params.structure,
+  );
 const impostors = (v: PrismViewer) =>
   v.plugin.managers.particles.hierarchy.current.lists[0].representations.map(
     (r) => (r.cell.transform.params as Params).type.params.structure.lodImpostor,
@@ -72,5 +87,32 @@ describe('far proteins as silhouettes or spheres (mesoscale.impostors)', () => {
   it('says so where nothing is drawn by its structures (a spacefill)', async () => {
     const v = await viewer(TestParticleList, 'spacefill');
     expect(await v.api.run('mesoscale.impostors', { on: false })).toMatchObject({ ok: false, code: 'not-found' });
+  });
+
+  it('switches by size on screen or distance, its threshold, one step each; the graphics state says so', async () => {
+    const v = await viewer();
+    const list = v.plugin.managers.particles.hierarchy.current.lists[0].cell.transform.ref;
+    expect(v.api.mesoscale!.graphicsState(list).value?.impostorSwitch).toMatchObject({
+      by: 'size',
+      pixels: 12,
+      distance: 0,
+    });
+    const before = steps(v);
+    expectOk(await v.api.run('mesoscale.impostors', { particles: list, by: 'distance', distance: 5000 }));
+    expect(steps(v)).toBe(before + 1);
+    for (const s of structures(v)) {
+      expect(s).toMatchObject({ lodImpostor: true, lodImpostorBy: 'distance', lodImpostorDistance: 5000 });
+    }
+    expect(v.api.mesoscale!.graphicsState(list).value?.impostorSwitch).toMatchObject({
+      by: 'distance',
+      pixels: 12,
+      distance: 5000,
+    });
+    expectOk(await v.api.run('mesoscale.impostors', { particles: list, by: 'size', pixels: 24 }));
+    for (const s of structures(v)) expect(s).toMatchObject({ lodImpostorBy: 'size', lodImpostorPixels: 24 });
+    expectOk(await v.api.run('history.undo', {}));
+    for (const s of structures(v)) expect(s).toMatchObject({ lodImpostorBy: 'distance', lodImpostorDistance: 5000 });
+    // out of range
+    expect(await v.api.run('mesoscale.impostors', { particles: list, pixels: 1000 })).toMatchObject({ ok: false });
   });
 });

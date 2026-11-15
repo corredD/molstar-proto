@@ -63,7 +63,7 @@ const FarChoices = [
  * or spheres (a model drawn by its structures), and its wiggle and tumble when it moves (`motion`: a structure, a
  * particle list; not a volume). Each acts on that object alone.
  */
-export function ObjectGraphics(props: { area: MesoscaleApi; object: string; motion: boolean }) {
+export function ObjectGraphics(props: { area: MesoscaleApi; object: string; motion: boolean; api?: ViewerApi }) {
   const graphics = props.area.graphicsState(props.object);
   return (
     <div class={classes.stack}>
@@ -75,15 +75,110 @@ export function ObjectGraphics(props: { area: MesoscaleApi; object: string; moti
       />
       <Show when={mapState(graphics, (g) => g?.impostors !== undefined)}>
         {() => (
-          <Choices
-            label="Far proteins"
-            choices={FarChoices}
-            active={mapState(graphics, (g) => (g?.impostors === false ? 'spheres' : 'silhouettes'))}
-            onPick={(id) => void props.area.impostors({ on: id === 'silhouettes', particles: props.object } as never)}
-          />
+          <div class={classes.tight}>
+            <Choices
+              label="Far proteins"
+              choices={FarChoices}
+              active={mapState(graphics, (g) => (g?.impostors === false ? 'spheres' : 'silhouettes'))}
+              onPick={(id) => void props.area.impostors({ on: id === 'silhouettes', particles: props.object } as never)}
+            />
+            {/* where they start, while they are silhouettes (Ludo, 2026-11-15) */}
+            <Show when={mapState(graphics, (g) => !!props.api && g?.impostors === true)}>
+              {() => <FarSwitch area={props.area} api={props.api!} object={props.object} graphics={graphics} />}
+            </Show>
+          </div>
         )}
       </Show>
       {props.motion ? <MotionRows area={props.area} graphics={graphics} of={{ object: props.object }} /> : null}
+    </div>
+  );
+}
+
+/** Where the silhouettes start (`mesoscale.impostors` by, pixels, distance; lod-impostor.md) */
+const SwitchChoices = [
+  { id: 'size', label: 'Size on screen' },
+  { id: 'distance', label: 'Distance' },
+];
+
+/** The impostors' distance by default, in the model's radii (`ImpostorAutoDistance` of the particle targets) */
+const AutoDistance = 2.6;
+
+/**
+ * Where a model's far proteins turn into silhouettes, shown while they do: by each protein's size on screen (below N
+ * pixels) or its distance from the eye (beyond D); a slider live while dragged (previews), one step on release
+ */
+function FarSwitch(props: {
+  area: MesoscaleApi;
+  api: ViewerApi;
+  object: string;
+  graphics: ReadonlyState<GraphicsInfo | undefined>;
+}) {
+  const sw = mapState(props.graphics, (g) => g?.impostorSwitch);
+  const overlaid = observableState(0);
+  const steps = gestureSteps<{ pixels?: number; distance?: number }>(props.api, {
+    label: 'Where the silhouettes start',
+    apply: (g, _key, change) => g.run('mesoscale.impostors', { particles: props.object, ...change }),
+    changed: () => overlaid.set(overlaid.value + 1),
+  });
+  onCleanup(() => steps.settle());
+  const shown = derive([sw, overlaid.asReadonly] as const, (s) => {
+    const o = steps.overlay('switch');
+    const radius = s?.radius ?? 0;
+    return {
+      by: s?.by ?? 'size',
+      pixels: o?.pixels ?? s?.pixels ?? 12,
+      distance: o?.distance ?? (s?.distance || radius * AutoDistance),
+      radius,
+    };
+  });
+  const change = (patch: { pixels?: number; distance?: number }, end: boolean) => {
+    steps.change('switch', patch);
+    if (end) steps.settle();
+  };
+  return (
+    <div class={classes.tight}>
+      <Choices
+        label="Switch by"
+        choices={SwitchChoices}
+        active={mapState(shown, (s) => s.by)}
+        onPick={(id) => void props.area.impostors({ by: id as 'size' | 'distance', particles: props.object } as never)}
+      />
+      <Show when={mapState(shown, (s) => s.by === 'size')}>
+        {() => (
+          <div class={classes.line}>
+            <div class={classes.label}>Below</div>
+            <Slider
+              aria-label="Silhouettes below this size on screen"
+              value={mapState(shown, (s) => s.pixels)}
+              min={4}
+              max={64}
+              step={1}
+              scale="log"
+              unit="px"
+              onPreview={(v) => change({ pixels: v }, false)}
+              onCommit={(v) => change({ pixels: v }, true)}
+            />
+          </div>
+        )}
+      </Show>
+      <Show when={mapState(shown, (s) => s.by === 'distance' && s.radius > 0)}>
+        {() => (
+          <div class={classes.line}>
+            <div class={classes.label}>Beyond</div>
+            <Slider
+              aria-label="Silhouettes beyond this distance"
+              value={mapState(shown, (s) => s.distance)}
+              min={mapState(shown, (s) => Math.max(1, Math.round(s.radius / 10)))}
+              max={mapState(shown, (s) => Math.round(s.radius * 20))}
+              step={1}
+              scale="log"
+              unit="Å"
+              onPreview={(v) => change({ distance: v }, false)}
+              onCommit={(v) => change({ distance: v }, true)}
+            />
+          </div>
+        )}
+      </Show>
     </div>
   );
 }
