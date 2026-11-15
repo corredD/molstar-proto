@@ -215,6 +215,9 @@ interface Renderer {
   dispose: () => void;
 }
 
+/** The program defines of the impostors' levels (`getLodLevelDefine`): prepared with an object's own programs */
+const LodImpostorDefines = ['dLodImpostorLevel', 'dLodImpostorBand'] as const;
+
 export const RendererParams = {
   backgroundColor: PD.Color(Color(0x000000), { description: 'Background color of the 3D canvas' }),
 
@@ -2428,6 +2431,8 @@ namespace Renderer {
           dTransparentBackfaces: defines.dTransparentBackfaces,
           dXrayShaded: defines.dXrayShaded,
           dPointStyle: defines.dPointStyle,
+          // the impostors' levels' programs prepared with it (\`LodImpostorDefines\`)
+          dLodImpostor: !!defines.dLodImpostor,
           uDoubleSided: signature.doubleSided,
           hasReflection: signature.hasReflection,
           transparencyAverage: 0,
@@ -2478,7 +2483,13 @@ namespace Renderer {
       const capsDrawn = solidInteriorCapSupported && target.hasStencil;
       const request = (r: GraphicsRenderable, flag: Flag, passState: RenderState) => {
         const state = getObjectState(getObjectFacts(r), variant, flag, passState);
-        if (state) requests.push({ item: r.renderItem, variant, state, target });
+        if (!state) return;
+        requests.push({ item: r.renderItem, variant, state, target });
+        // the impostors' levels draw by programs of their own (\`MultiDrawBaseData.define\`, \`lod-impostor.md\`)
+        if ((r.values as { dLodImpostor?: ValueCell<boolean> }).dLodImpostor?.ref.value) {
+          for (const define of LodImpostorDefines)
+            requests.push({ item: r.renderItem, variant, state, target, define });
+        }
       };
       // the opaque pass with the raster on: the resolves of its objects (`renderOpaque`), drawn before the impostors
       const resolves = pass.name === 'opaque' && isSphereRasterAvailable();

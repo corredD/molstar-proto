@@ -15,13 +15,19 @@
  */
 export function lod_impostor_varyings(qualifier: 'out' | 'in') {
   return `
-#if defined(dLodImpostor)
+// the band's and the last level's programs (per draw, \`MultiDrawBaseData.define\`): the share; the last level's the axes
+#if defined(dLodImpostorLevel) || defined(dLodImpostorBand)
     #if __VERSION__ == 100
-        varying vec4 vImpostorX;
         varying vec4 vImpostorY;
     #else
-        flat ${qualifier} vec4 vImpostorX;
         flat ${qualifier} vec4 vImpostorY;
+    #endif
+#endif
+#if defined(dLodImpostorLevel)
+    #if __VERSION__ == 100
+        varying vec4 vImpostorX;
+    #else
+        flat ${qualifier} vec4 vImpostorX;
     #endif
 #endif
 `;
@@ -34,16 +40,21 @@ export function lod_impostor_varyings(qualifier: 'out' | 'in') {
  * the copy's sphere read per vertex costs where the spheres are many)
  */
 export const assign_lod_impostor = `
-#if defined(dLodImpostor)
+#if defined(dLodImpostorLevel) || defined(dLodImpostorBand)
     // octaves of distance beyond the band over which the impostors' shading flattens to their color (Goodsell's look)
     const float ImpostorFlatOctaves = 1.0;
-    #if defined(dSegmented)
-        float lodImpostorScale = uLodLevel == 0 ? aSegmentLod.x : (uLodLevel == 1 ? aSegmentLod.y : (uLodLevel == 2 ? aSegmentLod.z : aSegmentLod.w));
+    #if defined(dLodImpostorLevel)
+        #if defined(dSegmented)
+            float lodImpostorScale = uLodLevel == 0 ? aSegmentLod.x : (uLodLevel == 1 ? aSegmentLod.y : (uLodLevel == 2 ? aSegmentLod.z : aSegmentLod.w));
+        #else
+            float lodImpostorScale = uLod.w;
+        #endif
+        // also at a model scale (XR), where one level an object is drawn (\`cullSimple\`), far away the impostors'
+        bool lodImpostor = uLod.w != 0.0 && lodImpostorScale < 0.0;
     #else
-        float lodImpostorScale = uLod.w;
+        // the band's program: the last spheres
+        const bool lodImpostor = false;
     #endif
-    // also at a model scale (XR), where one level an object is drawn (\`cullSimple\`), far away the impostors'
-    bool lodImpostor = uLod.w != 0.0 && lodImpostorScale < 0.0;
     float lodImpostorShare = -1.0;
     bool lodImpostorWhole = lodImpostor || (uLod.w != 0.0 && uLod.z != 0.0);
     vec4 lodImpostorSphere = vec4(0.0);
@@ -96,7 +107,9 @@ export const assign_lod_impostor_factor = `
 
 /** After the sphere's view-space center (\`mvPosition\`): the varyings */
 export const assign_lod_impostor_varyings = `
-#if defined(dLodImpostor)
+#if defined(dLodImpostorBand)
+    vImpostorY = vec4(0.0, 0.0, 0.0, lodImpostorShare);
+#elif defined(dLodImpostorLevel)
     // the rows of the copy's rotation into view space: the view's axes in its frame (impostors only: per vertex, the
     // spheres' vertex stage is what far views cost)
     if (lodImpostor) {
@@ -113,7 +126,7 @@ export const assign_lod_impostor_varyings = `
 
 /** The fragment stage's functions (\`ImpostorAtlas\`'s rule) */
 export const lod_impostor_frag = `
-#if defined(dLodImpostor)
+#if defined(dLodImpostorLevel)
     const float ImpostorViews = 9.0;
 
     vec2 impostorEncode(vec3 d) {
@@ -225,6 +238,9 @@ export const lod_impostor_frag = `
         return true;
     }
 
+#endif
+
+#if defined(dLodImpostorLevel) || defined(dLodImpostorBand)
     // the band where the last spheres and the impostors both draw: a copy's pixel the level fading in's where the
     // dither's threshold is below the share, the one fading out's elsewhere (picking: half and half, no dither)
     bool impostorDithered() {

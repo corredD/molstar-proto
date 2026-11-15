@@ -1260,6 +1260,7 @@ export function createMergedCuller(
       count: segmentCount,
       uniforms,
       indirect: { buffer: args.ref.value, byteOffset: ghostIndex * segmentCount * stride, indexed },
+      define: level?.define,
     };
   }
 
@@ -1278,6 +1279,7 @@ export function createMergedCuller(
       count: segmentCount,
       uniforms: level.uniforms,
       indirect: { buffer: args.ref.value, byteOffset: k * segmentCount * stride, indexed },
+      define: level.define,
     });
     levelLists = levels.slice(0, n).map((level, j) => list(level, j));
     lists = rasterRegions ? [...levelLists, ...levelLists.map((level, j) => list(level, n + j))] : levelLists;

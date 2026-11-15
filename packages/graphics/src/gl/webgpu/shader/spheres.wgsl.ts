@@ -306,9 +306,11 @@ fn resolveSphere(position: vec4<f32>) -> Resolved {
         // the raster tested the sphere: every one by pixel, as it drew it
         out.vClipSome = 1u;
     #endif
-    #if defined(dLodImpostor)
+    #if defined(dLodImpostorLevel)
         // a sphere (objects with impostors are not the raster's: \`isSphereRasterEligible\`)
         out.vImpostorX = vec4<f32>(0.0, 0.0, 0.0, -1.0);
+    #endif
+    #if defined(dLodImpostorLevel) || defined(dLodImpostorBand)
         out.vImpostorY = vec4<f32>(0.0, 0.0, 0.0, -1.0);
     #endif
     resolved.out = out;
@@ -487,11 +489,13 @@ fn fragmentMain(fragmentIn: VertexOutput) -> FragmentOutput {
         #else
             let clipSome = false;
         #endif
-        #if defined(dLodImpostor)
+        #if defined(dLodImpostorLevel) || defined(dLodImpostorBand)
             // the band alone dithers (-1: a sphere of no band)
             if (in.vImpostorY.w != -1.0 && impostorDithered(fragmentIn.position, in.vImpostorY)) {
                 discard;
             }
+        #endif
+        #if defined(dLodImpostorLevel)
             var h: SphereHit;
             if (in.vImpostorX.w >= 0.0) {
                 // a copy far away: its impostor (\`lod_impostor_wgsl\`)

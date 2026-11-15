@@ -57,6 +57,11 @@ export type MultiDrawBaseData = {
    * record of `IndirectRecordBytes`; first instances other than 0 need `indirectInstanceRanges` (WebGPU only)
    */
   indirect?: MultiDrawIndirect;
+  /**
+   * A boolean define the list's draws take a program of their own with (the impostors' levels, `lod-impostor.md`:
+   * `dLodImpostorLevel`, `dLodImpostorBand`); undefined: the item's program
+   */
+  define?: string;
 };
 
 /**

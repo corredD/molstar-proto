@@ -173,7 +173,7 @@ void main(void){
     vec3 cameraNormal;
     float fragmentDepth;
 
-    #if defined(dLodImpostor)
+    #if defined(dLodImpostorLevel) || defined(dLodImpostorBand)
         // the band alone dithers (-1: a sphere of no band)
         if (vImpostorY.w != -1.0 && impostorDithered()) discard;
     #endif
@@ -191,7 +191,7 @@ void main(void){
     #else
         vec3 modelPos;
         vec3 cameraPos;
-        #if defined(dLodImpostor)
+        #if defined(dLodImpostorLevel)
             // a copy far away: its impostor (\`lod_impostor_frag\`)
             bool isImpostor = vImpostorX.w >= 0.0;
             bool hit = isImpostor ? impostorHit(modelPos, cameraPos, cameraNormal, fragmentDepth) : SphereImpostor(modelPos, cameraPos, cameraNormal, interior, fragmentDepth);

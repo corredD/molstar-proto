@@ -261,6 +261,31 @@ fn rasterized(sphere: vec4<f32>, segment: u32, j: u32) -> bool {
     return r * uParams.uRasterScale <= uParams.uRasterRadius * sqrt(max(d * d - r * r, 0.0));
 }
 
+/**
+ * The levels an instance with sphere \`sphere\` of \`segment\` may draw at with impostors switched by size on screen
+ * (\`uImpostorSwitch\`, \`lod-impostor.md\`): the last spheres up to where its member's copies switch (its radius, up to
+ * the cap), the impostors from there, as \`setSegmentRanges\` on the CPU; all where off
+ */
+fn switchLevels(sphere: vec4<f32>, segment: u32) -> u32 {
+    let sw = uParams.uImpostorSwitch;
+    if (sw.w <= 0.0) {
+        return 0xffffffffu;
+    }
+    let last = u32(sw.w) - 1u;
+    let r = min(segmentData[segment * 3u].w, sw.z);
+    let d = dot(uParams.uCameraPlane.xyz, sphere.xyz) + uParams.uCameraPlane.w;
+    let spheresEnd = max(uParams.uLevels[last - 1u].x, min(uParams.uLevels[last - 1u].y, r * sw.x));
+    let impostorsStart = max(uParams.uLevels[last].x, min(r * sw.y, spheresEnd));
+    var mask = 0xffffffffu;
+    if (d - sphere.w > spheresEnd) {
+        mask &= ~(1u << (last - 1u));
+    }
+    if (d + sphere.w < impostorsStart) {
+        mask &= ~(1u << last);
+    }
+    return mask;
+}
+
 /** instance \`i\` into slot \`t\` of a region, by its index */
 fn copyInstance(i: u32, t: u32) {
     indices[t] = i;
@@ -297,7 +322,7 @@ fn main(
         }
         if (mask != 0u || ghostCell) {
             sphere = instanceSphere(instance, segment);
-            mask &= sphereLevels(sphere);
+            mask &= sphereLevels(sphere) & switchLevels(sphere, segment);
             // clipped by its center, as the vertex stage clips instances (\`clip_instance_wgsl\`)
             let centerClipped = uParams.uClipInstance != 0 && clipTest(sphere.xyz, 0);
             if (centerClipped) {

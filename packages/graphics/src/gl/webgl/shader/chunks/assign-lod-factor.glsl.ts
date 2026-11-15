@@ -24,14 +24,14 @@ if (uLod.w != 0.0 && (uLod.x != 0.0 || uLod.y != 0.0)) {
         float lodScale = uLod.w;
     #endif
     if (uModelScale != 1.0) {
-        #if defined(dLodImpostor)
+        #if defined(dLodImpostorLevel) || defined(dLodImpostorBand)
             // the impostor's radius its bounding sphere's (\`assign_lod_impostor_varyings\`)
             lodFactor = lodImpostor ? 1.0 : lodScale;
         #else
             lodFactor = lodScale;
         #endif
     } else {
-        #if defined(dLodImpostor)
+        #if defined(dLodImpostorLevel) || defined(dLodImpostorBand)
             ${impostor ? assign_lod_impostor_factor : ''}
         #else
         float d = (dot(uCameraPlane.xyz, vModelPosition) + uCameraPlane.w) / uModelScale;

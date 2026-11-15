@@ -737,6 +737,13 @@ export const LodImpostorSchema = {
    */
   uLodImpostorSwitch: ObjectUniformSpec('v4'),
   dLodImpostor: DefineSpec('boolean'),
+  /**
+   * the programs of the impostors' levels, per draw (\`MultiDrawBaseData.define\`, never set on values): the last level's
+   * (impostors, and the spheres of items without one), the band's (the last spheres, dithered); the other levels the
+   * sphere program as without impostors
+   */
+  dLodImpostorLevel: DefineSpec('boolean'),
+  dLodImpostorBand: DefineSpec('boolean'),
 } as const;
 export type LodImpostorSchema = typeof LodImpostorSchema;
 export type LodImpostorValues = Values<LodImpostorSchema>;

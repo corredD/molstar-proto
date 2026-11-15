@@ -530,6 +530,16 @@ export namespace LodView {
   }
 }
 
+/**
+ * The program define of level `j` (`MultiDrawBaseData.define`): with impostors (`lod-impostor.md`) the last level's
+ * (`dLodImpostorLevel`) and the one before's (`dLodImpostorBand`); the others none, the sphere program as without
+ */
+export function getLodLevelDefine(levels: LodLevelsValue, j: number): string | undefined {
+  if ((levels as { readonly impostor?: number }).impostor === undefined || levels.length < 2) return undefined;
+  const last = levels.length - 1;
+  return j === last ? 'dLodImpostorLevel' : j === last - 1 ? 'dLodImpostorBand' : undefined;
+}
+
 /** The minimal set of values needed to cull a (segment of a) render item. */
 export type CullValues = {
   readonly drawCount: ValueCell<number>;
@@ -899,6 +909,7 @@ export function createSegmentedMdbList(): SegmentedMdbList {
       } else {
         list[j].uniforms.length = 0;
       }
+      list[j].define = hasLodLevels ? getLodLevelDefine(lodLevels, j) : undefined;
     }
     if (uniformsNeedUpdate) {
       lodLevelsVersion = lodCell!.ref.version;

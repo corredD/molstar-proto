@@ -432,6 +432,8 @@ export namespace ImpostorAtlas {
       uImpostorTexDim: ValueCell.create(Vec2.create(1, 1)),
       uLodImpostorSwitch: ValueCell.create(Vec4.create(0, 0, 0, 0)),
       dLodImpostor: ValueCell.create(false),
+      dLodImpostorLevel: ValueCell.create(false),
+      dLodImpostorBand: ValueCell.create(false),
     };
   }
 
