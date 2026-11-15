@@ -175,7 +175,11 @@ Graphics & Motion (Ludovic, 2026-10-24: on every object, what does not apply lef
 `mesoscale.motion` with an `object` (the mesoscale extension's ops, so Prism stays as it is). Far proteins (Ludo,
 2026-11-15: "where is the button to turn off the lodImpostor?"): Silhouettes (impostors, the default) or Spheres (the
 last level of spheres), every structure target of the model in one step (`mesoscale.impostors`; `lod-impostor.md`),
-shown where the model is drawn by its structures. A mode sets, by kind:
+shown where the model is drawn by its structures. While Silhouettes (Ludo, 2026-11-15): Switch by Size on screen (each
+protein below N px across, its own bounding sphere: a ribosome and a small protein at the same apparent size; 12 px, 4
+to 64, log) or Distance (each copy beyond D Å from the eye; default 2.6 times the model's radius, where the whole model
+fits the view; the model's radius / 10 to 20 times, log); the slider live while dragged, one step on release. A mode
+sets, by kind:
 
 | Mode        | quality (structure, volume) | levels of detail (particle lists, structures), smallest sphere drawn | steps per cell (direct volume) |
 | ----------- | --------------------------- | -------------------------------------------------------------------- | ------------------------------ |
