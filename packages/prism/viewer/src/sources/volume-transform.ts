@@ -4,7 +4,7 @@
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
  */
 
-import { Mat4, type Vec3 } from '@molstar/core/math/linear-algebra';
+import { Mat4, Vec3 } from '@molstar/core/math/linear-algebra';
 import { type State, type StateObjectCell, StateSelection, StateTransform } from '@molstar/core/state';
 import { Grid, type Volume } from '@molstar/model/model/volume';
 import { PluginStateObject } from '@molstar/plugin/state/objects';
@@ -34,18 +34,26 @@ export function volumeTransformCell(state: State, volumeRef: string): StateObjec
   return state.select(StateSelection.Generators.byRef(volumeRef).subtree().withTransformer(VolumeTransform))[0];
 }
 
-/** A volume's center as loaded: what its decorator turns about */
-export function volumeCenter(data: Volume): Vec3 {
-  return Grid.getBoundingSphere(data.grid).center;
+/** A volume's pixel size over the file's (the decorator's `scale`; 1 without one, or in a session before it) */
+export function volumeScaleOf(state: State, volumeRef: string): number {
+  return (volumeTransformCell(state, volumeRef)?.transform.params as { scale?: number } | undefined)?.scale ?? 1;
 }
 
-/** The matrix of a transform param, turning about the volume's own center where it says so (as the decorator) */
-export function volumeMatrixOf(t: TransformParam, data: Volume): Mat4 {
-  return getTransformFromParams(t, volumeCenter(data));
+/** A volume's center as loaded: what its decorator turns about (times `scale`: the grid is scaled first) */
+export function volumeCenter(data: Volume, scale = 1): Vec3 {
+  return Vec3.scale(Vec3(), Grid.getBoundingSphere(data.grid).center, scale);
 }
 
-/** A volume's transform now (identity without one); `data` is the volume as loaded (the hierarchy's, before it) */
+/** The matrix of a transform param, turning about the volume's own (scaled) center where it says so (as the decorator) */
+export function volumeMatrixOf(t: TransformParam, data: Volume, scale = 1): Mat4 {
+  return getTransformFromParams(t, volumeCenter(data, scale));
+}
+
+/**
+ * A volume's move now (identity without one), its scale apart: the move is in Å of the scene, applied after the scale;
+ * `data` is the volume as loaded (the hierarchy's, before it)
+ */
 export function currentVolumeTransform(state: State, volumeRef: string, data: Volume): Mat4 {
   const t = volumeTransformCell(state, volumeRef)?.transform.params?.transform as TransformParam | undefined;
-  return t ? volumeMatrixOf(t, data) : Mat4.identity();
+  return t ? volumeMatrixOf(t, data, volumeScaleOf(state, volumeRef)) : Mat4.identity();
 }
