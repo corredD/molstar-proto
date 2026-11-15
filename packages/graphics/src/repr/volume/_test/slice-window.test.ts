@@ -5,6 +5,11 @@
  */
 
 import { describe, expect, it } from 'vitest';
+import { Mat4, Tensor } from '@molstar/core/math/linear-algebra';
+import { createNullTexture, type Texture } from '@molstar/graphics/gl/texture';
+import type { GraphicsContext } from '@molstar/graphics/gl/context';
+import type { TextureImage } from '@molstar/graphics/gl/renderable/util';
+import type { Grid } from '@molstar/model/model/volume';
 import { SliceRing, SliceWindow, SliceWindowBudget, SliceWindowDepth } from '../slice-window.js';
 
 describe('SliceRing', () => {
@@ -92,5 +97,68 @@ describe('SliceWindow memory', () => {
     expect(SliceWindow.getDepth(2048 * 2048, 5)).toBe(5);
     expect(SliceWindow.getDepth(8192 * 8192, 500)).toBe(0);
     expect(SliceWindowBudget).toBe(128 * 1024 * 1024);
+  });
+});
+
+describe('SliceWindow tiled (a plane wider or taller than the 3d texture limit: a tilt series of 3000²)', () => {
+  function stub(max3d: number) {
+    const textures: { data: Float32Array; w: number; h: number; d: number }[] = [];
+    const graphics = {
+      capabilities: { texture3d: true },
+      resources: {
+        limits: { max3dTextureSize: max3d },
+        ownsTexture: () => true,
+        texture: () => {
+          const t = { data: new Float32Array(0), w: 0, h: 0, d: 0 };
+          textures.push(t);
+          return {
+            ...createNullTexture(),
+            define(w: number, h: number, d = 1) {
+              Object.assign(t, { w, h, d, data: new Float32Array(w * h * d) });
+            },
+            loadLayer(image: TextureImage<Float32Array>, layer: number) {
+              if (image.width !== t.w || image.height !== t.h || layer >= t.d) throw new Error('outside');
+              t.data.set(image.array, layer * t.w * t.h);
+            },
+          } as Texture;
+        },
+      },
+    } as unknown as GraphicsContext;
+    return { graphics, textures };
+  }
+  function grid(dims: [number, number, number]): Grid {
+    const space = Tensor.Space(dims, [2, 1, 0], Float32Array);
+    const data = space.create();
+    for (let i = 0; i < data.length; ++i) data[i] = i;
+    return {
+      transform: { kind: 'matrix', matrix: Mat4.identity() },
+      cells: Tensor.create(space, data),
+      stats: { min: 0, max: data.length - 1, mean: 0, sigma: 1 },
+    };
+  }
+
+  it('supported where a tile fits; each layer a tile, the tiles holding the plane', () => {
+    const g = grid([7, 5, 10]);
+    const { graphics, textures } = stub(4);
+    expect(SliceWindow.isSupported(graphics, g, 2)).toBe(true);
+    const window = SliceWindow.create(graphics, g, 2);
+    // 7 × 5 in tiles of at most 4: 2 × 2 tiles of 4 × 3
+    expect(window.tiles).toEqual([4, 3, 2, 2]);
+    const layer = SliceWindow.show(window, 6);
+    const t = textures[0];
+    expect([t.w, t.h, t.d]).toEqual([4, 3, window.ring.depth * 4]);
+    const plane = SliceWindow.getPlane(window, 6);
+    for (let row = 0; row < 5; ++row) {
+      for (let column = 0; column < 7; ++column) {
+        const tile = Math.floor(row / 3) * 2 + Math.floor(column / 4);
+        const at = (layer * 4 + tile) * 12 + (row % 3) * 4 + (column % 4);
+        expect(t.data[at], `${row} ${column}`).toBe(plane[row * 7 + column]);
+      }
+    }
+  });
+
+  it('a plane of 36 MB (3000² floats) gets the planes the budget holds, at least one', () => {
+    expect(SliceWindow.getDepth(3000 * 3000, 41)).toBe(3);
+    expect(SliceWindow.getDepth(6000 * 6000, 41)).toBe(0);
   });
 });
