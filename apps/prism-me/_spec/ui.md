@@ -688,7 +688,9 @@ still completes its distance.
   copy stands along the normal, so its Spin turns the helix; the helix pokes out of the plane by its Radius) or Normal
   (its axis the plane's normal through the source; Direction up or down it); Radius, Pitch, Count and Turns as in space,
   live on the last grow. The grow keeps the slice (a session too). `slice` (the volume; empty: none), `slicePoint`,
-  `sliceNormal`: plain params, the assistant's and ⌘K's.
+  `sliceNormal`, and a helix's `sliceAxis` (along, normal): plain params, the assistant's and ⌘K's. A helix from a
+  source off the slice is refused as every grow on it; fitted, its copies off the plane are fitted in space. Its first
+  copy is a Radius from the source (the source on its axis); it is not bounded by the volume's box.
 - Models decorated too (2026-10-23, Ludovic: "why can't we change the target in Simularium"): a model (a list with
   entities: Simularium, cellPACK, PetWorld) has the Decoration section, so each of its targets (an agent, an entity) can
   be drawn as another object of the scene. A particle list's own shape (a Simularium simulation box) is not listed as a
