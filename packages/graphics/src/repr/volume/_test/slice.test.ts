@@ -678,6 +678,8 @@ describe('grid slice from a window of its planes (slice-window.ts)', () => {
   const volumes: [string, () => Volume][] = [
     ['x fastest', () => gridVolume([5, 4, 40], [2, 1, 0], Skewed)],
     ['z fastest', () => gridVolume([40, 3, 5], [0, 1, 2], Skewed)],
+    // a map read from a file (MRC): periodic, one tile, drawn in its tile's grid
+    ['periodic, one tile', () => gridVolume([5, 4, 40], [2, 1, 0], Scaled, { tiles: [[1, 0, 0]] })],
   ];
   const dimensions = ['x', 'y', 'z'] as const;
 
@@ -713,6 +715,10 @@ describe('grid slice from a window of its planes (slice-window.ts)', () => {
               expect((plane[k] - min) / (max - min), `${at} pixel ${k}`).toBeCloseTo(ref.valueArray[k], 5);
             }
             expect(image.groupTexture.ref.value.array, at).toEqual(ref.groupArray);
+            // where the CPU path draws it
+            const cpu = await createImage({} as any, volume, 0, theme, props);
+            expect(Array.from(image.cornerBuffer.ref.value), at).toEqual(Array.from(cpu.cornerBuffer.ref.value));
+            expect(image.boundingSphere.radius, at).toBeCloseTo(cpu.boundingSphere.radius, 4);
             const mapping = image.meta.mapping as { instance: Int16Array; cell: Uint32Array; index: IndexLike };
             expect(mapping.cell, at).toEqual(ref.mapping.cell);
             expectSameIndex(mapping.index, ref.mapping.index, keysOf(volume));
@@ -741,11 +747,16 @@ describe('grid slice from a window of its planes (slice-window.ts)', () => {
       ...strided,
       grid: { ...strided.grid, cells: { ...strided.grid.cells, space: { ...strided.grid.cells.space } } },
     };
-    const periodic = gridVolume([3, 4, 2], [2, 1, 0], Scaled, { tiles: [[0, 0, 0]] });
+    const periodic = gridVolume([3, 4, 2], [2, 1, 0], Scaled, {
+      tiles: [
+        [0, 0, 0],
+        [1, 0, 0],
+      ],
+    });
     const grid = sliceProps({ mode: 'grid', dimension: { name: 'z', params: 1 } });
     const cases: [string, Volume, Theme, SliceProps, boolean][] = [
       ['position theme', strided, positionBitsTheme(), grid, true],
-      ['periodic', periodic, uniformTheme(), grid, true],
+      ['periodic, two tiles', periodic, uniformTheme(), grid, true],
       ['no strides', noStrides, uniformTheme(), grid, true],
       ['no 3d textures', strided, uniformTheme(), grid, false],
       ['plane', strided, uniformTheme(), sliceProps({ mode: 'plane' }), true],

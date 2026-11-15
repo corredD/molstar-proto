@@ -141,11 +141,11 @@ export namespace SliceWindow {
     return window;
   }
 
-  /** Whether `window` holds `grid`'s planes along `axis` in a texture of `graphics` */
+  /** Whether `window` holds the planes of `grid`'s cells along `axis` in a texture of `graphics` */
   export function matches(window: SliceWindow, graphics: GraphicsContext, grid: Grid, axis: SliceAxis) {
     return (
       window.graphics === graphics &&
-      window.grid === grid &&
+      window.grid.cells === grid.cells &&
       window.axis === axis &&
       graphics.resources.ownsTexture(window.texture)
     );

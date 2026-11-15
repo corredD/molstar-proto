@@ -30,7 +30,7 @@ import { assertUnreachable } from '@molstar/core/util/type-helpers';
 import { OrderedSet } from '@molstar/core/data/int/ordered-set';
 import { Interval } from '@molstar/core/data/int/interval';
 import { VolumeVisual } from './visual.js';
-import { cantorPairing } from '@molstar/core/data/util/hash-functions';
+import { cantorPairing, invertCantorPairing } from '@molstar/core/data/util/hash-functions';
 import { Tensor } from '@molstar/core/math/linear-algebra/tensor';
 import { ValueCell } from '@molstar/core/util/value-cell';
 import type { GraphicsContext } from '@molstar/graphics/gl/context';
@@ -127,19 +127,20 @@ export async function createImage(
   props: SliceProps,
   image?: Image,
 ): Promise<Image> {
+  if (props.mode === 'grid') {
+    const domain = getSliceWindowDomain(volume, theme);
+    const axis = getSliceAxis(props);
+    const windowed = getSliceWindowVolume(volume);
+    if (domain && windowed && SliceWindow.isSupported(ctx.graphics, windowed.grid, axis)) {
+      return createGridWindowImage(ctx.graphics!, windowed, props, axis, domain, image);
+    }
+  }
+  if (image) releaseSliceWindow(image);
   const periodicRange = Volume.getPeriodicRange(volume);
   if (periodicRange) {
     const { min, max } = periodicRange;
     volume = createPeriodicVolume(volume, min, max);
   }
-  if (props.mode === 'grid') {
-    const domain = getSliceWindowDomain(volume, theme);
-    const axis = getSliceAxis(props);
-    if (domain && !Volume.isPeriodic(volume) && SliceWindow.isSupported(ctx.graphics, volume.grid, axis)) {
-      return createGridWindowImage(ctx.graphics!, volume, props, axis, domain, image);
-    }
-  }
-  if (image) releaseSliceWindow(image);
   switch (props.mode) {
     case 'frame':
       return createFrameImage(ctx, volume, key, theme, props, image);
@@ -169,6 +170,20 @@ export function getSliceWindowDomain(volume: Volume, theme: Theme): [number, num
     const domain = getVolumeValueDomain(volume, color.props as Parameters<typeof getVolumeValueDomain>[1]);
     return domain[1] > domain[0] ? domain : undefined;
   }
+}
+
+/**
+ * The volume a window's slice is drawn in: the volume, or a periodic one's single tile (a map's unit cell, as MRC files
+ * are read): its grid where the CPU path draws it (`createPeriodicVolume`), its own cells (read by strides, the tile's
+ * cells are the volume's); undefined for a periodic volume of several tiles (its cells by instance: the CPU path)
+ */
+function getSliceWindowVolume(volume: Volume): Volume | undefined {
+  const range = Volume.getPeriodicRange(volume);
+  if (!range) return volume;
+  const { min, max } = range;
+  if (volume.instances.length !== 1 || max[0] - min[0] !== 1 || max[1] - min[1] !== 1 || max[2] - min[2] !== 1) return;
+  const tile = createPeriodicVolume(volume, min, max);
+  return { ...tile, grid: { ...tile.grid, periodicity: undefined, cells: volume.grid.cells } } as Volume;
 }
 
 function getSliceAxis(props: SliceProps): SliceAxis {
@@ -218,10 +233,13 @@ function releaseSliceWindow(image: Image) {
  * The mapping of a window's image: each pixel a cell of the slice drawn (`state.info`), the cells computed on first
  * read after a move (a pick, a mark), not on every step
  */
-function sliceWindowMapping(space: Tensor.Space, state: SliceWindowState): SampledImageMapping {
+function sliceWindowMapping(space: Tensor.Space, state: SliceWindowState, isPeriodic: boolean): SampledImageMapping {
   const { width, height } = state.window;
   const count = width * height;
-  const instance = new Int16Array(count).fill(-1);
+  // a periodic volume's single tile: its instance 0, the index by instance and cell (`eachSlice`)
+  const instance = new Int16Array(count).fill(isPeriodic ? 0 : -1);
+  const index = gridSliceIndex(space, () => state.info);
+  const pair: [number, number] = [0, 0];
   let cell: Uint32Array | undefined;
   let cellInfo: SliceWindowState['info'] | undefined;
   return {
@@ -240,7 +258,15 @@ function sliceWindowMapping(space: Tensor.Space, state: SliceWindowState): Sampl
       }
       return cell;
     },
-    index: gridSliceIndex(space, () => state.info),
+    index: isPeriodic
+      ? {
+          get(key: number) {
+            if (!Number.isInteger(key) || key < 0) return;
+            const [i, cell] = invertCantorPairing(pair, key);
+            return i === 0 ? index.get(cell) : undefined;
+          },
+        }
+      : index,
   };
 }
 
@@ -299,7 +325,7 @@ function createGridWindowImage(
   } else {
     const fresh: SliceWindowState = { window, info };
     im.meta.sliceWindow = fresh;
-    im.meta.mapping = sliceWindowMapping(grid.cells.space, fresh);
+    im.meta.mapping = sliceWindowMapping(grid.cells.space, fresh, !!volume.parent && Volume.isPeriodic(volume.parent));
   }
   return im;
 }
@@ -324,10 +350,12 @@ function updateGridWindowImage(
   if (!Volume.areEquivalent(volume, currentVolume) || !Volume.areInstanceTransformsEqual(volume, currentVolume)) {
     return false;
   }
+  const domain = getSliceWindowDomain(volume, theme);
+  const windowed = getSliceWindowVolume(volume);
+  if (!domain || !windowed) return false;
+  volume = windowed;
   const axis = getSliceAxis(props);
   if (!SliceWindow.matches(state.window, graphics, volume.grid, axis)) return false;
-  const domain = getSliceWindowDomain(volume, theme);
-  if (!domain) return false;
 
   const corners = image.cornerBuffer.ref.value;
   const { info, index } = getGridSlicePlacement(volume, props, corners);
