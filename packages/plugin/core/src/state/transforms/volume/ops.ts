@@ -72,20 +72,33 @@ const VolumeTransform = PluginStateTransform.BuiltIn({
   to: SO.Volume.Data,
   params: {
     transform: TransformParam,
+    scale: PD.Numeric(
+      1,
+      { min: 1e-6, max: 1e6, step: 0.01 },
+      {
+        description:
+          "The grid's scale about the origin, before the transform: new over file pixel size (1: as the file says)",
+      },
+    ),
   },
 })({
   canAutoUpdate() {
     return false;
   },
   apply({ a, params }) {
-    // similar to StateTransforms.Model.TransformStructureConformation;
+    // similar to StateTransforms.Model.TransformStructureConformation; a session without `scale` reads 1
+    const scale = params.scale ?? 1;
     const center = transformParamsNeedCentroid(params.transform)
-      ? Grid.getBoundingSphere(a.data.grid).center
+      ? Vec3.scale(Vec3(), Grid.getBoundingSphere(a.data.grid).center, scale)
       : Vec3.unit;
     const transform = getTransformFromParams(params.transform, center);
+    const scaled =
+      scale === 1
+        ? Grid.getGridToCartesianTransform(a.data.grid)
+        : Mat4.mul(Mat4(), Mat4.fromUniformScaling(Mat4(), scale), Grid.getGridToCartesianTransform(a.data.grid));
     const gridTransform = {
       kind: 'matrix' as const,
-      matrix: Mat4.mul(Mat4(), transform, Grid.getGridToCartesianTransform(a.data.grid)),
+      matrix: Mat4.mul(Mat4(), transform, scaled),
     };
     return new SO.Volume.Data(
       {

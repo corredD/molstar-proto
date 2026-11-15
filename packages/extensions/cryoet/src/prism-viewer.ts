@@ -36,6 +36,8 @@ export const CryoetSkill: ViewerSkill = {
     'it as a surface, a wireframe or both; it colors one by a volume of the scene (volume; sample surface, or mean, min',
     'or max along the normal within ±depth Å; in σ; invert for a tomogram, whose protein is dark; detail texture for',
     "the volume's detail, a grid at its voxels read per pixel, whatever the mesh's resolution).",
+    "set_pixel_size changes a volume's pixel size (Å) when its file's is wrong (meshes and particles keep theirs); reset",
+    "gives the file's back.",
   ].join('\n'),
   tools: [
     {
@@ -57,6 +59,12 @@ export const CryoetSkill: ViewerSkill = {
       id: 'slice_tomogram',
       operation: 'cryoet.slice',
       description: 'Shows a gray slice of a tomogram or tilt series.',
+    },
+    {
+      id: 'set_pixel_size',
+      operation: 'cryoet.volume',
+      description:
+        "Sets a volume's pixel size (Å), when its file's is wrong: the map scaled about the origin; reset: the file's.",
     },
   ],
 };
@@ -87,6 +95,12 @@ export const CryoetExtension: ViewerExtension = {
         category,
         icon: 'zoom-in',
         alias: ['resolution', 'level', 'binning', 'ome-zarr level', 'finer', 'coarser'],
+      }),
+      operationCommand(api, c.volume, {
+        category,
+        icon: 'ruler',
+        alias: ['pixel size', 'voxel size', 'angstrom per pixel', 'scale volume', 'rescale tomogram'],
+        action: 'Apply',
       }),
       operationCommand(api, c.mesh, {
         category,

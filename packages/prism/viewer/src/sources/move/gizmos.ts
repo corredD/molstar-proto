@@ -24,7 +24,7 @@ import { volumeNames } from '../../api/volume.js';
 import { currentParticleTransform } from '../particle-transform.js';
 import { currentShapeMatrix, shapeDrawnCenter } from '../shape-transform.js';
 import { shapeEntries } from '../shapes.js';
-import { currentVolumeTransform, isStreamedForStructure, volumeCenter } from '../volume-transform.js';
+import { currentVolumeTransform, isStreamedForStructure, volumeCenter, volumeScaleOf } from '../volume-transform.js';
 
 // A model moved by hand (move.md): a structure, a particle list, a shape or a volume, the gizmo library's transform
 // handles on it, through its transform decorator (Mol*'s `TransformStructureConformation`, as `structure.transform`
@@ -338,7 +338,7 @@ export class MoveGizmos {
       if (!data) return undefined;
       const value: Placement = {
         matrix: currentVolumeTransform(plugin.state.data, ref, data),
-        center: Vec3.clone(volumeCenter(data)),
+        center: volumeCenter(data, volumeScaleOf(plugin.state.data, ref)),
       };
       return { key: ref, value, label: names.get(ref) ?? 'Volume' };
     }

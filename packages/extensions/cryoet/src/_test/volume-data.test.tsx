@@ -36,6 +36,8 @@ const TS08: VolumeDataInfo = {
   source: 'OME-ZARR',
   grid: '232 × 232 × 113',
   voxel: '27.2 Å',
+  pixelSize: 6.802,
+  filePixelSize: 6.802,
   bytes: 24.3e6,
   levels: [level('2', 4, 24), level('1', 2, 194), level('0', 1, 1550, true)],
   level: '2',
@@ -49,11 +51,12 @@ function mounted(
   const area = {
     dataState: () => data.asReadonly,
     level: vi.fn(async (values: { level: string; large?: boolean }) => result(values)),
+    volume: vi.fn(async (_values: { pixelSize?: number; reset?: boolean }) => ApiResult.ok('')),
   } as unknown as CryoetApi;
   const host = document.createElement('div');
   document.body.append(host);
   render(() => <VolumeData area={area} volume="v" />, host);
-  const range = () => host.querySelector<HTMLInputElement>('input[type=range]');
+  const range = () => host.querySelector<HTMLInputElement>('input[type=range][aria-label="Level"]');
   const box = () => host.querySelector<HTMLInputElement>('input[aria-label="Level"]:not([type=range])');
   /** The slider released at a step */
   const release = (i: number) => {
@@ -160,5 +163,42 @@ describe("a volume's Data section", () => {
     await tick();
     expect(host.querySelector('[role=status]')?.textContent).not.toContain('Download failed');
     expect(range()!.value).toBe('2');
+  });
+});
+
+describe("a volume's Pixel size", () => {
+  const sized = (pixelSize: number) => ({ ...TS08, pixelSize, voxel: `${pixelSize * 4} Å (file: 27.2 Å)` });
+  const slider = (host: HTMLElement) =>
+    host.querySelector<HTMLInputElement>('input[type=range][aria-label="Pixel size"]');
+
+  it("shows the pixel size in use, the file's beside it and Reset only when changed", () => {
+    const same = mounted(TS08, () => ApiResult.ok(''));
+    expect(slider(same.host)).not.toBeNull();
+    expect(same.button('Reset')).toBeUndefined();
+    expect(same.host.textContent).not.toContain('file: 6.8');
+    document.body.innerHTML = '';
+    const changed = mounted(sized(13.604), () => ApiResult.ok(''));
+    expect(changed.button('Reset')).toBeDefined();
+    expect(changed.host.textContent).toContain('file: 6.802 Å');
+  });
+
+  it('sets it at the release, through cryoet.volume', () => {
+    const { host, area } = mounted(TS08, () => ApiResult.ok(''));
+    const r = slider(host)!;
+    // a log slider: its value is the decade (log10 13.5)
+    r.value = String(Math.log10(13.5));
+    r.dispatchEvent(new Event('input', { bubbles: true }));
+    expect(area.volume).not.toHaveBeenCalled();
+    r.dispatchEvent(new Event('change', { bubbles: true }));
+    expect(area.volume).toHaveBeenCalledTimes(1);
+    const sent = (area.volume as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(sent.volume).toBe('v');
+    expect(sent.pixelSize).toBeCloseTo(13.5, 3);
+  });
+
+  it("goes back to the file's with Reset", () => {
+    const { area, button } = mounted(sized(13.604), () => ApiResult.ok(''));
+    button('Reset')!.click();
+    expect(area.volume).toHaveBeenCalledWith({ volume: 'v', reset: true });
   });
 });

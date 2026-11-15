@@ -421,6 +421,13 @@ export function VolumeData(props: { area: CryoetApi; volume: string }) {
     asked.set(undefined);
     status.set(undefined);
   };
+  // the pixel size: set at the release (`cryoet.volume`, one step); Reset: the file's; a failure said
+  const pixelStatus = observableState<string>('');
+  const changed = mapState(info, (i) => !!i && Math.abs(i.pixelSize - i.filePixelSize) > 1e-6 * i.filePixelSize);
+  const setPixel = async (pixelSize: number | 'file') => {
+    const r = await area.volume({ volume, ...(pixelSize === 'file' ? { reset: true } : { pixelSize }) } as never);
+    pixelStatus.set(r.ok ? '' : r.message);
+  };
   const fact = (name: string, text: ReadonlyState<string>) => (
     <Line label={name}>
       <span>{text}</span>
@@ -444,6 +451,37 @@ export function VolumeData(props: { area: CryoetApi; volume: string }) {
         'Size',
         mapState(info, (i) => (i ? mb(i.bytes) : '')),
       )}
+      {/* the pixel size as the header would say it (a file's error): the map scaled about the origin; the slider goes by powers */}
+      <Line label="Pixel size">
+        <Slider
+          aria-label="Pixel size"
+          value={mapState(info, (i) => i?.pixelSize ?? 1)}
+          min={0.1}
+          max={100}
+          scale="log"
+          clamp={false}
+          unit="Å"
+          format={(v) => String(+v.toPrecision(4))}
+          onCommit={(pixelSize) => void setPixel(pixelSize)}
+        />
+      </Line>
+      <Show when={changed}>
+        {() => (
+          <div class={classes.tools}>
+            <p class={classes.hint}>{mapState(info, (i) => `file: ${+(i?.filePixelSize ?? 0).toPrecision(4)} Å`)}</p>
+            <Button size="sm" variant="ghost" onClick={() => void setPixel('file')}>
+              Reset
+            </Button>
+          </div>
+        )}
+      </Show>
+      <Show when={mapState(pixelStatus.asReadonly, (t) => !!t)}>
+        {() => (
+          <p class={classes.hint} role="status">
+            {pixelStatus.asReadonly}
+          </p>
+        )}
+      </Show>
       <Show when={mapState(levels, (ls) => ls.length > 1)}>
         {() => (
           <>

@@ -244,10 +244,13 @@ export class StageApi extends ApiArea {
       if (!data) return undefined;
       const old = decoratorUnder(ctx, target, VolumeTransform);
       const sphere = Grid.getBoundingSphere(data.grid);
+      // as drawn: its grid scaled about the origin (its pixel size over the file's), then moved
+      const scale = this.scaleOf(target);
+      const moved = old ? volumeMatrixOf(old) : Mat4.identity();
       return {
-        matrix: old ? volumeMatrixOf(old) : Mat4.identity(),
+        matrix: scale === 1 ? moved : Mat4.mul(Mat4(), moved, Mat4.fromUniformScaling(Mat4(), scale)),
         center: Vec3.clone(sphere.center),
-        radius: Math.max(sphere.radius, 1),
+        radius: Math.max(sphere.radius * scale, 1),
       };
     }
     if (SO.Shape.Representation3D.is(cell.obj)) {
@@ -287,9 +290,9 @@ export class StageApi extends ApiArea {
     plugin.canvas3d?.requestDraw();
   }
 
-  /** A particle list's scale (Å per unit of its file), 1 when not scaled */
+  /** A particle list's scale (Å per unit of its file), a volume's (its pixel size over the file's); 1 when not scaled */
   scaleOf(target: string): number {
-    return listScale({ plugin: this.ctx.plugin }, target);
+    return objectScale({ plugin: this.ctx.plugin }, target);
   }
 
   /** An object's pose (its center, its Euler turn: `ObjectPose`), following the state tree while watched */
@@ -412,30 +415,47 @@ export class StageApi extends ApiArea {
 
   readonly scale = this.operation({
     id: 'stage.scale',
-    title: "Scale a particle list's positions",
+    title: "Scale a particle list's positions or a volume's grid",
     params: {
-      target: PD.Text('', { description: 'A particle list by state ref' }),
+      target: PD.Text('', { description: 'A particle list or a volume by state ref' }),
       scale: PD.Numeric(
         1,
         { min: 1e-6, max: 1e6, step: 0.01 },
-        { description: "Å per unit of the file (a tomogram's pixel size): the positions scaled about the origin" },
+        {
+          description:
+            "A list: Å per unit of the file (a tomogram's pixel size); a volume: its pixel size over the file's (1: as the file says); scaled about the origin",
+        },
       ),
     },
     async run({ target, scale }, ctx) {
       const plugin = ctx.plugin;
       const l = plugin.managers.particles.hierarchy.current.lists.find((x) => x.cell.transform.ref === target);
-      if (!l) return ApiResult.fail('not-found', `'${target}' is not a particle list.`, 'Only particles are scaled.');
+      const vol = plugin.managers.volume.hierarchy.current.volumes.find((x) => x.cell.transform.ref === target);
+      if (!l && !vol) {
+        return ApiResult.fail('not-found', `'${target}' is not a particle list or a volume.`, 'Only these are scaled.');
+      }
       if (!(scale > 0)) return ApiResult.fail('invalid', 'A scale is more than 0.');
-      if (listScale(ctx, target) === scale) return ApiResult.already(`Its scale is ${scale} already.`);
-      const old = decoratorUnder(ctx, target, ParticleListTransform);
+      const now = objectScale(ctx, target);
+      if (now === scale) return ApiResult.already(`Its scale is ${scale} already.`);
+      const cell = (l ?? vol)!.cell;
+      const transformer = l ? ParticleListTransform : VolumeTransform;
+      const old = decoratorUnder(ctx, target, transformer);
       const b = plugin.state.data.build();
       if (old) b.to(old).update((p: any) => ({ ...p, scale }));
-      else b.to(l.cell).insert(ParticleListTransform, { transform: Mat4.identity(), scale });
-      // its labels and clips with its positions: the change from where they are drawn (moved after scaled) to where
+      else if (l) b.to(l.cell).insert(ParticleListTransform, { transform: Mat4.identity(), scale });
+      else {
+        const transform = { name: 'matrix' as const, params: { data: Mat4.identity(), transpose: false } };
+        b.to(cell).insert(VolumeTransform, { transform, scale });
+      }
+      // its labels, clips and plane slices with it: the change from where they are drawn (moved after scaled) to where
       // they go, as `stage.move` places them
-      const moved = old ? (old.transform.params as { transform: Mat4 }).transform : Mat4.identity();
+      const moved = !old
+        ? Mat4.identity()
+        : l
+          ? (old.transform.params as { transform: Mat4 }).transform
+          : volumeMatrixOf(old);
       const placed = (k: number) => Mat4.mul(Mat4(), moved, Mat4.fromUniformScaling(Mat4(), k));
-      const m = Mat4.mul(Mat4(), placed(scale), Mat4.invert(Mat4(), placed(listScale(ctx, target))));
+      const m = Mat4.mul(Mat4(), placed(scale), Mat4.invert(Mat4(), placed(now)));
       placeWith(
         ctx,
         b,
@@ -444,9 +464,11 @@ export class StageApi extends ApiArea {
         m,
       );
       await b.commit();
-      return ApiResult.ok(`Scaled ${rootLabel(ctx, target) ?? l.cell.obj?.label ?? target} to ${scale} Å per unit.`, {
-        nodes: [target],
-      });
+      const name = rootLabel(ctx, target) ?? cell.obj?.label ?? target;
+      return ApiResult.ok(
+        l ? `Scaled ${name} to ${scale} Å per unit.` : `Scaled ${name} to ${scale}× the file's pixel size.`,
+        { nodes: [target] },
+      );
     },
   });
 
@@ -487,7 +509,7 @@ export class StageApi extends ApiArea {
         const old = decoratorUnder(ctx, target, VolumeTransform);
         const prev = old ? volumeMatrixOf(old) : Mat4.identity();
         const transform = { name: 'matrix' as const, params: { data: Mat4.mul(Mat4(), m, prev), transpose: false } };
-        if (old) b.to(old).update({ transform });
+        if (old) b.to(old).update((p: any) => ({ ...p, transform }));
         else b.to(cell).insert(VolumeTransform, { transform });
       } else if (SO.Shape.Representation3D.is(cell.obj)) {
         // a mesh: its shape's instance transform (its scale kept)
@@ -1059,6 +1081,19 @@ function targetParams(cell: StateObjectCell): Partial<ParticleTargetRepresentati
 function listScale(ctx: Pick<ApiContext, 'plugin'>, target: string): number {
   const old = decoratorUnder(ctx, target, ParticleListTransform);
   return (old?.transform.params as { scale?: number } | undefined)?.scale ?? 1;
+}
+
+/** A volume's scale: its pixel size over the file's (its decorator's, 1 without one) */
+function volumeScale(ctx: Pick<ApiContext, 'plugin'>, target: string): number {
+  const old = decoratorUnder(ctx, target, VolumeTransform);
+  return (old?.transform.params as { scale?: number } | undefined)?.scale ?? 1;
+}
+
+/** A particle list's or a volume's scale */
+function objectScale(ctx: Pick<ApiContext, 'plugin'>, target: string): number {
+  return ctx.plugin.managers.volume.hierarchy.current.volumes.some((v) => v.cell.transform.ref === target)
+    ? volumeScale(ctx, target)
+    : listScale(ctx, target);
 }
 
 /**
