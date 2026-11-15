@@ -769,6 +769,8 @@ export function createRenderItem<T extends string>(
           // `indirectInstanceRanges` is false on WebGL: lists with GPU-written arguments are not made for it
           if (mdbData.indirect) throw new Error('indirect draw lists are not supported on WebGL');
           const levelProgram = mdbData.define ? getDefineProgram(variant, mdbData.define) : programs[variant];
+          // a level's program made on first use links in the background (parallel compile): its draws wait for it
+          if (levelProgram !== programs[variant] && !levelProgram.finalize()) continue;
           if (levelProgram !== program) {
             // the instance offsets are the vertex array's: back to 0 for the next program's draws
             if (instanceOffset !== 0) {
