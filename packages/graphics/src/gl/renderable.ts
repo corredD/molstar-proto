@@ -460,7 +460,7 @@ export namespace LodView {
   /**
    * Level `j`'s range and fade in distances, into `out` (min, max, overlap): as they are without `pixelSize`; with it the
    * pixel sizes divided by the depth scale, or (orthographic, or no view yet) all distances for the level of the view's
-   * pixel size and none for the others
+   * pixel size and none for the others (a level fading out at its end, an overlap, ends where the band starts)
    */
   export function getRange(levels: LodLevelsValue, j: number, view: LodView, out: number[]) {
     const [min, max, overlap] = levels[j];
@@ -474,7 +474,11 @@ export namespace LodView {
       out[1] = Math.min(max / k, MaxLodDistance);
       out[2] = overlap / k;
     } else {
-      const drawn = min <= view.pixelSize && view.pixelSize < max;
+      // a level fading out over a band where the next fades in (its overlap negated: the impostors', \`lod-impostor.md\`)
+      // ends where the next starts: one a view
+      const next = levels[j + 1];
+      const end = overlap > 0 && next !== undefined && next[2] < 0 ? max - overlap : max;
+      const drawn = min <= view.pixelSize && view.pixelSize < end;
       out[0] = drawn ? 0 : -2;
       out[1] = drawn ? MaxLodDistance : -1;
       out[2] = 0;

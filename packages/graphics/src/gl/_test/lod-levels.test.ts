@@ -161,6 +161,23 @@ describe('levels of detail by size on screen', () => {
     expect((values.lodLevels.ref.value as LodLevelsValue)[last][4]).toBeGreaterThan(0);
   });
 
+  it('orthographic with impostors: one level a view, the band not drawn twice', () => {
+    const lodLevels = Spheres.LodPixelPresets.quality.lodLevels;
+    const centers = new Float32Array(3000).map((_, i) => ((i * 7919) % 101) - 50);
+    const spheres = Spheres.create(centers, new Float32Array(1000).map((_, i) => i), 1000);
+    const props = { ...PD.getDefaultValues(Spheres.Params), lodLevels, lodPixelSize: 3 };
+    const values = Spheres.Utils.createValuesSimple(spheres, props, ColorNames.orange, 1);
+    spheres.shaderData.update({ lodImpostor: 7 });
+    const value = values.lodLevels.ref.value as LodLevelsValue;
+    const last = value.length - 1;
+    // the Å a pixel covers in the middle of the band, at its ends
+    for (const px of [value[last][0] * 1.01, (value[last][0] + value[last - 1][1]) / 2, value[last - 1][1] * 0.99]) {
+      const view = { depthScale: 0, pixelSize: px, version: 1 };
+      const drawn = value.map((_, j) => LodView.getRange(value, j, view, [0, 0, 0])).filter((r) => r[1] > 0);
+      expect(drawn.length).toBe(1);
+    }
+  });
+
   it('presets by pixel size: their distances those at 1280x720 and 45°', () => {
     const k = (2 * Math.tan(Math.PI / 8)) / 720;
     for (const { lodLevels, lodPixelSize } of Object.values(Spheres.LodPixelPresets)) {
