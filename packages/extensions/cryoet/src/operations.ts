@@ -274,6 +274,53 @@ export class CryoetApi extends ApiArea {
     );
   }
 
+  /** The previews of slices waiting for the next frame, by representation (the latest index wins) */
+  private readonly slicePreviews = new Map<
+    { createOrUpdate(props: object): { run(): Promise<unknown> } },
+    { axis: SliceAxis; index: number }
+  >();
+  private slicePreviewFrame = false;
+
+  /**
+   * Shows a volume's grid slice at `index` outside the state while its slider is dragged, where the slice is drawn from
+   * a window of its planes on the GPU (graphics `repr/volume/slice-window.ts`: a move is a uniform, or a plane copied at
+   * the window's edge): the representation updated once a frame, the latest index winning; the gesture's release
+   * commits it (`slice`, one undo step). False where it is not (no such slice, drawn on the CPU): the caller steps
+   * through the state instead
+   */
+  previewSlice(volume: string, axis: SliceAxis, index: number): boolean {
+    const plugin = this.ctx.plugin;
+    const v = oneVolume({ plugin }, volume || undefined);
+    if (isFailure(v)) return false;
+    const repr = sliceRepresentation(v, axis)?.cell.obj?.data.repr;
+    if (
+      !repr?.renderObjects.some(
+        (o) => (o.values as { dSliceWindow?: { ref: { value: boolean } } }).dSliceWindow?.ref.value,
+      )
+    ) {
+      return false;
+    }
+    const n = (v.cell.obj?.data.grid.cells.space.dimensions[AxisIndex[axis]] ?? 1) - 1;
+    this.slicePreviews.set(repr, { axis, index: Math.max(0, Math.min(n, Math.round(index))) });
+    if (!this.slicePreviewFrame) {
+      this.slicePreviewFrame = true;
+      const frame =
+        typeof requestAnimationFrame === 'function' ? requestAnimationFrame : (f: () => void) => setTimeout(f, 16);
+      frame(() => {
+        this.slicePreviewFrame = false;
+        const previews = [...this.slicePreviews];
+        this.slicePreviews.clear();
+        for (const [r, p] of previews) {
+          void r
+            .createOrUpdate({ dimension: { name: p.axis, params: p.index } })
+            .run()
+            .then(() => plugin.canvas3d?.requestDraw());
+        }
+      });
+    }
+    return true;
+  }
+
   /** What a volume's data is and its levels (by state ref), following the state tree while watched: a read for views */
   dataState(volume: string): ReadonlyState<VolumeDataInfo | undefined> {
     const plugin = this.ctx.plugin;

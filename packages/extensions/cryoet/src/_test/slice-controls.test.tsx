@@ -38,7 +38,7 @@ const FrameMs = 16;
  * The Slice controls of a 100-deep volume, its z slice at 0 and its x slice at 7 (for `axis`; none: the axis picker);
  * the area's calls, those in flight at most
  */
-function mounted(options: { axis?: SliceAxis; stepMs?: number } = { axis: 'z' }) {
+function mounted(options: { axis?: SliceAxis; stepMs?: number; windowed?: boolean } = { axis: 'z' }) {
   const stepMs = options.stepMs ?? StepMs;
   const info = observableState<SliceInfo | undefined>({
     dimensions: [100, 100, 100],
@@ -64,7 +64,9 @@ function mounted(options: { axis?: SliceAxis; stepMs?: number } = { axis: 'z' })
     info.set({ ...now, slices });
     return { ok: true };
   });
-  const area = { sliceState: () => info.asReadonly, slice } as unknown as CryoetApi;
+  // a slice drawn from a window of its planes: previewed outside the state (graphics slice-window.ts)
+  const previewSlice = vi.fn((_volume: string, _axis: SliceAxis, _index: number) => !!options.windowed);
+  const area = { sliceState: () => info.asReadonly, slice, previewSlice } as unknown as CryoetApi;
   // the group's API is the same: its `cryoet` area is the one the controls are given
   const groups: string[] = [];
   const api = {
@@ -99,7 +101,21 @@ function mounted(options: { axis?: SliceAxis; stepMs?: number } = { axis: 'z' })
       .find((b) => b.textContent?.trim() === label)!
       .click();
   const indices = () => slice.mock.calls.map(([v]) => v.index);
-  return { slice, info, groups, range, contrast, dispose, drag, release, key, pick, indices, most: () => most };
+  return {
+    slice,
+    previewSlice,
+    info,
+    groups,
+    range,
+    contrast,
+    dispose,
+    drag,
+    release,
+    key,
+    pick,
+    indices,
+    most: () => most,
+  };
 }
 
 describe("a volume's Slice slider", () => {
@@ -241,6 +257,54 @@ describe("a Slice slider's drag on a viewer", () => {
     } finally {
       await v.dispose();
     }
+  });
+});
+
+describe("a windowed slice's Slice slider (graphics slice-window.ts)", () => {
+  it('previews a drag of 99 steps (0 to the last) outside the state and commits once, the last index, one undo step', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance', 'Date'] });
+    const s = mounted({ axis: 'z', windowed: true });
+    for (let i = 1; i <= 99; ++i) {
+      s.drag(i);
+      await vi.advanceTimersByTimeAsync(FrameMs);
+      // the knob where the pointer is, the state not moved
+      expect(s.range.value).toBe(String(i));
+    }
+    expect(s.previewSlice).toHaveBeenCalledTimes(99);
+    expect(s.previewSlice.mock.calls.at(-1)).toEqual(['v', 'z', 99]);
+    expect(s.slice).not.toHaveBeenCalled();
+    s.release();
+    await vi.advanceTimersByTimeAsync(100);
+    expect(s.indices()).toEqual([99]);
+    expect(s.groups).toEqual(['Slice']);
+    expect(s.info.value!.slices[0].index).toBe(99);
+    expect(s.range.value).toBe('99');
+    s.dispose();
+  });
+
+  it('keys step through the state as before; a slice not windowed is previewed through it', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance', 'Date'] });
+    const k = mounted({ axis: 'z', windowed: true });
+    k.key(3);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(k.indices().at(-1)).toBe(3);
+    k.dispose();
+    const s = mounted({ axis: 'z', windowed: false });
+    s.drag(5);
+    await vi.advanceTimersByTimeAsync(FrameMs);
+    expect(s.indices()).toEqual([5]);
+    s.release();
+    await vi.advanceTimersByTimeAsync(100);
+    s.dispose();
+  });
+
+  it('a drag left without its release (the controls gone) commits where it was', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance', 'Date'] });
+    const s = mounted({ axis: 'z', windowed: true });
+    s.drag(42);
+    s.dispose();
+    await vi.advanceTimersByTimeAsync(100);
+    expect(s.indices()).toEqual([42]);
   });
 });
 
