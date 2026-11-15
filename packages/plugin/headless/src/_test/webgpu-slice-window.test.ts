@@ -227,13 +227,23 @@ describe.skipIf(!WebGPU.module)('grid slice from a window of planes, as the CPU 
         SliceWindowConfig.coarseVoxels = 1000;
         SliceWindowConfig.settleMs = 60_000;
         const repr = await create(v, theme, { ...props, dimension: { name, params: start } });
-        await SliceBinned.get(v.grid).ready;
+        repr.setState({ visible: true });
+        await SliceBinned.peek(v.grid)!.ready;
         await repr.createOrUpdate({ dimension: { name, params: far } } as any).run();
         expect(repr.renderObjects[0].values.uSliceBin.ref.value, name).toBe(2);
-        const coarse = await capture(repr, name, dims);
+        const coarse = await capture(repr, name, dims, true);
         const c = compare(cpu, coarse);
         expect(c.drawn, name).toBeGreaterThan(Size * Size * 0.1);
         expect(c.far, `${name}: worst ${c.worst}`).toBe(0);
+        // rested: the full resolution plane, drawn where it was
+        SliceWindowConfig.settleMs = 10;
+        await repr.createOrUpdate({ dimension: { name, params: far - 2 } } as any).run();
+        await repr.createOrUpdate({ dimension: { name, params: far } } as any).run();
+        await new Promise((r) => setTimeout(r, 100));
+        expect(repr.renderObjects[0].values.uSliceBin.ref.value, name).toBe(1);
+        const full = compare(cpu, await capture(repr, name, dims));
+        expect(full.far, `${name} rested: worst ${full.worst}`).toBe(0);
+        SliceWindowConfig.settleMs = 60_000;
       }
       expect(graphics.takeErrors?.() ?? []).toEqual([]);
     } finally {
