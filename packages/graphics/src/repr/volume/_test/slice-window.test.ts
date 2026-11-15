@@ -5,7 +5,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { SliceRing } from '../slice-window.js';
+import { SliceRing, SliceWindow, SliceWindowBudget, SliceWindowDepth } from '../slice-window.js';
 
 describe('SliceRing', () => {
   it('holds index i at layer i mod N', () => {
@@ -81,5 +81,16 @@ describe('SliceRing', () => {
     SliceRing.move(ring, 100);
     SliceRing.reset(ring);
     expect(SliceRing.move(ring, 100).length).toBe(32);
+  });
+});
+
+describe('SliceWindow memory', () => {
+  it('holds fewer planes where 32 would pass its byte budget, at least 4; none past that', () => {
+    expect(SliceWindow.getDepth(512 * 720, 225)).toBe(SliceWindowDepth);
+    // a 2048² plane of floats is 16 MB: 8 planes in 128 MB
+    expect(SliceWindow.getDepth(2048 * 2048, 500)).toBe(8);
+    expect(SliceWindow.getDepth(2048 * 2048, 5)).toBe(5);
+    expect(SliceWindow.getDepth(8192 * 8192, 500)).toBe(0);
+    expect(SliceWindowBudget).toBe(128 * 1024 * 1024);
   });
 });

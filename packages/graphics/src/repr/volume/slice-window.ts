@@ -114,6 +114,13 @@ export interface SliceWindow {
   copies: number;
 }
 
+/**
+ * Bytes a window takes at most (its planes of 4-byte floats): a large plane gets fewer planes (at least
+ * `SliceWindowMinDepth`), a larger one the CPU path. Ludo's tomogram (512 × 720): 32 planes, 47 MB
+ */
+export const SliceWindowBudget = 128 * 1024 * 1024;
+const SliceWindowMinDepth = 4;
+
 /** Time spent copying pending planes per idle callback (ms) */
 export const SliceWindowFillMs = 4;
 
@@ -139,13 +146,21 @@ export namespace SliceWindow {
     }
     const { width, height, count } = planeLayout(grid, axis);
     const max = graphics.resources.limits.max3dTextureSize;
-    return width <= max && height <= max && Math.min(count, SliceWindowDepth) <= max;
+    const depth = getDepth(width * height, count);
+    return width <= max && height <= max && depth > 0 && depth <= max;
+  }
+
+  /** The planes a window of planes of `texels` holds along an axis of `count`: within `SliceWindowBudget`, 0 if none */
+  export function getDepth(texels: number, count: number) {
+    const fit = Math.min(SliceWindowDepth, Math.floor(SliceWindowBudget / (texels * 4)));
+    if (fit < Math.min(SliceWindowMinDepth, count)) return 0;
+    return Math.max(1, Math.min(fit, count));
   }
 
   export function create(graphics: GraphicsContext, grid: Grid, axis: SliceAxis): SliceWindow {
     const layout = planeLayout(grid, axis);
     const { width, height, count } = layout;
-    const ring = SliceRing.create(count);
+    const ring = SliceRing.create(count, getDepth(width * height, count));
     const texture = graphics.resources.texture('volume-float32', 'r', 'float', 'nearest');
     texture.define(width, height, ring.depth);
     return {
