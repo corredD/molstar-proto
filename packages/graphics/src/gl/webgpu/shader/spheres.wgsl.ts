@@ -309,6 +309,7 @@ fn resolveSphere(position: vec4<f32>) -> Resolved {
     #if defined(dLodImpostor)
         // a sphere (objects with impostors are not the raster's: \`isSphereRasterEligible\`)
         out.vImpostorX = vec4<f32>(0.0, 0.0, 0.0, -1.0);
+        out.vImpostorY = vec4<f32>(0.0, 0.0, 0.0, -1.0);
     #endif
     resolved.out = out;
     resolved.hit = true;
