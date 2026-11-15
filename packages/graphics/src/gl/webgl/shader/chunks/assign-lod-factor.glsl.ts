@@ -23,9 +23,11 @@ if (uLod.w != 0.0 && (uLod.x != 0.0 || uLod.y != 0.0)) {
         float lodScale = uLod.w;
     #endif
     if (uModelScale != 1.0) {
-        lodFactor = lodScale;
         #if defined(dLodImpostor)
-            lodCulled = lodScale < 0.0;
+            // the impostor's radius its bounding sphere's (\`assign_lod_impostor_varyings\`)
+            lodFactor = lodImpostor ? 1.0 : lodScale;
+        #else
+            lodFactor = lodScale;
         #endif
     } else {
         #if defined(dLodImpostor)

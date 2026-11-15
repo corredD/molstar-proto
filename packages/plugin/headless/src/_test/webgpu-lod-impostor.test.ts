@@ -190,4 +190,30 @@ describe.skipIf(!WebGPU.module)('impostors (WebGPU)', () => {
       plugin.dispose();
     }
   });
+
+  // a model scale (XR's camera scale): one level per object (\`cullSimple\`), far away the impostors': drawn (picked) as
+  // at scale 1 (the image pass keeps no camera scale: the canvas' pick reads what it draws)
+  it('draw at a model scale as without', { tags: ['medium'] }, async () => {
+    const { plugin, canvas, draw, impostors } = await setup();
+    try {
+      await impostors();
+      const plain = copies(await draw());
+      canvas.camera.scale = 2;
+      await draw();
+      for (const c of [0, 1]) {
+        let x = 0;
+        let n = 0;
+        for (let i = 0; i < plain.length; ++i) {
+          if (plain[i] !== c) continue;
+          x += i % Size;
+          n++;
+        }
+        const ratio = canvas.graphics.pixelRatio;
+        const pick = await canvas.asyncIdentify(Vec2.create(x / n / ratio, Size / 2 / ratio))?.wait();
+        expect(pick?.id.instanceId).toBe(c);
+      }
+    } finally {
+      plugin.dispose();
+    }
+  });
 });

@@ -90,9 +90,11 @@ export const assign_lod_factor_wgsl = /* wgsl */ `
             let lodScale = lod.w;
         #endif
         if (uGlobal.uModelScale != 1.0) {
-            lodFactor = lodScale;
             #if defined(dLodImpostor)
-                lodCulled = lodScale < 0.0;
+                // the impostor's radius its bounding sphere's (\`assign_lod_impostor_varyings_wgsl\`)
+                lodFactor = select(lodScale, 1.0, lodImpostor);
+            #else
+                lodFactor = lodScale;
             #endif
         } else {
             #if defined(dLodImpostor)

@@ -27,8 +27,8 @@ export const assign_lod_impostor_wgsl = /* wgsl */ `
     #else
         let lodImpostorScale = uDraw.uLod.w;
     #endif
-    // a model scale draws every level (\`assign_lod_factor\`): the spheres there, not the impostors
-    let lodImpostor = uDraw.uLod.w != 0.0 && lodImpostorScale < 0.0 && uGlobal.uModelScale == 1.0;
+    // also at a model scale (XR), where one level an object is drawn (\`cullSimple\`), far away the impostors'
+    let lodImpostor = uDraw.uLod.w != 0.0 && lodImpostorScale < 0.0;
     var lodImpostorShare = -1.0;
     // the copy's sphere where the impostors and the last spheres meet (the band's levels: an overlap), by which a copy
     // chooses its level whole; the other levels by sphere (the copy's sphere read per vertex costs where they are many)

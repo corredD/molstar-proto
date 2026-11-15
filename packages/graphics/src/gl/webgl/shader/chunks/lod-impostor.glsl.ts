@@ -42,8 +42,8 @@ export const assign_lod_impostor = `
     #else
         float lodImpostorScale = uLod.w;
     #endif
-    // a model scale draws every level (\`assign_lod_factor\`): the spheres there, not the impostors
-    bool lodImpostor = uLod.w != 0.0 && lodImpostorScale < 0.0 && uModelScale == 1.0;
+    // also at a model scale (XR), where one level an object is drawn (\`cullSimple\`), far away the impostors'
+    bool lodImpostor = uLod.w != 0.0 && lodImpostorScale < 0.0;
     float lodImpostorShare = -1.0;
     bool lodImpostorWhole = lodImpostor || (uLod.w != 0.0 && uLod.z != 0.0);
     vec4 lodImpostorSphere = vec4(0.0);
