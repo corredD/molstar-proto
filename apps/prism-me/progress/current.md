@@ -84,6 +84,9 @@ is not built is [../TODO.md](../TODO.md).
   `me/night-integration` with the surface fit) and `mesh-volume-color`, as `me/all` (a08cbf8e7, 834 tests); pushed,
   published on mesoscope. [Morning summary](2026-11-14-morning.md). Lanes closed 2026-11-14 (worktrees, local
   branches, dev servers 1369–1376).
+- **`slice-window`** (Ludo, 2026-11-14; Opus, `~/prism-me-lanes/slice-window`, port 1380): a grid slice drawn from a
+  GPU ring buffer of 32 slices (the slider moves a uniform; the window follows, plane by plane; the state on release);
+  65 ms a step today on Ludo's MRC; [brief](2026-11-14-slice-window.md) on its branch. Running.
 - **`volume-pixel-size`** (Ludo, 2026-11-14; Sonnet + Opus design, `~/prism-me-lanes/volume-pixel-size`, port 1379): a
   volume's Pixel size (Å) in Data, set and Reset to the file's (a wrong header); [brief](2026-11-14-volume-pixel-size.md)
   on its branch. Running.
