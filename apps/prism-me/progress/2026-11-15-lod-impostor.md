@@ -214,3 +214,76 @@ the representation's default, nothing to wire).
   `out/toggle-far-proteins.png`, `out/toggle-silhouettes-left-spheres-right.png`.
 - Short gate: 0 must, 0 should; 2 nits left open: the toggle is offered (and steps) for blob-surface or approximate
   targets, where impostors never draw; no session round-trip test (holds by construction).
+
+## Switch by size on screen or distance; the impostors' own programs (Ludo, 2026-11-15, later)
+
+### Built
+
+- **Switch by** (Graphics & Motion › Far proteins, while Silhouettes): Size on screen (each copy below N px across, its
+  own bounding sphere; 12 px, 4–64, log) or Distance (each copy beyond D Å from the eye; default 2.6 × the model's
+  radius, where the whole model fits a 45° view; R/10 to 20 R, log); live while dragged (gesture steps), one step on
+  release; `mesoscale.impostors { on, by, pixels, distance, particles }` for ⌘K and the assistant; sessions keep it
+  (structure params `lodImpostorBy`, `lodImpostorPixels`, `lodImpostorDistance`).
+- **Core**: the switch in the level value (`LodImpostorSwitch`) and a uniform (`uLodImpostorSwitch`): each copy's share
+  from its radius or eye distance in the vertex stage (TS rule `ImpostorAtlas.switchShare`), the band half an octave
+  each way; `LodView.getRange` gives the two levels ranges covering every copy that can switch; **per member** the CPU
+  culling (`setSegmentRanges`) and the GPU culling (`switchLevels`, per instance by its segment's radius) end a member's
+  last spheres where its copies switch. By size, radii above the 90th percentile of the copies count as it (the few
+  largest switch larger on screen; their last spheres not drawn out to where they would switch).
+- **The impostors' levels draw by programs of their own** (`MultiDrawBaseData.define`: `dLodImpostorLevel` for the last
+  level, `dLodImpostorBand` for the one before; WebGPU by `getWebGPUProgram(variant, define)`, WebGL by programs made on
+  first use, linked in the background, bound in turn); the object's `dLodImpostor` changes no shader text; the renderer
+  prepares both define programs with an object's own.
+
+### Measured (M1 Pro, 1280 × 800, cellpack-mg, quality; off/on alternated in the same page, ms)
+
+| view (× distance)       | WebGPU off         | before (one program) | after: 12 px       | after: 24 px | after: distance 6000 Å |
+| ----------------------- | ------------------ | -------------------- | ------------------ | ------------ | ---------------------- |
+| 0.35 (close)            | 25.8               | 32–34                | **25.8**           | –            | –                      |
+| 0.7                     | 25.4               | 30                   | **25.6**           | –            | –                      |
+| 1.6 (band)              | 10.1               | 17                   | 12.9               | 13.4         | 18.4                   |
+| 2.2                     | 8.4                | 9 (Å/px rule)        | 12.6               | 8.8          | 8.8                    |
+| 3.5                     | 8.5                | 9                    | 11.0               | 8.9          | 9.1                    |
+| two cells × 2.6 / 4 / 6 | 13.1 / 15.4 / 15.4 | –                    | 13.4 / 15.6 / 15.7 | –            | –                      |
+
+| view       | WebGL2 off | before | after (12 px) |
+| ---------- | ---------- | ------ | ------------- |
+| 0.35       | 116        | 168    | 123           |
+| 0.7        | 78         | 95     | 100           |
+| 1.6 (band) | 36         | 66     | 53            |
+| 2.2        | 31         | 35     | 47            |
+| 3.5        | 27         | 33     | 34            |
+
+- **Close up**: WebGPU back to the old cost exactly; WebGL2 +6% (from +45%).
+- **Far is not faster, and cannot be on this model by impostors**: with every target hidden a far frame is 3.2–3.9 ms of
+  8.4; the rest is about 2 M copies that are already one sphere each at the last level (MG's 1.1 M lipids at 9–10 Å and
+  the small targets), against about 0.1 M protein copies that impostors replace. A quad per copy costs what a sphere per
+  copy costs, more in the fragment stage. Faster far views need fewer draws per copy: sub-pixel copies culled, or the
+  far cell drawn as one (aggregation): not this lane's.
+- **12 px costs more than the old rule at mid distances** because the larger proteins keep their spheres to 12 px
+  instead of switching at the Å-per-pixel boundary (about 42 px for a ribosome): the look Ludo asked for, paid; 24 px
+  costs as off. Default kept at 12 px (the look asked); a decision for Ludo.
+- **Small items as impostors** (`ImpostorMinRadius` 0, tried): atlas 4096 × 3456, 54 MB (+6 MB), build the same (2.2 s),
+  far frames 16 ms against 8.5 (2 M quads with the impostor fragment stage), and small items look blobbier
+  (`out/small-items-spheres-left-impostors-right.png`); lipids look the same as a carpet. **Kept at 22 Å** (slower, no
+  better look).
+
+### Corrections
+
+- The first Dawn render tests drew spheres, not impostors (a GPU culler made without levels keeps none: levels added
+  after the object's creation were not drawn). Fixed in the tests (levels from creation); the XR test fails without its
+  fix (checked by reverting it). Core TODO: a culler's level count follows a later change of the levels.
+- The earlier "two cells, far: 21 → 16 ms" did not reproduce in alternated runs (13.1 → 13.4, 15.4 → 15.6).
+- The depth test cannot fail as built (the copies' centers are in depth order); a case where center and surface order
+  differ is still to write.
+
+### Screens (`~/prism-me-lanes/lod-impostor-ref/out/`)
+
+`switch-panel.png` (the controls), `switch-size6-size24-top-distance6000-12000-bottom.png`,
+`small-items-spheres-left-impostors-right.png`.
+
+### Core changes (added)
+
+`23b82493d` the switch per copy; `26ed1500b` small items keep their spheres beyond it; `b96769fa4` particle targets'
+switch params; `2cd49b025` the impostors' levels' own programs; `b1d07561b` each member's switch in the culling;
+`9a6997161` WebGL draws a level's program once linked. App/extension: `5132c6f47`, `ee89a0852`, `a1cf45b9d`.

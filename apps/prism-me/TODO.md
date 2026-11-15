@@ -120,6 +120,10 @@ maintainer first (2026-10-25). All are v6 (master); the MRC reader and the parti
 
 ## Backlog
 
+- **Far views faster** (lod-impostor, 2026-11-15): on cellpack-mg a far frame is about 2 M one-sphere copies (lipids,
+  small targets); impostors replace about 0.1 M. Next: sub-pixel copies culled, or far cells drawn as one. Also: a GPU
+  culler made without levels keeps none (levels added later are not drawn); WebGL's close-up +6% and mid +28% with
+  impostors; a depth test where centers and surfaces are in different orders.
 - **Impostors, left open by lod-impostor's review** (`progress/2026-11-15-lod-impostor.md`): a test of the particle
   representation's wiring (atlas kept on a color change, rebuilt on sizes, off and on at runtime); the close-up cost of
   the spheres' program with the define (a program per level?); the atlas built with yields or shared across lists; nits
