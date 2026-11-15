@@ -182,9 +182,16 @@ function getSliceWindowVolume(volume: Volume): Volume | undefined {
   if (!range) return volume;
   const { min, max } = range;
   if (volume.instances.length !== 1 || max[0] - min[0] !== 1 || max[1] - min[1] !== 1 || max[2] - min[2] !== 1) return;
-  const tile = createPeriodicVolume(volume, min, max);
-  return { ...tile, grid: { ...tile.grid, periodicity: undefined, cells: volume.grid.cells } } as Volume;
+  // made once per volume: a step of the slice reads it
+  let tile = tileVolumes.get(volume);
+  if (!tile) {
+    const t = createPeriodicVolume(volume, min, max);
+    tile = { ...t, grid: { ...t.grid, periodicity: undefined, cells: volume.grid.cells } } as Volume;
+    tileVolumes.set(volume, tile);
+  }
+  return tile;
 }
+const tileVolumes = new WeakMap<Volume, Volume>();
 
 function getSliceAxis(props: SliceProps): SliceAxis {
   const name = props.dimension.name;
@@ -1098,8 +1105,8 @@ export function SliceVisual(materialId: number): VolumeVisual<SliceParams> {
       },
       updateGeometry: updateGridWindowImage,
       geometryUtils: Image.Utils,
-      dispose: (image: Image) => {
-        const state = getSliceWindowState(image);
+      dispose: (image: Image | undefined) => {
+        const state = image && getSliceWindowState(image);
         if (state) SliceWindow.destroy(state.window);
       },
     },
