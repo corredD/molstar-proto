@@ -93,6 +93,31 @@ import type { Representation } from '../../../representation.js';
 export const ImpostorMinRadius = 22;
 
 /**
+ * Whether spheres with `props` can draw their last level as impostors (`lod-impostor.md`): `lodImpostor`, spheres (not
+ * a blob surface), not approximate (no impostor path there), two to four levels (the culling's and the segments' four,
+ * `MaxCullLevels`), and flat varyings (WebGL1 has none: the entry would be interpolated)
+ */
+export function canDrawImpostors(
+  props: {
+    readonly lodImpostor?: boolean;
+    readonly type?: string;
+    readonly approximate?: boolean;
+    readonly lodLevels: readonly unknown[];
+  },
+  graphics: GraphicsContext | undefined,
+) {
+  const levels = props.lodLevels.length;
+  return (
+    !!props.lodImpostor &&
+    props.type !== 'blob-surface' &&
+    !props.approximate &&
+    levels >= 2 &&
+    levels <= 4 &&
+    (!graphics || graphics.capabilities.flatInterpolation)
+  );
+}
+
+/**
  * The texel (Å) from which an impostor's views are splatted from the spheres of level 1 (a tenth of the atoms, scaled as
  * that level draws them): cellpack-mg's atlas 9.5 s from every atom (M1 Pro)
  */
@@ -1158,7 +1183,7 @@ export function createTargetVisual(_targetId: number, materialId: number, graphi
   function hasImpostors() {
     if (!renderObject || renderObject.type !== 'spheres' || !currentTarget || !isElementTarget(currentTarget))
       return false;
-    return !!currentProps?.lodImpostor && currentProps.type !== 'blob-surface' && currentProps.lodLevels.length >= 2;
+    return !!currentProps && canDrawImpostors(currentProps, graphics);
   }
 
   function getImpostorSource(pixelBoundary: number): ImpostorAtlas.Source | undefined {

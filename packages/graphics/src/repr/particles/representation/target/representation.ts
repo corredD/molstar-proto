@@ -40,6 +40,7 @@ import {
   ParticleTargetRepresentationParams,
   type ParticleTargetRepresentationProps,
   createTargetVisual,
+  canDrawImpostors,
   createParticleTargetPropsProvider,
   getTargetGeometryChoice,
   getTargetGeometryUtils,
@@ -551,7 +552,7 @@ function computeParticleTargetSignatures(
         : target.kind === 'shape' && target.shape.geometry.kind === 'mesh'
           ? { dVaryingGroup: [(target.shape.geometry as Mesh).varyingGroup.ref.value] }
           : // impostors (`lod-impostor.md`): every structure or sites target drawn as spheres takes them where on
-            choice === 'structure-spheres' && tProps.lodImpostor && props.lodLevels.length >= 2
+            choice === 'structure-spheres' && canDrawImpostors(tProps, ctx.graphics)
             ? { dLodImpostor: [true] }
             : undefined;
     const utils = getTargetGeometryUtils(target, choice);

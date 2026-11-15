@@ -12,7 +12,10 @@ import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
 import { ValueCell } from '@molstar/core/util/value-cell';
 import { Vec4 } from '@molstar/core/math/linear-algebra/3d/vec4';
 import { Spheres } from '@molstar/graphics/geo/geometry/spheres/spheres';
-import { ParticleTargetRepresentationParams } from '@molstar/graphics/repr/particles/representation/target/common';
+import {
+  canDrawImpostors,
+  ParticleTargetRepresentationParams,
+} from '@molstar/graphics/repr/particles/representation/target/common';
 import { createSegmentedMdbList, LodView, type LodLevelsValue } from '../renderable.js';
 
 const Fov = Math.PI / 4;
@@ -164,7 +167,11 @@ describe('levels of detail by size on screen', () => {
   it('orthographic with impostors: one level a view, the band not drawn twice', () => {
     const lodLevels = Spheres.LodPixelPresets.quality.lodLevels;
     const centers = new Float32Array(3000).map((_, i) => ((i * 7919) % 101) - 50);
-    const spheres = Spheres.create(centers, new Float32Array(1000).map((_, i) => i), 1000);
+    const spheres = Spheres.create(
+      centers,
+      new Float32Array(1000).map((_, i) => i),
+      1000,
+    );
     const props = { ...PD.getDefaultValues(Spheres.Params), lodLevels, lodPixelSize: 3 };
     const values = Spheres.Utils.createValuesSimple(spheres, props, ColorNames.orange, 1);
     spheres.shaderData.update({ lodImpostor: 7 });
@@ -176,6 +183,22 @@ describe('levels of detail by size on screen', () => {
       const drawn = value.map((_, j) => LodView.getRange(value, j, view, [0, 0, 0])).filter((r) => r[1] > 0);
       expect(drawn.length).toBe(1);
     }
+  });
+
+  it('impostors where they can draw: spheres, two to four levels, not approximate, flat varyings', () => {
+    const lodLevels = Spheres.LodPixelPresets.quality.lodLevels;
+    const props = { lodImpostor: true, type: 'spacefill', approximate: false, lodLevels };
+    const flat = { capabilities: { flatInterpolation: true } } as any;
+    expect(canDrawImpostors(props, flat)).toBe(true);
+    expect(canDrawImpostors({ ...props, lodImpostor: false }, flat)).toBe(false);
+    expect(canDrawImpostors({ ...props, type: 'blob-surface' }, flat)).toBe(false);
+    // approximate spheres have no impostor path (discs of the bounding sphere)
+    expect(canDrawImpostors({ ...props, approximate: true }, flat)).toBe(false);
+    // one level, or more than the culling's four (\`MaxCullLevels\`, the segments' four scales)
+    expect(canDrawImpostors({ ...props, lodLevels: lodLevels.slice(0, 1) }, flat)).toBe(false);
+    expect(canDrawImpostors({ ...props, lodLevels: [...lodLevels, lodLevels[3]] }, flat)).toBe(false);
+    // WebGL1: the entry in a varying that is not flat
+    expect(canDrawImpostors(props, { capabilities: { flatInterpolation: false } } as any)).toBe(false);
   });
 
   it('presets by pixel size: their distances those at 1280x720 and 45°', () => {
