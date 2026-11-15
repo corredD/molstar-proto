@@ -177,6 +177,8 @@ export interface GraphicsInfo {
   readonly tumble?: number;
   /** A particle list's colors that follow the zoom (`mesoscale.colorLevels`): their edges, null off, none mixed */
   readonly colorLevels?: ColorLevels.Props | null;
+  /** A particle list's far proteins as silhouettes (`mesoscale.impostors`), or spheres; none mixed or none drawn */
+  readonly impostors?: boolean;
 }
 
 /** What a graphics mode sets on each kind of object (apps/prism-me/_spec/ui.md §4, Graphics & Motion) */
@@ -1251,6 +1253,51 @@ export class MesoscaleApi extends ApiArea {
       const painted = (one ? [one] : lists(ctx)).some((l) => !!clearedColors(ctx, l));
       const note = painted ? ' A color set in Look is that color until the atoms, and By zoom stays on.' : '';
       return ApiResult.ok(`Colors follow the zoom.${note}`, { nodes });
+    },
+  });
+
+  /**
+   * Far proteins as silhouettes (impostors, the default) or as their last level of spheres (`lod-impostor.md`;
+   * apps/prism-me/_spec/ui.md §4 Graphics & Motion): every structure target of the list(s), one step
+   */
+  readonly impostors = this.operation({
+    id: 'mesoscale.impostors',
+    title: 'Far proteins as silhouettes or spheres',
+    params: {
+      on: PD.Boolean(true, {
+        description:
+          'Silhouettes (impostors: each far copy its outline, flat) or off: spheres (the last level of detail)',
+      }),
+      particles: PD.Text('', { description: 'A particle list (a model) by label or state ref; empty: every one' }),
+    },
+    async run(values, ctx) {
+      const { on, particles } = values as { on: boolean; particles: string };
+      const one = particles.trim() ? oneList(ctx, particles) : undefined;
+      if (isFailure(one)) return one;
+      const reps = (one ? [one] : lists(ctx))
+        .flatMap((l) => l.representations.map((r) => r.cell))
+        .filter(
+          (r) => !!(r.transform.params as { type?: { params?: { structure?: object } } }).type?.params?.structure,
+        );
+      if (!reps.length) {
+        return ApiResult.fail('not-found', 'No particles are drawn by their structures.', 'Show a model as targets.');
+      }
+      // one commit for every representation (bulk is one change)
+      const b = ctx.plugin.state.data.build();
+      const nodes: string[] = [];
+      for (const r of reps) {
+        const old = r.transform.params as { type: ParticleType };
+        const structure = old.type.params.structure as { lodImpostor?: boolean };
+        // absent: the param's default, on
+        if ((structure.lodImpostor ?? true) === on) continue;
+        const type = { ...old.type, params: { ...old.type.params, structure: { ...structure, lodImpostor: on } } };
+        b.to(r).update({ ...old, type });
+        nodes.push(r.transform.ref);
+      }
+      const what = on ? 'silhouettes' : 'spheres';
+      if (!nodes.length) return ApiResult.already(`Far proteins are already ${what}.`);
+      await b.commit();
+      return ApiResult.ok(`Far proteins drawn as ${what}.`, { nodes });
     },
   });
 
@@ -3131,9 +3178,15 @@ function graphicsOf(o: GraphicsObject): GraphicsInfo | undefined {
     levelsOf,
     types.filter((t) => 'structure' in t),
   );
+  // far proteins as silhouettes (absent: the param's default, on)
+  const impostors = common(
+    (t) => (t as { structure: { lodImpostor?: boolean } }).structure.lodImpostor !== false,
+    types.filter((t) => 'structure' in t),
+  );
   return {
     ...(mode ? { mode } : {}),
     ...(colorLevels !== undefined ? { colorLevels } : {}),
+    ...(impostors !== undefined ? { impostors } : {}),
     wiggle: common((t) => findAnimation(t)?.wiggleAmplitude ?? 0) ?? 0,
     tumble: common((t) => findAnimation(t)?.tumbleAmplitude ?? 0) ?? 0,
   };

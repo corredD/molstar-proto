@@ -52,9 +52,16 @@ export function GraphicsMode(props: { area: MesoscaleApi }) {
   );
 }
 
+/** Far proteins (`mesoscale.impostors`, lod-impostor.md): silhouettes (impostors) or spheres */
+const FarChoices = [
+  { id: 'silhouettes', label: 'Silhouettes' },
+  { id: 'spheres', label: 'Spheres' },
+];
+
 /**
- * One object's graphics (apps/prism-me/_spec/ui.md §4, Graphics & Motion): its quality, and its wiggle and tumble when
- * it moves (`motion`: a structure, a particle list; not a volume). Each acts on that object alone.
+ * One object's graphics (apps/prism-me/_spec/ui.md §4, Graphics & Motion): its quality, its far proteins as silhouettes
+ * or spheres (a model drawn by its structures), and its wiggle and tumble when it moves (`motion`: a structure, a
+ * particle list; not a volume). Each acts on that object alone.
  */
 export function ObjectGraphics(props: { area: MesoscaleApi; object: string; motion: boolean }) {
   const graphics = props.area.graphicsState(props.object);
@@ -66,6 +73,16 @@ export function ObjectGraphics(props: { area: MesoscaleApi; object: string; moti
         active={mapState(graphics, (g) => g?.mode ?? '')}
         onPick={(id) => void props.area.graphics({ mode: id as GraphicsMode, object: props.object } as never)}
       />
+      <Show when={mapState(graphics, (g) => g?.impostors !== undefined)}>
+        {() => (
+          <Choices
+            label="Far proteins"
+            choices={FarChoices}
+            active={mapState(graphics, (g) => (g?.impostors === false ? 'spheres' : 'silhouettes'))}
+            onPick={(id) => void props.area.impostors({ on: id === 'silhouettes', particles: props.object } as never)}
+          />
+        )}
+      </Show>
       {props.motion ? <MotionRows area={props.area} graphics={graphics} of={{ object: props.object }} /> : null}
     </div>
   );
