@@ -75,12 +75,14 @@ export function planeSurface(plane: SlicePlane, grid: Grid): GrowSurface {
       const offset = Vec3.dot(Vec3.sub(d, plane.point, p), n);
       // `along` unit or zero: a line along the plane (or none) meets it nowhere
       const cos = Vec3.dot(along, n);
+      Vec3.copy(out.normal, n);
       if (Math.abs(cos) > 1e-6 && Math.abs(offset / cos) <= reach) {
         Vec3.scaleAndAdd(out.position, p, along, offset / cos);
-      } else if (Math.abs(offset) <= reach) {
-        Vec3.scaleAndAdd(out.position, p, n, offset);
-      } else return false;
-      Vec3.copy(out.normal, n);
+        if (inBox(out.position)) return true;
+      }
+      // else the point's foot (the line meeting the plane outside the box: review 7)
+      if (!(Math.abs(offset) <= reach)) return false;
+      Vec3.scaleAndAdd(out.position, p, n, offset);
       return inBox(out.position);
     },
     triangles(center: Vec3, radius: number) {

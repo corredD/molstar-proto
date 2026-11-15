@@ -70,6 +70,10 @@ describe('a slice as a surface', () => {
     expect(surface.project(hit, Vec3.create(23, 35, 27), zero, 2)).toBe(true);
     expect(surface.project(hit, Vec3.create(23.5, 10, 27), zero, 2)).toBe(false);
     expect(surface.project(hit, Vec3.create(10, -4, 27), zero, 2)).toBe(false);
+    // a line meeting the plane outside the box, its point's foot inside: the foot (review 7)
+    const along = Vec3.normalize(Vec3(), Vec3.create(-1, 0, -1));
+    expect(surface.project(hit, Vec3.create(5.5, 10, 27), along, 2)).toBe(true);
+    expect(Array.from(hit.position)).toEqual([5.5, 10, 26]);
     // a slice outside the box along its normal: none of it
     const out = planeSurface({ point: Vec3.create(0, 0, 70), normal: Vec3.create(0, 0, 1) }, grid);
     expect(out.project(hit, Vec3.create(10, 10, 70), zero, 2)).toBe(false);
