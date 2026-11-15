@@ -479,6 +479,13 @@ export namespace LodView {
     // a switch per copy: the last spheres and the impostors from where the last spheres start (the levels' rule) to
     // where the last copy can switch; the overlap's sign their role (fading out, in), the band the copies'
     const start = getLevelRange(levels, last - 1, view, out)[0];
+    if (view.depthScale <= 0 && !((levels.pixelSize ?? 0) > 0)) {
+      // orthographic with levels by distance: both from where the last spheres start, the copies choose
+      out[0] = start;
+      out[1] = MaxLodDistance;
+      out[2] = j === last ? -1 : 1;
+      return out;
+    }
     if (view.depthScale <= 0 && (levels.pixelSize ?? 0) > 0) {
       // orthographic: both where the last spheres would be, the copies choose
       const drawn = view.pixelSize >= levels[last - 1][0];
