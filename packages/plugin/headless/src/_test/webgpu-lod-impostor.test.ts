@@ -115,9 +115,14 @@ async function setup() {
     return image;
   };
   /** the impostors on: the levels above, the atlas of the rod and its entry */
-  const impostors = async () => {
+  /** the impostors on, from `boundary` Å of distance (default: everything an impostor) */
+  const impostors = async (boundary = 1) => {
+    const levels = [
+      { ...lodLevels[0], maxDistance: boundary },
+      { ...lodLevels[1], minDistance: boundary },
+    ];
     await repr
-      .createOrUpdate({ ...PD.getDefaultValues(Spheres.Params), ignoreLight: true, lodLevels } as any, {})
+      .createOrUpdate({ ...PD.getDefaultValues(Spheres.Params), ignoreLight: true, lodLevels: levels } as any, {})
       .run();
     const atlas = ImpostorAtlas.create([ImpostorAtlas.getItem(values, 64)!], 4096);
     ImpostorAtlas.setValues(values, atlas);
@@ -212,6 +217,31 @@ describe.skipIf(!WebGPU.module)('impostors (WebGPU)', () => {
         const pick = await canvas.asyncIdentify(Vec2.create(x / n / ratio, Size / 2 / ratio))?.wait();
         expect(pick?.id.instanceId).toBe(c);
       }
+    } finally {
+      plugin.dispose();
+    }
+  });
+
+  // in the band (the camera at the boundary of the spheres and the impostors) both levels draw, the dither giving each
+  // pixel to one: no hole, no copy drawn twice over the other
+  it('split a copy between its spheres and its impostor in the band', { tags: ['medium'] }, async () => {
+    const { plugin, canvas, draw, impostors } = await setup();
+    try {
+      const full = copies(await draw());
+      const { position, target } = canvas.camera.state;
+      await impostors(Vec3.distance(position, target));
+      const band = copies(await draw());
+      let n = 0;
+      let same = 0;
+      let wrong = 0;
+      for (let i = 0; i < full.length; ++i) {
+        if (full[i] < 0) continue;
+        n++;
+        if (band[i] === full[i]) same++;
+        if (full[i] === 0 && band[i] === 1) wrong++;
+      }
+      expect(same / n).toBeGreaterThan(0.8);
+      expect(wrong).toBeLessThan(0.02 * n);
     } finally {
       plugin.dispose();
     }

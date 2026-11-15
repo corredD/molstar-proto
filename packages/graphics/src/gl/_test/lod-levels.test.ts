@@ -152,6 +152,10 @@ describe('levels of detail by size on screen', () => {
     expect(band[last][4]).toBe(plain[last][4]);
     spheres.shaderData.update({ lodImpostor: 1234 });
 
+    // the same props again: the levels kept (the props' overlaps read back, not the band's)
+    const version = values.lodLevels.ref.version;
+    Spheres.Utils.updateValues(values, props);
+    expect(values.lodLevels.ref.version).toBe(version);
     // kept by a props update, dropped by -1
     Spheres.Utils.updateValues(values, { ...props, lodPixelSize: 4 });
     expect((values.lodLevels.ref.value as Spheres.LodLevelsValue).impostor).toBe(1234);
