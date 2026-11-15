@@ -682,10 +682,13 @@ still completes its distance.
   right-click takes the slice shown through it (within its radius); **On** lists it as "Slice of <volume>" beside None
   and the meshes, kept while another is picked (a mesh wins; None grows in space) to pick again. Tiling, Sphere, Random
   walk, Spiral and Symmetry's Snap grow on the plane as on a mesh, each copy's up along its normal, the plane ending at
-  the volume's box (its voxels' centers); with Fit to, each copy fitted on it. Crystal and Helix grow in space (a
-  helix's radial lines meet the plane only at its axis: `mesoscale.grow` refuses one on a slice). The grow keeps the
-  slice (a session too). `slice` (the volume; empty: none), `slicePoint`, `sliceNormal`: plain params, the assistant's
-  and ⌘K's.
+  the volume's box (its voxels' centers); with Fit to, each copy fitted on it. Crystal grows in space. A Helix from a
+  copy on a slice (Ludo, 2026-11-14: "grow along the plane, or away from it") has an **Axis** row, shown only on a
+  slice: Along plane (default; its axis a line of the plane through the source, along the copy's side in the plane: the
+  copy stands along the normal, so its Spin turns the helix; the helix pokes out of the plane by its Radius) or Normal
+  (its axis the plane's normal through the source; Direction up or down it); Radius, Pitch, Count and Turns as in space,
+  live on the last grow. The grow keeps the slice (a session too). `slice` (the volume; empty: none), `slicePoint`,
+  `sliceNormal`: plain params, the assistant's and ⌘K's.
 - Models decorated too (2026-10-23, Ludovic: "why can't we change the target in Simularium"): a model (a list with
   entities: Simularium, cellPACK, PetWorld) has the Decoration section, so each of its targets (an agent, an entity) can
   be drawn as another object of the scene. A particle list's own shape (a Simularium simulation box) is not listed as a
