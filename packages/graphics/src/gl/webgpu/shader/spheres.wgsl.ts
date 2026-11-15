@@ -487,7 +487,7 @@ fn fragmentMain(fragmentIn: VertexOutput) -> FragmentOutput {
             let clipSome = false;
         #endif
         #if defined(dLodImpostor)
-            if (impostorDithered(fragmentIn.position, in.vImpostorX, in.vImpostorY)) {
+            if (impostorDithered(fragmentIn.position, in.vImpostorY)) {
                 discard;
             }
             var h: SphereHit;

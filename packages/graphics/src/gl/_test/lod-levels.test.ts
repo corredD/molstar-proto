@@ -114,7 +114,11 @@ describe('levels of detail by size on screen', () => {
     const lodLevels = Spheres.LodPixelPresets.quality.lodLevels;
     // 1000 spheres in a cloud, so that the levels' prefixes are long
     const centers = new Float32Array(3000).map((_, i) => ((i * 7919) % 101) - 50);
-    const spheres = Spheres.create(centers, new Float32Array(1000).map((_, i) => i), 1000);
+    const spheres = Spheres.create(
+      centers,
+      new Float32Array(1000).map((_, i) => i),
+      1000,
+    );
     const props = { ...PD.getDefaultValues(Spheres.Params), lodLevels, lodPixelSize: 3 };
     const values = Spheres.Utils.createValuesSimple(spheres, props, ColorNames.orange, 1);
     const plain = (values.lodLevels.ref.value as LodLevelsValue).map((l) => [...l]);
@@ -132,16 +136,28 @@ describe('levels of detail by size on screen', () => {
     const k = Math.pow(2, Spheres.LodImpostorBand / 2);
     expect(value[last][0]).toBeCloseTo(b / k, 12);
     expect(value[last - 1][1]).toBeCloseTo(b * k, 12);
-    expect(value[last][2]).toBeCloseTo(b * k - b / k, 12);
+    // the last fading in (its overlap negated), the one before out
+    expect(value[last][2]).toBeCloseTo(-(b * k - b / k), 12);
     expect(value[last - 1][2]).toBeCloseTo(b * k - b / k, 12);
     // the other levels as they were
     for (let j = 0; j < last - 1; ++j) expect([...value[j]]).toEqual(plain[j]);
 
+    // a small item keeping its spheres: the same ranges (one merge key), its last level spheres
+    spheres.shaderData.update({ lodImpostor: -1 });
+    const band = values.lodLevels.ref.value as Spheres.LodLevelsValue;
+    expect(band.map((l) => [l[0], l[1], l[2]])).toEqual(value.map((l) => [l[0], l[1], l[2]]));
+    expect(band[last][4]).toBe(plain[last][4]);
+    spheres.shaderData.update({ lodImpostor: 1234 });
+
     // kept by a props update, dropped by -1
     Spheres.Utils.updateValues(values, { ...props, lodPixelSize: 4 });
     expect((values.lodLevels.ref.value as Spheres.LodLevelsValue).impostor).toBe(1234);
-    spheres.shaderData.update({ lodImpostor: -1 });
+    spheres.shaderData.update({ lodImpostor: -2 });
     expect((values.lodLevels.ref.value as Spheres.LodLevelsValue).impostor).toBeUndefined();
+    // off: the levels as before, the band's overlaps gone (a negative overlap shrinks spheres to nothing)
+    const off = values.lodLevels.ref.value as LodLevelsValue;
+    expect(off.map((l) => l[2])).toEqual(plain.map((l) => l[2]));
+    expect(off.map((l) => l[3])).toEqual(plain.map((l) => l[3]));
     expect((values.lodLevels.ref.value as LodLevelsValue)[last][4]).toBeGreaterThan(0);
   });
 

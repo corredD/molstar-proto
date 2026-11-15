@@ -1169,8 +1169,8 @@ export function createTargetVisual(_targetId: number, materialId: number, graphi
     const values = renderObject.values as unknown as SpheresValues;
     const on = hasImpostors() ? atlas : undefined;
     ImpostorAtlas.setValues(values, on);
-    const entry = on ? code : -1;
-    if (((values.lodLevels.ref.value as Spheres.LodLevelsValue).impostor ?? -1) !== entry) {
+    const entry = on ? code : -2;
+    if (((values.lodLevels.ref.value as Spheres.LodLevelsValue).impostor ?? -2) !== entry) {
       (geometry as Spheres).shaderData.update({ lodImpostor: entry });
     }
   }

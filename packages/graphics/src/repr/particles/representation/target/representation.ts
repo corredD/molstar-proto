@@ -248,7 +248,11 @@ export function ParticleTargetRepresentation(
       impostors.visuals.every((v, i) => v === owners[i] && impostors!.key[i] === key[i]);
     if (!same) {
       impostors = items.length
-        ? { key, atlas: ImpostorAtlas.create(items, graphics?.resources.limits.maxTextureSize ?? 4096), visuals: owners }
+        ? {
+            key,
+            atlas: ImpostorAtlas.create(items, graphics?.resources.limits.maxTextureSize ?? 4096),
+            visuals: owners,
+          }
         : undefined;
     }
     const entries = new Map<TargetVisual, number>();

@@ -29,7 +29,7 @@ export const assign_lod_impostor_wgsl = /* wgsl */ `
     #endif
     // a model scale draws every level (\`assign_lod_factor\`): the spheres there, not the impostors
     let lodImpostor = uDraw.uLod.w != 0.0 && lodImpostorScale < 0.0 && uGlobal.uModelScale == 1.0;
-    var lodImpostorShare = 0.0;
+    var lodImpostorShare = -1.0;
     let lodImpostorSphere = invariantBoundingSphere(in);
     let lodImpostorCenter = (uGlobal.uModel * transform * vec4<f32>(lodImpostorSphere.xyz, 1.0)).xyz;
     if (lodImpostor) {
@@ -46,10 +46,14 @@ export const assign_lod_impostor_factor_wgsl = /* wgsl */ `
             let d = (dot(uGlobal.uCameraPlane.xyz, lodImpostorCenter) + uGlobal.uCameraPlane.w) / uGlobal.uModelScale;
             lodFactor = select(lodScale, 1.0, lodImpostor);
             lodCulled = d < lod.x || d > lod.y;
-            if (lod.z > 0.0) {
-                lodImpostorShare = select(smoothstep(lod.y - lod.z, lod.y, d), smoothstep(lod.x, lod.x + lod.z, d), lodImpostor);
+            // the band's share of the next level: a level fading in (its overlap negated) keeps where it is above the
+            // dither, one fading out (-1 - share) where it is not
+            if (lod.z < 0.0) {
+                lodImpostorShare = smoothstep(lod.x, lod.x - lod.z, d);
+            } else if (lod.z > 0.0) {
+                lodImpostorShare = -1.0 - smoothstep(lod.y - lod.z, lod.y, d);
             } else {
-                lodImpostorShare = select(0.0, 1.0, lodImpostor);
+                lodImpostorShare = -1.0;
             }
 `;
 
@@ -211,13 +215,13 @@ fn impostorHit(sphere: vec4<f32>, point: vec3<f32>, impostorX: vec4<f32>, impost
 }
 
 /**
- * the band where the last spheres and the impostors both draw: a copy's pixel the impostor's where the dither's
- * threshold is below its share, the sphere's elsewhere (picking: half and half by the share, no dither); coordinates
+ * the band where the last spheres and the impostors both draw: a copy's pixel the level fading in's where the dither's
+ * threshold is below the share, the one fading out's elsewhere (picking: half and half, no dither); coordinates
  * with a bottom-left origin as on WebGL
  */
-fn impostorDithered(position: vec4<f32>, impostorX: vec4<f32>, impostorY: vec4<f32>) -> bool {
-    let impostor = impostorX.w >= 0.0;
-    let share = impostorY.w;
+fn impostorDithered(position: vec4<f32>, impostorY: vec4<f32>) -> bool {
+    let fadeIn = impostorY.w >= 0.0;
+    let share = select(-1.0 - impostorY.w, impostorY.w, fadeIn);
     #if defined(dRenderVariant_pick)
         let at = 0.5;
     #else
@@ -230,7 +234,7 @@ fn impostorDithered(position: vec4<f32>, impostorX: vec4<f32>, impostorY: vec4<f
         );
         let at = thresholds[i32(coord.x) % 4][i32(coord.y) % 4];
     #endif
-    return select(share > at, share <= at, impostor);
+    return select(share > at, share <= at, fadeIn);
 }
 #endif
 `;

@@ -40,7 +40,7 @@ export const assign_lod_impostor = `
     #endif
     // a model scale draws every level (\`assign_lod_factor\`): the spheres there, not the impostors
     bool lodImpostor = uLod.w != 0.0 && lodImpostorScale < 0.0 && uModelScale == 1.0;
-    float lodImpostorShare = 0.0;
+    float lodImpostorShare = -1.0;
     vec4 lodImpostorSphere = InvariantBoundingSphere;
     vec3 lodImpostorCenter = (uModel * transform * vec4(lodImpostorSphere.xyz, 1.0)).xyz;
     if (lodImpostor) position = lodImpostorSphere.xyz;
@@ -56,10 +56,14 @@ export const assign_lod_impostor_factor = `
     float d = (dot(uCameraPlane.xyz, lodImpostorCenter) + uCameraPlane.w) / uModelScale;
     lodFactor = lodImpostor ? 1.0 : lodScale;
     lodCulled = d < uLod.x || d > uLod.y;
-    if (uLod.z > 0.0) {
-        lodImpostorShare = lodImpostor ? smoothstep(uLod.x, uLod.x + uLod.z, d) : smoothstep(uLod.y - uLod.z, uLod.y, d);
+    // the band's share of the next level: a level fading in (its overlap negated) keeps where it is above the dither,
+    // one fading out (\`lodImpostorShare\` -1 - share) where it is not
+    if (uLod.z < 0.0) {
+        lodImpostorShare = smoothstep(uLod.x, uLod.x - uLod.z, d);
+    } else if (uLod.z > 0.0) {
+        lodImpostorShare = -1.0 - smoothstep(uLod.y - uLod.z, uLod.y, d);
     } else {
-        lodImpostorShare = lodImpostor ? 1.0 : 0.0;
+        lodImpostorShare = -1.0;
     }
 `;
 
@@ -190,11 +194,11 @@ export const lod_impostor_frag = `
         return true;
     }
 
-    // the band where the last spheres and the impostors both draw: a copy's pixel the impostor's where the dither's
-    // threshold is below its share, the sphere's elsewhere (picking: half and half by the share, no dither)
+    // the band where the last spheres and the impostors both draw: a copy's pixel the level fading in's where the
+    // dither's threshold is below the share, the one fading out's elsewhere (picking: half and half, no dither)
     bool impostorDithered() {
-        bool impostor = vImpostorX.w >= 0.0;
-        float share = vImpostorY.w;
+        bool fadeIn = vImpostorY.w >= 0.0;
+        float share = fadeIn ? vImpostorY.w : -1.0 - vImpostorY.w;
         #if defined(dRenderVariant_pick)
             float at = 0.5;
         #else
@@ -218,7 +222,7 @@ export const lod_impostor_frag = `
                 float at = thresholdMatrix[ci][ri];
             #endif
         #endif
-        return impostor ? share <= at : share > at;
+        return fadeIn ? share <= at : share > at;
     }
 #endif
 `;

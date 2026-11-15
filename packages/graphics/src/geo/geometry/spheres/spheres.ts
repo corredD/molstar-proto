@@ -112,7 +112,7 @@ export namespace Spheres {
           const sizeFactorProp = props?.sizeFactor ?? sizeFactor.ref.value;
           const pixelSizeProp = props?.lodPixelSize ?? lodLevels.ref.value.pixelSize ?? 0;
           const radiusProp = props?.lodRadius ?? lodLevels.ref.value.radius ?? LodNominalRadius;
-          const impostorProp = props?.lodImpostor ?? lodLevels.ref.value.impostor ?? -1;
+          const impostorProp = props?.lodImpostor ?? lodLevels.ref.value.impostor ?? -2;
 
           const newLodLevels = Lod.orderLodLevels(
             data.positionGroup,
@@ -149,8 +149,8 @@ export namespace Spheres {
   const { LodNominalRadius, areLodLevelsEqual, getLodLevels } = Lod;
 
   /**
-   * `lodRadius` the radius the pixel boundaries assume (`getLodRadius`); `lodImpostor` the atlas entry of the last level
-   * as impostors (`Lod.getLodLevelsValue`), -1 for none, kept where not given
+   * `lodRadius` the radius the pixel boundaries assume (`getLodRadius`); `lodImpostor` the impostors
+   * (`Lod.getLodLevelsValue`): the atlas entry, -1 for the band alone, -2 off; kept where not given
    */
   type LodProps = {
     lodLevels?: LodLevels;
