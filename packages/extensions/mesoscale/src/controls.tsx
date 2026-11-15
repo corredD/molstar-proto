@@ -668,7 +668,9 @@ function settingsOfGrow(g: GrowRecord): Partial<GrowSettings> {
   // On: the grow's mesh or slice (a crystal grows in space whatever On says)
   if (g.mode !== 'crystal') {
     out.mesh = g.mesh?.ref;
-    out.slice = g.slice && { volume: g.slice.volume, point: g.slice.point, normal: g.slice.normal };
+    // its slice as kept (review 9); grown in space with a slice set: On None (review 4)
+    if (g.slice) Object.assign(out, { slice: g.slice, inSpace: false });
+    else if (!g.mesh) out.inSpace = true;
   }
   for (const [from, to] of keys[g.mode]) if (p[from] !== undefined) out[to] = p[from];
   // Helix, Spiral: the driver of Count and Turns comes back with `by`, never the follower (a shared value: the
@@ -765,7 +767,7 @@ export function GrowBlock(props: { area: MesoscaleApi; api: ViewerApi; particles
     s.mesh && list.some((m) => m.ref === s.mesh) ? s.mesh : undefined;
   /** The source's slice while its volume is in the scene (slice-constraint) */
   const onSlice = (s: GrowSettings, list: readonly { ref: string }[]) =>
-    s.slice && list.some((v) => v.ref === s.slice!.volume) ? s.slice : undefined;
+    s.slice && !s.inSpace && list.some((v) => v.ref === s.slice!.volume) ? s.slice : undefined;
   /** On a surface, a mesh or a slice: Symmetry's Snap */
   const onSurface = derive(
     [settings, meshes, volumes],
@@ -956,7 +958,8 @@ export function GrowBlock(props: { area: MesoscaleApi; api: ViewerApi; particles
                     (list, vl, s) => ({
                       list,
                       // the source's slice (slice-constraint): an On of its own
-                      slice: onSlice(s, vl) && vl.find((v) => v.ref === s.slice!.volume)?.label,
+                      // listed while its volume is there, picked or not (review 4)
+                      slice: s.slice && vl.find((v) => v.ref === s.slice!.volume)?.label,
                     }),
                     // rebuilt when the meshes or the slice's name change, not a setting (a drag)
                     (a, b) => a.list === b.list && a.slice === b.slice,
@@ -975,14 +978,17 @@ export function GrowBlock(props: { area: MesoscaleApi; api: ViewerApi; particles
                           ...(slice ? [[SliceOn, `Slice of ${slice}`] as SelectOption] : []),
                           ...list.map((m): SelectOption => [m.ref, m.label]),
                         ]}
-                        value={mapState(settings, (s) => onMesh(s, list) ?? (slice && s.slice ? SliceOn : ''))}
+                        value={mapState(
+                          settings,
+                          (s) => onMesh(s, list) ?? (slice && s.slice && !s.inSpace ? SliceOn : ''),
+                        )}
                         onChange={(ref) =>
                           set(
                             ref === SliceOn
-                              ? { mesh: undefined }
+                              ? { mesh: undefined, inSpace: false }
                               : ref
-                                ? { mesh: ref, slice: undefined }
-                                : { mesh: undefined, slice: undefined },
+                                ? { mesh: ref }
+                                : { mesh: undefined, inSpace: true },
                           )
                         }
                       />,

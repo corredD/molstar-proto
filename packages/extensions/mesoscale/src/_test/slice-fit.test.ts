@@ -310,6 +310,15 @@ describe('Grow knows the slice', () => {
     );
     // a crystal grows in space whatever On says
     expect(growParams(m.growSource.value!, { ...m.growSettings.value, mode: 'crystal' }).slice).toBeUndefined();
+    // a helix too (it is refused on a slice: review 3); a mesh picked wins, the slice kept for later; None: in space,
+    // the slice kept to pick again (review 4)
+    expect(growParams(m.growSource.value!, { ...m.growSettings.value, mode: 'helix' }).slice).toBeUndefined();
+    const on = (patch: object) =>
+      growParams(m.growSource.value!, { ...m.growSettings.value, mode: 'tiling', ...patch });
+    expect(on({ mesh: 'a-mesh' })).toMatchObject({ mesh: 'a-mesh' });
+    expect(on({ mesh: 'a-mesh' }).slice).toBeUndefined();
+    expect(on({ inSpace: true }).slice).toBeUndefined();
+    expect(on({ inSpace: false })).toMatchObject(sliceParams(slice));
     // picked (right-click): the slice shown under it, its plane then
     expectOk(await v.api.run('mesoscale.paint', { ...paintParams, positions: [60, 60, 40] }));
     expectOk(

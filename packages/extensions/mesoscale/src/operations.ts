@@ -297,6 +297,8 @@ export interface GrowSettings {
   readonly mesh?: string;
   /** The slice it grows on (slice-constraint: the source's, as it was painted or picked); a mesh wins; not for Crystal */
   readonly slice?: GrowSlice;
+  /** On None picked with a slice (review 4): in space, the slice kept to pick again */
+  readonly inSpace?: boolean;
   /** Tiling's points, the source's counted; unset: 3 rings' (decisions 11) */
   readonly tiles?: number;
   /** A helix (grow-helix): its pitch (unset: 4 × the copy's diameter), turns, hand, direction, axis on a mesh, radius in space (unset: the copy's diameter) */
@@ -385,7 +387,8 @@ export function growParams(source: GrowSource, s: GrowSettings) {
   } else {
     delete out.axis;
     // on a slice (slice-constraint): as on a mesh
-    if (s.slice && s.mode !== 'crystal') Object.assign(out, sliceParams(s.slice));
+    // (not a crystal or a helix: they grow in space, review 3; nor with On None, review 4)
+    if (s.slice && !s.inSpace && s.mode !== 'crystal' && s.mode !== 'helix') Object.assign(out, sliceParams(s.slice));
   }
   // fitted to a volume (density-fit)
   if (s.fit) Object.assign(out, { fit: s.fit, contrast: s.contrast, threshold: s.threshold });
@@ -644,7 +647,7 @@ export class MesoscaleApi extends ApiArea {
     const surface = { ...(mesh ? { mesh } : {}), ...(on ? { slice: on } : {}) };
     if (same) {
       if (mesh !== this.growSettings.value.mesh || on !== this.growSettings.value.slice) {
-        const { mesh: _m, slice: _s, ...rest } = this.growSettings.value;
+        const { mesh: _m, slice: _s, inSpace: _i, ...rest } = this.growSettings.value;
         this.growSettings.set({ ...rest, ...surface });
       }
       return;
@@ -659,6 +662,7 @@ export class MesoscaleApi extends ApiArea {
       radius: _r,
       mesh: _m,
       slice: _slice,
+      inSpace: _inSpace,
       rise: _rise,
       twist: _t,
       jitter: _j,
