@@ -113,6 +113,10 @@ export namespace Spheres {
           const pixelSizeProp = props?.lodPixelSize ?? lodLevels.ref.value.pixelSize ?? 0;
           const radiusProp = props?.lodRadius ?? lodLevels.ref.value.radius ?? LodNominalRadius;
           const impostorProp = props?.lodImpostor ?? lodLevels.ref.value.impostor ?? -2;
+          const switchProp =
+            props?.lodImpostorSwitch === null
+              ? undefined
+              : (props?.lodImpostorSwitch ?? lodLevels.ref.value.impostorSwitch);
 
           const newLodLevels = Lod.orderLodLevels(
             data.positionGroup,
@@ -122,6 +126,7 @@ export namespace Spheres {
             pixelSizeProp,
             radiusProp,
             impostorProp,
+            switchProp,
           );
 
           ValueCell.update(lodLevels, newLodLevels);
@@ -158,6 +163,8 @@ export namespace Spheres {
     lodPixelSize?: number;
     lodRadius?: number;
     lodImpostor?: number;
+    /** where each copy switches (`Lod.LodImpostorSwitch`), null for the levels' boundary; kept where not given */
+    lodImpostorSwitch?: Lod.LodImpostorSwitch | null;
   };
 
   /**
@@ -440,6 +447,7 @@ export namespace Spheres {
         props.lodPixelSize,
         lodRadius,
         lodValue.impostor,
+        lodValue.impostorSwitch,
       );
       ValueCell.update(values.lodLevels, lodLevels);
     }

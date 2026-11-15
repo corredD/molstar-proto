@@ -69,7 +69,19 @@ export const assign_lod_impostor_factor = `
     lodCulled = (lodImpostor ? d : dSphere) < uLod.x || d > uLod.y;
     // the band's share of the next level: a level fading in (its overlap negated) keeps where it is above the dither,
     // one fading out (\`lodImpostorShare\` -1 - share) where it is not
-    if (uLod.z < 0.0) {
+    if (uLodImpostorSwitch.x > 0.0 && lodImpostorWhole) {
+        // a switch per copy (\`ImpostorAtlas.switchShare\`): by its own size on screen (its bounding sphere, in CSS pixels)
+        // or its distance from the eye; the band half an octave each way of the threshold, then the flattening
+        float pixel = 2.0 * uPixelRatio / (uProjection[1][1] * uDrawingBufferSize.y) * (uIsOrtho == 1.0 ? 1.0 : d);
+        float ratio = uLodImpostorSwitch.x == 1.0
+            ? uLodImpostorSwitch.y * pixel / (2.0 * lodImpostorSphere.w)
+            : distance(lodImpostorCenter, uCameraPosition) / uModelScale / uLodImpostorSwitch.y;
+        float l = log2(max(ratio, 1e-30));
+        float h = uLodImpostorSwitch.z;
+        float s = smoothstep(-h, h, l);
+        lodImpostorShare = lodImpostor ? s + clamp((l - h) / ImpostorFlatOctaves, 0.0, 1.0) : -1.0 - s;
+        if (lodImpostor ? s <= 0.0 : s >= 1.0) lodCulled = true;
+    } else if (uLod.z < 0.0) {
         // beyond the band, the impostors flatten over an octave (\`ImpostorFlatOctaves\`): 1 + flatness
         float bandEnd = uLod.x - uLod.z;
         lodImpostorShare = smoothstep(uLod.x, bandEnd, d) + clamp(log2(max(d, bandEnd) / bandEnd) / ImpostorFlatOctaves, 0.0, 1.0);

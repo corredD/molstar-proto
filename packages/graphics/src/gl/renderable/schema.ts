@@ -730,6 +730,11 @@ export const LodImpostorSchema = {
   tImpostor: TextureSpec('image-uint8', 'rgba', 'ubyte', 'linear', undefined, { shared: true }),
   /** its size in texels */
   uImpostorTexDim: ObjectUniformSpec('v2'),
+  /**
+   * where each copy switches (`ImpostorAtlas.switchShare`): x the mode (0 the levels' boundary, 1 by size on screen, 2
+   * by distance from the eye), y the threshold (pixels, Å), z the band's half in octaves
+   */
+  uLodImpostorSwitch: ObjectUniformSpec('v4'),
   dLodImpostor: DefineSpec('boolean'),
 } as const;
 export type LodImpostorSchema = typeof LodImpostorSchema;

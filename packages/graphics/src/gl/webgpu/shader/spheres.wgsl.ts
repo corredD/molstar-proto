@@ -45,7 +45,7 @@ import {
   assign_size_wgsl,
   assign_varyings_wgsl,
   vertex_output_wgsl,
-  assign_lod_factor_wgsl,
+  assign_lod_factor_impostor_wgsl,
 } from './chunks/varyings.wgsl.js';
 
 /** Sphere impostors: a screen-aligned quad per sphere covering its projection, ray-sphere intersection per fragment */
@@ -141,7 +141,7 @@ fn vertexMain(in: VertexInput) -> VertexOutput {
     let modelScale = uGlobal.uModelScale;
     var radius = size * modelScale;
 
-    ${assign_lod_factor_wgsl}
+    ${assign_lod_factor_impostor_wgsl}
     radius *= lodFactor;
     ${assign_lod_impostor_varyings_wgsl}
 

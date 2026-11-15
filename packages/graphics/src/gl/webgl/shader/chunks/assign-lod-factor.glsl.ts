@@ -12,7 +12,8 @@ import { assign_lod_impostor_factor } from './lod-impostor.glsl.js';
  * (a coarser level's fewer items larger) faded at the level's range (1 without levels), `lodCulled` beyond the range;
  * with impostors (`dLodImpostor`, after `assign_lod_impostor`) by the copy's distance, its share of the band
  */
-export const assign_lod_factor = `
+function lodFactor(impostor: boolean) {
+  return `
 float lodFactor = 1.0;
 bool lodCulled = false;
 if (uLod.w != 0.0 && (uLod.x != 0.0 || uLod.y != 0.0)) {
@@ -31,7 +32,7 @@ if (uLod.w != 0.0 && (uLod.x != 0.0 || uLod.y != 0.0)) {
         #endif
     } else {
         #if defined(dLodImpostor)
-            ${assign_lod_impostor_factor}
+            ${impostor ? assign_lod_impostor_factor : ''}
         #else
         float d = (dot(uCameraPlane.xyz, vModelPosition) + uCameraPlane.w) / uModelScale;
         lodFactor = min(
@@ -43,3 +44,8 @@ if (uLod.w != 0.0 && (uLod.x != 0.0 || uLod.y != 0.0)) {
     }
 }
 `;
+}
+
+export const assign_lod_factor = lodFactor(false);
+/** With impostors (`dLodImpostor`, spheres): their switch (\`assign_lod_impostor_factor\`) */
+export const assign_lod_factor_impostor = lodFactor(true);

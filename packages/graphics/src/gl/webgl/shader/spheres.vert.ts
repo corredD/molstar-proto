@@ -18,7 +18,7 @@ import { assign_marker_varying } from './chunks/assign-marker-varying.glsl.js';
 import { assign_clipping_varying } from './chunks/assign-clipping-varying.glsl.js';
 import { assign_size } from './chunks/assign-size.glsl.js';
 import { clip_instance } from './chunks/clip-instance.glsl.js';
-import { assign_lod_factor } from './chunks/assign-lod-factor.glsl.js';
+import { assign_lod_factor_impostor } from './chunks/assign-lod-factor.glsl.js';
 import {
   assign_lod_impostor,
   assign_lod_impostor_varyings,
@@ -174,7 +174,7 @@ void main(void){
 
     vSphere.w = size * uModelScale;
 
-    ${assign_lod_factor}
+    ${assign_lod_factor_impostor}
     vSphere.w *= lodFactor;
     ${assign_lod_impostor_varyings}
 

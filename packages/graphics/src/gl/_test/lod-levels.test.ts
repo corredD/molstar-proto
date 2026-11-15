@@ -205,6 +205,48 @@ describe('levels of detail by size on screen', () => {
     expect(canDrawImpostors(props, { capabilities: { flatInterpolation: false } } as any)).toBe(false);
   });
 
+  it("a switch per copy: the band levels' ranges cover every copy that can switch, in view distances", () => {
+    const lodLevels = Spheres.LodPixelPresets.quality.lodLevels;
+    const centers = new Float32Array(3000).map((_, i) => ((i * 7919) % 101) - 50);
+    const spheres = Spheres.create(
+      centers,
+      new Float32Array(1000).map((_, i) => i),
+      1000,
+    );
+    const props = { ...PD.getDefaultValues(Spheres.Params), lodLevels, lodPixelSize: 3 };
+    const values = Spheres.Utils.createValuesSimple(spheres, props, ColorNames.orange, 1);
+    const k = Math.pow(2, Spheres.LodImpostorBand / 2);
+    const view = LodView.set(LodView(), perspective(), 720, false);
+    const range = (j: number) => LodView.getRange(values.lodLevels.ref.value as LodLevelsValue, j, view, [0, 0, 0]);
+    const plainStart = (() => {
+      spheres.shaderData.update({ lodImpostor: 7 });
+      return range(2)[0];
+    })();
+
+    // by distance: the last spheres to D·k, the impostors from D/k (half: the eye's distance above the plane's)
+    spheres.shaderData.update({ lodImpostorSwitch: { mode: 'distance', value: 50000, radii: [25, 250] } });
+    expect(range(2)[1]).toBeCloseTo(50000 * k, 6);
+    expect(range(3)[0]).toBeCloseTo(Math.max((50000 / k) * 0.5, plainStart), 6);
+    // the roles: the last spheres fade out (overlap above 0), the impostors in (below)
+    expect(range(2)[2]).toBeGreaterThan(0);
+    expect(range(3)[2]).toBeLessThan(0);
+    // never before the last spheres start
+    spheres.shaderData.update({ lodImpostorSwitch: { mode: 'distance', value: 10, radii: [25, 250] } });
+    expect(range(3)[0]).toBeCloseTo(plainStart, 6);
+
+    // by size on screen: the smallest item switches first, the largest last (2R/N Å a pixel, times or over k)
+    spheres.shaderData.update({ lodImpostorSwitch: { mode: 'pixels', value: 12, radii: [25, 250] } });
+    expect(range(2)[1]).toBeCloseTo((2 * 250 * k) / 12 / view.depthScale, 3);
+    expect(range(3)[0]).toBeCloseTo(Math.max((2 * 25) / (12 * k) / view.depthScale, plainStart), 3);
+
+    // orthographic: both drawn beyond the last spheres' start, the copies choose
+    const ortho = { depthScale: 0, pixelSize: 60, version: 1 };
+    const value = values.lodLevels.ref.value as LodLevelsValue;
+    expect(LodView.getRange(value, 2, ortho, [0, 0, 0])[1]).toBeGreaterThan(0);
+    expect(LodView.getRange(value, 3, ortho, [0, 0, 0])[1]).toBeGreaterThan(0);
+    expect(LodView.getRange(value, 1, ortho, [0, 0, 0])[1]).toBeLessThan(0);
+  });
+
   it('presets by pixel size: their distances those at 1280x720 and 45°', () => {
     const k = (2 * Math.tan(Math.PI / 8)) / 720;
     for (const { lodLevels, lodPixelSize } of Object.values(Spheres.LodPixelPresets)) {

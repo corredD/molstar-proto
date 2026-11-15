@@ -89,7 +89,15 @@ async function setup() {
     { minDistance: 0, maxDistance: 1, overlap: 0, stride: 1, scaleBias: 1 },
     { minDistance: 1, maxDistance: 1e7, overlap: 0, stride: 1000, scaleBias: 3 },
   ];
-  await repr.createOrUpdate({ ...PD.getDefaultValues(Spheres.Params), ignoreLight: true } as any, {}).run();
+  // the levels from the start (a culler made with none keeps none: the app's objects have theirs from the start), every
+  // copy at the first (all spheres) until \`impostors\` moves the boundary
+  const allSpheres = [
+    { ...lodLevels[0], maxDistance: 1e6 },
+    { ...lodLevels[1], minDistance: 1e6 },
+  ];
+  await repr
+    .createOrUpdate({ ...PD.getDefaultValues(Spheres.Params), ignoreLight: true, lodLevels: allSpheres } as any, {})
+    .run();
   const object = repr.renderObjects[0];
   const values = object.values as unknown as SpheresValues;
   canvas.add(repr);
@@ -116,7 +124,7 @@ async function setup() {
   };
   /** the impostors on: the levels above, the atlas of the rod and its entry */
   /** the impostors on, from `boundary` Å of distance (default: everything an impostor) */
-  const impostors = async (boundary = 1) => {
+  const impostors = async (boundary = 1, thin = 1) => {
     const levels = [
       { ...lodLevels[0], maxDistance: boundary },
       { ...lodLevels[1], minDistance: boundary },
@@ -124,12 +132,25 @@ async function setup() {
     await repr
       .createOrUpdate({ ...PD.getDefaultValues(Spheres.Params), ignoreLight: true, lodLevels: levels } as any, {})
       .run();
-    const atlas = ImpostorAtlas.create([ImpostorAtlas.getItem(values, 64)!], 4096);
+    // \`thin\`: the views of thinner spheres, to tell the impostors from the spheres in an image
+    const item = ImpostorAtlas.getItem(values, 64)!;
+    const atlas = ImpostorAtlas.create([{ ...item, radii: item.radii.map((r) => r * thin) }], 4096);
     ImpostorAtlas.setValues(values, atlas);
     spheres.shaderData.update({ lodImpostor: atlas.codes[0] });
     expect(values.dLodImpostor.ref.value).toBe(true);
   };
-  return { plugin, canvas, draw, impostors };
+  /** where each copy switches (\`lod-impostor.md\`), as the particle representation sets it */
+  const setSwitch = (mode: 'pixels' | 'distance', value: number) => {
+    ImpostorAtlas.setSwitch(values, { mode, value }, Spheres.LodImpostorBand / 2);
+    spheres.shaderData.update({
+      lodImpostorSwitch: {
+        mode,
+        value,
+        radii: [values.invariantBoundingSphere.ref.value.radius, values.invariantBoundingSphere.ref.value.radius],
+      },
+    });
+  };
+  return { plugin, canvas, draw, impostors, setSwitch };
 }
 
 /** per pixel, which copy's color it has (0, 1), -1 for neither */
@@ -173,7 +194,9 @@ describe.skipIf(!WebGPU.module)('impostors (WebGPU)', () => {
       expect(b).toBeGreaterThan(100);
       // the silhouettes as the spheres', the back copy hidden where the front one is
       expect(same / (a + b)).toBeGreaterThan(0.8);
-      expect(wrong).toBeLessThan(0.02 * a);
+      // (a few at the front copy's outline, where its silhouette from three views is a pixel narrower than its spheres';
+      // a depth not written or not tested shows the back copy over all of the overlap)
+      expect(wrong).toBeLessThan(0.1 * a);
 
       // the pick at each copy's pixels' center gives that copy
       for (const c of [0, 1]) {
@@ -242,6 +265,37 @@ describe.skipIf(!WebGPU.module)('impostors (WebGPU)', () => {
       }
       expect(same / n).toBeGreaterThan(0.8);
       expect(wrong).toBeLessThan(0.02 * n);
+    } finally {
+      plugin.dispose();
+    }
+  });
+
+  // a switch per copy: by its distance from the eye, or its own size on screen; the copies' side of the threshold
+  it('switch each copy by its distance or its size on screen', { tags: ['medium'] }, async () => {
+    const { plugin, canvas, draw, impostors, setSwitch } = await setup();
+    try {
+      const count = (image: Int8Array) => image.reduce((n, c) => n + (c >= 0 ? 1 : 0), 0);
+      const full = count(copies(await draw()));
+      // thin views: an impostor covers far less than its spheres
+      await impostors(1, 0.02);
+      const thin = count(copies(await draw()));
+      expect(thin).toBeLessThan(0.2 * full);
+      const { position, target } = canvas.camera.state;
+      const d = Vec3.distance(position, target);
+      // beyond D: impostors; within: spheres; at D the band, between
+      setSwitch('distance', d / 4);
+      expect(count(copies(await draw()))).toBeLessThan(0.75 * full);
+      setSwitch('distance', d * 4);
+      expect(count(copies(await draw()))).toBeGreaterThan(0.95 * full);
+      setSwitch('distance', d);
+      const band = count(copies(await draw()));
+      expect(band).toBeGreaterThan(thin * 1.05);
+      expect(band).toBeLessThan(full * 0.98);
+      // below N pixels across: impostors; above: spheres
+      setSwitch('pixels', 4);
+      expect(count(copies(await draw()))).toBeGreaterThan(0.95 * full);
+      setSwitch('pixels', 2000);
+      expect(count(copies(await draw()))).toBeLessThan(0.75 * full);
     } finally {
       plugin.dispose();
     }

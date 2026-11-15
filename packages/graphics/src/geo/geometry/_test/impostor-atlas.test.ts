@@ -210,4 +210,23 @@ describe('impostor atlas', () => {
     ImpostorAtlas.createCached([item('c')], 4096, cache);
     expect([...cache.keys()].some((k) => k.startsWith('a'))).toBe(false);
   });
+
+  it('switches a copy by its own size on screen or its distance, cross-fading over the band', () => {
+    const h = 0.25;
+    // size on screen: a copy of radius 100 Å at 10 Å a pixel is 20 px across
+    const px = (R: number, pixel: number) => ImpostorAtlas.switchShare(ImpostorAtlas.SwitchPixels, 12, h, R, pixel, 0);
+    expect(px(100, 10)).toBe(0); // 20 px: spheres
+    expect(px(100, 100)).toBeGreaterThanOrEqual(1); // 2 px: impostor
+    expect(px(100, 200 / 12)).toBeCloseTo(0.5, 6); // 12 px: the band's middle
+    // the same size on screen, whatever the radius: a ribosome and a small protein switch alike
+    expect(px(250, 250 / 6)).toBeCloseTo(px(30, 30 / 6), 12);
+    // distance from the eye
+    const dist = (d: number) => ImpostorAtlas.switchShare(ImpostorAtlas.SwitchDistance, 5000, h, 50, 0, d);
+    expect(dist(3000)).toBe(0);
+    expect(dist(9000)).toBeGreaterThanOrEqual(1);
+    expect(dist(5000)).toBeCloseTo(0.5, 6);
+    // beyond the band the impostors flatten (the share 1 + flatness, at most 2)
+    expect(dist(5000 * 2 ** (h + 1))).toBeCloseTo(2, 6);
+    expect(dist(1e9)).toBe(2);
+  });
 });

@@ -78,7 +78,8 @@ export const assign_quad_position_group_wgsl = /* wgsl */ `
  * scale (a coarser level's fewer items larger) faded at the level's range (1 without levels), `lodCulled` beyond the
  * range; with impostors (`dLodImpostor`, after `assign_lod_impostor_wgsl`) by the copy's distance, its share of the band
  */
-export const assign_lod_factor_wgsl = /* wgsl */ `
+function lodFactorWgsl(impostor: boolean) {
+  return /* wgsl */ `
     var lodFactor = 1.0;
     var lodCulled = false;
     let lod = uDraw.uLod;
@@ -98,7 +99,7 @@ export const assign_lod_factor_wgsl = /* wgsl */ `
             #endif
         } else {
             #if defined(dLodImpostor)
-${assign_lod_impostor_factor_wgsl}
+${impostor ? assign_lod_impostor_factor_wgsl : ''}
             #else
             let d = (dot(uGlobal.uCameraPlane.xyz, out.vModelPosition) + uGlobal.uCameraPlane.w) / uGlobal.uModelScale;
             let level = lodAt(d, lod.xyz, lodScale);
@@ -108,6 +109,11 @@ ${assign_lod_impostor_factor_wgsl}
         }
     }
 `;
+}
+
+export const assign_lod_factor_wgsl = lodFactorWgsl(false);
+/** With impostors (\`dLodImpostor\`, spheres): their switch (\`assign_lod_impostor_factor_wgsl\`) */
+export const assign_lod_factor_impostor_wgsl = lodFactorWgsl(true);
 
 /**
  * Grid textures (smoothed colors etc.) by the prefix of their uniforms and the type define (the color type's grid value

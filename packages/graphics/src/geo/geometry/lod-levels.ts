@@ -62,6 +62,19 @@ export type LodLevelsValue = [
    * (`getLodLevelsValue`)
    */
   readonly impostor?: number;
+  /** impostors on: where each copy switches (`LodImpostorSwitch`); none: where the levels' boundary is */
+  readonly impostorSwitch?: LodImpostorSwitch & { readonly k: number };
+};
+
+/**
+ * Where each copy turns into its impostor (`lod-impostor.md`): by its own size on screen (`value` pixels across, its
+ * bounding sphere), or by its distance from the eye (`value` Å); `radii` the smallest and largest item's radius (the
+ * band levels' ranges cover every copy that can switch, `LodView.getRange`)
+ */
+export type LodImpostorSwitch = {
+  readonly mode: 'pixels' | 'distance';
+  readonly value: number;
+  readonly radii: readonly [number, number];
 };
 
 /**
@@ -98,6 +111,7 @@ export function getLodLevelsValue(
   pixelSize: number,
   radius: number,
   impostor = -2,
+  impostorSwitch?: LodImpostorSwitch,
 ): LodLevelsValue {
   const pixel = pixelSize > 0;
   const value = prop.map((l, i): LodLevelsValue[0] => {
@@ -131,7 +145,8 @@ export function getLodLevelsValue(
       value[last][4] = -(impostor + 1);
     }
   }
-  const extra = { ...(pixel ? { pixelSize, radius } : {}), ...(on ? { impostor } : {}) };
+  const sw = on && impostorSwitch ? { impostorSwitch: { ...impostorSwitch, k: Math.pow(2, LodImpostorBand / 2) } } : {};
+  const extra = { ...(pixel ? { pixelSize, radius } : {}), ...(on ? { impostor } : {}), ...sw };
   return Object.assign(value, extra);
 }
 
@@ -213,7 +228,10 @@ export function orderLodLevels(
   pixelSize = 0,
   radius = 0,
   impostor = -2,
+  impostorSwitch?: LodImpostorSwitch,
 ): LodLevelsValue {
   const offsets = orderPositionGroup(positionGroup, count, getStrides(lodLevels, sizeFactor));
-  return offsets ? getLodLevelsValue(lodLevels, sizeFactor, offsets, count, pixelSize, radius, impostor) : [];
+  return offsets
+    ? getLodLevelsValue(lodLevels, sizeFactor, offsets, count, pixelSize, radius, impostor, impostorSwitch)
+    : [];
 }

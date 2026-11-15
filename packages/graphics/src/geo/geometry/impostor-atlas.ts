@@ -4,7 +4,7 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import { Mat4, Vec2, Vec3 } from '@molstar/core/math/linear-algebra';
+import { Mat4, Vec2, Vec3, Vec4 } from '@molstar/core/math/linear-algebra';
 import { ValueCell } from '@molstar/core/util/value-cell';
 import { unpackRGBToInt } from '@molstar/core/util/number-packing';
 import type { Sphere3D } from '@molstar/core/math/geometry';
@@ -430,6 +430,7 @@ export namespace ImpostorAtlas {
     return {
       tImpostor: ValueCell.create(Empty),
       uImpostorTexDim: ValueCell.create(Vec2.create(1, 1)),
+      uLodImpostorSwitch: ValueCell.create(Vec4.create(0, 0, 0, 0)),
       dLodImpostor: ValueCell.create(false),
     };
   }
@@ -442,6 +443,22 @@ export namespace ImpostorAtlas {
       ValueCell.update(values.uImpostorTexDim, Vec2.set(values.uImpostorTexDim.ref.value, image.width, image.height));
     }
     ValueCell.updateIfChanged(values.dLodImpostor, !!atlas);
+  }
+
+  /**
+   * Where each copy switches (`uLodImpostorSwitch`): by size on screen (`SwitchPixels`) or distance
+   * (`SwitchDistance`), its threshold, the band's half in octaves; undefined: the levels' boundary
+   */
+  export function setSwitch(
+    values: LodImpostorValues,
+    sw: { readonly mode: 'pixels' | 'distance'; readonly value: number } | undefined,
+    halfBand: number,
+  ) {
+    const v = values.uLodImpostorSwitch.ref.value;
+    const mode = sw ? (sw.mode === 'pixels' ? SwitchPixels : SwitchDistance) : 0;
+    const value = sw?.value ?? 0;
+    if (v[0] === mode && v[1] === value && v[2] === halfBand) return;
+    ValueCell.update(values.uLodImpostorSwitch, Vec4.set(v, mode, value, halfBand, 0));
   }
 
   /** What `getItem` reads: the spheres' centers and groups, their sizes by type, the size factor, the bounds */
@@ -483,5 +500,33 @@ export namespace ImpostorAtlas {
     }
     const { center, radius } = values.invariantBoundingSphere.ref.value;
     return { positionGroup, radii, count, center, radius, tile };
+  }
+
+  /** The impostors' switch by each copy's size on screen (`uLodImpostorSwitch.x`) */
+  export const SwitchPixels = 1;
+  /** by each copy's distance from the eye */
+  export const SwitchDistance = 2;
+  /** Octaves beyond the band over which the impostors flatten (Goodsell's look; \`ImpostorFlatOctaves\` in the shaders) */
+  export const FlatOctaves = 1;
+
+  /**
+   * A copy's share of the impostor (the TS rule of the shaders' switch, \`lod-impostor.md\`): 0 its spheres, 1 its
+   * impostor, between them the band of `halfBand` octaves each side of the threshold; above 1 the impostor's flatness
+   * (1 + up to 1). By `SwitchPixels`: the copy of `radius` Å at `pixel` Å a pixel is `2 radius / pixel` pixels across,
+   * an impostor below `value` pixels; by `SwitchDistance`: at `distance` Å from the eye, beyond `value` Å
+   */
+  export function switchShare(
+    mode: number,
+    value: number,
+    halfBand: number,
+    radius: number,
+    pixel: number,
+    distance: number,
+  ) {
+    const ratio = mode === SwitchPixels ? (value * pixel) / (2 * radius) : distance / value;
+    const l = Math.log2(Math.max(ratio, 1e-30));
+    const t = Math.min(1, Math.max(0, (l + halfBand) / (2 * halfBand)));
+    const s = t * t * (3 - 2 * t);
+    return s + Math.min(1, Math.max(0, (l - halfBand) / FlatOctaves));
   }
 }

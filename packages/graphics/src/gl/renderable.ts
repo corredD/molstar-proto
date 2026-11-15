@@ -419,6 +419,16 @@ export type LodLevelsValue = [
   scale: number,
 ][] & {
   readonly pixelSize?: number;
+  /**
+   * where each copy turns into its impostor (`lod-impostor.md`, `Lod.LodImpostorSwitch`): the ranges of the last level
+   * and the one before cover every copy that can switch, the copies choose (`lod_impostor`)
+   */
+  readonly impostorSwitch?: {
+    readonly mode: 'pixels' | 'distance';
+    readonly value: number;
+    readonly radii: readonly [number, number];
+    readonly k: number;
+  };
 };
 
 /** The largest distance of a level converted from pixel sizes (`LodView`), for an open end */
@@ -463,6 +473,39 @@ export namespace LodView {
    * pixel size and none for the others (a level fading out at its end, an overlap, ends where the band starts)
    */
   export function getRange(levels: LodLevelsValue, j: number, view: LodView, out: number[]) {
+    const sw = levels.impostorSwitch;
+    const last = levels.length - 1;
+    if (!sw || j < last - 1 || last < 1) return getLevelRange(levels, j, view, out);
+    // a switch per copy: the last spheres and the impostors from where the last spheres start (the levels' rule) to
+    // where the last copy can switch; the overlap's sign their role (fading out, in), the band the copies'
+    const start = getLevelRange(levels, last - 1, view, out)[0];
+    if (view.depthScale <= 0 && (levels.pixelSize ?? 0) > 0) {
+      // orthographic: both where the last spheres would be, the copies choose
+      const drawn = view.pixelSize >= levels[last - 1][0];
+      out[0] = drawn ? 0 : -2;
+      out[1] = drawn ? MaxLodDistance : -1;
+      out[2] = j === last ? -1 : 1;
+      return out;
+    }
+    const [r0, r1] = sw.radii;
+    // in Å of distance from the camera plane: by size on screen 2R/N Å a pixel at the depth scale; by distance from
+    // the eye, the plane's distance below it (off axis): from half
+    const lo =
+      sw.mode === 'pixels' ? (2 * r0) / (sw.value * sw.k) / Math.max(view.depthScale, 1e-12) : (sw.value / sw.k) * 0.5;
+    const hi = sw.mode === 'pixels' ? (2 * r1 * sw.k) / sw.value / Math.max(view.depthScale, 1e-12) : sw.value * sw.k;
+    if (j === last) {
+      out[0] = Math.max(lo, start);
+      out[1] = MaxLodDistance;
+      out[2] = -1;
+    } else {
+      out[0] = start;
+      out[1] = Math.min(Math.max(hi, start), MaxLodDistance);
+      out[2] = 1;
+    }
+    return out;
+  }
+
+  function getLevelRange(levels: LodLevelsValue, j: number, view: LodView, out: number[]) {
     const [min, max, overlap] = levels[j];
     if (!((levels.pixelSize ?? 0) > 0)) {
       out[0] = min;
