@@ -467,13 +467,11 @@ export function VolumeData(props: { area: CryoetApi; volume: string }) {
       </Line>
       <Show when={changed}>
         {() => (
-          <div class={classes.inline}>
+          <div class={classes.tools}>
             <p class={classes.hint}>{mapState(info, (i) => `file: ${+(i?.filePixelSize ?? 0).toPrecision(4)} Å`)}</p>
-            <div class={classes.tools}>
-              <Button size="sm" variant="ghost" onClick={() => void setPixel(null)}>
-                Reset
-              </Button>
-            </div>
+            <Button size="sm" variant="ghost" onClick={() => void setPixel(null)}>
+              Reset
+            </Button>
           </div>
         )}
       </Show>
