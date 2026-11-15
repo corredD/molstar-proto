@@ -839,6 +839,11 @@ describe('Grow › On a slice (slice-constraint)', () => {
     for (let i = before; i < list.count; ++i) {
       expect(Math.abs(list.coordinates[i * 3 + 2])).toBeLessThan(0.01);
       expect(list.coordinates[i * 3 + 1]).toBeGreaterThan(-1e-6);
-    }
+    }    // a Helix on the slice: its Axis, along the plane or its normal (Ludo, 2026-11-14)
+    choice(host, 'Mode', 'Helix')!.click();
+    await until(() => !!choice(host, 'Axis', 'Normal'));
+    choice(host, 'Axis', 'Normal')!.click();
+    expect(m.growSettings.value.sliceAxis).toBe('normal');
+    expect(growParams(m.growSource.value!, m.growSettings.value)).toMatchObject({ slice: volume, sliceAxis: 'normal' });
   });
 });

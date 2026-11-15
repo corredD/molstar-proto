@@ -626,6 +626,7 @@ function settingsOfGrow(g: GrowRecord): Partial<GrowSettings> {
       ['count', 'count'],
       ['hand', 'hand'],
       ['direction', 'direction'],
+      ['sliceAxis', 'sliceAxis'],
       ['axis', 'axis'],
       ['radius', 'helixRadius'],
     ],
@@ -768,6 +769,8 @@ export function GrowBlock(props: { area: MesoscaleApi; api: ViewerApi; particles
   /** The source's slice while its volume is in the scene (slice-constraint) */
   const onSlice = (s: GrowSettings, list: readonly { ref: string }[]) =>
     s.slice && !s.inSpace && list.some((v) => v.ref === s.slice!.volume) ? s.slice : undefined;
+  /** On the source's slice, no mesh picked: a helix's Axis (Ludo, 2026-11-14) */
+  const onSurfaceSlice = derive([settings, meshes, volumes], (s, ml, vl) => !onMesh(s, ml) && !!onSlice(s, vl));
   /** On a surface, a mesh or a slice: Symmetry's Snap */
   const onSurface = derive(
     [settings, meshes, volumes],
@@ -1040,6 +1043,23 @@ export function GrowBlock(props: { area: MesoscaleApi; api: ViewerApi; particles
                     active={mapState(settings, (s) => s.hand)}
                     onPick={(id) => set({ hand: id as GrowSettings['hand'] })}
                   />
+                  <Show when={mapState(onSurfaceSlice, (x) => x)}>
+                    {() => (
+                      <Choices
+                        label="Axis"
+                        choices={[
+                          {
+                            id: 'along',
+                            label: 'Along plane',
+                            title: "Its axis a line of the slice's plane through the source (the copy's side)",
+                          },
+                          { id: 'normal', label: 'Normal', title: "Its axis the slice's normal through the source" },
+                        ]}
+                        active={mapState(settings, (s) => s.sliceAxis)}
+                        onPick={(id) => set({ sliceAxis: id as GrowSettings['sliceAxis'] })}
+                      />
+                    )}
+                  </Show>
                   <Choices
                     label="Direction"
                     choices={[
