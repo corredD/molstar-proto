@@ -84,6 +84,9 @@ is not built is [../TODO.md](../TODO.md).
   `me/night-integration` with the surface fit) and `mesh-volume-color`, as `me/all` (a08cbf8e7, 834 tests); pushed,
   published on mesoscope. [Morning summary](2026-11-14-morning.md). Lanes closed 2026-11-14 (worktrees, local
   branches, dev servers 1369–1376).
+- **`lod-impostor`** (Ludo, 2026-11-15, night; Opus, `~/prism-me-lanes/lod-impostor`, port 1381): far copies drawn as
+  octahedral impostors (silhouette + depth + the copy's color), Goodsell's look, a fade with no pop; checked on two
+  cellpack-mg; [brief](2026-11-15-lod-impostor.md) on its branch. Running.
 - **`slice-window`** (Ludo, 2026-11-14; Opus, `~/prism-me-lanes/slice-window`, port 1380): a grid slice drawn from a
   GPU ring buffer of 32 slices (the slider moves a uniform; the window follows, plane by plane; the state on release);
   65 ms a step today on Ludo's MRC; [brief](2026-11-14-slice-window.md) on its branch. Running.
