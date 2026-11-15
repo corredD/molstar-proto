@@ -406,7 +406,8 @@ export function pluginPaintHost(
       if (!own?.[id] && !isFiberBrush(data, id)) return undefined;
       return fiberSettingsOf(data, id, b.target, own, p?.structures).rise;
     },
-    async paint(brush: PaintBrushTarget, s: PaintSettings, positions, normals, seed, fiber, mesh, surface, fit) {
+    async paint(brush: PaintBrushTarget, s: PaintSettings, positions, normals, seed, fiber, mesh, surface, fit, slice) {
+      const volumes = sceneVolumes(plugin.state.data);
       const r = (await paint({
         ...(brush.structure
           ? // its list gone since it was chosen: the Painting list (review S3)
@@ -426,10 +427,12 @@ export function pluginPaintHost(
         side: s.side,
         ...(surface ? { surface: true } : {}),
         ...(mesh ? { mesh } : {}),
+        // on a slice whose volume is still there (slice-constraint)
+        ...(slice && volumes.some((v) => v.ref === slice.volume) ? { slice } : {}),
         ...(s.orient !== 'auto' ? { orient: s.orient } : {}),
         ...(s.spin !== undefined ? { spin: s.spin } : {}),
         // a volume deleted since it was chosen: unfitted (review M2)
-        ...(fit && sceneVolumes(plugin.state.data).some((v) => v.ref === fit) ? { fit, contrast: s.contrast } : {}),
+        ...(fit && volumes.some((v) => v.ref === fit) ? { fit, contrast: s.contrast } : {}),
       })) as { ok?: boolean; message?: string } | undefined;
       // a stroke refused is said, not dropped (review N1)
       if (r && r.ok === false) plugin.log.warn(`Not painted: ${r.message ?? 'the stroke was refused.'}`);

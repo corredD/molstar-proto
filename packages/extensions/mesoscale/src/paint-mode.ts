@@ -11,6 +11,7 @@ import { type ObservableState, observableState } from '@molstar/prism-ui/reactiv
 import { type FitContrast, type FitResult, fitLabel } from './fit.js';
 import type { PaintOrient } from './paint.js';
 import { type Identify, SurfacePoint, surfaceAt } from './pick-surface.js';
+import type { GrowSlice } from './slice-surface.js';
 
 // Paint mode (progress/2026-11-08-paint.md, Design 3; apps/prism-me/_spec/ui.md §5, Paint with …): an entity is the
 // brush; a stroke is a left drag on the canvas: once a frame the surface under the pointer (its point and normal,
@@ -149,6 +150,11 @@ export interface PaintHost {
     surface?: boolean,
     /** The volume its copies are fitted to (density-fit: its state ref) */
     fit?: string,
+    /**
+     * The slice it is on (slice-constraint: its first's, its volume and plane): its copies there turned like on a
+     * surface and fitted on it; a grow from its last copy grows on it
+     */
+    slice?: GrowSlice,
   ): Promise<unknown>;
   /** The copy of the brush drawn under the pointer (Round 2), gone with `dispose` */
   cursor(brush: PaintBrushTarget): PaintCursor;
@@ -162,8 +168,8 @@ export interface PaintHost {
 export interface PaintCursor {
   /**
    * Shows it at `position`, turned as a stroke's first copy of `seed` with that normal would be; `onSurface`, the normal
-   * a surface's (Turn Auto: along it); `fit`, the volume it is fitted to (density-fit), shown at its fitted pose: the fit;
-   * `onMesh`, the normal a mesh's: fitted on it (as the click's copy)
+   * a surface's (Turn Auto: along it; a slice's too); `fit`, the volume it is fitted to (density-fit), shown at its fitted
+   * pose: the fit; `onMesh`, the normal a mesh's or a slice's: fitted on it (as the click's copy)
    */
   move(
     position: Vec3,
@@ -252,6 +258,8 @@ interface Stroke {
   mesh?: string;
   /** The volume whose slice its last point was on (density-fit) */
   volume?: string;
+  /** The first slice it is on (slice-constraint): its volume and plane */
+  slice?: GrowSlice;
 }
 
 const _point = SurfacePoint();
@@ -380,8 +388,13 @@ function paintLayer(mode: PaintMode, host: PaintHost, canvas: HTMLElement, brush
     const slice = host.sliceAt?.(x, y, _point);
     if (slice === 'pending' && !last) return false;
     if (slice === true) {
-      // the stroke's fit the first slice's it crosses (review N3)
+      // the stroke's fit the first slice's it crosses (review N3), its plane the copies' surface (slice-constraint)
       s.volume ??= _point.volume;
+      if (!s.slice && _point.volume) {
+        const p = _point.position;
+        const n = _point.normal;
+        s.slice = { volume: _point.volume, point: [p[0], p[1], p[2]], normal: [n[0], n[1], n[2]] };
+      }
     } else if (where === 'depth') {
       if (!atDepth(x, y)) return true;
     } else {
@@ -556,11 +569,12 @@ function paintLayer(mode: PaintMode, host: PaintHost, canvas: HTMLElement, brush
       _point.normal,
       settings,
       seed,
-      where === 'surface',
+      // on a slice, turned like on a surface (slice-constraint)
+      slice || where === 'surface',
       // a fiber's path is not fitted (its units are made from it): nor its copy here (review S10)
       fiber ? undefined : fitOf(settings, slice ? _point.volume : undefined),
-      // on a mesh, fitted on it as the click's copy is (`mesoscale.paint` with `mesh`)
-      !slice && where === 'surface' && !!_point.mesh,
+      // on a mesh or a slice, fitted on it as the click's copy is (`mesoscale.paint` with `mesh` or `slice`)
+      slice || (where === 'surface' && !!_point.mesh),
     );
     const text = fitted ? fitLabel(fitted) : '';
     if (text !== fitText) {
@@ -660,8 +674,9 @@ function paintLayer(mode: PaintMode, host: PaintHost, canvas: HTMLElement, brush
             seed,
             fiber,
             s.mesh,
-            where === 'surface',
+            where === 'surface' || !!s.slice,
             fiber ? undefined : fitOf(settings, s.volume),
+            s.slice,
           )
           .finally(() => committing--);
         // the next copy under the pointer: the next stroke's
