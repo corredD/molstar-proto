@@ -59,13 +59,18 @@ export async function binGrid(grid: Grid, factor: number, ctx?: RuntimeContext):
   let max = -Infinity;
   let sum = 0;
   let sumSq = 0;
-  for (let z = 0; z < out[2]; z++) {
-    for (let y = 0; y < out[1]; y++) {
-      const n = length[2][z] * length[1][y];
-      for (let x = 0; x < out[0]; x++) {
-        const o = x * strides[0] + y * strides[1] + z * strides[2];
-        const v = sums[o] / (n * length[0][x]);
-        values[o] = v;
+  // in memory order (the binned grid's slowest axis outside), yielding per slab of it: a big grid's second pass
+  const [b0, b1, b2] = [strides[a0], strides[a1], strides[a2]];
+  const [l0, l1, l2] = [length[a0], length[a1], length[a2]];
+  for (let i0 = 0; i0 < out[a0]; i0++) {
+    if (ctx?.shouldUpdate) await ctx.update({ message: `Binning ${f}×…`, current: i0, max: out[a0] });
+    for (let i1 = 0; i1 < out[a1]; i1++) {
+      const n = l0[i0] * l1[i1];
+      const o = i0 * b0 + i1 * b1;
+      for (let i2 = 0; i2 < out[a2]; i2++) {
+        const at = o + i2 * b2;
+        const v = sums[at] / (n * l2[i2]);
+        values[at] = v;
         if (v < min) min = v;
         if (v > max) max = v;
         sum += v;

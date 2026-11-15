@@ -22,6 +22,17 @@ const position = (g: Grid, i: number, j: number, k: number) =>
 const linear = (i: number, j: number, k: number) => i + 10 * j + 100 * k;
 
 describe('binGrid', () => {
+  it('yields while it averages too, not only while it sums (a big grid binned in the background)', async () => {
+    const g = grid([2, 1, 0], Float32Array, [8, 6, 64], linear);
+    let updates = 0;
+    const ctx = { shouldUpdate: true, update: async () => void updates++ } as any;
+    const b = await binGrid(g, 2, ctx);
+    // the sums: a yield per slab of the slowest axis (64); the means: one per binned slab of it (32)
+    expect(updates).toBeGreaterThanOrEqual(64 + 32);
+    const ref = await binGrid(grid([0, 1, 2], Float32Array, [8, 6, 64], linear), 2);
+    for (let k = 0; k < 32; ++k) expect(at(b, 3, 2, k)).toBeCloseTo(at(ref, 3, 2, k), 4);
+  });
+
   it('gives the block means, a partial block at the edge the mean of what it holds', async () => {
     const g = grid([2, 1, 0], Float32Array, [5, 4, 3], linear);
     const b = await binGrid(g, 2);
