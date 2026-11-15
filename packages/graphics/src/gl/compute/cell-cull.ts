@@ -120,6 +120,12 @@ const SphereTestSchema = {
   uLevels: UniformSpec('m4'),
   /** 0 without levels (all drawn as level 0) */
   uLevelCount: UniformSpec('i'),
+  /**
+   * impostors switched by size on screen (`lod-impostor.md`): per instance the last spheres end, the impostors start,
+   * where its member's copies switch: x, y the Å a radius gives at the end and the start, z the radius cap, w the last
+   * level plus one (0 off)
+   */
+  uImpostorSwitch: UniformSpec('v4'),
   /** how far the animations may move a sphere (wiggle, tumble, `getAnimationSlack`), added to the tested radii */
   uAnimationSlack: UniformSpec('f'),
   ...HiZSchema,

@@ -400,6 +400,7 @@ export function createMergedCuller(
     uLodRange: ValueCell.create(Vec4()),
     uLevels: ValueCell.create(Mat4()),
     uLevelCount: levelCountCell,
+    uImpostorSwitch: ValueCell.create(Vec4()),
     uAnimationSlack: ValueCell.create(0),
     uCellCount: ValueCell.create(0),
     ...createHiZValues(createEmptyHiZ(resources)),
@@ -830,8 +831,18 @@ export function createMergedCuller(
       LodView.getRange(lodLevels!, j, lod, range);
       levelRanges[j * 4] = range[0];
       levelRanges[j * 4 + 1] = range[1];
-    }
+    } // impostors switched by size on screen: each instance's last two levels by its member's radius (\`setSegmentRanges\`)
+    const sw = lodLevels?.impostorSwitch;
+    const on = !!sw && sw.mode === 'pixels' && levelCount >= 2 && lod.depthScale > 0;
+    Vec4.set(
+      impostorSwitch,
+      on ? (2 * sw!.k) / sw!.value / lod.depthScale : 0,
+      on ? 2 / (sw!.value * sw!.k) / lod.depthScale : 0,
+      on ? sw!.radii[1] : 0,
+      on ? levelCount : 0,
+    );
   }
+  const impostorSwitch = Vec4();
 
   /**
    * per segment its invariant sphere, its first instance and largest sphere's radius (`padding`: the largest size times
@@ -1356,6 +1367,9 @@ export function createMergedCuller(
       setPyramid(pyramid);
       setPlane(cellValues.uCameraPlane, cameraPlane);
       ValueCell.update(cellValues.uLevels, Mat4.copy(cellValues.uLevels.ref.value, levelRanges));
+      if (!Vec4.exactEquals(cellValues.uImpostorSwitch.ref.value, impostorSwitch)) {
+        ValueCell.update(cellValues.uImpostorSwitch, Vec4.copy(cellValues.uImpostorSwitch.ref.value, impostorSwitch));
+      }
       const hasLod = min !== 0 || max !== 0;
       ValueCell.update(cellValues.uLodRange, Vec4.set(cellValues.uLodRange.ref.value, min, max, hasLod ? 1 : 0, 0));
 

@@ -864,6 +864,34 @@ export function createSegmentedMdbList(): SegmentedMdbList {
   // flattened lod tuples, avoids nested array loads in the hot cell loop; the ranges in distances (`prepare`)
   const lodMin: number[] = [];
   const lodMax: number[] = [];
+  /** the ranges of the segment being culled: the levels', a member's own at the impostors' switch (`setSegmentRanges`) */
+  const segMin: number[] = [];
+  const segMax: number[] = [];
+  /** the view the ranges were prepared for (`prepare`) */
+  let preparedView: LodView | undefined;
+
+  /**
+   * The segment's ranges: the levels', but with impostors switched by size on screen (`lod-impostor.md`) the last
+   * spheres' end and the impostors' start where this member's copies switch (its radius, up to the cap), not where the
+   * largest item's do: a small item's far cells draw no spheres (the shaders' `switchShare`, per copy, within them)
+   */
+  function setSegmentRanges(values: CullValues, levels: LodLevelsValue | undefined, count: number) {
+    for (let j = 0; j < count; ++j) {
+      segMin[j] = lodMin[j];
+      segMax[j] = lodMax[j];
+    }
+    const sw = levels?.impostorSwitch;
+    const view = preparedView;
+    if (!sw || sw.mode !== 'pixels' || count < 2 || !view || !(view.depthScale > 0)) return;
+    const sphere = values.invariantBoundingSphere?.ref.value;
+    if (!sphere) return;
+    const r = Math.min(sphere.radius, sw.radii[1]);
+    const last = count - 1;
+    const hi = (2 * r * sw.k) / sw.value / view.depthScale;
+    const lo = (2 * r) / (sw.value * sw.k) / view.depthScale;
+    segMax[last - 1] = Math.max(segMin[last - 1], Math.min(segMax[last - 1], hi));
+    segMin[last] = Math.max(segMin[last], Math.min(lo, segMax[last - 1]));
+  }
   const lodOverlap: number[] = [];
   const lodCount: number[] = [];
 
@@ -875,6 +903,7 @@ export function createSegmentedMdbList(): SegmentedMdbList {
   ): LodLevelsValue | undefined {
     const lodLevels = lodCell?.ref.value as LodLevelsValue | undefined;
     const hasLodLevels = !!lodLevels && lodLevels.length > 0;
+    preparedView = lod;
     const levelCount = hasLodLevels ? lodLevels.length : 1;
     // segmented (merged) items also carry their segments' level scales (`tSegment`, up to 4 levels) - members' scales
     // can differ, unlike min/max/overlap
@@ -970,6 +999,7 @@ export function createSegmentedMdbList(): SegmentedMdbList {
 
     const levelCount = lodLevels ? lodLevels.length : 0;
     for (let j = 0; j < levelCount; ++j) lodCount[j] = lodLevels![j][3];
+    setSegmentRanges(values, lodLevels, levelCount);
     const clip = getCullClipObjects(values);
 
     if (grid.cellSize <= 1) {
@@ -1000,7 +1030,7 @@ export function createSegmentedMdbList(): SegmentedMdbList {
         // fade correct, matches the plain render path's full-detail draw for
         // ungridded objects, see the `cellSize <= 1` bail in createRenderable's cull)
         for (let j = 0, jl = lodLevels.length; j < jl; ++j) {
-          if (d + b.radius < lodMin[j] || d - b.radius > lodMax[j]) continue;
+          if (d + b.radius < segMin[j] || d - b.radius > segMax[j]) continue;
           emit(list[j], first, offset, drawCount, instanceCount, instanceBase);
         }
       } else {
@@ -1068,7 +1098,7 @@ export function createSegmentedMdbList(): SegmentedMdbList {
           const dMax = bd + br;
           const dMin = bd - br;
           for (let j = 0; j < levelCount; ++j) {
-            if (dMax < lodMin[j] || dMin > lodMax[j]) continue;
+            if (dMax < segMin[j] || dMin > segMax[j]) continue;
             emit(list[j], first, offset, lodCount[j], count, instanceBase + begin);
           }
         } else {
@@ -1090,9 +1120,9 @@ export function createSegmentedMdbList(): SegmentedMdbList {
           let level = lodLevels ? -1 : 0;
           if (lodLevels) {
             for (let j = 0; j < levelCount; ++j) {
-              if (dMax < lodMin[j] || dMin > lodMax[j]) continue;
+              if (dMax < segMin[j] || dMin > segMax[j]) continue;
               // overlaps a second level, or not within the one
-              if (level !== -1 || dMin < lodMin[j] || dMax > lodMax[j]) {
+              if (level !== -1 || dMin < segMin[j] || dMax > segMax[j]) {
                 level = -2;
                 break;
               }
@@ -1144,7 +1174,7 @@ export function createSegmentedMdbList(): SegmentedMdbList {
           const dMax = d + r;
           const dMin = d - r;
           for (let j = 0; j < levelCount; ++j) {
-            if (dMax < lodMin[j] || dMin > lodMax[j]) continue;
+            if (dMax < segMin[j] || dMin > segMax[j]) continue;
             emit(list[j], first, offset, lodCount[j], count, instanceBase + begin);
           }
         } else {
