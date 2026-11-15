@@ -33,8 +33,16 @@ function setup(pending = 0) {
   const canvas = document.createElement('canvas');
   root.append(canvas);
   document.body.append(root);
-  const strokes: { positions: number[]; normals: number[]; fit?: string }[] = [];
+  const strokes: {
+    positions: number[];
+    normals: number[];
+    fit?: string;
+    surface?: boolean;
+    slice?: { volume: string; point: readonly number[]; normal: readonly number[] };
+  }[] = [];
   const shown: { at: number[]; fit?: string }[] = [];
+  /** The copy under the pointer's flags: turned like on a surface, fitted on it */
+  const flags: { onSurface?: boolean; onMesh?: boolean }[] = [];
   const host: PaintHost = {
     canvas: () => canvas,
     holdCamera: () => () => {},
@@ -64,7 +72,8 @@ function setup(pending = 0) {
     project: (out, p) => Vec3.set(out, p[0], -p[1], 0),
     radius: () => 5,
     cursor: () => ({
-      move: (p, _n, _s, _seed, _onSurface, fit) => {
+      move: (p, _n, _s, _seed, onSurface, fit, onMesh) => {
+        flags.push({ onSurface, onMesh });
         shown.push({ at: [p[0], p[1], p[2]], ...(fit ? { fit } : {}) });
         return fit ? { position: p, rotation: Quat.identity(), score: 2.43, shift: 3.06, angle: 8.2 } : undefined;
       },
@@ -72,13 +81,13 @@ function setup(pending = 0) {
       dispose: () => {},
     }),
     fiberStep: () => undefined,
-    paint: async (_b, _s, positions, normals, _seed, _fiber, _mesh, _surface, fit) => {
-      strokes.push({ positions, normals, ...(fit ? { fit } : {}) });
+    paint: async (_b, _s, positions, normals, _seed, _fiber, _mesh, surface, fit, slice) => {
+      strokes.push({ positions, normals, ...(fit ? { fit } : {}), surface, ...(slice ? { slice } : {}) });
     },
     has: () => true,
     changed: () => () => {},
   };
-  return { mode: new PaintMode(host), canvas, strokes, shown, root };
+  return { mode: new PaintMode(host), canvas, strokes, shown, flags, root };
 }
 
 const brush = { particles: 'list', entity: 1, name: 'CD9' };
@@ -102,6 +111,25 @@ describe('paint on a slice', () => {
       expect(strokes[1].positions[2]).not.toBe(20);
       mode.stop();
     }
+  });
+
+  it('turns and fits a copy on a slice like on a surface: the stroke its plane, the copy under the pointer too (slice-constraint)', async () => {
+    const { mode, canvas, strokes, flags } = setup();
+    mode.start(brush);
+    const move = new PointerEvent('pointermove', { bubbles: true });
+    Object.defineProperties(move, { offsetX: { value: 10 }, offsetY: { value: 10 } });
+    canvas.dispatchEvent(move);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(flags.at(-1)).toEqual({ onSurface: true, onMesh: true });
+    click(canvas, 10, 10);
+    // the slice sent: the operation turns its copies on it (review 5), the stroke at a depth as the place says
+    expect(strokes[0].surface).toBe(false);
+    expect(strokes[0].slice).toEqual({ volume: 'tomogram', point: [10, -10, 20], normal: [0, 0, 1] });
+    // off the slice, at a depth: as before
+    click(canvas, 70, 10);
+    expect(strokes[1].surface).toBe(false);
+    expect(strokes[1].slice).toBeUndefined();
+    mode.stop();
   });
 
   it('waits for a pending pick at the press (the slice and its volume read in a later frame)', async () => {

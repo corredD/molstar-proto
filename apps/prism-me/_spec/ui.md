@@ -673,6 +673,24 @@ still completes its distance.
   `paint-group`) is fitted by its leaves' envelope, painted or grown from (me/night-integration). A fitted fiber's units
   are copies (Rise, Twist and Jitter make the grow again). The poses are kept: a session has them without the volume. A
   mirrored tomogram is not fitted (its hand: TODO).
+- A slice is a surface (lane `slice-constraint`, Ludo 2026-11-14: "I am missing constraint on slice"): a copy painted on
+  a volume's slice is turned like on a surface (Turn Auto: its axis along the plane's normal; the copies of its stroke
+  off the slice as the place says) and, with Fit to, fitted on the plane (its shift along it, a spin about the normal, a
+  tilt of 5° at most; the shell scored along the normal), the copy under the pointer too; a stroke from the slice onto a
+  mesh fits its copies there on the mesh. Grow from it grows on the slice: the stroke's slice (its volume and plane
+  then: a slice moved later moves nothing) reaches the Grow section with its last copy, a source picked by its
+  right-click takes the slice shown through it (within its radius); **On** lists it as "Slice of <volume>" beside None
+  and the meshes, kept while another is picked (a mesh wins; None grows in space) to pick again. Tiling, Sphere, Random
+  walk, Spiral and Symmetry's Snap grow on the plane as on a mesh, each copy's up along its normal, the plane ending at
+  the volume's box (its voxels' centers); with Fit to, each copy fitted on it. Crystal grows in space. A Helix from a
+  copy on a slice (Ludo, 2026-11-14: "grow along the plane, or away from it") has an **Axis** row, shown only on a
+  slice: Along plane (default; its axis a line of the plane through the source, along the copy's side in the plane: the
+  copy stands along the normal, so its Spin turns the helix; the helix pokes out of the plane by its Radius) or Normal
+  (its axis the plane's normal through the source; Direction up or down it); Radius, Pitch, Count and Turns as in space,
+  live on the last grow. The grow keeps the slice (a session too). `slice` (the volume; empty: none), `slicePoint`,
+  `sliceNormal`, and a helix's `sliceAxis` (along, normal): plain params, the assistant's and ⌘K's. A helix from a
+  source off the slice is refused as every grow on it; fitted, its copies off the plane are fitted in space. Its first
+  copy is a Radius from the source (the source on its axis); it is not bounded by the volume's box.
 - Models decorated too (2026-10-23, Ludovic: "why can't we change the target in Simularium"): a model (a list with
   entities: Simularium, cellPACK, PetWorld) has the Decoration section, so each of its targets (an agent, an entity) can
   be drawn as another object of the scene. A particle list's own shape (a Simularium simulation box) is not listed as a
