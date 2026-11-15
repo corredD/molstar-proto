@@ -110,6 +110,8 @@ export function ParticleTargetRepresentation(
 
   /** The impostors' atlas of the targets (`lod-impostor.md`), with what it was made from: kept while that is the same */
   let impostors: { key: string[]; atlas: ImpostorAtlas; visuals: TargetVisual[] } | undefined;
+  /** the splatted views of the items, by their keys (`ImpostorAtlas.createCached`) */
+  const impostorBlocks = new Map<string, Uint8Array>();
 
   /** What the last full update built from: a later one changing the clip alone sets it on the visuals (`isClipOnly`) */
   let built: { particles: ParticleList; theme: Theme; props: ParticleTargetRepresentationProps } | undefined;
@@ -229,31 +231,33 @@ export function ParticleTargetRepresentation(
   function updateImpostors() {
     const levels = _props.lodLevels;
     const boundary = getImpostorBoundary(_props);
-    const items: ImpostorAtlas.Item[] = [];
+    const sources: ImpostorAtlas.Source[] = [];
     const owners: TargetVisual[] = [];
-    const key: string[] = [];
     for (const visual of targetVisuals.values()) {
-      const item = levels.length >= 2 ? visual.getImpostorItem(boundary) : undefined;
-      if (!item) continue;
-      items.push(item);
+      const source = levels.length >= 2 ? visual.getImpostorSource(boundary) : undefined;
+      if (!source) continue;
+      sources.push(source);
       owners.push(visual);
-      const values = visual.renderObject!.values as any;
-      key.push(
-        `${visual.geometryVersion}:${values.tSize.ref.version}:${values.uSizeFactor.ref.value}:${item.radius}:${item.tile}`,
-      );
     }
+    // the same sources: the atlas kept; else packed again, the blocks of the unchanged ones from the cache
     const same =
       impostors &&
-      impostors.key.length === key.length &&
-      impostors.visuals.every((v, i) => v === owners[i] && impostors!.key[i] === key[i]);
+      impostors.visuals.length === owners.length &&
+      impostors.visuals.every((v, i) => v === owners[i] && impostors!.key[i] === sources[i].key);
     if (!same) {
-      impostors = items.length
+      impostors = sources.length
         ? {
-            key,
-            atlas: ImpostorAtlas.create(items, graphics?.resources.limits.maxTextureSize ?? 4096),
+            key: sources.map((s) => s.key),
+            atlas: ImpostorAtlas.createCached(
+              sources,
+              graphics?.resources.limits.maxTextureSize ?? 4096,
+              impostorBlocks,
+            ),
             visuals: owners,
           }
         : undefined;
+      // none: the blocks let go (impostors off)
+      if (!impostors) impostorBlocks.clear();
     }
     const entries = new Map<TargetVisual, number>();
     if (impostors)
@@ -435,6 +439,8 @@ export function ParticleTargetRepresentation(
     targetVisuals.clear();
     mergedByType.clear();
     renderObjects.length = 0;
+    impostors = undefined;
+    impostorBlocks.clear();
   }
 
   return {

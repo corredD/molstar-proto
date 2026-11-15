@@ -181,4 +181,33 @@ describe('impostor atlas', () => {
     const side = at(tile / 2 + 2, tile / 2);
     expect(array[side + 2]).toBeGreaterThan(array[middle + 2] + 40);
   });
+
+  it('splats an item once: a cache of blocks by key, the atlas packed again from it', () => {
+    const e = ellipsoid(20, 10, 8, 1.5, 2);
+    const item = (key: string) => ({
+      key,
+      radius: 22,
+      tile: 16,
+      get: () => ({ ...e, center: Vec3(), radius: 22, tile: 16 }),
+    });
+    const cache = new Map<string, Uint8Array>();
+    const first = ImpostorAtlas.createCached([item('a'), item('b')], 4096, cache);
+    expect(first.splatted).toBe(2);
+    const again = ImpostorAtlas.createCached([item('a'), item('b'), item('c')], 4096, cache);
+    // only the new one; the others' blocks copied, the same texels
+    expect(again.splatted).toBe(1);
+    const block = (atlas: ImpostorAtlas, k: number) => {
+      const { x, y, tile } = ImpostorAtlas.decodeEntry(atlas.codes[k]);
+      const out: number[] = [];
+      for (let t = 0; t < tile * V; ++t) {
+        const o = ((y + t) * atlas.image.width + x) * 4;
+        out.push(...atlas.image.array.subarray(o, o + tile * V * 4));
+      }
+      return out;
+    };
+    expect(block(again, 0)).toEqual(block(first, 0));
+    // a key no longer asked for is let go
+    ImpostorAtlas.createCached([item('c')], 4096, cache);
+    expect([...cache.keys()].some((k) => k.startsWith('a'))).toBe(false);
+  });
 });

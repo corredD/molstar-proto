@@ -92,6 +92,12 @@ import type { Representation } from '../../../representation.js';
  */
 export const ImpostorMinRadius = 22;
 
+/**
+ * The texel (Å) from which an impostor's views are splatted from the spheres of level 1 (a tenth of the atoms, scaled as
+ * that level draws them): cellpack-mg's atlas 9.5 s from every atom (M1 Pro)
+ */
+const ImpostorCoarseTexel = 3;
+
 /** Removes the params every target kind shares (see `ParticleTargetCommonParams`). */
 function withoutCommon<P extends PD.Params>(params: P): P {
   const out: PD.Params = { ...params };
@@ -673,7 +679,7 @@ export interface TargetVisual {
    * `pixelBoundary` Å a pixel: a structure or sites target drawn as spheres with `lodImpostor`, levels and the size of
    * `ImpostorMinRadius`; undefined otherwise
    */
-  getImpostorItem(pixelBoundary: number): ImpostorAtlas.Item | undefined;
+  getImpostorSource(pixelBoundary: number): ImpostorAtlas.Source | undefined;
   /**
    * The atlas its impostors read (undefined: none) and its entry in it (-1: its last level spheres): taken by a structure
    * or sites target drawn as spheres with `lodImpostor`, also one without an entry (a small target), so that all merge
@@ -1155,12 +1161,19 @@ export function createTargetVisual(_targetId: number, materialId: number, graphi
     return !!currentProps?.lodImpostor && currentProps.type !== 'blob-surface' && currentProps.lodLevels.length >= 2;
   }
 
-  function getImpostorItem(pixelBoundary: number): ImpostorAtlas.Item | undefined {
+  function getImpostorSource(pixelBoundary: number): ImpostorAtlas.Source | undefined {
     if (!hasImpostors()) return;
     const values = renderObject!.values as unknown as SpheresValues;
     const { radius } = values.invariantBoundingSphere.ref.value;
     if (radius < ImpostorMinRadius) return;
-    return ImpostorAtlas.getItem(values, ImpostorAtlas.tileSize(radius, pixelBoundary));
+    const tile = ImpostorAtlas.tileSize(radius, pixelBoundary);
+    // a texel of `ImpostorCoarseTexel` Å or more: the spheres of level 1 (a tenth, scaled) splatted, not every atom
+    const levels = values.lodLevels.ref.value as Spheres.LodLevelsValue;
+    const coarse = (2 * radius) / tile >= ImpostorCoarseTexel && levels.length > 2;
+    const prefix = coarse ? { count: levels[1][3] / 6, scale: levels[1][4] } : undefined;
+    // what its views depend on: the target, its spheres, sizes, size factor, bounds, tile and level
+    const key = `${_targetId}:${geometryVersion}:${values.tSize.ref.version}:${values.uSizeFactor.ref.value}:${radius}:${tile}:${prefix ? `${prefix.count},${prefix.scale}` : ''}`;
+    return { key, radius, tile, get: () => ImpostorAtlas.getItem(values, tile, prefix) };
   }
 
   function setImpostor(atlas: ImpostorAtlas | undefined, code: number) {
@@ -1201,7 +1214,7 @@ export function createTargetVisual(_targetId: number, materialId: number, graphi
     mark,
     setLayers,
     setParticleFrames,
-    getImpostorItem,
+    getImpostorSource,
     setImpostor,
     destroy,
   };

@@ -169,37 +169,89 @@ export namespace ImpostorAtlas {
   }
 
   /**
+   * An item to splat where its block is not in the cache: its `key` (what its views depend on), the radius and tile it
+   * asks for, the item made only where needed (`get`; undefined: left out)
+   */
+  export interface Source {
+    readonly key: string;
+    readonly radius: number;
+    readonly tile: number;
+    get(): Item | undefined;
+  }
+
+  /**
    * The atlas of `items`, shelf-packed (largest first) within `maxSize` (and `MaxWidth`) a side; the tiles halved until
    * they fit, an entry that still does not fit left out (-1)
    */
   export function create(items: readonly Item[], maxSize: number): ImpostorAtlas {
+    return createCached(
+      items.map((item, e) => ({ key: `${e}`, radius: item.radius, tile: item.tile, get: () => item })),
+      maxSize,
+    );
+  }
+
+  /**
+   * `create` from sources, a source's block (its views at its tile) taken from `cache` by its key and tile where there,
+   * splatted and kept there otherwise: a change of one item splats that item alone (`splatted`), the others copied; the
+   * blocks of keys not asked for let go
+   */
+  export function createCached(
+    sources: readonly Source[],
+    maxSize: number,
+    cache?: Map<string, Uint8Array>,
+  ): ImpostorAtlas & { splatted: number } {
     const limit = Math.min(maxSize, MaxWidth);
     let shrink = 0;
     for (;;) {
-      const layout = pack(items, limit, shrink);
+      const layout = pack(sources, limit, shrink);
       if (layout || shrink >= 3) {
-        const l = layout ?? pack(items, limit, shrink, true)!;
+        const l = layout ?? pack(sources, limit, shrink, true)!;
         const array = new Uint8Array(l.width * l.height * 4);
         const codes: number[] = [];
-        for (let e = 0; e < items.length; ++e) {
+        const used = new Set<string>();
+        let splatted = 0;
+        for (let e = 0; e < sources.length; ++e) {
           const p = l.places[e];
+          const source = sources[e];
           if (!p) {
             codes.push(-1);
             continue;
           }
-          splat(array, l.width, p.x, p.y, p.tile, items[e]);
+          const key = `${source.key}|${p.tile}`;
+          let block = cache?.get(key);
+          if (!block) {
+            const item = source.get();
+            if (!item) {
+              codes.push(-1);
+              continue;
+            }
+            const side = p.tile * Views;
+            block = new Uint8Array(side * side * 4);
+            splat(block, side, 0, 0, p.tile, item);
+            splatted += 1;
+            cache?.set(key, block);
+          }
+          used.add(key);
+          copyBlock(array, l.width, p.x, p.y, block, p.tile * Views);
           codes.push(encodeEntry(p.x, p.y, p.tile));
         }
-        return { image: { array, width: l.width, height: l.height }, codes, radii: items.map((i) => i.radius) };
+        if (cache) for (const k of cache.keys()) if (!used.has(k)) cache.delete(k);
+        const image = { array, width: l.width, height: l.height };
+        return { image, codes, radii: sources.map((i) => i.radius), splatted };
       }
       shrink += 1;
     }
   }
 
+  function copyBlock(array: Uint8Array, width: number, x0: number, y0: number, block: Uint8Array, side: number) {
+    for (let t = 0; t < side; ++t)
+      array.set(block.subarray(t * side * 4, (t + 1) * side * 4), ((y0 + t) * width + x0) * 4);
+  }
+
   type Place = { x: number; y: number; tile: number };
 
   /** shelves of blocks (`Views` tiles a side), the tiles `shrink` times halved; undefined where they don't fit */
-  function pack(items: readonly Item[], limit: number, shrink: number, partial = false) {
+  function pack(items: readonly { readonly tile: number }[], limit: number, shrink: number, partial = false) {
     const tiles = items.map((i) => Math.max(MinTile, i.tile >> shrink));
     const order = items.map((_, e) => e).sort((a, b) => tiles[b] - tiles[a]);
     let area = 0;
@@ -406,14 +458,19 @@ export namespace ImpostorAtlas {
   /**
    * The item of spheres drawn by `values`: their drawn radii (size uniform, by group, or the first instance's by
    * instance or group instance; times the size factor), the invariant bounding sphere the impostor is drawn at;
-   * undefined for sizes by vertex
+   * undefined for sizes by vertex. `prefix`: the first `count` spheres alone, their radii times `scale` (a coarser
+   * level of detail: spheres in level order)
    */
-  export function getItem(values: ItemValues, tile: number): Item | undefined {
+  export function getItem(
+    values: ItemValues,
+    tile: number,
+    prefix?: { readonly count: number; readonly scale: number },
+  ): Item | undefined {
     const type = values.sizeType.ref.value;
     if (type !== 'group' && type !== 'uniform' && type !== 'instance' && type !== 'groupInstance') return undefined;
-    const count = values.uVertexCount.ref.value;
+    const count = prefix ? Math.min(prefix.count, values.uVertexCount.ref.value) : values.uVertexCount.ref.value;
     const positionGroup = values.tPositionGroup.ref.value.array;
-    const factor = values.uSizeFactor.ref.value;
+    const factor = values.uSizeFactor.ref.value * (prefix?.scale ?? 1);
     const radii = new Float32Array(count);
     if (type === 'uniform') {
       radii.fill(values.uSize.ref.value * factor);
