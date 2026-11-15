@@ -76,6 +76,33 @@ export interface HelixParams {
   readonly radius: number;
   /** Its length at most (Å, from the source): it ends there whatever its turns (review M1: a grow's cap before it is made) */
   readonly limit?: number;
+  /**
+   * In space, its axis through the source along `direction` (unit), the helix from the point a Radius along `side`
+   * (unit, across it) instead of about the Fiber Axis a Radius away (a copy on a slice: `sliceHelixLine`)
+   */
+  readonly through?: { readonly direction: Vec3; readonly side: Vec3 };
+}
+
+/** A helix's axis from a copy on a slice (slice-constraint, Ludo 2026-11-14): along its plane, or away from it */
+export type SliceHelixAxis = 'along' | 'normal';
+
+/**
+ * A helix's axis from a copy on a slice (Ludo, 2026-11-14: "grow along the plane, or away from it"), through the source
+ * (`HelixParams.through`): Along, a line of the plane, the copy's side (`fiberOffsetDirection` of its `axis`, turned by
+ * it) in the plane: a copy on a slice stands along the normal (its axis's projection is noise), its side lies in the
+ * plane and turns with its spin, so Spin turns the helix; else its axis in the plane, else any. Normal, the plane's
+ * normal (`normal`, unit). The helix starts a Radius across it: in the plane for Along (its first unit beside the
+ * source), along the copy's side for Normal
+ */
+export function sliceHelixLine(source: GrowPose, axis: Vec3, normal: Vec3, mode: SliceHelixAxis) {
+  const local = Vec3.normalize(Vec3(), axis);
+  const inPlane = Vec3.transformQuat(Vec3(), fiberOffsetDirection(Vec3(), 'auto', local), source.rotation);
+  if (!tangent(inPlane, normal)) {
+    Vec3.transformQuat(inPlane, local, source.rotation);
+    if (!tangent(inPlane, normal)) fiberOffsetDirection(inPlane, 'auto', normal);
+  }
+  if (mode === 'normal') return { direction: Vec3.copy(Vec3(), normal), side: inPlane };
+  return { direction: inPlane, side: Vec3.normalize(Vec3(), Vec3.cross(Vec3(), normal, inPlane)) };
 }
 
 /**
@@ -382,6 +409,11 @@ export function helixPath(
     Vec3.normalize(d, on.line.direction);
     Vec3.sub(_t, start, on.line.center);
     Vec3.scaleAndAdd(_foot, on.line.center, d, Vec3.dot(_t, d));
+  } else if (p.through) {
+    // through the source (a copy on a slice): from a Radius across the axis
+    Vec3.normalize(d, p.through.direction);
+    Vec3.copy(_foot, start);
+    Vec3.scaleAndAdd(start, start, p.through.side, p.radius);
   } else {
     Vec3.normalize(d, Vec3.transformQuat(d, axis, source.rotation));
     const local = Vec3.normalize(Vec3(), axis);
@@ -399,7 +431,8 @@ export function helixPath(
   const end = Math.max(0, p.turns) * 2 * Math.PI;
   // in space, from a rise along the helix (its arc a radian is the same throughout); on a surface, from the source,
   // then a rise cut off its path
-  const from = on ? 0 : rise / Math.hypot(radius, p.pitch / (2 * Math.PI));
+  // through the source: from its start (the source is on the axis, not the helix)
+  const from = on || p.through ? 0 : rise / Math.hypot(radius, p.pitch / (2 * Math.PI));
   if (from >= end) return [];
   const all: number[] = [];
   const ns: number[] | undefined = on ? [] : undefined;

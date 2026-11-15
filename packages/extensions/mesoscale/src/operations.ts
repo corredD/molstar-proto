@@ -94,6 +94,8 @@ import {
   HelixAxes,
   type HelixAxis,
   helixPath,
+  type SliceHelixAxis,
+  sliceHelixLine,
   type HelixInfo,
   type SpiralInfo,
   spiralPath,
@@ -299,6 +301,8 @@ export interface GrowSettings {
   readonly slice?: GrowSlice;
   /** On None picked with a slice (review 4): in space, the slice kept to pick again */
   readonly inSpace?: boolean;
+  /** A helix from a copy on a slice: its axis along the plane or its normal (Ludo, 2026-11-14) */
+  readonly sliceAxis: SliceHelixAxis;
   /** Tiling's points, the source's counted; unset: 3 rings' (decisions 11) */
   readonly tiles?: number;
   /** A helix (grow-helix): its pitch (unset: 4 × the copy's diameter), turns, hand, direction, axis on a mesh, radius in space (unset: the copy's diameter) */
@@ -350,6 +354,7 @@ export const DefaultGrowSettings: GrowSettings = {
   side: 'inside',
   symmetryAxis: 'auto',
   snap: false,
+  sliceAxis: 'along',
   contrast: 'dark',
   threshold: 0.6,
 };
@@ -388,7 +393,10 @@ export function growParams(source: GrowSource, s: GrowSettings) {
     delete out.axis;
     // on a slice (slice-constraint): as on a mesh
     // (not a crystal or a helix: they grow in space, review 3; nor with On None, review 4)
-    if (s.slice && !s.inSpace && s.mode !== 'crystal' && s.mode !== 'helix') Object.assign(out, sliceParams(s.slice));
+    if (s.slice && !s.inSpace && s.mode !== 'crystal') {
+      Object.assign(out, sliceParams(s.slice));
+      if (s.mode === 'helix') out.sliceAxis = s.sliceAxis;
+    }
   }
   // fitted to a volume (density-fit)
   if (s.fit) Object.assign(out, { fit: s.fit, contrast: s.contrast, threshold: s.threshold });
@@ -1784,6 +1792,16 @@ export class MesoscaleApi extends ApiArea {
         }),
       ),
       ...SliceParams('Grow on'),
+      sliceAxis: OptionalParam(
+        PD.Select(
+          'along',
+          [
+            ['along', 'Along the plane: its axis a line of the plane through the source'],
+            ['normal', "Away from it: its axis the plane's normal through the source (Direction: up or down it)"],
+          ] as const,
+          { description: 'Helix from a copy on a slice: its axis' },
+        ),
+      ),
       ...FitParams('Each grown copy'),
       threshold: OptionalParam(
         PD.Numeric(
@@ -1819,6 +1837,7 @@ export class MesoscaleApi extends ApiArea {
           side?: 'inside' | 'outside';
           symmetryAxis?: HelixAxis;
           snap?: boolean;
+          sliceAxis?: SliceHelixAxis;
           fit?: string;
           contrast?: FitContrast;
         };
@@ -1873,14 +1892,8 @@ export class MesoscaleApi extends ApiArea {
       const given = sliceOfParams(v);
       const slice = !mesh && given ? sliceOf(state, given) : undefined;
       if (isFailure(slice)) return slice;
-      if (slice && (mode === 'crystal' || mode === 'helix')) {
-        return ApiResult.fail(
-          'invalid',
-          mode === 'crystal'
-            ? 'A crystal is a 3D lattice: it grows in space, not on a slice.'
-            : "A helix winds about an axis: on a slice's plane it would fold onto itself.",
-          mode === 'crystal' ? 'Tiling.' : 'Spiral, or On None.',
-        );
+      if (slice && mode === 'crystal') {
+        return ApiResult.fail('invalid', 'A crystal is a 3D lattice: it grows in space, not on a slice.', 'Tiling.');
       }
       /** The surface it grows on, for its messages */
       const onLabel = mesh?.label ?? slice?.label;
@@ -2101,6 +2114,8 @@ export class MesoscaleApi extends ApiArea {
         } else {
           // a helix (grow-helix), in the scene (its pitch and radius as drawn), then in the list's frame
           // Turns, when given, end it; else Count copies do (its turns the ones they reach); else 5 turns (decisions 8)
+          /** A helix on a mesh (on a slice it winds about a line through the source, in space) */
+          const onMesh = mesh ? on : undefined;
           const byCount = v.turns === undefined && v.count !== undefined;
           const count = Math.floor(v.count ?? 0);
           if (byCount && !(count >= 2)) return ApiResult.fail('invalid', 'Give 2 copies or more.');
@@ -2116,14 +2131,14 @@ export class MesoscaleApi extends ApiArea {
           if (!(p.turns > 0)) return ApiResult.fail('invalid', 'Give a turn or a part of one.');
           // a point every 5° (on a mesh, a projection each): the turns bounded, the length at the cap (review M1)
           if (p.turns > MaxHelixTurns) return ApiResult.fail('invalid', `Give ${MaxHelixTurns} turns or fewer.`);
-          if (!on && !(p.radius > 0)) return ApiResult.fail('invalid', 'The radius is above 0 Å.');
+          if (!onMesh && !(p.radius > 0)) return ApiResult.fail('invalid', 'The radius is above 0 Å.');
           const scaled = rise * (move?.scale ?? 1);
           const reached: HelixInfo = {};
           // its length in space before it is made: no 1000 turns of a long radius at a short rise (its points every 5°)
-          if (!byCount && !on && (p.turns * Math.hypot(2 * Math.PI * p.radius, p.pitch)) / scaled + 1 > MaxGrown) {
+          if (!byCount && !onMesh && (p.turns * Math.hypot(2 * Math.PI * p.radius, p.pitch)) / scaled + 1 > MaxGrown) {
             return tooMany(Math.floor((p.turns * Math.hypot(2 * Math.PI * p.radius, p.pitch)) / scaled) + 1);
           }
-          if (on) {
+          if (onMesh) {
             const which = v.axis ?? 'auto';
             const camera = ctx.plugin.canvas3d?.camera.state;
             const view = camera && Vec3.sub(Vec3(), camera.position, camera.target);
@@ -2135,7 +2150,7 @@ export class MesoscaleApi extends ApiArea {
               axis,
               scaled,
               { ...p, limit },
-              { ...on, axis: surfaceAxis(), line },
+              { ...onMesh, axis: surfaceAxis(), line },
               normals,
               reached,
             );
@@ -2150,16 +2165,19 @@ export class MesoscaleApi extends ApiArea {
             Object.assign(sizes, { ...p, axis: which });
             delete sizes.radius;
           } else {
+            // from a copy on a slice: about a line through it, along the plane or its normal (Ludo, 2026-11-14)
+            const through = slice ? sliceHelixLine(scene, axis, slice.plane.normal, v.sliceAxis ?? 'along') : undefined;
+            const q = { ...p, ...(through ? { through } : {}) };
             path = helixPath(
               scene,
               axis,
               scaled,
-              byCount ? { ...p, limit: count * scaled } : p,
+              byCount ? { ...q, limit: count * scaled } : q,
               undefined,
               undefined,
               reached,
             )!;
-            Object.assign(sizes, p);
+            Object.assign(sizes, p, slice ? { sliceAxis: v.sliceAxis ?? 'along' } : {});
           }
           // by Count: the path ended at its copies' length (a rise apart, the first at its start), its turns the ones it reached
           if (byCount) {
@@ -2175,7 +2193,7 @@ export class MesoscaleApi extends ApiArea {
           sizes.count = byCount ? count : units;
           sizes.by = byCount ? 'count' : 'turns';
           // by Count past the turns a grow has (200): not fewer copies without a word (review N4)
-          if (byCount && !on && units < count) {
+          if (byCount && !onMesh && units < count) {
             return ApiResult.fail(
               'invalid',
               `${count} copies need more than ${MaxHelixTurns} turns of that helix.`,
@@ -3716,7 +3734,7 @@ function sliceOf(state: State, slice: GrowSlice) {
   const volume = sceneVolume(state, slice.volume);
   if (isFailure(volume)) return volume;
   const own: GrowSlice = { volume: volume.ref, point: [...plane.point], normal: [...plane.normal] };
-  return { slice: own, label: `the slice of ${volume.label}`, surface: planeSurface(plane, volume.volume.grid) };
+  return { slice: own, plane, label: `the slice of ${volume.label}`, surface: planeSurface(plane, volume.volume.grid) };
 }
 
 /** A slice shown through a source (within its radius; slice-constraint): its volume and plane now, the nearest */

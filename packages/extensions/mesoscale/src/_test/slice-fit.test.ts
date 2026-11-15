@@ -97,7 +97,7 @@ const strokes = (v: PrismViewer) =>
   (
     v.plugin.state.data.cells.get(entry(v).cell.transform.ref) &&
     [...v.plugin.state.data.cells.values()].find((c) => (c.transform.params as { strokes?: unknown })?.strokes)
-  )?.transform.params as { strokes: { grow?: { slice?: unknown } }[] };
+  )?.transform.params as { strokes: { grow?: { slice?: unknown; params: Record<string, unknown> } }[] };
 
 describe('paint on a slice, then off it (review 1)', () => {
   it('a stroke from a slice onto a mesh: its copies on the mesh fitted on it, those on the slice on the plane', async () => {
@@ -209,12 +209,52 @@ describe('grow from a copy on a slice', () => {
     }
   });
 
-  it('refuses a Crystal, a Helix (it would fold onto the plane), and a source off the slice', async () => {
+  it('a Helix along the plane or away from it: its axis through the source, every copy Radius from it (Ludo, 2026-11-14)', async () => {
+    const v = await viewer();
+    const { slice, list, index } = await source(v);
+    const n = Vec3.create(0, 0, 1);
+    const helix = {
+      particles: list,
+      index,
+      ...sliceParams(slice),
+      mode: 'helix',
+      helixRadius: 15,
+      pitch: 60,
+      turns: 2,
+    };
+    const at = xyz(drawn(v), index);
+    /** The copies' farthest off Radius from the line through the source along `d` */
+    const worst = (d: Vec3) => {
+      const l = drawn(v);
+      let w = 0;
+      for (let i = index + 1; i < l.count; ++i) {
+        const r = Vec3.sub(Vec3(), xyz(l, i), at);
+        w = Math.max(w, Math.abs(Vec3.magnitude(Vec3.scaleAndAdd(r, r, d, -Vec3.dot(r, d))) - 15));
+      }
+      return w;
+    };
+    for (const sliceAxis of ['along', 'normal'] as const) {
+      expectOk(await v.api.run('mesoscale.grow', { ...helix, sliceAxis }));
+      expect(drawn(v).count - index - 1).toBeGreaterThan(5);
+      // away: the normal; along: a line of the plane (the best of its directions every 0.05°)
+      let best = Infinity;
+      if (sliceAxis === 'normal') best = worst(n);
+      else {
+        for (let t = 0; t < 180; t += 0.05) {
+          best = Math.min(best, worst(Vec3.create(Math.cos((t * Math.PI) / 180), Math.sin((t * Math.PI) / 180), 0)));
+        }
+      }
+      expect(best).toBeLessThan(0.1);
+      expect(strokes(v).strokes.at(-1)!.grow!.params.sliceAxis).toBe(sliceAxis);
+      expectOk(await v.api.run('history.undo', {}));
+    }
+  });
+
+  it('refuses a Crystal, and a source off the slice', async () => {
     const v = await viewer();
     const { slice, list, index } = await source(v);
     const grow = (p: object) => v.api.run('mesoscale.grow', { particles: list, index, ...sliceParams(slice), ...p });
     expect(await grow({ mode: 'crystal' })).toMatchObject({ ok: false, code: 'invalid' });
-    expect(await grow({ mode: 'helix' })).toMatchObject({ ok: false, code: 'invalid' });
     const off = { ...slice, point: [0, 0, 400] };
     expect(await grow({ mode: 'tiling', ...sliceParams(off) })).toMatchObject({ ok: false, code: 'invalid' });
   });
@@ -310,9 +350,12 @@ describe('Grow knows the slice', () => {
     );
     // a crystal grows in space whatever On says
     expect(growParams(m.growSource.value!, { ...m.growSettings.value, mode: 'crystal' }).slice).toBeUndefined();
-    // a helix too (it is refused on a slice: review 3); a mesh picked wins, the slice kept for later; None: in space,
+    // a helix on it (Ludo, 2026-11-14), its axis's choice; a mesh picked wins, the slice kept for later; None: in space,
     // the slice kept to pick again (review 4)
-    expect(growParams(m.growSource.value!, { ...m.growSettings.value, mode: 'helix' }).slice).toBeUndefined();
+    expect(growParams(m.growSource.value!, { ...m.growSettings.value, mode: 'helix' })).toMatchObject({
+      ...sliceParams(slice),
+      sliceAxis: 'along',
+    });
     const on = (patch: object) =>
       growParams(m.growSource.value!, { ...m.growSettings.value, mode: 'tiling', ...patch });
     expect(on({ mesh: 'a-mesh' })).toMatchObject({ mesh: 'a-mesh' });
