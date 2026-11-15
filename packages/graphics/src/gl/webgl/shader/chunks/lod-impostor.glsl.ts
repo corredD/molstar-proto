@@ -79,8 +79,10 @@ export const assign_lod_impostor_factor = `
         float l = log2(max(ratio, 1e-30));
         float h = uLodImpostorSwitch.z;
         float s = smoothstep(-h, h, l);
-        lodImpostorShare = lodImpostor ? s + clamp((l - h) / ImpostorFlatOctaves, 0.0, 1.0) : -1.0 - s;
-        if (lodImpostor ? s <= 0.0 : s >= 1.0) lodCulled = true;
+        // the role by the overlap's sign (\`LodView.getRange\`): the last level fades in (also a small item's spheres)
+        bool fadeIn = uLod.z < 0.0;
+        lodImpostorShare = fadeIn ? s + clamp((l - h) / ImpostorFlatOctaves, 0.0, 1.0) : -1.0 - s;
+        if (fadeIn ? s <= 0.0 : s >= 1.0) lodCulled = true;
     } else if (uLod.z < 0.0) {
         // beyond the band, the impostors flatten over an octave (\`ImpostorFlatOctaves\`): 1 + flatness
         float bandEnd = uLod.x - uLod.z;

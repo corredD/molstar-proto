@@ -72,8 +72,10 @@ export const assign_lod_impostor_factor_wgsl = /* wgsl */ `
                 let l = log2(max(ratio, 1e-30));
                 let h = sw.z;
                 let s = smoothstep(-h, h, l);
-                lodImpostorShare = select(-1.0 - s, s + clamp((l - h) / ImpostorFlatOctaves, 0.0, 1.0), lodImpostor);
-                if (select(s >= 1.0, s <= 0.0, lodImpostor)) {
+                // the role by the overlap's sign (\`LodView.getRange\`): the last level fades in (also a small item's spheres)
+                let fadeIn = lod.z < 0.0;
+                lodImpostorShare = select(-1.0 - s, s + clamp((l - h) / ImpostorFlatOctaves, 0.0, 1.0), fadeIn);
+                if (select(s >= 1.0, s <= 0.0, fadeIn)) {
                     lodCulled = true;
                 }
             } else if (lod.z < 0.0) {

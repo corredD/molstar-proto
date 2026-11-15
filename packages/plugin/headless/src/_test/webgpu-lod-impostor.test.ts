@@ -150,7 +150,7 @@ async function setup() {
       },
     });
   };
-  return { plugin, canvas, draw, impostors, setSwitch };
+  return { plugin, canvas, draw, impostors, setSwitch, spheres };
 }
 
 /** per pixel, which copy's color it has (0, 1), -1 for neither */
@@ -296,6 +296,21 @@ describe.skipIf(!WebGPU.module)('impostors (WebGPU)', () => {
       expect(count(copies(await draw()))).toBeGreaterThan(0.95 * full);
       setSwitch('pixels', 2000);
       expect(count(copies(await draw()))).toBeLessThan(0.75 * full);
+    } finally {
+      plugin.dispose();
+    }
+  });
+
+  // a small item (no entry: the band alone) keeps its last level's spheres beyond the switch, not culled as an impostor
+  it("keep a small item's spheres beyond the switch", { tags: ['medium'] }, async () => {
+    const { plugin, canvas, draw, impostors, setSwitch, spheres } = await setup();
+    try {
+      await impostors();
+      spheres.shaderData.update({ lodImpostor: -1 });
+      const { position, target } = canvas.camera.state;
+      setSwitch('distance', Vec3.distance(position, target) / 4);
+      const count = copies(await draw()).reduce((n, c) => n + (c >= 0 ? 1 : 0), 0);
+      expect(count).toBeGreaterThan(20);
     } finally {
       plugin.dispose();
     }
