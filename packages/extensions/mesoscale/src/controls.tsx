@@ -609,6 +609,9 @@ const SymmetryGroupChoices = [
   { id: 'i', label: 'I', title: 'Icosahedral: 60 (a shell)' },
 ];
 
+/** On's value for the source's slice (slice-constraint): no state ref is one */
+const SliceOn = '#slice';
+
 /** A grow's record as the Grow section's settings (round 2: the section follows the live grow back) */
 function settingsOfGrow(g: GrowRecord): Partial<GrowSettings> {
   const p = g.params;
@@ -662,8 +665,11 @@ function settingsOfGrow(g: GrowRecord): Partial<GrowSettings> {
     ],
   };
   const out: Record<string, unknown> = { mode: g.mode };
-  // On: the grow's mesh (a crystal grows in space whatever On says)
-  if (g.mode !== 'crystal') out.mesh = g.mesh?.ref;
+  // On: the grow's mesh or slice (a crystal grows in space whatever On says)
+  if (g.mode !== 'crystal') {
+    out.mesh = g.mesh?.ref;
+    out.slice = g.slice && { volume: g.slice.volume, point: g.slice.point, normal: g.slice.normal };
+  }
   for (const [from, to] of keys[g.mode]) if (p[from] !== undefined) out[to] = p[from];
   // Helix, Spiral: the driver of Count and Turns comes back with `by`, never the follower (a shared value: the
   // follower is the grow's to show, not the settings' to keep; review S1, M6)
@@ -718,7 +724,12 @@ export function GrowBlock(props: { area: MesoscaleApi; api: ViewerApi; particles
       const s = area.growSettings.value;
       if (!src) return Promise.resolve();
       return g.run('mesoscale.grow', {
-        ...growParams(src, { ...s, mesh: onMesh(s, meshes.value), fit: onVolume(s, volumes.value) }),
+        ...growParams(src, {
+          ...s,
+          mesh: onMesh(s, meshes.value),
+          slice: onSlice(s, volumes.value),
+          fit: onVolume(s, volumes.value),
+        }),
         replace: at.grow,
       });
     },
@@ -752,6 +763,14 @@ export function GrowBlock(props: { area: MesoscaleApi; api: ViewerApi; particles
   /** The mesh chosen while it is in the scene */
   const onMesh = (s: GrowSettings, list: readonly { ref: string }[]) =>
     s.mesh && list.some((m) => m.ref === s.mesh) ? s.mesh : undefined;
+  /** The source's slice while its volume is in the scene (slice-constraint) */
+  const onSlice = (s: GrowSettings, list: readonly { ref: string }[]) =>
+    s.slice && list.some((v) => v.ref === s.slice!.volume) ? s.slice : undefined;
+  /** On a surface, a mesh or a slice: Symmetry's Snap */
+  const onSurface = derive(
+    [settings, meshes, volumes],
+    (s, ml, vl) => !!onMesh(s, ml) || (s.mode !== 'crystal' && !!onSlice(s, vl)),
+  );
   // following both: a mesh deleted after it was chosen is none (review S3)
   const chosen = derive([settings, meshes], (s, list) => onMesh(s, list));
   /** The settings changed, nothing grown */
@@ -931,18 +950,41 @@ export function GrowBlock(props: { area: MesoscaleApi; api: ViewerApi; particles
               }
             >
               {() => (
-                <Show when={mapState(meshes, (list) => ({ list }))}>
-                  {({ list }) =>
+                <Show
+                  when={derive(
+                    [meshes, volumes, settings],
+                    (list, vl, s) => ({
+                      list,
+                      // the source's slice (slice-constraint): an On of its own
+                      slice: onSlice(s, vl) && vl.find((v) => v.ref === s.slice!.volume)?.label,
+                    }),
+                    // rebuilt when the meshes or the slice's name change, not a setting (a drag)
+                    (a, b) => a.list === b.list && a.slice === b.slice,
+                  )}
+                >
+                  {({ list, slice }) =>
                     line(
                       'On',
-                      'A mesh of the scene the copies grow on, each turned to its normal; None: in space',
+                      "A mesh of the scene or the source's slice the copies grow on, each turned to its normal; None: in space",
                       <Select
                         size="sm"
                         over
                         aria-label="Grow on a mesh"
-                        options={[['', 'None'], ...list.map((m): SelectOption => [m.ref, m.label])]}
-                        value={mapState(settings, (s) => onMesh(s, list) ?? '')}
-                        onChange={(ref) => set({ mesh: ref || undefined })}
+                        options={[
+                          ['', 'None'],
+                          ...(slice ? [[SliceOn, `Slice of ${slice}`] as SelectOption] : []),
+                          ...list.map((m): SelectOption => [m.ref, m.label]),
+                        ]}
+                        value={mapState(settings, (s) => onMesh(s, list) ?? (slice && s.slice ? SliceOn : ''))}
+                        onChange={(ref) =>
+                          set(
+                            ref === SliceOn
+                              ? { mesh: undefined }
+                              : ref
+                                ? { mesh: ref, slice: undefined }
+                                : { mesh: undefined, slice: undefined },
+                          )
+                        }
                       />,
                     )
                   }
@@ -1236,7 +1278,7 @@ export function GrowBlock(props: { area: MesoscaleApi; api: ViewerApi; particles
                       onChange={(axis) => set({ symmetryAxis: axis as GrowSettings['symmetryAxis'] })}
                     />,
                   )}
-                  <Show when={mapState(chosen, (m) => !!m)}>
+                  <Show when={onSurface}>
                     {() => (
                       <Choices
                         label="Snap"
@@ -1282,6 +1324,7 @@ export function GrowBlock(props: { area: MesoscaleApi; api: ViewerApi; particles
                       growParams(src, {
                         ...s,
                         mesh: onMesh(s, meshes.value),
+                        slice: onSlice(s, volumes.value),
                         fit: onVolume(s, volumes.value),
                       }) as never,
                     )

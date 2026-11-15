@@ -5,9 +5,11 @@
  */
 
 import { Mat4, Vec3 } from '@molstar/core/math/linear-algebra';
-import { Grid } from '@molstar/model/model/volume';
-import type { SlicePlane } from './fit.js';
-import type { GrowSurface, SurfaceHit } from './grow.js';
+import type { State } from '@molstar/core/state';
+import { Grid, type Volume } from '@molstar/model/model/volume';
+import { PluginStateObject as SO } from '@molstar/plugin/state/objects';
+import { type SlicePlane, sceneVolumeOf, slicePlane } from './fit.js';
+import { type GrowSurface, SurfaceHit } from './grow.js';
 
 // A volume's slice as a surface (progress/2026-11-14-slice-constraint.md; Ludo, 2026-11-14): Fit and Grow keep a copy
 // on its plane as on a mesh. The plane ends where the volume's box does: its voxels' centers, indices 0 to n − 1 along
@@ -112,4 +114,29 @@ function clip(polygon: readonly Vec3[], k: number, at: number, sign: number): Ve
     if (sa >= 0 !== sb >= 0) out.push(Vec3.lerp(Vec3(), a, b, sa / (sa - sb)));
   }
   return out;
+}
+
+/**
+ * The slice shown (a volume's slice representation, not hidden) whose plane, inside its volume's box, is within `reach`
+ * of `p`, the nearest: its volume's state ref and its plane now
+ */
+export function sceneSliceAt(state: State, p: Vec3, reach: number): GrowSlice | undefined {
+  const hit = SurfaceHit();
+  const none = Vec3();
+  let best: GrowSlice | undefined;
+  let nearest = Infinity;
+  for (const cell of state.cells.values()) {
+    if (cell.state.isHidden || !SO.Volume.Representation3D.is(cell.obj)) continue;
+    const type = (cell.transform.params as { type?: { name?: string; params?: unknown } } | undefined)?.type;
+    const drawn = (cell.obj.data as { sourceData?: Volume }).sourceData;
+    if (type?.name !== 'slice' || !drawn) continue;
+    const plane = slicePlane(drawn.grid, (type.params ?? {}) as Parameters<typeof slicePlane>[1]);
+    const volume = plane && sceneVolumeOf(state, drawn);
+    if (!volume || !planeSurface(plane, drawn.grid).project(hit, p, none, reach)) continue;
+    const d = Vec3.distance(hit.position, p);
+    if (d >= nearest) continue;
+    nearest = d;
+    best = { volume: volume.ref, point: [...plane.point], normal: [...plane.normal] };
+  }
+  return best;
 }

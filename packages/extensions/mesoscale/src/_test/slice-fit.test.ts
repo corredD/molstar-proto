@@ -14,6 +14,7 @@ import { DefaultPrismViewerSpec } from '@molstar/prism-viewer/default-spec';
 import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
 import type { PrismViewer } from '@molstar/prism-viewer/viewer';
 import { SurfaceTilt, sceneVolumes } from '../fit.js';
+import { growParams } from '../operations.js';
 import { MesoscaleExtension } from '../prism-viewer.js';
 import { crnAtoms, density, type Site } from './density.js';
 import { setTestTargetStructure, TestTargetList } from './fixtures.js';
@@ -226,5 +227,46 @@ describe('grow from a copy on a slice', () => {
       const p = xyz(drawn(v), i);
       expect(Math.min(...filled.map((f) => Vec3.distance(f.position, p)))).toBeLessThan(3);
     }
+  });
+});
+
+describe('Grow knows the slice', () => {
+  it('a copy painted on a slice: Grow on it; a source picked on a shown slice: on it; another, none', async () => {
+    const v = await viewer();
+    const volume = await oneSite(v, 0);
+    const m = v.api.mesoscale!;
+    const list = entry(v).cell.transform.ref;
+    const slice = { volume, point: [0, 0, 40], normal: [0, 0, 1] };
+    const paintParams = { entity: 'CA', normals: [0, 0, 1], seed: 1, slice };
+    expectOk(await v.api.run('mesoscale.paint', { ...paintParams, positions: [120, 120, 40] }));
+    const index = drawn(v).count - 1;
+    // the paint mode's commit: its last copy the source, on the stroke's slice
+    (m as unknown as { growFromLast(list: string, mesh?: string, slice?: object): void }).growFromLast(
+      list,
+      undefined,
+      slice,
+    );
+    expect(m.growSource.value).toEqual({ particles: list, index });
+    expect(m.growSettings.value.slice).toEqual(slice);
+    expect(growParams(m.growSource.value!, { ...m.growSettings.value, mode: 'tiling' }).slice).toEqual(slice);
+    // a crystal grows in space whatever On says
+    expect(growParams(m.growSource.value!, { ...m.growSettings.value, mode: 'crystal' }).slice).toBeUndefined();
+    // picked (right-click): the slice shown under it, its plane then
+    expectOk(await v.api.run('mesoscale.paint', { ...paintParams, positions: [60, 60, 40] }));
+    expectOk(
+      await v.api.run('volume.representation', {
+        volume,
+        type: 'slice',
+        params: { dimension: { name: 'z', params: 20 } },
+      }),
+    );
+    m.setGrowSource({ particles: list, index: index + 1 });
+    expect(m.growSettings.value.slice?.volume).toBe(volume);
+    expect(m.growSettings.value.slice!.point[2]).toBeCloseTo(40, 10);
+    expect(Math.abs(m.growSettings.value.slice!.normal[2])).toBeCloseTo(1, 10);
+    // a copy off the slice: none
+    expectOk(await v.api.run('mesoscale.paint', { entity: 'CA', positions: [60, 60, 70], seed: 1 }));
+    m.setGrowSource({ particles: list, index: index + 2 });
+    expect(m.growSettings.value.slice).toBeUndefined();
   });
 });

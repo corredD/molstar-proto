@@ -111,7 +111,7 @@ import { spiralCount } from './grow-link.js';
 import { fiberUnitUp } from './fiber-up.js';
 import { type SymmetryGroup, SymmetryGrowParams, symmetryAt, symmetryContact, symmetryPoses } from './grow-symmetry.js';
 import { meshAxis, sceneMesh, sceneMeshes, sceneMeshSurface } from './mesh-surface.js';
-import { type GrowSlice, planeSurface, slicePlaneOf } from './slice-surface.js';
+import { type GrowSlice, planeSurface, sceneSliceAt, slicePlaneOf } from './slice-surface.js';
 import {
   envelopeOf,
   type FitContrast,
@@ -287,6 +287,8 @@ export interface GrowSettings {
   readonly turn: 'random' | 'source';
   /** The mesh it grows on (its representation's state ref; grow-mesh): none, in space; not for Crystal */
   readonly mesh?: string;
+  /** The slice it grows on (slice-constraint: the source's, as it was painted or picked); a mesh wins; not for Crystal */
+  readonly slice?: GrowSlice;
   /** Tiling's points, the source's counted; unset: 3 rings' (decisions 11) */
   readonly tiles?: number;
   /** A helix (grow-helix): its pitch (unset: 4 × the copy's diameter), turns, hand, direction, axis on a mesh, radius in space (unset: the copy's diameter) */
@@ -372,7 +374,11 @@ export function growParams(source: GrowSource, s: GrowSettings) {
   if (s.mesh && s.mode !== 'crystal') {
     out.mesh = s.mesh;
     delete out.helixRadius;
-  } else delete out.axis;
+  } else {
+    delete out.axis;
+    // on a slice (slice-constraint): as on a mesh
+    if (s.slice && s.mode !== 'crystal') out.slice = s.slice;
+  }
   // fitted to a volume (density-fit)
   if (s.fit) Object.assign(out, { fit: s.fit, contrast: s.contrast, threshold: s.threshold });
   return out;
@@ -523,7 +529,9 @@ export class MesoscaleApi extends ApiArea {
     // copy fitted to a volume is fitted on it: density-fit)
     async (params) => {
       const r = await this.paint(params as never);
-      if (r.ok) this.growFromLast(r.changed?.nodes?.[0], params.mesh as string | undefined);
+      if (r.ok) {
+        this.growFromLast(r.changed?.nodes?.[0], params.mesh as string | undefined, params.slice as GrowSlice);
+      }
       return r;
     },
     // the copy under the pointer in the entity's color (its look's)
@@ -596,19 +604,22 @@ export class MesoscaleApi extends ApiArea {
   /**
    * Sets the grow's source; another than the one before also unsets the lengths (a, b, c, spacing, radius): the new
    * source's size again (review G1), and sets the mesh it grows on: `mesh`, the one it was painted on, else the mesh
-   * under it, else none (grow-mesh; review S7)
+   * under it, else none (grow-mesh; review S7); else the slice: `slice`, the one it was painted on, else a slice shown
+   * through it (slice-constraint)
    */
-  setGrowSource(source: GrowSource, painted?: string, fromPaint = false) {
+  setGrowSource(source: GrowSource, painted?: string, fromPaint = false, slice?: GrowSlice) {
     const old = this.growSource.value;
     const same = old?.particles === source.particles && old.index === source.index;
     // the same source picked again keeps the person's On; the same index painted again (after an undo) may be on
     // another mesh, or none (round 3)
     if (same && !fromPaint) return;
-    const mesh = painted ?? meshUnder(this.ctx, source);
+    const mesh = painted ?? (slice ? undefined : meshUnder(this.ctx, source));
+    const on = mesh ? undefined : (slice ?? sliceUnder(this.ctx, source));
+    const surface = { ...(mesh ? { mesh } : {}), ...(on ? { slice: on } : {}) };
     if (same) {
-      if (mesh !== this.growSettings.value.mesh) {
-        const { mesh: _m, ...rest } = this.growSettings.value;
-        this.growSettings.set(mesh ? { ...rest, mesh } : rest);
+      if (mesh !== this.growSettings.value.mesh || on !== this.growSettings.value.slice) {
+        const { mesh: _m, slice: _s, ...rest } = this.growSettings.value;
+        this.growSettings.set({ ...rest, ...surface });
       }
       return;
     }
@@ -621,6 +632,7 @@ export class MesoscaleApi extends ApiArea {
       spacing: _s,
       radius: _r,
       mesh: _m,
+      slice: _slice,
       rise: _rise,
       twist: _t,
       jitter: _j,
@@ -628,19 +640,19 @@ export class MesoscaleApi extends ApiArea {
       helixRadius: _hr,
       ...kept
     } = this.growSettings.value;
-    this.growSettings.set(mesh ? { ...kept, mesh } : kept);
+    this.growSettings.set({ ...kept, ...surface });
     this.growSource.set(source);
   }
 
   /** The grow's source: the last particle of a list's painted decorator (a stroke's last copy), on `mesh` if painted on one */
-  private growFromLast(list: string | undefined, mesh?: string) {
+  private growFromLast(list: string | undefined, mesh?: string, slice?: GrowSlice) {
     if (!list) return;
     const painted = decoratorUnder(this.ctx.plugin.state.data, list, ParticleListPainted);
     const count = (painted?.obj?.data as ParticleList | undefined)?.count ?? 0;
     const l = lists({ plugin: this.ctx.plugin }).find((x) => x.cell.transform.ref === list);
     // a copy that is no source (a unit of a bank's fiber: review S3) leaves the source as it was
     if (!count || !l || isFailure(growSourceOf(this.ctx.plugin.state.data, l, count - 1))) return;
-    this.setGrowSource({ particles: list, index: count - 1 }, mesh, true);
+    this.setGrowSource({ particles: list, index: count - 1 }, mesh, true, slice);
   }
 
   /**
@@ -3680,6 +3692,16 @@ function sliceOf(state: State, slice: GrowSlice) {
   if (isFailure(volume)) return volume;
   const own: GrowSlice = { volume: volume.ref, point: [...plane.point], normal: [...plane.normal] };
   return { slice: own, label: `the slice of ${volume.label}`, surface: planeSurface(plane, volume.volume.grid) };
+}
+
+/** A slice shown through a source (within its radius; slice-constraint): its volume and plane now, the nearest */
+function sliceUnder(ctx: Pick<ApiContext, 'plugin'>, source: GrowSource): GrowSlice | undefined {
+  const state = ctx.plugin.state.data;
+  const l = lists(ctx).find((x) => x.cell.transform.ref === source.particles);
+  const src = l && growSourceOf(state, l, source.index);
+  if (!src || isFailure(src)) return undefined;
+  const move = decoratorUnder(state, source.particles, ParticleListTransform)?.transform.params as ListMove | undefined;
+  return sceneSliceAt(state, offsetPose(poseToScene(move, src.pose), src.instance).position, src.radius);
 }
 
 function meshUnder(ctx: Pick<ApiContext, 'plugin'>, source: GrowSource): string | undefined {
