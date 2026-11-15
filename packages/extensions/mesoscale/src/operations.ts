@@ -3709,10 +3709,6 @@ function grownFrom(state: State, l: ParticleListRef, index: number): PaintStroke
   return strokes.filter((s) => s.grow?.source.key === key);
 }
 
-/**
- * The file mesh under a grow's source (review S7): the nearest within its radius of where it is drawn (its list's
- * move and scale, its own move; a copy painted on a mesh is on it), if any
- */
 /** A grow's slice: its plane as a surface, bounded by its volume's box (as drawn), and its name (slice-constraint) */
 function sliceOf(state: State, slice: GrowSlice) {
   const plane = slicePlaneOf(slice);
@@ -3733,6 +3729,10 @@ function sliceUnder(ctx: Pick<ApiContext, 'plugin'>, source: GrowSource): GrowSl
   return sceneSliceAt(state, offsetPose(poseToScene(move, src.pose), src.instance).position, src.radius);
 }
 
+/**
+ * The file mesh under a grow's source (review S7): the nearest within its radius of where it is drawn (its list's
+ * move and scale, its own move; a copy painted on a mesh is on it), if any
+ */
 function meshUnder(ctx: Pick<ApiContext, 'plugin'>, source: GrowSource): string | undefined {
   const state = ctx.plugin.state.data;
   const l = lists(ctx).find((x) => x.cell.transform.ref === source.particles);
