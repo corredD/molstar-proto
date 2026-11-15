@@ -34,13 +34,13 @@ describe('binGrid', () => {
     for (let a = 0; a < 3; ++a) expect(p[a]).toBeCloseTo(q[a], 5);
   });
 
-  it('yields while it averages too, not only while it sums (a big grid binned in the background)', async () => {
+  it('yields per slab of its slowest axis, its means made slab by slab (a big grid binned in the background)', async () => {
     const g = grid([2, 1, 0], Float32Array, [8, 6, 64], linear);
     let updates = 0;
     const ctx = { shouldUpdate: true, update: async () => void updates++ } as any;
     const b = await binGrid(g, 2, ctx);
-    // the sums: a yield per slab of the slowest axis (64); the means: one per binned slab of it (32)
-    expect(updates).toBeGreaterThanOrEqual(64 + 32);
+    // one pass, a yield per slab of the slowest axis (64): a binned slab's means right after its sums
+    expect(updates).toBeGreaterThanOrEqual(64);
     const ref = await binGrid(grid([0, 1, 2], Float32Array, [8, 6, 64], linear), 2);
     for (let k = 0; k < 32; ++k) expect(at(b, 3, 2, k)).toBeCloseTo(at(ref, 3, 2, k), 4);
   });

@@ -29,53 +29,54 @@ export async function binGrid(
   const out = [0, 1, 2].map((a) => Math.ceil(dims[a] / by[a]));
   const [a0, a1, a2] = space.axisOrderSlowToFast;
   const binned = Tensor.Space(out, [a0, a1, a2], Float32Array);
-  const sums = new Float64Array(out[0] * out[1] * out[2]);
-  // the binned grid's index along each axis of each voxel of the grid, and its stride: one pass in memory order
+  // the binned grid's index along each axis of each voxel of the grid, and its stride: one pass in memory order, a
+  // binned slab (of the slowest axis) at a time: its sums alone held (a 41 × 3000² tilt series: 18 MB, not 738)
   const strides = Tensor.strides(binned)!;
   const step = [0, 1, 2].map((a) => Int32Array.from({ length: dims[a] }, (_, i) => Math.floor(i / by[a]) * strides[a]));
   const read = Tensor.strides(space);
-  const [s0, s1, s2] = [step[a0], step[a1], step[a2]];
+  const [s1, s2] = [step[a1], step[a2]];
   const [n0, n1, n2] = [dims[a0], dims[a1], dims[a2]];
-  const c = [0, 0, 0];
-  for (let i0 = 0; i0 < n0; i0++) {
-    if (ctx?.shouldUpdate) await ctx.update({ message: `Binning ${by.join('×')}…`, current: i0, max: n0 });
-    c[a0] = i0;
-    for (let i1 = 0; i1 < n1; i1++) {
-      c[a1] = i1;
-      const o = s0[i0] + s1[i1];
-      if (read) {
-        let at = i0 * read[a0] + i1 * read[a1];
-        const r2 = read[a2];
-        for (let i2 = 0; i2 < n2; i2++, at += r2) sums[o + s2[i2]] += data[at];
-      } else {
-        for (let i2 = 0; i2 < n2; i2++) {
-          c[a2] = i2;
-          sums[o + s2[i2]] += space.get(data, c[0], c[1], c[2]);
-        }
-      }
-    }
-  }
+  const sums = new Float64Array(out[a1] * out[a2]);
   // each voxel's count: the product of its block's lengths along the three axes (shorter at the far edge)
   const length = [0, 1, 2].map((a) =>
     Int32Array.from({ length: out[a] }, (_, i) => Math.min(by[a], dims[a] - i * by[a])),
   );
+  const [l0, l1, l2] = [length[a0], length[a1], length[a2]];
+  const [b1, b2] = [strides[a1], strides[a2]];
   const values = binned.create();
   let min = Infinity;
   let max = -Infinity;
   let sum = 0;
   let sumSq = 0;
-  // in memory order (the binned grid's slowest axis outside), yielding per slab of it: a big grid's second pass
-  const [b0, b1, b2] = [strides[a0], strides[a1], strides[a2]];
-  const [l0, l1, l2] = [length[a0], length[a1], length[a2]];
-  for (let i0 = 0; i0 < out[a0]; i0++) {
-    if (ctx?.shouldUpdate) await ctx.update({ message: `Binning ${by.join('×')}…`, current: i0, max: out[a0] });
-    for (let i1 = 0; i1 < out[a1]; i1++) {
-      const n = l0[i0] * l1[i1];
-      const o = i0 * b0 + i1 * b1;
-      for (let i2 = 0; i2 < out[a2]; i2++) {
-        const at = o + i2 * b2;
-        const v = sums[at] / (n * l2[i2]);
-        values[at] = v;
+  const c = [0, 0, 0];
+  for (let k0 = 0; k0 < out[a0]; k0++) {
+    sums.fill(0);
+    for (let i0 = k0 * by[a0], e0 = Math.min(n0, i0 + by[a0]); i0 < e0; i0++) {
+      if (ctx?.shouldUpdate) await ctx.update({ message: `Binning ${by.join('×')}…`, current: i0, max: n0 });
+      c[a0] = i0;
+      for (let i1 = 0; i1 < n1; i1++) {
+        c[a1] = i1;
+        const o = s1[i1];
+        if (read) {
+          let at = i0 * read[a0] + i1 * read[a1];
+          const r2 = read[a2];
+          for (let i2 = 0; i2 < n2; i2++, at += r2) sums[o + s2[i2]] += data[at];
+        } else {
+          for (let i2 = 0; i2 < n2; i2++) {
+            c[a2] = i2;
+            sums[o + s2[i2]] += space.get(data, c[0], c[1], c[2]);
+          }
+        }
+      }
+    }
+    // the slab's means, in memory order
+    const offset = k0 * strides[a0];
+    for (let j1 = 0; j1 < out[a1]; j1++) {
+      const n = l0[k0] * l1[j1];
+      for (let j2 = 0; j2 < out[a2]; j2++) {
+        const o = j1 * b1 + j2 * b2;
+        const v = sums[o] / (n * l2[j2]);
+        values[offset + o] = v;
         if (v < min) min = v;
         if (v > max) max = v;
         sum += v;
