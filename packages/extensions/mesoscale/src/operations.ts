@@ -2166,10 +2166,14 @@ export class MesoscaleApi extends ApiArea {
             delete sizes.radius;
           } else {
             // from a copy on a slice: about a line through it, along the plane or its normal (Ludo, 2026-11-14)
-            const through = slice ? sliceHelixLine(scene, axis, slice.plane.normal, v.sliceAxis ?? 'along') : undefined;
+            // the source on the slice, as every grow on it (gate 1): the axis through its point there
+            const hit = SurfaceHit();
+            if (on && !on.surface.project(hit, scene.position, Vec3(), on.reach)) return offMesh();
+            const from = slice ? { position: hit.position, rotation: scene.rotation } : scene;
+            const through = slice ? sliceHelixLine(from, axis, slice.plane.normal, v.sliceAxis ?? 'along') : undefined;
             const q = { ...p, ...(through ? { through } : {}) };
             path = helixPath(
-              scene,
+              from,
               axis,
               scaled,
               byCount ? { ...q, limit: count * scaled } : q,
@@ -2242,7 +2246,12 @@ export class MesoscaleApi extends ApiArea {
         if (!map) return ApiResult.fail('invalid', `${fitTo.label} is flat (σ 0): nothing to fit to.`, 'Fit to None.');
         const copies = (made ?? fiberCopies)!;
         // on a mesh, each copy kept on it: its normal there (the copies are on it; one off it, none: fitted in space)
-        const copyNormals = on ? surfaceNormals(on, copies.positions) : undefined;
+        // on a slice, only the copies on its plane (a helix's or Snap's off it: in space; gate 2)
+        const copyNormals = slice
+          ? onPlane(slice.plane, copies.positions)
+          : on
+            ? surfaceNormals(on, copies.positions)
+            : undefined;
         const sourceNormal = on ? Vec3.fromArray(Vec3(), surfaceNormals(on, scene.position), 0) : undefined;
         // the score to keep copies by: the source's at its best within paint's reach (as a click fits it), not moved: a
         // copy placed on a surface, not fitted, may sit between two of a lattice's proteins (Ludo, 2026-11-14)

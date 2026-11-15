@@ -250,13 +250,45 @@ describe('grow from a copy on a slice', () => {
     }
   });
 
+  it('a fitted Helix away from the plane: its copies off the plane fitted in space, not held at their height (gate 2)', async () => {
+    const v = await viewer();
+    const { slice, list, index } = await source(v);
+    const volume = slice.volume;
+    const helix = {
+      particles: list,
+      index,
+      ...sliceParams(slice),
+      mode: 'helix',
+      pitch: 40,
+      helixRadius: 15,
+      count: 12,
+      sliceAxis: 'normal',
+    };
+    expectOk(await v.api.run('mesoscale.grow', helix));
+    const plain: Vec3[] = [];
+    for (let i = index + 1; i < drawn(v).count; ++i) plain.push(xyz(drawn(v), i));
+    expectOk(await v.api.run('history.undo', {}));
+    expectOk(await v.api.run('mesoscale.grow', { ...helix, fit: volume, threshold: 0 }));
+    // a copy above the plane moves along the normal too (free): its height not every unfitted copy's
+    let moved = 0;
+    const l = drawn(v);
+    for (let i = index + 1; i < l.count; ++i) {
+      const p = xyz(l, i);
+      if (p[2] - 40 < 5) continue;
+      if (plain.every((q) => Math.abs(q[2] - p[2]) > 0.05)) moved++;
+    }
+    expect(moved).toBeGreaterThan(0);
+  });
+
   it('refuses a Crystal, and a source off the slice', async () => {
     const v = await viewer();
     const { slice, list, index } = await source(v);
     const grow = (p: object) => v.api.run('mesoscale.grow', { particles: list, index, ...sliceParams(slice), ...p });
     expect(await grow({ mode: 'crystal' })).toMatchObject({ ok: false, code: 'invalid' });
     const off = { ...slice, point: [0, 0, 400] };
-    expect(await grow({ mode: 'tiling', ...sliceParams(off) })).toMatchObject({ ok: false, code: 'invalid' });
+    for (const mode of ['tiling', 'helix']) {
+      expect(await grow({ mode, ...sliceParams(off) })).toMatchObject({ ok: false, code: 'invalid' });
+    }
   });
 
   it('keeps the slice with the grow: a session round-trip; a grow of an old session has none', async () => {
