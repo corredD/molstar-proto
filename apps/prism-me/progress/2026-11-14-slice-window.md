@@ -194,8 +194,8 @@ and its edge cases (race, removal, drag back). Tests ~850 lines.
 
 1. Float planes (47 MB GPU for your Z window, ~82 MB for the three slices of your map) vs 16-bit (half, a conversion per
    plane) — kept float for exact pixels and contrast as a uniform.
-2. Free a hidden slice's window after a while? (not built; the x and y slices of an MRC are made hidden at load and take
-   their windows only once shown and moved — they do allocate their texture at load.)
+2. Free a hidden slice's window after a while? Not built: the x and y slices an MRC load makes hidden get their windows
+   at load too (filled in idle time: x 21 MB, y 15 MB on your map).
 3. Upstream the core commits (they are self-contained, no app hunks)?
 
 ## How Ludo checks it (port 1380)
