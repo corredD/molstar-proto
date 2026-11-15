@@ -98,6 +98,20 @@ const strokes = (v: PrismViewer) =>
     [...v.plugin.state.data.cells.values()].find((c) => (c.transform.params as { strokes?: unknown })?.strokes)
   )?.transform.params as { strokes: { grow?: { slice?: unknown } }[] };
 
+describe('paint on a slice, then off it (review 1)', () => {
+  it('a stroke from a slice onto a mesh: its copies on the mesh fitted on it, those on the slice on the plane', async () => {
+    const v = await viewer();
+    const volume = await oneSite(v, 6);
+    // its second copy on a mesh 12 Å over the plane (its normal +z), the site 6 Å under it
+    const stroke = { entity: 'CA', positions: [83, 80, 40, 83, 80, 52], normals: [0, 0, 1, 0, 0, 1], seed: 1 };
+    const slice = { volume, point: [0, 0, 40], normal: [0, 0, 1] };
+    expectOk(await v.api.run('mesoscale.paint', { ...stroke, fit: volume, mesh: 'a-mesh', slice }));
+    const l = drawn(v);
+    expect(Math.abs(xyz(l, l.count - 2)[2] - 40)).toBeLessThan(0.01);
+    expect(Math.abs(xyz(l, l.count - 1)[2] - 52)).toBeLessThan(0.01);
+  });
+});
+
 describe('grow from a copy on a slice', () => {
   /** A copy painted on the slice z = 40 of an empty 240 × 240 × 80 Å volume at (x, 120), along its normal */
   async function source(v: PrismViewer, x = 120) {

@@ -411,15 +411,17 @@ const tooManyFits = (n: number) =>
     `Fewer copies (with a Count, it is drawn ${Overdraw} times over), or no fit.`,
   );
 /**
- * A slice's normal at the points (x, y, z each) on its plane (within 0.01 Å: put there by paint), x, y, z each; 0, 0, 0
- * for a point off it (slice-constraint: a copy fitted on the slice stays on it, one of a stroke that left it is free)
+ * A slice's normal at the points (x, y, z each) on its plane (within 0.01 Å: put there by paint), x, y, z each; for a
+ * point off it, its normal in `elsewhere` (a mesh's: a stroke from the slice onto a mesh; review 1), else 0, 0, 0
+ * (slice-constraint: a copy fitted on the slice stays on it, one of a stroke that left it for a depth is free)
  */
-function onPlane(plane: SlicePlane, positions: ArrayLike<number>): number[] {
+function onPlane(plane: SlicePlane, positions: ArrayLike<number>, elsewhere?: ArrayLike<number>): number[] {
   const out: number[] = [];
   const { point: o, normal: n } = plane;
   for (let i = 0; i < positions.length; i += 3) {
     const d = (positions[i] - o[0]) * n[0] + (positions[i + 1] - o[1]) * n[1] + (positions[i + 2] - o[2]) * n[2];
     if (Math.abs(d) < 0.01) out.push(n[0], n[1], n[2]);
+    else if (elsewhere) out.push(elsewhere[i], elsewhere[i + 1], elsewhere[i + 2]);
     else out.push(0, 0, 0);
   }
   return out;
@@ -1440,7 +1442,8 @@ export class MesoscaleApi extends ApiArea {
         const move = moved?.transform.params as ListMove | undefined;
         // painted on a mesh: each copy fitted on it, along its normal there (in the scene: `normals`); on a slice, a
         // copy on its plane along its normal (one off it, as a stroke leaving the slice: free)
-        const on = plane ? onPlane(plane, positions) : mesh?.trim() && normals ? normals : undefined;
+        const onMesh = mesh?.trim() && normals ? normals : undefined;
+        const on = plane ? onPlane(plane, positions, onMesh) : onMesh;
         fitted = { volume: volume.label, ...fitCopies(map, envelope, move, local, rotations, reach, on) };
       }
       const stroke: PaintStroke = {
