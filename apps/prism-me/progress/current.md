@@ -84,6 +84,9 @@ is not built is [../TODO.md](../TODO.md).
   `me/night-integration` with the surface fit) and `mesh-volume-color`, as `me/all` (a08cbf8e7, 834 tests); pushed,
   published on mesoscope. [Morning summary](2026-11-14-morning.md). Lanes closed 2026-11-14 (worktrees, local
   branches, dev servers 1369–1376).
+- **`volume-pixel-size`** (Ludo, 2026-11-14; Sonnet + Opus design, `~/prism-me-lanes/volume-pixel-size`, port 1379): a
+  volume's Pixel size (Å) in Data, set and Reset to the file's (a wrong header); [brief](2026-11-14-volume-pixel-size.md)
+  on its branch. Running.
 - **Merged 2026-11-14** (Ludo's word): `slice-constraint`, a volume's slice as a surface for Fit and Grow (on the plane,
   oriented as on a surface; Helix Axis Along plane | Normal); 862 tests; no core changes;
   [progress](2026-11-14-slice-constraint.md). Open for Ludo: Helix Normal past the volume's box; Along's direction (the
