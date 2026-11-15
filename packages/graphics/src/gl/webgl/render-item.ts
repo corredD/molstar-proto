@@ -650,7 +650,7 @@ export function createRenderItem<T extends string>(
       }
       return count;
     },
-    getProgram: (variant: T) => programs[variant],
+    getProgram: (variant: T, define?: string) => (define ? getDefineProgram(variant, define) : programs[variant]),
     getLinearTextures: () => {
       const names: string[] = [];
       for (const list of [textures, materialTextures]) {

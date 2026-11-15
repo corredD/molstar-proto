@@ -124,7 +124,8 @@ export interface RenderItem<T extends string> {
   readonly materialId: number;
   /** GPU bytes of the item, a shared texture by the item's share (`.v6/plans/gl/shared-textures.md` §5) */
   getByteCount(): number;
-  getProgram: (variant: T) => GraphicsProgram;
+  /** `define`: the program of the lists with that define (`MultiDrawBaseData.define`) */
+  getProgram: (variant: T, define?: string) => GraphicsProgram;
   /**
    * Names of the bound textures with linear filtering (WebGPU programs read them filtered, `dLinear_*`), for the
    * signature of the item's object (`ObjectSignature`)

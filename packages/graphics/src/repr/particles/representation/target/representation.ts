@@ -524,13 +524,6 @@ export function ParticleTargetRepresentation(
 }
 
 /**
- * The signatures of the targets of the particle list (`ctx.data`), as `createOrUpdate` draws them: per target with
- * particles, the geometry it is drawn with (`getTargetGeometryChoice`) with its props, colored per particle, sized as
- * the visual sizes it (a structure's impostors per element, volume dots uniformly); merged per geometry type as their
- * counts decide. None without data: every kind the params configure would compile many pipelines a list never draws,
- * and the representation prepares with its data when added and updated
- */
-/**
  * The radius the impostors' ranges cover by size on screen: the 90th percentile of the copies' (each target's radius
  * by its copies). The largest items (a few ribosomes) switch at it, a little larger on screen, so that the last spheres
  * of every copy are not drawn out to where the largest switch (`lod-impostor.md`: the far frames' cost)
@@ -552,6 +545,13 @@ function getImpostorRadiusCap(sources: readonly ImpostorAtlas.Source[], owners: 
   return items[items.length - 1].r;
 }
 
+/**
+ * The signatures of the targets of the particle list (`ctx.data`), as `createOrUpdate` draws them: per target with
+ * particles, the geometry it is drawn with (`getTargetGeometryChoice`) with its props, colored per particle, sized as
+ * the visual sizes it (a structure's impostors per element, volume dots uniformly); merged per geometry type as their
+ * counts decide. None without data: every kind the params configure would compile many pipelines a list never draws,
+ * and the representation prepares with its data when added and updated
+ */
 function getParticleTargetSignatures(
   props: ParticleTargetRepresentationProps,
   ctx: SignatureContext,
