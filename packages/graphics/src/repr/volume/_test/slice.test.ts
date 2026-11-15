@@ -31,6 +31,13 @@ import {
   type SliceProps,
 } from '../slice.js';
 import { createPeriodicVolume } from '../util.js';
+import { SliceVisual } from '../slice.js';
+import { SliceWindowDepth } from '../slice-window.js';
+import { createNullTexture, type Texture } from '@molstar/graphics/gl/texture';
+import type { GraphicsContext } from '@molstar/graphics/gl/context';
+import type { TextureImage } from '@molstar/graphics/gl/renderable/util';
+import { Task } from '@molstar/core/task';
+import { PickingId } from '@molstar/graphics/geo/geometry/picking';
 
 function createTestVolume(instanceCount: number, periodic = false, stats: Grid['stats'] = Grid.One.stats): Volume {
   return {
@@ -624,4 +631,218 @@ describe('grid slice image, built as before', () => {
       }
     });
   }
+});
+
+/** A 3d texture on the CPU: its layers' contents, the planes written into it */
+type StubTexture = Texture & { data: Float32Array; width: number; height: number; depth: number; writes: number };
+
+/** A graphics context with 3d textures held on the CPU (`loadLayer`), for the window's path without a GPU */
+function stubGraphics(texture3d = true) {
+  const owned = new Set<Texture>();
+  const textures: StubTexture[] = [];
+  const graphics = {
+    capabilities: { texture3d },
+    resources: {
+      limits: { max3dTextureSize: 2048 },
+      ownsTexture: (t: Texture) => owned.has(t),
+      texture: () => {
+        const t = {
+          ...createNullTexture(),
+          data: new Float32Array(0),
+          width: 0,
+          height: 0,
+          depth: 0,
+          writes: 0,
+          define(w: number, h: number, d = 1) {
+            Object.assign(t, { width: w, height: h, depth: d, data: new Float32Array(w * h * d) });
+          },
+          loadLayer(image: TextureImage<Float32Array>, layer: number) {
+            if (image.width !== t.width || image.height !== t.height || layer >= t.depth) throw new Error('outside');
+            t.data.set(image.array, layer * t.width * t.height);
+            t.writes += 1;
+          },
+          destroy() {
+            owned.delete(t);
+          },
+        } as StubTexture;
+        owned.add(t);
+        textures.push(t);
+        return t;
+      },
+    },
+  } as unknown as GraphicsContext;
+  return { graphics, textures, owned };
+}
+
+describe('grid slice from a window of its planes (slice-window.ts)', () => {
+  const volumes: [string, () => Volume][] = [
+    ['x fastest', () => gridVolume([5, 4, 40], [2, 1, 0], Skewed)],
+    ['z fastest', () => gridVolume([40, 3, 5], [0, 1, 2], Skewed)],
+  ];
+  const dimensions = ['x', 'y', 'z'] as const;
+
+  for (const [vName, makeVolume] of volumes) {
+    for (const [tName, makeTheme] of [
+      ['uniform', () => uniformTheme()],
+      ['volume value', (v: Volume) => valueTheme(v)],
+    ] as const) {
+      it(`${vName}, ${tName}: the layer drawn holds the CPU image's values, mapping and groups, along x, y, z`, async () => {
+        const volume = makeVolume();
+        const theme = makeTheme(volume);
+        const { min, max } = volume.grid.stats;
+        const { graphics, textures } = stubGraphics();
+        for (const name of dimensions) {
+          const n = volume.grid.cells.space.dimensions[{ x: 0, y: 1, z: 2 }[name]];
+          let image: Image | undefined;
+          for (let i = 0; i < n; ++i) {
+            const props = sliceProps({ mode: 'grid', dimension: { name, params: i } });
+            image = await createImage({ graphics } as any, volume, 0, theme, props, image);
+            const ref = referenceGridImage(volume, theme, props);
+            const at = `${name} ${i}`;
+            expect(image.sliceWindow.ref.value, at).toBe(true);
+            const texture = image.sliceTexture.ref.value as StubTexture;
+            const { width, height } = texture;
+            expect([width, height], at).toEqual([
+              image.imageTextureDim.ref.value[0],
+              image.imageTextureDim.ref.value[1],
+            ]);
+            const layer = image.sliceLayer.ref.value;
+            expect(layer, at).toBe(i % SliceWindowDepth);
+            const plane = texture.data.subarray(layer * width * height, (layer + 1) * width * height);
+            for (let k = 0; k < plane.length; ++k) {
+              expect((plane[k] - min) / (max - min), `${at} pixel ${k}`).toBeCloseTo(ref.valueArray[k], 5);
+            }
+            expect(image.groupTexture.ref.value.array, at).toEqual(ref.groupArray);
+            const mapping = image.meta.mapping as { instance: Int16Array; cell: Uint32Array; index: IndexLike };
+            expect(mapping.cell, at).toEqual(ref.mapping.cell);
+            expectSameIndex(mapping.index, ref.mapping.index, keysOf(volume));
+          }
+        }
+        // one window per axis made, the previous freed
+        expect(textures.length).toBe(3);
+      });
+    }
+  }
+
+  it('colors: the uniform color over the grid range, volume-value over its domain', async () => {
+    const volume = gridVolume([5, 4, 40], [2, 1, 0], Skewed);
+    const { graphics } = stubGraphics();
+    const props = sliceProps({ mode: 'grid', dimension: { name: 'z', params: 3 } });
+    const { min, max } = volume.grid.stats;
+    const u = await createImage({ graphics } as any, volume, 0, uniformTheme(), props);
+    expect(Array.from(u.sliceDomain.ref.value)).toEqual([min, max, min, max].map(Math.fround));
+    const v = await createImage({ graphics } as any, volume, 0, valueTheme(volume), props);
+    expect(Array.from(v.sliceDomain.ref.value)).toEqual([min, max, -6, 7].map(Math.fround));
+  });
+
+  it('falls back to the CPU image: another theme, a periodic volume, no strides, no 3d textures, plane mode', async () => {
+    const strided = gridVolume([5, 4, 40], [2, 1, 0], Skewed);
+    const noStrides = {
+      ...strided,
+      grid: { ...strided.grid, cells: { ...strided.grid.cells, space: { ...strided.grid.cells.space } } },
+    };
+    const periodic = gridVolume([3, 4, 2], [2, 1, 0], Scaled, { tiles: [[0, 0, 0]] });
+    const grid = sliceProps({ mode: 'grid', dimension: { name: 'z', params: 1 } });
+    const cases: [string, Volume, Theme, SliceProps, boolean][] = [
+      ['position theme', strided, positionBitsTheme(), grid, true],
+      ['periodic', periodic, uniformTheme(), grid, true],
+      ['no strides', noStrides, uniformTheme(), grid, true],
+      ['no 3d textures', strided, uniformTheme(), grid, false],
+      ['plane', strided, uniformTheme(), sliceProps({ mode: 'plane' }), true],
+    ];
+    for (const [name, volume, theme, props, texture3d] of cases) {
+      const { graphics, textures } = stubGraphics(texture3d);
+      const im = await createImage({ graphics } as any, volume, 0, theme, props);
+      expect(im.sliceWindow.ref.value, name).toBe(false);
+      expect(textures.length, name).toBe(0);
+    }
+  });
+
+  it('a window image made again on the CPU frees its window', async () => {
+    const volume = gridVolume([5, 4, 40], [2, 1, 0], Skewed);
+    const { graphics, owned } = stubGraphics();
+    const props = sliceProps({ mode: 'grid', dimension: { name: 'z', params: 3 } });
+    const im = await createImage({ graphics } as any, volume, 0, uniformTheme(), props);
+    expect(owned.size).toBe(1);
+    const again = await createImage({ graphics } as any, volume, 0, positionBitsTheme(), props, im);
+    expect(again.sliceWindow.ref.value).toBe(false);
+    expect(owned.size).toBe(0);
+    expect(again.imageTexture.ref.value.array).toEqual(
+      referenceGridImage(volume, positionBitsTheme(), props).imageArray,
+    );
+  });
+});
+
+describe('a slice visual moved within its window', () => {
+  async function setup(theme: Theme) {
+    const volume = gridVolume([6, 5, 200], [2, 1, 0], Skewed);
+    const { graphics, textures, owned } = stubGraphics();
+    const visual = SliceVisual(0);
+    const update = (props: Partial<SliceProps>, t = theme) =>
+      Task.create('update', (runtime) =>
+        visual.createOrUpdate({ runtime, graphics }, t, props, { volume, key: 0 }),
+      ).run();
+    await update(sliceProps({ mode: 'grid', dimension: { name: 'z', params: 100 } }));
+    return { volume, visual, update, textures, owned };
+  }
+
+  it('a step updates the image in place: no new geometry, a uniform within the band, a plane copied at its edge', async () => {
+    const { visual, update, textures } = await setup(uniformTheme());
+    const version = visual.geometryVersion;
+    const texture = textures[0];
+    expect(texture.writes).toBe(SliceWindowDepth);
+    const values = visual.renderObject!.values as any;
+    for (let i = 101; i <= 107; ++i) await update({ dimension: { name: 'z', params: i } });
+    expect(texture.writes).toBe(SliceWindowDepth);
+    expect(values.uSliceLayer.ref.value).toBe(107 % SliceWindowDepth);
+    for (let i = 108; i <= 157; ++i) await update({ dimension: { name: 'z', params: i } });
+    // one plane per step past the band's edge
+    expect(texture.writes).toBe(SliceWindowDepth + 50);
+    expect(visual.geometryVersion).toBe(version);
+    expect(textures.length).toBe(1);
+  });
+
+  it('picks the voxel of the drawn slice', async () => {
+    const { volume, visual, update } = await setup(uniformTheme());
+    await update({ dimension: { name: 'z', params: 123 } });
+    const [nx] = volume.grid.cells.space.dimensions;
+    // pixel (row 2, column 3): x 3, y 2
+    const loci = visual.getLoci({ objectId: visual.renderObject!.id, instanceId: 0, groupId: 2 * nx + 3 } as PickingId);
+    const cell = (loci as Volume.Cell.Loci).elements[0].indices;
+    expect(Interval.start(cell as Interval)).toBe(volume.grid.cells.space.dataOffset(3, 2, 123));
+  });
+
+  it('a contrast change is a uniform; another axis or theme makes it again', async () => {
+    const volume0 = gridVolume([6, 5, 200], [2, 1, 0], Skewed);
+    const { visual, update, textures, owned } = await setup(valueTheme(volume0));
+    const version = visual.geometryVersion;
+    const props = PD.getDefaultValues(VolumeValueColorThemeParams);
+    const contrast: Theme = {
+      color: VolumeValueColorTheme({ volume: volume0 }, { ...props, domain: { name: 'custom', params: [-2, 3] } }),
+      size: SizeTheme.Empty,
+    };
+    await update({}, contrast);
+    expect(visual.geometryVersion).toBe(version);
+    const values = visual.renderObject!.values as any;
+    expect(values.uSliceDomain.ref.value[2]).toBe(-2);
+    await update({ dimension: { name: 'x', params: 2 } }, contrast);
+    expect(visual.geometryVersion).toBe(version + 1);
+    expect(textures.length).toBe(2);
+    // a theme by position, not by the value alone
+    const byPosition = {
+      color: { granularity: 'vertex', color: () => Color(0xff0000), props: {} },
+      size: SizeTheme.Empty,
+    };
+    await update({ dimension: { name: 'x', params: 3 } }, byPosition as unknown as Theme);
+    expect(values.dSliceWindow.ref.value).toBe(false);
+    expect(owned.size).toBe(0);
+    visual.destroy();
+  });
+
+  it('destroy frees the window', async () => {
+    const { visual, owned } = await setup(uniformTheme());
+    expect(owned.size).toBe(1);
+    visual.destroy();
+    expect(owned.size).toBe(0);
+  });
 });

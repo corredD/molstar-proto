@@ -32,6 +32,10 @@ import { Interval } from '@molstar/core/data/int/interval';
 import { VolumeVisual } from './visual.js';
 import { cantorPairing } from '@molstar/core/data/util/hash-functions';
 import { Tensor } from '@molstar/core/math/linear-algebra/tensor';
+import { ValueCell } from '@molstar/core/util/value-cell';
+import type { GraphicsContext } from '@molstar/graphics/gl/context';
+import { VolumeValueColorTheme, getVolumeValueDomain } from '@molstar/graphics/theme/color/volume-value';
+import { type SliceAxis, SliceWindow } from './slice-window.js';
 
 export const SliceParams = {
   ...Image.Params,
@@ -128,6 +132,14 @@ export async function createImage(
     const { min, max } = periodicRange;
     volume = createPeriodicVolume(volume, min, max);
   }
+  if (props.mode === 'grid') {
+    const domain = getSliceWindowDomain(volume, theme);
+    const axis = getSliceAxis(props);
+    if (domain && !Volume.isPeriodic(volume) && SliceWindow.isSupported(ctx.graphics, volume.grid, axis)) {
+      return createGridWindowImage(ctx.graphics!, volume, props, axis, domain, image);
+    }
+  }
+  if (image) releaseSliceWindow(image);
   switch (props.mode) {
     case 'frame':
       return createFrameImage(ctx, volume, key, theme, props, image);
@@ -138,6 +150,202 @@ export async function createImage(
     default:
       assertUnreachable(props.mode);
   }
+}
+
+// A grid slice from a window of its planes on the GPU (slice-window.ts): moving the slice within the window changes a
+// uniform, the window following it a plane at a time; colored in the shader where the theme's color depends on the
+// value alone (uniform, volume-value). Else (another theme, a periodic volume, no 3d textures) built on the CPU.
+
+/**
+ * The domain the values are colored over where the theme's colors depend on the value alone: the uniform color times
+ * the value in the grid's range, volume-value's palette over its domain
+ */
+export function getSliceWindowDomain(volume: Volume, theme: Theme): [number, number] | undefined {
+  const color = theme.color;
+  const { min, max } = volume.grid.stats;
+  if (!(max > min)) return;
+  if (color.granularity === 'uniform') return [min, max];
+  if (color.factory === VolumeValueColorTheme && color.palette && color.granularity === 'vertex') {
+    const domain = getVolumeValueDomain(volume, color.props as Parameters<typeof getVolumeValueDomain>[1]);
+    return domain[1] > domain[0] ? domain : undefined;
+  }
+}
+
+function getSliceAxis(props: SliceProps): SliceAxis {
+  const name = props.dimension.name;
+  return name === 'x' || name === 'relativeX' ? 0 : name === 'y' || name === 'relativeY' ? 1 : 2;
+}
+
+/** The grid slice's position: its index along its axis, the quad's corners */
+function getGridSlicePlacement(volume: Volume, props: SliceProps, corners: Float32Array) {
+  const info = getSliceInfo(volume.grid, props);
+  const { x, y, z } = info;
+  const dim = props.dimension.name;
+  const axis = getSliceAxis(props);
+  corners.set(
+    axis === 0
+      ? [x, 0, 0, x, y, 0, x, 0, z, x, y, z]
+      : axis === 1
+        ? [0, y, 0, x, y, 0, 0, y, z, x, y, z]
+        : [0, 0, z, 0, y, z, x, 0, z, x, y, z],
+  );
+  transformPositionArray(Grid.getGridToCartesianTransform(volume.grid), corners, 0, 4);
+  const index = axis === 0 ? info.x0 : axis === 1 ? info.y0 : info.z0;
+  return { info, index, dim };
+}
+
+type SliceWindowState = {
+  window: SliceWindow;
+  /** the slice drawn, read by the mapping (picking, marking) */
+  info: ReturnType<typeof getSliceInfo>;
+};
+
+/** The window's of `image`, if drawn from one */
+function getSliceWindowState(image: Image) {
+  return image.meta.sliceWindow as SliceWindowState | undefined;
+}
+
+/** Drawn on the CPU again: the window freed */
+function releaseSliceWindow(image: Image) {
+  const state = getSliceWindowState(image);
+  if (!state) return;
+  SliceWindow.destroy(state.window);
+  image.meta.sliceWindow = undefined;
+  Image.setSliceWindow(image, undefined);
+}
+
+/**
+ * The mapping of a window's image: each pixel a cell of the slice drawn (`state.info`), the cells computed on first
+ * read after a move (a pick, a mark), not on every step
+ */
+function sliceWindowMapping(space: Tensor.Space, state: SliceWindowState): SampledImageMapping {
+  const { width, height } = state.window;
+  const count = width * height;
+  const instance = new Int16Array(count).fill(-1);
+  let cell: Uint32Array | undefined;
+  let cellInfo: SliceWindowState['info'] | undefined;
+  return {
+    instance,
+    get cell() {
+      if (!cell || cellInfo !== state.info) {
+        cell ??= new Uint32Array(count);
+        cellInfo = state.info;
+        const { x0, y0, z0, nx, ny, nz } = cellInfo;
+        let i = 0;
+        for (let iy = y0; iy < ny; ++iy) {
+          for (let ix = x0; ix < nx; ++ix) {
+            for (let iz = z0; iz < nz; ++iz) cell[i++] = space.dataOffset(ix, iy, iz);
+          }
+        }
+      }
+      return cell;
+    },
+    index: gridSliceIndex(space, () => state.info),
+  };
+}
+
+/** The pixels' groups (each its index, as `createGridImage` packs them): the same for every slice of an axis */
+function createGroupTexture(width: number, height: number) {
+  const array = new Uint8Array(width * height * 4);
+  for (let i = 0, il = width * height; i < il; ++i) packIntToRGBArray(i, array, i * 4);
+  return { width, height, array, flipY: true };
+}
+
+const NoImage = { width: 1, height: 1, array: new Uint8Array(4) };
+const NoValues = { width: 1, height: 1, array: new Float32Array(1) };
+
+function getIsoLevel(volume: Volume, isoValue: Volume.IsoValue) {
+  const { stats } = volume.grid;
+  return clamp(normalize(Volume.IsoValue.toAbsolute(isoValue, stats).absoluteValue, stats.min, stats.max), 0, 1);
+}
+
+function createGridWindowImage(
+  graphics: GraphicsContext,
+  volume: Volume,
+  props: SliceProps,
+  axis: SliceAxis,
+  domain: [number, number],
+  image?: Image,
+): Image {
+  const { grid } = volume;
+  let state = image && getSliceWindowState(image);
+  if (state && !SliceWindow.matches(state.window, graphics, grid, axis)) {
+    releaseSliceWindow(image!);
+    state = undefined;
+  }
+  const window = state?.window ?? SliceWindow.create(graphics, grid, axis);
+  const { width, height } = window;
+
+  const corners = new Float32Array(12);
+  const { info, index } = getGridSlicePlacement(volume, props, corners);
+  const layer = SliceWindow.show(window, index);
+
+  // the groups of an image of this size kept: the same for every slice of the window
+  const groupTexture = state && image ? image.groupTexture.ref.value : createGroupTexture(width, height);
+  const im = Image.create(
+    NoImage,
+    corners,
+    groupTexture,
+    NoValues,
+    Image.createEmptyTrim(),
+    getIsoLevel(volume, props.isoValue),
+    image,
+  );
+  const range: [number, number] = [grid.stats.min, grid.stats.max];
+  Image.setSliceWindow(im, { texture: window.texture, width, height, layer, range, domain });
+  im.setBoundingSphere(Grid.getBoundingSphere(grid));
+  if (state) {
+    state.info = info;
+  } else {
+    const fresh: SliceWindowState = { window, info };
+    im.meta.sliceWindow = fresh;
+    im.meta.mapping = sliceWindowMapping(grid.cells.space, fresh);
+  }
+  return im;
+}
+
+/**
+ * Moves a window's slice in place (`VolumeVisualBuilder.updateGeometry`): another index along the same axis, an iso
+ * level, a theme whose colors still depend on the value alone (another domain: a uniform); false where the image is
+ * to be made again (`createImage`)
+ */
+function updateGridWindowImage(
+  image: Image,
+  volume: Volume,
+  currentVolume: Volume,
+  props: SliceProps,
+  currentProps: SliceProps,
+  theme: Theme,
+  graphics: GraphicsContext | undefined,
+) {
+  const state = getSliceWindowState(image);
+  if (!state || !graphics || props.mode !== 'grid' || currentProps.mode !== 'grid') return false;
+  if (props.dimension.name !== currentProps.dimension.name) return false;
+  if (!Volume.areEquivalent(volume, currentVolume) || !Volume.areInstanceTransformsEqual(volume, currentVolume)) {
+    return false;
+  }
+  const axis = getSliceAxis(props);
+  if (!SliceWindow.matches(state.window, graphics, volume.grid, axis)) return false;
+  const domain = getSliceWindowDomain(volume, theme);
+  if (!domain) return false;
+
+  const corners = image.cornerBuffer.ref.value;
+  const { info, index } = getGridSlicePlacement(volume, props, corners);
+  ValueCell.update(image.cornerBuffer, corners);
+  state.info = info;
+  const { window } = state;
+  const range: [number, number] = [volume.grid.stats.min, volume.grid.stats.max];
+  ValueCell.updateIfChanged(image.isoLevel, getIsoLevel(volume, props.isoValue));
+  Image.setSliceWindow(image, {
+    texture: window.texture,
+    width: window.width,
+    height: window.height,
+    layer: SliceWindow.show(window, index),
+    range,
+    domain,
+  });
+  image.setBoundingSphere(Grid.getBoundingSphere(volume.grid));
+  return true;
 }
 
 //
@@ -268,16 +476,14 @@ function lazySampledImageIndex(
  * slice follows from the cell's coordinates and the build's order (y, then x, then z fastest). Needs a space whose
  * `getCoords` inverts `dataOffset` (one with strides)
  */
-function gridSliceIndex(
-  space: Tensor.Space,
-  { x0, y0, z0, nx, ny, nz }: ReturnType<typeof getSliceInfo>,
-): SampledImageIndex {
+function gridSliceIndex(space: Tensor.Space, getInfo: () => ReturnType<typeof getSliceInfo>): SampledImageIndex {
   const [mx, my, mz] = space.dimensions;
   const cellCount = mx * my * mz;
   const coords = [0, 0, 0];
   return {
     get(cell: number) {
       if (!Number.isInteger(cell) || cell < 0 || cell >= cellCount) return;
+      const { x0, y0, z0, nx, ny, nz } = getInfo();
       const [ix, iy, iz] = space.getCoords(cell, coords);
       if (ix < x0 || ix >= nx || iy < y0 || iy >= ny || iz < z0 || iz >= nz) return;
       return [((iy - y0) * (nx - x0) + (ix - x0)) * (nz - z0) + (iz - z0)];
@@ -629,7 +835,7 @@ async function createGridImage(
     index:
       periodicMapping || !Tensor.strides(space)
         ? lazySampledImageIndex(instance, cell, mapped, !!periodicMapping)
-        : gridSliceIndex(space, sliceInfo),
+        : gridSliceIndex(space, () => sliceInfo),
   };
   im.meta.mapping = mapping;
 
@@ -862,7 +1068,12 @@ export function SliceVisual(materialId: number): VolumeVisual<SliceParams> {
           !ColorTheme.areEqual(newTheme.color, currentTheme.color) ||
           !Volume.areInstanceTransformsEqual(newVolume, currentVolume);
       },
+      updateGeometry: updateGridWindowImage,
       geometryUtils: Image.Utils,
+      dispose: (image: Image) => {
+        const state = getSliceWindowState(image);
+        if (state) SliceWindow.destroy(state.window);
+      },
     },
     materialId,
   );
