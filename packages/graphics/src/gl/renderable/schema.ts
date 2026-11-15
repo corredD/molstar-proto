@@ -433,6 +433,8 @@ export const GlobalUniformSchema = {
    * size in every pass of a frame (the pick at its scale)
    */
   uCssHeight: GlobalUniformSpec('f'),
+  /** the levels' view scale (`LodView.set`: coarser while the camera moves, `Renderer.setLodScale`), 1 at rest */
+  uLodScale: GlobalUniformSpec('f'),
 
   uCameraPosition: GlobalUniformSpec('v3'),
   uCameraDir: GlobalUniformSpec('v3'),

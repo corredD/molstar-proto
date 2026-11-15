@@ -83,7 +83,8 @@ export const assign_lod_impostor_factor = `
     if (uLodImpostorSwitch.x > 0.0 && lodImpostorWhole) {
         // a switch per copy (\`ImpostorAtlas.switchShare\`): by its own size on screen (its bounding sphere, in CSS pixels)
         // or its distance from the eye; the band half an octave each way of the threshold, then the flattening
-        float pixel = 2.0 * uPixelRatio / (uProjection[1][1] * uDrawingBufferSize.y) * (uIsOrtho == 1.0 ? 1.0 : d);
+        // the culling's view (\`LodView.set\`): the camera's CSS height, the lod scale (coarser while moving)
+        float pixel = 2.0 * uLodScale / (uProjection[1][1] * uCssHeight) * (uIsOrtho == 1.0 ? 1.0 : d);
         float ratio = uLodImpostorSwitch.x == 1.0
             ? uLodImpostorSwitch.y * pixel / (2.0 * (uLodImpostorSwitch.w > 0.0 ? min(lodImpostorSphere.w, uLodImpostorSwitch.w) : lodImpostorSphere.w))
             : distance(lodImpostorCenter, uCameraPosition) / uModelScale / uLodImpostorSwitch.y;

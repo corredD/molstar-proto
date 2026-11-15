@@ -901,6 +901,7 @@ namespace Renderer {
 
       uXrayEdgeFalloff: ValueCell.create(p.xrayEdgeFalloff),
       uCssHeight: ValueCell.create(1),
+      uLodScale: ValueCell.create(1),
       uOccluderNear: ValueCell.create(1),
       uOccluderFar: ValueCell.create(10000),
       uCelSteps: ValueCell.create(p.celSteps),
@@ -1644,6 +1645,7 @@ namespace Renderer {
 
       Frustum3D.fromProjectionMatrix(frustum, camera.projectionView);
       ValueCell.updateIfChanged(globalUniforms.uCssHeight, camera.viewport.height / ctx.pixelRatio);
+      ValueCell.updateIfChanged(globalUniforms.uLodScale, lodScale);
       // levels of detail by size on screen: in CSS pixels, of the camera's viewport (not a pass's target)
       LodView.set(
         lodView,

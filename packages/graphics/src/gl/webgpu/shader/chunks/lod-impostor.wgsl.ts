@@ -70,7 +70,8 @@ export const assign_lod_impostor_factor_wgsl = /* wgsl */ `
                 // a switch per copy (\`ImpostorAtlas.switchShare\`): by its own size on screen (its bounding sphere, in CSS
                 // pixels) or its distance from the eye; the band half an octave each way of the threshold, then the
                 // flattening
-                let pixel = 2.0 * uGlobal.uPixelRatio / (uGlobal.uProjection[1][1] * uGlobal.uDrawingBufferSize.y) * select(d, 1.0, uGlobal.uIsOrtho == 1.0);
+                // the culling's view (\`LodView.set\`): the camera's CSS height, the lod scale (coarser while moving)
+                let pixel = 2.0 * uGlobal.uLodScale / (uGlobal.uProjection[1][1] * uGlobal.uCssHeight) * select(d, 1.0, uGlobal.uIsOrtho == 1.0);
                 let ratio = select(
                     distance(lodImpostorCenter, uGlobal.uCameraPosition) / uGlobal.uModelScale / sw.y,
                     sw.y * pixel / (2.0 * select(lodImpostorSphere.w, min(lodImpostorSphere.w, sw.w), sw.w > 0.0)),

@@ -17,6 +17,8 @@ import {
   ParticleTargetRepresentationParams,
 } from '@molstar/graphics/repr/particles/representation/target/common';
 import { createSegmentedMdbList, LodView, type LodLevelsValue } from '../renderable.js';
+import * as lodImpostorGlsl from '../webgl/shader/chunks/lod-impostor.glsl.js';
+import * as lodImpostorWgsl from '../webgpu/shader/chunks/lod-impostor.wgsl.js';
 
 const Fov = Math.PI / 4;
 
@@ -245,6 +247,30 @@ describe('levels of detail by size on screen', () => {
     expect(LodView.getRange(value, 2, ortho, [0, 0, 0])[1]).toBeGreaterThan(0);
     expect(LodView.getRange(value, 3, ortho, [0, 0, 0])[1]).toBeGreaterThan(0);
     expect(LodView.getRange(value, 1, ortho, [0, 0, 0])[1]).toBeLessThan(0);
+  });
+
+  it("a switch per copy: the culling's view and the shaders' pixel the same", () => {
+    // the shaders' pixel: the camera's CSS height and the view's lod scale (\`LodView.set\`'s scale: coarser while moving)
+    const chunks = [lodImpostorGlsl.assign_lod_impostor_factor, lodImpostorWgsl.assign_lod_impostor_factor_wgsl];
+    for (const c of chunks) {
+      expect(c).toMatch(/uLodScale/);
+      expect(c).toMatch(/uCssHeight/);
+    }
+  });
+
+  it('a switch per copy, orthographic with levels by distance: the impostors drawn', () => {
+    // orthographic with levels by distance (\`lodPixelSize\` 0): the impostors drawn where the last spheres are
+    const k = Math.pow(2, 0.25);
+    const value = Object.assign(
+      [
+        [0, 500, 0, 600, 1],
+        [500, 1e7, -1, 6, -1],
+      ],
+      { impostor: 0, impostorSwitch: { mode: 'pixels', value: 12, radii: [1, 100], k } },
+    ) as unknown as LodLevelsValue;
+    const ortho = LodView.set(LodView(), perspective(), 720, true);
+    expect(LodView.getRange(value, 1, ortho, [0, 0, 0])[1]).toBeGreaterThan(1e6);
+    expect(LodView.getRange(value, 1, ortho, [0, 0, 0])[0]).toBeLessThan(1e6);
   });
 
   it('presets by pixel size: their distances those at 1280x720 and 45°', () => {
