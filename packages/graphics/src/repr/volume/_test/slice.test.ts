@@ -38,6 +38,7 @@ import type { GraphicsContext } from '@molstar/graphics/gl/context';
 import type { TextureImage } from '@molstar/graphics/gl/renderable/util';
 import { Task } from '@molstar/core/task';
 import { PickingId } from '@molstar/graphics/geo/geometry/picking';
+import { MarkerAction } from '@molstar/core/util/marker-action';
 
 function createTestVolume(instanceCount: number, periodic = false, stats: Grid['stats'] = Grid.One.stats): Volume {
   return {
@@ -879,6 +880,23 @@ describe('a slice visual moved within its window', () => {
     expect(values.dSliceWindow.ref.value).toBe(false);
     expect(owned.size).toBe(0);
     visual.destroy();
+  });
+
+  it('a step clears the marks: the voxels marked are no longer drawn (as the CPU path, its markers made again)', async () => {
+    const { volume, visual, update } = await setup(uniformTheme());
+    const values = visual.renderObject!.values as any;
+    const cell = volume.grid.cells.space.dataOffset(3, 2, 100);
+    const loci = Volume.Cell.Loci(volume, [
+      {
+        indices: Interval.ofSingleton(cell as Volume.CellIndex),
+        instances: OrderedSet.ofSingleton(0 as Volume.InstanceIndex),
+      },
+    ]);
+    expect(visual.mark(loci, MarkerAction.Select)).toBe(true);
+    expect(values.markerStatus.ref.value).not.toBe(0);
+    await update({ dimension: { name: 'z', params: 101 } });
+    expect(values.markerStatus.ref.value).toBe(0);
+    expect(Array.from(values.tMarker.ref.value.array as Uint8Array).every((m) => m === 0)).toBe(true);
   });
 
   it('destroy frees the window', async () => {
