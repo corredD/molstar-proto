@@ -32,13 +32,7 @@ import {
 } from '../slice.js';
 import { createPeriodicVolume } from '../util.js';
 import { SliceVisual } from '../slice.js';
-import {
-  SliceBinned,
-  SliceSettleMs,
-  SliceWindowConfig,
-  SliceWindowDepth,
-  SliceWindowHiddenMs,
-} from '../slice-window.js';
+import { SliceBinned, SliceWindowConfig, SliceWindowDepth, SliceWindowHiddenMs } from '../slice-window.js';
 import { binGrid } from '@molstar/model/model/volume/bin';
 import { createNullTexture, type Texture } from '@molstar/graphics/gl/texture';
 import type { GraphicsContext } from '@molstar/graphics/gl/context';
@@ -907,6 +901,30 @@ describe('a slice visual moved within its window', () => {
     expect(Array.from(values.tMarker.ref.value.array as Uint8Array).every((m) => m === 0)).toBe(true);
   });
 
+  it('hidden and freed, a change while hidden (contrast, a step, another axis) makes no window that stays', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      const { visual, update, owned } = await setup(uniformTheme());
+      visual.setVisibility(false);
+      vi.advanceTimersByTime(SliceWindowHiddenMs);
+      expect(owned.size).toBe(0);
+      await update({ dimension: { name: 'z', params: 150 } });
+      vi.advanceTimersByTime(SliceWindowHiddenMs);
+      expect(owned.size).toBe(0);
+      // another axis: a new window, freed too while hidden
+      await update({ dimension: { name: 'x', params: 2 } });
+      vi.advanceTimersByTime(SliceWindowHiddenMs);
+      expect(owned.size).toBe(0);
+      // shown: at the slice set while hidden
+      visual.setVisibility(true);
+      expect(owned.size).toBe(1);
+      expect((visual.renderObject!.values as any).uSliceLayer.ref.value).toBe(2);
+      visual.destroy();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('hidden a while, its window is freed; shown again, made again at the slice drawn', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     try {
@@ -948,8 +966,9 @@ describe('a slice visual moved within its window', () => {
 describe('a big slice moved: its 2× binned planes first, the full resolution once it rests', () => {
   async function big() {
     const volume = gridVolume([7, 5, 200], [2, 1, 0], Skewed);
-    const coarseVoxels = SliceWindowConfig.coarseVoxels;
+    const { coarseVoxels, coarseHoldMs } = SliceWindowConfig;
     SliceWindowConfig.coarseVoxels = 1000;
+    SliceWindowConfig.coarseHoldMs = 200;
     const { graphics, textures, owned } = stubGraphics();
     const visual = SliceVisual(0);
     const update = (props: Partial<SliceProps>) =>
@@ -957,11 +976,13 @@ describe('a big slice moved: its 2× binned planes first, the full resolution on
         visual.createOrUpdate({ runtime, graphics }, uniformTheme(), props, { volume, key: 0 }),
       ).run();
     await update(sliceProps({ mode: 'grid', dimension: { name: 'z', params: 100 } }));
-    const binned = await SliceBinned.get(volume.grid).ready;
+    // binned once shown
+    visual.setVisibility(true);
+    const binned = await SliceBinned.peek(volume.grid)!.ready;
     // the full window filled (idle time)
     for (let k = 0; k < 40; ++k) await new Promise((r) => setTimeout(r, 0));
     const restore = () => {
-      SliceWindowConfig.coarseVoxels = coarseVoxels;
+      Object.assign(SliceWindowConfig, { coarseVoxels, coarseHoldMs });
       visual.destroy();
     };
     return { volume, visual, update, textures, owned, binned, restore };
@@ -1014,11 +1035,55 @@ describe('a big slice moved: its 2× binned planes first, the full resolution on
       expect(Array.from(values.uImageTexDim.ref.value)).toEqual([7, 5]);
       expect(Array.from(values.aPosition.ref.value)).toEqual(await corners(23));
       // rested: full resolution at 23
-      await new Promise((r) => setTimeout(r, SliceSettleMs + 50));
+      await new Promise((r) => setTimeout(r, SliceWindowConfig.settleMs + 50));
       expect(values.uSliceBin.ref.value).toBe(1);
       expect(values.tSliceTex.ref.value).toBe(textures[0]);
       expect(values.uSliceLayer.ref.value).toBe(23 % SliceWindowDepth);
       expect(Array.from(values.aPosition.ref.value)).toEqual(await corners(23));
+    } finally {
+      restore();
+    }
+  });
+
+  it('a big slice made hidden is not binned until shown', async () => {
+    const volume = gridVolume([7, 5, 200], [2, 1, 0], Skewed);
+    const coarseVoxels = SliceWindowConfig.coarseVoxels;
+    SliceWindowConfig.coarseVoxels = 1000;
+    const { graphics } = stubGraphics();
+    const visual = SliceVisual(0);
+    try {
+      await Task.create('update', (runtime) =>
+        visual.createOrUpdate(
+          { runtime, graphics },
+          uniformTheme(),
+          sliceProps({ mode: 'grid', dimension: { name: 'z', params: 100 } }),
+          { volume, key: 0 },
+        ),
+      ).run();
+      visual.setVisibility(false);
+      expect(SliceBinned.peek(volume.grid)).toBeUndefined();
+      visual.setVisibility(true);
+      expect(SliceBinned.peek(volume.grid)).toBeDefined();
+      await SliceBinned.peek(volume.grid)!.ready;
+    } finally {
+      SliceWindowConfig.coarseVoxels = coarseVoxels;
+      visual.destroy();
+    }
+  });
+
+  it('the binned window is freed a while after the slice rests', async () => {
+    const { visual, update, owned, restore } = await big();
+    try {
+      await update({ dimension: { name: 'z', params: 23 } });
+      expect(owned.size).toBe(2);
+      await new Promise((r) => setTimeout(r, SliceWindowConfig.settleMs + 50));
+      expect((visual.renderObject!.values as any).uSliceBin.ref.value).toBe(1);
+      // freed `coarseHoldMs` after resting (shorter here)
+      await new Promise((r) => setTimeout(r, SliceWindowConfig.coarseHoldMs + 50));
+      expect(owned.size).toBe(1);
+      // moved far again: made again
+      await update({ dimension: { name: 'z', params: 180 } });
+      expect(owned.size).toBe(2);
     } finally {
       restore();
     }

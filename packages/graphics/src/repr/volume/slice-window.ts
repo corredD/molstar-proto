@@ -19,12 +19,9 @@ import type { Texture } from '@molstar/graphics/gl/texture';
 /**
  * `enabled` off: every grid slice is built on the CPU, as before (the rendered tests compare the two paths).
  * `coarseVoxels`: a volume of at least this many voxels (2^28: 1 GiB of floats) is binned 2× in the background, and a
- * slice moved out of its window shows the binned planes until it rests `settleMs`
+ * slice moved out of its window shows the binned planes until it rests `settleMs` (their window freed `coarseHoldMs` later)
  */
-export const SliceWindowConfig = { enabled: true, coarseVoxels: 2 ** 28, settleMs: 150 };
-
-/** A slice shown from the binned planes is shown at full resolution once it has not moved for this long (ms) */
-export const SliceSettleMs = SliceWindowConfig.settleMs;
+export const SliceWindowConfig = { enabled: true, coarseVoxels: 2 ** 28, settleMs: 150, coarseHoldMs: 5000 };
 
 /** Planes held per window */
 export const SliceWindowDepth = 32;
@@ -331,7 +328,9 @@ export namespace SliceBinned {
       const entry: Binned = {
         ready: Task.create('Binning 2× for the slice', (ctx) => binGrid(grid, 2, ctx))
           .run(() => {}, 8)
-          .then((g) => (entry.grid = g)),
+          .then((g) => (entry.grid = g))
+          // not binned (e.g. out of memory): the slice stays at full resolution
+          .catch(() => undefined as unknown as Grid),
       };
       binned.set(grid.cells, (b = entry));
     }

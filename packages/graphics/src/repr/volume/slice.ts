@@ -226,6 +226,10 @@ type SliceWindowState = {
   binned?: ReturnType<typeof SliceBinned.get>;
   coarse?: SliceWindow;
   settle?: ReturnType<typeof setTimeout>;
+  /** the binned window's release, pending once the slice rests (`SliceWindowConfig.coarseHoldMs`) */
+  coarseHold?: ReturnType<typeof setTimeout>;
+  /** the slice shown (`setVisibility`): hidden, its windows are freed after a while and not made again until shown */
+  visible: boolean;
   /** the release of a hidden slice's window, pending (`SliceWindowHiddenMs`) */
   hidden?: ReturnType<typeof setTimeout>;
   /** the slice drawn, read by the mapping (picking, marking) */
@@ -244,24 +248,33 @@ function getSliceWindowState(image: Image) {
 function setSliceWindowVisibility(image: Image, visible: boolean) {
   const state = getSliceWindowState(image);
   if (!state) return;
+  state.visible = visible;
   clearTimeout(state.hidden);
   state.hidden = undefined;
   const { window } = state;
   if (!visible) {
-    if (!window.released) {
-      state.hidden = setTimeout(() => {
-        clearTimeout(state.settle);
-        state.settle = undefined;
-        SliceWindow.release(window);
-        if (state.coarse) SliceWindow.release(state.coarse);
-      }, SliceWindowHiddenMs);
-    }
+    armSliceWindowRelease(state);
     return;
   }
+  // a big volume's binning starts once its slice is shown (a slice made hidden may never be)
+  if (!state.binned && SliceBinned.isWanted(window.grid)) state.binned = SliceBinned.get(window.grid);
   if (!window.released) return;
   drawSlice(state, image, state.index);
   // the canvas draws again once this settles
   window.graphics.resources.pending.track(Promise.resolve(), 'slice window made again');
+}
+
+/** A hidden slice's windows freed after `SliceWindowHiddenMs`, unless shown meanwhile */
+function armSliceWindowRelease(state: SliceWindowState) {
+  if (state.hidden !== undefined || state.window.released) return;
+  state.hidden = setTimeout(() => {
+    state.hidden = undefined;
+    clearTimeout(state.settle);
+    clearTimeout(state.coarseHold);
+    state.settle = state.coarseHold = undefined;
+    SliceWindow.release(state.window);
+    if (state.coarse) SliceWindow.release(state.coarse);
+  }, SliceWindowHiddenMs);
 }
 
 /**
@@ -273,11 +286,16 @@ function drawSlice(state: SliceWindowState, image: Image, index: number) {
   clearTimeout(state.settle);
   state.settle = undefined;
   const { window } = state;
+  // hidden and freed: drawn once shown (`setSliceWindowVisibility`)
+  if (!state.visible && window.released) return;
+  if (!state.visible) armSliceWindowRelease(state);
   const binned = state.binned?.grid;
   if (!binned || SliceWindow.holds(window, index)) {
     drawFullSlice(state, image);
     return;
   }
+  clearTimeout(state.coarseHold);
+  state.coarseHold = undefined;
   const coarse = (state.coarse ??= SliceWindow.create(window.graphics, binned, window.axis));
   const layer = SliceWindow.show(coarse, index >> 1);
   const { width, height } = window;
@@ -293,6 +311,14 @@ function drawSlice(state: SliceWindowState, image: Image, index: number) {
   state.settle = setTimeout(() => {
     state.settle = undefined;
     drawFullSlice(state, image);
+    // the binned window kept a while for the next move, then freed
+    const coarse = state.coarse;
+    if (coarse) {
+      state.coarseHold = setTimeout(() => {
+        state.coarseHold = undefined;
+        SliceWindow.release(coarse);
+      }, SliceWindowConfig.coarseHoldMs);
+    }
     window.graphics.resources.pending.track(Promise.resolve(), 'slice at full resolution');
   }, SliceWindowConfig.settleMs);
 }
@@ -315,7 +341,8 @@ function drawFullSlice(state: SliceWindowState, image: Image) {
 function destroySliceWindowState(state: SliceWindowState) {
   clearTimeout(state.hidden);
   clearTimeout(state.settle);
-  state.hidden = state.settle = undefined;
+  clearTimeout(state.coarseHold);
+  state.hidden = state.settle = state.coarseHold = undefined;
   SliceWindow.destroy(state.window);
   if (state.coarse) SliceWindow.destroy(state.coarse);
 }
@@ -395,6 +422,8 @@ function createGridWindowImage(
 ): Image {
   const { grid } = volume;
   let state = image && getSliceWindowState(image);
+  // a window made anew (another axis, grid or context) keeps the slice's visibility: hidden, freed after a while
+  const visible = state?.visible ?? true;
   if (state && !SliceWindow.matches(state.window, graphics, grid, axis)) {
     releaseSliceWindow(image!);
     state = undefined;
@@ -426,7 +455,8 @@ function createGridWindowImage(
       index,
       range,
       domain,
-      binned: SliceBinned.isWanted(grid) ? SliceBinned.get(grid) : undefined,
+      binned: visible && image && SliceBinned.isWanted(grid) ? SliceBinned.get(grid) : undefined,
+      visible,
     };
     im.meta.sliceWindow = state;
     im.meta.mapping = sliceWindowMapping(grid.cells.space, state, !!volume.parent && Volume.isPeriodic(volume.parent));
