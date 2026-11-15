@@ -319,6 +319,12 @@ specs (`.md`) these changes added are listed in the entries.
   candidate (master has the same `hasUntargeted` guard; the note says the fix goes there on Ludo's word). Mixed:
   `00f941648` (a line in `apps/prism-me/TODO.md`).
 
+- **VolumeTransform scale** (volume-pixel-size, 2026-11-14) — `VolumeTransform` gains `scale` (default 1, the old
+  behavior): `transform × scale × grid`, the scale before the move, a centroid turn about the scaled center; a session
+  without it reads 1. Why: a volume's Pixel size (Å), set when a file's header is wrong. Files:
+  `plugin/core/src/state/transforms/volume/ops.ts`. Commits: `f2c910a78`, `2b79575ef` (format). Tests:
+  `state/transforms/_test/volume-transform.test.ts`. Upstream: candidate. Not mixed.
+
 ## mvs
 
 - **Wireframe in MVS shapes** — a doc line on `load-shape` that `visuals: ['wireframe']` asks for a wireframe, and tests.
@@ -381,6 +387,11 @@ specs (`.md`) these changes added are listed in the entries.
   Tests: `prism/viewer/src/ui/_test/settings-ui-scale.test.tsx`, `sequence/_test/track-gutter-unscaled.test.ts`,
   `sequence/_test/font-token.test.ts`, `ui/_test/waste.test.tsx`. Upstream: needs work (what it does not reach is in
   `prism/ui/_spec/styling.md` §6 and `prism/TODO.md`). Not mixed.
+
+- **Volume move keeps the scale** (volume-pixel-size, 2026-11-14) — `volume.transform` and its reset change the move
+  only and keep the `VolumeTransform` scale; the gizmo turns about the scaled center. Why: Pixel size. Files:
+  `prism/viewer/src/api/volume.ts`, `sources/volume-transform.ts`, `sources/move/gizmos.ts`. Commits: `b2d096926`,
+  `2b79575ef`. Tests: Prism viewer's volume transform tests. Upstream: candidate (with the core scale). Not mixed.
 
 ## prism/ui
 
@@ -445,3 +456,5 @@ specs (`.md`) these changes added are listed in the entries.
   (`getTrilinearlyInterpolated`); seen by mesh-volume-texture, not changed: needs work, a lane of its own.
 - `gl/_test/backend-neutral.test.ts` fails on prism-me: it takes `ctx.extensions.ensureFor` in
   `extensions/mesoscale/src/operations.ts` for a WebGL extension call (a false match); to fix in the test's pattern.
+- Stage-tools `volumeMatrixOf` and the portal's `volumeMatrix` ignore a centroid-centered `components` turn (seen by
+  volume-pixel-size's review, N6; older than it).

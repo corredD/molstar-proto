@@ -90,9 +90,8 @@ is not built is [../TODO.md](../TODO.md).
 - **`slice-window`** (Ludo, 2026-11-14; Opus, `~/prism-me-lanes/slice-window`, port 1380): a grid slice drawn from a
   GPU ring buffer of 32 slices (the slider moves a uniform; the window follows, plane by plane; the state on release);
   65 ms a step today on Ludo's MRC; [brief](2026-11-14-slice-window.md) on its branch. Running.
-- **`volume-pixel-size`** (Ludo, 2026-11-14; Sonnet + Opus design, `~/prism-me-lanes/volume-pixel-size`, port 1379): a
-  volume's Pixel size (Å) in Data, set and Reset to the file's (a wrong header); [brief](2026-11-14-volume-pixel-size.md)
-  on its branch. Running.
+- **Merged 2026-11-15** (Ludo's word, after trying it): `volume-pixel-size`, a volume's Pixel size (Å) in Data, Reset
+  to the file's; core changes in [core-changes.md](../_spec/core-changes.md); [progress](2026-11-14-volume-pixel-size.md).
 - **Merged 2026-11-14** (Ludo's word): `slice-constraint`, a volume's slice as a surface for Fit and Grow (on the plane,
   oriented as on a surface; Helix Axis Along plane | Normal); 862 tests; no core changes;
   [progress](2026-11-14-slice-constraint.md). Open for Ludo: Helix Normal past the volume's box; Along's direction (the
