@@ -204,3 +204,13 @@ All under `packages/graphics` (and one test in `packages/plugin/headless`), no a
 
 App: `0e8da5454` `prism-me: features, far proteins as impostors` (features.md only: the explorer's graphics modes take
 the representation's default, nothing to wire).
+
+## The toggle (Ludo: "where is the button to turn off the lodImpostor?")
+
+- A model's properties › **Graphics & Motion › Far proteins: Silhouettes | Spheres** (shown where the model is drawn by
+  its structures), `mesoscale.impostors` (`on`, `particles`): every structure target of the model in one step; ⌘K ("far
+  proteins", "silhouettes", "impostors") and the assistant (`draw_mesoscale_far_proteins`); sessions keep it (a
+  representation param). Commits `cefeb56fe` (extension), `6b87c8345` (ui.md, features.md). Screens:
+  `out/toggle-far-proteins.png`, `out/toggle-silhouettes-left-spheres-right.png`.
+- Short gate: 0 must, 0 should; 2 nits left open: the toggle is offered (and steps) for blob-surface or approximate
+  targets, where impostors never draw; no session round-trip test (holds by construction).
