@@ -136,7 +136,7 @@ export interface SliceWindow {
   readonly tiles: readonly [number, number, number, number];
   /** a tile gathered from the plane, reused */
   tile: Float32Array | undefined;
-  /** the planes that entered copied in idle time (off: only the plane shown, for a big slice's full window) */
+  /** the planes that entered copied in idle time (off: only the plane shown, a plane tiled or large) */
   idle: boolean;
 }
 
@@ -150,6 +150,9 @@ const SliceWindowMinDepth = 1;
 
 /** A hidden slice's window is freed after this long hidden (ms), made again when shown */
 export const SliceWindowHiddenMs = 5000;
+
+/** A plane larger than this (bytes) is not copied in idle time: one copy would outlast an idle slot (a 3000² tilt image) */
+export const SliceWindowIdleMaxBytes = 16 * 1024 * 1024;
 
 /** Time spent copying pending planes per idle callback (ms) */
 export const SliceWindowFillMs = 4;
@@ -185,7 +188,7 @@ export namespace SliceWindow {
     return Math.min(getDepth(width * height, count), layers);
   }
 
-  /** A plane's tiles (`SliceWindow.tiles`): as few as fit the 3d texture limit, of even sizes */
+  /** A plane's tiles (`SliceWindow.tiles`): as few as fit the 3d texture limit, the plane split evenly */
   export function getTiles(graphics: GraphicsContext, width: number, height: number) {
     const max = Math.min(graphics.resources.limits.max3dTextureSize, SliceWindowConfig.maxTileSize);
     const across = Math.ceil(width / max);
@@ -223,7 +226,7 @@ export namespace SliceWindow {
       copies: 0,
       tiles,
       tile: undefined,
-      idle: true,
+      idle: across * down === 1 && width * height * 4 <= SliceWindowIdleMaxBytes,
     };
   }
 
@@ -263,6 +266,7 @@ export namespace SliceWindow {
 
   function idle(window: SliceWindow) {
     window.timer = undefined;
+    if (!window.idle) return;
     fill(window, SliceWindowFillMs);
     if (window.pending.size) window.timer = setTimeout(() => idle(window), 0);
   }
@@ -282,12 +286,12 @@ export namespace SliceWindow {
     }
   }
 
-  /** Plane `index` of the grid, in the window's layout: a view of the data where it is laid out so */
   /** The axes of a plane's columns and rows (x, y, z: 0, 1, 2), as `planeLayout` lays it out */
   export function planeAxes(axis: SliceAxis): readonly [number, number] {
     return axis === 2 ? [0, 1] : axis === 0 ? [2, 1] : [2, 0];
   }
 
+  /** Plane `index` of the grid, in the window's layout: a view of the data where it is laid out so */
   export function getPlane(window: SliceWindow, index: number): Float32Array {
     const { width, height, rowStride, columnStride, planeStride } = window.layout;
     const data = window.grid.cells.data;
@@ -395,7 +399,7 @@ export namespace SliceBinned {
       const factors = [2, 2, nz < SliceBinnedMinDepth ? 1 : 2] as const;
       const entry: Binned = {
         factors,
-        ready: Task.create('Binning 2× for the slice', (ctx) => binGrid(grid, factors, ctx))
+        ready: Task.create('Binning for the slice', (ctx) => binGrid(grid, factors, ctx))
           .run(() => {}, 8)
           .then((g) => (entry.grid = g))
           // not binned (e.g. out of memory): the slice stays at full resolution

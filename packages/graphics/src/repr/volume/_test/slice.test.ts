@@ -1071,6 +1071,21 @@ describe('a big slice moved: its 2× binned planes first, the full resolution on
     }
   });
 
+  it('binned and rested, a step within the full window is a full plane (the window filled around it)', async () => {
+    const { visual, update, restore } = await big();
+    try {
+      const values = visual.renderObject!.values as any;
+      await update({ dimension: { name: 'z', params: 20 } });
+      expect(Array.from(values.uSliceBin.ref.value)).toEqual([2, 2]);
+      await new Promise((r) => setTimeout(r, SliceWindowConfig.settleMs + 50));
+      for (let k = 0; k < 40; ++k) await new Promise((r) => setTimeout(r, 0));
+      await update({ dimension: { name: 'z', params: 21 } });
+      expect(Array.from(values.uSliceBin.ref.value)).toEqual([1, 1]);
+    } finally {
+      restore();
+    }
+  });
+
   it('the binned window is freed a while after the slice rests', async () => {
     const { visual, update, owned, restore } = await big();
     try {

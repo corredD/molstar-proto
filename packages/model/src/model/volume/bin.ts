@@ -38,7 +38,7 @@ export async function binGrid(
   const [n0, n1, n2] = [dims[a0], dims[a1], dims[a2]];
   const c = [0, 0, 0];
   for (let i0 = 0; i0 < n0; i0++) {
-    if (ctx?.shouldUpdate) await ctx.update({ message: `Binning ${f}×…`, current: i0, max: n0 });
+    if (ctx?.shouldUpdate) await ctx.update({ message: `Binning ${by.join('×')}…`, current: i0, max: n0 });
     c[a0] = i0;
     for (let i1 = 0; i1 < n1; i1++) {
       c[a1] = i1;
@@ -68,7 +68,7 @@ export async function binGrid(
   const [b0, b1, b2] = [strides[a0], strides[a1], strides[a2]];
   const [l0, l1, l2] = [length[a0], length[a1], length[a2]];
   for (let i0 = 0; i0 < out[a0]; i0++) {
-    if (ctx?.shouldUpdate) await ctx.update({ message: `Binning ${f}×…`, current: i0, max: out[a0] });
+    if (ctx?.shouldUpdate) await ctx.update({ message: `Binning ${by.join('×')}…`, current: i0, max: out[a0] });
     for (let i1 = 0; i1 < out[a1]; i1++) {
       const n = l0[i0] * l1[i1];
       const o = i0 * b0 + i1 * b1;

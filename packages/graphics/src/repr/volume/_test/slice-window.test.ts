@@ -157,6 +157,16 @@ describe('SliceWindow tiled (a plane wider or taller than the 3d texture limit: 
     }
   });
 
+  it('fills in idle time unless its plane is tiled or large (one copy longer than an idle slot)', () => {
+    const { graphics } = stub(4);
+    const tiled = SliceWindow.create(graphics, grid([7, 5, 10]), 2);
+    expect(tiled.idle).toBe(false);
+    SliceWindow.show(tiled, 5);
+    expect(tiled.timer).toBeUndefined();
+    const { graphics: g2 } = stub(2048);
+    expect(SliceWindow.create(g2, grid([7, 5, 10]), 2).idle).toBe(true);
+  });
+
   it('a plane of 36 MB (3000² floats) gets the planes the budget holds, at least one', () => {
     expect(SliceWindow.getDepth(3000 * 3000, 41)).toBe(3);
     expect(SliceWindow.getDepth(6000 * 6000, 41)).toBe(0);

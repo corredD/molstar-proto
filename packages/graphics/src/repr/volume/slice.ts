@@ -290,8 +290,6 @@ function drawSlice(state: SliceWindowState, image: Image, index: number) {
   if (!state.visible && window.released) return;
   if (!state.visible) armSliceWindowRelease(state);
   const binned = state.binned?.grid;
-  // a big slice's full window: the plane shown only (moves are the binned window's)
-  window.idle = !binned;
   if (!binned || SliceWindow.holds(window, index)) {
     drawFullSlice(state, image);
     return;
