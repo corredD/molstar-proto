@@ -31,6 +31,7 @@ import {
 } from '@molstar/graphics/geo/geometry/transform-data';
 import { createColors } from '@molstar/graphics/geo/geometry/color-data';
 import { ColorLevels } from '@molstar/graphics/geo/geometry/color-levels';
+import { ImpostorAtlas } from '@molstar/graphics/geo/geometry/impostor-atlas';
 import { Color } from '@molstar/core/util/color';
 import { createSizes } from '@molstar/graphics/geo/geometry/size-data';
 import { createMarkers, type MarkerData } from '@molstar/graphics/geo/geometry/marker-data';
@@ -42,6 +43,7 @@ import { Mat4, Vec3 } from '@molstar/core/math/linear-algebra';
 import { calculateTransformBoundingSphere, createDataArray } from '@molstar/graphics/gl/renderable/util';
 import { isPromiseLike } from '@molstar/core/util/type-helpers';
 import type { SizeValues } from '@molstar/graphics/gl/renderable/schema';
+import type { SpheresValues } from '@molstar/graphics/gl/renderable/spheres';
 import { BaseGeometry } from '@molstar/graphics/geo/geometry/base';
 import { ColorTheme } from '@molstar/graphics/theme/color';
 import { SizeTheme } from '@molstar/graphics/theme/size';
@@ -83,6 +85,12 @@ import { getElementCountQuality, getQualityProps } from '../../../util.js';
 import type { Representation } from '../../../representation.js';
 
 // ---- Params ----------------------------------------------------------------
+
+/**
+ * The smallest target drawn as an impostor (Å, its bounding radius): smaller ones (lipids, ions: a handful of atoms) keep
+ * their last level of spheres, which shows them as they are (`lod-impostor.md`)
+ */
+export const ImpostorMinRadius = 22;
 
 /** Removes the params every target kind shares (see `ParticleTargetCommonParams`). */
 function withoutCommon<P extends PD.Params>(params: P): P {
@@ -151,6 +159,12 @@ export const ParticleTargetStructureParams = {
     sizeFactor: PD.Numeric(1, { min: 0.01, max: 10, step: 0.01 }),
     detail: PD.Numeric(0, { min: 0, max: 3, step: 1 }, BaseGeometry.CustomQualityParamInfo),
     tryUseImpostor: PD.Boolean(true),
+    lodImpostor: PD.Boolean(true, {
+      ...BaseGeometry.CullingLodCategory,
+      description:
+        'The last level of detail: each copy far away drawn as an impostor, its silhouette from the nearest of the views made at load (`lod-impostor.md`); the last spheres cross-fade into it. Not for targets smaller than ' +
+        `${ImpostorMinRadius} Å in radius (lipids, ions).`,
+    }),
   }),
   ...forType('blob-surface', {
     blobSize: BlobSurfaceCoreParams.blobSize,
@@ -654,6 +668,18 @@ export interface TargetVisual {
    * none of them is one of its particles
    */
   setParticleFrames(frames: ParticleFrames | undefined, start: number, end: number): boolean;
+  /**
+   * The spheres its impostor's views are made of (`ImpostorAtlas.Item`), their tile for the impostors starting at
+   * `pixelBoundary` Å a pixel: a structure or sites target drawn as spheres with `lodImpostor`, levels and the size of
+   * `ImpostorMinRadius`; undefined otherwise
+   */
+  getImpostorItem(pixelBoundary: number): ImpostorAtlas.Item | undefined;
+  /**
+   * The atlas its impostors read (undefined: none) and its entry in it (-1: its last level spheres): taken by a structure
+   * or sites target drawn as spheres with `lodImpostor`, also one without an entry (a small target), so that all merge
+   * as one (the define); the others none
+   */
+  setImpostor(atlas: ImpostorAtlas | undefined, code: number): void;
   destroy(): void;
 }
 
@@ -1122,6 +1148,33 @@ export function createTargetVisual(_targetId: number, materialId: number, graphi
     if (state.clipping !== undefined) Visual.setClipping(renderObject, state.clipping, lociApply, true);
   }
 
+  /** whether its impostors can be on: a structure or sites target drawn as spheres with `lodImpostor` */
+  function hasImpostors() {
+    if (!renderObject || renderObject.type !== 'spheres' || !currentTarget || !isElementTarget(currentTarget))
+      return false;
+    return !!currentProps?.lodImpostor && currentProps.type !== 'blob-surface';
+  }
+
+  function getImpostorItem(pixelBoundary: number): ImpostorAtlas.Item | undefined {
+    if (!hasImpostors()) return;
+    const values = renderObject!.values as unknown as SpheresValues;
+    if ((values.lodLevels.ref.value as Spheres.LodLevelsValue).length < 2) return;
+    const { radius } = values.invariantBoundingSphere.ref.value;
+    if (radius < ImpostorMinRadius) return;
+    return ImpostorAtlas.getItem(values, ImpostorAtlas.tileSize(radius, pixelBoundary));
+  }
+
+  function setImpostor(atlas: ImpostorAtlas | undefined, code: number) {
+    if (!renderObject || renderObject.type !== 'spheres' || geometry?.kind !== 'spheres') return;
+    const values = renderObject.values as unknown as SpheresValues;
+    const on = hasImpostors() ? atlas : undefined;
+    ImpostorAtlas.setValues(values, on);
+    const entry = on ? code : -1;
+    if (((values.lodLevels.ref.value as Spheres.LodLevelsValue).impostor ?? -1) !== entry) {
+      (geometry as Spheres).shaderData.update({ lodImpostor: entry });
+    }
+  }
+
   function destroy() {
     renderObject = undefined;
     geometry = undefined;
@@ -1149,6 +1202,8 @@ export function createTargetVisual(_targetId: number, materialId: number, graphi
     mark,
     setLayers,
     setParticleFrames,
+    getImpostorItem,
+    setImpostor,
     destroy,
   };
 }

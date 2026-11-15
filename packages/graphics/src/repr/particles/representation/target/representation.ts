@@ -56,6 +56,8 @@ import {
   withMergedSignatures,
 } from '../../../signatures.js';
 import type { Mesh } from '@molstar/graphics/geo/geometry/mesh/mesh';
+import { Spheres } from '@molstar/graphics/geo/geometry/spheres/spheres';
+import { ImpostorAtlas } from '@molstar/graphics/geo/geometry/impostor-atlas';
 
 export { ParticleTargetRepresentationParams };
 export type { ParticleTargetRepresentationProps };
@@ -105,6 +107,9 @@ export function ParticleTargetRepresentation(
   const targetVisuals = new Map<number, TargetVisual>();
 
   let mergedByType = new Map<string, MergedEntry<TargetVisual>>();
+
+  /** The impostors' atlas of the targets (`lod-impostor.md`), with what it was made from: kept while that is the same */
+  let impostors: { key: string[]; atlas: ImpostorAtlas; visuals: TargetVisual[] } | undefined;
 
   /** What the last full update built from: a later one changing the clip alone sets it on the visuals (`isClipOnly`) */
   let built: { particles: ParticleList; theme: Theme; props: ParticleTargetRepresentationProps } | undefined;
@@ -206,6 +211,7 @@ export function ParticleTargetRepresentation(
         }
       }
 
+      updateImpostors();
       // `previewed` kept: an update of the same particles (a theme) leaves a preview's instances where it put them
       updateRenderObjectList(entries);
       geometryState.snapshot();
@@ -213,6 +219,42 @@ export function ParticleTargetRepresentation(
       updated.next(version++);
     });
     return serialize(task);
+  }
+
+  /**
+   * The atlas of the impostors of the visuals that have them (`TargetVisual.getImpostorItem`), made again where their
+   * spheres, sizes or tiles changed; each visual given it and its entry, the others none. One texture for all
+   * (`tImpostor` shared): merged, the members read the first's
+   */
+  function updateImpostors() {
+    const levels = _props.lodLevels;
+    const boundary = getImpostorBoundary(_props);
+    const items: ImpostorAtlas.Item[] = [];
+    const owners: TargetVisual[] = [];
+    const key: string[] = [];
+    for (const visual of targetVisuals.values()) {
+      const item = levels.length >= 2 ? visual.getImpostorItem(boundary) : undefined;
+      if (!item) continue;
+      items.push(item);
+      owners.push(visual);
+      const values = visual.renderObject!.values as any;
+      key.push(
+        `${visual.geometryVersion}:${values.tSize.ref.version}:${values.uSizeFactor.ref.value}:${item.radius}:${item.tile}`,
+      );
+    }
+    const same =
+      impostors &&
+      impostors.key.length === key.length &&
+      impostors.visuals.every((v, i) => v === owners[i] && impostors!.key[i] === key[i]);
+    if (!same) {
+      impostors = items.length
+        ? { key, atlas: ImpostorAtlas.create(items, graphics?.resources.limits.maxTextureSize ?? 4096), visuals: owners }
+        : undefined;
+    }
+    const entries = new Map<TargetVisual, number>();
+    if (impostors)
+      for (let i = 0; i < impostors.visuals.length; ++i) entries.set(impostors.visuals[i], impostors.atlas.codes[i]);
+    for (const visual of targetVisuals.values()) visual.setImpostor(impostors?.atlas, entries.get(visual) ?? -1);
   }
 
   function updateRenderObjectList(entries: { visual: TargetVisual; renderObject: GraphicsRenderObject }[]) {
@@ -522,6 +564,18 @@ function computeParticleTargetSignatures(
     );
   }
   return uniqueSignatures(out);
+}
+
+/**
+ * Where the impostors start, in Å a CSS pixel (`lod-impostor.md`): the end of the level before the last, by size on
+ * screen, or its distance at 1280x720 and 45° (as `Spheres.LodPixelPresets`); what the tiles are sized for
+ */
+function getImpostorBoundary(props: ParticleTargetRepresentationProps) {
+  const levels = props.lodLevels;
+  if (levels.length < 2) return 0;
+  const level = levels[levels.length - 2];
+  if (props.lodPixelSize > 0) return Spheres.getLodPixelBoundary(level, props.lodPixelSize);
+  return (level.maxDistance * 2 * Math.tan(Math.PI / 8)) / 720;
 }
 
 function getParticleTargetParams(ctx: RepresentationContext, particles: ParticleList | undefined) {
