@@ -120,6 +120,11 @@ maintainer first (2026-10-25). All are v6 (master); the MRC reader and the parti
 
 ## Backlog
 
+- **Impostors, left open by lod-impostor's review** (`progress/2026-11-15-lod-impostor.md`): a test of the particle
+  representation's wiring (atlas kept on a color change, rebuilt on sizes, off and on at runtime); the close-up cost of
+  the spheres' program with the define (a program per level?); the atlas built with yields or shared across lists; nits
+  (writeTile allocations, one shrink for all tiles, the tile boundary at the nominal radius).
+
 - **Grow › Helix, what it left** (lane `grow-helix`, 2026-11-13; progress/2026-11-13-grow-helix.md): the mesoscale
   package's `test:scaling` tier does not start (its config's `heapTests` and the `*.scaling.ts` harness import
   `sequences/core/_test/model/scaling.js` are gone: `@molstar/test-harness/scaling` now); `meshSurface.project`
