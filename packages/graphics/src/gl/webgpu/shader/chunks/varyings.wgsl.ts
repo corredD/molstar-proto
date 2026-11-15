@@ -8,6 +8,7 @@
 import { clip_flag_wgsl } from './clip.wgsl.js';
 import { assign_data_index_wgsl } from './read-from-texture.wgsl.js';
 import { assign_color_levels_wgsl } from './color-levels.wgsl.js';
+import { assign_lod_impostor_factor_wgsl } from './lod-impostor.wgsl.js';
 
 /**
  * \`VertexOutput\` with the varyings shared by the graphics programs at locations 0 to 8 and 15, and the program's
@@ -75,7 +76,7 @@ export const assign_quad_position_group_wgsl = /* wgsl */ `
 /**
  * Levels of detail of the items drawn as quads (spheres, points), after `out.vModelPosition`: `lodFactor` the level's
  * scale (a coarser level's fewer items larger) faded at the level's range (1 without levels), `lodCulled` beyond the
- * range
+ * range; with impostors (`dLodImpostor`, after `assign_lod_impostor_wgsl`) by the copy's distance, its share of the band
  */
 export const assign_lod_factor_wgsl = /* wgsl */ `
     var lodFactor = 1.0;
@@ -90,11 +91,18 @@ export const assign_lod_factor_wgsl = /* wgsl */ `
         #endif
         if (uGlobal.uModelScale != 1.0) {
             lodFactor = lodScale;
+            #if defined(dLodImpostor)
+                lodCulled = lodScale < 0.0;
+            #endif
         } else {
+            #if defined(dLodImpostor)
+${assign_lod_impostor_factor_wgsl}
+            #else
             let d = (dot(uGlobal.uCameraPlane.xyz, out.vModelPosition) + uGlobal.uCameraPlane.w) / uGlobal.uModelScale;
             let level = lodAt(d, lod.xyz, lodScale);
             lodFactor = level.factor;
             lodCulled = level.culled;
+            #endif
         }
     }
 `;

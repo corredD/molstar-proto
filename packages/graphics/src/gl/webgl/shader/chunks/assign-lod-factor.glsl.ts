@@ -2,11 +2,15 @@
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
+
+import { assign_lod_impostor_factor } from './lod-impostor.glsl.js';
 
 /**
  * Levels of detail of the items drawn as quads (spheres, points), after `vModelPosition`: `lodFactor` the level's scale
- * (a coarser level's fewer items larger) faded at the level's range (1 without levels), `lodCulled` beyond the range
+ * (a coarser level's fewer items larger) faded at the level's range (1 without levels), `lodCulled` beyond the range;
+ * with impostors (`dLodImpostor`, after `assign_lod_impostor`) by the copy's distance, its share of the band
  */
 export const assign_lod_factor = `
 float lodFactor = 1.0;
@@ -20,13 +24,20 @@ if (uLod.w != 0.0 && (uLod.x != 0.0 || uLod.y != 0.0)) {
     #endif
     if (uModelScale != 1.0) {
         lodFactor = lodScale;
+        #if defined(dLodImpostor)
+            lodCulled = lodScale < 0.0;
+        #endif
     } else {
+        #if defined(dLodImpostor)
+            ${assign_lod_impostor_factor}
+        #else
         float d = (dot(uCameraPlane.xyz, vModelPosition) + uCameraPlane.w) / uModelScale;
         lodFactor = min(
             smoothstep(uLod.x, uLod.x + uLod.z, d),
             1.0 - smoothstep(uLod.y - uLod.z, uLod.y, d)
         ) * lodScale;
         lodCulled = d < uLod.x || d > uLod.y;
+        #endif
     }
 }
 `;

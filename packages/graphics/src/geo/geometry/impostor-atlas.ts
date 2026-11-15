@@ -4,8 +4,13 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import { Mat4, Vec3 } from '@molstar/core/math/linear-algebra';
-import type { TextureImage } from '@molstar/graphics/gl/renderable/util';
+import { Mat4, Vec2, Vec3 } from '@molstar/core/math/linear-algebra';
+import { ValueCell } from '@molstar/core/util/value-cell';
+import { unpackRGBToInt } from '@molstar/core/util/number-packing';
+import type { Sphere3D } from '@molstar/core/math/geometry';
+import type { DataArray, TextureImage } from '@molstar/graphics/gl/renderable/util';
+import type { LodImpostorValues } from '@molstar/graphics/gl/renderable/schema';
+import { sizeDataFactor } from './size-data.js';
 
 /**
  * Octahedral impostors (`lod-impostor.md`): per item (a particle target's structure) its spheres seen from `Views` ×
@@ -324,5 +329,61 @@ export namespace ImpostorAtlas {
         array[o + 1] = f === -Infinity ? 0 : Math.max(1, Math.min(255, Math.round(((f + R) / (2 * R)) * 255)));
       }
     }
+  }
+
+  /** no views: one texel, shared by every item without impostors (`tImpostor` is a shared texture) */
+  const Empty: TextureImage<Uint8Array> = { array: new Uint8Array(2), width: 1, height: 1 };
+
+  export function createValues(): LodImpostorValues {
+    return {
+      tImpostor: ValueCell.create(Empty),
+      uImpostorTexDim: ValueCell.create(Vec2.create(1, 1)),
+      dLodImpostor: ValueCell.create(false),
+    };
+  }
+
+  /** The atlas on `values` (one texture for all that share it), `undefined` for none: the impostors off */
+  export function setValues(values: LodImpostorValues, atlas: ImpostorAtlas | undefined) {
+    const image = atlas?.image ?? Empty;
+    if (values.tImpostor.ref.value !== image) {
+      ValueCell.update(values.tImpostor, image);
+      ValueCell.update(values.uImpostorTexDim, Vec2.set(values.uImpostorTexDim.ref.value, image.width, image.height));
+    }
+    ValueCell.updateIfChanged(values.dLodImpostor, !!atlas);
+  }
+
+  /** What `getItem` reads: the spheres' centers and groups, their sizes by type, the size factor, the bounds */
+  export interface ItemValues {
+    readonly tPositionGroup: ValueCell<DataArray<Float32Array>>;
+    readonly uVertexCount: ValueCell<number>;
+    readonly sizeType: ValueCell<string>;
+    readonly uSize: ValueCell<number>;
+    readonly tSize: ValueCell<DataArray<Uint8Array>>;
+    readonly uSizeFactor: ValueCell<number>;
+    readonly invariantBoundingSphere: ValueCell<Sphere3D>;
+  }
+
+  /**
+   * The item of spheres drawn by `values`: their drawn radii (size by group or uniform, times the size factor), the
+   * invariant bounding sphere the impostor is drawn at; undefined for sizes of other kinds
+   */
+  export function getItem(values: ItemValues, tile: number): Item | undefined {
+    const type = values.sizeType.ref.value;
+    if (type !== 'group' && type !== 'uniform') return undefined;
+    const count = values.uVertexCount.ref.value;
+    const positionGroup = values.tPositionGroup.ref.value.array;
+    const factor = values.uSizeFactor.ref.value;
+    const radii = new Float32Array(count);
+    if (type === 'uniform') {
+      radii.fill(values.uSize.ref.value * factor);
+    } else {
+      const { array, count: sizes } = values.tSize.ref.value;
+      for (let k = 0; k < count; ++k) {
+        const g = Math.min(positionGroup[k * 4 + 3], sizes - 1) * 4;
+        radii[k] = (unpackRGBToInt(array[g], array[g + 1], array[g + 2]) / sizeDataFactor) * factor;
+      }
+    }
+    const { center, radius } = values.invariantBoundingSphere.ref.value;
+    return { positionGroup, radii, count, center, radius, tile };
   }
 }

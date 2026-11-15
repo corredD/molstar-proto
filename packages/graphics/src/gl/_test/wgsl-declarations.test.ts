@@ -386,6 +386,9 @@ describe('quad wgsl', () => {
     ['spheres', spheres_wgsl, { ...base, ...clip, dGeometryType: 'spheres', dSolidInterior: true, dClipTable: true }],
     ['spheres', spheres_wgsl, { ...base, ...clip, dGeometryType: 'spheres', dApproximate: true }],
     ['spheres', spheres_wgsl, { ...base, dGeometryType: 'spheres', dColorLevels: true, dSegmented: true }],
+    // the last level as impostors (lod-impostor.md), merged and not, picked
+    ['spheres', spheres_wgsl, { ...base, ...clip, dGeometryType: 'spheres', dLodImpostor: true, dSegmented: true }],
+    ['spheres', spheres_wgsl, { ...base, dGeometryType: 'spheres', dLodImpostor: true, dRenderVariant: 'pick' }],
     ['cylinders', cylinders_wgsl, { ...base, ...clip, dGeometryType: 'cylinders', dSolidInterior: true }],
     ['cylinders', cylinders_wgsl, { ...base, ...clip, dGeometryType: 'cylinders', dRenderVariant: 'pick' }],
     ['points', points_wgsl, { ...base, ...clip, dGeometryType: 'points', dPointStyle: 'square' }],

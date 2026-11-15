@@ -110,6 +110,41 @@ describe('levels of detail by size on screen', () => {
     expect(distances.map((l) => [l[0], l[1]])).toEqual(lodLevels.map((l) => [l.minDistance, l.maxDistance]));
   });
 
+  it('the last level as impostors: one item a copy, its entry in the scale, a band where the last spheres fade', () => {
+    const lodLevels = Spheres.LodPixelPresets.quality.lodLevels;
+    // 1000 spheres in a cloud, so that the levels' prefixes are long
+    const centers = new Float32Array(3000).map((_, i) => ((i * 7919) % 101) - 50);
+    const spheres = Spheres.create(centers, new Float32Array(1000).map((_, i) => i), 1000);
+    const props = { ...PD.getDefaultValues(Spheres.Params), lodLevels, lodPixelSize: 3 };
+    const values = Spheres.Utils.createValuesSimple(spheres, props, ColorNames.orange, 1);
+    const plain = (values.lodLevels.ref.value as LodLevelsValue).map((l) => [...l]);
+
+    spheres.shaderData.update({ lodImpostor: 1234 });
+    const value = values.lodLevels.ref.value as Spheres.LodLevelsValue;
+    expect(value.impostor).toBe(1234);
+    const last = value.length - 1;
+    // one item, the first of the coarsest order; its scale the entry, negated (`lod_impostor`)
+    expect(value[last][3]).toBe(6);
+    expect(value[last][4]).toBe(-1235);
+    // the boundary of the last spheres and the impostors widened into a band of `LodImpostorBand` octaves, both levels
+    // drawn in it and fading over all of it
+    const b = plain[last][0];
+    const k = Math.pow(2, Spheres.LodImpostorBand / 2);
+    expect(value[last][0]).toBeCloseTo(b / k, 12);
+    expect(value[last - 1][1]).toBeCloseTo(b * k, 12);
+    expect(value[last][2]).toBeCloseTo(b * k - b / k, 12);
+    expect(value[last - 1][2]).toBeCloseTo(b * k - b / k, 12);
+    // the other levels as they were
+    for (let j = 0; j < last - 1; ++j) expect([...value[j]]).toEqual(plain[j]);
+
+    // kept by a props update, dropped by -1
+    Spheres.Utils.updateValues(values, { ...props, lodPixelSize: 4 });
+    expect((values.lodLevels.ref.value as Spheres.LodLevelsValue).impostor).toBe(1234);
+    spheres.shaderData.update({ lodImpostor: -1 });
+    expect((values.lodLevels.ref.value as Spheres.LodLevelsValue).impostor).toBeUndefined();
+    expect((values.lodLevels.ref.value as LodLevelsValue)[last][4]).toBeGreaterThan(0);
+  });
+
   it('presets by pixel size: their distances those at 1280x720 and 45°', () => {
     const k = (2 * Math.tan(Math.PI / 8)) / 720;
     for (const { lodLevels, lodPixelSize } of Object.values(Spheres.LodPixelPresets)) {
