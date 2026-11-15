@@ -6,6 +6,10 @@
   volumes of several tiles and devices without 3d textures keep the CPU image. A 512 × 720 × 225 tomogram's Z slice:
   a step through the state 65 ms → 7 ms; a step of the representation itself 0.1 ms (within the window), under 2 ms at
   its edge, a jump 1 ms (was 23–43 ms with a refill).
+- A hidden slice frees its window after 5 s, made again when shown. A volume of 2^28 voxels or more (1 GiB of floats)
+  is binned 2× in the background once a slice is shown; a slice moved out of its window shows the binned plane, exactly
+  where the full one is, and the full-resolution plane 150 ms after it rests: a 1.5 GB map's X slice dragged end to end,
+  0 frames over 33 ms (was 15). `binGrid` yields in its averaging pass too.
 - `Texture.loadLayer`: a plane written into one layer of a 3d texture. `VolumeVisualBuilder.updateGeometry`: a volume
   visual's geometry updated in place instead of made again. `getVolumeValueDomain`: the volume-value palette's domain in
   the volume's values.

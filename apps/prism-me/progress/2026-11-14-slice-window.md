@@ -203,3 +203,86 @@ and its edge cases (race, removal, drag back). Tests ~850 lines.
 `http://localhost:1380/apps/prism-me/build/`, drop `7-2_cryolithe_bin2.mrc`, pick Slice Z, drag the Slice slider end to
 end fast: the slice follows the pointer, one undo step (Undo returns to the start). Click far along the track: it jumps
 at once. Change the contrast: immediate. Hover the slice after a drag: the cell label is on the drawn slice.
+
+## Ludo's answers (2026-11-15) and the follow-up
+
+1. Float32 planes: OK. 2. Free a hidden slice's window: **yes, built**. 3. Core commits upstream later: OK.
+
+New ask: "when using full resolution of a volume of ~2 GB, can we use the bin2 buffer instead when using the slider?" —
+built.
+
+### Built
+
+- **Hidden slices:** `VolumeVisualBuilder.setVisibility` (core); a slice hidden (or made hidden, never shown) frees its
+  windows after 5 s (`SliceWindowHiddenMs`); shown again, the window is made again at the slice drawn (its plane at
+  once, the rest in idle time, a redraw asked for). Changes while hidden (contrast, a step, another axis) only record
+  the slice; nothing is allocated until it is shown.
+- **Binned planes while a big slice moves:** a volume of ≥ 2^28 voxels (1 GiB of floats:
+  `SliceWindowConfig.coarseVoxels`) is binned 2× by `binGrid` (each voxel the mean of its 2×2×2 block, as the MRC
+  Level's 2×) in the background once one of its slices is shown (a Task yielding every 8 ms; `binGrid` now yields in its
+  averaging pass too, in memory order). A step the full window does not hold shows the binned plane of the pair
+  (`index >> 1`, a window of 32 binned planes: 64 slices, a plane a quarter of the size); the shader reads texel `p / 2`
+  after the row flip, so the binned plane covers the full one exactly (same quad, same Å). 150 ms after the last move
+  the full-resolution plane is copied and shown (`settleMs`, a redraw asked for); the binned window is freed 5 s after
+  that (`coarseHoldMs`).
+
+### Decided
+
+- **Threshold by voxel count (2^28), not plane size**: the costly planes are the strided x/y ones of big maps, whatever
+  their own size; Ludo's map (83 M voxels) stays at full resolution all the time (no blur, no binning memory).
+- **From a binned level in memory, not per plane on the fly**: binning a plane on the fly reads two full planes, the
+  same CPU as copying them; the binned volume (1/8 of the map, 190 MB for a 1.5 GB map, kept with the volume) makes
+  binned planes cheap gathers (z: views).
+- **Binning starts when a slice is shown**, not at load: the hidden x/y slices of a load bin nothing.
+- **Accepted:** while a big slice moves, a full and a binned window can both be held (≤ 2 × 128 MB GPU); the binned one
+  is freed 5 s after rest. The binned volume stays in CPU memory with the volume. The averaging needs a Float64 sum
+  array of 1/8 of the map × 8 B transiently (377 MB for a 1.5 GB map).
+
+### Measurements (synthetic 1024 × 1024 × 360 map, 1.5 GB, headless Chrome; renderer footprint 3.7 GB)
+
+| What                                    | prism-me (1343)                                      | window, no binning                       | window + binned preview                  |
+| --------------------------------------- | ---------------------------------------------------- | ---------------------------------------- | ---------------------------------------- |
+| Drag Z end to end, 3 s                  | 10 frames > 33 ms, max 167 ms, 10 commits            | 0 > 33 ms, max 16.8                      | 0 > 33 ms, max 16.8, 1 commit            |
+| Drag X end to end, 3 s                  | 15 frames > 33 ms, p95 83 ms, max 267 ms, 14 commits | 1 > 33 ms, max 350 ms                    | 0 > 33 ms, max 16.8, 1 commit            |
+| Step at the window's edge, median / max | —                                                    | z 1.7 / 5.5; x 3.3 / 243; y 0.9 / 1.1 ms | z 0.1 / 4.8; x 0.5 / 0.7; y 0.2 / 0.6 ms |
+| Jump far                                | —                                                    | z 0.2, x 3.4, y 1.1 ms                   | z 0.7–0.9, x 0.7, y 0.3 ms               |
+
+Ludo's map after all of it: drag Z 0 frames > 33 ms, 1 commit (unchanged). (The steps script's x/y numbers after the
+hidden-slice fix read 0 ms: those slices are hidden there, so nothing is drawn; the visible numbers are the column
+above.)
+
+### Tests (failing first)
+
+- graphics `slice.test.ts`: hidden 5 s frees, shown makes again at the slice; changes and an axis change while hidden
+  keep nothing allocated; the binned grid is `binGrid` 2×; a far step shows the binned plane (its values, layer, the
+  plane's size for the shader), the full one after rest at the same corners; a big slice made hidden is not binned until
+  shown; the binned window freed after rest and made again; under the threshold, no binning.
+- model `bin.test.ts`: `binGrid` yields in its averaging pass.
+- Dawn `webgpu-slice-window.test.ts`: on a map constant per 2×2×2 block with odd sides, the binned plane renders the CPU
+  path's full image pixel for pixel along x, y, z, and so does the full plane after rest (a texel shifted by one fails
+  it).
+
+### Review of the follow-up (lane-reviewer, lane-skeptic)
+
+| #      | Finding                                                                               | Verdict                    | Outcome                                                                          |
+| ------ | ------------------------------------------------------------------------------------- | -------------------------- | -------------------------------------------------------------------------------- |
+| 1      | a change while hidden remade the freed window, never freed again                      | confirmed (must)           | fixed 0158dfe94, test first                                                      |
+| N1     | an axis change while hidden made a window never freed                                 | confirmed by the same test | fixed 0158dfe94                                                                  |
+| 2 / N2 | `binGrid`'s averaging pass had no yield (0.13–0.25 s x-fastest, 0.65–1.5 s z-fastest) | confirmed (timed)          | fixed b1327a101 (memory order, yields), test first                               |
+| 3      | the binning promise had no catch                                                      | confirmed                  | fixed 0158dfe94                                                                  |
+| 4      | the binned window never freed while visible; not in the budget                        | confirmed                  | freed 5 s after rest (0158dfe94, test first); the two-window cost accepted above |
+| 5      | `SliceSettleMs` a stale copy                                                          | confirmed (nit)            | removed 0158dfe94                                                                |
+| 6      | a closure per coarse step                                                             | confirmed (nit)            | open (one per step, not per frame)                                               |
+| 7      | the switch back to full not rendered                                                  | partly refuted             | Dawn capture after rest added ce90623f1                                          |
+| N3     | binning started for a slice made hidden                                               | confirmed (nit)            | binning starts when shown, 0158dfe94                                             |
+
+Commit 0158dfe94 holds several gate causes in one file pair (the visibility, hold and binning start share `drawSlice`);
+the others are one cause each.
+
+### Core changes (added)
+
+| What                                                                | Why                                 | Files                                                                                                                               | Commits                         |
+| ------------------------------------------------------------------- | ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- | ------------------------------- |
+| `VolumeVisualBuilder.setVisibility`; a hidden slice's windows freed | memory of hidden slices (Ludo: yes) | `graphics/src/repr/volume/visual.ts`, `slice.ts`, `slice-window.ts`                                                                 | 0f6030763, 0158dfe94            |
+| `SliceBinned`, `uSliceBin`, binned preview while a big slice moves  | big maps at frame rate              | `graphics/src/repr/volume/slice-window.ts`, `slice.ts`, `gl/renderable/image.ts`, `geo/geometry/image/image.ts`, both image shaders | 32ff54caa, 85063c790, 0158dfe94 |
+| `binGrid` averaging in memory order, yielding                       | a 2 GB map binned in the background | `model/src/model/volume/bin.ts`                                                                                                     | b1327a101                       |
