@@ -722,11 +722,12 @@ export type ColorLevelsValues = Values<ColorLevelsSchema>;
 
 /** The last level of detail of spheres as octahedral impostors (`ImpostorAtlas`, `lod-impostor.md`) */
 export const LodImpostorSchema = {
-  /** the views of the items: coverage, front height and normal (x, y), a byte each; one texture for all its holders */
-  tImpostor: TextureSpec('image-uint8', 'rgba', 'ubyte', 'linear', undefined, {
-    usedIf: ['dLodImpostor'],
-    shared: true,
-  }),
+  /**
+   * the views of the items: coverage, front height and normal (x, y), a byte each; one texture for all its holders. Not
+   * `usedIf` its define: a render item binds its textures whatever the defines, and reads linear ones as such (the
+   * precompile signatures compare both)
+   */
+  tImpostor: TextureSpec('image-uint8', 'rgba', 'ubyte', 'linear', undefined, { shared: true }),
   /** its size in texels */
   uImpostorTexDim: ObjectUniformSpec('v2'),
   dLodImpostor: DefineSpec('boolean'),

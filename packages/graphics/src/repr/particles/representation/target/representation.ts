@@ -258,7 +258,10 @@ export function ParticleTargetRepresentation(
     const entries = new Map<TargetVisual, number>();
     if (impostors)
       for (let i = 0; i < impostors.visuals.length; ++i) entries.set(impostors.visuals[i], impostors.atlas.codes[i]);
-    for (const visual of targetVisuals.values()) visual.setImpostor(impostors?.atlas, entries.get(visual) ?? -1);
+    // on for the targets that can take them even where none has an entry (small targets alone): the define as derived
+    // (\`computeParticleTargetSignatures\`)
+    const atlas = impostors?.atlas ?? ImpostorAtlas.None;
+    for (const visual of targetVisuals.values()) visual.setImpostor(atlas, entries.get(visual) ?? -1);
   }
 
   function updateRenderObjectList(entries: { visual: TargetVisual; renderObject: GraphicsRenderObject }[]) {
@@ -541,7 +544,10 @@ function computeParticleTargetSignatures(
         ? getSurfaceSignatureDefines(tProps, ctx.graphics)
         : target.kind === 'shape' && target.shape.geometry.kind === 'mesh'
           ? { dVaryingGroup: [(target.shape.geometry as Mesh).varyingGroup.ref.value] }
-          : undefined;
+          : // impostors (`lod-impostor.md`): every structure or sites target drawn as spheres takes them where on
+            choice === 'structure-spheres' && tProps.lodImpostor && props.lodLevels.length >= 2
+            ? { dLodImpostor: [true] }
+            : undefined;
     const utils = getTargetGeometryUtils(target, choice);
     const signatures = getGeometrySignatures(utils, tProps, { ...ctx, size }, visualDefines);
     for (const s of signatures) {

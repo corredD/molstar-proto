@@ -371,6 +371,9 @@ export namespace ImpostorAtlas {
   /** no views: one texel, shared by every item without impostors (`tImpostor` is a shared texture) */
   const Empty: TextureImage<Uint8Array> = { array: new Uint8Array(4), width: 1, height: 1 };
 
+  /** an atlas of no entries: impostors on where no item has any (the define and the band, every entry -1) */
+  export const None: ImpostorAtlas = { image: Empty, codes: [], radii: [] };
+
   export function createValues(): LodImpostorValues {
     return {
       tImpostor: ValueCell.create(Empty),
@@ -401,12 +404,13 @@ export namespace ImpostorAtlas {
   }
 
   /**
-   * The item of spheres drawn by `values`: their drawn radii (size by group or uniform, times the size factor), the
-   * invariant bounding sphere the impostor is drawn at; undefined for sizes of other kinds
+   * The item of spheres drawn by `values`: their drawn radii (size uniform, by group, or the first instance's by
+   * instance or group instance; times the size factor), the invariant bounding sphere the impostor is drawn at;
+   * undefined for sizes by vertex
    */
   export function getItem(values: ItemValues, tile: number): Item | undefined {
     const type = values.sizeType.ref.value;
-    if (type !== 'group' && type !== 'uniform') return undefined;
+    if (type !== 'group' && type !== 'uniform' && type !== 'instance' && type !== 'groupInstance') return undefined;
     const count = values.uVertexCount.ref.value;
     const positionGroup = values.tPositionGroup.ref.value.array;
     const factor = values.uSizeFactor.ref.value;
@@ -416,7 +420,7 @@ export namespace ImpostorAtlas {
     } else {
       const { array, count: sizes } = values.tSize.ref.value;
       for (let k = 0; k < count; ++k) {
-        const g = Math.min(positionGroup[k * 4 + 3], sizes - 1) * 4;
+        const g = type === 'instance' ? 0 : Math.min(positionGroup[k * 4 + 3], sizes - 1) * 4;
         radii[k] = (unpackRGBToInt(array[g], array[g + 1], array[g + 2]) / sizeDataFactor) * factor;
       }
     }

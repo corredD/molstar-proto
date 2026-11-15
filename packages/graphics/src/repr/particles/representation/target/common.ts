@@ -1152,13 +1152,12 @@ export function createTargetVisual(_targetId: number, materialId: number, graphi
   function hasImpostors() {
     if (!renderObject || renderObject.type !== 'spheres' || !currentTarget || !isElementTarget(currentTarget))
       return false;
-    return !!currentProps?.lodImpostor && currentProps.type !== 'blob-surface';
+    return !!currentProps?.lodImpostor && currentProps.type !== 'blob-surface' && currentProps.lodLevels.length >= 2;
   }
 
   function getImpostorItem(pixelBoundary: number): ImpostorAtlas.Item | undefined {
     if (!hasImpostors()) return;
     const values = renderObject!.values as unknown as SpheresValues;
-    if ((values.lodLevels.ref.value as Spheres.LodLevelsValue).length < 2) return;
     const { radius } = values.invariantBoundingSphere.ref.value;
     if (radius < ImpostorMinRadius) return;
     return ImpostorAtlas.getItem(values, ImpostorAtlas.tileSize(radius, pixelBoundary));
