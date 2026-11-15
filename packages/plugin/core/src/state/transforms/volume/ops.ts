@@ -95,11 +95,7 @@ const VolumeTransform = PluginStateTransform.BuiltIn({
     const scaled =
       scale === 1
         ? Grid.getGridToCartesianTransform(a.data.grid)
-        : Mat4.mul(
-            Mat4(),
-            Mat4.fromUniformScaling(Mat4(), scale),
-            Grid.getGridToCartesianTransform(a.data.grid),
-          );
+        : Mat4.mul(Mat4(), Mat4.fromUniformScaling(Mat4(), scale), Grid.getGridToCartesianTransform(a.data.grid));
     const gridTransform = {
       kind: 'matrix' as const,
       matrix: Mat4.mul(Mat4(), transform, scaled),

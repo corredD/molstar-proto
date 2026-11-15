@@ -376,7 +376,14 @@ export class VolumeApi extends ApiArea {
         return ApiResult.already(`${name} is already where it was loaded.`);
       }
       // removing the decorator would take its subtree (the representations) with it: it is set to identity instead
-      await ctx.plugin.runTask(state.updateTree(state.build().to(existing).update((p: any) => ({ ...p, transform: IdentityTransform }))));
+      await ctx.plugin.runTask(
+        state.updateTree(
+          state
+            .build()
+            .to(existing)
+            .update((p: any) => ({ ...p, transform: IdentityTransform })),
+        ),
+      );
       return ApiResult.ok(`${name} is back where it was loaded.`, { nodes: [ref] });
     },
   });

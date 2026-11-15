@@ -48,7 +48,9 @@ describe('a volume with a scale', () => {
     const ref = cell.transform.ref;
     const identity = { name: 'matrix' as const, params: { data: Mat4.identity(), transpose: false } };
     await v.plugin.runTask(
-      v.plugin.state.data.updateTree(v.plugin.state.data.build().to(cell).insert(VolumeTransform, { transform: identity, scale: 2 })),
+      v.plugin.state.data.updateTree(
+        v.plugin.state.data.build().to(cell).insert(VolumeTransform, { transform: identity, scale: 2 }),
+      ),
     );
     const scaleOf = () => (volumeTransformCell(v.plugin.state.data, ref)!.transform.params as { scale?: number }).scale;
     const origin = () => {
