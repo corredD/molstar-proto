@@ -280,6 +280,52 @@ export class CryoetApi extends ApiArea {
     );
   }
 
+  /**
+   * Shows a volume's grid slice at `index` outside the state while its slider is dragged, where the slice is drawn from
+   * a window of its planes on the GPU (graphics `repr/volume/slice-window.ts`: a move is a uniform, or a plane copied at
+   * the window's edge): the representation updated once a frame, the latest index winning; the gesture's release
+   * commits it (`slice`, one undo step, which drops what is still pending). False where it is not (no such slice, drawn
+   * on the CPU): the caller steps through the state instead
+   */
+  previewSlice(volume: string, axis: SliceAxis, index: number): boolean {
+    const plugin = this.ctx.plugin;
+    const v = oneVolume({ plugin }, volume || undefined);
+    if (isFailure(v) || !windowedSlice(v, axis)) return false;
+    const previews = slicePreviewsOf(plugin);
+    const ref = v.cell.transform.ref;
+    const key = `${ref}:${axis}`;
+    const pending = previews.pending.get(key);
+    if (pending) pending.index = index;
+    else previews.pending.set(key, { volume: ref, axis, index });
+    if (!previews.scheduled) {
+      previews.scheduled = true;
+      const frame =
+        typeof requestAnimationFrame === 'function' ? requestAnimationFrame : (f: () => void) => setTimeout(f, 16);
+      frame(() => this.applySlicePreviews());
+    }
+    return true;
+  }
+
+  /** The pending previews applied: each slice looked up again (removed meanwhile: skipped) */
+  private applySlicePreviews() {
+    const plugin = this.ctx.plugin;
+    const previews = slicePreviewsOf(plugin);
+    previews.scheduled = false;
+    for (const { volume, axis, index } of previews.pending.values()) {
+      const v = oneVolume({ plugin }, volume);
+      if (isFailure(v)) continue;
+      const repr = windowedSlice(v, axis);
+      if (!repr) continue;
+      const n = v.cell.obj!.data.grid.cells.space.dimensions[AxisIndex[axis]] - 1;
+      repr
+        .createOrUpdate({ dimension: { name: axis, params: Math.max(0, Math.min(n, Math.round(index))) } })
+        .run()
+        .then(() => plugin.canvas3d?.requestDraw())
+        .catch(() => undefined);
+    }
+    previews.pending.clear();
+  }
+
   /** What a volume's data is and its levels (by state ref), following the state tree while watched: a read for views */
   dataState(volume: string): ReadonlyState<VolumeDataInfo | undefined> {
     const plugin = this.ctx.plugin;
@@ -966,6 +1012,8 @@ export class CryoetApi extends ApiArea {
       const n = data.grid.cells.space.dimensions[AxisIndex[axis]];
       // the slice of this axis (one per axis): moved, or made
       const existing = sliceRepresentation(v, axis);
+      // a drag's preview still pending would move it back after this
+      slicePreviewsOf(ctx.plugin).pending.delete(`${v.cell.transform.ref}:${axis}`);
       const old = existing?.cell.transform.params as any;
       const i = Math.max(0, Math.min(n - 1, Math.round(index ?? old?.type?.params?.dimension?.params ?? (n - 1) / 2)));
       const k = contrast ?? (old?.colorTheme?.params?.domain?.name === 'custom' ? undefined : 3);
@@ -1225,6 +1273,27 @@ function obliqueRepresentations(v: VolumeRef) {
     const p = r.cell.transform.params as { type?: { name?: string; params?: { mode?: string } } };
     return p?.type?.name === 'slice' && p.type.params?.mode === 'plane';
   });
+}
+
+/** The slices' previews waiting for the next frame, per plugin (`previewSlice`): by volume (state ref) and axis */
+type SlicePreviews = {
+  readonly pending: Map<string, { volume: string; axis: SliceAxis; index: number }>;
+  scheduled: boolean;
+};
+const slicePreviews = new WeakMap<object, SlicePreviews>();
+function slicePreviewsOf(plugin: object): SlicePreviews {
+  let p = slicePreviews.get(plugin);
+  if (!p) slicePreviews.set(plugin, (p = { pending: new Map(), scheduled: false }));
+  return p;
+}
+
+/** The representation of a volume's slice of one axis where it is drawn from a window of its planes (`dSliceWindow`) */
+function windowedSlice(v: VolumeRef, axis: SliceAxis) {
+  const repr = sliceRepresentation(v, axis)?.cell.obj?.data.repr;
+  const windowed = repr?.renderObjects.some(
+    (o) => (o.values as { dSliceWindow?: { ref: { value: boolean } } }).dSliceWindow?.ref.value,
+  );
+  return windowed ? repr : undefined;
 }
 
 /** A volume's slice of one axis, if it has one */

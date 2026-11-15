@@ -571,9 +571,49 @@ export function Slice(props: {
   const move = live<{ index?: number; contrast?: number }>(api, 'Slice', (g, axis, v) =>
     g.cryoet!.slice({ volume, axis, ...v } as never),
   );
+  // a drag of a slice drawn from a window of its planes (graphics slice-window.ts): shown outside the state, a frame at a
+  // time (`previewSlice`), the release committing it once (one undo step); keys, and a slice not windowed, through
+  // `move`. Its index, shown until the release lands
+  const dragged = observableState<{ axis: SliceAxis; index: number; committing?: boolean } | undefined>(undefined);
+  const commitDrag = (index: number) => {
+    const d = dragged.value;
+    if (!d) return false;
+    const committing = { axis: d.axis, index, committing: true };
+    dragged.set(committing);
+    void api
+      .group('Slice', (g) => g.cryoet!.slice({ volume, axis: d.axis, index } as never))
+      .finally(() => {
+        if (dragged.value === committing) dragged.set(undefined);
+      });
+    return true;
+  };
+  // a drag ended without a commit (the pointer up where it started: no change event; the controls gone): committed
+  // where it differs from the state, else let go
+  const settleDrag = () => {
+    const d = dragged.value;
+    if (!d || d.committing) return;
+    if (d.index === info.value?.slices.find((x) => x.axis === d.axis)?.index) dragged.set(undefined);
+    else commitDrag(d.index);
+  };
+  const onPointerUp = () => setTimeout(settleDrag, 0);
+  if (typeof window !== 'undefined') window.addEventListener('pointerup', onPointerUp, true);
+  onCleanup(() => {
+    if (typeof window !== 'undefined') window.removeEventListener('pointerup', onPointerUp, true);
+    settleDrag();
+  });
+  const previewIndex = (i: number) => {
+    const axis = current();
+    if (area.previewSlice?.(volume, axis, i)) dragged.set({ axis, index: i });
+    else move.preview({ index: i }, axis);
+  };
+  const commitIndex = (i: number) => {
+    if (dragged.value?.axis !== current() || !commitDrag(i)) move.commit({ index: i }, current());
+  };
   // a value of the slice shown: what has not landed yet for its axis over the state's
   const shown = (key: 'index' | 'contrast', now: ReadonlyState<number | undefined>, none: number) =>
-    derive([now, move.changes, picked.asReadonly], (v) => move.overlay(current())?.[key] ?? v ?? none);
+    derive([now, move.changes, picked.asReadonly, dragged.asReadonly], (v, _c, _p, d) =>
+      key === 'index' && d && d.axis === current() ? d.index : (move.overlay(current())?.[key] ?? v ?? none),
+    );
   // on a line of its own, not the slider's unit: a unit of changing width would resize the track mid-drag; it follows
   // the slice shown (a drag's value before it lands)
   const angle = derive([count, shown('index', index, 0), picked.asReadonly], (n, i, a) =>
@@ -614,8 +654,8 @@ export function Slice(props: {
                 format={(i) => String(i + 1)}
                 parse={(text) => Math.round(Number.parseFloat(text)) - 1}
                 unit={mapState(count, (n) => `/ ${n}`)}
-                onPreview={(i) => move.preview({ index: i }, current())}
-                onCommit={(i) => move.commit({ index: i }, current())}
+                onPreview={previewIndex}
+                onCommit={commitIndex}
               />
             </Line>
             <Show when={mapState(angle, (t) => !!t)}>

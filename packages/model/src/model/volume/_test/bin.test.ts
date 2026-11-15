@@ -22,6 +22,29 @@ const position = (g: Grid, i: number, j: number, k: number) =>
 const linear = (i: number, j: number, k: number) => i + 10 * j + 100 * k;
 
 describe('binGrid', () => {
+  it('bins by a factor per axis: x and y by 2, z kept (a tilt series: z is the tilt)', async () => {
+    const g = grid([2, 1, 0], Float32Array, [5, 4, 3], linear);
+    const b = await binGrid(g, [2, 2, 1]);
+    expect(b.cells.space.dimensions).toEqual([3, 2, 3]);
+    expect(at(b, 0, 0, 2)).toBeCloseTo(linear(0.5, 0.5, 2), 5);
+    expect(at(b, 2, 1, 1)).toBeCloseTo(linear(4, 2.5, 1), 5);
+    // voxel (i, j, k) at the center of its block: z unmoved, unscaled
+    const p = position(b, 1, 1, 2);
+    const q = position(g, 2.5, 2.5, 2);
+    for (let a = 0; a < 3; ++a) expect(p[a]).toBeCloseTo(q[a], 5);
+  });
+
+  it('yields per slab of its slowest axis, its means made slab by slab (a big grid binned in the background)', async () => {
+    const g = grid([2, 1, 0], Float32Array, [8, 6, 64], linear);
+    let updates = 0;
+    const ctx = { shouldUpdate: true, update: async () => void updates++ } as any;
+    const b = await binGrid(g, 2, ctx);
+    // one pass, a yield per slab of the slowest axis (64): a binned slab's means right after its sums
+    expect(updates).toBeGreaterThanOrEqual(64);
+    const ref = await binGrid(grid([0, 1, 2], Float32Array, [8, 6, 64], linear), 2);
+    for (let k = 0; k < 32; ++k) expect(at(b, 3, 2, k)).toBeCloseTo(at(ref, 3, 2, k), 4);
+  });
+
   it('gives the block means, a partial block at the edge the mean of what it holds', async () => {
     const g = grid([2, 1, 0], Float32Array, [5, 4, 3], linear);
     const b = await binGrid(g, 2);
