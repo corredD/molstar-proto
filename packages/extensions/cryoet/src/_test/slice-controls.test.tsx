@@ -8,6 +8,7 @@
  */
 
 import { Mat4, Tensor } from '@molstar/core/math/linear-algebra';
+import { ValueCell } from '@molstar/core/util/value-cell';
 import { CCP4Writer } from '@molstar/model/formats/writer/ccp4/ccp4';
 import type { Grid } from '@molstar/model/model/volume';
 import { render } from '@molstar/prism-ui';
@@ -345,6 +346,54 @@ describe("an oblique slice's sliders on a viewer", () => {
       expectOk(await v.api.run('history.undo', {}));
       expect(position()).toEqual([4, 0, 0]);
       dispose();
+    } finally {
+      await v.dispose();
+    }
+  });
+});
+
+describe("a windowed slice's previews on a viewer (previewSlice)", () => {
+  /** A 12³ map's z slice, standing in for one drawn from a window (the headless viewer has no GPU) */
+  async function windowedSlice() {
+    const base = DefaultPrismViewerSpec();
+    const v = await createPrismViewerHeadless({
+      spec: { ...base, extensions: [...(base.extensions ?? []), CryoetExtension] },
+    });
+    expectOk(await v.api.load.files({ files: [mapFile('map.mrc', 12)] }));
+    const c = v.api.cryoet!;
+    const volume = v.plugin.managers.volume.hierarchy.current.volumes[0].cell.transform.ref;
+    expectOk(await c.slice({ volume, axis: 'z', index: 2 } as never));
+    const ref = () =>
+      v.plugin.managers.volume.hierarchy.current.volumes[0].representations.find(
+        (r) => (r.cell.transform.params as any)?.type?.name === 'slice' && !r.cell.state.isHidden,
+      );
+    const repr = ref()!.cell.obj!.data.repr as any;
+    for (const o of repr.renderObjects) ValueCell.update(o.values.dSliceWindow, true);
+    const frame = () => new Promise((r) => setTimeout(r, 40));
+    return { v, c, volume, ref, repr, frame };
+  }
+
+  it('a preview pending when the release commits does not move the slice back', async () => {
+    const { v, c, volume, ref, repr, frame } = await windowedSlice();
+    try {
+      expect(c.previewSlice(volume, 'z', 7)).toBe(true);
+      expectOk(await v.api.group('Slice', (g) => g.cryoet!.slice({ volume, axis: 'z', index: 8 } as never)));
+      await frame();
+      expect((ref()!.cell.transform.params as any).type.params.dimension.params).toBe(8);
+      expect(repr.props.dimension.params).toBe(8);
+    } finally {
+      await v.dispose();
+    }
+  });
+
+  it('a preview pending when the slice is removed makes nothing', async () => {
+    const { v, c, volume, ref, repr, frame } = await windowedSlice();
+    try {
+      const created = vi.spyOn(repr, 'createOrUpdate');
+      expect(c.previewSlice(volume, 'z', 7)).toBe(true);
+      await v.plugin.build().delete(ref()!.cell.transform.ref).commit();
+      await frame();
+      expect(created).not.toHaveBeenCalled();
     } finally {
       await v.dispose();
     }
