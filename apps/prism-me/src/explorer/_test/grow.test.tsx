@@ -839,11 +839,28 @@ describe('Grow › On a slice (slice-constraint)', () => {
     for (let i = before; i < list.count; ++i) {
       expect(Math.abs(list.coordinates[i * 3 + 2])).toBeLessThan(0.01);
       expect(list.coordinates[i * 3 + 1]).toBeGreaterThan(-1e-6);
-    }    // a Helix on the slice: its Axis, along the plane or its normal (Ludo, 2026-11-14)
+    }
+    // a Helix on the slice: its Axis, along the plane or its normal (Ludo, 2026-11-14)
     choice(host, 'Mode', 'Helix')!.click();
     await until(() => !!choice(host, 'Axis', 'Normal'));
     choice(host, 'Axis', 'Normal')!.click();
     expect(m.growSettings.value.sliceAxis).toBe('normal');
     expect(growParams(m.growSource.value!, m.growSettings.value)).toMatchObject({ slice: volume, sliceAxis: 'normal' });
+    // grown, then the Axis changed: the live grow made again by it; On None: no Axis row (gate 3)
+    const steps = count(v);
+    const grows = () =>
+      Array.from(host.querySelectorAll<HTMLButtonElement>('button')).filter((b) => b.textContent?.trim() === 'Grow');
+    grows().at(-1)!.click();
+    await until(() => count(v) > steps);
+    choice(host, 'Axis', 'Along plane')!.click();
+    const recorded = () =>
+      (
+        Array.from(v.plugin.state.data.cells.values()).find(
+          (c) => (c.transform.params as { strokes?: unknown[] })?.strokes,
+        )!.transform.params as { strokes: { grow?: { params: Record<string, unknown> } }[] }
+      ).strokes.at(-1)!.grow!.params.sliceAxis;
+    await until(() => recorded() === 'along');
+    await pick('None');
+    await until(() => !choice(host, 'Axis', 'Normal'));
   });
 });
