@@ -80,9 +80,9 @@ async function mapViewer() {
     const vol = v.plugin.managers.volume.hierarchy.current.volumes[0];
     const rep = vol.representations[0].cell.transform.parent;
     const data = v.plugin.state.data.cells.get(rep)!.obj!.data as { grid: Grid };
-    return Array.from(Vec3.transformMat4(Vec3(), Vec3.create(1, 0, 0), Grid.getGridToCartesianTransform(data.grid))).map(
-      (x) => Math.round(x * 1e3) / 1e3,
-    );
+    return Array.from(
+      Vec3.transformMat4(Vec3(), Vec3.create(1, 0, 0), Grid.getGridToCartesianTransform(data.grid)),
+    ).map((x) => Math.round(x * 1e3) / 1e3);
   };
   return { v, ref, voxel };
 }
@@ -114,6 +114,23 @@ describe('a volume scaled (its pixel size)', () => {
     expect(voxel()).toEqual([220, 100, 240]);
     expectOk(await v.api.run('history.redo', {}));
     expect(voxel()).toEqual([110, 50, 220]);
+  });
+
+  it('is placed by its pose after a scale: the center where asked, the turn about it, the scale kept', async () => {
+    const { v, ref } = await mapViewer();
+    const s = v.api.stage!;
+    expectOk(await s.scale({ target: ref, scale: 2 } as never));
+    const center = () => {
+      const p = s.placementOf(ref)!;
+      return Array.from(Vec3.transformMat4(Vec3(), p.center, p.matrix)).map((x) => Math.round(x * 1e3) / 1e3);
+    };
+    const c0 = center();
+    expectOk(await v.api.run('stage.pose', { target: ref, x: 500 }));
+    expect(center()).toEqual([500, c0[1], c0[2]]);
+    expect(s.scaleOf(ref)).toBe(2);
+    expectOk(await v.api.run('stage.pose', { target: ref, ez: 90 }));
+    expect(center()).toEqual([500, c0[1], c0[2]]);
+    expect(s.scaleOf(ref)).toBe(2);
   });
 
   it("scales a volume's labels with it, in the same step", async () => {

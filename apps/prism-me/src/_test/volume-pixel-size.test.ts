@@ -5,6 +5,7 @@
  */
 
 import { afterEach, describe, expect, it } from 'vitest';
+import { ColorScale } from '@molstar/core/util/color/scale';
 import { Mat4, Tensor, Vec3 } from '@molstar/core/math/linear-algebra';
 import { CryoetExtension } from '@molstar/cryoet-extension/prism-viewer';
 import { sceneVolumes } from '@molstar/mesoscale-extension/fit';
@@ -69,7 +70,9 @@ async function viewerOf(map: File, ...files: File[]) {
 describe('cryoet.volume', () => {
   it('is a tool of the assistant and a command, with a pixel size an agent can type and a reset of its own', async () => {
     const spec = createMesoscaleExplorerSpec('');
-    const tools = spec.extensions!.flatMap((e) => (isLazyExtension(e) ? (e.stub.skills ?? []) : (e.skills ?? []))).flatMap((k) => k.tools);
+    const tools = spec
+      .extensions!.flatMap((e) => (isLazyExtension(e) ? (e.stub.skills ?? []) : (e.skills ?? [])))
+      .flatMap((k) => k.tools);
     expect(tools.find((t) => t.operation === 'cryoet.volume')?.id).toBe('set_pixel_size');
     const { v, ref, c } = await viewer();
     expect((await c.volume({ volume: ref } as never)).ok).toBe(false);
@@ -145,7 +148,11 @@ describe('cryoet.volume', () => {
     expect(voxel()).toEqual([8, 0, 0]);
     // a session made before the decorator carried a scale: its params without it
     expectOk(await c.volume({ volume: ref, reset: true } as never));
-    const old = JSON.parse(JSON.stringify(snapshot).replace(/"scale":2,?/g, '').replace(/,}/g, '}'));
+    const old = JSON.parse(
+      JSON.stringify(snapshot)
+        .replace(/"scale":2,?/g, '')
+        .replace(/,}/g, '}'),
+    );
     await v.plugin.state.setSnapshot(old);
     expect(voxel()).toEqual([4, 0, 0]);
     await v.plugin.state.setSnapshot(before);
@@ -163,13 +170,17 @@ describe('cryoet.volume', () => {
       const loci = (cell.obj as SO.Shape.Representation3D).data.repr.getAllLoci()[0] as { shape: Shape };
       return loci.shape.getColor(0, 0);
     };
+    // the map's value is x (Å): the vertex at x = 30 reads 30, then, drawn at twice the size, the file's x = 15
+    const sigmas = (x: number) => {
+      const { mean, sigma } = sceneVolumes(v.plugin.state.data)[0].volume.grid.stats;
+      return ColorScale.create({ listOrName: 'viridis', domain: [-2, 2] }).color((x - mean) / sigma);
+    };
     expectOk(await c.mesh({ mesh: 'tri.obj', volume: 'map.mrc', sample: 'surface' } as never));
-    const flat = await color();
+    expect(await color()).toBe(sigmas(30));
     expectOk(await c.volume({ volume: ref, pixelSize: 8 } as never));
     // the density fit reads the drawn grid
     const drawn = sceneVolumes(v.plugin.state.data)[0].volume.grid;
     expect(Grid.getGridToCartesianTransform(drawn)[0]).toBeCloseTo(8, 6);
-    // the triangle at x = 30 now reads the file's x = 15: another density, another color
-    expect(await color()).not.toBe(flat);
+    expect(await color()).toBe(sigmas(15));
   });
 });

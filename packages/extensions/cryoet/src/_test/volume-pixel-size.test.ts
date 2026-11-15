@@ -5,7 +5,7 @@
  */
 
 import { afterEach, describe, expect, it } from 'vitest';
-import { Mat4, Tensor, Vec3 } from '@molstar/core/math/linear-algebra';
+import { Mat4, Tensor } from '@molstar/core/math/linear-algebra';
 import { CCP4Writer } from '@molstar/model/formats/writer/ccp4/ccp4';
 import { Grid } from '@molstar/model/model/volume';
 import { VolumeTransform } from '@molstar/plugin/state/transforms/volume/ops';
@@ -47,7 +47,9 @@ async function mrcViewer(dims: [number, number, number] = [40, 36, 30]) {
     const identity = { name: 'matrix' as const, params: { data: Mat4.identity(), transpose: false } };
     const cell = v.plugin.state.data.cells.get(ref)!;
     await v.plugin.runTask(
-      v.plugin.state.data.updateTree(v.plugin.state.data.build().to(cell).insert(VolumeTransform, { transform: identity, scale: k })),
+      v.plugin.state.data.updateTree(
+        v.plugin.state.data.build().to(cell).insert(VolumeTransform, { transform: identity, scale: k }),
+      ),
     );
   };
   return { v, ref, scale };
@@ -97,5 +99,3 @@ describe('a volume with a pixel size', () => {
     });
   });
 });
-
-void Vec3;

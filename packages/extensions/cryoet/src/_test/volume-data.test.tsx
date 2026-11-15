@@ -168,7 +168,8 @@ describe("a volume's Data section", () => {
 
 describe("a volume's Pixel size", () => {
   const sized = (pixelSize: number) => ({ ...TS08, pixelSize, voxel: `${pixelSize * 4} Å (file: 27.2 Å)` });
-  const slider = (host: HTMLElement) => host.querySelector<HTMLInputElement>('input[type=range][aria-label="Pixel size"]');
+  const slider = (host: HTMLElement) =>
+    host.querySelector<HTMLInputElement>('input[type=range][aria-label="Pixel size"]');
 
   it("shows the pixel size in use, the file's beside it and Reset only when changed", () => {
     const same = mounted(TS08, () => ApiResult.ok(''));

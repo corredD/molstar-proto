@@ -63,7 +63,8 @@ export const CryoetSkill: ViewerSkill = {
     {
       id: 'set_pixel_size',
       operation: 'cryoet.volume',
-      description: "Sets a volume's pixel size (Å), when its file's is wrong: the map scaled about the origin; reset: the file's.",
+      description:
+        "Sets a volume's pixel size (Å), when its file's is wrong: the map scaled about the origin; reset: the file's.",
     },
   ],
 };

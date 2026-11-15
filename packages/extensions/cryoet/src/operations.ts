@@ -1116,11 +1116,14 @@ export class CryoetApi extends ApiArea {
         return ApiResult.already(`${name}'s pixel size is ${+(file * k).toFixed(4)} Å already.`);
       }
       // the stage tools place what goes with the volume (its labels, clips, plane slices), in the same step
-      if (!(ctx.api as { stage?: unknown }).stage) return ApiResult.fail('blocked', 'A pixel size needs the stage tools.');
+      if (!(ctx.api as { stage?: unknown }).stage)
+        return ApiResult.fail('blocked', 'A pixel size needs the stage tools.');
       const r = await ctx.api.run('stage.scale', { target: v.cell.transform.ref, scale: k });
       if (!r.ok) return r;
       return ApiResult.ok(
-        k === 1 ? `${name} has the file's pixel size, ${+file.toFixed(4)} Å.` : `${name} has a pixel size of ${+(file * k).toFixed(4)} Å.`,
+        k === 1
+          ? `${name} has the file's pixel size, ${+file.toFixed(4)} Å.`
+          : `${name} has a pixel size of ${+(file * k).toFixed(4)} Å.`,
         { nodes: [v.cell.transform.ref] },
       );
     },

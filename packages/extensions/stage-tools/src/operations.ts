@@ -449,7 +449,11 @@ export class StageApi extends ApiArea {
       }
       // its labels, clips and plane slices with it: the change from where they are drawn (moved after scaled) to where
       // they go, as `stage.move` places them
-      const moved = !old ? Mat4.identity() : l ? (old.transform.params as { transform: Mat4 }).transform : volumeMatrixOf(old);
+      const moved = !old
+        ? Mat4.identity()
+        : l
+          ? (old.transform.params as { transform: Mat4 }).transform
+          : volumeMatrixOf(old);
       const placed = (k: number) => Mat4.mul(Mat4(), moved, Mat4.fromUniformScaling(Mat4(), k));
       const m = Mat4.mul(Mat4(), placed(scale), Mat4.invert(Mat4(), placed(now)));
       placeWith(
