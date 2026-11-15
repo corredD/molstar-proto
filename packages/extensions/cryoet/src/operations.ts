@@ -36,6 +36,7 @@ import type { OmeZarrFormat } from '@molstar/model/formats/volume/ome-zarr';
 import { Ccp4Format } from '@molstar/model/formats/volume/ccp4';
 import { VolumeFromCcp4 } from '@molstar/plugin/state/formats/volume/ccp4';
 import { gridText, volumeStats, voxelText } from '@molstar/prism-viewer/api/volume';
+import { VolumeTransform } from '@molstar/plugin/state/transforms/volume/ops';
 import { type ApiContext, ApiArea, type ApiFailure, ApiResult } from '@molstar/prism-viewer/api/area';
 import { OptionalParam } from '@molstar/prism-viewer/api/params';
 import { isFailure, labelOf as structureLabel, loadedStructures, pickOne } from '@molstar/prism-viewer/api/scope';
@@ -151,7 +152,12 @@ export interface VolumeDataInfo {
   /** Its format (OME-ZARR, CCP4…) */
   readonly source: string;
   readonly grid: string;
+  /** Its voxel as drawn, "20 Å (file: 10 Å)" when its pixel size is not the file's */
   readonly voxel: string;
+  /** Its pixel size in use (Å, along x, at the finest level) */
+  readonly pixelSize: number;
+  /** The file's (Å, along x, at the finest level: what Reset goes back to) */
+  readonly filePixelSize: number;
   /** The bytes of its voxels, decoded */
   readonly bytes: number;
   /** Its levels, coarsest to finest; empty: one resolution (an MRC map, a single-level OME-Zarr) */
@@ -280,7 +286,7 @@ export class CryoetApi extends ApiArea {
     return watchedState(
       () => {
         const v = oneVolume({ plugin }, volume || undefined);
-        return isFailure(v) ? undefined : volumeDataOf(v);
+        return isFailure(v) ? undefined : volumeDataOf({ plugin }, v);
       },
       () => plugin.state.data.events.changed,
       { compare: (a, b) => JSON.stringify(a) === JSON.stringify(b) },
@@ -1072,6 +1078,40 @@ export class CryoetApi extends ApiArea {
     },
   });
 
+  readonly volume = this.operation({
+    id: 'cryoet.volume',
+    title: "Set a volume's pixel size",
+    params: {
+      volume: PD.Text('', { description: 'A volume by label or state ref; empty: the only one loaded' }),
+      pixelSize: PD.Value<number | null>(null, {
+        description:
+          "Its pixel size (Å, along x, at the finest level): the volume scaled about the origin as if the file's header said so; null: the file's",
+      }),
+    },
+    async run({ volume, pixelSize }, ctx) {
+      const v = oneVolume(ctx, volume || undefined);
+      if (isFailure(v)) return v;
+      const name = v.cell.obj?.label ?? 'The volume';
+      if (pixelSize !== null && !(typeof pixelSize === 'number' && pixelSize > 0 && Number.isFinite(pixelSize))) {
+        return ApiResult.fail('invalid', 'A pixel size is more than 0 Å.', 'null goes back to the file’s.');
+      }
+      const file = filePixelSize(v);
+      // the factor over the file's: 1 exactly for the file's own, so Reset gives it back to the bit
+      const k = pixelSize === null || Math.abs(pixelSize - file) < 1e-9 * file ? 1 : pixelSize / file;
+      if (k === volumeScale(ctx, v)) {
+        return ApiResult.already(`${name}'s pixel size is ${+(file * k).toFixed(4)} Å already.`);
+      }
+      // the stage tools place what goes with the volume (its labels, clips, plane slices), in the same step
+      if (!(ctx.api as { stage?: unknown }).stage) return ApiResult.fail('blocked', 'A pixel size needs the stage tools.');
+      const r = await ctx.api.run('stage.scale', { target: v.cell.transform.ref, scale: k });
+      if (!r.ok) return r;
+      return ApiResult.ok(
+        k === 1 ? `${name} has the file's pixel size, ${+file.toFixed(4)} Å.` : `${name} has a pixel size of ${+(file * k).toFixed(4)} Å.`,
+        { nodes: [v.cell.transform.ref] },
+      );
+    },
+  });
+
   readonly level = this.operation({
     id: 'cryoet.level',
     title: 'Read a volume at another resolution (an OME-Zarr level, an MRC binned)',
@@ -1101,7 +1141,7 @@ export class CryoetApi extends ApiArea {
               : 'Only an OME-Zarr volume or an MRC map has levels.',
         );
       }
-      const levels = levelViews(zarr);
+      const levels = levelViews(zarr, volumeScale(ctx, v));
       const to = zarr.file.levels.find((l) => l.path === level);
       if (!to) {
         return ApiResult.fail(
@@ -1295,7 +1335,7 @@ function sliceOf(ctx: Pick<ApiContext, 'plugin'>, v: VolumeRef): SliceInfo | und
       visible: !r.cell.state.isHidden,
     };
   });
-  return { dimensions: [x, y, z], slices, obliques, radius: Grid.getBoundingSphere(data.grid).radius };
+  return { dimensions: [x, y, z], slices, obliques, radius: Grid.getBoundingSphere(drawn).radius };
 }
 
 // --- a volume's data and its levels (cryoet.level) -------------------------------------------------------------------
@@ -1310,13 +1350,13 @@ function zarrOf(v: VolumeRef) {
 }
 
 /** An OME-Zarr's levels, coarsest to finest, each its binning against the finest */
-function levelViews(zarr: NonNullable<ReturnType<typeof zarrOf>>): VolumeLevelView[] {
+function levelViews(zarr: NonNullable<ReturnType<typeof zarrOf>>, k = 1): VolumeLevelView[] {
   const finest = Math.min(...zarr.file.levels.map((l) => l.scale[0]));
   return [...zarr.file.levels]
     .sort((a, b) => b.scale[0] - a.scale[0])
     .map((l) => {
       const binning = Math.round((l.scale[0] / finest) * 10) / 10;
-      const spacing = l.scale[0];
+      const spacing = l.scale[0] * k;
       return {
         path: l.path,
         binning,
@@ -1329,18 +1369,48 @@ function levelViews(zarr: NonNullable<ReturnType<typeof zarrOf>>): VolumeLevelVi
     });
 }
 
-function volumeDataOf(v: VolumeRef): VolumeDataInfo | undefined {
+/** A volume's scale: its pixel size over the file's (its transform decorator's `scale`, 1 without one) */
+function volumeScale(ctx: Pick<ApiContext, 'plugin'>, v: VolumeRef): number {
+  const { tree, cells } = ctx.plugin.state.data;
+  for (let at = v.cell.transform.ref; ; ) {
+    const next = tree.children
+      .get(at)
+      .toArray()
+      .map((c) => cells.get(c))
+      .find((c) => c?.transform.transformer.definition.isDecorator);
+    if (!next) return 1;
+    if (next.transform.transformer === VolumeTransform) return (next.transform.params as { scale?: number }).scale ?? 1;
+    at = next.transform.ref;
+  }
+}
+
+/** The file's pixel size (Å along x, at the finest level): what the volume says before its pixel size is set */
+function filePixelSize(v: VolumeRef): number {
+  const zarr = zarrOf(v);
+  if (zarr) return Math.min(...zarr.file.levels.map((l) => l.scale[0]));
+  const mrc = ccp4Of(v);
+  if (mrc) return mrc.one.scale[0];
+  const g = Grid.getGridToCartesianTransform(v.cell.obj!.data.grid);
+  return Math.hypot(g[0], g[1], g[2]);
+}
+
+function volumeDataOf(ctx: Pick<ApiContext, 'plugin'>, v: VolumeRef): VolumeDataInfo | undefined {
   const data = v.cell.obj?.data;
   if (!data) return;
-  const stats = volumeStats(data);
+  const k = volumeScale(ctx, v);
   const zarr = zarrOf(v);
   const mrc = zarr ? undefined : ccp4Of(v);
-  const levels = zarr && zarr.file.levels.length > 1 ? levelViews(zarr) : mrc ? binLevels(mrc) : [];
+  const levels = zarr && zarr.file.levels.length > 1 ? levelViews(zarr, k) : mrc ? binLevels(mrc, k) : [];
   const several = levels.length > 1;
+  // the voxel as drawn (a scaled volume's last decorator's grid), the file's beside it when changed
+  const stats = volumeStats((lastDecorator(ctx, v).obj?.data as Volume | undefined) ?? data);
+  const file = filePixelSize(v);
   return {
     source: data.sourceData.kind.toUpperCase(),
     grid: gridText(stats),
-    voxel: voxelText(stats),
+    voxel: k === 1 ? voxelText(stats) : `${voxelText(stats)} (file: ${voxelText(volumeStats(data))})`,
+    pixelSize: file * k,
+    filePixelSize: file,
     bytes: (data.grid.cells.data as unknown as ArrayBufferView).byteLength ?? 0,
     levels: several ? levels : [],
     ...(several ? { level: zarr ? zarr.level.path : String(mrc!.bin) } : {}),
@@ -1407,7 +1477,7 @@ function binnedFrame(one: LevelFrame, f: number): LevelFrame {
 }
 
 /** An MRC's levels, coarsest to finest: 1× as read (its type's bytes), each binning a Float32 grid */
-function binLevels(mrc: Ccp4Read): VolumeLevelView[] {
+function binLevels(mrc: Ccp4Read, k = 1): VolumeLevelView[] {
   const longest = Math.max(...Array.from(mrc.one.size));
   return Binnings.filter((f) => f === 1 || (!mrc.stack && longest / f >= MinBinnedSide && (f < 8 || longest > 1000)))
     .reverse()
@@ -1415,7 +1485,7 @@ function binLevels(mrc: Ccp4Read): VolumeLevelView[] {
       const frame = binnedFrame(mrc.one, f);
       const size = [frame.size[0], frame.size[1], frame.size[2]] as const;
       const bytes = size[0] * size[1] * size[2] * (f === 1 ? mrc.bytes : 4);
-      const spacing = frame.scale[0];
+      const spacing = frame.scale[0] * k;
       return {
         path: String(f),
         binning: f,
@@ -1434,7 +1504,7 @@ function binLevels(mrc: Ccp4Read): VolumeLevelView[] {
  */
 async function binTo(ctx: ApiContext, v: VolumeRef, mrc: Ccp4Read, level: string) {
   const name = v.cell.obj?.label ?? 'The volume';
-  const levels = binLevels(mrc);
+  const levels = binLevels(mrc, volumeScale(ctx, v));
   const view = levels.find((l) => l.path === level.trim().replace(/×$/, ''));
   if (!view) {
     return ApiResult.fail(
