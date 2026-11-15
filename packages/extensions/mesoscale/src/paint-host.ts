@@ -50,6 +50,7 @@ import {
   slicePlane,
 } from './fit.js';
 import { membraneFrame } from './pick-surface.js';
+import { sliceParams } from './slice-surface.js';
 
 // Paint mode's host on the viewer (paint-mode.ts): the plugin's canvas, its picks and camera, and the stroke run as
 // `mesoscale.paint`.
@@ -429,7 +430,7 @@ export function pluginPaintHost(
         ...(surface ? { surface: true } : {}),
         ...(mesh ? { mesh } : {}),
         // on a slice whose volume is still there (slice-constraint)
-        ...(slice && volumes.some((v) => v.ref === slice.volume) ? { slice } : {}),
+        ...(slice && volumes.some((v) => v.ref === slice.volume) ? sliceParams(slice) : {}),
         ...(s.orient !== 'auto' ? { orient: s.orient } : {}),
         ...(s.spin !== undefined ? { spin: s.spin } : {}),
         // a volume deleted since it was chosen: unfitted (review M2)

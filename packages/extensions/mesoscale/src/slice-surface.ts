@@ -22,8 +22,25 @@ export interface GrowSlice {
   readonly normal: readonly number[];
 }
 
-/** A slice's plane (`SlicePlane`) of a `GrowSlice`, its normal unit; undefined for one of no plane */
+/** A slice of an operation's params (`slice`, `slicePoint`, `sliceNormal`); an empty or absent volume: none */
+export function sliceOfParams(v: {
+  readonly slice?: unknown;
+  readonly slicePoint?: ArrayLike<number>;
+  readonly sliceNormal?: ArrayLike<number>;
+}): GrowSlice | undefined {
+  const volume = typeof v.slice === 'string' ? v.slice.trim() : '';
+  if (!volume) return undefined;
+  return { volume, point: Array.from(v.slicePoint ?? []), normal: Array.from(v.sliceNormal ?? []) };
+}
+
+/** An operation's params of a slice (`sliceOfParams`'s) */
+export function sliceParams(slice: GrowSlice) {
+  return { slice: slice.volume, slicePoint: [...slice.point], sliceNormal: [...slice.normal] };
+}
+
+/** A slice's plane (`SlicePlane`) of a `GrowSlice`, its normal unit; undefined for one of no plane (review 8) */
 export function slicePlaneOf(slice: GrowSlice): SlicePlane | undefined {
+  if (slice.point.length !== 3 || slice.normal.length !== 3) return undefined;
   const normal = Vec3.create(slice.normal[0], slice.normal[1], slice.normal[2]);
   const length = Vec3.magnitude(normal);
   if (!(length > 1e-9) || ![...slice.point].every(Number.isFinite)) return undefined;

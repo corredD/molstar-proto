@@ -112,7 +112,14 @@ import { spiralCount } from './grow-link.js';
 import { fiberUnitUp } from './fiber-up.js';
 import { type SymmetryGroup, SymmetryGrowParams, symmetryAt, symmetryContact, symmetryPoses } from './grow-symmetry.js';
 import { meshAxis, sceneMesh, sceneMeshes, sceneMeshSurface } from './mesh-surface.js';
-import { type GrowSlice, planeSurface, sceneSliceAt, slicePlaneOf } from './slice-surface.js';
+import {
+  type GrowSlice,
+  planeSurface,
+  sceneSliceAt,
+  sliceOfParams,
+  slicePlaneOf,
+  sliceParams,
+} from './slice-surface.js';
 import {
   envelopeOf,
   type FitContrast,
@@ -378,7 +385,7 @@ export function growParams(source: GrowSource, s: GrowSettings) {
   } else {
     delete out.axis;
     // on a slice (slice-constraint): as on a mesh
-    if (s.slice && s.mode !== 'crystal') out.slice = s.slice;
+    if (s.slice && s.mode !== 'crystal') Object.assign(out, sliceParams(s.slice));
   }
   // fitted to a volume (density-fit)
   if (s.fit) Object.assign(out, { fit: s.fit, contrast: s.contrast, threshold: s.threshold });
@@ -513,6 +520,22 @@ const WalkFiberParams = (what: string) => ({
   ),
 });
 
+/**
+ * A volume's slice an operation's copies are on (slice-constraint): its volume and its plane in the scene, three plain
+ * params (the assistant and ⌘K carry text and vectors, not an object; review 2); an empty volume: none
+ */
+const SliceParams = (what: string) => ({
+  slice: OptionalParam(
+    PD.Text('', {
+      description: `${what} a volume's slice: the volume by state ref or name (with slicePoint and sliceNormal); empty: none`,
+    }),
+  ),
+  slicePoint: OptionalParam(
+    PD.Vec3(Vec3.create(0, 0, 0), {}, { description: "A point of the slice's plane (Å, the scene)" }),
+  ),
+  sliceNormal: OptionalParam(PD.Vec3(Vec3.create(0, 0, 1), {}, { description: "The slice's normal (the scene)" })),
+});
+
 /** The rise, twist and jitter given (a jitter within 0 to 180) */
 function ownFiberOf(v: Partial<Record<string, unknown>>): NonNullable<PaintStroke['own']> {
   const out: { rise?: number; twist?: number; jitter?: number } = {};
@@ -533,7 +556,7 @@ export class MesoscaleApi extends ApiArea {
     async (params) => {
       const r = await this.paint(params as never);
       if (r.ok) {
-        this.growFromLast(r.changed?.nodes?.[0], params.mesh as string | undefined, params.slice as GrowSlice);
+        this.growFromLast(r.changed?.nodes?.[0], params.mesh as string | undefined, sliceOfParams(params));
       }
       return r;
     },
@@ -1282,15 +1305,7 @@ export class MesoscaleApi extends ApiArea {
             'The mesh the copies are painted on (its state ref; with normals): a copy fitted to a volume stays on it',
         }),
       ),
-      slice: OptionalParam(
-        PD.Value<GrowSlice>(
-          { volume: '', point: [0, 0, 0], normal: [0, 0, 1] },
-          {
-            description:
-              "The volume's slice the copies are painted on: {volume, point, normal} (its state ref and its plane in the scene); a copy on it is turned like on a surface and fitted on it",
-          },
-        ),
-      ),
+      ...SliceParams('The copies are painted on'),
       spin: OptionalParam(
         PD.Numeric(0, { min: 0, max: 360, step: 1 }, { description: 'Turn about that axis, °; absent: at random' }),
       ),
@@ -1334,10 +1349,8 @@ export class MesoscaleApi extends ApiArea {
         fit,
         contrast,
         mesh,
-        slice,
       } = values as typeof values & {
         mesh?: string;
-        slice?: GrowSlice;
         group?: number;
         fit?: string;
         contrast?: FitContrast;
@@ -1359,6 +1372,7 @@ export class MesoscaleApi extends ApiArea {
         return ApiResult.fail('invalid', 'Give a normal for each position, x, y, z each.');
       }
       // on a slice (slice-constraint): its plane, a surface as a mesh's; no normals given (the API): the plane's (review 11)
+      const slice = sliceOfParams(values);
       const plane = slice && slicePlaneOf(slice);
       if (slice && !plane) return ApiResult.fail('invalid', "Give the slice's point and normal, x, y, z each.");
       const normals = given ?? (plane ? positions.map((_, i) => plane.normal[i % 3]) : undefined);
@@ -1765,15 +1779,7 @@ export class MesoscaleApi extends ApiArea {
             'Grow on a mesh of the scene (OBJ, PLY, VTP) by state ref or file name: Tiling, Random walk, Helix, Spiral, Sphere, Symmetry (with Snap); absent: in space',
         }),
       ),
-      slice: OptionalParam(
-        PD.Value<GrowSlice>(
-          { volume: '', point: [0, 0, 0], normal: [0, 0, 1] },
-          {
-            description:
-              "Grow on a volume's slice: {volume, point, normal} (its state ref and its plane in the scene), as on a mesh (not Helix); its plane ends at the volume's box; a mesh wins",
-          },
-        ),
-      ),
+      ...SliceParams('Grow on'),
       ...FitParams('Each grown copy'),
       threshold: OptionalParam(
         PD.Numeric(
@@ -1802,7 +1808,6 @@ export class MesoscaleApi extends ApiArea {
           pattern?: 'hex' | 'square';
           turn?: 'random' | 'source';
           mesh?: string;
-          slice?: GrowSlice;
           hand?: 'right' | 'left';
           direction?: 'up' | 'down';
           axis?: HelixAxis;
@@ -1861,7 +1866,8 @@ export class MesoscaleApi extends ApiArea {
       }
       if (isFailure(mesh)) return mesh;
       // on a slice (slice-constraint): its plane, bounded by its volume's box, a surface as a mesh's
-      const slice = !mesh && v.slice ? sliceOf(state, v.slice) : undefined;
+      const given = sliceOfParams(v);
+      const slice = !mesh && given ? sliceOf(state, given) : undefined;
       if (isFailure(slice)) return slice;
       if (slice && (mode === 'crystal' || mode === 'helix')) {
         return ApiResult.fail(
