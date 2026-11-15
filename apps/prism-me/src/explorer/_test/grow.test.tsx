@@ -783,3 +783,62 @@ describe('Grow › Fit to (density-fit)', () => {
     await until(() => count(v) === before + 3);
   });
 });
+
+describe('Grow › On a slice (slice-constraint)', () => {
+  it("lists the source's slice; None grows in space and the slice is picked again (review 4); Grow lays copies on it", async () => {
+    const { v, hiv } = await viewer();
+    const m = v.api.mesoscale!;
+    const n = 40;
+    const space = Tensor.Space([n, n, n], [2, 1, 0], Float32Array);
+    const data = Float32Array.from({ length: n * n * n }, (_, i) => i % 5);
+    const grid = {
+      transform: { kind: 'matrix' as const, matrix: Mat4.identity() },
+      cells: Tensor.create(space, Tensor.Data1(data)),
+      stats: { min: 0, max: 4, mean: 2, sigma: 1.4 },
+    };
+    const r = await v.api.load.files({ files: [new File([CCP4Writer.writeMrc(grid, data)], 'tomo.mrc')] });
+    if (!r.ok) throw new Error(r.message);
+    const volume = v.plugin.managers.volume.hierarchy.current.volumes[0].cell.transform.ref;
+    const host = mountScene(v);
+    await until(() => !!rowOf(host, 'HIV'));
+    rowOf(host, 'HIV')!.click();
+    await until(() => !!button(host, 'Grow'));
+    const section = button(host, 'Grow')!;
+    if (section.getAttribute('aria-expanded') !== 'true') section.click();
+    // CA #1 at (10, 0, 0), on the slice z = 0 (as painted there)
+    m.setGrowSource({ particles: hiv, index: 1 }, undefined, true, { volume, point: [0, 0, 0], normal: [0, 0, 1] });
+    await until(() => !!host.textContent?.includes('CA #1'));
+    choice(host, 'Mode', 'Tiling')!.click();
+    const on = () => host.querySelector<HTMLButtonElement>('button[aria-label="Grow on a mesh"]');
+    await until(() => on()?.textContent === 'Slice of tomo.mrc');
+    const pick = async (label: string) => {
+      on()!.click();
+      await until(() => !!host.querySelector('[role=option]'));
+      Array.from(host.querySelectorAll<HTMLElement>('[role=option]'))
+        .find((o) => o.textContent === label)!
+        .click();
+      await until(() => on()?.textContent === label);
+    };
+    await pick('None');
+    expect(m.growSettings.value.inSpace).toBe(true);
+    expect(m.growSettings.value.slice?.volume).toBe(volume);
+    await pick('Slice of tomo.mrc');
+    expect(m.growSettings.value.inSpace).toBe(false);
+    m.growSettings.set({ ...m.growSettings.value, spacing: 8, tiles: 7 });
+    const before = count(v);
+    const grow = Array.from(host.querySelectorAll<HTMLButtonElement>('button')).filter(
+      (b) => b.textContent?.trim() === 'Grow',
+    );
+    grow[grow.length - 1].click();
+    await until(() => count(v) > before);
+    const list = (
+      v.plugin.managers.particles.hierarchy.current.lists[0].representations[0].cell.obj!.data as unknown as {
+        sourceData: ParticleList;
+      }
+    ).sourceData;
+    for (let i = before; i < list.count; ++i) {
+      expect(Math.abs(list.coordinates[i * 3 + 2])).toBeLessThan(0.01);
+      expect(list.coordinates[i * 3 + 1]).toBeGreaterThan(-1e-6);
+    }
+  });
+});
