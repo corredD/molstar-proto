@@ -4,6 +4,7 @@
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
  * @author Gianluca Tomasello <giagitom@gmail.com>
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { getItemIndices, isItemIndexing } from '../quad-indices.js';
@@ -562,6 +563,22 @@ export function createRenderItem<T extends string>(
   const defineVersions = versionsOf(defineValueEntries, defineValues);
   const attributeVersions = versionsOf(attributeBuffers, attributeValues);
   const textureVersions = versionsOf(textures, textureValues);
+  // the textures owned outside the items (kind 'texture') by index: set to another texture object, rebound at the next
+  // draw without an update, as WebGPU's items do (a slice's switch from its binned planes on a timer, slice-window.ts)
+  const externalTextures: number[] = [];
+  for (let i = 0, il = textures.length; i < il; ++i) {
+    const spec = schema[textures[i][0]];
+    if (spec.type === 'texture' && spec.kind === 'texture') externalTextures.push(i);
+  }
+  const refreshExternalTextures = () => {
+    for (let j = 0, jl = externalTextures.length; j < jl; ++j) {
+      const i = externalTextures[j];
+      const value = textureValues[textures[i][0]];
+      if (value.ref.version === textureVersions[i]) continue;
+      textures[i][1] = value.ref.value as Texture;
+      textureVersions[i] = value.ref.version;
+    }
+  };
   const materialTextureVersions = versionsOf(materialTextures, materialTextureValues);
   const backBufferUniformVersions = versionsOf(backBufferUniformValueEntries, bufferedUniformValues);
   let drawCountVersion = values.drawCount.ref.version;
@@ -662,6 +679,7 @@ export function createRenderItem<T extends string>(
           objectUniforms.buffer.sync();
           objectUniforms.buffer.bind();
         }
+        refreshExternalTextures();
         program.bindTextures(textures);
       } else {
         if (
@@ -689,6 +707,7 @@ export function createRenderItem<T extends string>(
           objectUniforms.buffer.sync();
           objectUniforms.buffer.bind();
         }
+        refreshExternalTextures();
         program.bindTextures(textures);
         if (vertexArray) {
           vertexArray.bind();
