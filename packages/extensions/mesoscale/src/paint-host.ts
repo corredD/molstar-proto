@@ -407,7 +407,8 @@ export function pluginPaintHost(
       return fiberSettingsOf(data, id, b.target, own, p?.structures).rise;
     },
     async paint(brush: PaintBrushTarget, s: PaintSettings, positions, normals, seed, fiber, mesh, surface, fit, slice) {
-      const volumes = sceneVolumes(plugin.state.data);
+      // read only for a fit or a slice (the scene's volumes)
+      const volumes = fit || slice ? sceneVolumes(plugin.state.data) : [];
       const r = (await paint({
         ...(brush.structure
           ? // its list gone since it was chosen: the Painting list (review S3)
