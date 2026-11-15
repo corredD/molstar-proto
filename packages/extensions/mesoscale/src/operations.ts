@@ -392,7 +392,7 @@ export function growParams(source: GrowSource, s: GrowSettings) {
   } else {
     delete out.axis;
     // on a slice (slice-constraint): as on a mesh
-    // (not a crystal or a helix: they grow in space, review 3; nor with On None, review 4)
+    // (not a crystal: it grows in space; nor with On None, review 4); a helix's axis along it or its normal
     if (s.slice && !s.inSpace && s.mode !== 'crystal') {
       Object.assign(out, sliceParams(s.slice));
       if (s.mode === 'helix') out.sliceAxis = s.sliceAxis;
@@ -1736,7 +1736,7 @@ export class MesoscaleApi extends ApiArea {
           { min: 0, step: 0.1 },
           {
             description:
-              "Helix in space: its radius about the source's Fiber Axis, Å (the source on it); absent: the copy's diameter",
+              "Helix in space: its radius about the source's Fiber Axis, Å (the source on it); on a slice, about sliceAxis through the source; absent: the copy's diameter",
           },
         ),
       ),
@@ -2353,7 +2353,7 @@ export class MesoscaleApi extends ApiArea {
       return ApiResult.ok(
         path
           ? `Grew a fiber of ${name} from #${index}.`
-          : `Grew ${count} ${count === 1 ? 'copy' : 'copies'} of ${name} from #${index} (${mode}${onLabel ? ` on ${onLabel}` : ''}).`,
+          : `Grew ${count} ${count === 1 ? 'copy' : 'copies'} of ${name} from #${index} (${mode}${onLabel ? ` ${mode === 'helix' && slice ? 'from' : 'on'} ${onLabel}` : ''}).`,
         { nodes: [l.cell.transform.ref] },
         { value: { count, mode, id: growId } },
       );

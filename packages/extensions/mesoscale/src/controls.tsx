@@ -1075,7 +1075,7 @@ export function GrowBlock(props: { area: MesoscaleApi; api: ViewerApi; particles
                       number(
                         'helixRadius',
                         'Radius',
-                        "About the source's Fiber Axis, Å, the source on it (unset: the copy's diameter)",
+                        "About the source's Fiber Axis, Å, the source on it; on a slice, about its Axis through the source (unset: the copy's diameter)",
                         { min: 1, max: 5000, scale: 'log', unit: 'Å' },
                         diameter,
                       )
