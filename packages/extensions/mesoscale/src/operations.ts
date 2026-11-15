@@ -111,6 +111,7 @@ import { spiralCount } from './grow-link.js';
 import { fiberUnitUp } from './fiber-up.js';
 import { type SymmetryGroup, SymmetryGrowParams, symmetryAt, symmetryContact, symmetryPoses } from './grow-symmetry.js';
 import { meshAxis, sceneMesh, sceneMeshes, sceneMeshSurface } from './mesh-surface.js';
+import { type GrowSlice, slicePlaneOf } from './slice-surface.js';
 import {
   envelopeOf,
   type FitContrast,
@@ -122,6 +123,7 @@ import {
   PaintReach,
   sceneVolume,
   sceneVolumes,
+  type SlicePlane,
   type StrokeFit,
 } from './fit.js';
 import { isMembranePath } from './pick-surface.js';
@@ -402,6 +404,21 @@ const tooManyFits = (n: number) =>
     `That is ${n} copies to fit: a fit tries ${MaxFitted} at most (about 3 ms each).`,
     `Fewer copies (with a Count, it is drawn ${Overdraw} times over), or no fit.`,
   );
+/**
+ * A slice's normal at the points (x, y, z each) on its plane (within 0.01 Å: put there by paint), x, y, z each; 0, 0, 0
+ * for a point off it (slice-constraint: a copy fitted on the slice stays on it, one of a stroke that left it is free)
+ */
+function onPlane(plane: SlicePlane, positions: ArrayLike<number>): number[] {
+  const out: number[] = [];
+  const { point: o, normal: n } = plane;
+  for (let i = 0; i < positions.length; i += 3) {
+    const d = (positions[i] - o[0]) * n[0] + (positions[i + 1] - o[1]) * n[1] + (positions[i + 2] - o[2]) * n[2];
+    if (Math.abs(d) < 0.01) out.push(n[0], n[1], n[2]);
+    else out.push(0, 0, 0);
+  }
+  return out;
+}
+
 /**
  * A surface's unit normals at points (x, y, z each) within its reach (`GrowOn`), x, y, z each; 0, 0, 0 for a point off
  * it (density-fit: a copy fitted on it stays on it)
@@ -1250,6 +1267,15 @@ export class MesoscaleApi extends ApiArea {
             'The mesh the copies are painted on (its state ref; with normals): a copy fitted to a volume stays on it',
         }),
       ),
+      slice: OptionalParam(
+        PD.Value<GrowSlice>(
+          { volume: '', point: [0, 0, 0], normal: [0, 0, 1] },
+          {
+            description:
+              "The volume's slice the copies are painted on: {volume, point, normal} (its state ref and its plane in the scene); a copy on it is turned like on a surface and fitted on it",
+          },
+        ),
+      ),
       spin: OptionalParam(
         PD.Numeric(0, { min: 0, max: 360, step: 1 }, { description: 'Turn about that axis, °; absent: at random' }),
       ),
@@ -1293,8 +1319,10 @@ export class MesoscaleApi extends ApiArea {
         fit,
         contrast,
         mesh,
+        slice,
       } = values as typeof values & {
         mesh?: string;
+        slice?: GrowSlice;
         group?: number;
         fit?: string;
         contrast?: FitContrast;
@@ -1315,6 +1343,9 @@ export class MesoscaleApi extends ApiArea {
       if (normals && normals.length !== positions.length) {
         return ApiResult.fail('invalid', 'Give a normal for each position, x, y, z each.');
       }
+      // on a slice (slice-constraint): its plane, a surface as a mesh's
+      const plane = slice && slicePlaneOf(slice);
+      if (slice && !plane) return ApiResult.fail('invalid', "Give the slice's point and normal, x, y, z each.");
       // a structure painted into a scene without particles: Mol*'s particles (opt-in) loaded first
       if (structure) await ctx.extensions.ensureFor({ transformers: ['ms-plugin.particles-representation-3d'] });
       const into =
@@ -1327,7 +1358,7 @@ export class MesoscaleApi extends ApiArea {
         return ApiResult.fail('invalid', `The range has no letter of the sequence (${letters} letters).`);
       }
       // on a surface (its pick's normals: paint-refine round 2) any copy along them; a membrane protein always
-      const how: PaintOrient = orient ?? (brush.surface || (surface && normals) ? 'normal' : 'random');
+      const how: PaintOrient = orient ?? (brush.surface || ((surface || plane) && normals) ? 'normal' : 'random');
       const state = ctx.plugin.state.data;
       // along the normal: its Fiber Axis when set, else +z; a membrane protein upright always (+z: its mid-plane's; S1)
       const along =
@@ -1395,8 +1426,9 @@ export class MesoscaleApi extends ApiArea {
         };
         const map = fitMapOf(volume.volume.grid);
         const move = moved?.transform.params as ListMove | undefined;
-        // painted on a mesh: each copy fitted on it, along its normal there (in the scene: `normals`)
-        const on = mesh?.trim() && normals ? normals : undefined;
+        // painted on a mesh: each copy fitted on it, along its normal there (in the scene: `normals`); on a slice, a
+        // copy on its plane along its normal (one off it, as a stroke leaving the slice: free)
+        const on = plane ? onPlane(plane, positions) : mesh?.trim() && normals ? normals : undefined;
         fitted = { volume: volume.label, ...fitCopies(map, envelope, move, local, rotations, reach, on) };
       }
       const stroke: PaintStroke = {
