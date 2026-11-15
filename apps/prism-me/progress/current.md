@@ -87,9 +87,9 @@ is not built is [../TODO.md](../TODO.md).
 - **`lod-impostor`** (Ludo, 2026-11-15, night; Opus, `~/prism-me-lanes/lod-impostor`, port 1381): far copies drawn as
   octahedral impostors (silhouette + depth + the copy's color), Goodsell's look, a fade with no pop; checked on two
   cellpack-mg; [brief](2026-11-15-lod-impostor.md) on its branch. Running.
-- **`slice-window`** (Ludo, 2026-11-14; Opus, `~/prism-me-lanes/slice-window`, port 1380): a grid slice drawn from a
-  GPU ring buffer of 32 slices (the slider moves a uniform; the window follows, plane by plane; the state on release);
-  65 ms a step today on Ludo's MRC; [brief](2026-11-14-slice-window.md) on its branch. Running.
+- **Merged 2026-11-15** (Ludo's word): `slice-window`, grid slices from a GPU window of planes (frame rate at any
+  size, binned preview for big maps, tiles for tilt series, hidden slices freed); core changes in
+  [core-changes.md](../_spec/core-changes.md); [progress](2026-11-14-slice-window.md).
 - **Merged 2026-11-15** (Ludo's word, after trying it): `volume-pixel-size`, a volume's Pixel size (Å) in Data, Reset
   to the file's; core changes in [core-changes.md](../_spec/core-changes.md); [progress](2026-11-14-volume-pixel-size.md).
 - **Merged 2026-11-14** (Ludo's word): `slice-constraint`, a volume's slice as a surface for Fit and Grow (on the plane,

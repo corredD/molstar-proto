@@ -34,7 +34,7 @@ lane that adds such a change adds an entry here.
 | core                        |       4 |            6 |           +74 / -9 |          3 (+112)   |
 | model                       |       6 |            9 |         +514 / -20 |          7 (+752)   |
 | io                          |       5 |           12 |        +1449 / -6  |   8 (+1059) + fixtures |
-| graphics                    |      25 |           93 |       +4595 / -564 |         40 (+4873)  |
+| graphics                    |      28 |           93 |       +4595 / -564 |         40 (+4873)  |
 | plugin (core, headless)     |       7 |           16 |       +1180 / -79  |         14 (+3811)  |
 | mvs                         |       1 |            1 |            +2 / -1 |           2 (+43)   |
 | prism/viewer                |       9 |           55 |       +1881 / -354 |         26 (+2103)  |
@@ -275,6 +275,27 @@ specs (`.md`) these changes added are listed in the entries.
   `columns ≥ 1`; a grid longer in x than its slices' area gave width 0 and height Infinity (a crash). Files:
   `graphics/src/repr/volume/util.ts`. Commit: `e65fa0712`. Tests: `repr/shape/_test/color-grid.test.ts` (a [305, 7, 7]
   grid). Upstream: candidate (a fix on its own). Not mixed.
+
+- **Slice window: grid slices from a GPU window of planes** (slice-window, 2026-11-15) — a grid slice colored
+  `uniform` or `volume-value` is drawn from a ring of up to 32 planes of raw values in a 3D texture (`SliceRing`,
+  `SliceWindow`), colored in the shader by the theme's palette; a step within the window sets a uniform, an edge step
+  copies one plane, a jump copies the plane shown and fills the rest in idle time; 128 MB budget; planes over the 3D
+  texture limit split into tiles (layers); a 2× binned window (x, y only under 128 planes: tilt series) while a big
+  map (≥ 2^28 voxels) moves, the full plane 150 ms after it rests; a hidden slice frees its windows after 5 s. Why: the
+  slice slider at frame rate at any size (Ludo's MRC 65 → 1–3 ms a step; a 3838² × 41 tilt series 1.5 s → 3–9 ms).
+  Files: `graphics/src/repr/volume/slice-window.ts`, `slice.ts`, `visual.ts` (`updateGeometry`, `setVisibility`),
+  `gl/renderable/image.ts`, `geo/geometry/image/image.ts`, `gl/webgl/shader/image.frag.ts`,
+  `gl/webgpu/shader/image.wgsl.ts`, `theme/color/volume-value.ts` (`getVolumeValueDomain`). Commits: `531caf4a6`,
+  `bee32711a`, `17f84c2aa`, `182d8bd85`, `63d50a378`, `6dc341825`, `2ca5b975b`, `d79ca6ba3`, `1078e6b65`, `6a9610edb`
+  and the later binning/tile commits (see the lane's progress file). Tests: `repr/volume/_test/slice*.ts`,
+  `plugin/headless/src/_test/webgpu-slice-window.test.ts`. Upstream: candidate. Not mixed.
+- **Texture.loadLayer** (slice-window) — one plane into one layer of a 3D texture, WebGL2 and WebGPU. Files:
+  `graphics/src/gl/texture.ts`, `gl/webgl/texture.ts`, `gl/webgpu/texture.ts`. Commit: `fc078d262`. Tests:
+  `plugin/headless/src/_test/webgpu-texture-layer.test.ts`. Upstream: candidate. Not mixed.
+- **Render items rebind a swapped texture at the next draw** (slice-window) — a texture cell set to another texture
+  between draws was picked up only at the next scene update (a tilt slice drew one texture with the other's layout,
+  the 2× zoom Ludo saw). WebGL (`9610bce0d`) and WebGPU (`a854aa2c0`). Tests: `gl/_test/webgl-texture-rebind.test.ts`,
+  the Dawn slice tests. Upstream: candidate (a bug fix on its own). Not mixed.
 
 ## plugin
 
