@@ -6,6 +6,7 @@
 
 import { Mat3, type Mat4, Quat, Vec3 } from '@molstar/core/math/linear-algebra';
 import { fiberOffsetDirection, paintRandom, paintRotation, resamplePath } from './paint.js';
+import type { GrowSlice } from './slice-surface.js';
 
 // Grow (apps/prism-me/progress/2026-11-11-grow.md; Ludo, 2026-11-11): copies of an instance by a rule, from its pose.
 // Each mode gives the copies' poses (positions in Å, unit quaternions x, y, z, w) from the source's; the copies go
@@ -111,6 +112,8 @@ export interface GrowRecord {
   readonly source: { readonly index: number; readonly key: number };
   /** The mesh it grew on (its representation's state ref and file name), for the report: the copies stay without it */
   readonly mesh?: { readonly ref: string; readonly label: string };
+  /** The slice it grew on (slice-constraint): its volume's state ref, its plane then and its name */
+  readonly slice?: GrowSlice & { readonly label: string };
   /** Which grow it was (paint-refine): a walk's own rise and twist are set by it (`mesoscale.grown-fiber`) */
   readonly id?: number;
 }

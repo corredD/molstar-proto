@@ -15,7 +15,7 @@ import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
 import type { PrismViewer } from '@molstar/prism-viewer/viewer';
 import { SurfaceTilt, sceneVolumes } from '../fit.js';
 import { MesoscaleExtension } from '../prism-viewer.js';
-import { crnAtoms, density } from './density.js';
+import { crnAtoms, density, type Site } from './density.js';
 import { setTestTargetStructure, TestTargetList } from './fixtures.js';
 
 // Fit and Grow on a slice (slice-constraint, Ludo 2026-11-14): a volume's slice is a surface as a mesh is. A copy
@@ -87,5 +87,144 @@ describe('paint on a slice with Fit to', () => {
     expect(tilt(quat(l, l.count - 1))).toBeLessThan(SurfaceTilt + 0.01);
     // pulled along the plane toward the site's foot (80, 80)
     expect(Math.hypot(on[0] - 80, on[1] - 80)).toBeLessThan(3);
+  });
+});
+
+/** The painted strokes of the list (its grows' records) */
+const strokes = (v: PrismViewer) =>
+  (
+    v.plugin.state.data.cells.get(entry(v).cell.transform.ref) &&
+    [...v.plugin.state.data.cells.values()].find((c) => (c.transform.params as { strokes?: unknown })?.strokes)
+  )?.transform.params as { strokes: { grow?: { slice?: unknown } }[] };
+
+describe('grow from a copy on a slice', () => {
+  /** A copy painted on the slice z = 40 of an empty 240 × 240 × 80 Å volume at (x, 120), along its normal */
+  async function source(v: PrismViewer, x = 120) {
+    const volume = await oneSite(v, 0);
+    const slice = { volume, point: [0, 0, 40], normal: [0, 0, 1] };
+    expectOk(
+      await v.api.run('mesoscale.paint', { entity: 'CA', positions: [x, 120, 40], normals: [0, 0, 1], seed: 1, slice }),
+    );
+    return { slice, list: entry(v).cell.transform.ref, index: drawn(v).count - 1 };
+  }
+  /** The copies from `from` on, all on the plane (|z − 40| < 0.01 Å); their count */
+  const onThePlane = (v: PrismViewer, from: number) => {
+    const l = drawn(v);
+    for (let i = from; i < l.count; ++i) expect(Math.abs(xyz(l, i)[2] - 40)).toBeLessThan(0.01);
+    return l.count - from;
+  };
+
+  it('Tiling, Sphere, Random walk and Spiral lay their copies on the plane, a copy’s up along its normal', async () => {
+    const v = await viewer();
+    const { slice, list, index } = await source(v);
+    const grow = (p: object) => v.api.run('mesoscale.grow', { particles: list, index, slice, seed: 1, ...p });
+    expectOk(await grow({ mode: 'tiling', pattern: 'hex', spacing: 30, count: 19 }));
+    expect(onThePlane(v, index + 1)).toBe(18);
+    const l = drawn(v);
+    for (let i = index + 1; i < l.count; ++i) expect(tilt(quat(l, i))).toBeLessThan(0.01);
+    expectOk(await v.api.run('history.undo', {}));
+    expectOk(await grow({ mode: 'sphere', count: 20, radius: 60, turn: 'source' }));
+    expect(onThePlane(v, index + 1)).toBe(20);
+    for (let i = index + 1; i < drawn(v).count; ++i) expect(tilt(quat(drawn(v), i))).toBeLessThan(0.01);
+    expectOk(await v.api.run('history.undo', {}));
+    for (const mode of [
+      { mode: 'walk', steps: 20 },
+      { mode: 'spiral', count: 30, spacing: 30 },
+    ]) {
+      expectOk(await grow(mode));
+      expect(onThePlane(v, index + 1)).toBeGreaterThan(1);
+      expectOk(await v.api.run('history.undo', {}));
+    }
+  });
+
+  it('a Tiling at the slice’s edge stops at the volume’s box', async () => {
+    const v = await viewer();
+    const { slice, list, index } = await source(v, 10);
+    expectOk(
+      await v.api.run('mesoscale.grow', {
+        particles: list,
+        index,
+        slice,
+        mode: 'tiling',
+        pattern: 'square',
+        spacing: 30,
+        count: 400,
+      }),
+    );
+    // the box's 238 × 238 Å holds some 64 sites 30 Å apart (as the lattice is turned), not the 400 asked
+    const n = onThePlane(v, index + 1);
+    expect(n).toBeGreaterThan(40);
+    expect(n).toBeLessThan(80);
+    for (let i = index + 1; i < drawn(v).count; ++i) {
+      const p = xyz(drawn(v), i);
+      for (const c of [0, 1]) expect(p[c]).toBeGreaterThan(-1e-6);
+      for (const c of [0, 1]) expect(p[c]).toBeLessThan(238 + 1e-6);
+    }
+  });
+
+  it('refuses a Crystal, a Helix (it would fold onto the plane), and a source off the slice', async () => {
+    const v = await viewer();
+    const { slice, list, index } = await source(v);
+    const grow = (p: object) => v.api.run('mesoscale.grow', { particles: list, index, slice, ...p });
+    expect(await grow({ mode: 'crystal' })).toMatchObject({ ok: false, code: 'invalid' });
+    expect(await grow({ mode: 'helix' })).toMatchObject({ ok: false, code: 'invalid' });
+    const off = { ...slice, point: [0, 0, 400] };
+    expect(await grow({ mode: 'tiling', slice: off })).toMatchObject({ ok: false, code: 'invalid' });
+  });
+
+  it('keeps the slice with the grow: a session round-trip; a grow of an old session has none', async () => {
+    const v = await viewer();
+    const { slice, list, index } = await source(v);
+    expectOk(await v.api.run('mesoscale.grow', { particles: list, index, slice, mode: 'tiling', count: 7 }));
+    expect(strokes(v).strokes.at(-1)!.grow!.slice).toMatchObject(slice);
+    const snapshot = JSON.parse(JSON.stringify(v.plugin.state.data.getSnapshot()));
+    await v.plugin.build().delete(list).commit();
+    await v.plugin.runTask(v.plugin.state.data.setSnapshot(snapshot));
+    expect(strokes(v).strokes.at(-1)!.grow!.slice).toMatchObject(slice);
+    expectOk(await v.api.run('mesoscale.grow', { particles: list, index, mode: 'tiling', count: 7 }));
+    expect(strokes(v).strokes.at(-1)!.grow!.slice).toBeUndefined();
+  });
+
+  it('with Fit to over a tomogram: copies only on the filled sites, all on the plane', async () => {
+    const v = await viewer();
+    const { slice, list, index } = await source(v);
+    const tiling = { particles: list, index, slice, mode: 'tiling', pattern: 'hex', spacing: 36, count: 37, seed: 1 };
+    expectOk(await v.api.run('mesoscale.grow', tiling));
+    const grown = drawn(v);
+    // the tiling's sites on the source's +x side filled (the source's too), the others empty
+    const filled: Site[] = [];
+    for (let i = index; i < grown.count; ++i) {
+      if (xyz(grown, i)[0] >= 115) filled.push({ position: xyz(grown, i), rotation: quat(grown, i) });
+    }
+    expect(filled.length).toBeGreaterThan(10);
+    expect(grown.count - index - filled.length).toBeGreaterThan(10);
+    expectOk(await v.api.run('history.undo', {}));
+    const { grid, data } = density(crnAtoms(), filled, {
+      origin: Vec3(),
+      size: [120, 120, 40],
+      voxel: 2,
+      blur: 2,
+      noise: 0.1,
+      seed: 5,
+    });
+    expectOk(await v.api.load.files({ files: [new File([CCP4Writer.writeMrc(grid, data)], 'tomo2.mrc')] }));
+    const volume = sceneVolumes(v.plugin.state.data).find((x) => x.label.startsWith('tomo2'))!.ref;
+    expectOk(
+      await v.api.run('mesoscale.grow', {
+        ...tiling,
+        slice: { ...slice, volume },
+        fit: volume,
+        contrast: 'dark',
+        threshold: 0.6,
+      }),
+    );
+    const kept = onThePlane(v, index + 1);
+    expect(kept).toBeGreaterThanOrEqual(filled.length - 4);
+    expect(kept).toBeLessThan(filled.length);
+    // each on a filled site (within a fit's shift)
+    for (let i = index + 1; i < drawn(v).count; ++i) {
+      const p = xyz(drawn(v), i);
+      expect(Math.min(...filled.map((f) => Vec3.distance(f.position, p)))).toBeLessThan(3);
+    }
   });
 });

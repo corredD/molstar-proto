@@ -111,7 +111,7 @@ import { spiralCount } from './grow-link.js';
 import { fiberUnitUp } from './fiber-up.js';
 import { type SymmetryGroup, SymmetryGrowParams, symmetryAt, symmetryContact, symmetryPoses } from './grow-symmetry.js';
 import { meshAxis, sceneMesh, sceneMeshes, sceneMeshSurface } from './mesh-surface.js';
-import { type GrowSlice, slicePlaneOf } from './slice-surface.js';
+import { type GrowSlice, planeSurface, slicePlaneOf } from './slice-surface.js';
 import {
   envelopeOf,
   type FitContrast,
@@ -1734,6 +1734,15 @@ export class MesoscaleApi extends ApiArea {
             'Grow on a mesh of the scene (OBJ, PLY, VTP) by state ref or file name: Tiling, Random walk, Helix, Spiral, Sphere, Symmetry (with Snap); absent: in space',
         }),
       ),
+      slice: OptionalParam(
+        PD.Value<GrowSlice>(
+          { volume: '', point: [0, 0, 0], normal: [0, 0, 1] },
+          {
+            description:
+              "Grow on a volume's slice: {volume, point, normal} (its state ref and its plane in the scene), as on a mesh (not Helix); its plane ends at the volume's box; a mesh wins",
+          },
+        ),
+      ),
       ...FitParams('Each grown copy'),
       threshold: OptionalParam(
         PD.Numeric(
@@ -1762,6 +1771,7 @@ export class MesoscaleApi extends ApiArea {
           pattern?: 'hex' | 'square';
           turn?: 'random' | 'source';
           mesh?: string;
+          slice?: GrowSlice;
           hand?: 'right' | 'left';
           direction?: 'up' | 'down';
           axis?: HelixAxis;
@@ -1819,6 +1829,20 @@ export class MesoscaleApi extends ApiArea {
         return ApiResult.fail('invalid', 'A crystal is a 3D lattice: it grows in space, not on a mesh.', 'Tiling.');
       }
       if (isFailure(mesh)) return mesh;
+      // on a slice (slice-constraint): its plane, bounded by its volume's box, a surface as a mesh's
+      const slice = !mesh && v.slice ? sliceOf(state, v.slice) : undefined;
+      if (isFailure(slice)) return slice;
+      if (slice && (mode === 'crystal' || mode === 'helix')) {
+        return ApiResult.fail(
+          'invalid',
+          mode === 'crystal'
+            ? 'A crystal is a 3D lattice: it grows in space, not on a slice.'
+            : "A helix winds about an axis: on a slice's plane it would fold onto itself.",
+          mode === 'crystal' ? 'Tiling.' : 'Spiral, or On None.',
+        );
+      }
+      /** The surface it grows on, for its messages */
+      const onLabel = mesh?.label ?? slice?.label;
       const reach = 2 * diameter;
       // fitted to a volume (density-fit): the source's score there, each copy's kept above Threshold × it
       const fitTo = v.fit?.trim() ? sceneVolume(state, v.fit.trim()) : undefined;
@@ -1829,7 +1853,9 @@ export class MesoscaleApi extends ApiArea {
       let keep: number | undefined;
       /** A fitted fiber's units, its copies (in the list's frame) */
       let fiberCopies: GrowPoses | undefined;
-      const on: GrowOn | undefined = mesh && { surface: sceneMeshSurface(mesh), reach };
+      const on: GrowOn | undefined = mesh
+        ? { surface: sceneMeshSurface(mesh), reach }
+        : slice && { surface: slice.surface, reach };
       /**
        * The copy's own axis along a surface's normal, as paint puts it (round 3, Ludo 2026-11-13: a tiling grown from a
        * painted copy aligned with it): a fiber's unit's up (its offset direction; decisions 1), else a membrane
@@ -1849,8 +1875,8 @@ export class MesoscaleApi extends ApiArea {
       const offMesh = () =>
         ApiResult.fail(
           'invalid',
-          `${name} #${index} is not on ${mesh!.label} (none of it within ${Math.round(reach)} Å).`,
-          'Grow from a copy painted on the mesh.',
+          `${name} #${index} is not on ${onLabel} (none of it within ${Math.round(reach)} Å).`,
+          `Grow from a copy painted on ${mesh ? 'the mesh' : 'the slice'}.`,
         );
       const sizes: Record<string, number | string> = {};
       let made: GrowPoses | undefined;
@@ -1978,7 +2004,7 @@ export class MesoscaleApi extends ApiArea {
             if (!path) return offMesh();
             // a walk that left the mesh at once (an open edge: review M1)
             if (path.length < 6) {
-              return ApiResult.fail('invalid', `The walk leaves ${mesh!.label} at once.`, 'Grow from further in.');
+              return ApiResult.fail('invalid', `The walk leaves ${onLabel} at once.`, 'Grow from further in.');
             }
             toListFrame(move, path, normals);
           } else {
@@ -2027,7 +2053,7 @@ export class MesoscaleApi extends ApiArea {
           if (units < 2) {
             return ApiResult.fail(
               'invalid',
-              `The spiral leaves ${mesh?.label ?? 'the mesh'} at once.`,
+              `The spiral leaves ${onLabel ?? 'the mesh'} at once.`,
               'Grow from further in, or a shorter step.',
             );
           }
@@ -2236,6 +2262,7 @@ export class MesoscaleApi extends ApiArea {
           seed,
           source: { index: src.first, key: data.keys[src.first] },
           ...(mesh ? { mesh: { ref: mesh.ref, label: mesh.label } } : {}),
+          ...(slice ? { slice: { ...slice.slice, label: slice.label } } : {}),
           id: growId,
         },
       };
@@ -2258,7 +2285,7 @@ export class MesoscaleApi extends ApiArea {
       return ApiResult.ok(
         path
           ? `Grew a fiber of ${name} from #${index}.`
-          : `Grew ${count} ${count === 1 ? 'copy' : 'copies'} of ${name} from #${index} (${mode}${mesh ? ` on ${mesh.label}` : ''}).`,
+          : `Grew ${count} ${count === 1 ? 'copy' : 'copies'} of ${name} from #${index} (${mode}${onLabel ? ` on ${onLabel}` : ''}).`,
         { nodes: [l.cell.transform.ref] },
         { value: { count, mode, id: growId } },
       );
@@ -3645,6 +3672,16 @@ function grownFrom(state: State, l: ParticleListRef, index: number): PaintStroke
  * The file mesh under a grow's source (review S7): the nearest within its radius of where it is drawn (its list's
  * move and scale, its own move; a copy painted on a mesh is on it), if any
  */
+/** A grow's slice: its plane as a surface, bounded by its volume's box (as drawn), and its name (slice-constraint) */
+function sliceOf(state: State, slice: GrowSlice) {
+  const plane = slicePlaneOf(slice);
+  if (!plane) return ApiResult.fail('invalid', "Give the slice's point and normal, x, y, z each.");
+  const volume = sceneVolume(state, slice.volume);
+  if (isFailure(volume)) return volume;
+  const own: GrowSlice = { volume: volume.ref, point: [...plane.point], normal: [...plane.normal] };
+  return { slice: own, label: `the slice of ${volume.label}`, surface: planeSurface(plane, volume.volume.grid) };
+}
+
 function meshUnder(ctx: Pick<ApiContext, 'plugin'>, source: GrowSource): string | undefined {
   const state = ctx.plugin.state.data;
   const l = lists(ctx).find((x) => x.cell.transform.ref === source.particles);
