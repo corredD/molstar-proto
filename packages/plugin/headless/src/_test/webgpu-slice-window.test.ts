@@ -150,7 +150,16 @@ async function setup() {
     }
     return image;
   };
-  return { plugin, graphics, create, capture };
+  /** The image drawn again, nothing committed (a slice moved by its own updates: a drag, its rest on a timer) */
+  const redraw = async () => {
+    let image = (await plugin.getImageRaw({ width: Size, height: Size }, postprocessing)).data;
+    for (let i = 0; i < 3; ++i) {
+      await graphics.resources.pending.whenReady();
+      image = (await plugin.getImageRaw({ width: Size, height: Size }, postprocessing)).data;
+    }
+    return image;
+  };
+  return { plugin, graphics, create, capture, redraw };
 }
 
 /** The pixels drawn (not the background), the worst channel difference and the pixels more than 3 apart */
@@ -287,6 +296,44 @@ describe.skipIf(!WebGPU.module)('grid slice from a window of planes, as the CPU 
         expect(c.drawn, name).toBeGreaterThan(Size * Size * 0.1);
         expect(c.far, `${name} binned: worst ${c.worst}`).toBe(0);
       }
+      expect(graphics.takeErrors?.() ?? []).toEqual([]);
+    } finally {
+      Object.assign(SliceWindowConfig, saved);
+      plugin.dispose();
+    }
+  }, 120_000);
+
+  it('during a move, nothing committed: the binned plane where the full one is, then the full one at rest (portal layout)', async () => {
+    const { plugin, graphics, create, capture, redraw } = await setup();
+    // as a portal tilt series (3838 × 3710 × 41): non-square, odd, few tilts; tiles of 32 stand for 2048 (the full plane
+    // in 2 × 2 tiles, the binned one in one, as there)
+    const dims: [number, number, number] = [47, 39, 21];
+    const v = volume(dims, (x, y, z) => Math.sin((x >> 1) * 0.7) * 4 + Math.cos((y >> 1) * 0.5) * 3 + z * 0.3);
+    const theme = themes(v)[1][1];
+    const saved = { ...SliceWindowConfig };
+    try {
+      Object.assign(SliceWindowConfig, { maxTileSize: 32, coarseVoxels: 1000, settleMs: 60_000 });
+      const props = { interpolation: 'nearest' as const, dimension: { name: 'z' as const, params: 17 } };
+      SliceWindowConfig.enabled = false;
+      const cpu = await capture(await create(v, theme, props), 'z', dims);
+      SliceWindowConfig.enabled = true;
+      const repr = await create(v, theme, { ...props, dimension: { name: 'z', params: 2 } });
+      repr.setState({ visible: true });
+      await SliceBinned.peek(v.grid)!.ready;
+      await capture(repr, 'z', dims, true);
+      // moved, as a drag does (the representation's own update, no commit)
+      await repr.createOrUpdate({ dimension: { name: 'z', params: 17 } } as any).run();
+      expect(Array.from(repr.renderObjects[0].values.uSliceBin.ref.value)).toEqual([2, 2]);
+      const moving = compare(cpu, await redraw());
+      expect(moving.far, `moving: worst ${moving.worst}`).toBe(0);
+      // rests on a timer
+      SliceWindowConfig.settleMs = 10;
+      await repr.createOrUpdate({ dimension: { name: 'z', params: 16 } } as any).run();
+      await repr.createOrUpdate({ dimension: { name: 'z', params: 17 } } as any).run();
+      await new Promise((r) => setTimeout(r, 100));
+      expect(Array.from(repr.renderObjects[0].values.uSliceBin.ref.value)).toEqual([1, 1]);
+      const rested = compare(cpu, await redraw());
+      expect(rested.far, `rested: worst ${rested.worst}`).toBe(0);
       expect(graphics.takeErrors?.() ?? []).toEqual([]);
     } finally {
       Object.assign(SliceWindowConfig, saved);
