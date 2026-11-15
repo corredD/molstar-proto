@@ -797,20 +797,51 @@ describe('a slice visual moved within its window', () => {
     return { volume, visual, update, textures, owned };
   }
 
+  /** The idle fill done (`SliceWindow.fill` by timers) */
+  const idle = async () => {
+    for (let k = 0; k < 20; ++k) await new Promise((r) => setTimeout(r, 0));
+  };
+
   it('a step updates the image in place: no new geometry, a uniform within the band, a plane copied at its edge', async () => {
     const { visual, update, textures } = await setup(uniformTheme());
     const version = visual.geometryVersion;
     const texture = textures[0];
+    // the plane shown at once, the window's others in idle time
+    expect(texture.writes).toBe(1);
+    await idle();
     expect(texture.writes).toBe(SliceWindowDepth);
     const values = visual.renderObject!.values as any;
     for (let i = 101; i <= 107; ++i) await update({ dimension: { name: 'z', params: i } });
     expect(texture.writes).toBe(SliceWindowDepth);
     expect(values.uSliceLayer.ref.value).toBe(107 % SliceWindowDepth);
-    for (let i = 108; i <= 157; ++i) await update({ dimension: { name: 'z', params: i } });
+    for (let i = 108; i <= 157; ++i) {
+      await update({ dimension: { name: 'z', params: i } });
+      await idle();
+    }
     // one plane per step past the band's edge
     expect(texture.writes).toBe(SliceWindowDepth + 50);
     expect(visual.geometryVersion).toBe(version);
     expect(textures.length).toBe(1);
+  });
+
+  it('a jump copies the plane shown at once, the window around it in idle time, nearest first', async () => {
+    const { volume, update, textures } = await setup(uniformTheme());
+    await idle();
+    const texture = textures[0];
+    const before = texture.writes;
+    await update({ dimension: { name: 'z', params: 20 } });
+    expect(texture.writes - before).toBe(1);
+    await idle();
+    expect(texture.writes - before).toBe(SliceWindowDepth);
+    // every layer holds its plane: z 4 to 35
+    const [nx, ny] = volume.grid.cells.space.dimensions;
+    const plane = nx * ny;
+    for (let z = 4; z < 36; ++z) {
+      const layer = z % SliceWindowDepth;
+      expect(texture.data[layer * plane + 7], `z ${z}`).toBe(
+        volume.grid.cells.data[volume.grid.cells.space.dataOffset(1, 1, z)],
+      );
+    }
   });
 
   it('picks the voxel of the drawn slice', async () => {

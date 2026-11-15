@@ -90,7 +90,8 @@ export type SliceAxis = 0 | 1 | 2;
 /**
  * The planes of a grid along an axis in a window on the GPU (`SliceRing` of `SliceWindowDepth`): each plane laid out as a
  * grid slice's image is (`createGridImage` in slice.ts: rows of y, columns of z for x and y, of x for z), its rows as
- * given (the shader flips them)
+ * given (the shader flips them). The plane shown is copied when shown; the others that entered the window wait for idle
+ * time (`SliceWindowFillMs` at a time), nearest first: a jump far away costs a plane, not a window
  */
 export interface SliceWindow {
   readonly graphics: GraphicsContext;
@@ -100,11 +101,24 @@ export interface SliceWindow {
   readonly height: number;
   readonly ring: SliceRing;
   readonly texture: Texture;
+  readonly layout: PlaneLayout;
+  /** the indices in the window not copied yet */
+  readonly pending: Set<number>;
+  /** the index shown last, the pending ones nearest it copied first */
+  shown: number;
+  /** the idle fill scheduled */
+  timer: ReturnType<typeof setTimeout> | undefined;
+  /** a plane gathered from the grid (where it is not a view of the data), reused */
+  plane: Float32Array | undefined;
   /** planes copied so far (for tests and measurements) */
   copies: number;
 }
 
+/** Time spent copying pending planes per idle callback (ms) */
+export const SliceWindowFillMs = 4;
+
 /** A plane's texel `(row, column)` at `data[row * rowStride + column * columnStride + index * planeStride]` */
+type PlaneLayout = ReturnType<typeof planeLayout>;
 function planeLayout(grid: Grid, axis: SliceAxis) {
   const { space } = grid.cells;
   const [sx, sy, sz] = Tensor.strides(space)!;
@@ -113,8 +127,6 @@ function planeLayout(grid: Grid, axis: SliceAxis) {
   if (axis === 0) return { width: nz, height: ny, count: nx, rowStride: sy, columnStride: sz, planeStride: sx };
   return { width: nz, height: nx, count: ny, rowStride: sx, columnStride: sz, planeStride: sy };
 }
-
-const windows = new WeakMap<SliceWindow, { layout: ReturnType<typeof planeLayout>; plane?: Float32Array }>();
 
 export namespace SliceWindow {
   /**
@@ -136,9 +148,21 @@ export namespace SliceWindow {
     const ring = SliceRing.create(count);
     const texture = graphics.resources.texture('volume-float32', 'r', 'float', 'nearest');
     texture.define(width, height, ring.depth);
-    const window: SliceWindow = { graphics, grid, axis, width, height, ring, texture, copies: 0 };
-    windows.set(window, { layout });
-    return window;
+    return {
+      graphics,
+      grid,
+      axis,
+      width,
+      height,
+      ring,
+      texture,
+      layout,
+      pending: new Set(),
+      shown: -1,
+      timer: undefined,
+      plane: undefined,
+      copies: 0,
+    };
   }
 
   /** Whether `window` holds the planes of `grid`'s cells along `axis` in a texture of `graphics` */
@@ -151,26 +175,68 @@ export namespace SliceWindow {
     );
   }
 
-  /** Moves the window to show plane `index`: the planes that entered copied; the layer holding it */
+  /**
+   * Moves the window to show plane `index`: that plane copied if it is not yet, the others that entered left for idle
+   * time (`fill`); the layer holding it
+   */
   export function show(window: SliceWindow, index: number) {
-    const { ring } = window;
-    for (const i of SliceRing.move(ring, index)) copyPlane(window, i);
+    const { ring, pending } = window;
+    const entered = SliceRing.move(ring, index);
+    if (entered.length) {
+      // the layers of the indices that left are the entered ones'
+      for (const i of pending) if (!SliceRing.has(ring, i)) pending.delete(i);
+      for (const i of entered) pending.add(i);
+    }
+    index = Math.max(0, Math.min(ring.count - 1, index));
+    window.shown = index;
+    if (pending.delete(index)) copyPlane(window, index);
+    if (pending.size && window.timer === undefined) window.timer = setTimeout(() => idle(window), 0);
     return SliceRing.layer(ring, index);
+  }
+
+  function idle(window: SliceWindow) {
+    window.timer = undefined;
+    fill(window, SliceWindowFillMs);
+    if (window.pending.size) window.timer = setTimeout(() => idle(window), 0);
+  }
+
+  /** Copies pending planes, nearest the one shown first, for `budgetMs` (all of them where undefined) */
+  export function fill(window: SliceWindow, budgetMs?: number) {
+    const { pending } = window;
+    const t0 = performance.now();
+    while (pending.size) {
+      let next = -1;
+      for (const i of pending) {
+        if (next < 0 || Math.abs(i - window.shown) < Math.abs(next - window.shown)) next = i;
+      }
+      pending.delete(next);
+      copyPlane(window, next);
+      if (budgetMs !== undefined && performance.now() - t0 >= budgetMs) break;
+    }
   }
 
   /** Plane `index` of the grid, in the window's layout: a view of the data where it is laid out so */
   export function getPlane(window: SliceWindow, index: number): Float32Array {
-    const entry = windows.get(window)!;
-    const { width, height, rowStride, columnStride, planeStride } = entry.layout;
+    const { width, height, rowStride, columnStride, planeStride } = window.layout;
     const data = window.grid.cells.data;
     const offset = index * planeStride;
     if (data instanceof Float32Array && columnStride === 1 && rowStride === width) {
       return data.subarray(offset, offset + width * height);
     }
-    const plane = (entry.plane ??= new Float32Array(width * height));
-    for (let row = 0, k = 0; row < height; ++row) {
-      for (let column = 0, o = offset + row * rowStride; column < width; ++column, o += columnStride, ++k) {
-        plane[k] = data[o];
+    const plane = (window.plane ??= new Float32Array(width * height));
+    if (rowStride < columnStride) {
+      // the rows' elements nearer in memory (a y plane: x is fastest): read along them
+      for (let column = 0; column < width; ++column) {
+        for (let row = 0, o = offset + column * columnStride, k = column; row < height; ++row, o += rowStride) {
+          plane[k] = data[o];
+          k += width;
+        }
+      }
+    } else {
+      for (let row = 0, k = 0; row < height; ++row) {
+        for (let column = 0, o = offset + row * rowStride; column < width; ++column, o += columnStride, ++k) {
+          plane[k] = data[o];
+        }
       }
     }
     return plane;
@@ -183,7 +249,9 @@ export namespace SliceWindow {
   }
 
   export function destroy(window: SliceWindow) {
+    clearTimeout(window.timer);
+    window.timer = undefined;
+    window.pending.clear();
     window.texture.destroy();
-    windows.delete(window);
   }
 }
