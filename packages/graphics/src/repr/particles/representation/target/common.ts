@@ -93,6 +93,12 @@ import type { Representation } from '../../../representation.js';
 export const ImpostorMinRadius = 22;
 
 /**
+ * The impostors' distance by default (`lodImpostorDistance` 0), in the model's radii: where the whole model fits a view
+ * of 45° (1 / sin 22.5°): closer, one looks at its proteins; farther, at the cell
+ */
+export const ImpostorAutoDistance = 2.6;
+
+/**
  * Whether spheres with `props` can draw their last level as impostors (`lod-impostor.md`): `lodImpostor`, spheres (not
  * a blob surface), not approximate (no impostor path there), two to four levels (the culling's and the segments' four,
  * `MaxCullLevels`), and flat varyings (WebGL1 has none: the entry would be interpolated)
@@ -196,6 +202,38 @@ export const ParticleTargetStructureParams = {
         'The last level of detail: each copy far away drawn as an impostor, its silhouette from the nearest of the views made at load (`lod-impostor.md`); the last spheres cross-fade into it. Not for targets smaller than ' +
         `${ImpostorMinRadius} Å in radius (lipids, ions).`,
     }),
+    lodImpostorBy: PD.Select<'size' | 'distance'>(
+      'size',
+      [
+        ['size', 'Size on screen'],
+        ['distance', 'Distance'],
+      ],
+      {
+        ...BaseGeometry.CullingLodCategory,
+        description:
+          'Where each copy turns into its impostor: by its own size on screen, or by its distance from the eye',
+        hideIf: (p: { lodImpostor?: boolean }) => !p.lodImpostor,
+      },
+    ),
+    lodImpostorPixels: PD.Numeric(
+      12,
+      { min: 4, max: 64, step: 1 },
+      {
+        ...BaseGeometry.CullingLodCategory,
+        description: 'Size on screen: each copy an impostor below this many pixels across (its bounding sphere)',
+        hideIf: (p: { lodImpostor?: boolean; lodImpostorBy?: string }) => !p.lodImpostor || p.lodImpostorBy !== 'size',
+      },
+    ),
+    lodImpostorDistance: PD.Numeric(
+      0,
+      { min: 0, max: 10000000, step: 1 },
+      {
+        ...BaseGeometry.CullingLodCategory,
+        description: `Distance: each copy an impostor beyond this distance from the eye (Å); 0: ${ImpostorAutoDistance} times the model's radius, where the whole model fits the view`,
+        hideIf: (p: { lodImpostor?: boolean; lodImpostorBy?: string }) =>
+          !p.lodImpostor || p.lodImpostorBy !== 'distance',
+      },
+    ),
   }),
   ...forType('blob-surface', {
     blobSize: BlobSurfaceCoreParams.blobSize,
@@ -710,7 +748,7 @@ export interface TargetVisual {
    * or sites target drawn as spheres with `lodImpostor`, also one without an entry (a small target), so that all merge
    * as one (the define); the others none
    */
-  setImpostor(atlas: ImpostorAtlas | undefined, code: number): void;
+  setImpostor(atlas: ImpostorAtlas | undefined, code: number, impostorSwitch?: Spheres.LodImpostorSwitch): void;
   destroy(): void;
 }
 
@@ -1201,14 +1239,19 @@ export function createTargetVisual(_targetId: number, materialId: number, graphi
     return { key, radius, tile, get: () => ImpostorAtlas.getItem(values, tile, prefix) };
   }
 
-  function setImpostor(atlas: ImpostorAtlas | undefined, code: number) {
+  function setImpostor(atlas: ImpostorAtlas | undefined, code: number, impostorSwitch?: Spheres.LodImpostorSwitch) {
     if (!renderObject || renderObject.type !== 'spheres' || geometry?.kind !== 'spheres') return;
     const values = renderObject.values as unknown as SpheresValues;
     const on = hasImpostors() ? atlas : undefined;
     ImpostorAtlas.setValues(values, on);
+    const sw = on ? impostorSwitch : undefined;
+    ImpostorAtlas.setSwitch(values, sw, Spheres.LodImpostorBand / 2);
     const entry = on ? code : -2;
-    if (((values.lodLevels.ref.value as Spheres.LodLevelsValue).impostor ?? -2) !== entry) {
-      (geometry as Spheres).shaderData.update({ lodImpostor: entry });
+    const value = values.lodLevels.ref.value as Spheres.LodLevelsValue;
+    const { k: _, ...current } = value.impostorSwitch ?? { k: 0 };
+    const switchChanged = JSON.stringify(value.impostorSwitch ? current : undefined) !== JSON.stringify(sw);
+    if ((value.impostor ?? -2) !== entry || switchChanged) {
+      (geometry as Spheres).shaderData.update({ lodImpostor: entry, lodImpostorSwitch: sw ?? null });
     }
   }
 

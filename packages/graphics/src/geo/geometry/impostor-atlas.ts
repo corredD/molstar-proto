@@ -451,14 +451,18 @@ export namespace ImpostorAtlas {
    */
   export function setSwitch(
     values: LodImpostorValues,
-    sw: { readonly mode: 'pixels' | 'distance'; readonly value: number } | undefined,
+    sw:
+      | { readonly mode: 'pixels' | 'distance'; readonly value: number; readonly radii?: readonly number[] }
+      | undefined,
     halfBand: number,
   ) {
     const v = values.uLodImpostorSwitch.ref.value;
     const mode = sw ? (sw.mode === 'pixels' ? SwitchPixels : SwitchDistance) : 0;
     const value = sw?.value ?? 0;
-    if (v[0] === mode && v[1] === value && v[2] === halfBand) return;
-    ValueCell.update(values.uLodImpostorSwitch, Vec4.set(v, mode, value, halfBand, 0));
+    // the largest radius the ranges cover (\`radiusCap\`), 0 none
+    const cap = sw?.radii?.[1] ?? 0;
+    if (v[0] === mode && v[1] === value && v[2] === halfBand && v[3] === cap) return;
+    ValueCell.update(values.uLodImpostorSwitch, Vec4.set(v, mode, value, halfBand, cap));
   }
 
   /** What `getItem` reads: the spheres' centers and groups, their sizes by type, the size factor, the bounds */
@@ -513,7 +517,8 @@ export namespace ImpostorAtlas {
    * A copy's share of the impostor (the TS rule of the shaders' switch, \`lod-impostor.md\`): 0 its spheres, 1 its
    * impostor, between them the band of `halfBand` octaves each side of the threshold; above 1 the impostor's flatness
    * (1 + up to 1). By `SwitchPixels`: the copy of `radius` Å at `pixel` Å a pixel is `2 radius / pixel` pixels across,
-   * an impostor below `value` pixels; by `SwitchDistance`: at `distance` Å from the eye, beyond `value` Å
+   * an impostor below `value` pixels (a radius above `radiusCap` counts as it: the culling's ranges are up to it); by
+   * `SwitchDistance`: at `distance` Å from the eye, beyond `value` Å
    */
   export function switchShare(
     mode: number,
@@ -522,8 +527,9 @@ export namespace ImpostorAtlas {
     radius: number,
     pixel: number,
     distance: number,
+    radiusCap = Infinity,
   ) {
-    const ratio = mode === SwitchPixels ? (value * pixel) / (2 * radius) : distance / value;
+    const ratio = mode === SwitchPixels ? (value * pixel) / (2 * Math.min(radius, radiusCap)) : distance / value;
     const l = Math.log2(Math.max(ratio, 1e-30));
     const t = Math.min(1, Math.max(0, (l + halfBand) / (2 * halfBand)));
     const s = t * t * (3 - 2 * t);

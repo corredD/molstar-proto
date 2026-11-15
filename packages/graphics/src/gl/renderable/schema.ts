@@ -732,7 +732,8 @@ export const LodImpostorSchema = {
   uImpostorTexDim: ObjectUniformSpec('v2'),
   /**
    * where each copy switches (`ImpostorAtlas.switchShare`): x the mode (0 the levels' boundary, 1 by size on screen, 2
-   * by distance from the eye), y the threshold (pixels, Å), z the band's half in octaves
+   * by distance from the eye), y the threshold (pixels, Å), z the band's half in octaves, w the largest radius the
+   * ranges cover (by size: larger ones count as it), 0 none
    */
   uLodImpostorSwitch: ObjectUniformSpec('v4'),
   dLodImpostor: DefineSpec('boolean'),

@@ -74,7 +74,7 @@ export const assign_lod_impostor_factor = `
         // or its distance from the eye; the band half an octave each way of the threshold, then the flattening
         float pixel = 2.0 * uPixelRatio / (uProjection[1][1] * uDrawingBufferSize.y) * (uIsOrtho == 1.0 ? 1.0 : d);
         float ratio = uLodImpostorSwitch.x == 1.0
-            ? uLodImpostorSwitch.y * pixel / (2.0 * lodImpostorSphere.w)
+            ? uLodImpostorSwitch.y * pixel / (2.0 * (uLodImpostorSwitch.w > 0.0 ? min(lodImpostorSphere.w, uLodImpostorSwitch.w) : lodImpostorSphere.w))
             : distance(lodImpostorCenter, uCameraPosition) / uModelScale / uLodImpostorSwitch.y;
         float l = log2(max(ratio, 1e-30));
         float h = uLodImpostorSwitch.z;

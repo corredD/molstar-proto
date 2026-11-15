@@ -66,7 +66,7 @@ export const assign_lod_impostor_factor_wgsl = /* wgsl */ `
                 let pixel = 2.0 * uGlobal.uPixelRatio / (uGlobal.uProjection[1][1] * uGlobal.uDrawingBufferSize.y) * select(d, 1.0, uGlobal.uIsOrtho == 1.0);
                 let ratio = select(
                     distance(lodImpostorCenter, uGlobal.uCameraPosition) / uGlobal.uModelScale / sw.y,
-                    sw.y * pixel / (2.0 * lodImpostorSphere.w),
+                    sw.y * pixel / (2.0 * select(lodImpostorSphere.w, min(lodImpostorSphere.w, sw.w), sw.w > 0.0)),
                     sw.x == 1.0
                 );
                 let l = log2(max(ratio, 1e-30));

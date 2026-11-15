@@ -151,6 +151,7 @@ export namespace Spheres {
   export const LodLevelsPresets = Lod.LodLevelsPresets;
   export const getLodPixelBoundary = Lod.getLodPixelBoundary;
   export const LodImpostorBand = Lod.LodImpostorBand;
+  export type LodImpostorSwitch = Lod.LodImpostorSwitch;
   const { LodNominalRadius, areLodLevelsEqual, getLodLevels } = Lod;
 
   /**

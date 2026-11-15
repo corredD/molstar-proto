@@ -220,6 +220,10 @@ describe('impostor atlas', () => {
     expect(px(100, 200 / 12)).toBeCloseTo(0.5, 6); // 12 px: the band's middle
     // the same size on screen, whatever the radius: a ribosome and a small protein switch alike
     expect(px(250, 250 / 6)).toBeCloseTo(px(30, 30 / 6), 12);
+    // above the cap (the items' 90th percentile), a radius counts as the cap: the largest switch larger on screen,
+    // within the ranges the culling draws
+    const capped = ImpostorAtlas.switchShare(ImpostorAtlas.SwitchPixels, 12, h, 400, 400 / 6, 0, 100);
+    expect(capped).toBeCloseTo(ImpostorAtlas.switchShare(ImpostorAtlas.SwitchPixels, 12, h, 100, 400 / 6, 0), 12);
     // distance from the eye
     const dist = (d: number) => ImpostorAtlas.switchShare(ImpostorAtlas.SwitchDistance, 5000, h, 50, 0, d);
     expect(dist(3000)).toBe(0);

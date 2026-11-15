@@ -41,6 +41,8 @@ import {
   type ParticleTargetRepresentationProps,
   createTargetVisual,
   canDrawImpostors,
+  ImpostorAutoDistance,
+  ImpostorMinRadius,
   createParticleTargetPropsProvider,
   getTargetGeometryChoice,
   getTargetGeometryUtils,
@@ -59,6 +61,7 @@ import {
 import type { Mesh } from '@molstar/graphics/geo/geometry/mesh/mesh';
 import { Spheres } from '@molstar/graphics/geo/geometry/spheres/spheres';
 import { ImpostorAtlas } from '@molstar/graphics/geo/geometry/impostor-atlas';
+import { Sphere3D } from '@molstar/core/math/geometry';
 
 export { ParticleTargetRepresentationParams };
 export type { ParticleTargetRepresentationProps };
@@ -266,7 +269,40 @@ export function ParticleTargetRepresentation(
     // on for the targets that can take them even where none has an entry (small targets alone): the define as derived
     // (\`computeParticleTargetSignatures\`)
     const atlas = impostors?.atlas ?? ImpostorAtlas.None;
-    for (const visual of targetVisuals.values()) visual.setImpostor(atlas, entries.get(visual) ?? -1);
+    const sw = getImpostorSwitch(sources, impostors?.visuals ?? []);
+    for (const visual of targetVisuals.values()) visual.setImpostor(atlas, entries.get(visual) ?? -1, sw);
+  }
+
+  /**
+   * Where each copy switches (`lod-impostor.md`): by size on screen or distance (the structure props), the radii of the
+   * smallest and largest item (the ranges cover them; the band-only small items from the smallest's), the distance by
+   * default the model's radius times `ImpostorAutoDistance`
+   */
+  function getImpostorSwitch(
+    sources: readonly ImpostorAtlas.Source[],
+    owners: readonly TargetVisual[],
+  ): Spheres.LodImpostorSwitch | undefined {
+    const { lodImpostorBy, lodImpostorPixels, lodImpostorDistance } = _props.structure;
+    // the small items switch too (their spheres fade in at the last level): from the smallest drawn
+    const r0 = 1;
+    const r1 = getImpostorRadiusCap(sources, owners);
+    if (lodImpostorBy === 'distance') {
+      let value = lodImpostorDistance;
+      if (!(value > 0)) {
+        const b = Sphere3D();
+        let first = true;
+        for (const v of targetVisuals.values()) {
+          const bs = v.renderObject?.values.boundingSphere.ref.value as Sphere3D | undefined;
+          if (!bs || bs.radius <= 0) continue;
+          if (first) Sphere3D.copy(b, bs);
+          else Sphere3D.expandBySphere(b, b, bs);
+          first = false;
+        }
+        value = Math.max(1, b.radius * ImpostorAutoDistance);
+      }
+      return { mode: 'distance', value, radii: [r0, r1] };
+    }
+    return { mode: 'pixels', value: lodImpostorPixels, radii: [r0, r1] };
   }
 
   function updateRenderObjectList(entries: { visual: TargetVisual; renderObject: GraphicsRenderObject }[]) {
@@ -494,6 +530,28 @@ export function ParticleTargetRepresentation(
  * counts decide. None without data: every kind the params configure would compile many pipelines a list never draws,
  * and the representation prepares with its data when added and updated
  */
+/**
+ * The radius the impostors' ranges cover by size on screen: the 90th percentile of the copies' (each target's radius
+ * by its copies). The largest items (a few ribosomes) switch at it, a little larger on screen, so that the last spheres
+ * of every copy are not drawn out to where the largest switch (`lod-impostor.md`: the far frames' cost)
+ */
+function getImpostorRadiusCap(sources: readonly ImpostorAtlas.Source[], owners: readonly TargetVisual[]) {
+  const items = sources.map((s, i) => ({
+    r: s.radius,
+    n: owners[i]?.particleIndices ? OrderedSet.size(owners[i].particleIndices!) : 1,
+  }));
+  if (!items.length) return ImpostorMinRadius;
+  items.sort((a, b) => a.r - b.r);
+  let total = 0;
+  for (const it of items) total += it.n;
+  let acc = 0;
+  for (const it of items) {
+    acc += it.n;
+    if (acc >= 0.9 * total) return it.r;
+  }
+  return items[items.length - 1].r;
+}
+
 function getParticleTargetSignatures(
   props: ParticleTargetRepresentationProps,
   ctx: SignatureContext,
