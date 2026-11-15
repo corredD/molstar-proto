@@ -178,7 +178,7 @@ describe("a volume's Pixel size", () => {
     document.body.innerHTML = '';
     const changed = mounted(sized(13.604), () => ApiResult.ok(''));
     expect(changed.button('Reset')).toBeDefined();
-    expect(changed.host.textContent).toContain('file: 6.8 Å');
+    expect(changed.host.textContent).toContain('file: 6.802 Å');
   });
 
   it('sets it at the release, through cryoet.volume', () => {
