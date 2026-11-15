@@ -6,7 +6,9 @@
 
 import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it } from 'vitest';
-import { Mat4, Vec3 } from '@molstar/core/math/linear-algebra';
+import { Mat4, Tensor, Vec3 } from '@molstar/core/math/linear-algebra';
+import { CCP4Writer } from '@molstar/model/formats/writer/ccp4/ccp4';
+import { Grid } from '@molstar/model/model/volume';
 import { EmptyLoci } from '@molstar/model/model/loci';
 import { PluginStateObject as SO, PluginStateTransform } from '@molstar/plugin/state/objects';
 import { ParticleListWithTargets } from '@molstar/plugin/state/transforms/particles/ops';
@@ -55,6 +57,75 @@ async function viewer() {
   expectOk(await v.api.load.files({ files: [crn] }));
   return v;
 }
+
+/** A viewer with an MRC of 8³ voxels of 10 Å, voxel 0 at (100, 50, 20) Å; the volume's ref */
+async function mapViewer() {
+  const v = await viewer();
+  const n = 8;
+  const values = new Float32Array(n * n * n).map((_, i) => (i % 7) + 1);
+  const matrix = Mat4.mul(
+    Mat4(),
+    Mat4.fromTranslation(Mat4(), Vec3.create(100, 50, 20)),
+    Mat4.fromUniformScaling(Mat4(), 10),
+  );
+  const grid: Grid = {
+    transform: { kind: 'matrix', matrix },
+    cells: Tensor.create(Tensor.Space([n, n, n], [2, 1, 0], Float32Array), Tensor.Data1(values)),
+    stats: { min: 0, max: 0, mean: 0, sigma: 0 },
+  };
+  expectOk(await v.api.load.files({ files: [new File([CCP4Writer.writeMrc(grid, values)], 'map.mrc')] }));
+  const ref = v.plugin.managers.volume.hierarchy.current.volumes[0].cell.transform.ref;
+  /** Voxel (1, 0, 0) where it is drawn (the last decorator's grid) */
+  const voxel = () => {
+    const vol = v.plugin.managers.volume.hierarchy.current.volumes[0];
+    const rep = vol.representations[0].cell.transform.parent;
+    const data = v.plugin.state.data.cells.get(rep)!.obj!.data as { grid: Grid };
+    return Array.from(Vec3.transformMat4(Vec3(), Vec3.create(1, 0, 0), Grid.getGridToCartesianTransform(data.grid))).map(
+      (x) => Math.round(x * 1e3) / 1e3,
+    );
+  };
+  return { v, ref, voxel };
+}
+
+describe('a volume scaled (its pixel size)', () => {
+  it('scales about the origin, then a move on top; reset to 1; undo and redo', async () => {
+    const { v, ref, voxel } = await mapViewer();
+    const s = v.api.stage!;
+    expect(voxel()).toEqual([110, 50, 20]);
+    expectOk(await s.scale({ target: ref, scale: 2 } as never));
+    expect(voxel()).toEqual([220, 100, 40]);
+    expect(s.scaleOf(ref)).toBe(2);
+    expect(await s.scale({ target: ref, scale: 2 } as never)).toMatchObject({ unchanged: true });
+    // the move is in Å of the scene, after the scale
+    const up = Array.from(Mat4.fromTranslation(Mat4(), Vec3.create(0, 0, 100)));
+    expectOk(await s.move({ target: ref, matrix: up } as never));
+    expect(voxel()).toEqual([220, 100, 140]);
+    expect(s.scaleOf(ref)).toBe(2);
+    // the handles: the placement is move × scale, its radius scaled
+    const p = s.placementOf(ref)!;
+    expect(Array.from(Vec3.transformMat4(Vec3(), Vec3.create(1, 0, 0), p.matrix))).toEqual([2, 0, 100]);
+    // another move after it, composed on the move only
+    expectOk(await s.move({ target: ref, matrix: up } as never));
+    expect(voxel()).toEqual([220, 100, 240]);
+    expect(s.scaleOf(ref)).toBe(2);
+    expectOk(await s.scale({ target: ref, scale: 1 } as never));
+    expect(voxel()).toEqual([110, 50, 220]);
+    expectOk(await v.api.run('history.undo', {}));
+    expect(voxel()).toEqual([220, 100, 240]);
+    expectOk(await v.api.run('history.redo', {}));
+    expect(voxel()).toEqual([110, 50, 220]);
+  });
+
+  it("scales a volume's labels with it, in the same step", async () => {
+    const { v, ref } = await mapViewer();
+    const s = v.api.stage!;
+    expectOk(await v.api.run('stage.label', { text: 'one', target: ref, x: 100, y: 50, z: 20 }));
+    const steps = v.api.history.steps.value.length;
+    expectOk(await s.scale({ target: ref, scale: 2 } as never));
+    expect(v.api.history.steps.value.length).toBe(steps + 1);
+    expect(s.labelsState().value[0].position.map((x) => Math.round(x))).toEqual([200, 100, 40]);
+  });
+});
 
 describe('stage', () => {
   it("offers what fits the pick in its menu; a cut (Prism's) adds nothing to it", async () => {
