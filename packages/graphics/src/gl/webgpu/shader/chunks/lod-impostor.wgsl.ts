@@ -49,7 +49,9 @@ export const assign_lod_impostor_factor_wgsl = /* wgsl */ `
             // the band's share of the next level: a level fading in (its overlap negated) keeps where it is above the
             // dither, one fading out (-1 - share) where it is not
             if (lod.z < 0.0) {
-                lodImpostorShare = smoothstep(lod.x, lod.x - lod.z, d);
+                // beyond the band, the impostors flatten over an octave (\`ImpostorFlatOctaves\`): 1 + flatness
+                let bandEnd = lod.x - lod.z;
+                lodImpostorShare = smoothstep(lod.x, bandEnd, d) + clamp(log2(max(d, bandEnd) / bandEnd) / ImpostorFlatOctaves, 0.0, 1.0);
             } else if (lod.z > 0.0) {
                 lodImpostorShare = -1.0 - smoothstep(lod.y - lod.z, lod.y, d);
             } else {
@@ -77,6 +79,8 @@ export const assign_lod_impostor_varyings_wgsl = /* wgsl */ `
 export const lod_impostor_wgsl = /* wgsl */ `
 #if defined(dLodImpostor)
 const ImpostorViews = 9.0;
+/** octaves of distance beyond the band over which the impostors' shading flattens to their color (Goodsell's look) */
+const ImpostorFlatOctaves = 1.0;
 
 fn impostorEncode(direction: vec3<f32>) -> vec2<f32> {
     let d = direction / (abs(direction.x) + abs(direction.y) + abs(direction.z));
@@ -182,7 +186,7 @@ fn impostorHit(sphere: vec4<f32>, point: vec3<f32>, impostorX: vec4<f32>, impost
     let s2 = impostorRead(entry, f2, v2.uv, radius);
     let coverage = vec3<f32>(s0.x, s1.x, s2.x) * weight;
     let c = coverage.x + coverage.y + coverage.z;
-    if (c < 0.5) {
+    if (c < 0.35) {
         return h;
     }
     let height = dot(coverage, vec3<f32>(s0.y, s1.y, s2.y)) / c;
@@ -210,6 +214,8 @@ fn impostorHit(sphere: vec4<f32>, point: vec3<f32>, impostorX: vec4<f32>, impost
     let n = normalize(vec3<f32>(-hx / span, -hy / span, 1.0));
     let nObject = n.x * vn.right + n.y * vn.up + n.z * vn.d;
     h.normal = normalize(vec3<f32>(dot(nObject, X), dot(nObject, Y), dot(nObject, Z)));
+    // far away flat: the normal toward the camera (the share 1 + flatness)
+    h.normal = normalize(mix(h.normal, -normalize(h.viewPosition), clamp(impostorY.w - 1.0, 0.0, 1.0)));
     h.hit = true;
     return h;
 }
@@ -221,7 +227,7 @@ fn impostorHit(sphere: vec4<f32>, point: vec3<f32>, impostorX: vec4<f32>, impost
  */
 fn impostorDithered(position: vec4<f32>, impostorY: vec4<f32>) -> bool {
     let fadeIn = impostorY.w >= 0.0;
-    let share = select(-1.0 - impostorY.w, impostorY.w, fadeIn);
+    let share = select(-1.0 - impostorY.w, min(impostorY.w, 1.0), fadeIn);
     #if defined(dRenderVariant_pick)
         let at = 0.5;
     #else

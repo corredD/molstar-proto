@@ -33,6 +33,8 @@ export function lod_impostor_varyings(qualifier: 'out' | 'in') {
  */
 export const assign_lod_impostor = `
 #if defined(dLodImpostor)
+    // octaves of distance beyond the band over which the impostors' shading flattens to their color (Goodsell's look)
+    const float ImpostorFlatOctaves = 1.0;
     #if defined(dSegmented)
         float lodImpostorScale = uLodLevel == 0 ? aSegmentLod.x : (uLodLevel == 1 ? aSegmentLod.y : (uLodLevel == 2 ? aSegmentLod.z : aSegmentLod.w));
     #else
@@ -59,7 +61,9 @@ export const assign_lod_impostor_factor = `
     // the band's share of the next level: a level fading in (its overlap negated) keeps where it is above the dither,
     // one fading out (\`lodImpostorShare\` -1 - share) where it is not
     if (uLod.z < 0.0) {
-        lodImpostorShare = smoothstep(uLod.x, uLod.x - uLod.z, d);
+        // beyond the band, the impostors flatten over an octave (\`ImpostorFlatOctaves\`): 1 + flatness
+        float bandEnd = uLod.x - uLod.z;
+        lodImpostorShare = smoothstep(uLod.x, bandEnd, d) + clamp(log2(max(d, bandEnd) / bandEnd) / ImpostorFlatOctaves, 0.0, 1.0);
     } else if (uLod.z > 0.0) {
         lodImpostorShare = -1.0 - smoothstep(uLod.y - uLod.z, uLod.y, d);
     } else {
@@ -171,7 +175,7 @@ export const lod_impostor_frag = `
         vec2 s2 = impostorRead(entry, f2, uv2, radius);
         vec3 coverage = vec3(s0.x, s1.x, s2.x) * weight;
         float c = coverage.x + coverage.y + coverage.z;
-        if (c < 0.5) return false;
+        if (c < 0.35) return false;
         float h = dot(coverage, vec3(s0.y, s1.y, s2.y)) / c;
 
         // the ray's point at height h toward the camera
@@ -191,6 +195,8 @@ export const lod_impostor_frag = `
         vec3 n = normalize(vec3(-hx / span, -hy / span, 1.0));
         vec3 nObject = n.x * rn + n.y * un + n.z * dn;
         cameraNormal = normalize(vec3(dot(nObject, X), dot(nObject, Y), dot(nObject, Z)));
+        // far away flat: the normal toward the camera (\`lodImpostorShare\` 1 + flatness)
+        cameraNormal = normalize(mix(cameraNormal, -normalize(cameraPos), clamp(vImpostorY.w - 1.0, 0.0, 1.0)));
         return true;
     }
 
@@ -198,7 +204,7 @@ export const lod_impostor_frag = `
     // dither's threshold is below the share, the one fading out's elsewhere (picking: half and half, no dither)
     bool impostorDithered() {
         bool fadeIn = vImpostorY.w >= 0.0;
-        float share = fadeIn ? vImpostorY.w : -1.0 - vImpostorY.w;
+        float share = fadeIn ? min(vImpostorY.w, 1.0) : -1.0 - vImpostorY.w;
         #if defined(dRenderVariant_pick)
             float at = 0.5;
         #else
