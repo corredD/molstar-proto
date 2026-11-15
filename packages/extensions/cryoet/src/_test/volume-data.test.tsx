@@ -51,7 +51,7 @@ function mounted(
   const area = {
     dataState: () => data.asReadonly,
     level: vi.fn(async (values: { level: string; large?: boolean }) => result(values)),
-    volume: vi.fn(async (_values: { pixelSize: number | null }) => ApiResult.ok('')),
+    volume: vi.fn(async (_values: { pixelSize?: number; reset?: boolean }) => ApiResult.ok('')),
   } as unknown as CryoetApi;
   const host = document.createElement('div');
   document.body.append(host);
@@ -195,9 +195,9 @@ describe("a volume's Pixel size", () => {
     expect(sent.pixelSize).toBeCloseTo(13.5, 3);
   });
 
-  it("goes back to the file's with Reset (null)", () => {
+  it("goes back to the file's with Reset", () => {
     const { area, button } = mounted(sized(13.604), () => ApiResult.ok(''));
     button('Reset')!.click();
-    expect(area.volume).toHaveBeenCalledWith({ volume: 'v', pixelSize: null });
+    expect(area.volume).toHaveBeenCalledWith({ volume: 'v', reset: true });
   });
 });

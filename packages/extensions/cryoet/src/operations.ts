@@ -1083,18 +1083,32 @@ export class CryoetApi extends ApiArea {
     title: "Set a volume's pixel size",
     params: {
       volume: PD.Text('', { description: 'A volume by label or state ref; empty: the only one loaded' }),
-      pixelSize: PD.Value<number | null>(null, {
-        description:
-          "Its pixel size (Å, along x, at the finest level): the volume scaled about the origin as if the file's header said so; null: the file's",
-      }),
+      pixelSize: OptionalParam(
+        PD.Numeric(
+          1,
+          { min: 0.001, max: 10000, step: 0.01 },
+          {
+            description:
+              "Its pixel size (Å, along x, at the finest level): the volume scaled about the origin as if the file's header said so",
+          },
+        ),
+      ),
+      reset: OptionalParam(PD.Boolean(false, { description: "Goes back to the file's pixel size" })),
     },
-    async run({ volume, pixelSize }, ctx) {
+    async run({ volume, pixelSize: wanted, reset }, ctx) {
       const v = oneVolume(ctx, volume || undefined);
       if (isFailure(v)) return v;
       const name = v.cell.obj?.label ?? 'The volume';
-      if (pixelSize !== null && !(typeof pixelSize === 'number' && pixelSize > 0 && Number.isFinite(pixelSize))) {
-        return ApiResult.fail('invalid', 'A pixel size is more than 0 Å.', 'null goes back to the file’s.');
+      if (wanted !== undefined && reset) {
+        return ApiResult.fail('invalid', 'A pixel size or reset: not both.');
       }
+      if (wanted === undefined && !reset) {
+        return ApiResult.fail('invalid', 'Give a pixel size (Å), or reset for the file’s.');
+      }
+      if (wanted !== undefined && !(wanted > 0 && Number.isFinite(wanted))) {
+        return ApiResult.fail('invalid', 'A pixel size is more than 0 Å.', 'reset goes back to the file’s.');
+      }
+      const pixelSize = reset ? null : wanted!;
       const file = filePixelSize(v);
       // the factor over the file's: 1 exactly for the file's own, so Reset gives it back to the bit
       const k = pixelSize === null || Math.abs(pixelSize - file) < 1e-6 * file ? 1 : pixelSize / file;

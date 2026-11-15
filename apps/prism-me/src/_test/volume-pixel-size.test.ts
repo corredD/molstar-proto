@@ -16,6 +16,8 @@ import type { ApiResult } from '@molstar/prism-viewer/api/area';
 import { DefaultPrismViewerSpec } from '@molstar/prism-viewer/default-spec';
 import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
 import type { PrismViewer } from '@molstar/prism-viewer/viewer';
+import { isLazyExtension } from '@molstar/prism-viewer/spec';
+import { createMesoscaleExplorerSpec } from '../spec.js';
 import { StageToolsExtension } from '@molstar/stage-tools-extension/prism-viewer';
 
 // A volume's pixel size (`cryoet.volume`, in the Data section): the volume scaled about the origin as if the header
@@ -65,6 +67,15 @@ async function viewerOf(map: File, ...files: File[]) {
 }
 
 describe('cryoet.volume', () => {
+  it('is a tool of the assistant and a command, with a pixel size an agent can type and a reset of its own', async () => {
+    const spec = createMesoscaleExplorerSpec('');
+    const tools = spec.extensions!.flatMap((e) => (isLazyExtension(e) ? (e.stub.skills ?? []) : (e.skills ?? []))).flatMap((k) => k.tools);
+    expect(tools.find((t) => t.operation === 'cryoet.volume')?.id).toBe('set_pixel_size');
+    const { v, ref, c } = await viewer();
+    expect((await c.volume({ volume: ref } as never)).ok).toBe(false);
+    expect((await c.volume({ volume: ref, pixelSize: 8, reset: true } as never)).ok).toBe(false);
+  });
+
   it("takes the file's own value typed in (a float32 header: 13.36 is 13.3599996) as the file's, not a change", async () => {
     const { v, ref, c } = await viewerOf(mapFile(13.36));
     const n = v.api.history.steps.value.length;
@@ -88,7 +99,7 @@ describe('cryoet.volume', () => {
     expect(steps()).toBe(n + 1);
     expect(c.dataState(ref).value).toMatchObject({ voxel: '8 Å (file: 4 Å)', pixelSize: 8, filePixelSize: 4 });
     expect(await c.volume({ volume: ref, pixelSize: 8 } as never)).toMatchObject({ unchanged: true });
-    expectOk(await c.volume({ volume: ref, pixelSize: null } as never));
+    expectOk(await c.volume({ volume: ref, reset: true } as never));
     expect(voxel()).toEqual([4, 0, 0]);
     expect(c.dataState(ref).value).toMatchObject({ voxel: '4 Å', pixelSize: 4 });
     expect(steps()).toBe(n + 2);
@@ -129,11 +140,11 @@ describe('cryoet.volume', () => {
     const before = v.plugin.state.getSnapshot({ camera: false });
     expectOk(await c.volume({ volume: ref, pixelSize: 8 } as never));
     const snapshot = v.plugin.state.getSnapshot({ camera: false });
-    expectOk(await c.volume({ volume: ref, pixelSize: null } as never));
+    expectOk(await c.volume({ volume: ref, reset: true } as never));
     await v.plugin.state.setSnapshot(snapshot);
     expect(voxel()).toEqual([8, 0, 0]);
     // a session made before the decorator carried a scale: its params without it
-    expectOk(await c.volume({ volume: ref, pixelSize: null } as never));
+    expectOk(await c.volume({ volume: ref, reset: true } as never));
     const old = JSON.parse(JSON.stringify(snapshot).replace(/"scale":2,?/g, '').replace(/,}/g, '}'));
     await v.plugin.state.setSnapshot(old);
     expect(voxel()).toEqual([4, 0, 0]);
