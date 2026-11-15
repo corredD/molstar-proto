@@ -347,8 +347,55 @@ at the time.
 
 ### Core changes (added)
 
-| What                                                          | Files                                                                                                                               | Commits                                   |
-| ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------- |
-| `binGrid` per-axis factors, one slab of sums                  | `model/src/model/volume/bin.ts`                                                                                                     | 9138693dc, and the slab commit            |
+| What                                                          | Files                                                                                                                               | Commits                         |
+| ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- | ------------------------------- |
+| `binGrid` per-axis factors, one slab of sums                  | `model/src/model/volume/bin.ts`                                                                                                     | 9138693dc, and the slab commit  |
 | Slice window tiles, per-axis bins, idle policy                | `graphics/src/repr/volume/slice-window.ts`, `slice.ts`, `gl/renderable/image.ts`, `geo/geometry/image/image.ts`, both image shaders | c5dc72a79, 819b3a586, d894ba9be |
-| WebGL render items rebind replaced external textures per draw | `graphics/src/gl/webgl/render-item.ts`                                                                                              | the rebind commit                         |
+| WebGL render items rebind replaced external textures per draw | `graphics/src/gl/webgl/render-item.ts`                                                                                              | the rebind commit               |
+
+## A zoomed-in preview while dragging a real tilt series (Ludo, 2026-11-15)
+
+**Reproduced** on the portal's dataset 10003, run TS_01, tilt series 17079 at level 0 (3838 × 3710 × 41, float32, 2.3
+GB; loaded alone with
+`cryoetPortal.load { tiltSeries: 17079, tiltSeriesLevel: 0, as: 'none', annotations: 'none', large: true }`). In the
+app, the full window is split into 2 × 2 tiles of 1919 × 1855; the binned window is one tile.
+
+**Cause:** the full and the binned windows are two texture objects, and the slice swaps between them by updating its
+`tSliceTex` cell (on a step, and on the settle timer). The uniforms (`uSliceBin`, `uSliceTiles`, `uSliceLayer`) are read
+at every draw. The render items, though, took a replaced kind-'texture' cell only in `update()`, which runs on a scene
+update. So between a swap and the next scene update, one texture was drawn with the other's uniforms. The binned
+uniforms over the full tiled texture read its top-left tile stretched over the whole quad: the 2× zoom Ludo saw. The
+synthetic tests missed it because they committed the scene before each capture. 9610bce0d had fixed this on WebGL only;
+a854aa2c0 fixes it on WebGPU: render items compare those cells at each draw and rebind.
+
+**Frames** (same camera, time faked by Playwright's clock so the moving frame is taken before the 150 ms settle; the
+gold beads of the rested frame looked for in the moving one):
+
+|                                      | rested particles | moving particles | rested particles found in place while moving |
+| ------------------------------------ | ---------------- | ---------------- | -------------------------------------------- |
+| before (a854aa2c0's change reverted) | 35               | 60 (zoomed 2×)   | 0                                            |
+| after                                | 35               | 37 (softer)      | 26 (the rest blurred under the threshold)    |
+
+Frames are in
+`/private/tmp/claude-501/-Users-ludovicautin-molstar-proto-git/bc8a7dcf-b4ed-4027-911e-5f56df74a469/scratchpad/slice-window/`:
+`portal-before-moving-30.png`, `portal-before-rested-30.png`, `portal-after-moving-30.png` and
+`portal-after-rested-30.png`. The script is `~/prism-me-lanes/slice-window-portal.cjs [port] [tag]`.
+
+**Test (failing first, 427badce0):** Dawn, with a plane laid out as the portal's (non-square, odd sides, few tilts; the
+full plane in 2 × 2 tiles, the binned one in one tile). The slice is moved and rested with no commit in between, and the
+pixels must equal the CPU path's. Without the fix, the rested frame was off in 3644 of 9216 pixels.
+
+**Regression:** Ludo's tomogram drag: 0 frames > 33 ms, 1 commit. Synthetic 3000² tilt series: 1 frame > 33 ms (33.4), 1
+commit.
+
+**Review** (lane-reviewer, gate kept short: 0 must):
+
+| Finding                                                                                                                                   | Outcome                                                                                                                                                             |
+| ----------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| should: the Dawn test's "moving" step passes without the fix (a move through the representation fires `updated`, which commits the scene) | Kept as is: the rested step fails without it, through the same per-draw path. The moving direction is shown by the portal frames above (0 → 26 particles in place). |
+| nit: `renderFullscreen` without the refresh                                                                                               | Added.                                                                                                                                                              |
+| nit: material textures not refreshed                                                                                                      | Commented (compute items, updated by `update`).                                                                                                                     |
+| nit: 9610bce0d's "as WebGPU's" was not true then                                                                                          | True since a854aa2c0.                                                                                                                                               |
+
+**Core changes (added):** WebGPU render items rebind replaced kind-'texture' cells at each draw
+(`graphics/src/gl/webgpu/render-item.ts`, a854aa2c0 and the follow-up nits commit).
