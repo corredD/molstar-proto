@@ -72,7 +72,8 @@ interface Image {
   readonly sliceWindow: ValueCell<boolean>;
   readonly sliceTexture: ValueCell<Texture>;
   readonly sliceLayer: ValueCell<number>;
-  readonly sliceBin: ValueCell<number>;
+  readonly sliceBin: ValueCell<Vec2>;
+  readonly sliceTiles: ValueCell<Vec4>;
   readonly sliceDomain: ValueCell<Vec4>;
 
   /** Bounding sphere of the image */
@@ -102,8 +103,10 @@ namespace Image {
     width: number;
     height: number;
     layer: number;
-    /** 2: `texture` holds the planes binned 2× (its size half the plane's, `width` × `height`, rounded up) */
-    bin?: 1 | 2;
+    /** `texture` holds the planes binned by these along the image's columns and rows (its size the plane's over them) */
+    bin?: readonly [number, number];
+    /** the planes in tiles (`repr/volume/slice-window.ts`): tile width, height, tiles across, down; one tile if absent */
+    tiles?: readonly [number, number, number, number];
     range: readonly [number, number];
     domain: readonly [number, number];
   };
@@ -118,7 +121,14 @@ namespace Image {
       if (dim[0] !== width || dim[1] !== height) ValueCell.update(image.imageTextureDim, Vec2.set(dim, width, height));
       ValueCell.updateIfChanged(image.sliceTexture, window.texture);
       ValueCell.updateIfChanged(image.sliceLayer, window.layer);
-      ValueCell.updateIfChanged(image.sliceBin, window.bin ?? 1);
+      const bin = image.sliceBin.ref.value;
+      const [bx, by] = window.bin ?? [1, 1];
+      if (bin[0] !== bx || bin[1] !== by) ValueCell.update(image.sliceBin, Vec2.set(bin, bx, by));
+      const tiles = image.sliceTiles.ref.value;
+      const [tw, th, ta, td] = window.tiles ?? [Math.ceil(width / bx), Math.ceil(height / by), 1, 1];
+      if (tiles[0] !== tw || tiles[1] !== th || tiles[2] !== ta || tiles[3] !== td) {
+        ValueCell.update(image.sliceTiles, Vec4.set(tiles, tw, th, ta, td));
+      }
       setSliceDomain(image, window.range, window.domain);
     } else {
       ValueCell.updateIfChanged(image.sliceTexture, (noSliceTexture ??= createNullTexture()));
@@ -184,7 +194,8 @@ namespace Image {
       sliceWindow: ValueCell.create(false),
       sliceTexture: ValueCell.create((noSliceTexture ??= createNullTexture())),
       sliceLayer: ValueCell.create(0),
-      sliceBin: ValueCell.create(1),
+      sliceBin: ValueCell.create(Vec2.create(1, 1)),
+      sliceTiles: ValueCell.create(Vec4.create(1, 1, 1, 1)),
       sliceDomain: ValueCell.create(Vec4()),
       get boundingSphere() {
         const newHash = hashCode(image);
@@ -340,6 +351,7 @@ namespace Image {
       tSliceTex: image.sliceTexture,
       uSliceLayer: image.sliceLayer,
       uSliceBin: image.sliceBin,
+      uSliceTiles: image.sliceTiles,
       uSliceDomain: image.sliceDomain,
     };
   }

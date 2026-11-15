@@ -210,7 +210,8 @@ describe.skipIf(!WebGPU.module)('grid slice from a window of planes, as the CPU 
   it('a big slice moved far shows its 2× binned plane where the full one is: odd sides, x, y, z', async () => {
     const { plugin, graphics, create, capture } = await setup();
     // values constant over each 2×2×2 block (from the first voxel): binned, the same plane; odd sides, partial blocks
-    const dims: [number, number, number] = [47, 39, 101];
+    // 128 planes or more along z: z binned too
+    const dims: [number, number, number] = [47, 39, 131];
     const v = volume(dims, (x, y, z) => Math.sin((x >> 1) * 0.7) * 4 + Math.cos((y >> 1) * 0.5) * 3 + (z >> 1) * 0.05);
     const theme = themes(v)[1][1];
     const { coarseVoxels, settleMs } = SliceWindowConfig;
@@ -230,7 +231,7 @@ describe.skipIf(!WebGPU.module)('grid slice from a window of planes, as the CPU 
         repr.setState({ visible: true });
         await SliceBinned.peek(v.grid)!.ready;
         await repr.createOrUpdate({ dimension: { name, params: far } } as any).run();
-        expect(repr.renderObjects[0].values.uSliceBin.ref.value, name).toBe(2);
+        expect(Array.from(repr.renderObjects[0].values.uSliceBin.ref.value), name).toEqual([2, 2]);
         const coarse = await capture(repr, name, dims, true);
         const c = compare(cpu, coarse);
         expect(c.drawn, name).toBeGreaterThan(Size * Size * 0.1);
@@ -240,7 +241,7 @@ describe.skipIf(!WebGPU.module)('grid slice from a window of planes, as the CPU 
         await repr.createOrUpdate({ dimension: { name, params: far - 2 } } as any).run();
         await repr.createOrUpdate({ dimension: { name, params: far } } as any).run();
         await new Promise((r) => setTimeout(r, 100));
-        expect(repr.renderObjects[0].values.uSliceBin.ref.value, name).toBe(1);
+        expect(Array.from(repr.renderObjects[0].values.uSliceBin.ref.value), name).toEqual([1, 1]);
         const full = compare(cpu, await capture(repr, name, dims));
         expect(full.far, `${name} rested: worst ${full.worst}`).toBe(0);
         SliceWindowConfig.settleMs = 60_000;
@@ -248,6 +249,47 @@ describe.skipIf(!WebGPU.module)('grid slice from a window of planes, as the CPU 
       expect(graphics.takeErrors?.() ?? []).toEqual([]);
     } finally {
       Object.assign(SliceWindowConfig, { enabled: true, coarseVoxels, settleMs });
+      plugin.dispose();
+    }
+  }, 120_000);
+
+  it('a tilt series in tiles (wider than the 3d texture limit), binned in x and y only, drawn as the CPU path', async () => {
+    const { plugin, graphics, create, capture } = await setup();
+    // few planes along z (tilts: kept), constant over each 2×2 block in x and y; tiles of 16 stand for 2048
+    const dims: [number, number, number] = [47, 39, 21];
+    const v = volume(dims, (x, y, z) => Math.sin((x >> 1) * 0.7) * 4 + Math.cos((y >> 1) * 0.5) * 3 + z * 0.3);
+    const theme = themes(v)[1][1];
+    const saved = { ...SliceWindowConfig };
+    try {
+      Object.assign(SliceWindowConfig, { maxTileSize: 16, coarseVoxels: 1000, settleMs: 60_000 });
+      for (const [name, start, far] of [
+        ['z', 3, 17],
+        ['x', 3, 41],
+      ] as const) {
+        const props = { interpolation: 'nearest' as const, dimension: { name, params: far } };
+        SliceWindowConfig.enabled = false;
+        const cpu = await capture(await create(v, theme, props), name, dims);
+        SliceWindowConfig.enabled = true;
+        // at rest, in tiles
+        const full = await create(v, theme, props);
+        expect(Array.from(full.renderObjects[0].values.uSliceTiles.ref.value).slice(2), name).not.toEqual([1, 1]);
+        const f = compare(cpu, await capture(full, name, dims));
+        expect(f.far, `${name} tiled: worst ${f.worst}`).toBe(0);
+        // moved far: the binned plane, z kept
+        const repr = await create(v, theme, { ...props, dimension: { name, params: start } });
+        repr.setState({ visible: true });
+        await SliceBinned.peek(v.grid)!.ready;
+        await repr.createOrUpdate({ dimension: { name, params: far } } as any).run();
+        expect(Array.from(repr.renderObjects[0].values.uSliceBin.ref.value), name).toEqual(
+          name === 'z' ? [2, 2] : [1, 2],
+        );
+        const c = compare(cpu, await capture(repr, name, dims));
+        expect(c.drawn, name).toBeGreaterThan(Size * Size * 0.1);
+        expect(c.far, `${name} binned: worst ${c.worst}`).toBe(0);
+      }
+      expect(graphics.takeErrors?.() ?? []).toEqual([]);
+    } finally {
+      Object.assign(SliceWindowConfig, saved);
       plugin.dispose();
     }
   }, 120_000);

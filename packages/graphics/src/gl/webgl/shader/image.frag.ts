@@ -62,9 +62,13 @@ varying vec3 vPosition;
     float sliceValueAt(ivec2 p) {
         ivec2 size = ivec2(uImageTexDim);
         p = clamp(p, ivec2(0), size - 1);
-        // binned 2×: the block holding the texel (blocks from the plane's first row and column, as the image's rows)
-        ivec2 q = ivec2(p.x, size.y - 1 - p.y) / uSliceBin;
-        return texelFetch(tSliceTex, ivec3(q, uSliceLayer), 0).r;
+        // binned: the block holding the texel (blocks from the plane's first row and column, as the image's rows); in
+        // tiles: the tile's layer, the texel in it
+        ivec2 q = ivec2(p.x, size.y - 1 - p.y) / ivec2(uSliceBin);
+        ivec4 t = ivec4(uSliceTiles);
+        ivec2 tile = q / t.xy;
+        int layer = (uSliceLayer * t.w + tile.y) * t.z + tile.x;
+        return texelFetch(tSliceTex, ivec3(q - tile * t.xy, layer), 0).r;
     }
 
     float sliceValue(vec2 uv) {

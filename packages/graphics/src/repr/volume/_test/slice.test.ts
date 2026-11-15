@@ -1015,10 +1015,10 @@ describe('a big slice moved: its 2× binned planes first, the full resolution on
       };
       // within the full window: full resolution
       await update({ dimension: { name: 'z', params: 101 } });
-      expect(values.uSliceBin.ref.value).toBe(1);
+      expect(Array.from(values.uSliceBin.ref.value)).toEqual([1, 1]);
       // far: the binned plane of the pair holding it
       await update({ dimension: { name: 'z', params: 23 } });
-      expect(values.uSliceBin.ref.value).toBe(2);
+      expect(Array.from(values.uSliceBin.ref.value)).toEqual([2, 2]);
       const coarse = values.tSliceTex.ref.value as StubTexture;
       expect(coarse).not.toBe(textures[0]);
       const layer = values.uSliceLayer.ref.value;
@@ -1036,7 +1036,7 @@ describe('a big slice moved: its 2× binned planes first, the full resolution on
       expect(Array.from(values.aPosition.ref.value)).toEqual(await corners(23));
       // rested: full resolution at 23
       await new Promise((r) => setTimeout(r, SliceWindowConfig.settleMs + 50));
-      expect(values.uSliceBin.ref.value).toBe(1);
+      expect(Array.from(values.uSliceBin.ref.value)).toEqual([1, 1]);
       expect(values.tSliceTex.ref.value).toBe(textures[0]);
       expect(values.uSliceLayer.ref.value).toBe(23 % SliceWindowDepth);
       expect(Array.from(values.aPosition.ref.value)).toEqual(await corners(23));
@@ -1077,7 +1077,7 @@ describe('a big slice moved: its 2× binned planes first, the full resolution on
       await update({ dimension: { name: 'z', params: 23 } });
       expect(owned.size).toBe(2);
       await new Promise((r) => setTimeout(r, SliceWindowConfig.settleMs + 50));
-      expect((visual.renderObject!.values as any).uSliceBin.ref.value).toBe(1);
+      expect(Array.from((visual.renderObject!.values as any).uSliceBin.ref.value)).toEqual([1, 1]);
       // freed `coarseHoldMs` after resting (shorter here)
       await new Promise((r) => setTimeout(r, SliceWindowConfig.coarseHoldMs + 50));
       expect(owned.size).toBe(1);
@@ -1086,6 +1086,39 @@ describe('a big slice moved: its 2× binned planes first, the full resolution on
       expect(owned.size).toBe(2);
     } finally {
       restore();
+    }
+  });
+
+  it('a tilt series (few planes along z) is binned in x and y only: the binned plane of the same tilt', async () => {
+    const volume = gridVolume([7, 5, 41], [2, 1, 0], Skewed);
+    const { coarseVoxels } = SliceWindowConfig;
+    SliceWindowConfig.coarseVoxels = 1000;
+    const { graphics } = stubGraphics();
+    const visual = SliceVisual(0);
+    const update = (props: Partial<SliceProps>) =>
+      Task.create('update', (runtime) =>
+        visual.createOrUpdate({ runtime, graphics }, uniformTheme(), props, { volume, key: 0 }),
+      ).run();
+    try {
+      await update(sliceProps({ mode: 'grid', dimension: { name: 'z', params: 20 } }));
+      visual.setVisibility(true);
+      const binned = await SliceBinned.peek(volume.grid)!.ready;
+      expect(binned.cells.space.dimensions).toEqual([4, 3, 41]);
+      expect(Array.from(binned.cells.data)).toEqual(Array.from((await binGrid(volume.grid, [2, 2, 1])).cells.data));
+      for (let k = 0; k < 40; ++k) await new Promise((r) => setTimeout(r, 0));
+      // a step the full window holds: the full plane; one it does not: the binned plane of the same tilt (z kept)
+      const values = visual.renderObject!.values as any;
+      await update({ dimension: { name: 'z', params: 21 } });
+      expect(Array.from(values.uSliceBin.ref.value)).toEqual([1, 1]);
+      await update({ dimension: { name: 'z', params: 1 } });
+      expect(Array.from(values.uSliceBin.ref.value)).toEqual([2, 2]);
+      expect(values.uSliceLayer.ref.value).toBe(1);
+      // the x slice: columns z (kept), rows y (2×)
+      await update({ dimension: { name: 'x', params: 3 } });
+      expect(values.dSliceWindow.ref.value).toBe(true);
+    } finally {
+      SliceWindowConfig.coarseVoxels = coarseVoxels;
+      visual.destroy();
     }
   });
 

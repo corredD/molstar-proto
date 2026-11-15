@@ -290,6 +290,8 @@ function drawSlice(state: SliceWindowState, image: Image, index: number) {
   if (!state.visible && window.released) return;
   if (!state.visible) armSliceWindowRelease(state);
   const binned = state.binned?.grid;
+  // a big slice's full window: the plane shown only (moves are the binned window's)
+  window.idle = !binned;
   if (!binned || SliceWindow.holds(window, index)) {
     drawFullSlice(state, image);
     return;
@@ -297,14 +299,17 @@ function drawSlice(state: SliceWindowState, image: Image, index: number) {
   clearTimeout(state.coarseHold);
   state.coarseHold = undefined;
   const coarse = (state.coarse ??= SliceWindow.create(window.graphics, binned, window.axis));
-  const layer = SliceWindow.show(coarse, index >> 1);
+  const { factors } = state.binned!;
+  const [columns, rows] = SliceWindow.planeAxes(window.axis);
+  const layer = SliceWindow.show(coarse, Math.floor(index / factors[window.axis]));
   const { width, height } = window;
   Image.setSliceWindow(image, {
     texture: coarse.texture,
     width,
     height,
     layer,
-    bin: 2,
+    bin: [factors[columns], factors[rows]],
+    tiles: coarse.tiles,
     range: state.range,
     domain: state.domain,
   });
@@ -323,6 +328,8 @@ function drawSlice(state: SliceWindowState, image: Image, index: number) {
   }, SliceWindowConfig.settleMs);
 }
 
+const Unbinned = [1, 1] as const;
+
 function drawFullSlice(state: SliceWindowState, image: Image) {
   const { window } = state;
   const layer = SliceWindow.show(window, state.index);
@@ -332,7 +339,8 @@ function drawFullSlice(state: SliceWindowState, image: Image) {
     width,
     height,
     layer,
-    bin: 1,
+    bin: Unbinned,
+    tiles: window.tiles,
     range: state.range,
     domain: state.domain,
   });
