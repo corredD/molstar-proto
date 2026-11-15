@@ -287,3 +287,16 @@ the representation's default, nothing to wire).
 `23b82493d` the switch per copy; `26ed1500b` small items keep their spheres beyond it; `b96769fa4` particle targets'
 switch params; `2cd49b025` the impostors' levels' own programs; `b1d07561b` each member's switch in the culling;
 `9a6997161` WebGL draws a level's program once linked. App/extension: `5132c6f47`, `ee89a0852`, `a1cf45b9d`.
+
+### Short gate (these commits)
+
+One reviewer acting as its own skeptic, over `a6b6c3480..HEAD`: 2 must, 2 should, 5 nits.
+
+| finding                                                                                              | fixed by                                                                                 |
+| ---------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| the shaders' pixel not the culling's (lod scale while moving): copies in neither level (must)        | `752fbf37b` (global `uLodScale`, `uCssHeight`)                                           |
+| orthographic with levels by distance: impostors never drawn (must)                                   | `01112dacb`                                                                              |
+| WebGL never prepared the level programs: the first far frame without them (should)                   | `1307aaea0` (not testable on this Mac)                                                   |
+| no test tying the culling's ranges to the shaders' share (should)                                    | partly (the chunks read the culling's view; orthographic case); a sweep left open (TODO) |
+| r0 = 1, the 0.5 eye-distance margin, the slider's default radius, the draw key without define (nits) | left open                                                                                |
+| misplaced JSDoc (nit)                                                                                | `1307aaea0`                                                                              |
