@@ -60,6 +60,8 @@ export const ImageSchema = {
     usedIf: ['dSliceWindow'],
   }),
   uSliceLayer: UniformSpec('i'),
+  /** 2: the planes binned 2× (a big slice moving): the image's texel p read at p / 2 */
+  uSliceBin: UniformSpec('i'),
   uSliceDomain: UniformSpec('v4'),
 
   /** Same as `InterpolationTypeNames` in '../../mol-geo/geometry/image/image' */

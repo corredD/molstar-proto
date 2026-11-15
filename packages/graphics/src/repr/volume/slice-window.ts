@@ -10,12 +10,21 @@
 // grid is a view of the data; the shader colors them by the theme's domain, so a contrast change is a uniform too).
 
 import { Tensor } from '@molstar/core/math/linear-algebra/tensor';
+import { Task } from '@molstar/core/task';
+import { binGrid } from '@molstar/model/model/volume/bin';
 import type { Grid } from '@molstar/model/model/volume';
 import type { GraphicsContext } from '@molstar/graphics/gl/context';
 import type { Texture } from '@molstar/graphics/gl/texture';
 
-/** Off: every grid slice is built on the CPU, as before (the rendered tests compare the two paths) */
-export const SliceWindowConfig = { enabled: true };
+/**
+ * `enabled` off: every grid slice is built on the CPU, as before (the rendered tests compare the two paths).
+ * `coarseVoxels`: a volume of at least this many voxels (2^28: 1 GiB of floats) is binned 2× in the background, and a
+ * slice moved out of its window shows the binned planes until it rests `settleMs`
+ */
+export const SliceWindowConfig = { enabled: true, coarseVoxels: 2 ** 28, settleMs: 150 };
+
+/** A slice shown from the binned planes is shown at full resolution once it has not moved for this long (ms) */
+export const SliceSettleMs = SliceWindowConfig.settleMs;
 
 /** Planes held per window */
 export const SliceWindowDepth = 32;
@@ -272,6 +281,11 @@ export namespace SliceWindow {
     window.copies += 1;
   }
 
+  /** Whether plane `index` is in the window's texture (copied, not pending) */
+  export function holds(window: SliceWindow, index: number) {
+    return !window.released && SliceRing.has(window.ring, index) && !window.pending.has(index);
+  }
+
   /** Frees the texture (a slice hidden a while), the window emptied: the next `show` makes it again */
   export function release(window: SliceWindow) {
     if (window.released) return;
@@ -295,4 +309,37 @@ function createTexture(graphics: GraphicsContext, width: number, height: number,
   const texture = graphics.resources.texture('volume-float32', 'r', 'float', 'nearest');
   texture.define(width, height, depth);
   return texture;
+}
+
+type Binned = { grid?: Grid; readonly ready: Promise<Grid> };
+const binned = new WeakMap<Tensor, Binned>();
+
+/**
+ * A grid binned 2× for the slices of a big volume (`SliceWindowConfig.coarseVoxels`): `binGrid` (each voxel the mean of
+ * its 2×2×2 block, as an MRC level's 2×), made once per grid's cells in the background (it yields every few ms), kept
+ * while the cells are
+ */
+export namespace SliceBinned {
+  export function isWanted(grid: Grid) {
+    const [nx, ny, nz] = grid.cells.space.dimensions;
+    return nx * ny * nz >= SliceWindowConfig.coarseVoxels;
+  }
+
+  export function get(grid: Grid): Binned {
+    let b = binned.get(grid.cells);
+    if (!b) {
+      const entry: Binned = {
+        ready: Task.create('Binning 2× for the slice', (ctx) => binGrid(grid, 2, ctx))
+          .run(() => {}, 8)
+          .then((g) => (entry.grid = g)),
+      };
+      binned.set(grid.cells, (b = entry));
+    }
+    return b;
+  }
+
+  /** The binned grid if made (or being made) */
+  export function peek(grid: Grid) {
+    return binned.get(grid.cells);
+  }
 }

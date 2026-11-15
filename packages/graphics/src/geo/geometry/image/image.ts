@@ -72,6 +72,7 @@ interface Image {
   readonly sliceWindow: ValueCell<boolean>;
   readonly sliceTexture: ValueCell<Texture>;
   readonly sliceLayer: ValueCell<number>;
+  readonly sliceBin: ValueCell<number>;
   readonly sliceDomain: ValueCell<Vec4>;
 
   /** Bounding sphere of the image */
@@ -101,6 +102,8 @@ namespace Image {
     width: number;
     height: number;
     layer: number;
+    /** 2: `texture` holds the planes binned 2× (its size half the plane's, `width` × `height`, rounded up) */
+    bin?: 1 | 2;
     range: readonly [number, number];
     domain: readonly [number, number];
   };
@@ -115,6 +118,7 @@ namespace Image {
       if (dim[0] !== width || dim[1] !== height) ValueCell.update(image.imageTextureDim, Vec2.set(dim, width, height));
       ValueCell.updateIfChanged(image.sliceTexture, window.texture);
       ValueCell.updateIfChanged(image.sliceLayer, window.layer);
+      ValueCell.updateIfChanged(image.sliceBin, window.bin ?? 1);
       setSliceDomain(image, window.range, window.domain);
     } else {
       ValueCell.updateIfChanged(image.sliceTexture, (noSliceTexture ??= createNullTexture()));
@@ -180,6 +184,7 @@ namespace Image {
       sliceWindow: ValueCell.create(false),
       sliceTexture: ValueCell.create((noSliceTexture ??= createNullTexture())),
       sliceLayer: ValueCell.create(0),
+      sliceBin: ValueCell.create(1),
       sliceDomain: ValueCell.create(Vec4()),
       get boundingSphere() {
         const newHash = hashCode(image);
@@ -334,6 +339,7 @@ namespace Image {
       dSliceWindow: image.sliceWindow,
       tSliceTex: image.sliceTexture,
       uSliceLayer: image.sliceLayer,
+      uSliceBin: image.sliceBin,
       uSliceDomain: image.sliceDomain,
     };
   }

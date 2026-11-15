@@ -74,7 +74,9 @@ fn vertexMain(in: VertexInput) -> VertexOutput {
     fn sliceValueAt(pIn: vec2<i32>) -> f32 {
         let size = vec2<i32>(uObject.uImageTexDim);
         let p = clamp(pIn, vec2<i32>(0), size - 1);
-        return textureLoad(tSliceTex, vec3<i32>(p.x, size.y - 1 - p.y, uObject.uSliceLayer), 0).r;
+        // binned 2×: the block holding the texel (blocks from the plane's first row and column, as the image's rows)
+        let q = vec2<i32>(p.x, size.y - 1 - p.y) / uObject.uSliceBin;
+        return textureLoad(tSliceTex, vec3<i32>(q, uObject.uSliceLayer), 0).r;
     }
 
     fn sliceValue(uv: vec2<f32>) -> f32 {

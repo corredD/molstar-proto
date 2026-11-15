@@ -35,7 +35,7 @@ import { Tensor } from '@molstar/core/math/linear-algebra/tensor';
 import { ValueCell } from '@molstar/core/util/value-cell';
 import type { GraphicsContext } from '@molstar/graphics/gl/context';
 import { VolumeValueColorTheme, getVolumeValueDomain } from '@molstar/graphics/theme/color/volume-value';
-import { type SliceAxis, SliceWindow, SliceWindowHiddenMs } from './slice-window.js';
+import { SliceBinned, type SliceAxis, SliceWindow, SliceWindowConfig, SliceWindowHiddenMs } from './slice-window.js';
 
 export const SliceParams = {
   ...Image.Params,
@@ -218,6 +218,14 @@ function getGridSlicePlacement(volume: Volume, props: SliceProps, corners: Float
 
 type SliceWindowState = {
   window: SliceWindow;
+  /** the index drawn, the grid's range and the colors' domain (`Image.SliceWindow`) */
+  index: number;
+  range: [number, number];
+  domain: [number, number];
+  /** a big volume's grid binned 2× (`SliceBinned`), its window, and the switch to full resolution pending */
+  binned?: ReturnType<typeof SliceBinned.get>;
+  coarse?: SliceWindow;
+  settle?: ReturnType<typeof setTimeout>;
   /** the release of a hidden slice's window, pending (`SliceWindowHiddenMs`) */
   hidden?: ReturnType<typeof setTimeout>;
   /** the slice drawn, read by the mapping (picking, marking) */
@@ -240,27 +248,83 @@ function setSliceWindowVisibility(image: Image, visible: boolean) {
   state.hidden = undefined;
   const { window } = state;
   if (!visible) {
-    if (!window.released) state.hidden = setTimeout(() => SliceWindow.release(window), SliceWindowHiddenMs);
+    if (!window.released) {
+      state.hidden = setTimeout(() => {
+        clearTimeout(state.settle);
+        state.settle = undefined;
+        SliceWindow.release(window);
+        if (state.coarse) SliceWindow.release(state.coarse);
+      }, SliceWindowHiddenMs);
+    }
     return;
   }
   if (!window.released) return;
-  const index = getSliceIndex(state.info, window.axis);
-  ValueCell.update(image.sliceLayer, SliceWindow.show(window, index));
-  ValueCell.updateIfChanged(image.sliceTexture, window.texture);
+  drawSlice(state, image, state.index);
   // the canvas draws again once this settles
   window.graphics.resources.pending.track(Promise.resolve(), 'slice window made again');
 }
 
-function getSliceIndex(info: SliceWindowState['info'], axis: SliceAxis) {
-  return axis === 0 ? info.x0 : axis === 1 ? info.y0 : info.z0;
+/**
+ * Draws plane `index` from the window: from the binned planes where the volume is big, binned and the full window
+ * does not hold it yet (a slice moving fast or far), the full one once it rests (`SliceWindowConfig.settleMs`, a redraw asked for)
+ */
+function drawSlice(state: SliceWindowState, image: Image, index: number) {
+  state.index = index;
+  clearTimeout(state.settle);
+  state.settle = undefined;
+  const { window } = state;
+  const binned = state.binned?.grid;
+  if (!binned || SliceWindow.holds(window, index)) {
+    drawFullSlice(state, image);
+    return;
+  }
+  const coarse = (state.coarse ??= SliceWindow.create(window.graphics, binned, window.axis));
+  const layer = SliceWindow.show(coarse, index >> 1);
+  const { width, height } = window;
+  Image.setSliceWindow(image, {
+    texture: coarse.texture,
+    width,
+    height,
+    layer,
+    bin: 2,
+    range: state.range,
+    domain: state.domain,
+  });
+  state.settle = setTimeout(() => {
+    state.settle = undefined;
+    drawFullSlice(state, image);
+    window.graphics.resources.pending.track(Promise.resolve(), 'slice at full resolution');
+  }, SliceWindowConfig.settleMs);
+}
+
+function drawFullSlice(state: SliceWindowState, image: Image) {
+  const { window } = state;
+  const layer = SliceWindow.show(window, state.index);
+  const { width, height } = window;
+  Image.setSliceWindow(image, {
+    texture: window.texture,
+    width,
+    height,
+    layer,
+    bin: 1,
+    range: state.range,
+    domain: state.domain,
+  });
+}
+
+function destroySliceWindowState(state: SliceWindowState) {
+  clearTimeout(state.hidden);
+  clearTimeout(state.settle);
+  state.hidden = state.settle = undefined;
+  SliceWindow.destroy(state.window);
+  if (state.coarse) SliceWindow.destroy(state.coarse);
 }
 
 /** Drawn on the CPU again: the window freed */
 function releaseSliceWindow(image: Image) {
   const state = getSliceWindowState(image);
   if (!state) return;
-  clearTimeout(state.hidden);
-  SliceWindow.destroy(state.window);
+  destroySliceWindowState(state);
   image.meta.sliceWindow = undefined;
   Image.setSliceWindow(image, undefined);
 }
@@ -340,7 +404,6 @@ function createGridWindowImage(
 
   const corners = new Float32Array(12);
   const { info, index } = getGridSlicePlacement(volume, props, corners);
-  const layer = SliceWindow.show(window, index);
 
   // the groups of an image of this size kept: the same for every slice of the window
   const groupTexture = state && image ? image.groupTexture.ref.value : createGroupTexture(width, height);
@@ -354,15 +417,22 @@ function createGridWindowImage(
     image,
   );
   const range: [number, number] = [grid.stats.min, grid.stats.max];
-  Image.setSliceWindow(im, { texture: window.texture, width, height, layer, range, domain });
-  im.setBoundingSphere(Grid.getBoundingSphere(grid));
   if (state) {
-    state.info = info;
+    Object.assign(state, { info, range, domain });
   } else {
-    const fresh: SliceWindowState = { window, info };
-    im.meta.sliceWindow = fresh;
-    im.meta.mapping = sliceWindowMapping(grid.cells.space, fresh, !!volume.parent && Volume.isPeriodic(volume.parent));
+    state = {
+      window,
+      info,
+      index,
+      range,
+      domain,
+      binned: SliceBinned.isWanted(grid) ? SliceBinned.get(grid) : undefined,
+    };
+    im.meta.sliceWindow = state;
+    im.meta.mapping = sliceWindowMapping(grid.cells.space, state, !!volume.parent && Volume.isPeriodic(volume.parent));
   }
+  drawSlice(state, im, index);
+  im.setBoundingSphere(Grid.getBoundingSphere(grid));
   return im;
 }
 
@@ -397,17 +467,11 @@ function updateGridWindowImage(
   const { info, index } = getGridSlicePlacement(volume, props, corners);
   ValueCell.update(image.cornerBuffer, corners);
   state.info = info;
-  const { window } = state;
-  const range: [number, number] = [volume.grid.stats.min, volume.grid.stats.max];
+  state.range[0] = volume.grid.stats.min;
+  state.range[1] = volume.grid.stats.max;
+  state.domain = domain;
   ValueCell.updateIfChanged(image.isoLevel, getIsoLevel(volume, props.isoValue));
-  Image.setSliceWindow(image, {
-    texture: window.texture,
-    width: window.width,
-    height: window.height,
-    layer: SliceWindow.show(window, index),
-    range,
-    domain,
-  });
+  drawSlice(state, image, index);
   image.setBoundingSphere(Grid.getBoundingSphere(volume.grid));
   return true;
 }
@@ -1137,10 +1201,7 @@ export function SliceVisual(materialId: number): VolumeVisual<SliceParams> {
       setVisibility: setSliceWindowVisibility,
       dispose: (image: Image | undefined) => {
         const state = image && getSliceWindowState(image);
-        if (state) {
-          clearTimeout(state.hidden);
-          SliceWindow.destroy(state.window);
-        }
+        if (state) destroySliceWindowState(state);
       },
     },
     materialId,
