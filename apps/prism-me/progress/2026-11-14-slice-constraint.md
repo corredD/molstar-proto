@@ -75,8 +75,8 @@ coordinator moves them to `_spec/core-changes.md`); probably none. ui.md and fea
   the copy under the pointer on a slice is turned and fitted the same way.
 - **Grow** (`mesoscale.grow { slice, … }`): Tiling, Sphere, Random walk, Spiral, Symmetry's Snap on the plane as on a
   mesh, their up along the normal, ending at the box; with Fit to, each copy fitted on it (the source's fitted score for
-  the threshold: as `97015c359`). Crystal and Helix: refused by the operation on a slice; Grow's settings send no slice
-  for them (they grow in space). The grow records `grow.slice` (volume, plane, name): a session keeps it.
+  the threshold: as `97015c359`). Crystal: refused on a slice (grows in space from the section). Helix: see "Helix on a
+  slice" below. The grow records `grow.slice` (volume, plane, name): a session keeps it.
 - **Grow knows**: the paint's slice reaches `growSettings.slice` with its last copy; a right-clicked source takes the
   slice shown through it; Grow › On lists "Slice of <volume>" (kept while a mesh or None is picked: `inSpace`); the live
   grow keeps it; Snap shows on a slice. The slice is three plain params (volume text, two vectors) so the assistant and
@@ -139,15 +139,50 @@ Reviewer 2 must, 4 should, 6 nits; skeptic: 12 confirmed, 0 refuted (#2 lowered 
 took the room: the review's fixes (per-copy turn and fit, the params for the assistant, On's `inSpace`) and the Grow ›
 On select.
 
+## Decided by Ludo (2026-11-14)
+
+1. **Helix on a slice**: "grow along the plane, or away from it" — built (below).
+2. **Symmetry's Snap on a slice**: kept as on a mesh (a copy beyond its reach stays off the plane).
+3. **The box**: the voxels' centers (0 to n − 1): OK.
+4. **On None** keeps the slice listed to pick again (`inSpace`); a mesh picked wins while picked: OK.
+
+## Helix on a slice (2026-11-14, after Ludo's answer)
+
+- `mesoscale.grow { sliceAxis: along | normal }` (default along) with a slice; Grow › Helix gets an **Axis** row (Along
+  plane, Normal), only on a slice. The helix winds about a line **through the source** (its point on the plane), with
+  Radius, Pitch, Count, Turns, Hand and Direction as in space; its first unit a Radius across the axis (in the plane for
+  Along). Live on the last grow, Count prefix-stable, sessions (`grow.params.sliceAxis`), Undo, ⌘K and the assistant (a
+  Select param). `helixPath`'s `through`; `sliceHelixLine`.
+- **Along's direction** (decided here): the copy's side (its Fiber Axis's offset direction, turned by it) in the plane;
+  else its axis in the plane; else any. Why: a copy on a slice stands along the normal (≤ 5° tilt), so its axis's
+  projection is noise; its side lies in the plane and turns with its spin: Spin turns the helix. The view's horizontal
+  was the other candidate; rejected because it changes with the camera (a live grow would move as one turns the view).
+- Tests (failed first): Along, every copy Radius (±0.1 Å) from a line of the plane through the source; Normal, from the
+  normal through it; `growParams` sends the slice and the axis for a helix. App check (1378, Ludo's data, Radius 120,
+  Pitch 400, 3 turns, 28 copies): Along |z − z0| ≤ 119.8 Å (= Radius), Normal up to 1186 Å (3 pitches); screenshots
+  `h-along-top.png`, `h-along-edge.png`, `h-normal-top.png`, `h-normal-edge.png`.
+- Gate on these commits: reviewer 2 must, 3 should, 4 nits; skeptic confirmed all, +1 should (pre-existing), +1 nit, +1
+  question.
+
+| #   | Finding                                                                  | Outcome                     |
+| --- | ------------------------------------------------------------------------ | --------------------------- |
+| 1   | a helix from a source off the slice not refused                          | fixed (test + fix, gate 1)  |
+| 2   | a fitted helix's copies off the plane held at their height               | fixed: `onPlane` (gate 2)   |
+| 3   | UI test: the live regrow by Axis, the row hidden with On None            | added (gate 3)              |
+| 4   | this progress file                                                       | this section                |
+| 5   | ui.md and the changelog without `sliceAxis`                              | fixed                       |
+| 6   | stale strings (growParams comment, helixRadius, Radius tooltip, JSDoc)   | fixed                       |
+| 7   | the first copy a Radius from the source (overlaps for a small Radius)    | open: as designed, in ui.md |
+| 8   | the Along test does not pin the default direction                        | open (nit)                  |
+| 9   | a comment on a brace's line in grow.test.tsx                             | fixed                       |
+| N1  | Snap's copies off the plane within reach got the plane's normal in a fit | fixed by gate 2's `onPlane` |
+| N2  | the report said "on the slice" for a helix off it                        | fixed ("from the slice")    |
+| N3  | a helix on a slice is not bounded by the volume's box                    | for Ludo below              |
+
 ## Decisions for Ludo
 
-1. **Helix on a slice**: grows in space (as Crystal) from the Grow section; `mesoscale.grow` refuses one with a slice. A
-   plane has no axis for the mesh's helix. Wanted instead: a helix lying in the plane (flattened: a zigzag), or about an
-   in-plane axis?
-2. **Symmetry's Snap on a slice**: as on a mesh (a copy beyond its reach stays off the plane). Snap every copy straight
-   onto the plane instead?
-3. **The box**: the voxels' centers (0 to n − 1), half a voxel inside the drawn slice's edge. OK?
-4. **On None** with a slice keeps it listed to pick again (`inSpace`); a mesh picked wins while picked.
+1. A helix from a slice is not bounded by the volume's box (Normal can rise past it). Bound it?
+2. Along's default direction is the copy's side (Spin turns it). OK, or the view's horizontal?
 
 ## Core changes
 
