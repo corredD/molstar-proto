@@ -536,20 +536,32 @@ export function Slice(props: {
   // a drag of a slice drawn from a window of its planes (graphics slice-window.ts): shown outside the state, a frame at a
   // time (`previewSlice`), the release committing it once (one undo step); keys, and a slice not windowed, through
   // `move`. Its index, shown until the release lands
-  const dragged = observableState<{ axis: SliceAxis; index: number } | undefined>(undefined);
+  const dragged = observableState<{ axis: SliceAxis; index: number; committing?: boolean } | undefined>(undefined);
   const commitDrag = (index: number) => {
     const d = dragged.value;
     if (!d) return false;
+    const committing = { axis: d.axis, index, committing: true };
+    dragged.set(committing);
     void api
       .group('Slice', (g) => g.cryoet!.slice({ volume, axis: d.axis, index } as never))
       .finally(() => {
-        if (dragged.value?.axis === d.axis && dragged.value.index === index) dragged.set(undefined);
+        if (dragged.value === committing) dragged.set(undefined);
       });
-    dragged.set({ axis: d.axis, index });
     return true;
   };
+  // a drag ended without a commit (the pointer up where it started: no change event; the controls gone): committed
+  // where it differs from the state, else let go
+  const settleDrag = () => {
+    const d = dragged.value;
+    if (!d || d.committing) return;
+    if (d.index === info.value?.slices.find((x) => x.axis === d.axis)?.index) dragged.set(undefined);
+    else commitDrag(d.index);
+  };
+  const onPointerUp = () => setTimeout(settleDrag, 0);
+  if (typeof window !== 'undefined') window.addEventListener('pointerup', onPointerUp, true);
   onCleanup(() => {
-    if (dragged.value) commitDrag(dragged.value.index);
+    if (typeof window !== 'undefined') window.removeEventListener('pointerup', onPointerUp, true);
+    settleDrag();
   });
   const previewIndex = (i: number) => {
     const axis = current();

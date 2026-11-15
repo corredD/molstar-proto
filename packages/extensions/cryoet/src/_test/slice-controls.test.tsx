@@ -299,6 +299,27 @@ describe("a windowed slice's Slice slider (graphics slice-window.ts)", () => {
     s.dispose();
   });
 
+  it('a drag back to its start (no change event) commits nothing and leaves the knob to the state', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance', 'Date'] });
+    const s = mounted({ axis: 'z', windowed: true });
+    s.drag(5);
+    await vi.advanceTimersByTimeAsync(FrameMs);
+    s.drag(0);
+    await vi.advanceTimersByTimeAsync(FrameMs);
+    // released where it started: browsers fire no change event, the pointer goes up
+    window.dispatchEvent(new Event('pointerup'));
+    await vi.advanceTimersByTimeAsync(100);
+    expect(s.slice).not.toHaveBeenCalled();
+    // the state moves by another path (an undo, the agent)
+    const now = s.info.value!;
+    s.info.set({ ...now, slices: now.slices.map((x) => (x.axis === 'z' ? { ...x, index: 30 } : x)) });
+    flushFrame();
+    expect(s.range.value).toBe('30');
+    s.dispose();
+    await vi.advanceTimersByTimeAsync(100);
+    expect(s.slice).not.toHaveBeenCalled();
+  });
+
   it('a drag left without its release (the controls gone) commits where it was', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance', 'Date'] });
     const s = mounted({ axis: 'z', windowed: true });
