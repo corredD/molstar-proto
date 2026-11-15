@@ -2,6 +2,7 @@
  * Copyright (c) 2020-2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { hashFnv32a } from '@molstar/core/data/util';
@@ -33,6 +34,7 @@ import { QuadPositions } from '@molstar/graphics/gl/compute/util';
 import { createEmptySubstance } from '../substance-data.js';
 import { createEmptyEmissive } from '../emissive-data.js';
 import { createEmptyWiggle } from '../wiggle-data.js';
+import { createNullTexture, type Texture } from '@molstar/graphics/gl/texture';
 
 const QuadIndices = new Uint32Array([0, 1, 2, 1, 3, 2]);
 
@@ -66,6 +68,12 @@ interface Image {
 
   readonly isoLevel: ValueCell<number>;
 
+  /** A grid slice drawn from a window of its planes (`Image.setSliceWindow`), see `ImageSchema.dSliceWindow` */
+  readonly sliceWindow: ValueCell<boolean>;
+  readonly sliceTexture: ValueCell<Texture>;
+  readonly sliceLayer: ValueCell<number>;
+  readonly sliceDomain: ValueCell<Vec4>;
+
   /** Bounding sphere of the image */
   readonly boundingSphere: Sphere3D;
 
@@ -83,6 +91,42 @@ namespace Image {
     scale: Vec3;
     transform: Mat4;
   };
+
+  /**
+   * A window of a grid slice's planes (`repr/volume/slice-window.ts`): the 3d texture of their raw values, the plane's
+   * size, the layer drawn, the grid's value range (`[min, max]`, for the iso level) and the colors' domain
+   */
+  export type SliceWindow = {
+    texture: Texture;
+    width: number;
+    height: number;
+    layer: number;
+    range: readonly [number, number];
+    domain: readonly [number, number];
+  };
+
+  let noSliceTexture: Texture | undefined;
+
+  /** Draws `image` from the window (its textures of colors and values left unused), or from them again (undefined) */
+  export function setSliceWindow(image: Image, window: SliceWindow | undefined) {
+    if (window) {
+      const { width, height } = window;
+      const dim = image.imageTextureDim.ref.value;
+      if (dim[0] !== width || dim[1] !== height) ValueCell.update(image.imageTextureDim, Vec2.set(dim, width, height));
+      ValueCell.updateIfChanged(image.sliceTexture, window.texture);
+      ValueCell.updateIfChanged(image.sliceLayer, window.layer);
+      setSliceDomain(image, window.range, window.domain);
+    } else {
+      ValueCell.updateIfChanged(image.sliceTexture, (noSliceTexture ??= createNullTexture()));
+    }
+    ValueCell.updateIfChanged(image.sliceWindow, !!window);
+  }
+
+  export function setSliceDomain(image: Image, range: readonly [number, number], domain: readonly [number, number]) {
+    const d = image.sliceDomain.ref.value;
+    if (d[0] === range[0] && d[1] === range[1] && d[2] === domain[0] && d[3] === domain[1]) return;
+    ValueCell.update(image.sliceDomain, Vec4.set(d, range[0], range[1], domain[0], domain[1]));
+  }
 
   export function createEmptyTrim(): Trim {
     return { type: 0, center: Vec3(), rotation: Quat(), scale: Vec3(), transform: Mat4() };
@@ -133,6 +177,10 @@ namespace Image {
       trimScale: ValueCell.create(trim.scale),
       trimTransform: ValueCell.create(trim.transform),
       isoLevel: ValueCell.create(isoLevel),
+      sliceWindow: ValueCell.create(false),
+      sliceTexture: ValueCell.create((noSliceTexture ??= createNullTexture())),
+      sliceLayer: ValueCell.create(0),
+      sliceDomain: ValueCell.create(Vec4()),
       get boundingSphere() {
         const newHash = hashCode(image);
         if (newHash !== currentHash) {
@@ -282,6 +330,11 @@ namespace Image {
       uTrimTransform: image.trimTransform,
 
       uIsoLevel: image.isoLevel,
+
+      dSliceWindow: image.sliceWindow,
+      tSliceTex: image.sliceTexture,
+      uSliceLayer: image.sliceLayer,
+      uSliceDomain: image.sliceDomain,
     };
   }
 

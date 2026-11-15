@@ -2,6 +2,7 @@
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { clip_functions_wgsl, clip_pixel_wgsl } from './chunks/clip.wgsl.js';
@@ -20,7 +21,8 @@ import { read_from_texture_wgsl } from './chunks/read-from-texture.wgsl.js';
 
 /**
  * Images: a textured quad per instance with colors (\`tImageTex\`), groups (\`tGroupTex\`) and values (\`tValueTex\`,
- * for iso-level cut-offs) per texel, optionally cubic interpolation, trimmed by a shape
+ * for iso-level cut-offs) per texel, optionally cubic interpolation, trimmed by a shape; or a grid slice from a window
+ * of its planes (\`dSliceWindow\`: their raw values in \`tSliceTex\`, colored here)
  */
 export const image_wgsl = /* wgsl */ `
 ${common_wgsl}
@@ -66,6 +68,44 @@ fn vertexMain(in: VertexInput) -> VertexOutput {
     #define dInterpolation_cubic
 #endif
 
+#if defined(dSliceWindow)
+    // a window of the slice's planes (ImageSchema.dSliceWindow): the raw value of the image's texel at uv, as the
+    // texture of the image samples it (nearest, clamped), its rows flipped (the image's are uploaded flipped)
+    fn sliceValueAt(pIn: vec2<i32>) -> f32 {
+        let size = vec2<i32>(uObject.uImageTexDim);
+        let p = clamp(pIn, vec2<i32>(0), size - 1);
+        return textureLoad(tSliceTex, vec3<i32>(p.x, size.y - 1 - p.y, uObject.uSliceLayer), 0).r;
+    }
+
+    fn sliceValue(uv: vec2<f32>) -> f32 {
+        return sliceValueAt(vec2<i32>(floor(uv * uObject.uImageTexDim)));
+    }
+
+    // the value in the colors' domain, clamped: what the image's color stands for
+    fn sampleImage(uv: vec2<f32>) -> vec4<f32> {
+        let d = uObject.uSliceDomain;
+        return vec4<f32>(clamp((sliceValue(uv) - d.z) / (d.w - d.z), 0.0, 1.0));
+    }
+
+    // the value in the grid's range, as the image's texture of values samples it (linear)
+    fn sliceRangeValue(uv: vec2<f32>) -> f32 {
+        let st = uv * uObject.uImageTexDim - 0.5;
+        let f = fract(st);
+        let p = vec2<i32>(floor(st));
+        let v = mix(
+            mix(sliceValueAt(p), sliceValueAt(p + vec2<i32>(1, 0)), f.x),
+            mix(sliceValueAt(p + vec2<i32>(0, 1)), sliceValueAt(p + vec2<i32>(1, 1)), f.x),
+            f.y
+        );
+        let d = uObject.uSliceDomain;
+        return (v - d.x) / (d.y - d.x);
+    }
+#else
+    fn sampleImage(uv: vec2<f32>) -> vec4<f32> {
+        return sample_tImageTex(uv);
+    }
+#endif
+
 #if defined(dInterpolation_cubic)
     #if defined(dInterpolation_catmulrom) || defined(dInterpolation_mitchell)
         #if defined(dInterpolation_catmulrom)
@@ -106,7 +146,7 @@ fn vertexMain(in: VertexInput) -> VertexOutput {
         let cell = fract(texCoord * texDim);
         for (var m = -1.0; m <= 2.0; m += 1.0) {
             for (var n = -1.0; n <= 2.0; n += 1.0) {
-                let vecData = sample_tImageTex(texCoord + texelSize * vec2<f32>(m, n));
+                let vecData = sampleImage(texCoord + texelSize * vec2<f32>(m, n));
                 let c = abs(cubicFilter(m - cell.x) * cubicFilter(-n + cell.y));
                 nSum += vecData * c;
                 nDenom += c;
@@ -134,8 +174,8 @@ fn fragmentMain(in: VertexOutput) -> FragmentOutput {
 
     let uv = in.vUv;
     #if defined(dInterpolation_cubic)
-        #if defined(dUsePalette)
-            var material = sample_tImageTex(uv);
+        #if defined(dUsePalette) && !defined(dSliceWindow)
+            var material = sampleImage(uv);
             if (any(material.rgb != vec3<f32>(1.0))) {
                 material = biCubic(uv);
             }
@@ -143,12 +183,26 @@ fn fragmentMain(in: VertexOutput) -> FragmentOutput {
             var material = biCubic(uv);
         #endif
     #else
-        var material = sample_tImageTex(uv);
+        var material = sampleImage(uv);
+    #endif
+
+    #if defined(dSliceWindow)
+        // the value in the domain (filtered) to its color: the palette's, or the uniform color times it
+        #if defined(dUsePalette)
+            material = vec4<f32>(sample_tPalette(vec2<f32>(material.r, 0.0)).rgb, 0.0);
+        #else
+            material = vec4<f32>(uMaterial.uColor * material.r, 0.0);
+        #endif
     #endif
 
     let alpha = uMaterial.uAlpha;
     if (uObject.uIsoLevel >= 0.0) {
-        if (sample_tValueTex(uv).r < uObject.uIsoLevel) {
+        #if defined(dSliceWindow)
+            let isoValue = sliceRangeValue(uv);
+        #else
+            let isoValue = sample_tValueTex(uv).r;
+        #endif
+        if (isoValue < uObject.uIsoLevel) {
             discard;
         }
         material.a = alpha;
@@ -250,7 +304,7 @@ fn fragmentMain(in: VertexOutput) -> FragmentOutput {
     #elif defined(dRenderVariant_emissive)
         out.color = vec4<f32>(emissive);
     #else
-        #if defined(dUsePalette)
+        #if defined(dUsePalette) && !defined(dSliceWindow)
             if (all(material.rgb == vec3<f32>(1.0))) {
                 material = vec4<f32>(uObject.uPaletteDefault, material.a);
             } else {
