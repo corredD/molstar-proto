@@ -1097,7 +1097,7 @@ export class CryoetApi extends ApiArea {
       }
       const file = filePixelSize(v);
       // the factor over the file's: 1 exactly for the file's own, so Reset gives it back to the bit
-      const k = pixelSize === null || Math.abs(pixelSize - file) < 1e-9 * file ? 1 : pixelSize / file;
+      const k = pixelSize === null || Math.abs(pixelSize - file) < 1e-6 * file ? 1 : pixelSize / file;
       if (k === volumeScale(ctx, v)) {
         return ApiResult.already(`${name}'s pixel size is ${+(file * k).toFixed(4)} Å already.`);
       }

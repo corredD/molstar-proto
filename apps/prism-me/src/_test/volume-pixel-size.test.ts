@@ -31,11 +31,11 @@ function expectOk<R>(r: ApiResult<R>): asserts r is Extract<ApiResult<R>, { ok: 
   if (!r.ok) expect.fail(`${r.code}: ${r.message}${r.hint ? ` (${r.hint})` : ''}`);
 }
 
-function mapFile() {
+function mapFile(voxel = 4) {
   const n = 16;
-  const values = new Float32Array(n * n * n).map((_, i) => (i % n) * 4);
+  const values = new Float32Array(n * n * n).map((_, i) => (i % n) * voxel);
   const grid: Grid = {
-    transform: { kind: 'matrix', matrix: Mat4.fromUniformScaling(Mat4(), 4) },
+    transform: { kind: 'matrix', matrix: Mat4.fromUniformScaling(Mat4(), voxel) },
     cells: Tensor.create(Tensor.Space([n, n, n], [2, 1, 0], Float32Array), Tensor.Data1(values)),
     stats: { min: 0, max: 0, mean: 0, sigma: 0 },
   };
@@ -45,12 +45,16 @@ function mapFile() {
 const triangle = new File(['v 30 20 20\nv 32 20 20\nv 30 22 20\nf 1 2 3\n'], 'tri.obj');
 
 async function viewer(...files: File[]) {
+  return viewerOf(mapFile(), ...files);
+}
+
+async function viewerOf(map: File, ...files: File[]) {
   const base = DefaultPrismViewerSpec();
   const v = await createPrismViewerHeadless({
     spec: { ...base, extensions: [...(base.extensions ?? []), CryoetExtension, StageToolsExtension] },
   });
   viewers.push(v);
-  expectOk(await v.api.load.files({ files: [mapFile(), ...files] }));
+  expectOk(await v.api.load.files({ files: [map, ...files] }));
   const ref = v.plugin.managers.volume.hierarchy.current.volumes[0].cell.transform.ref;
   /** Voxel (1, 0, 0) where it is drawn */
   const voxel = () => {
@@ -61,6 +65,19 @@ async function viewer(...files: File[]) {
 }
 
 describe('cryoet.volume', () => {
+  it("takes the file's own value typed in (a float32 header: 13.36 is 13.3599996) as the file's, not a change", async () => {
+    const { v, ref, c } = await viewerOf(mapFile(13.36));
+    const n = v.api.history.steps.value.length;
+    expect(await c.volume({ volume: ref, pixelSize: 13.36 } as never)).toMatchObject({ unchanged: true });
+    expect(v.api.history.steps.value.length).toBe(n);
+    // after another value, back by typing it: exactly the file's, no Reset shown
+    expectOk(await c.volume({ volume: ref, pixelSize: 6.68 } as never));
+    expectOk(await c.volume({ volume: ref, pixelSize: 13.36 } as never));
+    const info = c.dataState(ref).value!;
+    expect(info.pixelSize).toBe(info.filePixelSize);
+    expect(info.voxel).not.toContain('file');
+  });
+
   it('rescales about the origin as if the header said it; Reset gives the file’s back exactly; one step each', async () => {
     const { v, ref, voxel, c } = await viewer();
     const steps = () => v.api.history.steps.value.length;

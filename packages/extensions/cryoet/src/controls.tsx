@@ -423,7 +423,7 @@ export function VolumeData(props: { area: CryoetApi; volume: string }) {
   };
   // the pixel size: set at the release (`cryoet.volume`, one step); null: the file's; a failure said
   const pixelStatus = observableState<string>('');
-  const changed = mapState(info, (i) => !!i && Math.abs(i.pixelSize - i.filePixelSize) > 1e-9 * i.filePixelSize);
+  const changed = mapState(info, (i) => !!i && Math.abs(i.pixelSize - i.filePixelSize) > 1e-6 * i.filePixelSize);
   const setPixel = async (pixelSize: number | null) => {
     const r = await area.volume({ volume, pixelSize } as never);
     pixelStatus.set(r.ok ? '' : r.message);
