@@ -100,9 +100,6 @@ const SwitchChoices = [
   { id: 'distance', label: 'Distance' },
 ];
 
-/** The impostors' distance by default, in the model's radii (`ImpostorAutoDistance` of the particle targets) */
-const AutoDistance = 2.6;
-
 /**
  * Where a model's far proteins turn into silhouettes, shown while they do: by each protein's size on screen (below N
  * pixels) or its distance from the eye (beyond D); a slider live while dragged (previews), one step on release
@@ -127,7 +124,7 @@ function FarSwitch(props: {
     return {
       by: s?.by ?? 'size',
       pixels: o?.pixels ?? s?.pixels ?? 12,
-      distance: o?.distance ?? (s?.distance || radius * AutoDistance),
+      distance: o?.distance ?? (s?.distance || s?.applied || 1000),
       radius,
     };
   });
@@ -161,15 +158,15 @@ function FarSwitch(props: {
           </div>
         )}
       </Show>
-      <Show when={mapState(shown, (s) => s.by === 'distance' && s.radius > 0)}>
+      <Show when={mapState(shown, (s) => s.by === 'distance')}>
         {() => (
           <div class={classes.line}>
             <div class={classes.label}>Beyond</div>
             <Slider
               aria-label="Silhouettes beyond this distance"
               value={mapState(shown, (s) => s.distance)}
-              min={mapState(shown, (s) => Math.max(1, Math.round(s.radius / 10)))}
-              max={mapState(shown, (s) => Math.round(s.radius * 20))}
+              min={100}
+              max={mapState(shown, (s) => Math.max(1000, Math.round(s.radius * 20), Math.round(s.distance * 4)))}
               step={1}
               scale="log"
               unit="Å"

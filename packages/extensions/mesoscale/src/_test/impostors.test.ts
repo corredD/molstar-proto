@@ -115,4 +115,14 @@ describe('far proteins as silhouettes or spheres (mesoscale.impostors)', () => {
     // out of range
     expect(await v.api.run('mesoscale.impostors', { particles: list, pixels: 1000 })).toMatchObject({ ok: false });
   });
+
+  it('by distance by default (0): the distance applied read back from the representation', async () => {
+    const v = await viewer();
+    const list = v.plugin.managers.particles.hierarchy.current.lists[0].cell.transform.ref;
+    expectOk(await v.api.run('mesoscale.impostors', { particles: list, by: 'distance' }));
+    const sw = v.api.mesoscale!.graphicsState(list).value?.impostorSwitch;
+    expect(sw?.distance).toBe(0);
+    // headless without a GPU the targets are meshes, without impostors: none applied (the slider then shows its own)
+    expect(sw?.applied).toBe(0);
+  });
 });

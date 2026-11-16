@@ -184,8 +184,10 @@ export interface GraphicsInfo {
     readonly by: 'size' | 'distance';
     readonly pixels: number;
     readonly distance: number;
-    /** the model's radius (Å): the distance's scale, 0 by default the model's radius times `ImpostorAutoDistance` */
+    /** the model's radius (Å): the distance slider's upper scale */
     readonly radius: number;
+    /** the distance applied (Å): `distance`, or the representation's default where 0 */
+    readonly applied: number;
   };
 }
 
@@ -3259,7 +3261,9 @@ function graphicsOf(o: GraphicsObject): GraphicsInfo | undefined {
     ...(mode ? { mode } : {}),
     ...(colorLevels !== undefined ? { colorLevels } : {}),
     ...(impostors !== undefined ? { impostors } : {}),
-    ...(impostorSwitch !== undefined ? { impostorSwitch: { ...impostorSwitch, radius: drawnRadius(o) } } : {}),
+    ...(impostorSwitch !== undefined
+      ? { impostorSwitch: { ...impostorSwitch, radius: drawnRadius(o), applied: appliedDistance(o) } }
+      : {}),
     wiggle: common((t) => findAnimation(t)?.wiggleAmplitude ?? 0) ?? 0,
     tumble: common((t) => findAnimation(t)?.tumbleAmplitude ?? 0) ?? 0,
   };
@@ -3281,6 +3285,23 @@ function drawnRadius(o: GraphicsObject) {
     for (const ro of repr?.renderObjects ?? []) radius = Math.max(radius, ro.values.boundingSphere.ref.value.radius);
   }
   return radius;
+}
+
+/** The impostors' distance as an object's representations apply it (their level value's switch), 0 for none */
+function appliedDistance(o: GraphicsObject) {
+  for (const r of o.representations) {
+    const repr = (
+      r.obj?.data as
+        | { repr?: { renderObjects?: readonly { values: { lodLevels?: { ref: { value: unknown } } } }[] } }
+        | undefined
+    )?.repr;
+    for (const ro of repr?.renderObjects ?? []) {
+      const sw = (ro.values.lodLevels?.ref.value as { impostorSwitch?: { mode: string; value: number } } | undefined)
+        ?.impostorSwitch;
+      if (sw?.mode === 'distance') return sw.value;
+    }
+  }
+  return 0;
 }
 
 /** The impostors' structure params by default, where a representation has none (`mesoscale.impostors`) */
