@@ -20,7 +20,7 @@
   and the edges are frames, no lookup wraps), a tile each: coverage (2 × 2 subsamples), the front's height along the
   view, the front's normal (x, y in the view's frame), RGBA8. Tiles sized by the pixels the copy covers where the
   impostors start (a power of 2 in [8, 64]); shelf-packed into one atlas per representation, halved until it fits
-  `maxTextureSize` (at most 4096 wide). Why the CPU: one texture for both backends, testable, no offscreen pass per item
+  `maxTextureSize` (at most 8192 a side, places in 10 bits: the yeast slab's 5,457 targets need 8192 × 4680). Why the CPU: one texture for both backends, testable, no offscreen pass per item
   and view. Why RGBA: Mol*'s WebGL texture layer has no RG8; the normal is exact from the splat.
 - **The last level draws impostors** (`getLodLevelsValue(..., impostor)`): one item a copy (6 vertices), its scale the
   item's atlas entry negated (`-(entry + 1)`, the entry's place packed into 20 bits, `encodeEntry`). Why the scale: it is
@@ -38,8 +38,17 @@
   Picking splits at half. Beyond the band, over an octave, the impostors' normal turns to the camera: flat color, the
   outline pass draws the edges (Goodsell's look).
 - **Who**: particle structure and sites targets drawn as spheres with `lodImpostor` and at least two levels; an item
-  from 22 Å radius (`ImpostorMinRadius`: lipids and ions keep their spheres, which show them as they are). All such
-  targets take the define (one merge key), those without an entry draw their last level as spheres with the band.
+  of any radius (`ImpostorMinRadius` 0, Ludo: lipids and ions too); a copy under 4 px reads its nearest view alone
+  (`ImpostorOneViewPixels`). All such targets take the define (one merge key), those without an entry (the atlas full)
+  draw their last level as spheres with the band, never thinned.
+- **The switch** (`uLodImpostorSwitch`): by each copy's size on screen (12 px) or its distance from the eye; the
+  distance by default where a copy of the median radius is 12 px across in a 720-px view (`autoDistance`).
+- **Thinning** (stochastic simplification, Cook et al. 2007; `lodImpostorThin`, 8 px, 0 off): below that size a share
+  `p = (size / s0)²` (at least 1/64) of the copies kept by a stable hash of their member and instance (`copyHash`,
+  PCG), larger by `1 / √(p · ThinArea)` (the area kept, the fade's included); one leaving shrinks out over a quarter of
+  `p` above it (no pop), then is culled. The vertex stage decides on WebGL; the GPU culling drops the others first by
+  the same rule (`thinnedOut`, the frame's scale also in the clip ghost's pass). Open: inside the band (distance mode
+  or a switch below 8 px) kept copies grow during the cross-fade.
 - **Not the sphere raster's** (`isSphereRasterEligible`): it chooses levels per sphere and has no dither.
 
 ## Measured (M1 Pro, 1280 × 800, cellpack-mg, quality)
@@ -54,4 +63,6 @@
 | two cells, 4 (far)           | 21 ms      | 16 ms     | -          | -         |
 
 On and off in the same page, alternated. Close up the spheres' program costs more with the define (its larger fragment
-stage and two more varyings), though no impostor is drawn: the open item.
+stage and two more varyings), though no impostor is drawn: the open item. Since then each level has its own program
+(close up as off). With every target and thinning (8 px), WebGPU: one cell × 3.5 9.8 → 8.7 ms, two cells × 4
+18.1 → 8.0 ms, the yeast slab at Ludo's view 35.7 → 23.9 ms; × 2.2 still 10.3 → 12.9 ms.
