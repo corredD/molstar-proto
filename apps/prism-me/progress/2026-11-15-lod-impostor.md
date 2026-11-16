@@ -384,15 +384,15 @@ One copy of each named ingredient alone (the other entities hidden, an instance 
 orbiting it in 1.5° steps over 45°, at 24, 40 and 64 px across, silhouettes on and off (spheres). Per step the share of
 the copy's silhouette that changed; a jump is the largest step over the median (spheres: 1.2–2.8).
 
-| copy (r)              | before, on: jump (largest step) 24 / 40 px | spheres (off) 24 / 40 px |
-| --------------------- | ------------------------------------------ | ------------------------ |
-| DNA_GYRASE (113 Å)    | 7.1 (0.10) / 5.0 (0.10)                    | 1.8 / 1.4                |
-| MG_224_8MER (190 Å)   | 5.0 (0.30) / 5.2 (0.34)                    | 2.3 / 1.6                |
-| MG_312_MONOMER (180)  | 5.6 (0.21) / 6.4 (0.26)                    | 2.2 / 1.5                |
-| 6MER, 192MER, RIBOSOME | 1.7–2.4                                   | 1.5–2.8                  |
+| copy (r)               | before, on: jump (largest step) 24 / 40 px | spheres (off) 24 / 40 px |
+| ---------------------- | ------------------------------------------ | ------------------------ |
+| DNA_GYRASE (113 Å)     | 7.1 (0.10) / 5.0 (0.10)                    | 1.8 / 1.4                |
+| MG_224_8MER (190 Å)    | 5.0 (0.30) / 5.2 (0.34)                    | 2.3 / 1.6                |
+| MG_312_MONOMER (180)   | 5.6 (0.21) / 6.4 (0.26)                    | 2.2 / 1.5                |
+| 6MER, 192MER, RIBOSOME | 1.7–2.4                                    | 1.5–2.8                  |
 
-The compact ones (192-mer, ribosome, 6-mer) do not jump but are blurry silhouettes at 40–64 px; the elongated ones
-(a rod, a ring edge-on, a two-lobed gyrase) lose or grow whole parts in one step.
+The compact ones (192-mer, ribosome, 6-mer) do not jump but are blurry silhouettes at 40–64 px; the elongated ones (a
+rod, a ring edge-on, a two-lobed gyrase) lose or grow whole parts in one step.
 
 ### Cause (two)
 
@@ -403,53 +403,53 @@ The compact ones (192-mer, ribosome, 6-mer) do not jump but are blurry silhouett
    silhouette below 125 px (the band to 177), the 6-mer (312 Å) below 210 px, with tiles of 64 texels and nine-by-nine
    views. Ludo saw big copies as silhouettes at sizes where no blend of views holds.
 2. **The views disagree off their planes.** Each of the three views was read where the ray meets its plane through the
-   copy's center; what lies off that plane lands elsewhere in each view (about its height × the angle between views,
-   up to 22°). For an elongated copy the blend ghosts, and a part covered by only one or two views has a coverage equal
-   to their weights' sum, the same over the whole part: as the weights move the whole part crosses the 0.35 cut in one
-   step (the jump). A CPU model of the fragment stage (`ImpostorAtlas.hit`) over a 60° orbit: a rod and a ring, IoU
-   with the spheres 0.55 and 0.65, jumps 7.3 and 6.0 (the spheres' 1.9).
+   copy's center; what lies off that plane lands elsewhere in each view (about its height × the angle between views, up
+   to 22°). For an elongated copy the blend ghosts, and a part covered by only one or two views has a coverage equal to
+   their weights' sum, the same over the whole part: as the weights move the whole part crosses the 0.35 cut in one step
+   (the jump). A CPU model of the fragment stage (`ImpostorAtlas.hit`) over a 60° orbit: a rod and a ring, IoU with the
+   spheres 0.55 and 0.65, jumps 7.3 and 6.0 (the spheres' 1.9).
 
-Not the cause: blend weights (continuous across triangles and the octahedral fold, checked), the one-view rule
-(< 4 px), the band, thinning (big copies are above 8 px), the center (the atlas and the quad use the same invariant
-sphere). Tried in the CPU model and not taken: 17 × 17 views (jumps 3.5–4.6 alone; with the parallax 2.1–3.0, the best,
-but 3.6× the atlas for the large items: a decision for Ludo); a dithered cut (fewer jumps, IoU worse).
+Not the cause: blend weights (continuous across triangles and the octahedral fold, checked), the one-view rule (< 4 px),
+the band, thinning (big copies are above 8 px), the center (the atlas and the quad use the same invariant sphere). Tried
+in the CPU model and not taken: 17 × 17 views (jumps 3.5–4.6 alone; with the parallax 2.1–3.0, the best, but 3.6× the
+atlas for the large items: a decision for Ludo); a dithered cut (fewer jumps, IoU worse).
 
 ### Fixed
 
 - `888485fcf` **the cap is the largest item's**: every copy switches at its own size on screen (12 px for a ribosome
   too). Test fails first (cap 17 for a lipid-heavy population).
 - `2ac69cc8f` **each view read at the ray's front** (parallax): from the height of the ray's point nearest the center
-  (always in the tile), then once more at the height read there (`ImpostorAtlas.hit`, `ParallaxSteps` 1; GLSL, WGSL);
-  a copy under 4 px still reads one view once. CPU model: IoU 0.55 → 0.75 (rod), 0.65 → 0.80 (ring); jumps 7.3 → 4.3,
-  6.0 → 3.5 (test fails first).
+  (always in the tile), then once more at the height read there (`ImpostorAtlas.hit`, `ParallaxSteps` 1; GLSL, WGSL); a
+  copy under 4 px still reads one view once. CPU model: IoU 0.55 → 0.75 (rod), 0.65 → 0.80 (ring); jumps 7.3 → 4.3, 6.0
+  → 3.5 (test fails first).
 
 ### After (same orbits)
 
-| copy             | before 24 / 40 px | after the cap (spheres there) | at 64 px switch, no parallax | at 64 px, parallax |
-| ---------------- | ----------------- | ----------------------------- | ---------------------------- | ------------------ |
-| DNA_GYRASE       | 7.1 / 5.0         | 2.3 / 1.4                     | 6.8 / 4.5                    | **1.9 / 1.9**      |
-| MG_224_8MER      | 5.0 / 5.2         | 3.4 / 1.8                     | 5.0 / 5.1                    | **3.1 / 2.2**      |
-| MG_312_MONOMER   | 5.6 / 6.4         | 2.2 / 2.3                     | 5.6 / 6.4                    | **2.4 / 1.7**      |
-| largest step 8MER | 0.30 / 0.34      | 0.16 / 0.12                   | 0.30 / 0.33                  | **0.15 / 0.14**    |
+| copy              | before 24 / 40 px | after the cap (spheres there) | at 64 px switch, no parallax | at 64 px, parallax |
+| ----------------- | ----------------- | ----------------------------- | ---------------------------- | ------------------ |
+| DNA_GYRASE        | 7.1 / 5.0         | 2.3 / 1.4                     | 6.8 / 4.5                    | **1.9 / 1.9**      |
+| MG_224_8MER       | 5.0 / 5.2         | 3.4 / 1.8                     | 5.0 / 5.1                    | **3.1 / 2.2**      |
+| MG_312_MONOMER    | 5.6 / 6.4         | 2.2 / 2.3                     | 5.6 / 6.4                    | **2.4 / 1.7**      |
+| largest step 8MER | 0.30 / 0.34       | 0.16 / 0.12                   | 0.30 / 0.33                  | **0.15 / 0.14**    |
 
 (The last two columns with the switch at 64 px, so that the big copies are silhouettes at 24 and 40 px: the parallax
-alone.) Big copies through the band (9–18 px) are never empty: `out/band-ribosome-9-12-15-18px-never-empty.png`.
-Frames: `out/orbit-before-top-after-bottom-*.png` and `-left-after-right-*.gif` (the cap),
+alone.) Big copies through the band (9–18 px) are never empty: `out/band-ribosome-9-12-15-18px-never-empty.png`. Frames:
+`out/orbit-before-top-after-bottom-*.png` and `-left-after-right-*.gif` (the cap),
 `out/orbit-64px-noparallax-top-parallax-bottom-*.png/.gif` (the parallax); all frames under `out/orbit/`.
 
 ### Frame times (M1 Pro, 1280 × 800, WebGPU, off/on alternated in one page, ms)
 
-| view                | spheres (off) | before (cap 17.6, put back for the run) | after, 12 px | after, 24 px | parallax off (12 px) |
-| ------------------- | ------------- | --------------------------------------- | ------------ | ------------ | -------------------- |
-| one cell × 1.6      | 10.6          | 15.2                                    | 17.9         | 17.8         | 17.9                 |
-| one cell × 2.2      | 8.8           | 10.2                                    | **14.6**     | 12.1         | 14.6                 |
-| one cell × 3.5      | 8.7           | 7.4                                     | **10.1**     | 8.5          | 10.1                 |
-| two cells × 2.6/4/6 | 13.7/16.1/16.3 | (8.3/8.0/7.8 last round)               | 8.7/8.3–9.2/8.2–8.6 | –     | –                    |
-| yeast, Ludo's view  | 30.1–31.8     | (19.3–19.4 last round)                  | 21.7–25.4    | –            | –                    |
+| view                | spheres (off)  | before (cap 17.6, put back for the run) | after, 12 px        | after, 24 px | parallax off (12 px) |
+| ------------------- | -------------- | --------------------------------------- | ------------------- | ------------ | -------------------- |
+| one cell × 1.6      | 10.6           | 15.2                                    | 17.9                | 17.8         | 17.9                 |
+| one cell × 2.2      | 8.8            | 10.2                                    | **14.6**            | 12.1         | 14.6                 |
+| one cell × 3.5      | 8.7            | 7.4                                     | **10.1**            | 8.5          | 10.1                 |
+| two cells × 2.6/4/6 | 13.7/16.1/16.3 | (8.3/8.0/7.8 last round)                | 8.7/8.3–9.2/8.2–8.6 | –            | –                    |
+| yeast, Ludo's view  | 30.1–31.8      | (19.3–19.4 last round)                  | 21.7–25.4           | –            | –                    |
 
 The parallax costs nothing measurable. The cap's fix costs at mid distances (× 2.2: +43%; × 3.5: +36%): proteins of
-30–100 Å now keep their spheres until 12 px (they switched at 20–68 px under the 17.6 Å cap). Far views (two cells)
-and the yeast view do not change. WebGL2 × 2.2 / 3.5: 56 / 41 ms (47 / 34 last round).
+30–100 Å now keep their spheres until 12 px (they switched at 20–68 px under the 17.6 Å cap). Far views (two cells) and
+the yeast view do not change. WebGL2 × 2.2 / 3.5: 56 / 41 ms (47 / 34 last round).
 
 ### Thinning controls (item 2)
 
@@ -461,14 +461,38 @@ and the yeast view do not change. WebGL2 × 2.2 / 3.5: 56 / 41 ms (47 / 34 last 
   `out/thin-grow0-grow1-grow1.5-off.png` (× 3.5: grow 0, 1, 1.5, off).
 - Commits: `bdd49a412` (core: param, shaders, `thinScale(p, k)`), `5376f4d0a`, `4277a7213` (extension), `ace6fb3b1`
   (ui.md, features.md).
-- Known: above 1 the kept copies grow past the area kept; the GPU culling tests their unenlarged sphere (a copy just
-  off screen whose enlarged quad would show is culled: an edge pop at most a few px; as before at 1).
+- Above 1 (after review S1): the area-keeping scale times `1 + (k − 1)(1 − √p)`, a kept copy at most k times the
+  threshold's size (an exponent drew a 1-px copy 21 px across at 1.5, the farthest the largest), `589110754`.
+- Known: the GPU culling (frustum and occlusion) tests a kept copy's unenlarged sphere, so a copy just off screen or
+  behind a nearer one whose enlarged quad would show is culled: a pop of up to (drawn − own size) / 2, about 3 px at 1,
+  5 px at 1.5 with Thin below 8 (as before at 1).
 
 ### Core changes (added)
 
-`888485fcf` the radius cap the largest item's; `2ac69cc8f` each view read at the ray's front (parallax);
-`bdd49a412` the thinned copies' enlargement a param (`lodImpostorThinScale`). App/extension: `5376f4d0a`,
-`4277a7213`, `ace6fb3b1`.
+All `packages/graphics`, no app hunks, not upstream:
+
+- `888485fcf`, `b592229ec` the radius cap the largest item's (`impostor-atlas.ts` `radiusCap`, `representation.ts`
+  `getImpostorRadiusCap`; tests): with lipids the 90th percentile was 17 Å, big copies silhouettes at 100+ px.
+- `2ac69cc8f` each view read at the ray's front (`impostor-atlas.ts` `hit`, `lod-impostor.glsl.ts`,
+  `lod-impostor.wgsl.ts`; tests): the views disagreed off their planes, elongated copies jumped while turning.
+- `bdd49a412`, `589110754` the thinned copies' enlargement a param (`common.ts` `lodImpostorThinScale`,
+  `representation.ts`, `impostor-atlas.ts` `thinScale`/`setThin`, both shaders' `uImpostorThin.y`): Ludo's control.
+
+App/extension: `5376f4d0a`, `4277a7213`, `9f017e748`, `ace6fb3b1`; docs `b14e8e48d`.
+
+### Review (lane-reviewer, lane-skeptic over `6bd1cafc6..04d9b4ec0`)
+
+| finding                                                                                             | verdict                                                   | fixed by                                         |
+| --------------------------------------------------------------------------------------------------- | --------------------------------------------------------- | ------------------------------------------------ |
+| plan stale: views at their planes, enlargement without k, the cap (must)                            | confirmed                                                 | `b14e8e48d`                                      |
+| core changes not in `_spec/core-changes.md` (must)                                                  | refuted (the brief: the coordinator moves them from here) | –                                                |
+| Kept grow above 1 as an exponent: the farthest copies the largest, 21 px at 1.5 (should)            | confirmed (the suggested fix popped at the threshold)     | `589110754` (test fails first)                   |
+| the edge pop understated (should → nit); occlusion culls enlarged rims too (new nit)                | confirmed / plausible                                     | note above                                       |
+| the cap's wiring untested (the regression was in `representation.ts`) (should)                      | confirmed                                                 | `b592229ec`                                      |
+| changelog not updated (should)                                                                      | confirmed                                                 | `b14e8e48d`                                      |
+| the box's parse (4abc as 4) and 0.5 rounding; one history label for both; the result message (nits) | confirmed                                                 | `9f017e748`                                      |
+| `min(r, cap)` never binds now (nit)                                                                 | confirmed                                                 | left (a guard; `radii[1]` still sets the ranges) |
+| this round's core changes lack files, why, upstream status (nit)                                    | confirmed                                                 | below                                            |
 
 ### Decisions for Ludo
 
