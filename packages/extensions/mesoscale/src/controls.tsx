@@ -218,7 +218,6 @@ function FarSwitch(props: {
               min={0}
               max={1.5}
               step={0.05}
-              unit="×"
               onPreview={(v) => change({ thinScale: v }, false)}
               onCommit={(v) => change({ thinScale: v }, true)}
             />
