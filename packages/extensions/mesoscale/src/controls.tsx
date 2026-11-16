@@ -100,6 +100,11 @@ const SwitchChoices = [
   { id: 'distance', label: 'Distance' },
 ];
 
+/** The far-distance slider's end: 20 times the model's radius, 4 times the distance set, at least 1000 Å */
+export function farDistanceMax(radius: number, committed: number) {
+  return Math.max(1000, Math.round(radius * 20), Math.round(committed * 4));
+}
+
 /**
  * Where a model's far proteins turn into silhouettes, shown while they do: by each protein's size on screen (below N
  * pixels) or its distance from the eye (beyond D); a slider live while dragged (previews), one step on release
@@ -118,17 +123,21 @@ function FarSwitch(props: {
     changed: () => overlaid.set(overlaid.value + 1),
   });
   onCleanup(() => steps.settle());
+  // the slider's end, held while dragged: the previews apply, so a max of the state's distance would follow the knob
+  let max = 0;
+  let dragging = false;
   const shown = derive([sw, overlaid.asReadonly] as const, (s) => {
     const o = steps.overlay('switch');
-    const radius = s?.radius ?? 0;
+    if (!dragging || !max) max = farDistanceMax(s?.radius ?? 0, s?.distance || s?.applied || 1000);
     return {
       by: s?.by ?? 'size',
       pixels: o?.pixels ?? s?.pixels ?? 12,
       distance: o?.distance ?? (s?.distance || s?.applied || 1000),
-      radius,
+      max,
     };
   });
   const change = (patch: { pixels?: number; distance?: number }, end: boolean) => {
+    dragging = !end;
     steps.change('switch', patch);
     if (end) steps.settle();
   };
@@ -166,7 +175,7 @@ function FarSwitch(props: {
               aria-label="Silhouettes beyond this distance"
               value={mapState(shown, (s) => s.distance)}
               min={100}
-              max={mapState(shown, (s) => Math.max(1000, Math.round(s.radius * 20), Math.round(s.distance * 4)))}
+              max={mapState(shown, (s) => s.max)}
               step={1}
               scale="log"
               unit="Å"

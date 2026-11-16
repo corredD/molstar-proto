@@ -10,6 +10,7 @@ import { DefaultPrismViewerSpec } from '@molstar/prism-viewer/default-spec';
 import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
 import type { PrismViewer } from '@molstar/prism-viewer/viewer';
 import { afterEach, describe, expect, it } from 'vitest';
+import { farDistanceMax } from '../controls.js';
 import { MesoscaleExtension } from '../prism-viewer.js';
 import { TestParticleList, TestTargetList, setTestTargetStructure } from './fixtures.js';
 
@@ -114,6 +115,12 @@ describe('far proteins as silhouettes or spheres (mesoscale.impostors)', () => {
     for (const s of structures(v)) expect(s).toMatchObject({ lodImpostorBy: 'distance', lodImpostorDistance: 5000 });
     // out of range
     expect(await v.api.run('mesoscale.impostors', { particles: list, pixels: 1000 })).toMatchObject({ ok: false });
+  });
+
+  it("the distance slider's end: of the model's radius and the distance set, at least 1000 Å", () => {
+    expect(farDistanceMax(0, 100)).toBe(1000);
+    expect(farDistanceMax(500, 1000)).toBe(10000);
+    expect(farDistanceMax(500, 4346)).toBe(17384);
   });
 
   it('by distance by default (0): the distance applied read back from the representation', async () => {
