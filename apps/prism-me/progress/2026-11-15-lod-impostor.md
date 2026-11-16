@@ -338,3 +338,34 @@ One reviewer acting as its own skeptic, over `a6b6c3480..HEAD`: 2 must, 2 should
 
 Screens: `out/today-silhouettes-thinned-d2.2.png`, `-d3.5.png` (today, silhouettes, thinned). Mid distances (× 1.6–2.2,
 the band) still cost more than spheres; open.
+
+### Yeast slab: spheres, silhouettes, thinned (one page, two passes each)
+
+At Ludo's view (Distance 2430 Å, from above, 31,340 copies in view at 3,408–9,569 Å), WebGPU: spheres 29.5 / 29.0 ms,
+silhouettes 19.3 / 19.4, silhouettes + thinning 19.4 / 19.2. Thinning gains nothing there: the copies in view are mostly
+above 8 px. (An earlier session, same view: 35.7 against 23.9.) Screens: `out/yeast-spheres-silhouettes-thinned.png`.
+Zoom-out sequence, thinned (24 frames, × 0.12 → 2.4): mean frame differences fall smoothly 27 → 0.8, no spike:
+`out/zoom-sequence-thinned-8px.png`.
+
+### Short gate (thinning, 8192, every target)
+
+One reviewer acting as its own skeptic, over `386790c26..21a29cff2`: 3 must, 4 should, 3 nits.
+
+| finding                                                                                                 | fixed by                                       |
+| ------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
+| the distance slider's max follows the dragged value: it runs away (must)                                | `6ac788306` (the max held during the drag)     |
+| the culling thins a member's last spheres where it has no atlas entry: copies vanish (must)             | `8a50557cc` (only negative last scales)        |
+| the plan stale (4096, 22 Å, no thinning) (must); the changelog not updated (should)                     | `022b07909`                                    |
+| the area 9% over: the fade's left out (should)                                                          | `5f5af257f` (`ThinArea`, at most 1)            |
+| the clip ghost's culling thins at 4× the scale of its vertex stage (should)                             | `53cfea835` (`LodView.coarser`; no unit test)  |
+| inside the band (distance mode, or a switch below 8 px) kept copies grow during the cross-fade (should) | left open: the culling would need the band too |
+| a test of the shader/culling parity (nit)                                                               | `8a50557cc` (constants, hash, the sign check)  |
+| the one-view test reads a name only; the cull tests the unenlarged sphere (nits)                        | left open                                      |
+
+Checks: `npx tsc -b`, the app's, vitest (graphics, mesoscale; `backend-neutral` as before), the Dawn tests (see below).
+
+### Core changes (added)
+
+`e7aebd5df` atlases to 8192; `8058ab24e` every target, one view; `5e4f37651` thinning; `593d3c872` auto distance, thin
+8; `5f5af257f` the area with the fade; `8a50557cc` the culling thins impostors only; `53cfea835` the ghost's scale.
+App/extension: `2a62e12e5`, `6ac788306`, `d4a336c3c`, `a1079d73d`.
