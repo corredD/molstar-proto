@@ -300,3 +300,41 @@ One reviewer acting as its own skeptic, over `a6b6c3480..HEAD`: 2 must, 2 should
 | no test tying the culling's ranges to the shaders' share (should)                                    | partly (the chunks read the culling's view; orthographic case); a sweep left open (TODO) |
 | r0 = 1, the 0.5 eye-distance margin, the slider's default radius, the draw key without define (nits) | left open                                                                                |
 | misplaced JSDoc (nit)                                                                                | `1307aaea0`                                                                              |
+
+## The yeast slab, every target, thinning (Ludo, 2026-11-15, evening)
+
+### Yeast slab diagnosis (yeast_slab_z600nm.bcif, 6,887,013 copies, 5,457 targets; Distance 2430 Å)
+
+- **(d) the atlas was full: the cause.** At most 4096 a side it held 3,136 entries; **2,311 targets ≥ 22 Å (2,251,361
+  copies) had none** and drew as spheres at every distance: the lumpy clusters. Fixed `e7aebd5df`: places in 10 bits a
+  side, atlases to 8192 where the device allows; now all 5,457 have an entry (atlas 8192 × 4680, 153 MB: a cost of this
+  size of model, recorded).
+- **(b) under 22 Å**: 10 targets, 2,310,483 copies (lipids): spheres by design then; now silhouettes too (Ludo).
+- **(a) nearer than 2430 Å**: none in that view (camera 3,292 Å above the slab's top; copies in view at 3,408–9,569 Å
+  from the eye): not a cause there.
+- **(c) canDrawImpostors**: true (one merged object, not approximate, 4 levels). **(e)** the distance is the eye's to
+  the copy's center, in world Å: no unit or frame error found.
+- **Slider**: its left end was the model's radius / 10 (2,430 Å: Ludo's value was the minimum), and the default 2.6 ×
+  the radius (63,000 Å): both of the model's extent, meaningless for a slab. Now the default is where a copy of the
+  median radius is 12 px across in a 720-px view (`ImpostorAtlas.autoDistance`), the slider from 100 Å, showing the
+  distance applied (`2a62e12e5`, `593d3c872`).
+- Frame at Ludo's view, WebGPU: spheres 35.7 ms, silhouettes 23.9. Screens:
+  `out/yeast-before-left-after-right-distance-2430.png`.
+
+### Every target, thinning
+
+- `ImpostorMinRadius` 0 (Ludo's choice), tiny copies read one view (`8058ab24e`). Alone it made far frames slower (MG
+  ×3.5: 18 ms against 9.4): two million quads.
+- **Stochastic simplification** (`5e4f37651`): below `lodImpostorThin` px (default 8, 0 off) a share (size / s0)² of the
+  copies kept by a stable hash, the kept ones larger by 1/√p (area kept), those leaving shrinking out over a quarter;
+  the GPU culling drops the others per instance. Zoom-out sequence: frame differences decay smoothly (no flicker).
+
+| cellpack-mg, WebGPU (ms) | spheres (off)      | silhouettes, no thinning | silhouettes + thinning (8 px) |
+| ------------------------ | ------------------ | ------------------------ | ----------------------------- |
+| one cell × 2.2           | 10.3               | 18.7                     | 12.9                          |
+| one cell × 3.5           | 9.8                | 18.9                     | **8.7**                       |
+| two cells × 2.6 / 4 / 6  | 15.8 / 18.1 / 18.3 | –                        | **8.3 / 8.0 / 7.8**           |
+| close (× 0.35)           | 32.8               | 32.8                     | 32.8                          |
+
+Screens: `out/today-silhouettes-thinned-d2.2.png`, `-d3.5.png` (today, silhouettes, thinned). Mid distances (× 1.6–2.2,
+the band) still cost more than spheres; open.
