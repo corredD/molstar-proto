@@ -111,4 +111,21 @@ describe("a portal tilt series' Placement, by the explorer's stage", () => {
     expect(s[2] + half).toBeCloseTo(200, 3);
     expect(v.api.cryoetPortal!.placeOf(ts)).toBe('overlay');
   });
+
+  it("follows a pixel size set on the tomogram, and on the series (each box as drawn, the series' kept)", async () => {
+    const { v, tomogram, ts, grid, at } = await loaded();
+    const center = (ref: string) => Vec3.transformMat4(Vec3(), Grid.getBoundingSphere(grid(ref)).center, at(ref));
+    // the tomogram twice its pixel size: the overlay centered on it as drawn
+    expect((await v.api.run('cryoet.volume', { volume: tomogram, pixelSize: 20 })).ok).toBe(true);
+    expect((await v.api.run('cryoetPortal.place', { volume: ts, place: 'overlay' })).ok).toBe(true);
+    expect(center(ts)[0]).toBeCloseTo(center(tomogram)[0], 3);
+    expect(center(ts)[1]).toBeCloseTo(center(tomogram)[1], 3);
+    // the series at 80 Å (8×): its top at the tomogram's bottom (0), its half height scaled by 8, its scale kept
+    expect((await v.api.run('cryoet.volume', { volume: ts, pixelSize: 80 })).ok).toBe(true);
+    expect((await v.api.run('cryoetPortal.place', { volume: ts, place: 'overlay' })).ok).toBe(true);
+    // 80 Å over the series' finest voxel (10 Å)
+    expect(v.api.stage!.scaleOf(ts)).toBe(8);
+    expect(center(ts)[0]).toBeCloseTo(center(tomogram)[0], 3);
+    expect(center(ts)[2] + (n * 40 * 8) / 2).toBeCloseTo(0, 3);
+  });
 });

@@ -36,6 +36,7 @@ file data → parse → Particle List                     coordinates, rotations
                                                        entities and compartments (mesoscale), attributes (cc, class…)
   → TargetsFromAttribute    (cryoet: a target per class)            new on this branch
   → WithTargets             (cryoet: what each target is drawn as: a structure/mesh/map of the scene, a PDB id, a file)
+  → Painted                 (mesoscale: copies painted onto a surface, right under the list: moved with it) new
   → Transform               (stage-tools: the list moved by hand)    new
   → Offsets                 (stage-tools: one particle or kind moved) new
   → Representation 3D       target (instanced objects), spacefill (the rest), orientation axes, fibers, unit cell
@@ -61,6 +62,7 @@ Prism's operations.
 | decorations, classes             | cryoet                                  | —                                                                         |
 | list and particle positions      | stage-tools (`Transform`, `Offsets`)    | cryoet (`offset`, `instance` operations)                                  |
 | motion, level of detail          | mesoscale (the representation's params) | —                                                                         |
+| painted copies (strokes)         | mesoscale (`ParticleListPainted`)       | —                                                                         |
 | slices                           | cryoet                                  | stage-tools moves plane slices with the volume                            |
 | mesh look / mesh transform       | cryoet / stage-tools                    | cryoet writes the scale too                                               |
 | labels                           | stage-tools                             | —                                                                         |

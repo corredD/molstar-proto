@@ -9,6 +9,7 @@ import type { ViewerExtension, ViewerSkill } from '@molstar/prism-viewer/spec';
 import { LipidMembrane } from './lipids/membrane.js';
 import { MesoscaleApi } from './operations.js';
 import { OrganelleMeshesProvider, OrganelleMeshFromBinary } from './organelle-meshes.js';
+import { MesoscalePaintingList, ParticleListPainted } from './paint.js';
 
 declare module '@molstar/prism-viewer/api' {
   // The `mesoscale` area: the Mesoscale Explorer's entity controls on particle lists.
@@ -38,6 +39,8 @@ export const MesoscaleSkill: ViewerSkill = {
     'move_mesoscale_particles wiggles the atoms and tumbles the particles of one model (particles; empty: every one; 0 stops)',
     'or of one structure (object; a volume does not move); open_mesoscale_example opens one of',
     "the Mesoscale Explorer's examples by id (petworld-hiv, cellpack-hiv1, …).",
+    'paint_mesoscale_copies paints copies of one entity at points (positions, and the surface normals there): one stroke a',
+    'call, one undo step; no collision checks.',
   ].join('\n'),
   tools: [
     {
@@ -96,6 +99,12 @@ export const MesoscaleSkill: ViewerSkill = {
       description: "Shows, hides or colors one species of a lipid membrane (its entities, as a particle system's).",
     },
     {
+      id: 'draw_mesoscale_far_proteins',
+      operation: 'mesoscale.impostors',
+      description:
+        "Draws a mesoscale model's far proteins as silhouettes (impostors: each copy its outline, flat, the default) or as spheres (on false); where they switch (by size on screen or distance), and the far ones thinned out (thin: below px, 0 off; thinScale: the kept ones enlarged, 0 to 1.5).",
+    },
+    {
       id: 'open_mesoscale_example',
       operation: 'mesoscale.example',
       description: "Opens one of the Mesoscale Explorer's examples by id.",
@@ -105,6 +114,30 @@ export const MesoscaleSkill: ViewerSkill = {
       operation: 'mesoscale.theme',
       description:
         'Colors several objects at once by a theme (by object, entity, chain, generated colors, one color, by zoom), each kind by what it takes: structures, particle models and lists, volumes (their isosurfaces), meshes.',
+    },
+    {
+      id: 'paint_mesoscale_copies',
+      operation: 'mesoscale.paint',
+      description:
+        'Paints copies of an entity at points of the scene (a stroke, one step): a membrane protein upright along the normals given, anything else turned at random.',
+    },
+    {
+      id: 'group_mesoscale_instances',
+      operation: 'mesoscale.group',
+      description:
+        "Makes a group of a list's instances (particles by index; a group copy's member stands for the copy): a brush of its own, painted and grown as one (mesoscale.paint group), one step.",
+    },
+    {
+      id: 'ungroup_mesoscale_copy',
+      operation: 'mesoscale.ungroup',
+      description:
+        'Ungroups a painted group copy (a particle of it by index): its members instances of their own, one step.',
+    },
+    {
+      id: 'grow_mesoscale_copies',
+      operation: 'mesoscale.grow',
+      description:
+        'Grows copies of a particle (its index in a list) by a rule, one step: a random walk (a new fiber), a crystal lattice, a planar tiling or a sphere of copies about it; overlaps allowed.',
     },
     {
       id: 'set_mesoscale_graphics',
@@ -120,8 +153,15 @@ export const MesoscaleExtension: ViewerExtension = {
   title: 'Mesoscale',
   api: { mesoscale: (ctx) => new MesoscaleApi(ctx) },
   // the lipid membrane's transform, in saved states and history (`lipids/membrane.ts`); the yeast cell viewer's organelle
-  // meshes through + Open (`organelle-meshes.ts`)
-  plugin: { registry: [{ actions: [LipidMembrane, OrganelleMeshFromBinary], formats: [OrganelleMeshesProvider] }] },
+  // meshes through + Open (`organelle-meshes.ts`); its painted strokes, so a session that has them opens
+  plugin: {
+    registry: [
+      {
+        actions: [LipidMembrane, OrganelleMeshFromBinary, ParticleListPainted, MesoscalePaintingList],
+        formats: [OrganelleMeshesProvider],
+      },
+    ],
+  },
   commands: (api) => {
     const m = api.mesoscale;
     if (!m) return [];
@@ -163,10 +203,58 @@ export const MesoscaleExtension: ViewerExtension = {
         alias: ['color levels', 'colors by zoom', 'dynamic coloring', 'chameleon'],
         action: 'Apply',
       }),
+      operationCommand(api, m.impostors, {
+        category,
+        icon: 'gauge',
+        alias: ['far proteins', 'silhouettes', 'impostors', 'level of detail', 'lod'],
+        action: 'Apply',
+      }),
+      operationCommand(api, m.fiber, {
+        category,
+        icon: 'sliders-horizontal',
+        alias: ['fiber', 'fibre', 'fiber rise', 'fiber twist', 'dna twist', 'rna', 'helix rise'],
+        action: 'Apply',
+      }),
       operationCommand(api, m.example, {
         category,
         icon: 'folder-open',
         alias: ['example', 'mesoscale example', 'cellpack', 'petworld'],
+      }),
+      operationCommand(api, m.paint, {
+        category,
+        icon: 'paintbrush',
+        alias: ['paint', 'cellpaint', 'paint copies', 'brush'],
+        action: 'Paint',
+      }),
+      operationCommand(api, m.group, {
+        category,
+        icon: 'paintbrush',
+        alias: ['group', 'make group', 'cellpaint group', 'ultrastructure'],
+        action: 'Group',
+      }),
+      operationCommand(api, m.ungroup, {
+        category,
+        icon: 'paintbrush',
+        alias: ['ungroup', 'ungroup copy'],
+        action: 'Ungroup',
+      }),
+      operationCommand(api, m.grow, {
+        category,
+        icon: 'paintbrush',
+        alias: ['grow', 'crystal', 'lattice', 'tiling', 'random walk', 'helix', 'spiral', 'grow copies'],
+        action: 'Grow',
+      }),
+      operationCommand(api, m.clearGrown, {
+        category,
+        icon: 'trash-2',
+        alias: ['clear grow', 'clear grown', 'remove grown copies'],
+        action: 'Clear',
+      }),
+      operationCommand(api, m.grownFiber, {
+        category,
+        icon: 'sliders-horizontal',
+        alias: ['grown fiber', 'walk rise', 'walk twist'],
+        action: 'Apply',
       }),
       operationCommand(api, m.entities, { category, icon: 'info', alias: ['mesoscale entities', 'compartments'] }),
       operationCommand(api, m.wrapMembrane, {

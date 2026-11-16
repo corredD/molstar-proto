@@ -38,6 +38,10 @@ params outlives the cell it named. Then the dependent **waits** for the ref (`De
 - a deleted cell's dependents wait for its ref (`unlinkCell`) and are evaluated again in the same update (their objects
   were made from it), so they are in error until the ref comes back, when they are linked again;
 - a waiter that stops depending on the ref (`relinkCells`) or is deleted stops waiting.
+- a transformer with **weak** dependencies (`weakDependencies`) is not in error while it waits: it is evaluated with the
+  dependencies that have objects (`resolveDependencies` leaves the others out), and a ref not in the tree is waited for
+  rather than thrown on. A cell that reads another for what it draws (a mesh colored by a volume) stays drawn when that
+  one is deleted, and follows it again when it comes back (an undo).
 
 ## 4. Deferral
 

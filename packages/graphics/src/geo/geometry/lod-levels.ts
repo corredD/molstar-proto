@@ -2,6 +2,7 @@
  * Copyright (c) 2019-2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
@@ -51,7 +52,36 @@ export type LodLevelsValue = [
   scaleBias: number,
   minDistance: number,
   maxDistance: number,
-][] & { readonly pixelSize?: number; readonly radius?: number };
+  /** the level's overlap as the props have it (the band before impostors changes the drawn one, `getLodLevelsValue`) */
+  overlapProp: number,
+][] & {
+  readonly pixelSize?: number;
+  readonly radius?: number;
+  /**
+   * impostors on (`lod-impostor.md`): the item's atlas entry (`ImpostorAtlas.encodeEntry`), -1 for the band alone
+   * (`getLodLevelsValue`)
+   */
+  readonly impostor?: number;
+  /** impostors on: where each copy switches (`LodImpostorSwitch`); none: where the levels' boundary is */
+  readonly impostorSwitch?: LodImpostorSwitch & { readonly k: number };
+};
+
+/**
+ * Where each copy turns into its impostor (`lod-impostor.md`): by its own size on screen (`value` pixels across, its
+ * bounding sphere), or by its distance from the eye (`value` Å); `radii` the smallest and largest item's radius (the
+ * band levels' ranges cover every copy that can switch, `LodView.getRange`)
+ */
+export type LodImpostorSwitch = {
+  readonly mode: 'pixels' | 'distance';
+  readonly value: number;
+  readonly radii: readonly [number, number];
+};
+
+/**
+ * Octaves of size on screen (or of distance) over which the last spheres and the impostors cross-fade, centered on
+ * their boundary: both drawn there, a copy's pixels split between them by a dither (`lod_impostor`)
+ */
+export const LodImpostorBand = 0.5;
 
 /** A carbon's van der Waals radius: the nominal sphere radius levels by size on screen are chosen for (atoms) */
 export const LodNominalRadius = 1.7;
@@ -65,7 +95,14 @@ export function getLodPixelBoundary(level: LodLevels[0], pixelSize: number, radi
   return (2 * radius * Math.pow(Math.max(1, level.stride), 1 / level.scaleBias)) / pixelSize;
 }
 
-/** The levels' value (`LodLevelsValue`) of the levels `prop` ordered by `getStrides` (their vertex `offsets`) */
+/**
+ * The levels' value (`LodLevelsValue`) of the levels `prop` ordered by `getStrides` (their vertex `offsets`).
+ * `impostor` -1 or above, impostors on (`lod-impostor.md`): the boundary of the last level with the one before widened
+ * into a band of `LodImpostorBand` octaves where both draw, the one before fading out (its overlap) and the last in (its
+ * overlap negated: what the shaders tell the fade-in by), the other overlaps 0; 0 or above, the item's atlas entry: the
+ * last level draws one item a copy, an impostor, its scale the entry negated (-1 for entry 0: what the shaders tell
+ * impostors by). -1: the band alone (a small item keeping its spheres, merged with those that have impostors); -2 off
+ */
 export function getLodLevelsValue(
   prop: LodLevels,
   sizeFactor: number,
@@ -73,6 +110,8 @@ export function getLodLevelsValue(
   count: number,
   pixelSize: number,
   radius: number,
+  impostor = -2,
+  impostorSwitch?: LodImpostorSwitch,
 ): LodLevelsValue {
   const pixel = pixelSize > 0;
   const value = prop.map((l, i): LodLevelsValue[0] => {
@@ -87,16 +126,35 @@ export function getLodLevelsValue(
       l.scaleBias,
       l.minDistance,
       l.maxDistance,
+      l.overlap,
     ];
   });
-  return pixel ? Object.assign(value, { pixelSize, radius }) : value;
+  const last = value.length - 1;
+  const on = impostor >= -1 && last > 0;
+  if (on) {
+    const k = Math.pow(2, LodImpostorBand / 2);
+    const b = value[last][0];
+    const band = b * k - b / k;
+    for (const l of value) l[2] = 0;
+    value[last][0] = b / k;
+    value[last][2] = -band;
+    value[last - 1][1] = b * k;
+    value[last - 1][2] = band;
+    if (impostor >= 0) {
+      value[last][3] = 6;
+      value[last][4] = -(impostor + 1);
+    }
+  }
+  const sw = on && impostorSwitch ? { impostorSwitch: { ...impostorSwitch, k: Math.pow(2, LodImpostorBand / 2) } } : {};
+  const extra = { ...(pixel ? { pixelSize, radius } : {}), ...(on ? { impostor } : {}), ...sw };
+  return Object.assign(value, extra);
 }
 
 export function getLodLevels(lodLevelsValue: LodLevelsValue): LodLevels {
   return lodLevelsValue.map((l) => ({
     minDistance: l[7],
     maxDistance: l[8],
-    overlap: l[2],
+    overlap: l[9] ?? l[2],
     stride: l[5],
     scaleBias: l[6],
   }));
@@ -160,7 +218,7 @@ export function getLodLevelsParam() {
 /**
  * Orders the `count` items of `positionGroup` into the levels `lodLevels` (in place, `orderPositionGroup`), their
  * strides adjusted for `sizeFactor`; returns the levels' value (empty without levels). `pixelSize` and `radius`: levels
- * by size on screen (`getLodPixelBoundary`)
+ * by size on screen (`getLodPixelBoundary`); `impostor`: the last level as impostors (`getLodLevelsValue`)
  */
 export function orderLodLevels(
   positionGroup: ValueCell<DataArray<Float32Array>>,
@@ -169,7 +227,11 @@ export function orderLodLevels(
   sizeFactor: number,
   pixelSize = 0,
   radius = 0,
+  impostor = -2,
+  impostorSwitch?: LodImpostorSwitch,
 ): LodLevelsValue {
   const offsets = orderPositionGroup(positionGroup, count, getStrides(lodLevels, sizeFactor));
-  return offsets ? getLodLevelsValue(lodLevels, sizeFactor, offsets, count, pixelSize, radius) : [];
+  return offsets
+    ? getLodLevelsValue(lodLevels, sizeFactor, offsets, count, pixelSize, radius, impostor, impostorSwitch)
+    : [];
 }

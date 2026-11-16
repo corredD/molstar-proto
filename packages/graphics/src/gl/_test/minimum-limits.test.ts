@@ -124,6 +124,8 @@ const FeatureDefines: { [k: string]: string | boolean | number } = {
   dClipping: true,
   dClipTable: true,
   dColorLevels: true,
+  dLodImpostor: true,
+  dLodImpostorLevel: true,
   dWiggle: true,
   dSegmented: true,
   dXrayShaded: 'on',

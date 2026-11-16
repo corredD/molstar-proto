@@ -255,11 +255,18 @@ export function colorItems(
     }
     return api.run('representation.color', { target: { loci: area.loci(node) }, structure: node.ref, color });
   };
+  // a mesh colored by an array of its file (a VTP's) keeps it: Color… is for uniform-colored meshes (decisions 13)
+  const mesh = kind === 'mesh' ? api.cryoet?.meshesState().value.find((m) => m.ref === node.ref) : undefined;
+  const by = mesh?.colorBy;
+  const disabled = by
+    ? `Colored by ${mesh!.arrays?.find((a) => a.key === by.array)?.label ?? by.array}: change it in Properties`
+    : undefined;
   const items: ContextMenuItem[] = Swatches.map(([color, label]) => ({
     id: `color-${color}`,
     label,
     icon: 'palette',
-    run: () => void paint(color),
+    ...(disabled ? { disabled } : {}),
+    run: () => void (disabled || paint(color)),
   }));
   if (membranePart !== undefined) {
     // a hue each of the membrane's parts
@@ -475,6 +482,8 @@ export function nodeMenuItems(
   const { node, kind, label } = picked;
   const items: ContextMenuItem[] = [];
   if (kind === 'distance') return distanceItems(api, area, picked);
+  // a group of instances (paint-group): a brush only
+  if (kind === 'paint group') return paintItems(api, picked);
   if (kind === 'label') {
     // a label's: its text, its place first
     const editText = actions.editText;
@@ -537,6 +546,7 @@ export function nodeMenuItems(
   if (open && clippable(kind, node)) {
     items.push({ id: 'clip', label: 'Add clip…', icon: 'scissors', run: () => open(clipItems(api, area, picked)) });
   }
+  items.push(...paintItems(api, picked));
   items.push(...showOnlyItems(api, picked, actions.groupBy));
   items.push(...wrapItems(api, area, picked, actions.groupBy));
   items.push(...portalItems(api, node.ref));
@@ -650,6 +660,62 @@ function portalItems(api: ViewerApi, ref: string): ContextMenuItem[] {
       icon: 'link' as const,
       run: open(`https://doi.org/${doi}`),
     })),
+  ];
+}
+
+// --- Paint (progress/2026-11-08-paint.md; _spec/ui.md §5) ------------------------------------------------------------
+
+/**
+ * A model's entity or a structure: Paint with it (the canvas's paint mode, its brush that entity: a stroke a step), or
+ * Stop painting while it is the brush
+ */
+function paintItems(api: ViewerApi, picked: PickedNode): ContextMenuItem[] {
+  const { node, kind, label } = picked;
+  const mode = api.mesoscale?.paintMode;
+  // a structure of the scene (paint-layer round 2, Ludo 2026-11-10): Paint with it, into a list or the Painting list
+  if (mode && kind === 'structure') {
+    if (mode.brush.value?.structure === node.ref) {
+      return [{ id: 'paint', label: 'Stop painting', icon: 'paintbrush', run: () => mode.stop() }];
+    }
+    return [
+      {
+        id: 'paint',
+        label: `Paint with ${label}`,
+        icon: 'paintbrush',
+        run: () => void mode.start({ particles: '', entity: -1, name: label, structure: node.ref }),
+      },
+    ];
+  }
+  // a group of instances (paint-group): Paint with it, all its members a copy
+  const group = 'particles' in node ? node.paintGroup : undefined;
+  if (mode && kind === 'paint group' && group !== undefined) {
+    const b = mode.brush.value;
+    if (b?.particles === node.ref && b.group === group) {
+      return [{ id: 'paint', label: 'Stop painting', icon: 'paintbrush', run: () => mode.stop() }];
+    }
+    const name = label.replace(/ · .*$/, '');
+    return [
+      {
+        id: 'paint',
+        label: `Paint with ${name}`,
+        icon: 'paintbrush',
+        run: () => void mode.start({ particles: node.ref, entity: group, name, group }),
+      },
+    ];
+  }
+  const entity = 'particles' in node ? node.particles.entities : undefined;
+  if (!mode || kind !== 'entity' || entity?.length !== 1) return [];
+  const brush = mode.brush.value;
+  if (brush?.particles === node.ref && brush.entity === entity[0]) {
+    return [{ id: 'paint', label: 'Stop painting', icon: 'paintbrush', run: () => mode.stop() }];
+  }
+  return [
+    {
+      id: 'paint',
+      label: `Paint with ${label}`,
+      icon: 'paintbrush',
+      run: () => void mode.start({ particles: node.ref, entity: entity[0], name: label }),
+    },
   ];
 }
 

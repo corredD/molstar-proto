@@ -196,6 +196,15 @@ export interface ParticleSites {
   readonly label?: string;
   /** the sites' chains, their sites consecutive (as a structure's units): runs, a few bytes a chain, not an index a site */
   readonly chains?: ParticleSiteChains;
+  /** the sites' elements (`type_symbol`): a byte a site, for the colors that follow the zoom (`color-levels.md`) */
+  readonly elements?: ParticleSiteElements;
+}
+
+/** The elements of `ParticleSites`: site `i`'s element symbol `symbols[index[i]]` */
+export interface ParticleSiteElements {
+  /** the distinct symbols, as written (`type_symbol`), at most 256 */
+  readonly symbols: readonly string[];
+  readonly index: Uint8Array;
 }
 
 /** Chain `c` of `ParticleSites`: its sites `[offsets[c], offsets[c + 1])`, its label (`label_asym_id`) */

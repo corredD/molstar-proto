@@ -178,6 +178,8 @@ async function getAtomSiteGroups<K>(
     radiusSq: number;
     positions: Float32Array;
     radii: Float32Array;
+    /** a site's element: its index in `symbols` below */
+    elements: Uint8Array;
     /** the chains in the order they first appear (by entity and `label_asym_id`): labels, entities' ranks, counts */
     chainLabels: string[];
     chainIndex: Map<string, number>;
@@ -222,6 +224,7 @@ async function getAtomSiteGroups<K>(
           radiusSq: 0,
           positions: EmptyF32,
           radii: EmptyF32,
+          elements: EmptyU8,
           chainLabels: [],
           chainIndex: new Map(),
           chainEntity: [],
@@ -279,6 +282,7 @@ async function getAtomSiteGroups<K>(
     acc.z /= acc.n;
     acc.positions = new Float32Array(acc.n * 3);
     acc.radii = new Float32Array(acc.n);
+    acc.elements = new Uint8Array(acc.n);
     // by entity, then by first appearance (a stable sort): out of row order where an entity's chains are not consecutive
     const chainCount = acc.chainLabels.length;
     acc.order = Array.from({ length: chainCount }, (_, i) => i).sort((a, b) => acc.chainEntity[a] - acc.chainEntity[b]);
@@ -293,14 +297,20 @@ async function getAtomSiteGroups<K>(
     }
   }
 
-  // the van der Waals radius by element symbol as a model's (`ElementSymbol`, `AtomNumber`), once a symbol
+  // the van der Waals radius by element symbol as a model's (`ElementSymbol`, `AtomNumber`) and the symbol's index in
+  // `symbols` (the sites' elements), once a symbol
+  const symbols: string[] = [];
   const radiusOf = new Map<string, number>();
+  const symbolIndex = new Map<string, number>();
+  let symbol = '';
   const radius = (row: number) => {
-    const symbol = typeSymbol ? typeSymbol.str(row) : '';
+    symbol = typeSymbol ? typeSymbol.str(row) : '';
     let r = radiusOf.get(symbol);
     if (r === undefined) {
       r = VdwRadiusOfNumber(AtomNumber(ElementSymbol(symbol)));
       radiusOf.set(symbol, r);
+      symbolIndex.set(symbol, symbols.length);
+      symbols.push(symbol);
     }
     return r;
   };
@@ -330,6 +340,7 @@ async function getAtomSiteGroups<K>(
     acc.positions[s * 3 + 1] = y[i];
     acc.positions[s * 3 + 2] = z[i];
     acc.radii[s] = radius(i);
+    acc.elements[s] = symbolIndex.get(symbol)!;
     if (i % updateChunk === 0 && ctx.shouldUpdate) {
       await ctx.update({ message: 'Reading particle targets', current: rowCount + i, max: rowCount * 2 });
     }
@@ -348,6 +359,8 @@ async function getAtomSiteGroups<K>(
         radii: acc.radii,
         label: String(acc.key),
         chains: { offsets, labels: order.map((ci) => acc.chainLabels[ci]) },
+        // a byte a site: none past 256 symbols (a file's own, never the elements')
+        elements: typeSymbol && symbols.length <= 256 ? { symbols, index: acc.elements } : undefined,
       },
     });
   }
@@ -355,6 +368,7 @@ async function getAtomSiteGroups<K>(
 }
 
 const EmptyF32 = new Float32Array(0);
+const EmptyU8 = new Uint8Array(0);
 
 /** A dotted name with no space (`root.HIV_capsid.membrane`): cellPACK's compartment paths, never a sentence */
 function isCellpackPath(text: string): boolean {

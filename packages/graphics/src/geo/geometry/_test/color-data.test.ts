@@ -2,14 +2,18 @@
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { describe, expect, it } from 'vitest';
 import { createDataArray } from '@molstar/graphics/gl/renderable/util';
 import { Color } from '@molstar/core/util/color';
+import { Vec3, Vec4 } from '@molstar/core/math/linear-algebra';
+import type { Texture } from '@molstar/graphics/gl/texture';
 import {
   type ColorType,
   ColorTypeIndex,
+  createGridColor,
   createTextureColor,
   createValueColor,
   getColorTypeDefine,
@@ -41,5 +45,19 @@ describe('color-data', () => {
     createValueColor(Color(0xff0000), data);
     expect(data.colorType.ref.value).toBe('uniform');
     expect(data.dColorType.ref.value).toBe('uniform');
+  });
+
+  it('reads a grid per fragment only when the grid asks for it, and no more once colored otherwise', () => {
+    const colors = { getWidth: () => 4, getHeight: () => 2 } as unknown as Texture;
+    const grid = { colors, dimension: Vec3.create(2, 2, 2), transform: Vec4.create(0, 0, 0, 1) };
+    const data = createGridColor(grid, 'volume');
+    expect(data.dColorGridFragment.ref.value).toBe(false);
+    createGridColor({ ...grid, fragment: true }, 'volume', data);
+    expect(data.dColorGridFragment.ref.value).toBe(true);
+    createValueColor(Color(0xff0000), data);
+    expect(data.dColorGridFragment.ref.value).toBe(false);
+    createGridColor({ ...grid, fragment: true }, 'volume', data);
+    createTextureColor(createDataArray(4, 4, Uint8Array), 'group', data);
+    expect(data.dColorGridFragment.ref.value).toBe(false);
   });
 });

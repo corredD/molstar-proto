@@ -4,7 +4,7 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { OrderedSet, Interval } from '@molstar/core/data/int';
 import { Grid, Volume } from '@molstar/model/model/volume';
 import { Mat4, Tensor, Vec3 } from '@molstar/core/math/linear-algebra';
@@ -31,6 +31,15 @@ import {
   type SliceProps,
 } from '../slice.js';
 import { createPeriodicVolume } from '../util.js';
+import { SliceVisual } from '../slice.js';
+import { SliceBinned, SliceWindowConfig, SliceWindowDepth, SliceWindowHiddenMs } from '../slice-window.js';
+import { binGrid } from '@molstar/model/model/volume/bin';
+import { createNullTexture, type Texture } from '@molstar/graphics/gl/texture';
+import type { GraphicsContext } from '@molstar/graphics/gl/context';
+import type { TextureImage } from '@molstar/graphics/gl/renderable/util';
+import { Task } from '@molstar/core/task';
+import { PickingId } from '@molstar/graphics/geo/geometry/picking';
+import { MarkerAction } from '@molstar/core/util/marker-action';
 
 function createTestVolume(instanceCount: number, periodic = false, stats: Grid['stats'] = Grid.One.stats): Volume {
   return {
@@ -624,4 +633,524 @@ describe('grid slice image, built as before', () => {
       }
     });
   }
+});
+
+/** A 3d texture on the CPU: its layers' contents, the planes written into it */
+type StubTexture = Texture & { data: Float32Array; width: number; height: number; depth: number; writes: number };
+
+/** A graphics context with 3d textures held on the CPU (`loadLayer`), for the window's path without a GPU */
+function stubGraphics(texture3d = true) {
+  const owned = new Set<Texture>();
+  const textures: StubTexture[] = [];
+  const graphics = {
+    capabilities: { texture3d },
+    resources: {
+      limits: { max3dTextureSize: 2048 },
+      pending: { track: <T>(p: Promise<T>) => p },
+      ownsTexture: (t: Texture) => owned.has(t),
+      texture: () => {
+        const t = {
+          ...createNullTexture(),
+          data: new Float32Array(0),
+          width: 0,
+          height: 0,
+          depth: 0,
+          writes: 0,
+          define(w: number, h: number, d = 1) {
+            Object.assign(t, { width: w, height: h, depth: d, data: new Float32Array(w * h * d) });
+          },
+          loadLayer(image: TextureImage<Float32Array>, layer: number) {
+            if (image.width !== t.width || image.height !== t.height || layer >= t.depth) throw new Error('outside');
+            t.data.set(image.array, layer * t.width * t.height);
+            t.writes += 1;
+          },
+          destroy() {
+            owned.delete(t);
+          },
+        } as StubTexture;
+        owned.add(t);
+        textures.push(t);
+        return t;
+      },
+    },
+  } as unknown as GraphicsContext;
+  return { graphics, textures, owned };
+}
+
+describe('grid slice from a window of its planes (slice-window.ts)', () => {
+  const volumes: [string, () => Volume][] = [
+    ['x fastest', () => gridVolume([5, 4, 40], [2, 1, 0], Skewed)],
+    ['z fastest', () => gridVolume([40, 3, 5], [0, 1, 2], Skewed)],
+    // a map read from a file (MRC): periodic, one tile, drawn in its tile's grid
+    ['periodic, one tile', () => gridVolume([5, 4, 40], [2, 1, 0], Scaled, { tiles: [[1, 0, 0]] })],
+  ];
+  const dimensions = ['x', 'y', 'z'] as const;
+
+  for (const [vName, makeVolume] of volumes) {
+    for (const [tName, makeTheme] of [
+      ['uniform', () => uniformTheme()],
+      ['volume value', (v: Volume) => valueTheme(v)],
+    ] as const) {
+      it(`${vName}, ${tName}: the layer drawn holds the CPU image's values, mapping and groups, along x, y, z`, async () => {
+        const volume = makeVolume();
+        const theme = makeTheme(volume);
+        const { min, max } = volume.grid.stats;
+        const { graphics, textures } = stubGraphics();
+        for (const name of dimensions) {
+          const n = volume.grid.cells.space.dimensions[{ x: 0, y: 1, z: 2 }[name]];
+          let image: Image | undefined;
+          for (let i = 0; i < n; ++i) {
+            const props = sliceProps({ mode: 'grid', dimension: { name, params: i } });
+            image = await createImage({ graphics } as any, volume, 0, theme, props, image);
+            const ref = referenceGridImage(volume, theme, props);
+            const at = `${name} ${i}`;
+            expect(image.sliceWindow.ref.value, at).toBe(true);
+            const texture = image.sliceTexture.ref.value as StubTexture;
+            const { width, height } = texture;
+            expect([width, height], at).toEqual([
+              image.imageTextureDim.ref.value[0],
+              image.imageTextureDim.ref.value[1],
+            ]);
+            const layer = image.sliceLayer.ref.value;
+            expect(layer, at).toBe(i % SliceWindowDepth);
+            const plane = texture.data.subarray(layer * width * height, (layer + 1) * width * height);
+            for (let k = 0; k < plane.length; ++k) {
+              expect((plane[k] - min) / (max - min), `${at} pixel ${k}`).toBeCloseTo(ref.valueArray[k], 5);
+            }
+            expect(image.groupTexture.ref.value.array, at).toEqual(ref.groupArray);
+            // where the CPU path draws it
+            const cpu = await createImage({} as any, volume, 0, theme, props);
+            expect(Array.from(image.cornerBuffer.ref.value), at).toEqual(Array.from(cpu.cornerBuffer.ref.value));
+            expect(image.boundingSphere.radius, at).toBeCloseTo(cpu.boundingSphere.radius, 4);
+            const mapping = image.meta.mapping as { instance: Int16Array; cell: Uint32Array; index: IndexLike };
+            expect(mapping.cell, at).toEqual(ref.mapping.cell);
+            expectSameIndex(mapping.index, ref.mapping.index, keysOf(volume));
+          }
+        }
+        // one window per axis made, the previous freed
+        expect(textures.length).toBe(3);
+      });
+    }
+  }
+
+  it('colors: the uniform color over the grid range, volume-value over its domain', async () => {
+    const volume = gridVolume([5, 4, 40], [2, 1, 0], Skewed);
+    const { graphics } = stubGraphics();
+    const props = sliceProps({ mode: 'grid', dimension: { name: 'z', params: 3 } });
+    const { min, max } = volume.grid.stats;
+    const u = await createImage({ graphics } as any, volume, 0, uniformTheme(), props);
+    expect(Array.from(u.sliceDomain.ref.value)).toEqual([min, max, min, max].map(Math.fround));
+    const v = await createImage({ graphics } as any, volume, 0, valueTheme(volume), props);
+    expect(Array.from(v.sliceDomain.ref.value)).toEqual([min, max, -6, 7].map(Math.fround));
+  });
+
+  it('falls back to the CPU image: another theme, a periodic volume, no strides, no 3d textures, plane mode', async () => {
+    const strided = gridVolume([5, 4, 40], [2, 1, 0], Skewed);
+    const noStrides = {
+      ...strided,
+      grid: { ...strided.grid, cells: { ...strided.grid.cells, space: { ...strided.grid.cells.space } } },
+    };
+    const periodic = gridVolume([3, 4, 2], [2, 1, 0], Scaled, {
+      tiles: [
+        [0, 0, 0],
+        [1, 0, 0],
+      ],
+    });
+    const grid = sliceProps({ mode: 'grid', dimension: { name: 'z', params: 1 } });
+    const cases: [string, Volume, Theme, SliceProps, boolean][] = [
+      ['position theme', strided, positionBitsTheme(), grid, true],
+      ['periodic, two tiles', periodic, uniformTheme(), grid, true],
+      ['no strides', noStrides, uniformTheme(), grid, true],
+      ['no 3d textures', strided, uniformTheme(), grid, false],
+      ['plane', strided, uniformTheme(), sliceProps({ mode: 'plane' }), true],
+    ];
+    for (const [name, volume, theme, props, texture3d] of cases) {
+      const { graphics, textures } = stubGraphics(texture3d);
+      const im = await createImage({ graphics } as any, volume, 0, theme, props);
+      expect(im.sliceWindow.ref.value, name).toBe(false);
+      expect(textures.length, name).toBe(0);
+    }
+  });
+
+  it('a window image made again on the CPU frees its window', async () => {
+    const volume = gridVolume([5, 4, 40], [2, 1, 0], Skewed);
+    const { graphics, owned } = stubGraphics();
+    const props = sliceProps({ mode: 'grid', dimension: { name: 'z', params: 3 } });
+    const im = await createImage({ graphics } as any, volume, 0, uniformTheme(), props);
+    expect(owned.size).toBe(1);
+    const again = await createImage({ graphics } as any, volume, 0, positionBitsTheme(), props, im);
+    expect(again.sliceWindow.ref.value).toBe(false);
+    expect(owned.size).toBe(0);
+    expect(again.imageTexture.ref.value.array).toEqual(
+      referenceGridImage(volume, positionBitsTheme(), props).imageArray,
+    );
+  });
+});
+
+describe('a slice visual moved within its window', () => {
+  async function setup(theme: Theme) {
+    const volume = gridVolume([6, 5, 200], [2, 1, 0], Skewed);
+    const { graphics, textures, owned } = stubGraphics();
+    const visual = SliceVisual(0);
+    const update = (props: Partial<SliceProps>, t = theme) =>
+      Task.create('update', (runtime) =>
+        visual.createOrUpdate({ runtime, graphics }, t, props, { volume, key: 0 }),
+      ).run();
+    await update(sliceProps({ mode: 'grid', dimension: { name: 'z', params: 100 } }));
+    return { volume, visual, update, textures, owned };
+  }
+
+  /** The idle fill done (`SliceWindow.fill` by timers) */
+  const idle = async () => {
+    for (let k = 0; k < 20; ++k) await new Promise((r) => setTimeout(r, 0));
+  };
+
+  it('a step updates the image in place: no new geometry, a uniform within the band, a plane copied at its edge', async () => {
+    const { visual, update, textures } = await setup(uniformTheme());
+    const version = visual.geometryVersion;
+    const texture = textures[0];
+    // the plane shown at once, the window's others in idle time
+    expect(texture.writes).toBe(1);
+    await idle();
+    expect(texture.writes).toBe(SliceWindowDepth);
+    const values = visual.renderObject!.values as any;
+    for (let i = 101; i <= 107; ++i) await update({ dimension: { name: 'z', params: i } });
+    expect(texture.writes).toBe(SliceWindowDepth);
+    expect(values.uSliceLayer.ref.value).toBe(107 % SliceWindowDepth);
+    for (let i = 108; i <= 157; ++i) {
+      await update({ dimension: { name: 'z', params: i } });
+      await idle();
+    }
+    // one plane per step past the band's edge
+    expect(texture.writes).toBe(SliceWindowDepth + 50);
+    expect(visual.geometryVersion).toBe(version);
+    expect(textures.length).toBe(1);
+  });
+
+  it('a jump copies the plane shown at once, the window around it in idle time, nearest first', async () => {
+    const { volume, update, textures } = await setup(uniformTheme());
+    await idle();
+    const texture = textures[0];
+    const before = texture.writes;
+    await update({ dimension: { name: 'z', params: 20 } });
+    expect(texture.writes - before).toBe(1);
+    await idle();
+    expect(texture.writes - before).toBe(SliceWindowDepth);
+    // every layer holds its plane: z 4 to 35
+    const [nx, ny] = volume.grid.cells.space.dimensions;
+    const plane = nx * ny;
+    for (let z = 4; z < 36; ++z) {
+      const layer = z % SliceWindowDepth;
+      expect(texture.data[layer * plane + 7], `z ${z}`).toBe(
+        volume.grid.cells.data[volume.grid.cells.space.dataOffset(1, 1, z)],
+      );
+    }
+  });
+
+  it('picks the voxel of the drawn slice', async () => {
+    const { volume, visual, update } = await setup(uniformTheme());
+    await update({ dimension: { name: 'z', params: 123 } });
+    const [nx] = volume.grid.cells.space.dimensions;
+    // pixel (row 2, column 3): x 3, y 2
+    const loci = visual.getLoci({ objectId: visual.renderObject!.id, instanceId: 0, groupId: 2 * nx + 3 } as PickingId);
+    const cell = (loci as Volume.Cell.Loci).elements[0].indices;
+    expect(Interval.start(cell as Interval)).toBe(volume.grid.cells.space.dataOffset(3, 2, 123));
+  });
+
+  it('a contrast change is a uniform; another axis or theme makes it again', async () => {
+    const volume0 = gridVolume([6, 5, 200], [2, 1, 0], Skewed);
+    const { visual, update, textures, owned } = await setup(valueTheme(volume0));
+    const version = visual.geometryVersion;
+    const props = PD.getDefaultValues(VolumeValueColorThemeParams);
+    const contrast: Theme = {
+      color: VolumeValueColorTheme({ volume: volume0 }, { ...props, domain: { name: 'custom', params: [-2, 3] } }),
+      size: SizeTheme.Empty,
+    };
+    await update({}, contrast);
+    expect(visual.geometryVersion).toBe(version);
+    const values = visual.renderObject!.values as any;
+    expect(values.uSliceDomain.ref.value[2]).toBe(-2);
+    await update({ dimension: { name: 'x', params: 2 } }, contrast);
+    expect(visual.geometryVersion).toBe(version + 1);
+    expect(textures.length).toBe(2);
+    // a theme by position, not by the value alone
+    const byPosition = {
+      color: { granularity: 'vertex', color: () => Color(0xff0000), props: {} },
+      size: SizeTheme.Empty,
+    };
+    await update({ dimension: { name: 'x', params: 3 } }, byPosition as unknown as Theme);
+    expect(values.dSliceWindow.ref.value).toBe(false);
+    expect(owned.size).toBe(0);
+    visual.destroy();
+  });
+
+  it('a step clears the marks: the voxels marked are no longer drawn (as the CPU path, its markers made again)', async () => {
+    const { volume, visual, update } = await setup(uniformTheme());
+    const values = visual.renderObject!.values as any;
+    const cell = volume.grid.cells.space.dataOffset(3, 2, 100);
+    const loci = Volume.Cell.Loci(volume, [
+      {
+        indices: Interval.ofSingleton(cell as Volume.CellIndex),
+        instances: OrderedSet.ofSingleton(0 as Volume.InstanceIndex),
+      },
+    ]);
+    expect(visual.mark(loci, MarkerAction.Select)).toBe(true);
+    expect(values.markerStatus.ref.value).not.toBe(0);
+    await update({ dimension: { name: 'z', params: 101 } });
+    expect(values.markerStatus.ref.value).toBe(0);
+    expect(Array.from(values.tMarker.ref.value.array as Uint8Array).every((m) => m === 0)).toBe(true);
+  });
+
+  it('hidden and freed, a change while hidden (contrast, a step, another axis) makes no window that stays', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      const { visual, update, owned } = await setup(uniformTheme());
+      visual.setVisibility(false);
+      vi.advanceTimersByTime(SliceWindowHiddenMs);
+      expect(owned.size).toBe(0);
+      await update({ dimension: { name: 'z', params: 150 } });
+      vi.advanceTimersByTime(SliceWindowHiddenMs);
+      expect(owned.size).toBe(0);
+      // another axis: a new window, freed too while hidden
+      await update({ dimension: { name: 'x', params: 2 } });
+      vi.advanceTimersByTime(SliceWindowHiddenMs);
+      expect(owned.size).toBe(0);
+      // shown: at the slice set while hidden
+      visual.setVisibility(true);
+      expect(owned.size).toBe(1);
+      expect((visual.renderObject!.values as any).uSliceLayer.ref.value).toBe(2);
+      visual.destroy();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('hidden a while, its window is freed; shown again, made again at the slice drawn', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      const { visual, owned, textures } = await setup(uniformTheme());
+      const values = visual.renderObject!.values as any;
+      expect(owned.size).toBe(1);
+      visual.setVisibility(false);
+      vi.advanceTimersByTime(SliceWindowHiddenMs - 1);
+      expect(owned.size).toBe(1);
+      // shown again before: kept
+      visual.setVisibility(true);
+      vi.advanceTimersByTime(SliceWindowHiddenMs * 2);
+      expect(owned.size).toBe(1);
+      visual.setVisibility(false);
+      vi.advanceTimersByTime(SliceWindowHiddenMs);
+      expect(owned.size).toBe(0);
+      visual.setVisibility(true);
+      expect(owned.size).toBe(1);
+      const texture = textures.at(-1)!;
+      expect(values.tSliceTex.ref.value).toBe(texture);
+      // the plane drawn copied at once: z 100
+      expect(texture.writes).toBeGreaterThanOrEqual(1);
+      expect(values.uSliceLayer.ref.value).toBe(100 % SliceWindowDepth);
+      visual.destroy();
+      expect(owned.size).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('destroy frees the window', async () => {
+    const { visual, owned } = await setup(uniformTheme());
+    expect(owned.size).toBe(1);
+    visual.destroy();
+    expect(owned.size).toBe(0);
+  });
+});
+
+describe('a big slice moved: its 2× binned planes first, the full resolution once it rests', () => {
+  async function big() {
+    const volume = gridVolume([7, 5, 200], [2, 1, 0], Skewed);
+    const { coarseVoxels, coarseHoldMs } = SliceWindowConfig;
+    SliceWindowConfig.coarseVoxels = 1000;
+    SliceWindowConfig.coarseHoldMs = 200;
+    const { graphics, textures, owned } = stubGraphics();
+    const visual = SliceVisual(0);
+    const update = (props: Partial<SliceProps>) =>
+      Task.create('update', (runtime) =>
+        visual.createOrUpdate({ runtime, graphics }, uniformTheme(), props, { volume, key: 0 }),
+      ).run();
+    await update(sliceProps({ mode: 'grid', dimension: { name: 'z', params: 100 } }));
+    // binned once shown
+    visual.setVisibility(true);
+    const binned = await SliceBinned.peek(volume.grid)!.ready;
+    // the full window filled (idle time)
+    for (let k = 0; k < 40; ++k) await new Promise((r) => setTimeout(r, 0));
+    const restore = () => {
+      Object.assign(SliceWindowConfig, { coarseVoxels, coarseHoldMs });
+      visual.destroy();
+    };
+    return { volume, visual, update, textures, owned, binned, restore };
+  }
+
+  it('the binned grid is binGrid 2×', async () => {
+    const { volume, binned, restore } = await big();
+    try {
+      const ref = await binGrid(volume.grid, 2);
+      expect(Array.from(binned.cells.data)).toEqual(Array.from(ref.cells.data));
+      expect(binned.cells.space.dimensions).toEqual(ref.cells.space.dimensions);
+    } finally {
+      restore();
+    }
+  });
+
+  it('a step out of the full window shows the binned plane, the full one after it rests, at the same place', async () => {
+    const { volume, visual, update, textures, binned, restore } = await big();
+    try {
+      const values = visual.renderObject!.values as any;
+      const corners = (i: number) => {
+        const cpu = createImage(
+          {} as any,
+          volume,
+          0,
+          uniformTheme(),
+          sliceProps({ mode: 'grid', dimension: { name: 'z', params: i } }),
+        );
+        return cpu.then((im) => Array.from(im.cornerBuffer.ref.value));
+      };
+      // within the full window: full resolution
+      await update({ dimension: { name: 'z', params: 101 } });
+      expect(Array.from(values.uSliceBin.ref.value)).toEqual([1, 1]);
+      // far: the binned plane of the pair holding it
+      await update({ dimension: { name: 'z', params: 23 } });
+      expect(Array.from(values.uSliceBin.ref.value)).toEqual([2, 2]);
+      const coarse = values.tSliceTex.ref.value as StubTexture;
+      expect(coarse).not.toBe(textures[0]);
+      const layer = values.uSliceLayer.ref.value;
+      expect(layer).toBe(11 % SliceWindowDepth);
+      const [bx, by] = binned.cells.space.dimensions;
+      expect([coarse.width, coarse.height]).toEqual([bx, by]);
+      const plane = coarse.data.subarray(layer * bx * by, (layer + 1) * bx * by);
+      for (let y = 0; y < by; ++y) {
+        for (let x = 0; x < bx; ++x) {
+          expect(plane[y * bx + x]).toBe(binned.cells.data[binned.cells.space.dataOffset(x, y, 11)]);
+        }
+      }
+      // the image's size the full plane's: the shader reads texel p / 2
+      expect(Array.from(values.uImageTexDim.ref.value)).toEqual([7, 5]);
+      expect(Array.from(values.aPosition.ref.value)).toEqual(await corners(23));
+      // rested: full resolution at 23
+      await new Promise((r) => setTimeout(r, SliceWindowConfig.settleMs + 50));
+      expect(Array.from(values.uSliceBin.ref.value)).toEqual([1, 1]);
+      expect(values.tSliceTex.ref.value).toBe(textures[0]);
+      expect(values.uSliceLayer.ref.value).toBe(23 % SliceWindowDepth);
+      expect(Array.from(values.aPosition.ref.value)).toEqual(await corners(23));
+    } finally {
+      restore();
+    }
+  });
+
+  it('a big slice made hidden is not binned until shown', async () => {
+    const volume = gridVolume([7, 5, 200], [2, 1, 0], Skewed);
+    const coarseVoxels = SliceWindowConfig.coarseVoxels;
+    SliceWindowConfig.coarseVoxels = 1000;
+    const { graphics } = stubGraphics();
+    const visual = SliceVisual(0);
+    try {
+      await Task.create('update', (runtime) =>
+        visual.createOrUpdate(
+          { runtime, graphics },
+          uniformTheme(),
+          sliceProps({ mode: 'grid', dimension: { name: 'z', params: 100 } }),
+          { volume, key: 0 },
+        ),
+      ).run();
+      visual.setVisibility(false);
+      expect(SliceBinned.peek(volume.grid)).toBeUndefined();
+      visual.setVisibility(true);
+      expect(SliceBinned.peek(volume.grid)).toBeDefined();
+      await SliceBinned.peek(volume.grid)!.ready;
+    } finally {
+      SliceWindowConfig.coarseVoxels = coarseVoxels;
+      visual.destroy();
+    }
+  });
+
+  it('binned and rested, a step within the full window is a full plane (the window filled around it)', async () => {
+    const { visual, update, restore } = await big();
+    try {
+      const values = visual.renderObject!.values as any;
+      await update({ dimension: { name: 'z', params: 20 } });
+      expect(Array.from(values.uSliceBin.ref.value)).toEqual([2, 2]);
+      await new Promise((r) => setTimeout(r, SliceWindowConfig.settleMs + 50));
+      for (let k = 0; k < 40; ++k) await new Promise((r) => setTimeout(r, 0));
+      await update({ dimension: { name: 'z', params: 21 } });
+      expect(Array.from(values.uSliceBin.ref.value)).toEqual([1, 1]);
+    } finally {
+      restore();
+    }
+  });
+
+  it('the binned window is freed a while after the slice rests', async () => {
+    const { visual, update, owned, restore } = await big();
+    try {
+      await update({ dimension: { name: 'z', params: 23 } });
+      expect(owned.size).toBe(2);
+      await new Promise((r) => setTimeout(r, SliceWindowConfig.settleMs + 50));
+      expect(Array.from((visual.renderObject!.values as any).uSliceBin.ref.value)).toEqual([1, 1]);
+      // freed `coarseHoldMs` after resting (shorter here)
+      await new Promise((r) => setTimeout(r, SliceWindowConfig.coarseHoldMs + 50));
+      expect(owned.size).toBe(1);
+      // moved far again: made again
+      await update({ dimension: { name: 'z', params: 180 } });
+      expect(owned.size).toBe(2);
+    } finally {
+      restore();
+    }
+  });
+
+  it('a tilt series (few planes along z) is binned in x and y only: the binned plane of the same tilt', async () => {
+    const volume = gridVolume([7, 5, 41], [2, 1, 0], Skewed);
+    const { coarseVoxels } = SliceWindowConfig;
+    SliceWindowConfig.coarseVoxels = 1000;
+    const { graphics } = stubGraphics();
+    const visual = SliceVisual(0);
+    const update = (props: Partial<SliceProps>) =>
+      Task.create('update', (runtime) =>
+        visual.createOrUpdate({ runtime, graphics }, uniformTheme(), props, { volume, key: 0 }),
+      ).run();
+    try {
+      await update(sliceProps({ mode: 'grid', dimension: { name: 'z', params: 20 } }));
+      visual.setVisibility(true);
+      const binned = await SliceBinned.peek(volume.grid)!.ready;
+      expect(binned.cells.space.dimensions).toEqual([4, 3, 41]);
+      expect(Array.from(binned.cells.data)).toEqual(Array.from((await binGrid(volume.grid, [2, 2, 1])).cells.data));
+      for (let k = 0; k < 40; ++k) await new Promise((r) => setTimeout(r, 0));
+      // a step the full window holds: the full plane; one it does not: the binned plane of the same tilt (z kept)
+      const values = visual.renderObject!.values as any;
+      await update({ dimension: { name: 'z', params: 21 } });
+      expect(Array.from(values.uSliceBin.ref.value)).toEqual([1, 1]);
+      await update({ dimension: { name: 'z', params: 1 } });
+      expect(Array.from(values.uSliceBin.ref.value)).toEqual([2, 2]);
+      expect(values.uSliceLayer.ref.value).toBe(1);
+      // the x slice: columns z (kept), rows y (2×)
+      await update({ dimension: { name: 'x', params: 3 } });
+      expect(values.dSliceWindow.ref.value).toBe(true);
+    } finally {
+      SliceWindowConfig.coarseVoxels = coarseVoxels;
+      visual.destroy();
+    }
+  });
+
+  it('a volume under the threshold never bins', async () => {
+    expect(SliceWindowConfig.coarseVoxels).toBe(2 ** 28);
+    const volume = gridVolume([7, 5, 200], [2, 1, 0], Skewed);
+    const { graphics } = stubGraphics();
+    const visual = SliceVisual(0);
+    await Task.create('update', (runtime) =>
+      visual.createOrUpdate(
+        { runtime, graphics },
+        uniformTheme(),
+        sliceProps({ mode: 'grid', dimension: { name: 'z', params: 100 } }),
+        { volume, key: 0 },
+      ),
+    ).run();
+    expect(SliceBinned.peek(volume.grid)).toBeUndefined();
+    visual.destroy();
+  });
 });

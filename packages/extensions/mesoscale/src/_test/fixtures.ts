@@ -4,6 +4,11 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
+import { ChunkedArray } from '@molstar/core/data/util';
+import { Mat4, Vec3 } from '@molstar/core/math/linear-algebra';
+import type { Mesh } from '@molstar/graphics/geo/geometry/mesh/mesh';
+import { MeshBuilder } from '@molstar/graphics/geo/geometry/mesh/mesh-builder';
+import { Sphere } from '@molstar/graphics/geo/primitive/sphere';
 import { CustomProperties } from '@molstar/model/model/custom-property';
 import type { ParticleList, ParticleTarget } from '@molstar/model/model/particles/particle-list';
 import type { Structure } from '@molstar/model/model/structure';
@@ -140,3 +145,60 @@ export const TestPetworldTargetList = PluginStateTransform.BuiltIn({
     });
   },
 });
+
+/** A sphere's mesh about the origin: an icosahedron subdivided `detail` times, its vertices on the sphere (grow-mesh) */
+export function sphereMesh(radius: number, detail: number): Mesh {
+  const state = MeshBuilder.createState(1024, 1024);
+  MeshBuilder.addPrimitive(state, Mat4.fromScaling(Mat4(), Vec3.create(radius, radius, radius)), Sphere(detail));
+  return MeshBuilder.getMesh(state);
+}
+
+/** A flat square of `n` × `n` cells of `size` Å in the xy plane about the origin, its normal +z (grow-mesh) */
+export function flatMesh(n: number, size: number): Mesh {
+  const state = MeshBuilder.createState((n + 1) * (n + 1), 1024);
+  const half = (n * size) / 2;
+  for (let j = 0; j <= n; j++) {
+    for (let i = 0; i <= n; i++) {
+      ChunkedArray.add3(state.vertices, i * size - half, j * size - half, 0);
+      ChunkedArray.add3(state.normals, 0, 0, 1);
+      ChunkedArray.add(state.groups, 0);
+    }
+  }
+  for (let j = 0; j < n; j++) {
+    for (let i = 0; i < n; i++) {
+      const o = j * (n + 1) + i;
+      ChunkedArray.add3(state.indices, o, o + 1, o + n + 2);
+      ChunkedArray.add3(state.indices, o, o + n + 2, o + n + 1);
+    }
+  }
+  return MeshBuilder.getMesh(state);
+}
+
+/**
+ * An open tube along z from −height/2 (radius `r0`) to +height/2 (radius `r1`): a cylinder for r0 = r1, else a cone's
+ * frustum; `segments` around and `rows` along, its normals out (grow-helix)
+ */
+export function tubeMesh(r0: number, r1: number, height: number, segments: number, rows: number): Mesh {
+  const state = MeshBuilder.createState((segments + 1) * (rows + 1), 1024);
+  // the outward normal of a cone's side: radial, tilted by its slope
+  const slope = (r0 - r1) / height;
+  for (let j = 0; j <= rows; j++) {
+    const z = -height / 2 + (j * height) / rows;
+    const r = r0 + ((r1 - r0) * j) / rows;
+    for (let i = 0; i <= segments; i++) {
+      const t = (2 * Math.PI * i) / segments;
+      ChunkedArray.add3(state.vertices, r * Math.cos(t), r * Math.sin(t), z);
+      const n = Vec3.normalize(Vec3(), Vec3.create(Math.cos(t), Math.sin(t), slope));
+      ChunkedArray.add3(state.normals, n[0], n[1], n[2]);
+      ChunkedArray.add(state.groups, 0);
+    }
+  }
+  for (let j = 0; j < rows; j++) {
+    for (let i = 0; i < segments; i++) {
+      const o = j * (segments + 1) + i;
+      ChunkedArray.add3(state.indices, o, o + 1, o + segments + 2);
+      ChunkedArray.add3(state.indices, o, o + segments + 2, o + segments + 1);
+    }
+  }
+  return MeshBuilder.getMesh(state);
+}

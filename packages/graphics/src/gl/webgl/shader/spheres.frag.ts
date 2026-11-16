@@ -3,6 +3,7 @@
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
  * @author Gianluca Tomasello <giagitom@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { common } from './chunks/common.glsl.js';
@@ -23,6 +24,7 @@ import { apply_fog } from './chunks/apply-fog.glsl.js';
 import { wboit_write } from './chunks/wboit-write.glsl.js';
 import { dpoit_write } from './chunks/dpoit-write.glsl.js';
 import { apply_occlusion } from './chunks/apply-occlusion.glsl.js';
+import { lod_impostor_frag, lod_impostor_varyings } from './chunks/lod-impostor.glsl.js';
 
 export const spheres_frag = `
 precision highp float;
@@ -41,6 +43,8 @@ ${common_clip}
     flat in vec4 vSphere;
 #endif
 varying vec3 vPoint;
+${lod_impostor_varyings('in')}
+${lod_impostor_frag}
 
 #if !defined(dClipPrimitive) && defined(dClipVariant_pixel) && defined(dClipObjects)
     #define dClipSphere
@@ -169,6 +173,11 @@ void main(void){
     vec3 cameraNormal;
     float fragmentDepth;
 
+    #if defined(dLodImpostorLevel) || defined(dLodImpostorBand)
+        // the band alone dithers (-1: a sphere of no band)
+        if (vImpostorY.w != -1.0 && impostorDithered()) discard;
+    #endif
+
     #ifdef dApproximate
         vec3 pointDir = -vSphere.xyz - vPoint;
         if (dot(pointDir, pointDir) > vSphere.w * vSphere.w) discard;
@@ -182,7 +191,14 @@ void main(void){
     #else
         vec3 modelPos;
         vec3 cameraPos;
-        bool hit = SphereImpostor(modelPos, cameraPos, cameraNormal, interior, fragmentDepth);
+        #if defined(dLodImpostorLevel)
+            // a copy far away: its impostor (\`lod_impostor_frag\`)
+            bool isImpostor = vImpostorX.w >= 0.0;
+            bool hit = isImpostor ? impostorHit(modelPos, cameraPos, cameraNormal, fragmentDepth) : SphereImpostor(modelPos, cameraPos, cameraNormal, interior, fragmentDepth);
+            if (isImpostor) interior = false;
+        #else
+            bool hit = SphereImpostor(modelPos, cameraPos, cameraNormal, interior, fragmentDepth);
+        #endif
         if (!hit) discard;
 
         if (fragmentDepth < 0.0) discard;

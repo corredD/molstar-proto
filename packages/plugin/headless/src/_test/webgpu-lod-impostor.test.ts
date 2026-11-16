@@ -1,0 +1,318 @@
+/**
+ * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
+ *
+ * @author Ludovic Autin <autin@scripps.edu>
+ */
+
+import { describe, expect, it } from 'vitest';
+import { Mat4, Vec2, Vec3 } from '@molstar/core/math/linear-algebra';
+import { Color } from '@molstar/core/util/color';
+import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
+import * as Shape from '@molstar/graphics/geo/shape/shape';
+import { Spheres } from '@molstar/graphics/geo/geometry/spheres/spheres';
+import { SpheresBuilder } from '@molstar/graphics/geo/geometry/spheres/spheres-builder';
+import { ImpostorAtlas } from '@molstar/graphics/geo/geometry/impostor-atlas';
+import { ShapeRepresentation } from '@molstar/graphics/repr/shape/representation';
+import type { SpheresValues } from '@molstar/graphics/gl/renderable/spheres';
+import { HeadlessPluginContext } from '@molstar/plugin-headless/context';
+import { DefaultPluginSpec } from '@molstar/plugin/default-spec';
+import { WebGPU } from './webgpu-module.js';
+
+// The last level of spheres as octahedral impostors (`lod-impostor.md`) on WebGPU (Dawn): two copies of a rod of spheres,
+// the left one in front, overlapping; drawn as impostors they occlude each other as their spheres do (the depth each
+// writes), and picking gives the copy.
+
+const Size = 128;
+/** per copy (instance) its color: the left one in front */
+const Colors = [0xd04040, 0x4060d0];
+const Transforms = [
+  Mat4.fromTranslation(Mat4(), Vec3.create(-10, 0, 10)),
+  Mat4.mul(
+    Mat4(),
+    Mat4.fromTranslation(Mat4(), Vec3.create(12, 0, 0)),
+    Mat4.fromRotation(Mat4(), 0.4, Vec3.create(0, 1, 0)),
+  ),
+];
+
+/** a rod of spheres along x, 30 Å long */
+function rod() {
+  const builder = SpheresBuilder.create(64, 1);
+  let g = 0;
+  for (let x = -15; x <= 15; x += 1.5) {
+    for (const [y, z] of [
+      [0, 0],
+      [2, 0],
+      [0, 2],
+    ]) {
+      builder.add(x, y, z, g++);
+    }
+  }
+  return { spheres: builder.getSpheres(), count: g };
+}
+
+async function setup() {
+  const plugin = await HeadlessPluginContext.create(
+    { webgpu: WebGPU.module! },
+    DefaultPluginSpec(),
+    { width: Size, height: Size },
+    { backend: 'webgpu' },
+  );
+  await plugin.init();
+  const canvas = plugin.canvas3d!;
+  const postprocessing = {
+    enabled: true,
+    occlusion: { name: 'off', params: {} },
+    shadow: { name: 'off', params: {} },
+    outline: { name: 'off', params: {} },
+  } as any;
+  canvas.setProps({
+    renderer: { ...canvas.props.renderer, backgroundColor: Color(0xffffff) },
+    multiSample: { ...canvas.props.multiSample, mode: 'off' },
+    camera: { ...canvas.props.camera, mode: 'perspective' },
+    postprocessing,
+  } as any);
+  (plugin as any).renderer.imagePass.setProps({ multiSample: { ...canvas.props.multiSample, mode: 'off' } });
+  const { spheres, count } = rod();
+  const shape = Shape.create(
+    'rod',
+    {},
+    spheres,
+    (_g, i) => Color(Colors[i]),
+    () => 1.5,
+    () => 'rod',
+    Transforms,
+    count,
+  );
+  const repr = ShapeRepresentation(() => shape, Spheres.Utils, { graphics: canvas.graphics });
+  // two levels by distance: all spheres within 1 Å, then the impostors (the camera is farther)
+  const lodLevels = [
+    { minDistance: 0, maxDistance: 1, overlap: 0, stride: 1, scaleBias: 1 },
+    { minDistance: 1, maxDistance: 1e7, overlap: 0, stride: 1000, scaleBias: 3 },
+  ];
+  // the levels from the start (a culler made with none keeps none: the app's objects have theirs from the start), every
+  // copy at the first (all spheres) until \`impostors\` moves the boundary
+  const allSpheres = [
+    { ...lodLevels[0], maxDistance: 1e6 },
+    { ...lodLevels[1], minDistance: 1e6 },
+  ];
+  await repr
+    .createOrUpdate({ ...PD.getDefaultValues(Spheres.Params), ignoreLight: true, lodLevels: allSpheres } as any, {})
+    .run();
+  const object = repr.renderObjects[0];
+  const values = object.values as unknown as SpheresValues;
+  canvas.add(repr);
+  canvas.requestCameraReset({ durationMs: 0 });
+  canvas.commit(true);
+  const graphics = canvas.graphics;
+
+  const draw = async () => {
+    canvas.update(repr);
+    canvas.commit(true);
+    // the canvas' own frames (what picking reads), then the image
+    for (let i = 0; i < 6; ++i) {
+      canvas.requestDraw();
+      canvas.tick(0 as any, { isSynchronous: true } as any);
+      await graphics.resources.pending.whenReady();
+    }
+    let image = (await plugin.getImageRaw({ width: Size, height: Size }, postprocessing)).data;
+    for (let i = 0; i < 10; ++i) {
+      await graphics.resources.pending.whenReady();
+      image = (await plugin.getImageRaw({ width: Size, height: Size }, postprocessing)).data;
+    }
+    expect(graphics.takeErrors?.() ?? []).toEqual([]);
+    return image;
+  };
+  /** the impostors on: the levels above, the atlas of the rod and its entry */
+  /** the impostors on, from `boundary` Å of distance (default: everything an impostor) */
+  const impostors = async (boundary = 1, thin = 1) => {
+    const levels = [
+      { ...lodLevels[0], maxDistance: boundary },
+      { ...lodLevels[1], minDistance: boundary },
+    ];
+    await repr
+      .createOrUpdate({ ...PD.getDefaultValues(Spheres.Params), ignoreLight: true, lodLevels: levels } as any, {})
+      .run();
+    // \`thin\`: the views of thinner spheres, to tell the impostors from the spheres in an image
+    const item = ImpostorAtlas.getItem(values, 64)!;
+    const atlas = ImpostorAtlas.create([{ ...item, radii: item.radii.map((r) => r * thin) }], 4096);
+    ImpostorAtlas.setValues(values, atlas);
+    spheres.shaderData.update({ lodImpostor: atlas.codes[0] });
+    expect(values.dLodImpostor.ref.value).toBe(true);
+  };
+  /** where each copy switches (\`lod-impostor.md\`), as the particle representation sets it */
+  const setSwitch = (mode: 'pixels' | 'distance', value: number) => {
+    ImpostorAtlas.setSwitch(values, { mode, value }, Spheres.LodImpostorBand / 2);
+    spheres.shaderData.update({
+      lodImpostorSwitch: {
+        mode,
+        value,
+        radii: [values.invariantBoundingSphere.ref.value.radius, values.invariantBoundingSphere.ref.value.radius],
+      },
+    });
+  };
+  return { plugin, canvas, draw, impostors, setSwitch, spheres };
+}
+
+/** per pixel, which copy's color it has (0, 1), -1 for neither */
+function copies(pixels: ArrayLike<number>) {
+  const out = new Int8Array(pixels.length / 4).fill(-1);
+  for (let i = 0; i < out.length; ++i) {
+    for (let c = 0; c < Colors.length; ++c) {
+      const [r, g, b] = [(Colors[c] >> 16) & 255, (Colors[c] >> 8) & 255, Colors[c] & 255];
+      if (
+        Math.abs(pixels[i * 4] - r) < 40 &&
+        Math.abs(pixels[i * 4 + 1] - g) < 40 &&
+        Math.abs(pixels[i * 4 + 2] - b) < 40
+      ) {
+        out[i] = c;
+      }
+    }
+  }
+  return out;
+}
+
+describe.skipIf(!WebGPU.module)('impostors (WebGPU)', () => {
+  it('occlude each other as their spheres do, and pick the copy', { tags: ['medium'] }, async () => {
+    const { plugin, canvas, draw, impostors } = await setup();
+    try {
+      const fullImage = await draw();
+      const full = copies(fullImage);
+      await impostors();
+      const imp = copies(await draw());
+      let a = 0;
+      let b = 0;
+      let same = 0;
+      let wrong = 0;
+      for (let i = 0; i < full.length; ++i) {
+        if (full[i] === 0) a++;
+        if (full[i] === 1) b++;
+        if (full[i] >= 0 && imp[i] === full[i]) same++;
+        // the back copy where the front one is: the depth not written, or not tested
+        if (full[i] === 0 && imp[i] === 1) wrong++;
+      }
+      expect(a).toBeGreaterThan(100);
+      expect(b).toBeGreaterThan(100);
+      // the silhouettes as the spheres', the back copy hidden where the front one is
+      expect(same / (a + b)).toBeGreaterThan(0.8);
+      // (a few at the front copy's outline, where its silhouette from three views is a pixel narrower than its spheres';
+      // a depth not written or not tested shows the back copy over all of the overlap)
+      expect(wrong).toBeLessThan(0.1 * a);
+
+      // the pick at each copy's pixels' center gives that copy
+      for (const c of [0, 1]) {
+        let x = 0;
+        let y = 0;
+        let n = 0;
+        for (let i = 0; i < imp.length; ++i) {
+          if (imp[i] !== c) continue;
+          x += i % Size;
+          y += Math.floor(i / Size);
+          n++;
+        }
+        const ratio = canvas.graphics.pixelRatio;
+        // rows bottom-up in the image (`getImageRaw`) or top-down: the copies lie side by side, the middle row is both
+        const pick = await canvas.asyncIdentify(Vec2.create(x / n / ratio, Size / 2 / ratio))?.wait();
+        expect(pick?.id.instanceId).toBe(c);
+      }
+    } finally {
+      plugin.dispose();
+    }
+  });
+
+  // a model scale (XR's camera scale): one level per object (\`cullSimple\`), far away the impostors': drawn (picked) as
+  // at scale 1 (the image pass keeps no camera scale: the canvas' pick reads what it draws)
+  it('draw at a model scale as without', { tags: ['medium'] }, async () => {
+    const { plugin, canvas, draw, impostors } = await setup();
+    try {
+      await impostors();
+      const plain = copies(await draw());
+      canvas.camera.scale = 2;
+      await draw();
+      for (const c of [0, 1]) {
+        let x = 0;
+        let n = 0;
+        for (let i = 0; i < plain.length; ++i) {
+          if (plain[i] !== c) continue;
+          x += i % Size;
+          n++;
+        }
+        const ratio = canvas.graphics.pixelRatio;
+        const pick = await canvas.asyncIdentify(Vec2.create(x / n / ratio, Size / 2 / ratio))?.wait();
+        expect(pick?.id.instanceId).toBe(c);
+      }
+    } finally {
+      plugin.dispose();
+    }
+  });
+
+  // in the band (the camera at the boundary of the spheres and the impostors) both levels draw, the dither giving each
+  // pixel to one: no hole, no copy drawn twice over the other
+  it('split a copy between its spheres and its impostor in the band', { tags: ['medium'] }, async () => {
+    const { plugin, canvas, draw, impostors } = await setup();
+    try {
+      const full = copies(await draw());
+      const { position, target } = canvas.camera.state;
+      await impostors(Vec3.distance(position, target));
+      const band = copies(await draw());
+      let n = 0;
+      let same = 0;
+      let wrong = 0;
+      for (let i = 0; i < full.length; ++i) {
+        if (full[i] < 0) continue;
+        n++;
+        if (band[i] === full[i]) same++;
+        if (full[i] === 0 && band[i] === 1) wrong++;
+      }
+      expect(same / n).toBeGreaterThan(0.8);
+      expect(wrong).toBeLessThan(0.02 * n);
+    } finally {
+      plugin.dispose();
+    }
+  });
+
+  // a switch per copy: by its distance from the eye, or its own size on screen; the copies' side of the threshold
+  it('switch each copy by its distance or its size on screen', { tags: ['medium'] }, async () => {
+    const { plugin, canvas, draw, impostors, setSwitch } = await setup();
+    try {
+      const count = (image: Int8Array) => image.reduce((n, c) => n + (c >= 0 ? 1 : 0), 0);
+      const full = count(copies(await draw()));
+      // thin views: an impostor covers far less than its spheres
+      await impostors(1, 0.02);
+      const thin = count(copies(await draw()));
+      expect(thin).toBeLessThan(0.2 * full);
+      const { position, target } = canvas.camera.state;
+      const d = Vec3.distance(position, target);
+      // beyond D: impostors; within: spheres; at D the band, between
+      setSwitch('distance', d / 4);
+      expect(count(copies(await draw()))).toBeLessThan(0.75 * full);
+      setSwitch('distance', d * 4);
+      expect(count(copies(await draw()))).toBeGreaterThan(0.95 * full);
+      setSwitch('distance', d);
+      const band = count(copies(await draw()));
+      expect(band).toBeGreaterThan(thin * 1.05);
+      expect(band).toBeLessThan(full * 0.98);
+      // below N pixels across: impostors; above: spheres
+      setSwitch('pixels', 4);
+      expect(count(copies(await draw()))).toBeGreaterThan(0.95 * full);
+      setSwitch('pixels', 2000);
+      expect(count(copies(await draw()))).toBeLessThan(0.75 * full);
+    } finally {
+      plugin.dispose();
+    }
+  });
+
+  // a small item (no entry: the band alone) keeps its last level's spheres beyond the switch, not culled as an impostor
+  it("keep a small item's spheres beyond the switch", { tags: ['medium'] }, async () => {
+    const { plugin, canvas, draw, impostors, setSwitch, spheres } = await setup();
+    try {
+      await impostors();
+      spheres.shaderData.update({ lodImpostor: -1 });
+      const { position, target } = canvas.camera.state;
+      setSwitch('distance', Vec3.distance(position, target) / 4);
+      const count = copies(await draw()).reduce((n, c) => n + (c >= 0 ? 1 : 0), 0);
+      expect(count).toBeGreaterThan(20);
+    } finally {
+      plugin.dispose();
+    }
+  });
+});

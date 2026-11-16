@@ -27,6 +27,10 @@ import {
   sizeDataFactor,
 } from '@molstar/graphics/geo/geometry/size-data';
 import { createDataArray } from '@molstar/graphics/gl/renderable/util';
+import { Color } from '@molstar/core/util/color';
+import { ElementSymbol } from '@molstar/model/model/structure/model/types';
+import { ColorLevels } from '@molstar/graphics/geo/geometry/color-levels';
+import { ElementSymbolColors, elementSymbolColor } from '@molstar/graphics/theme/color/element-symbol';
 import type { GraphicsContext } from '@molstar/graphics/gl/context';
 import type { Theme } from '@molstar/graphics/theme/theme';
 import { computeMarchingCubesMesh } from '@molstar/graphics/geo/util/marching-cubes/algorithm';
@@ -192,4 +196,30 @@ export async function createSitesBlobSurfaceGeometry(
   const extraRadius = radiusOffset * (1 + Math.exp(-smoothness));
   surface.setBoundingSphere(Sphere3D.expand(Sphere3D(), boundary.sphere, maxRadius + extraRadius));
   return surface;
+}
+
+const nearData = new WeakMap<ParticleSites, Uint8Array>();
+
+/**
+ * Per site of a sites target (its group) the color levels' near data (`ColorLevels.Data.tColorNear`), as a structure
+ * target's (`getStructureTargetNearColors`): its element's color (a carbon's where the sites have no elements) and its
+ * chain's offset among the target's chains (one chain where the sites have none); made once per target
+ */
+export function getSitesTargetNearColors(sites: ParticleSites): Uint8Array {
+  let data = nearData.get(sites);
+  if (data) return data;
+  const { count, elements, chains } = sites;
+  data = new Uint8Array(count * 4);
+  const colors = elements?.symbols.map((s) => elementSymbolColor(ElementSymbolColors, ElementSymbol(s)));
+  for (let i = 0; i < count; ++i) {
+    Color.toArray(colors ? colors[elements!.index[i]] : ElementSymbolColors.C, data, i * 4);
+  }
+  const chainCount = chains ? chains.labels.length : 1;
+  for (let c = 0; c < chainCount; ++c) {
+    const offset = ColorLevels.offsetByte(ColorLevels.chainOffset(c, chainCount));
+    const end = chains ? Math.min(count, chains.offsets[c + 1]) : count;
+    for (let i = chains ? chains.offsets[c] : 0; i < end; ++i) data[i * 4 + 3] = offset;
+  }
+  nearData.set(sites, data);
+  return data;
 }

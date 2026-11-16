@@ -6,9 +6,11 @@
 
 import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it } from 'vitest';
-import { Mat4, Vec3 } from '@molstar/core/math/linear-algebra';
+import { Mat4, Tensor, Vec3 } from '@molstar/core/math/linear-algebra';
+import { CCP4Writer } from '@molstar/model/formats/writer/ccp4/ccp4';
+import { Grid } from '@molstar/model/model/volume';
 import { EmptyLoci } from '@molstar/model/model/loci';
-import { PluginStateObject as SO } from '@molstar/plugin/state/objects';
+import { PluginStateObject as SO, PluginStateTransform } from '@molstar/plugin/state/objects';
 import { ParticleListWithTargets } from '@molstar/plugin/state/transforms/particles/ops';
 import { ParticlesRepresentation3D } from '@molstar/plugin/state/transforms/particles/representation';
 import { ShapeRepresentation3D } from '@molstar/plugin/state/transforms/shape/representation';
@@ -31,6 +33,20 @@ function expectOk<R>(r: ApiResult<R>): asserts r is Extract<ApiResult<R>, { ok: 
   if (!r.ok) expect.fail(`${r.code}: ${r.message}${r.hint ? ` (${r.hint})` : ''}`);
 }
 
+/** A decorator of a shape that draws it as it is (as a mesh's color by a volume sits between its shape and its drawing) */
+const PassThroughShape = PluginStateTransform.BuiltIn({
+  name: 'stage-tools-test-pass-through-shape',
+  display: { name: 'Pass through (test)' },
+  from: SO.Shape.Provider,
+  to: SO.Shape.Provider,
+  isDecorator: true,
+  params: {},
+})({
+  apply({ a }) {
+    return new SO.Shape.Provider(a.data, { label: a.label });
+  },
+});
+
 async function viewer() {
   const base = DefaultPrismViewerSpec();
   const v = await createPrismViewerHeadless({
@@ -41,6 +57,92 @@ async function viewer() {
   expectOk(await v.api.load.files({ files: [crn] }));
   return v;
 }
+
+/** A viewer with an MRC of 8³ voxels of 10 Å, voxel 0 at (100, 50, 20) Å; the volume's ref */
+async function mapViewer() {
+  const v = await viewer();
+  const n = 8;
+  const values = new Float32Array(n * n * n).map((_, i) => (i % 7) + 1);
+  const matrix = Mat4.mul(
+    Mat4(),
+    Mat4.fromTranslation(Mat4(), Vec3.create(100, 50, 20)),
+    Mat4.fromUniformScaling(Mat4(), 10),
+  );
+  const grid: Grid = {
+    transform: { kind: 'matrix', matrix },
+    cells: Tensor.create(Tensor.Space([n, n, n], [2, 1, 0], Float32Array), Tensor.Data1(values)),
+    stats: { min: 0, max: 0, mean: 0, sigma: 0 },
+  };
+  expectOk(await v.api.load.files({ files: [new File([CCP4Writer.writeMrc(grid, values)], 'map.mrc')] }));
+  const ref = v.plugin.managers.volume.hierarchy.current.volumes[0].cell.transform.ref;
+  /** Voxel (1, 0, 0) where it is drawn (the last decorator's grid) */
+  const voxel = () => {
+    const vol = v.plugin.managers.volume.hierarchy.current.volumes[0];
+    const rep = vol.representations[0].cell.transform.parent;
+    const data = v.plugin.state.data.cells.get(rep)!.obj!.data as { grid: Grid };
+    return Array.from(
+      Vec3.transformMat4(Vec3(), Vec3.create(1, 0, 0), Grid.getGridToCartesianTransform(data.grid)),
+    ).map((x) => Math.round(x * 1e3) / 1e3);
+  };
+  return { v, ref, voxel };
+}
+
+describe('a volume scaled (its pixel size)', () => {
+  it('scales about the origin, then a move on top; reset to 1; undo and redo', async () => {
+    const { v, ref, voxel } = await mapViewer();
+    const s = v.api.stage!;
+    expect(voxel()).toEqual([110, 50, 20]);
+    expectOk(await s.scale({ target: ref, scale: 2 } as never));
+    expect(voxel()).toEqual([220, 100, 40]);
+    expect(s.scaleOf(ref)).toBe(2);
+    expect(await s.scale({ target: ref, scale: 2 } as never)).toMatchObject({ unchanged: true });
+    // the move is in Å of the scene, after the scale
+    const up = Array.from(Mat4.fromTranslation(Mat4(), Vec3.create(0, 0, 100)));
+    expectOk(await s.move({ target: ref, matrix: up } as never));
+    expect(voxel()).toEqual([220, 100, 140]);
+    expect(s.scaleOf(ref)).toBe(2);
+    // the handles: the placement is move × scale, its radius scaled
+    const p = s.placementOf(ref)!;
+    expect(Array.from(Vec3.transformMat4(Vec3(), Vec3.create(1, 0, 0), p.matrix))).toEqual([2, 0, 100]);
+    // another move after it, composed on the move only
+    expectOk(await s.move({ target: ref, matrix: up } as never));
+    expect(voxel()).toEqual([220, 100, 240]);
+    expect(s.scaleOf(ref)).toBe(2);
+    expectOk(await s.scale({ target: ref, scale: 1 } as never));
+    expect(voxel()).toEqual([110, 50, 220]);
+    expectOk(await v.api.run('history.undo', {}));
+    expect(voxel()).toEqual([220, 100, 240]);
+    expectOk(await v.api.run('history.redo', {}));
+    expect(voxel()).toEqual([110, 50, 220]);
+  });
+
+  it('is placed by its pose after a scale: the center where asked, the turn about it, the scale kept', async () => {
+    const { v, ref } = await mapViewer();
+    const s = v.api.stage!;
+    expectOk(await s.scale({ target: ref, scale: 2 } as never));
+    const center = () => {
+      const p = s.placementOf(ref)!;
+      return Array.from(Vec3.transformMat4(Vec3(), p.center, p.matrix)).map((x) => Math.round(x * 1e3) / 1e3);
+    };
+    const c0 = center();
+    expectOk(await v.api.run('stage.pose', { target: ref, x: 500 }));
+    expect(center()).toEqual([500, c0[1], c0[2]]);
+    expect(s.scaleOf(ref)).toBe(2);
+    expectOk(await v.api.run('stage.pose', { target: ref, ez: 90 }));
+    expect(center()).toEqual([500, c0[1], c0[2]]);
+    expect(s.scaleOf(ref)).toBe(2);
+  });
+
+  it("scales a volume's labels with it, in the same step", async () => {
+    const { v, ref } = await mapViewer();
+    const s = v.api.stage!;
+    expectOk(await v.api.run('stage.label', { text: 'one', target: ref, x: 100, y: 50, z: 20 }));
+    const steps = v.api.history.steps.value.length;
+    expectOk(await s.scale({ target: ref, scale: 2 } as never));
+    expect(v.api.history.steps.value.length).toBe(steps + 1);
+    expect(s.labelsState().value[0].position.map((x) => Math.round(x))).toEqual([200, 100, 40]);
+  });
+});
 
 describe('stage', () => {
   it("offers what fits the pick in its menu; a cut (Prism's) adds nothing to it", async () => {
@@ -266,6 +368,30 @@ describe('stage', () => {
     expect(Mat4.getMaxScaleOnAxis(m)).toBeCloseTo(2);
     expect(m[12]).toBeCloseTo(5);
     cut().forEach((x, i) => expect(x).toBeCloseTo(cut0[i] + (i === 0 ? 5 : 0), 4));
+  });
+
+  it("moves a mesh drawn through a decorator of its shape (a mesh colored by a volume): its shape's transform", async () => {
+    const v = await viewer();
+    const s = v.api.stage!;
+    expectOk(await v.api.load.files({ files: [new File(['v 0 0 0\nv 10 0 0\nv 0 10 0\nf 1 2 3\n'], 'seg.obj')] }));
+    const mesh = Array.from(v.plugin.state.data.cells.values()).find(
+      (c) => SO.Shape.Representation3D.is(c.obj) && c.obj.label !== 'Unit Cell' && !c.state.isGhost,
+    )!;
+    const shape = mesh.transform.parent;
+    await v.plugin.build().to(shape).insert(PassThroughShape, {}).commit();
+    const decorator = v.plugin.state.data.cells.get(mesh.transform.ref)!.transform.parent;
+    expect(decorator).not.toBe(shape);
+    expect(s.placementOf(mesh.transform.ref)).toBeDefined();
+    expectOk(
+      await s.move({
+        target: mesh.transform.ref,
+        matrix: Array.from(Mat4.fromTranslation(Mat4(), Vec3.create(5, 0, 0))),
+      } as never),
+    );
+    const m = (v.plugin.state.data.cells.get(shape)!.transform.params as any).transforms[0] as Mat4;
+    expect(m[12]).toBeCloseTo(5);
+    expect(v.plugin.state.data.cells.get(decorator)!.transform.params).toEqual({});
+    expect(s.placementOf(mesh.transform.ref)!.matrix[12]).toBeCloseTo(5);
   });
 
   it("runs from ⌘K: 'label A:10' labels the residue; an object's label needs no selection", async () => {

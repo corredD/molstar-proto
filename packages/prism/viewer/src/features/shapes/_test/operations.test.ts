@@ -8,6 +8,7 @@
  */
 
 import { Vec3 } from '@molstar/core/math/linear-algebra';
+import { PluginStateObject as SO, PluginStateTransform } from '@molstar/plugin/state/objects';
 import { describe, expect, it } from 'vitest';
 import { cbs, expectOk, headlessViewer, until } from '../../../_test/harness.js';
 import type { SceneNode } from '../../../model/scene.js';
@@ -17,6 +18,20 @@ import type { ShapeInfo } from '../operations.js';
 
 // The `shape` area and the Structure panel's Shapes group over a headless viewer: meshes made in code (an OBJ torus, a
 // PLY octahedron), listed, shown and hidden, updated, given a look, removed.
+
+/** A decorator of a shape that draws it as it is (as an extension's between a shape and its representation) */
+const PassThroughShape = PluginStateTransform.BuiltIn({
+  name: 'prism-test-pass-through-shape',
+  display: { name: 'Pass through (test)' },
+  from: SO.Shape.Provider,
+  to: SO.Shape.Provider,
+  isDecorator: true,
+  params: {},
+})({
+  apply({ a }) {
+    return new SO.Shape.Provider(a.data, { label: a.label });
+  },
+});
 
 async function withMeshes(files: File[] = [MeshFiles.torus(), MeshFiles.octahedron()]) {
   const v = await headlessViewer({ files: [cbs()] });
@@ -67,6 +82,17 @@ describe('the shape area', () => {
     expectOk(await v.api.shape.transformReset({ node: torus.ref }));
     expect(drawnCenter(v, rep)[1]).toBeCloseTo(before[1], 3);
     expect(((await v.api.shape.transformReset({ node: torus.ref })) as any).unchanged).toBe(true);
+  });
+
+  it('lists a representation drawn through a decorator of its shape (a mesh colored by a volume), and focuses it', async () => {
+    const v = await withMeshes([MeshFiles.torus()]);
+    const [torus] = await shapes(v);
+    const rep = torus.representations[0].ref;
+    await v.plugin.build().to(torus.ref).insert(PassThroughShape, {}).commit();
+    expect(v.plugin.state.data.cells.get(rep)!.transform.parent).not.toBe(torus.ref);
+    const [after] = await shapes(v);
+    expect(after.representations.map((r) => r.ref)).toEqual([rep]);
+    expectOk(await v.api.shape.focus({ node: torus.ref }));
   });
 
   it('lists the meshes loaded, by their files, with their representations; not the unit cell', async () => {

@@ -383,6 +383,29 @@ export function createWebGPUTexture(
     loaded = image;
   }
 
+  /** `Texture.loadLayer`: a queue write of the layer, from the array in place */
+  function loadLayer(image: TextureImage<any>, layer: number) {
+    if (destroyed) return;
+    if (dimension !== '3d') notSupported('loadLayer of a texture not 3d');
+    if (type === 'fp16') notSupported('loadLayer of half floats');
+    if (image.width !== width || image.height !== height || layer < 0 || layer >= depth) {
+      throw new Error(`layer ${layer} of ${image.width} × ${image.height} outside ${width} × ${height} × ${depth}`);
+    }
+    // a defined texture allocated at its size (a loaded one has its storage); then, as `loadRows`, the commands
+    // recorded so far submitted first: they may still read the layer's current contents
+    if (!texture) allocate(width, height, depth);
+    env.flush();
+    const { array } = image;
+    const bytesPerRow = (array.length / image.height) * array.BYTES_PER_ELEMENT;
+    env.device.queue.writeTexture(
+      { texture: texture!, origin: { x: 0, y: 0, z: layer } },
+      array,
+      { offset: 0, bytesPerRow, rowsPerImage: height },
+      { width, height, depthOrArrayLayers: 1 },
+    );
+    loaded = undefined;
+  }
+
   const id = getNextTextureId();
   const t: WebGPUTexture = {
     id,
@@ -424,6 +447,7 @@ export function createWebGPUTexture(
     define,
     load,
     loadRows,
+    loadLayer,
     mipmap: () => {
       if (!texture || dimension !== '2d' || isDepth || !isFilterableFormat(env.device, gpuFormat)) return;
       const mipLevelCount = getMipLevelCount(width, height);

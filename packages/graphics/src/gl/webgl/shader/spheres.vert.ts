@@ -18,7 +18,12 @@ import { assign_marker_varying } from './chunks/assign-marker-varying.glsl.js';
 import { assign_clipping_varying } from './chunks/assign-clipping-varying.glsl.js';
 import { assign_size } from './chunks/assign-size.glsl.js';
 import { clip_instance } from './chunks/clip-instance.glsl.js';
-import { assign_lod_factor } from './chunks/assign-lod-factor.glsl.js';
+import { assign_lod_factor_impostor } from './chunks/assign-lod-factor.glsl.js';
+import {
+  assign_lod_impostor,
+  assign_lod_impostor_varyings,
+  lod_impostor_varyings,
+} from './chunks/lod-impostor.glsl.js';
 
 export const spheres_vert = `
 precision highp float;
@@ -39,6 +44,7 @@ ${common_animation}
     flat out vec4 vSphere;
 #endif
 varying vec3 vPoint;
+${lod_impostor_varyings('out')}
 
 #if !defined(dClipPrimitive) && defined(dClipVariant_pixel) && defined(dClipObjects)
     #define dClipSphere
@@ -129,6 +135,7 @@ void main(void){
 
     position = applyWiggle(position, group, aInstance);
     mat4 transform = uObjectTransform * applyTumble(aTransform);
+    ${assign_lod_impostor}
 
     vec4 position4 = vec4(position, 1.0);
     vModelPosition = (uModel * transform * position4).xyz; // for clipping in frag shader, the color levels
@@ -167,8 +174,9 @@ void main(void){
 
     vSphere.w = size * uModelScale;
 
-    ${assign_lod_factor}
+    ${assign_lod_factor_impostor}
     vSphere.w *= lodFactor;
+    ${assign_lod_impostor_varyings}
 
     vec4 mvPosition = uModelView * transform * position4;
 

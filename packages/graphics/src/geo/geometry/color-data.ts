@@ -4,6 +4,7 @@
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
  * @author David Sehnal <david.sehnal@gmail.com>
  * @author Gianluca Tomasello <giagitom@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { ValueCell } from '@molstar/core/util';
@@ -34,6 +35,8 @@ export type ColorData = {
   uColorGridTransform: ValueCell<Vec4>;
   uColorIndexType: ValueCell<number>;
   dColorType: ValueCell<string>;
+  /** the grid types' grid read per fragment, else per vertex (see `ColorVolume.fragment`) */
+  dColorGridFragment: ValueCell<boolean>;
   /** the `ColorType` */
   colorType: ValueCell<string>;
   dUsePalette: ValueCell<boolean>;
@@ -73,11 +76,15 @@ export function getColorTypeDefine(type: ColorType | string): string {
   return ColorTypeDefines[type as ColorType] ?? type;
 }
 
-/** Sets the color type `type` (a `ColorType`), its define and index (`ColorTypeIndex`) of `values` */
+/**
+ * Sets the color type `type` (a `ColorType`), its define and index (`ColorTypeIndex`) of `values`; a grid is read per
+ * vertex (`createGridColor` reads one per fragment)
+ */
 export function setColorType(
-  values: Pick<ColorData, 'colorType' | 'dColorType' | 'uColorIndexType'>,
+  values: Pick<ColorData, 'colorType' | 'dColorType' | 'uColorIndexType' | 'dColorGridFragment'>,
   type: ColorType | string,
 ) {
+  ValueCell.updateIfChanged(values.dColorGridFragment, false);
   ValueCell.updateIfChanged(values.colorType, type);
   ValueCell.updateIfChanged(values.dColorType, getColorTypeDefine(type));
   ValueCell.updateIfChanged(values.uColorIndexType, ColorTypeIndex[type as ColorType] ?? 0);
@@ -88,6 +95,7 @@ function createColorType(type: ColorType) {
   return {
     uColorIndexType: ValueCell.create(ColorTypeIndex[type] ?? 0),
     dColorType: ValueCell.create(getColorTypeDefine(type)),
+    dColorGridFragment: ValueCell.create(false),
     colorType: ValueCell.create<string>(type),
   };
 }
@@ -349,6 +357,7 @@ export function createGridColor(grid: ColorVolume, type: ColorType, colorData?: 
     ValueCell.update(colorData.uColorGridDim, Vec3.clone(dimension));
     ValueCell.update(colorData.uColorGridTransform, Vec4.clone(transform));
     setColorType(colorData, type);
+    ValueCell.updateIfChanged(colorData.dColorGridFragment, !!grid.fragment);
     return colorData;
   } else {
     return {
@@ -362,6 +371,7 @@ export function createGridColor(grid: ColorVolume, type: ColorType, colorData?: 
       uColorGridDim: ValueCell.create(Vec3.clone(dimension)),
       uColorGridTransform: ValueCell.create(Vec4.clone(transform)),
       ...createColorType(type),
+      dColorGridFragment: ValueCell.create(!!grid.fragment),
       dUsePalette: ValueCell.create(false),
     };
   }

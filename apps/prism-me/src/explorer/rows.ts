@@ -366,6 +366,20 @@ function objectRows(o: SceneObject, part: MesoscaleInfo | DecorationsInfo | unde
         }
       };
       walk(info.groups, 2);
+      // its groups of instances (paint-group): brushes of their own, after its entities
+      for (const g of info.paintGroups ?? []) {
+        push(
+          {
+            key: `pg:${o.ref}:${g.id}`,
+            depth: 2,
+            label: `${g.name} · ${g.members} ${g.members === 1 ? 'member' : 'members'}`,
+            kind: 'paint group',
+            hasChildren: false,
+            node: { ref: o.ref, particles: { entities: [] }, paintGroup: g.id },
+          },
+          () => {},
+        );
+      }
     });
     return;
   }

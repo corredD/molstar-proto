@@ -32,7 +32,15 @@ import type { JSX } from '@molstar/prism-ui/dom/jsx-runtime';
 import type { ViewerApi } from '@molstar/prism-viewer/api';
 import { gestureSteps } from '@molstar/prism-viewer/sources/gesture-steps';
 import { classes } from './_generated/controls.module.css.js';
-import type { CryoetApi, DecorationsInfo, MeshInfo, ObliqueView, SliceAxis, TargetDecoration } from './operations.js';
+import {
+  type CryoetApi,
+  type DecorationsInfo,
+  MeshColorLists,
+  type MeshInfo,
+  type ObliqueView,
+  type SliceAxis,
+  type TargetDecoration,
+} from './operations.js';
 import { mb, TiltSeriesPlaces } from './portal-run.js';
 
 // The cryo-ET controls, shown by the extension's own rows and tab and by a host's panels (prism-me's properties):
@@ -413,6 +421,13 @@ export function VolumeData(props: { area: CryoetApi; volume: string }) {
     asked.set(undefined);
     status.set(undefined);
   };
+  // the pixel size: set at the release (`cryoet.volume`, one step); Reset: the file's; a failure said
+  const pixelStatus = observableState<string>('');
+  const changed = mapState(info, (i) => !!i && Math.abs(i.pixelSize - i.filePixelSize) > 1e-6 * i.filePixelSize);
+  const setPixel = async (pixelSize: number | 'file') => {
+    const r = await area.volume({ volume, ...(pixelSize === 'file' ? { reset: true } : { pixelSize }) } as never);
+    pixelStatus.set(r.ok ? '' : r.message);
+  };
   const fact = (name: string, text: ReadonlyState<string>) => (
     <Line label={name}>
       <span>{text}</span>
@@ -436,6 +451,37 @@ export function VolumeData(props: { area: CryoetApi; volume: string }) {
         'Size',
         mapState(info, (i) => (i ? mb(i.bytes) : '')),
       )}
+      {/* the pixel size as the header would say it (a file's error): the map scaled about the origin; the slider goes by powers */}
+      <Line label="Pixel size">
+        <Slider
+          aria-label="Pixel size"
+          value={mapState(info, (i) => i?.pixelSize ?? 1)}
+          min={0.1}
+          max={100}
+          scale="log"
+          clamp={false}
+          unit="Å"
+          format={(v) => String(+v.toPrecision(4))}
+          onCommit={(pixelSize) => void setPixel(pixelSize)}
+        />
+      </Line>
+      <Show when={changed}>
+        {() => (
+          <div class={classes.tools}>
+            <p class={classes.hint}>{mapState(info, (i) => `file: ${+(i?.filePixelSize ?? 0).toPrecision(4)} Å`)}</p>
+            <Button size="sm" variant="ghost" onClick={() => void setPixel('file')}>
+              Reset
+            </Button>
+          </div>
+        )}
+      </Show>
+      <Show when={mapState(pixelStatus.asReadonly, (t) => !!t)}>
+        {() => (
+          <p class={classes.hint} role="status">
+            {pixelStatus.asReadonly}
+          </p>
+        )}
+      </Show>
       <Show when={mapState(levels, (ls) => ls.length > 1)}>
         {() => (
           <>
@@ -525,9 +571,49 @@ export function Slice(props: {
   const move = live<{ index?: number; contrast?: number }>(api, 'Slice', (g, axis, v) =>
     g.cryoet!.slice({ volume, axis, ...v } as never),
   );
+  // a drag of a slice drawn from a window of its planes (graphics slice-window.ts): shown outside the state, a frame at a
+  // time (`previewSlice`), the release committing it once (one undo step); keys, and a slice not windowed, through
+  // `move`. Its index, shown until the release lands
+  const dragged = observableState<{ axis: SliceAxis; index: number; committing?: boolean } | undefined>(undefined);
+  const commitDrag = (index: number) => {
+    const d = dragged.value;
+    if (!d) return false;
+    const committing = { axis: d.axis, index, committing: true };
+    dragged.set(committing);
+    void api
+      .group('Slice', (g) => g.cryoet!.slice({ volume, axis: d.axis, index } as never))
+      .finally(() => {
+        if (dragged.value === committing) dragged.set(undefined);
+      });
+    return true;
+  };
+  // a drag ended without a commit (the pointer up where it started: no change event; the controls gone): committed
+  // where it differs from the state, else let go
+  const settleDrag = () => {
+    const d = dragged.value;
+    if (!d || d.committing) return;
+    if (d.index === info.value?.slices.find((x) => x.axis === d.axis)?.index) dragged.set(undefined);
+    else commitDrag(d.index);
+  };
+  const onPointerUp = () => setTimeout(settleDrag, 0);
+  if (typeof window !== 'undefined') window.addEventListener('pointerup', onPointerUp, true);
+  onCleanup(() => {
+    if (typeof window !== 'undefined') window.removeEventListener('pointerup', onPointerUp, true);
+    settleDrag();
+  });
+  const previewIndex = (i: number) => {
+    const axis = current();
+    if (area.previewSlice?.(volume, axis, i)) dragged.set({ axis, index: i });
+    else move.preview({ index: i }, axis);
+  };
+  const commitIndex = (i: number) => {
+    if (dragged.value?.axis !== current() || !commitDrag(i)) move.commit({ index: i }, current());
+  };
   // a value of the slice shown: what has not landed yet for its axis over the state's
   const shown = (key: 'index' | 'contrast', now: ReadonlyState<number | undefined>, none: number) =>
-    derive([now, move.changes, picked.asReadonly], (v) => move.overlay(current())?.[key] ?? v ?? none);
+    derive([now, move.changes, picked.asReadonly, dragged.asReadonly], (v, _c, _p, d) =>
+      key === 'index' && d && d.axis === current() ? d.index : (move.overlay(current())?.[key] ?? v ?? none),
+    );
   // on a line of its own, not the slider's unit: a unit of changing width would resize the track mid-drag; it follows
   // the slice shown (a drag's value before it lands)
   const angle = derive([count, shown('index', index, 0), picked.asReadonly], (n, i, a) =>
@@ -568,8 +654,8 @@ export function Slice(props: {
                 format={(i) => String(i + 1)}
                 parse={(text) => Math.round(Number.parseFloat(text)) - 1}
                 unit={mapState(count, (n) => `/ ${n}`)}
-                onPreview={(i) => move.preview({ index: i }, current())}
-                onCommit={(i) => move.commit({ index: i }, current())}
+                onPreview={previewIndex}
+                onCommit={commitIndex}
               />
             </Line>
             <Show when={mapState(angle, (t) => !!t)}>
@@ -653,16 +739,26 @@ export function MeshControls(props: {
   const timer = restartable(write);
   onCleanup(write);
   const set = (values: Record<string, unknown>, delay = 0) => {
-    pending = { ...pending, ...values };
+    // a color and an array are each the other's undoing: the last one asked for stays (`cryoet.mesh` takes one)
+    const next = { ...pending };
+    if ('color' in values) for (const k of [...ArrayKeys, ...VolumeKeys]) delete next[k];
+    if ('array' in values) for (const k of VolumeKeys) delete next[k];
+    if (ArrayKeys.some((k) => k in values)) delete next.color;
+    if (VolumeKeys.some((k) => k in values)) for (const k of ['color', 'array']) delete next[k];
+    pending = { ...next, ...values };
     timer.start(delay);
   };
   const opacity = live<{ opacity: number }>(api, 'Mesh opacity', (g, _key, v) =>
     g.cryoet!.mesh({ mesh: ref, ...v } as never),
   );
+  const volumes = area.volumesState?.() ?? observableState<readonly { ref: string; label: string }[]>([]);
   const color = new ParamsFormModel({ color: PD.Color(Color(0xcccccc)) }, undefined, {
     onChange: ({ color }) => set({ color: Color.toHexStyle(color) }, 120),
   });
-  bind(mesh, (m) => color.load({ color: Color(m?.color ?? 0xcccccc) }));
+  // the picker keeps the mesh's last own color while it is colored by an array (Uniform writes it again)
+  bind(mesh, (m) => {
+    if (m?.color !== undefined) color.load({ color: Color(m.color) });
+  });
   return (
     <div class={classes.tight}>
       <div class={classes.tools}>
@@ -679,7 +775,17 @@ export function MeshControls(props: {
         />
         <strong class={classes.name}>{mapState(mesh, (m) => m?.label ?? '')}</strong>
       </div>
-      <ParamsForm form={color} />
+      <Show when={derive([mesh, volumes], (m, v) => !!m?.arrays?.length || v.length > 0 || !!m?.volumeColor)}>
+        {() => (
+          <MeshColorBy
+            mesh={mesh}
+            volumes={volumes}
+            color={() => Color.toHexStyle(color.values.value.color)}
+            set={set}
+          />
+        )}
+      </Show>
+      <Show when={mapState(mesh, (m) => !m?.colorBy && !m?.volumeColor)}>{() => <ParamsForm form={color} />}</Show>
       <Choices
         choices={[
           { id: 'mesh', label: 'Surface' },
@@ -713,5 +819,220 @@ export function MeshControls(props: {
         />
       </Line>
     </div>
+  );
+}
+
+/** What colors a mesh by an array (`cryoet.mesh`) */
+const ArrayKeys = ['array', 'colorList', 'range'] as const;
+/** What colors a mesh by a volume (with the colors and range) */
+const VolumeKeys = ['volume', 'sample', 'depth', 'invert', 'detail'] as const;
+
+/**
+ * A mesh's Color by: Uniform (the color picker); Array, when its file has arrays (a VTP's point and cell arrays): its
+ * array, its colors (a color scale) and its range (Auto: the array's; Custom: a min and a max, from the array's); Volume,
+ * when the scene has one: the volume, At surface or Projected (the Mean, Min or Max along the normal within ±Depth Å),
+ * its Detail (at the vertices, or a grid at the volume's voxels read per pixel), its colors, its range in σ (Auto ±2σ,
+ * or Custom) and its color order as is or inverted
+ */
+function MeshColorBy(props: {
+  mesh: ReadonlyState<MeshInfo | undefined>;
+  volumes: ReadonlyState<readonly { ref: string; label: string }[]>;
+  /** The color the picker shows (Uniform writes it) */
+  color: () => string;
+  set(values: Record<string, unknown>, delay?: number): void;
+}) {
+  const { mesh, set } = props;
+  const colorBy = mapState(mesh, (m) => m?.colorBy);
+  const byVolume = mapState(mesh, (m) => m?.volumeColor);
+  // Array again: the array it was colored by, else the volume's values, else a cell array first (as a VTP opens)
+  let last: string | undefined;
+  bind(colorBy, (c) => {
+    if (c) last = c.array;
+  });
+  const arrays = () => mesh.value?.arrays ?? [];
+  const firstArray = () =>
+    last ?? byVolume.value?.array ?? (arrays().find((a) => a.key.startsWith('cell:')) ?? arrays()[0])?.key;
+  const by = derive([colorBy, byVolume], (c, v) => (v ? 'volume' : c ? 'array' : 'uniform'));
+  const custom = derive([colorBy, byVolume], (c, v) => (v ? v.range !== 'auto' : !!c && c.range !== 'auto'));
+  const range = new ParamsFormModel({ range: PD.Interval([0, 1], { step: 0.001 }, { label: 'Min, max' }) }, undefined, {
+    onChange: ({ range }) => set({ range: [range[0], range[1]] }, 300),
+  });
+  bind(
+    derive([colorBy, byVolume], (c, v) => v ?? c),
+    (c) => {
+      if (c && c.range !== 'auto') range.load({ range: [c.range[0], c.range[1]] });
+    },
+  );
+  // Custom starts at the array's range (an array of one value, half a unit about it: a range has two ends); a
+  // volume's at ±2σ
+  const customRange = (): [number, number] => {
+    if (byVolume.value) return [-2, 2];
+    const [lo, hi] = arrays().find((a) => a.key === colorBy.value?.array)?.range ?? [0, 1];
+    return lo < hi ? [lo, hi] : [lo - 0.5, hi + 0.5];
+  };
+  // the choices it has (Array with arrays, Volume with a volume), by a key: made again when one comes or goes
+  const choices = derive([mesh, props.volumes], (m, v) =>
+    ['uniform', ...(m?.arrays?.length ? ['array'] : []), ...(v.length || m?.volumeColor ? ['volume'] : [])].join(' '),
+  );
+  const ChoiceLabels: Record<string, string> = { uniform: 'Uniform', array: 'Array', volume: 'Volume' };
+  // the volumes to pick from, by a key: the select made again when one comes or goes
+  const volumeKey = mapState(props.volumes, (l) => JSON.stringify(l));
+  const projected = mapState(byVolume, (v) => !!v && v.sample !== 'surface');
+  return (
+    <>
+      <Show when={choices}>
+        {(key) => (
+          <Choices
+            label="Color by"
+            choices={key.split(' ').map((id) => ({ id, label: ChoiceLabels[id] }))}
+            active={by}
+            onPick={(next) => {
+              if (next === by.value) return;
+              if (next === 'uniform') set({ color: props.color() });
+              else if (next === 'array' && firstArray()) set({ array: firstArray() });
+              else if (next === 'volume') {
+                // the volume it kept the values of, else the scene's first
+                const volume = mesh.value?.volumeKept?.volume ?? props.volumes.value[0]?.ref;
+                if (volume) set({ volume });
+              }
+            }}
+          />
+        )}
+      </Show>
+      <Show when={mapState(by, (b) => b === 'array')}>
+        {() => (
+          <Line label="Array">
+            <Select
+              aria-label="Array"
+              options={arrays().map((a): SelectOption => [a.key, a.label])}
+              value={mapState(colorBy, (c) => c?.array ?? '')}
+              onChange={(array) => set({ array })}
+            />
+          </Line>
+        )}
+      </Show>
+      <Show when={mapState(by, (b) => b === 'volume')}>
+        {() => (
+          <>
+            <Show when={volumeKey}>
+              {() => (
+                <Line label="Volume">
+                  <Select
+                    aria-label="Volume"
+                    options={props.volumes.value.map((v): SelectOption => [v.ref, v.label])}
+                    value={mapState(byVolume, (v) => v?.volume ?? '')}
+                    onChange={(volume) => set({ volume })}
+                  />
+                </Line>
+              )}
+            </Show>
+            <Choices
+              label="Sample"
+              choices={[
+                { id: 'surface', label: 'At surface' },
+                { id: 'projected', label: 'Projected' },
+              ]}
+              active={mapState(projected, (p) => (p ? 'projected' : 'surface'))}
+              onPick={(s) => {
+                if (s === 'surface' && projected.value) set({ sample: 'surface' });
+                else if (s === 'projected' && !projected.value) set({ sample: 'mean' });
+              }}
+            />
+            <Show when={projected}>
+              {() => (
+                <>
+                  <Choices
+                    label="Along the normal"
+                    choices={[
+                      { id: 'mean', label: 'Mean' },
+                      { id: 'min', label: 'Min' },
+                      { id: 'max', label: 'Max' },
+                    ]}
+                    active={mapState(byVolume, (v) => v?.sample ?? 'mean')}
+                    onPick={(sample) => set({ sample })}
+                  />
+                  <Line label="Depth (± Å)">
+                    <Slider
+                      aria-label="Depth"
+                      value={mapState(byVolume, (v) => v?.depth ?? 10)}
+                      min={1}
+                      max={200}
+                      step={0.5}
+                      clamp={false}
+                      onCommit={(depth) => set({ depth })}
+                    />
+                  </Line>
+                </>
+              )}
+            </Show>
+            <Choices
+              label="Detail"
+              choices={[
+                { id: 'vertex', label: 'Vertex' },
+                { id: 'texture', label: 'Texture' },
+              ]}
+              active={mapState(byVolume, (v) => v?.detail ?? 'vertex')}
+              onPick={(detail) => {
+                if (detail !== byVolume.value?.detail) set({ detail });
+              }}
+            />
+            <Show
+              when={mapState(byVolume, (v) =>
+                !v?.cell
+                  ? ''
+                  : v.capped
+                    ? `Cells of ${v.cell} Å: coarser than the volume's voxels, the grid capped at 256³ cells.`
+                    : `Cells of ${v.cell} Å, the volume's voxels, read per pixel.`,
+              )}
+            >
+              {(text) => <span class={classes.hint}>{text}</span>}
+            </Show>
+          </>
+        )}
+      </Show>
+      {/* made again from Array to Volume: its range's Auto is ±2σ there */}
+      <Show when={mapState(by, (b) => (b === 'uniform' ? '' : b))}>
+        {(b) => (
+          <>
+            <Line label="Colors">
+              <Select
+                aria-label="Colors"
+                options={MeshColorLists as readonly SelectOption[]}
+                value={derive([colorBy, byVolume], (c, v) => (v ?? c)?.colorList ?? '')}
+                onChange={(colorList) => set({ colorList })}
+              />
+            </Line>
+            <Choices
+              label="Range"
+              choices={[
+                { id: 'auto', label: b === 'volume' ? 'Auto ±2σ' : 'Auto' },
+                { id: 'custom', label: 'Custom' },
+              ]}
+              active={mapState(custom, (c) => (c ? 'custom' : 'auto'))}
+              onPick={(r) => {
+                if (r === 'auto' && custom.value) set({ range: 'auto' });
+                else if (r === 'custom' && !custom.value) set({ range: customRange() });
+              }}
+            />
+            <Show when={custom}>{() => <ParamsForm form={range} />}</Show>
+            <Show when={b === 'volume'}>
+              {() => (
+                <Choices
+                  label="Color order"
+                  choices={[
+                    { id: 'as-is', label: 'As is' },
+                    { id: 'inverted', label: 'Inverted' },
+                  ]}
+                  active={mapState(byVolume, (v) => (v?.invert ? 'inverted' : 'as-is'))}
+                  onPick={(s) => {
+                    if ((s === 'inverted') !== !!byVolume.value?.invert) set({ invert: s === 'inverted' });
+                  }}
+                />
+              )}
+            </Show>
+          </>
+        )}
+      </Show>
+    </>
   );
 }

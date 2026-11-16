@@ -3,6 +3,7 @@
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { getItemIndices, isItemIndexing } from '../quad-indices.js';
@@ -873,6 +874,35 @@ export function createWebGPURenderItem<T extends ProgramVariant>(
   let textureBindingsVersion = 0;
   /** the linear-filtered textures the programs were selected for (`getLinearTextures`), see `update` */
   let boundLinearTextures = getLinearTextures();
+  // the textures owned outside the items (kind 'texture') by index: set to another texture object, rebound at the next
+  // draw without an update (a slice's switch between its binned and full planes on a timer, repr/volume/slice.ts);
+  // not the material textures (compute items, updated by `update`)
+  const externalTextures: number[] = [];
+  for (let i = 0, il = textures.length; i < il; ++i) {
+    const spec = schema[textures[i][0]];
+    if (spec.type === 'texture' && spec.kind === 'texture') externalTextures.push(i);
+  }
+  function refreshExternalTextures() {
+    let replaced = false;
+    for (let j = 0, jl = externalTextures.length; j < jl; ++j) {
+      const i = externalTextures[j];
+      const value = textureValues[textures[i][0]];
+      if (value.ref.version === textureVersions[i]) continue;
+      textureVersions[i] = value.ref.version;
+      if (textures[i][1] === value.ref.value) continue;
+      textures[i][1] = value.ref.value as Texture;
+      replaced = true;
+    }
+    if (!replaced) return;
+    // as `update`: other filtering, other programs; else the bound textures resolved again
+    const linear = getLinearTextures();
+    if (linear !== boundLinearTextures) {
+      boundLinearTextures = linear;
+      invalidatePrograms(false);
+    } else {
+      textureBindingsVersion += 1;
+    }
+  }
   /**
    * per layout the groups made for other textures (at most `MaxAlternateGroups`, the oldest dropped): a pass binding
    * the same few textures in turn every frame finds its group again instead of making one per swap
@@ -1169,6 +1199,7 @@ export function createWebGPURenderItem<T extends ProgramVariant>(
 
     renderFullscreen: (variant: T, define: string, globals: GlobalBindings) => {
       if (drawCount === 0 || instanceCount === 0 || !layersFit) return false;
+      if (externalTextures.length) refreshExternalTextures();
       const gpuGlobals = asWebGPUGlobalBindings(globals);
       const program = getWebGPUProgram(variant, define);
       if (!program) return false;
@@ -1184,10 +1215,12 @@ export function createWebGPURenderItem<T extends ProgramVariant>(
 
     render: (variant: T, globals?: GlobalBindings, mdbDataList?: MultiDrawBaseData[]) => {
       if (drawCount === 0 || instanceCount === 0 || !layersFit) return;
+      if (externalTextures.length) refreshExternalTextures();
       const gpuGlobals = globals ? asWebGPUGlobalBindings(globals) : undefined;
-      const program = getWebGPUProgram(variant);
-      if (!program) return;
-      const state = bindProgram(program, gpuGlobals);
+      const base = getWebGPUProgram(variant);
+      if (!base) return;
+      let program = base;
+      let state = bindProgram(program, gpuGlobals);
       if (!state) return;
       const pass = state.encoder;
       if (indexBuffer) {
@@ -1206,6 +1239,15 @@ export function createWebGPURenderItem<T extends ProgramVariant>(
         // culled and level-of-detail ranges, `firstInstance` offsets the instanced attributes
         for (const level of mdbDataList) {
           if (level.count === 0) continue;
+          // a level with a program of its own (\`MultiDrawBaseData.define\`: the impostors'), bound in turn
+          const levelProgram = level.define ? getWebGPUProgram(variant, level.define) : base;
+          if (!levelProgram) continue;
+          if (levelProgram !== program) {
+            const bound = bindProgram(levelProgram, gpuGlobals);
+            if (!bound) continue;
+            program = levelProgram;
+            state = bound;
+          }
           const drawBlock = getDrawBlock(program, gpuGlobals ?? noGlobals, level);
           const object = getBindGroup(program, 2, objectBlock, textures, drawBlock);
           state.setBindGroup(2, object.group, object.offsets);

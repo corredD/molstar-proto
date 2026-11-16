@@ -36,6 +36,7 @@ import { createEmptySubstance } from '../substance-data.js';
 import { createEmptyEmissive } from '../emissive-data.js';
 import { createEmptyWiggle } from '../wiggle-data.js';
 import { ColorLevels } from '../color-levels.js';
+import { ImpostorAtlas } from '../impostor-atlas.js';
 import { createInteriorValues, getInteriorParam, updateInteriorValues } from '../interior.js';
 import { getAnimationParam, createAnimationValues, updateAnimationValues } from '../animation.js';
 import * as Lod from '../lod-levels.js';
@@ -111,6 +112,11 @@ export namespace Spheres {
           const sizeFactorProp = props?.sizeFactor ?? sizeFactor.ref.value;
           const pixelSizeProp = props?.lodPixelSize ?? lodLevels.ref.value.pixelSize ?? 0;
           const radiusProp = props?.lodRadius ?? lodLevels.ref.value.radius ?? LodNominalRadius;
+          const impostorProp = props?.lodImpostor ?? lodLevels.ref.value.impostor ?? -2;
+          const switchProp =
+            props?.lodImpostorSwitch === null
+              ? undefined
+              : (props?.lodImpostorSwitch ?? lodLevels.ref.value.impostorSwitch);
 
           const newLodLevels = Lod.orderLodLevels(
             data.positionGroup,
@@ -119,6 +125,8 @@ export namespace Spheres {
             sizeFactorProp,
             pixelSizeProp,
             radiusProp,
+            impostorProp,
+            switchProp,
           );
 
           ValueCell.update(lodLevels, newLodLevels);
@@ -142,10 +150,23 @@ export namespace Spheres {
   export type LodLevelsValue = Lod.LodLevelsValue;
   export const LodLevelsPresets = Lod.LodLevelsPresets;
   export const getLodPixelBoundary = Lod.getLodPixelBoundary;
+  export const LodImpostorBand = Lod.LodImpostorBand;
+  export type LodImpostorSwitch = Lod.LodImpostorSwitch;
   const { LodNominalRadius, areLodLevelsEqual, getLodLevels } = Lod;
 
-  /** `lodRadius` the radius the pixel boundaries assume (`getLodRadius`) */
-  type LodProps = { lodLevels: LodLevels; sizeFactor: number; lodPixelSize?: number; lodRadius?: number };
+  /**
+   * `lodRadius` the radius the pixel boundaries assume (`getLodRadius`); `lodImpostor` the impostors
+   * (`Lod.getLodLevelsValue`): the atlas entry, -1 for the band alone, -2 off; kept where not given
+   */
+  type LodProps = {
+    lodLevels?: LodLevels;
+    sizeFactor?: number;
+    lodPixelSize?: number;
+    lodRadius?: number;
+    lodImpostor?: number;
+    /** where each copy switches (`Lod.LodImpostorSwitch`), null for the levels' boundary; kept where not given */
+    lodImpostorSwitch?: Lod.LodImpostorSwitch | null;
+  };
 
   /**
    * The radius the pixel boundaries assume at size factor 1: `lodRadius`, or with 0 the largest of the size data (dots,
@@ -343,6 +364,7 @@ export namespace Spheres {
       ...clipping,
       ...wiggle,
       ...ColorLevels.createData(),
+      ...ImpostorAtlas.createValues(),
       ...transform,
 
       padding: ValueCell.create(padding),
@@ -425,6 +447,8 @@ export namespace Spheres {
         props.sizeFactor,
         props.lodPixelSize,
         lodRadius,
+        lodValue.impostor,
+        lodValue.impostorSwitch,
       );
       ValueCell.update(values.lodLevels, lodLevels);
     }

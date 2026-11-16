@@ -41,6 +41,7 @@ import { distancePicker, selectionModeHint } from './measure.js';
 import { colorItems, nodeMenuItems, showClipHandles, useItems } from './menu.js';
 import type { CanvasClick, ExplorerApi, PickedNode } from './operations.js';
 import { type Picked, Properties } from './properties.js';
+import { PropertiesSlot } from './properties-view.js';
 import {
   ancestorKeys,
   Categories,
@@ -81,14 +82,15 @@ export function explorerUI(ctx: ViewerUIContext): ViewerExtensionUI {
   if (!area) return {};
   const model = sceneModel(area, ctx.api.stage);
   scenes.set(area, model);
-  area.setOnReveal((key) => {
+  /** Reveals the row of `key`; false when there is none (yet) */
+  const revealKey = (key: string): boolean => {
     // a clip's row: in the Clips category, by its tag
     const clip = key.startsWith('k:')
       ? ctx.api.clipping?.cuts.value.find((c) => `k:${c.object.tag}` === key)
       : undefined;
     if (clip) {
       model.reveal({ key, label: clipName(clip), kind: 'clip', clip: clip.object.tag! });
-      return;
+      return true;
     }
     const stage = ctx.api.stage;
     const row = rowOf(
@@ -107,7 +109,35 @@ export function explorerUI(ctx: ViewerUIContext): ViewerExtensionUI {
         ...(row.representation ? { representation: row.representation } : {}),
         ...(row.clip ? { clip: row.clip } : {}),
       });
+      return true;
     }
+    return false;
+  };
+  area.setOnReveal((key) => void revealKey(key));
+  // Paint on, from anywhere (its button, Paint with, ⌘K, the assistant): the brush's row picked, its Paint section open
+  // and brought into view (paint-refine round 3, Ludo 2026-11-13); off leaves the panel as it is
+  ctx.api.mesoscale?.paintMode.brush.asReadonly.subscribe((brush) => {
+    if (!brush) return;
+    // a group's (paint-group): its row and its own Paint section
+    const section = brush.structure ? 'paint-structure' : brush.group !== undefined ? 'paint-group-brush' : 'paint';
+    const key = brush.structure
+      ? `o:${brush.structure}`
+      : brush.group !== undefined
+        ? `pg:${brush.particles}:${brush.group}`
+        : `me:${brush.particles}:${brush.entity}`;
+    const shown = model.picked.value?.key === key && model.sections.sectionOpen(PropertiesSlot, section) === true;
+    if (!shown) {
+      const was = model.picked.value;
+      model.sections.setSectionOpen(PropertiesSlot, section, true);
+      // made again to open it when the row is picked already; a brush with no row (yet) leaves the pick (review 4)
+      model.picked.set(undefined);
+      if (!revealKey(key)) {
+        model.picked.set(was);
+        return;
+      }
+    }
+    // already shown (its own Paint button): only into view, not made again under the click (review 5)
+    model.section.set(section);
   });
   // a distance by two ⌘/Ctrl+clicks in selection mode (_spec/ui.md §7); Esc, a plain click or leaving the mode lets
   // its first point go
@@ -117,13 +147,23 @@ export function explorerUI(ctx: ViewerUIContext): ViewerExtensionUI {
     if (notifications.current.value?.text !== text) notifications.post(text);
   };
   const picker = distancePicker(ctx.api, area, { post, reveal: model.reveal });
-  area.escaped.subscribe(() => picker.cancel());
+  area.escaped.subscribe(() => {
+    picker.cancel();
+    // Esc ends Pick instances (paint-group)
+    ctx.api.mesoscale?.groupPick.stop();
+  });
   // the tree follows a pick in 3D (a left-click): its row picked and the way to it unfolded
   // what a click is on, as the stage says (a label under the pointer first: drawn, not picked by Mol*), as a row
   // (without the stage area, what Mol* picked: no label under the pointer)
   const pickedAt = (click: CanvasClick): PickedNode | undefined =>
     ctx.api.stage ? area.pickedRow(ctx.api.stage.pickedAt(click)) : area.pickedOf(click.loci);
   area.setOnClick((click) => {
+    // Pick instances (paint-group): a click on a particle of its list adds or removes its instance, nothing else
+    const groupPick = ctx.api.mesoscale?.groupPick;
+    if (groupPick?.state.value && !click.measure) {
+      const particle = area.particleOf(click.loci);
+      if (particle && groupPick.toggle(particle.list, particle.index)) return;
+    }
     // a distance's point: Ctrl or ⌘ + click in selection mode; else the click picks a row as any other
     if (click.measure && area.selectionMode) {
       // a label: no point of a distance, as nothing is (ui.md §7)
@@ -175,6 +215,16 @@ export function explorerUI(ctx: ViewerUIContext): ViewerExtensionUI {
             run: () => void handles.show({ ...particle, edit: { kind: 'offset', targets: kind } }),
           },
         ];
+        const grow = growMenuItem(ctx.api, particle, () => {
+          // its Grow section open under the row picked (the source's list's): the properties made again to open it
+          model.sections.setSectionOpen(PropertiesSlot, 'grow', true);
+          if (!p) return;
+          model.picked.set(undefined);
+          model.reveal(p);
+        });
+        if (grow) local.push(grow);
+        const ungroup = ungroupMenuItem(ctx.api, particle);
+        if (ungroup) local.push(ungroup);
         // the part's own move is not there: these are
         items.splice(0, items.length, ...local, ...items.filter((i) => i.id !== 'move'));
       }
@@ -204,6 +254,46 @@ export function particleBehind(area: ExplorerApi, picked: PickedNode | undefined
   return picked?.kind === 'label' ? undefined : area.particleOf(loci);
 }
 
+/**
+ * A particle's Grow from this instance… (progress/2026-11-11-grow.md): the particle the next grow's source (the
+ * mesoscale area's `growSource`), then `opened` shows its Grow block; none without the mesoscale area
+ */
+export function growMenuItem(
+  api: ViewerApi,
+  particle: { readonly list: string; readonly index: number },
+  opened: () => void,
+): ContextMenuItem | undefined {
+  const m = api.mesoscale;
+  if (!m) return undefined;
+  return {
+    id: 'grow-instance',
+    label: 'Grow from this instance…',
+    icon: 'sparkles',
+    run: () => {
+      m.setGrowSource({ particles: particle.list, index: particle.index });
+      opened();
+    },
+  };
+}
+
+/**
+ * A group copy's Ungroup (paint-group): the copy the particle is of made its members (`mesoscale.ungroup`, one step);
+ * none on a particle of no group copy
+ */
+export function ungroupMenuItem(
+  api: ViewerApi,
+  particle: { readonly list: string; readonly index: number },
+): ContextMenuItem | undefined {
+  const at = api.mesoscale?.instanceAt(particle.list, particle.index);
+  if (!at) return undefined;
+  return {
+    id: 'ungroup',
+    label: `Ungroup this ${at.group}`,
+    icon: 'box',
+    run: () => void api.run('mesoscale.ungroup', { particles: particle.list, index: particle.index }),
+  };
+}
+
 /** The tree's state of each explorer area (its viewer's): for tests */
 const scenes = new WeakMap<ExplorerApi, SceneModel>();
 export const sceneModelOf = (area: ExplorerApi): SceneModel | undefined => scenes.get(area);
@@ -221,6 +311,8 @@ export interface SceneModel {
   readonly groupings: KeyedState<string, MesoGroupBy>;
   /** The row to bring into view (a pick in 3D) */
   readonly scrollTo: ObservableState<string | undefined>;
+  /** A properties' section to bring into view (Paint on), once the properties are made */
+  readonly section: ObservableState<string | undefined>;
   /** Picks a node's row, unfolding the way to it */
   reveal(p: Picked): void;
   /** A model's grouping as its rows show it (its info's), for what acts on its groups */
@@ -242,6 +334,7 @@ function sceneModel(area: ExplorerApi, stage: ViewerApi['stage']): SceneModel {
     parts,
     groupings,
     scrollTo,
+    section: observableState<string | undefined>(undefined),
     sections: new ShellModel(),
     groupByOf: (ref) => (parts.value.get(ref) as MesoscaleInfo | undefined)?.groupBy,
     reveal(p) {
@@ -482,6 +575,24 @@ function ScenePanel(props: { ctx: ViewerUIContext; area: ExplorerApi; model: Sce
   });
   effect(model.scrollTo.asReadonly, (key) => {
     if (key !== undefined) scroll.request();
+  });
+  // a section asked for (Paint on): into view once made (the properties are made again a frame after the pick)
+  const section = frames(() => {
+    const id = model.section.value;
+    const el = id && panelEl?.querySelector<HTMLElement>(`[data-section="${CSS.escape(id)}"]`);
+    if (!el) {
+      if (id && ++tries < 30) section.request();
+      // not made (no row, the panel not shown): let it go, so a later ask scrolls again (review 6)
+      else model.section.set(undefined);
+      return;
+    }
+    el.scrollIntoView({ block: 'nearest' });
+    model.section.set(undefined);
+  });
+  let tries = 0;
+  effect(model.section.asReadonly, (id) => {
+    tries = 0;
+    if (id !== undefined) section.request();
   });
 
   // the properties' height, dragged on the line above them or moved by its arrows (tree-view.tsx)

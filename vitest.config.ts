@@ -77,6 +77,9 @@ const Isolated = new Set([
   'packages/graphics/src/repr/structure/visual/util/polymer/_test/cartoon-geometry.test.ts',
   // registers a stand-in encoder in Mediabunny's registry, which has no unregister
   'packages/ai/src/narration/_test/mediabunny-containers.test.ts',
+  // its allocation guard (a fit allocates no object) measures the heap's growth: after a file of headless viewers in
+  // its worker V8 boxes more of the fit's numbers (64 to 113-132 KB a fit, the same code)
+  'packages/extensions/mesoscale/src/_test/fit.test.ts',
 ]);
 const isolated = (f: (typeof files)[number]) => f.mocks || Isolated.has(f.path);
 const setupFiles = [`${import.meta.dirname}/vitest.setup.ts`];

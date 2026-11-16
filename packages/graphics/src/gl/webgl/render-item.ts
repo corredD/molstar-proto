@@ -4,6 +4,7 @@
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
  * @author Gianluca Tomasello <giagitom@gmail.com>
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { getItemIndices, isItemIndexing } from '../quad-indices.js';
@@ -542,6 +543,25 @@ export function createRenderItem<T extends string>(
   for (const rv of renderVariants) {
     programs[rv] = createProgramVariant(ctx, getRenderVariant(rv, transparency), defineValues, shaderCode, schema);
   }
+  /**
+   * the programs of the lists with a define of their own (\`MultiDrawBaseData.define\`: the impostors' levels), by variant
+   * and define, made when first drawn; dropped where the item's programs are made again
+   */
+  const definePrograms = new Map<string, Program>();
+  const getDefineProgram = (variant: T, define: string) => {
+    const key = `${variant}|${define}`;
+    let program = definePrograms.get(key);
+    if (!program) {
+      const values = { ...defineValues, [define]: ValueCell.create(true) };
+      program = createProgramVariant(ctx, getRenderVariant(variant, transparency), values, shaderCode, schema);
+      definePrograms.set(key, program);
+    }
+    return program;
+  };
+  const dropDefinePrograms = () => {
+    for (const program of definePrograms.values()) program.destroy();
+    definePrograms.clear();
+  };
 
   // the textures of specs with `shared`, by name, released instead of destroyed (`.v6/plans/gl/shared-textures.md` §4)
   const sharedTextures = new Map<string, SharedTexture>();
@@ -562,6 +582,22 @@ export function createRenderItem<T extends string>(
   const defineVersions = versionsOf(defineValueEntries, defineValues);
   const attributeVersions = versionsOf(attributeBuffers, attributeValues);
   const textureVersions = versionsOf(textures, textureValues);
+  // the textures owned outside the items (kind 'texture') by index: set to another texture object, rebound at the next
+  // draw without an update, as WebGPU's items do (a slice's switch from its binned planes on a timer, slice-window.ts)
+  const externalTextures: number[] = [];
+  for (let i = 0, il = textures.length; i < il; ++i) {
+    const spec = schema[textures[i][0]];
+    if (spec.type === 'texture' && spec.kind === 'texture') externalTextures.push(i);
+  }
+  const refreshExternalTextures = () => {
+    for (let j = 0, jl = externalTextures.length; j < jl; ++j) {
+      const i = externalTextures[j];
+      const value = textureValues[textures[i][0]];
+      if (value.ref.version === textureVersions[i]) continue;
+      textures[i][1] = value.ref.value as Texture;
+      textureVersions[i] = value.ref.version;
+    }
+  };
   const materialTextureVersions = versionsOf(materialTextures, materialTextureValues);
   const backBufferUniformVersions = versionsOf(backBufferUniformValueEntries, bufferedUniformValues);
   let drawCountVersion = values.drawCount.ref.version;
@@ -631,7 +667,7 @@ export function createRenderItem<T extends string>(
       }
       return count;
     },
-    getProgram: (variant: T) => programs[variant],
+    getProgram: (variant: T, define?: string) => (define ? getDefineProgram(variant, define) : programs[variant]),
     getLinearTextures: () => {
       const names: string[] = [];
       for (const list of [textures, materialTextures]) {
@@ -647,14 +683,45 @@ export function createRenderItem<T extends string>(
         programs[rv].destroy();
         programs[rv] = createProgramVariant(ctx, getRenderVariant(rv, transparency), defineValues, shaderCode, schema);
       }
+      dropDefinePrograms();
     },
 
     render: (variant: T, globals?: GlobalBindings, mdbDataList?: MultiDrawBaseData[]) => {
       if (drawCount === 0 || instanceCount === 0) return;
       checkRenderPass(state, 'draw');
 
-      const program = programs[variant];
+      let program = programs[variant];
       if (globals) asWebGLGlobalBindings(globals).apply(program);
+      /** a program of the item's in use with every value bound (a level's own, \`MultiDrawBaseData.define\`) */
+      const bindProgram = (p: Program) => {
+        if (globals) asWebGLGlobalBindings(globals).apply(p);
+        p.use();
+        p.setUniforms(materialUniformValueEntries);
+        if (materialUniforms) {
+          materialUniforms.write();
+          materialUniforms.buffer.sync();
+          materialUniforms.buffer.bind();
+        }
+        p.bindTextures(materialTextures);
+        p.setUniforms(uniformValueEntries);
+        p.setUniforms(frontBufferClassicValueEntries);
+        if (objectUniforms) {
+          objectUniforms.write();
+          objectUniforms.buffer.sync();
+          objectUniforms.buffer.bind();
+        }
+        p.bindTextures(textures);
+        if (vertexArray) {
+          vertexArray.bind();
+          if (elementsBuffer) elementsBuffer.bind();
+        } else {
+          if (elementsBuffer) elementsBuffer.bind();
+          p.bindAttributes(attributeBuffers);
+        }
+        state.currentMaterialId = materialId;
+        state.currentRenderItemId = id;
+        currentProgramId = p.id;
+      };
       if (program.id === currentProgramId && state.currentRenderItemId === id) {
         program.setUniforms(uniformValueEntries);
         if (objectUniforms) {
@@ -662,6 +729,7 @@ export function createRenderItem<T extends string>(
           objectUniforms.buffer.sync();
           objectUniforms.buffer.bind();
         }
+        refreshExternalTextures();
         program.bindTextures(textures);
       } else {
         if (
@@ -689,6 +757,7 @@ export function createRenderItem<T extends string>(
           objectUniforms.buffer.sync();
           objectUniforms.buffer.bind();
         }
+        refreshExternalTextures();
         program.bindTextures(textures);
         if (vertexArray) {
           vertexArray.bind();
@@ -718,6 +787,19 @@ export function createRenderItem<T extends string>(
           if (mdbData.count === 0) continue;
           // `indirectInstanceRanges` is false on WebGL: lists with GPU-written arguments are not made for it
           if (mdbData.indirect) throw new Error('indirect draw lists are not supported on WebGL');
+          const levelProgram = mdbData.define ? getDefineProgram(variant, mdbData.define) : programs[variant];
+          // a level's program made on first use links in the background (parallel compile): its draws wait for it
+          if (levelProgram !== programs[variant] && !levelProgram.finalize()) continue;
+          if (levelProgram !== program) {
+            // the instance offsets are the vertex array's: back to 0 for the next program's draws
+            if (instanceOffset !== 0) {
+              program.offsetAttributes(instanceBuffers, 0);
+              instanceOffset = 0;
+            }
+            bindProgram(levelProgram);
+            if (items && eb) eb.bind();
+            program = levelProgram;
+          }
 
           program.setUniforms(mdbData.uniforms);
           // console.log(mdbData.uniforms)
@@ -874,6 +956,7 @@ export function createRenderItem<T extends string>(
       }
 
       if (valueChanges.defines) {
+        dropDefinePrograms();
         // console.log('some defines changed, need to rebuild programs');
         for (const rv of renderVariants) {
           programs[rv].destroy();
@@ -1019,6 +1102,7 @@ export function createRenderItem<T extends string>(
         for (const k of renderVariants) {
           programs[k].destroy();
         }
+        dropDefinePrograms();
         if (vertexArray) vertexArray.destroy();
         for (const list of [textures, materialTextures]) {
           for (const [k, texture] of list) {

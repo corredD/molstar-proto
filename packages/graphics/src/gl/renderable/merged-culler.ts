@@ -11,6 +11,7 @@ import { ValueCell } from '@molstar/core/util';
 import { isDebugMode } from '@molstar/core/util/debug';
 import { Mat4 } from '@molstar/core/math/linear-algebra/3d/mat4';
 import { Vec4 } from '@molstar/core/math/linear-algebra/3d/vec4';
+import type { Vec2 } from '@molstar/core/math/linear-algebra/3d/vec2';
 import { Frustum3D } from '@molstar/core/math/geometry/primitives/frustum3d';
 import type { Plane3D } from '@molstar/core/math/geometry/primitives/plane3d';
 import type { Sphere3D } from '@molstar/core/math/geometry/primitives/sphere3d';
@@ -449,6 +450,8 @@ export function createMergedCuller(
     uLodRange: ValueCell.create(Vec4()),
     uLevels: ValueCell.create(Mat4()),
     uLevelCount: levelCountCell,
+    uImpostorSwitch: ValueCell.create(Vec4()),
+    uImpostorThin: ValueCell.create(Vec4()),
     uAnimationSlack: ValueCell.create(0),
     uCellCount: ValueCell.create(0),
     ...createHiZValues(createEmptyHiZ(resources)),
@@ -902,7 +905,29 @@ export function createMergedCuller(
       LodView.getRange(lodLevels!, j, lod, range);
       levelRanges[j * 4] = range[0];
       levelRanges[j * 4 + 1] = range[1];
-    }
+    } // impostors switched by size on screen: each instance's last two levels by its member's radius (\`setSegmentRanges\`)
+    const sw = lodLevels?.impostorSwitch;
+    const on = !!sw && sw.mode === 'pixels' && levelCount >= 2 && lod.depthScale > 0;
+    Vec4.set(
+      impostorSwitch,
+      on ? (2 * sw!.k) / sw!.value / lod.depthScale : 0,
+      on ? 2 / (sw!.value * sw!.k) / lod.depthScale : 0,
+      on ? sw!.radii[1] : 0,
+      on ? levelCount : 0,
+    );
+  }
+  const impostorSwitch = Vec4();
+  const impostorThin = Vec4();
+  /** the impostors' thinning for `lod` (`uImpostorThin`): off without impostors */
+  function setImpostorThin(lod: LodView) {
+    const lodLevels = members[0].lodLevels?.ref.value as (LodLevelsValue & { impostor?: number }) | undefined;
+    const thin = (members[0] as { uImpostorThin?: ValueCell<Vec2> }).uImpostorThin?.ref.value[0] ?? 0;
+    const on = thin > 0 && lodLevels?.impostor !== undefined && levelCount >= 2 && levelCount <= 4;
+    const ortho = !(lod.depthScale > 0);
+    // the frame's scale, as the vertex stage's (\`uLodScale\`): the ghost's view is coarser
+    const coarser = lod.coarser ?? 1;
+    const scale = (ortho ? lod.pixelSize : lod.depthScale) / coarser;
+    Vec4.set(impostorThin, on ? thin : 0, scale, ortho ? 1 : 0, on ? levelCount : 0);
   }
 
   /**
@@ -1396,6 +1421,7 @@ export function createMergedCuller(
       count: segmentCount,
       uniforms,
       indirect: { buffer: args.ref.value, byteOffset: ghostIndex * segmentCount * stride, indexed },
+      define: level?.define,
     };
   }
 
@@ -1414,6 +1440,7 @@ export function createMergedCuller(
       count: segmentCount,
       uniforms: level.uniforms,
       indirect: { buffer: args.ref.value, byteOffset: k * segmentCount * stride, indexed },
+      define: level.define,
     });
     levelLists = levels.slice(0, n).map((level, j) => list(level, j));
     lists = rasterRegions ? [...levelLists, ...levelLists.map((level, j) => list(level, n + j))] : levelLists;
@@ -1493,6 +1520,13 @@ export function createMergedCuller(
       setPyramid(pyramid);
       setPlane(cellValues.uCameraPlane, cameraPlane);
       ValueCell.update(cellValues.uLevels, Mat4.copy(cellValues.uLevels.ref.value, levelRanges));
+      setImpostorThin(lod);
+      if (!Vec4.exactEquals(cellValues.uImpostorThin.ref.value, impostorThin)) {
+        ValueCell.update(cellValues.uImpostorThin, Vec4.copy(cellValues.uImpostorThin.ref.value, impostorThin));
+      }
+      if (!Vec4.exactEquals(cellValues.uImpostorSwitch.ref.value, impostorSwitch)) {
+        ValueCell.update(cellValues.uImpostorSwitch, Vec4.copy(cellValues.uImpostorSwitch.ref.value, impostorSwitch));
+      }
       const hasLod = min !== 0 || max !== 0;
       ValueCell.update(cellValues.uLodRange, Vec4.set(cellValues.uLodRange.ref.value, min, max, hasLod ? 1 : 0, 0));
 

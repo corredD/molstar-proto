@@ -446,8 +446,9 @@ export function createResources(
       }
     },
     preparePipelines: (requests: Iterable<PipelineRequest>) => {
-      for (const { item, variant } of requests) {
-        const program = (item as RenderItem<ProgramVariant>).getProgram(variant) as Program;
+      for (const { item, variant, define } of requests) {
+        // a define: the program of the lists with it (the impostors' levels), made and linked ahead
+        const program = (item as RenderItem<ProgramVariant>).getProgram(variant, define) as Program;
         program.link();
         trackCompiling(program);
       }

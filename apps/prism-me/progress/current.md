@@ -6,14 +6,125 @@ is not built is [../TODO.md](../TODO.md).
 
 ## In flight
 
-- **Paint round 2** (Ludo, 2026-11-09, after trying v1 on 1352): `me/paint` with #62 merged in, worktree
-  `~/prism-me-lanes/paint-live`, dev server 1352 ([progress](2026-11-08-paint.md), Round 2). Built: the camera on Alt,
-  soluble copies at the pointer's depth (the wheel), the brush's copy under the pointer, fibres. Review gate running;
-  not checked in a browser (the Chrome extension was not connected): Ludo's check.
-- **Other lanes on the fork, no PR**: `me/lipid-tiles` (round 3, Ludo testing on 1353), `me/lipid-procedural` (rounds
-  4-7; rebases on #62 before its PR), `me/mesoviewspec` (MesoViewSpec v0.3, #62 merged in; waits on Ludo's sign-off).
-- **Merged 2026-11-08/09**: #60 (GPU culling dispatched in rows), #61 (targeted cellPACK fibres without tubes), #62
-  (master v6 #2069 in, conflicts favoring master; [progress](2026-11-09-merge-master.md)).
+- **MesoViewSpec** (Ludo, 2026-11-06 → ; worktree `~/prism-me-lanes/mesoviewspec`, branch `me/mesoviewspec`, local only,
+  [progress](2026-11-08-mesoviewspec.md) on its branch). A declarative format for mesoscale scenes, its IR and runtime,
+  Storybook stories, a design doc for David and renderer recommendations for Alex. v0.1-v0.3 built (the semantic camera,
+  instances). Ran as one session, not as lanes, until 2026-11-08: the review gate runs now, then streaming as its own
+  lane. Review gate run 2026-11-08: 14 must-fix and 23 should-fix confirmed, fixed in four `me/mvs-gate-*` branches
+  merged back (progress file, Review). Not pushed: Ludo signs off first.
+  - `mesoviewspec-streaming`: done, merged into `me/mesoviewspec` (56335890c): design.md §6.8, manifest, provider,
+    planner, budget, levels as a runtime concept; R5 measured (keep resident lists ≤ ~100). Gate: 13 findings, 9 fixed.
+  - `mvs-spec-reference`: done, merged into `me/mesoviewspec`: `_spec/README.md` and topic files, reference generated,
+    `spec` check (stale tables, headers, links, unregistered issue codes). Gate: 1 must-fix, 8 should-fix fixed.
+  - `mvs-prism-design`: done, merged into `me/mesoviewspec` (c49e6a236): `packages/mesoscale/_spec/prism.md`, the app
+    lanes 0-8 (~3,500 lines) and the questions for Ludo and David (its §11).
+  - `mvs-patch`: done, merged into `me/mesoviewspec`: patches (applyPatch with inverses, diff, S-expression spelling),
+    look `id` and `emissive`; story MesoViewSpec › Patches. Gate: 18 confirmed, fixed but `diff` on mass reorders (S5).
+  - `mvs-skill-cli`: done, merged into `me/mesoviewspec`: `meso-validate`, `-compile`, `-print`, `-trace`, `-query`;
+    `_spec/reference/mesoql-skill.md` generated (10/10 on a blind eval before the review rework). Gate: all must- and
+    should-fix fixed.
+  - `mvs-builder`: done, merged into `me/mesoviewspec`: a typed builder (branded refs, `q.*` MesoQL helpers, `build()`
+    never throws); the five examples rebuilt, unchanged byte for byte. Gate: 19 confirmed, open items in its progress.
+  - Ludo, 2026-11-08: the app lanes' base is a PR of `me/mesoviewspec` to `prism-me`; the body drafted, not opened yet.
+  - `mvs-entries`: done, merged into `me/mesoviewspec`: seven entries for `@molstar/meso-spec` (format, builder, ir,
+    runtime, resolvers, examples, cli), one for `@molstar/meso-molstar`; the folder graph and its layers test.
+  - The library side of "usable like Seq\*" is done; the PR of `me/mesoviewspec` awaits Ludo's word on its body.
+  - App lanes, stacked on `me/mesoviewspec` (Ludo, 2026-11-08: "just start the work and make it usable"), in the order
+    of prism.md §12.2. Done and merged into `me/mesoviewspec`: `checkpoint-owned-cells` (lane 0), `mvs-open` (lane 2:
+    drop or `?mesoviewspec=<url>` opens a document), `mvs-example-uris` (relative uris resolve against the document),
+    `mvs-tree` (lane 3, cddf6dee5: the document in the Scene tree, per-population rows and counts, eye and Show only as
+    looks). Running: `mvs-drive` (lane 4, Opus, `~/prism-me-lanes/mvs-drive`, port 1356). Then `mvs-views` with
+    `mvs-model-edits`, `mvs-agent`, `mvs-streaming-app`.
+  - **#60** (GPU culling past 65,535 workgroups) and **#61** (cellPACK fibres as tubes) merged by Ludo 2026-11-08; lanes
+    closed, worktrees removed (and `meso-showcase`'s). Master ports kept as local branches only
+    (`fix/cull-dispatch-rows` a3d8c396d, `fix/fibers-targeted` bb2dbced6); Ludo: the fixes go to prism-me, not upstream.
+  - `lipid-tiles` (`me/lipid-tiles`, port 1353, [brief](2026-11-08-lipid-tiles.md) on its branch): procedural lipid
+    membranes on the GPU (Ludo, 2026-11-08: "just do the gpu"), matched-edge triangle tiles, design in
+    `~/prism-me-lanes/mesobuild/docs/lipids.md`. WebGL2 shows no membrane in this lane. Round 1 built and gated (26
+    commits). Ludo's first try (the cow ×100): patchy, repetitive; fixed (suited tile edge, CHARMM-GUI patch, mesh
+    hidden), gate skipped. Mesh Scale to 1000 (Ludo). Second try: uncovered triangles, no LOD, "cellpackgpu is still
+    more efficient and looks better". Round 2 in progress (Ludo, 2026-11-08: "both, compared side by side"): close the
+    tiles' holes, LOD for both, cellPACKgpu's cutter in WGSL as a second method, the comparison on the cow. Round 2 done
+    and gated (93dbe21db; 1 must-fix, 4 should-fix fixed; S3 the library commit to its own lane from master): tiles 100
+    % covered (the lost legs cut), LOD 247 → 33 ms whole cow; recommendation tiles default, cutter by command. Round 3
+    done and gated (1727ae414: the holes were the round patch's empty corners; region cutter; levels in the Look;
+    progress and Cancel; device-limit guard); waits on Ludo's try on 1353 (mesh still drawn: not reproduced). Server on
+    1353 stays up for Ludo.
+  - `lipid-procedural` (`me/lipid-procedural` from `me/lipid-tiles` at 1727ae414, port 1354,
+    [brief](2026-11-08-lipid-procedural.md) on its branch): round 4, started 2026-11-08 (Ludo: "run round 4 when round 3
+    is ready"). Procedural, view-dependent membranes (the region cutter as generator, lipids only where ≥ 2 px), far
+    look spheres and bump texture both, switchable; the membrane as a particle system. Built and gated at bbe875df3
+    (option A: fixed pool, 2 M budget; library culler ~95 lines; 5 must + 6 should fixed, S2/S4 open in TODO; ~1,100
+    lines vs ~950). Round 4b (Ludo's teddy notes) built and gated at 1859f56ea: far surfaces per leaflet at the heads,
+    coloured by species; cutter cells ~108 Å with own spin/offset (the 154 Å patch repeated); tiles get species rows and
+    far surfaces; Clip on a membrane. Open for Ludo: M2 seams at cell borders. Round 4c (smooth switch, colouring as a
+    particle list) built and gated at e3ee04308: surface coloured as the switch's spheres show the patch, at their tops,
+    dithered in over a px band; a membrane coloured through mesoscale.style/colors/colorLevels. Waits on Ludo's try on
+    1354; open for Ludo: M2 seams, a sphere dither (graphics change). Library commits need their own lane. Round 5
+    started 2026-11-09 (brief 8ad314736): model_vertexcolor ×600 (~1 G lipids) at interactive rate, scale-free far
+    texture, colour by zoom object → species → atoms, tiles texture. Built and gated at 3b71b9e84 (×600: wrap 1.4 s,
+    whole 18 ms, middle 21 ms; close 130–240 ms open, M5, Ludo’s call). Waits on Ludo’s try on 1354. Round 6 started
+    2026-11-09 (brief dbd4ac8bb): the yeast cell’s nine membranes (yeast_cell_viewer meshes, 1.08 M triangles, data
+    outside the repo). Built and gated at eeb50bc65: one membrane over all meshes, a sphere tree per part, enclosed
+    parts skipped, the .bin reader; wrap 9.6 s, whole 35 ms, close 104–224 ms (M5). Waits on Ludo’s try on 1354. Round 7
+    started 2026-11-09 (brief da59ff832): bilayer far look (mesh per leaflet), colour, hide and lipid mix per membrane,
+    the slab’s frame, the perf baseline back. Ludo: no lighter close level. Merged with origin/prism-me (master #62) at
+    b0f6c2e64; items 1–5 built (82209c184, pushed). Ludo 2026-11-09: goal "best lipid wrapper capable of scaling up to
+    human cell size, looking great with and without cut"; item 6 (by zoom to atoms, colour control) added; each step its
+    own agent (architect → builder → reviewer → skeptic); no images. Then round 8 (shells/parallax to compare live,
+    brief 481102c20). Item 6 built; round 7 gated at ecc2ae79b (pushed; X1: GPU region tables 688 → 105 MB; budget kept
+    fixed shares, ceiling ~15 membranes, Ludo). Round 8 (Middle: coarse | parallax, live in the Look) built and gated at
+    50ff65480, pushed: the cut band under parallax, Atoms down to ≥ 9 px, a Middle switch without rebuild; shells’ band
+    objects open. Parallax the default (Ludo, 2026-11-10: 7e104fc0e, pushed); round 8 finished. Round 9 (a colour
+    multiplier per compartment, from its mesh: normalised, the part dot recolours its mesh, atoms by element untinted,
+    "Colours from meshes" on; Ludo 2026-11-10) built and gated at 0fa72ac06, pushed: parts named by file, de-duplicated,
+    mapped by index; a part's own colour where its mesh gives no tint (coordinator's call, Ludo to confirm). Next on
+    Ludo’s word: shells, the clip pop, the PR (rounds 4–9).
+- **Merged 2026-11-14** (Ludo's word): the night lanes (`decisions`, `symmetry`, `paint-group`, `density-fit`, via
+  `me/night-integration` with the surface fit) and `mesh-volume-color`, as `me/all` (a08cbf8e7, 834 tests); pushed,
+  published on mesoscope. [Morning summary](2026-11-14-morning.md). Lanes closed 2026-11-14 (worktrees, local
+  branches, dev servers 1369–1376).
+- **Merged 2026-11-15** (Ludo's word): `lod-impostor`, far proteins as silhouettes (octahedral impostors, 9×9 views,
+  parallax read, per-copy switch at 12 px or by distance, dithered fade), thinning below 8 px with Thin below / Kept grow
+  in Far proteins; big copies stable when orbiting (radius-cap regression fixed). Core entries in
+  [core-changes.md](../_spec/core-changes.md); [progress](2026-11-15-lod-impostor.md). Open for Ludo: default 24 px
+  (mid ×2.2 14.6 → 12.1 ms), 17×17 views for big targets, kept copies growing inside the band.
+- **Merged 2026-11-15** (Ludo's word): `slice-window`, grid slices from a GPU window of planes (frame rate at any
+  size, binned preview for big maps, tiles for tilt series, hidden slices freed); core changes in
+  [core-changes.md](../_spec/core-changes.md); [progress](2026-11-14-slice-window.md).
+- **Merged 2026-11-15** (Ludo's word, after trying it): `volume-pixel-size`, a volume's Pixel size (Å) in Data, Reset
+  to the file's; core changes in [core-changes.md](../_spec/core-changes.md); [progress](2026-11-14-volume-pixel-size.md).
+- **Merged 2026-11-14** (Ludo's word): `slice-constraint`, a volume's slice as a surface for Fit and Grow (on the plane,
+  oriented as on a surface; Helix Axis Along plane | Normal); 862 tests; no core changes;
+  [progress](2026-11-14-slice-constraint.md). Open for Ludo: Helix Normal past the volume's box; Along's direction (the
+  copy's side, turned by Spin, or the view's horizontal).
+- **Merged 2026-11-14** (Ludo's word): `mesh-volume-texture`, Color by › Volume Detail Vertex | Texture (a color grid
+  read per pixel; option A, core changes in [core-changes.md](../_spec/core-changes.md)); 3,248 tests, tsc clean;
+  [progress](2026-11-14-mesh-volume-texture.md). Open for Ludo: Projected from the voxel vs the nearest surface point at
+  coarse voxels, the 256³ cap (single voxels or block averages), S6 before upstream, color smoothing's half cell.
+- **Merged 2026-11-13**: `grow-helix` (Ludo's word, decisions doc point 10): Grow › Helix and Spiral (Archimedean,
+  Count, Arm spacing, Step; crowded copies skipped), every Grow setting live on the last grow, Count prefix-stable, Clear;
+  [progress](2026-11-13-grow-helix.md). Next: the night lanes ([plan](../plans/2026-11-13-night-lanes.md)).
+- **Merged 2026-11-13**: `paint-refine` (merged into prism-me directly, Ludo's word): the copy at the pointer from the
+  first Paint; the standard camera in Paint (left paints, Alt+wheel the depth, the picked depth); a grown walk's own
+  Rise/Twist/Jitter, live on the last grow; on a surface any brush's copies along the normal (Fiber Axis else +z), and
+  Grow on a mesh with the same rule; Paint on opens the brush's Paint section; [progress](2026-11-13-paint-refine.md).
+  Undo after Grow did not reproduce. Open for Ludo: a fiber unit as Grow source (offset as up?), Place Auto over a
+  mesh, painted fibers following the normal.
+- **Merged 2026-11-13**: `grow-mesh` (merged into prism-me directly, Ludo's word): paint on an OBJ/PLY/VTP mesh;
+  Grow › On a mesh: Tiling over it (Count, 0.8 × Spacing apart), Random walk on it, Sphere by area within Radius;
+  [progress](2026-11-13-grow-mesh.md). Open: Tiling on the main thread (~0.5 ms a copy on 1.3 M triangles), the spin
+  near a vesicle's antipode; Ludo to say whether Rings stays beside Count on a mesh.
+  #64 (767de588a): paint rounds 1-5, `paint-layer` (copies are their list's particles; a
+  structure as the brush), `grow` round 1 (Random walk, Crystal, Tiling, Sphere), `data-controls` (a VTP's Color by,
+  an MRC's Level slider). Progress files in `progress/` (2026-11-08-paint, 2026-11-10-paint-layer, 2026-11-11-grow,
+  2026-11-12-data-controls). Worktrees and `me/paint*`, `me/grow`, `me/data-controls` branches removed.
+  - Waiting for Ludo: grow round 2 (Symmetry: point, helical, space group), then `grow-mesh`, `density-weight`
+    (`plans/2026-11-10-paint-on-density.md`); whether Color… may replace a VTP's array coloring; `bin.ts` and
+    `VolumeFromCcp4.bin` as a lane from master.
+- **Merged 2026-11-08/09**: #60 (GPU culling dispatched in rows), #61 (targeted cellPACK fibres), #62 (master v6 #2069
+  in, favoring master; [progress](2026-11-09-merge-master.md)), #63 (colours by zoom on sites targets). Worktrees of
+  merge-master and color-levels-sites removed 2026-11-10.
 
 - **Fast particle drag** (Ludo, 2026-11-05, on the workstation: MG lags on a handle's drag, the release blocks): **PR
   #59 merged 2026-11-06** ([progress](2026-11-05-fast-particle-drag.md)). The handle previews by writing the moved

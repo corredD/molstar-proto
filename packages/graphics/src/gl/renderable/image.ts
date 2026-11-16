@@ -1,7 +1,8 @@
 /**
- * Copyright (c) 2020-2025 mol* contributors, licensed under MIT, See LICENSE file for more info.
+ * Copyright (c) 2020-2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { type Renderable, type RenderableState, createRenderable } from '../renderable.js';
@@ -46,6 +47,24 @@ export const ImageSchema = {
   uTrimTransform: UniformSpec('m4'),
 
   uIsoLevel: UniformSpec('f'),
+
+  /**
+   * A grid slice drawn from a window of its planes (`repr/volume/slice-window.ts`): the raw values of the planes in the
+   * layers of `tSliceTex`, the one drawn `uSliceLayer`, its rows bottom-up (flipped by the shader to the image's);
+   * colored by the value in the domain `uSliceDomain.zw` (the palette's, or `uColor` times it), cut at `uIsoLevel` by
+   * the value in the grid's range `uSliceDomain.xy`. `tImageTex`, `tValueTex` unused, `uImageTexDim` the plane's size
+   */
+  dSliceWindow: DefineSpec('boolean'),
+  tSliceTex: TextureSpec('texture', 'r', 'float', 'nearest', undefined, {
+    dimension: '3d',
+    usedIf: ['dSliceWindow'],
+  }),
+  uSliceLayer: UniformSpec('i'),
+  /** the planes binned (a big slice moving) by these along the image's columns and rows: texel p read at p / bin */
+  uSliceBin: UniformSpec('v2'),
+  /** the planes in tiles (wider than a 3d texture may be): tile width, height, tiles across, down (`SliceWindow.tiles`) */
+  uSliceTiles: UniformSpec('v4'),
+  uSliceDomain: UniformSpec('v4'),
 
   /** Same as `InterpolationTypeNames` in '../../mol-geo/geometry/image/image' */
   dInterpolation: DefineSpec('string', ['nearest', 'catmulrom', 'mitchell', 'bspline']),

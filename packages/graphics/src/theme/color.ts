@@ -33,6 +33,8 @@ export interface ColorVolume {
   colors: Texture;
   dimension: Vec3;
   transform: Vec4;
+  /** read per fragment (the grid's detail within a triangle), else per vertex (a triangle interpolates its vertices) */
+  fragment?: boolean;
 }
 
 export { ColorTheme };

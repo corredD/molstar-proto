@@ -15,7 +15,7 @@ import { CIF } from '@molstar/io/reader/cif';
 import { trajectoryFromMmCIF } from '@molstar/model/formats/structure/mmcif';
 import { Structure, StructureElement, StructureProperties } from '@molstar/model/model/structure';
 import { CustomProperties } from '@molstar/model/model/custom-property';
-import type { ParticleList, ParticleTarget } from '@molstar/model/model/particles/particle-list';
+import type { ParticleList, ParticleSites, ParticleTarget } from '@molstar/model/model/particles/particle-list';
 import { ColorLevels } from '@molstar/graphics/geo/geometry/color-levels';
 import {
   ParticleHierarchyColorTheme,
@@ -39,14 +39,45 @@ async function load1cbs() {
   return Structure.ofModel(trajectory.representative);
 }
 
+/**
+ * The structure's elements as sites (mmCIF particles' targets): positions, radii, a unit a chain, the elements by
+ * symbol (or none)
+ */
+function sitesOf(structure: Structure, withElements = true): ParticleSites {
+  const count = structure.elementCount;
+  const offsets = new Int32Array(structure.units.length + 1);
+  const symbols: string[] = [];
+  const index = new Uint8Array(count);
+  const location = StructureElement.Location.create(structure);
+  let g = 0;
+  for (let u = 0; u < structure.units.length; ++u) {
+    const unit = structure.units[u];
+    offsets[u + 1] = offsets[u] + unit.elements.length;
+    location.unit = unit;
+    for (let i = 0, il = unit.elements.length; i < il; ++i, ++g) {
+      location.element = unit.elements[i];
+      const symbol = StructureProperties.atom.type_symbol(location);
+      if (!symbols.includes(symbol)) symbols.push(symbol);
+      index[g] = symbols.indexOf(symbol);
+    }
+  }
+  return {
+    count,
+    positions: new Float32Array(count * 3),
+    radii: new Float32Array(count).fill(1),
+    chains: { offsets, labels: structure.units.map((u) => `${u.id}`) },
+    elements: withElements ? { symbols, index } : undefined,
+  };
+}
+
 /** Three particles of one structure target: two in compartment 0 (entity 0), one in compartment 1 (entity 1) */
-function particleList(structure: Structure): ParticleList {
+function particleList(structure: Structure, target: ParticleTarget = { kind: 'structure', structure }): ParticleList {
   return {
     count: 3,
     keys: Int32Array.from([0, 1, 2]),
     targets: new Int32Array(3),
     targetInfo: new Map([[0, { name: '1cbs' }]]),
-    targetMapping: new Map<number, ParticleTarget>([[0, { kind: 'structure', structure }]]),
+    targetMapping: new Map<number, ParticleTarget>([[0, target]]),
     compartments: Int32Array.from([0, 0, 1]),
     compartmentInfo: new Map([
       [0, { name: 'a' }],
@@ -67,8 +98,8 @@ function particleList(structure: Structure): ParticleList {
 
 const levelsOn = { name: 'on' as const, params: PD.getDefaultValues(ColorLevels.Params) };
 
-async function visualOf(structure: Structure, colorLevels: unknown, color = 'hierarchy') {
-  const particles = particleList(structure);
+async function visualOf(structure: Structure, colorLevels: unknown, color = 'hierarchy', given?: ParticleTarget) {
+  const particles = particleList(structure, given);
   const target = particles.targetMapping!.get(0)!;
   const params = PD.getDefaultValues(ParticleTargetRepresentationParams);
   const props = createParticleTargetPropsProvider({
@@ -181,5 +212,75 @@ describe('color levels of particle structure targets', () => {
     await update({ name: 'off', params: {} });
     await update(levelsOn);
     expect(far()).toEqual(expected);
+  });
+});
+
+describe('color levels of particle sites targets', () => {
+  it('fills the near data per site (element color, chain offset) and the far data per particle', async () => {
+    const structure = await load1cbs();
+    const sites = sitesOf(structure);
+    const { values, theme, particles } = await visualOf(structure, levelsOn, 'hierarchy', { kind: 'sites', sites });
+    expect(values.dColorLevels.ref.value).toBe(true);
+
+    const near = values.tColorNear.ref.value;
+    expect(near.count).toBe(sites.count);
+    const location = StructureElement.Location.create(structure);
+    const { unitIndices, elementIndices } = structure.serialMapping;
+    for (let i = 0; i < sites.count; ++i) {
+      location.unit = structure.units[unitIndices[i]];
+      location.element = elementIndices[i];
+      const element = elementSymbolColor(ElementSymbolColors, StructureProperties.atom.type_symbol(location));
+      if (Color.fromArray(near.array, i * 4) !== element) throw new Error(`site ${i}`);
+    }
+    // a chain a unit: the first at -1, the last at 1, a chain's sites one offset
+    const chains = sites.chains!;
+    const last = chains.labels.length - 1;
+    expect(near.array[3]).toBe(ColorLevels.offsetByte(-1));
+    expect(near.array[near.count * 4 - 1]).toBe(ColorLevels.offsetByte(1));
+    const second = ColorLevels.offsetByte(ColorLevels.chainOffset(1, last + 1));
+    for (let i = chains.offsets[1]; i < chains.offsets[2]; ++i) expect(near.array[i * 4 + 3]).toBe(second);
+
+    const far = values.tColorFar.ref.value;
+    const compartment = (i: number) =>
+      (theme.color as { farColor: (l: unknown) => Color }).farColor({
+        kind: 'particle-location',
+        particles,
+        index: i,
+      });
+    expect([0, 1, 2].map((i) => Color.fromArray(far.array, i * 4))).toEqual([0, 1, 2].map(compartment));
+  });
+
+  it("is a carbon's color a site where the sites have no elements", async () => {
+    const structure = await load1cbs();
+    const sites = sitesOf(structure, false);
+    const { values } = await visualOf(structure, levelsOn, 'hierarchy', { kind: 'sites', sites });
+    expect(values.dColorLevels.ref.value).toBe(true);
+    const near = values.tColorNear.ref.value.array;
+    for (let i = 0; i < sites.count; ++i) {
+      if (Color.fromArray(near, i * 4) !== ElementSymbolColors.C) throw new Error(`site ${i}`);
+    }
+  });
+
+  it('turns off and on again', async () => {
+    const structure = await load1cbs();
+    const target: ParticleTarget = { kind: 'sites', sites: sitesOf(structure) };
+    const { visual, theme, particles, values } = await visualOf(structure, levelsOn, 'hierarchy', target);
+    const params = PD.getDefaultValues(ParticleTargetRepresentationParams);
+    const update = (colorLevels: unknown) =>
+      visual.createOrUpdate(
+        { runtime: SyncRuntimeContext },
+        theme,
+        createParticleTargetPropsProvider({
+          ...params,
+          structure: { ...params.structure, colorLevels } as typeof params.structure,
+        })(target),
+        particles,
+        Interval.ofLength(3),
+        target,
+      );
+    await update({ name: 'off', params: {} });
+    expect(values.dColorLevels.ref.value).toBe(false);
+    await update(levelsOn);
+    expect(values.dColorLevels.ref.value).toBe(true);
   });
 });
