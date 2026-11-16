@@ -371,3 +371,112 @@ the source test.
 `e7aebd5df` atlases to 8192; `8058ab24e` every target, one view; `5e4f37651` thinning; `593d3c872` auto distance, thin
 8; `5f5af257f` the area with the fade; `8a50557cc` the culling thins impostors only; `53cfea835` the ghost's scale.
 App/extension: `2a62e12e5`, `6ac788306`, `d4a336c3c`, `a1079d73d`.
+
+## Big copies jump as the camera turns; thinning controls (Ludo, 2026-11-15, night)
+
+Ludo: "with big object, for instance in mycoplasma the big MG_271_272_273_274_192MER, MG_312_MONOMER, DNA_GYRASE,
+RIBOSOME_70S, MG_224_8MER_GTP and MG_213_214_298_6MER_ADP looks wrong when camera rotate, their representation kind of
+jump and is not stable. It would be nice to control the dropping threshold, and the scaling for the left visible."
+
+### Measured first (`~/prism-me-lanes/lod-impostor-orbit.mjs`, `lod-impostor-frames-metric.mjs`)
+
+One copy of each named ingredient alone (the other entities hidden, an instance clip around the copy), the camera
+orbiting it in 1.5° steps over 45°, at 24, 40 and 64 px across, silhouettes on and off (spheres). Per step the share of
+the copy's silhouette that changed; a jump is the largest step over the median (spheres: 1.2–2.8).
+
+| copy (r)              | before, on: jump (largest step) 24 / 40 px | spheres (off) 24 / 40 px |
+| --------------------- | ------------------------------------------ | ------------------------ |
+| DNA_GYRASE (113 Å)    | 7.1 (0.10) / 5.0 (0.10)                    | 1.8 / 1.4                |
+| MG_224_8MER (190 Å)   | 5.0 (0.30) / 5.2 (0.34)                    | 2.3 / 1.6                |
+| MG_312_MONOMER (180)  | 5.6 (0.21) / 6.4 (0.26)                    | 2.2 / 1.5                |
+| 6MER, 192MER, RIBOSOME | 1.7–2.4                                   | 1.5–2.8                  |
+
+The compact ones (192-mer, ribosome, 6-mer) do not jump but are blurry silhouettes at 40–64 px; the elongated ones
+(a rod, a ring edge-on, a two-lobed gyrase) lose or grow whole parts in one step.
+
+### Cause (two)
+
+1. **The radius cap had become 17.6 Å (a regression of `8058ab24e`, every target).** By size on screen a copy's radius
+   counted at most the cap, the 90th percentile of the copies' radii, meant to let a few ribosomes switch a little
+   larger. With MG's 1.1 M lipids given impostors it fell from 64 Å (targets ≥ 22 Å) to 15–17.6 Å (live
+   `uLodImpostorSwitch` `[1, 12, 0.25, 17.59]`): every protein switched at 12 × r / 17.6 px, a ribosome (183 Å) a
+   silhouette below 125 px (the band to 177), the 6-mer (312 Å) below 210 px, with tiles of 64 texels and nine-by-nine
+   views. Ludo saw big copies as silhouettes at sizes where no blend of views holds.
+2. **The views disagree off their planes.** Each of the three views was read where the ray meets its plane through the
+   copy's center; what lies off that plane lands elsewhere in each view (about its height × the angle between views,
+   up to 22°). For an elongated copy the blend ghosts, and a part covered by only one or two views has a coverage equal
+   to their weights' sum, the same over the whole part: as the weights move the whole part crosses the 0.35 cut in one
+   step (the jump). A CPU model of the fragment stage (`ImpostorAtlas.hit`) over a 60° orbit: a rod and a ring, IoU
+   with the spheres 0.55 and 0.65, jumps 7.3 and 6.0 (the spheres' 1.9).
+
+Not the cause: blend weights (continuous across triangles and the octahedral fold, checked), the one-view rule
+(< 4 px), the band, thinning (big copies are above 8 px), the center (the atlas and the quad use the same invariant
+sphere). Tried in the CPU model and not taken: 17 × 17 views (jumps 3.5–4.6 alone; with the parallax 2.1–3.0, the best,
+but 3.6× the atlas for the large items: a decision for Ludo); a dithered cut (fewer jumps, IoU worse).
+
+### Fixed
+
+- `888485fcf` **the cap is the largest item's**: every copy switches at its own size on screen (12 px for a ribosome
+  too). Test fails first (cap 17 for a lipid-heavy population).
+- `2ac69cc8f` **each view read at the ray's front** (parallax): from the height of the ray's point nearest the center
+  (always in the tile), then once more at the height read there (`ImpostorAtlas.hit`, `ParallaxSteps` 1; GLSL, WGSL);
+  a copy under 4 px still reads one view once. CPU model: IoU 0.55 → 0.75 (rod), 0.65 → 0.80 (ring); jumps 7.3 → 4.3,
+  6.0 → 3.5 (test fails first).
+
+### After (same orbits)
+
+| copy             | before 24 / 40 px | after the cap (spheres there) | at 64 px switch, no parallax | at 64 px, parallax |
+| ---------------- | ----------------- | ----------------------------- | ---------------------------- | ------------------ |
+| DNA_GYRASE       | 7.1 / 5.0         | 2.3 / 1.4                     | 6.8 / 4.5                    | **1.9 / 1.9**      |
+| MG_224_8MER      | 5.0 / 5.2         | 3.4 / 1.8                     | 5.0 / 5.1                    | **3.1 / 2.2**      |
+| MG_312_MONOMER   | 5.6 / 6.4         | 2.2 / 2.3                     | 5.6 / 6.4                    | **2.4 / 1.7**      |
+| largest step 8MER | 0.30 / 0.34      | 0.16 / 0.12                   | 0.30 / 0.33                  | **0.15 / 0.14**    |
+
+(The last two columns with the switch at 64 px, so that the big copies are silhouettes at 24 and 40 px: the parallax
+alone.) Big copies through the band (9–18 px) are never empty: `out/band-ribosome-9-12-15-18px-never-empty.png`.
+Frames: `out/orbit-before-top-after-bottom-*.png` and `-left-after-right-*.gif` (the cap),
+`out/orbit-64px-noparallax-top-parallax-bottom-*.png/.gif` (the parallax); all frames under `out/orbit/`.
+
+### Frame times (M1 Pro, 1280 × 800, WebGPU, off/on alternated in one page, ms)
+
+| view                | spheres (off) | before (cap 17.6, put back for the run) | after, 12 px | after, 24 px | parallax off (12 px) |
+| ------------------- | ------------- | --------------------------------------- | ------------ | ------------ | -------------------- |
+| one cell × 1.6      | 10.6          | 15.2                                    | 17.9         | 17.8         | 17.9                 |
+| one cell × 2.2      | 8.8           | 10.2                                    | **14.6**     | 12.1         | 14.6                 |
+| one cell × 3.5      | 8.7           | 7.4                                     | **10.1**     | 8.5          | 10.1                 |
+| two cells × 2.6/4/6 | 13.7/16.1/16.3 | (8.3/8.0/7.8 last round)               | 8.7/8.3–9.2/8.2–8.6 | –     | –                    |
+| yeast, Ludo's view  | 30.1–31.8     | (19.3–19.4 last round)                  | 21.7–25.4    | –            | –                    |
+
+The parallax costs nothing measurable. The cap's fix costs at mid distances (× 2.2: +43%; × 3.5: +36%): proteins of
+30–100 Å now keep their spheres until 12 px (they switched at 20–68 px under the 17.6 Å cap). Far views (two cells)
+and the yeast view do not change. WebGL2 × 2.2 / 3.5: 56 / 41 ms (47 / 34 last round).
+
+### Thinning controls (item 2)
+
+- Graphics & Motion › Far proteins, while Silhouettes: **Thin below** (0–16 px, step 0.5, 0 shown "off", default 8;
+  `lodImpostorThin`) and, while thinning, **Kept grow** (0–1.5, default 1; the kept copies' area-keeping scale
+  `1/√(p·ThinArea)` to this power: 0 not enlarged, 1 the area kept; new `lodImpostorThinScale`, in `uImpostorThin.y`);
+  live while dragged, one step on release, the value in the box; `mesoscale.impostors` `thin`, `thinScale` (validated)
+  for ⌘K and the assistant; sessions keep both (representation params). Screens: `out/thin-panel.png`,
+  `out/thin-grow0-grow1-grow1.5-off.png` (× 3.5: grow 0, 1, 1.5, off).
+- Commits: `bdd49a412` (core: param, shaders, `thinScale(p, k)`), `5376f4d0a`, `4277a7213` (extension), `ace6fb3b1`
+  (ui.md, features.md).
+- Known: above 1 the kept copies grow past the area kept; the GPU culling tests their unenlarged sphere (a copy just
+  off screen whose enlarged quad would show is culled: an edge pop at most a few px; as before at 1).
+
+### Core changes (added)
+
+`888485fcf` the radius cap the largest item's; `2ac69cc8f` each view read at the ray's front (parallax);
+`bdd49a412` the thinned copies' enlargement a param (`lodImpostorThinScale`). App/extension: `5376f4d0a`,
+`4277a7213`, `ace6fb3b1`.
+
+### Decisions for Ludo
+
+1. **Mid-distance cost of the fix**: with every copy at its own 12 px, × 2.2 is 14.6 ms (was 10.2, spheres 8.8).
+   Switching at 24 px gives 12.1 (most of it back) with big copies still silhouettes only below 24–34 px (stable now).
+   Default kept at 12 px (the number the slider shows is now true for every copy); say if 24 should be the default.
+2. **17 × 17 views for the large items** (the CPU model: jumps 2.1–3.0, IoU 0.85–0.94, against 9 × 9 with parallax
+   3.2–4.3, 0.75–0.91): 3.6× the atlas for those items (cellpack-mg: 117 targets ≥ 60 Å). Not done; worth it if big
+   copies at 30+ px still look soft.
+3. **Tiles**: tiles follow the old Å-per-pixel boundary; at 12 px a 64-texel tile is about 4× oversampled for the large
+   items, 8-texel tiles slightly under for small ones. Left as is.
