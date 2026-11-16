@@ -119,6 +119,99 @@ export namespace ImpostorAtlas {
     out.w[k] = w;
   }
 
+  /** reads of a view at the height read before (the shaders' \`ImpostorParallaxSteps\`) */
+  export const ParallaxSteps = 1;
+
+  const hitViews = views();
+  const hitD = Vec3();
+  const hitRight = Vec3();
+  const hitUp = Vec3();
+  const hitUv = [0, 0];
+  const hitSample = [0, 0];
+
+  /**
+   * The impostor's coverage and front height along a ray: the TS rule of the shaders' \`impostorHit\` (its three views,
+   * their weights, the cut left to the caller). Each view is read where the ray meets its front (\`ParallaxSteps\`): first
+   * at the height of the ray's point nearest the center (in the tile), then at the height read there, so that the three
+   * views agree on what lies off their planes (an elongated item's views ghosted, its parts jumping as the camera turned). \`o\` the ray's origin from the item's center, \`r\` its unit direction,
+   * \`w\` the unit direction toward the camera (the copy's), in the item's frame; entry \`e\` of \`atlas\` read as the
+   * GPU's linear filter reads it
+   */
+  export function hit(atlas: ImpostorAtlas, e: number, o: Vec3, r: Vec3, w: Vec3) {
+    const radius = atlas.radii[e];
+    const entry = decodeEntry(atlas.codes[e]);
+    getViews(hitViews, w);
+    let coverage = 0;
+    let height = 0;
+    for (let k = 0; k < 3; ++k) {
+      const i = hitViews.i[k];
+      const j = hitViews.j[k];
+      frameDirection(hitD, i, j);
+      frameBasis(hitRight, hitUp, hitD);
+      // the ray's point nearest the center: its height along the view
+      const t = -Vec3.dot(o, r);
+      planeAt(hitUv, o, r, radius, Vec3.dot(o, hitD) + t * Vec3.dot(r, hitD));
+      read(hitSample, atlas, entry, i, j, hitUv, radius);
+      for (let step = 0; step < ParallaxSteps && hitSample[0] > 0; ++step) {
+        planeAt(hitUv, o, r, radius, hitSample[1]);
+        read(hitSample, atlas, entry, i, j, hitUv, radius);
+      }
+      coverage += hitViews.w[k] * hitSample[0];
+      height += hitViews.w[k] * hitSample[0] * hitSample[1];
+    }
+    return { coverage, height: coverage > 0 ? height / coverage : -radius };
+  }
+
+  /** where the ray meets the plane of the current frame (\`hitD\`, \`hitRight\`, \`hitUp\`) at height \`h\`, in its uv */
+  function planeAt(out: number[], o: Vec3, r: Vec3, radius: number, h: number) {
+    const t = (h - Vec3.dot(o, hitD)) / Vec3.dot(r, hitD);
+    const px = o[0] + r[0] * t;
+    const py = o[1] + r[1] * t;
+    const pz = o[2] + r[2] * t;
+    out[0] = (px * hitRight[0] + py * hitRight[1] + pz * hitRight[2]) / (2 * radius) + 0.5;
+    out[1] = (px * hitUp[0] + py * hitUp[1] + pz * hitUp[2]) / (2 * radius) + 0.5;
+    return out;
+  }
+
+  /** a frame's coverage and height at \`uv\` (the shaders' \`impostorRead\`): 0 off its tile, linear filtering within */
+  function read(
+    out: number[],
+    atlas: ImpostorAtlas,
+    entry: { x: number; y: number; tile: number },
+    i: number,
+    j: number,
+    uv: number[],
+    radius: number,
+  ) {
+    if (uv[0] < 0 || uv[1] < 0 || uv[0] > 1 || uv[1] > 1) {
+      out[0] = 0;
+      out[1] = -radius;
+      return out;
+    }
+    const { tile } = entry;
+    const u = entry.x + (i + Math.min(Math.max(uv[0], 0.5 / tile), 1 - 0.5 / tile)) * tile - 0.5;
+    const v = entry.y + (j + Math.min(Math.max(uv[1], 0.5 / tile), 1 - 0.5 / tile)) * tile - 0.5;
+    const { array, width, height } = atlas.image;
+    const x0 = Math.floor(u);
+    const y0 = Math.floor(v);
+    const fx = u - x0;
+    const fy = v - y0;
+    let c = 0;
+    let g = 0;
+    for (let b = 0; b < 2; ++b) {
+      for (let a = 0; a < 2; ++a) {
+        const x = Math.min(width - 1, Math.max(0, x0 + a));
+        const y = Math.min(height - 1, Math.max(0, y0 + b));
+        const f = (a ? fx : 1 - fx) * (b ? fy : 1 - fy);
+        c += f * array[(y * width + x) * 4];
+        g += f * array[(y * width + x) * 4 + 1];
+      }
+    }
+    out[0] = c / 255;
+    out[1] = ((g / 255) * 2 - 1) * radius;
+    return out;
+  }
+
   /** The camera direction `d` (world) in the frame of a copy placed by `transform`: its rotation's inverse applied */
   export function localDirection(out: Vec3, transform: Mat4, d: Vec3) {
     // the transpose of the rotation (columns normalized: a uniform scale)

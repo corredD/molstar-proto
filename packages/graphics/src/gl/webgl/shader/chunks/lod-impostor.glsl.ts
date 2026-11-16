@@ -215,12 +215,33 @@ export const lod_impostor_frag = `
         return n.x * right + n.y * up + sqrt(max(1.0 - dot(n, n), 0.0)) * d;
     }
 
-    // where the ray (\`o\` + t \`r\`, in the copy's frame from its center) meets the plane of frame \`frame\`, in its uv
-    vec2 impostorPlane(const in vec2 frame, const in vec3 o, const in vec3 r, const in float radius, out vec3 d, out vec3 right, out vec3 up) {
+    // where the ray (\`o\` + t \`r\`, in the copy's frame from its center) meets the plane of frame \`d\`, \`right\`, \`up\`
+    // at height \`h\` along \`d\`, in its uv
+    vec2 impostorPlaneAt(const in vec3 d, const in vec3 right, const in vec3 up, const in vec3 o, const in vec3 r, const in float radius, const in float h) {
+        vec3 p = o + r * ((h - dot(o, d)) / dot(r, d));
+        return vec2(dot(p, right), dot(p, up)) / (2.0 * radius) + 0.5;
+    }
+
+    // frame \`frame\`'s direction and basis; where the ray meets its plane at the height of the ray's point nearest the
+    // center (\`nearest\`: within the tile)
+    vec2 impostorPlane(const in vec2 frame, const in vec3 o, const in vec3 r, const in float radius, const in vec3 nearest, out vec3 d, out vec3 right, out vec3 up) {
         d = impostorDecode(frame / (ImpostorViews - 1.0));
         impostorBasis(d, right, up);
-        vec3 p = o - r * (dot(o, d) / dot(r, d));
-        return vec2(dot(p, right), dot(p, up)) / (2.0 * radius) + 0.5;
+        return impostorPlaneAt(d, right, up, o, r, radius, dot(nearest, d));
+    }
+
+    // reads of a view at the height read before (\`ImpostorAtlas.ParallaxSteps\`)
+    const int ImpostorParallaxSteps = 1;
+
+    // a view read where the ray meets its front (\`ImpostorAtlas.hit\`): at \`uv\`, then at the height read there, so that
+    // the three views agree on what lies off their planes (an elongated copy's views ghosted, jumping as it turned)
+    vec4 impostorReadFront(const in vec3 entry, const in vec2 frame, const in vec2 uv, const in vec3 d, const in vec3 right, const in vec3 up, const in vec3 o, const in vec3 r, const in float radius) {
+        vec4 s = impostorRead(entry, frame, uv, radius);
+        for (int i = 0; i < ImpostorParallaxSteps; ++i) {
+            if (s.x <= 0.0) break;
+            s = impostorRead(entry, frame, impostorPlaneAt(d, right, up, o, r, radius, s.y), radius);
+        }
+        return s;
     }
 
     // the copy's surface along the fragment's ray from the three views nearest the camera's direction, blended
@@ -260,16 +281,21 @@ export const lod_impostor_frag = `
         }
 
         vec3 entry = impostorEntry(vImpostorX.w);
+        // the ray's point nearest the copy's center
+        vec3 nearest = o - r * dot(o, r);
         vec3 d0, r0, u0, d1, r1, u1, d2, r2, u2;
-        vec2 uv0 = impostorPlane(f0, o, r, radius, d0, r0, u0);
-        vec2 uv1 = impostorPlane(f1, o, r, radius, d1, r1, u1);
-        vec2 uv2 = impostorPlane(f2, o, r, radius, d2, r2, u2);
-        vec4 s0 = impostorRead(entry, f0, uv0, radius);
+        vec2 uv0 = impostorPlane(f0, o, r, radius, nearest, d0, r0, u0);
+        vec2 uv1 = impostorPlane(f1, o, r, radius, nearest, d1, r1, u1);
+        vec2 uv2 = impostorPlane(f2, o, r, radius, nearest, d2, r2, u2);
+        vec4 s0 = vec4(0.0);
         vec4 s1 = vec4(0.0);
         vec4 s2 = vec4(0.0);
-        if (!oneView) {
-            s1 = impostorRead(entry, f1, uv1, radius);
-            s2 = impostorRead(entry, f2, uv2, radius);
+        if (oneView) {
+            s0 = impostorRead(entry, f0, uv0, radius);
+        } else {
+            s0 = impostorReadFront(entry, f0, uv0, d0, r0, u0, o, r, radius);
+            s1 = impostorReadFront(entry, f1, uv1, d1, r1, u1, o, r, radius);
+            s2 = impostorReadFront(entry, f2, uv2, d2, r2, u2, o, r, radius);
         }
         vec3 coverage = vec3(s0.x, s1.x, s2.x) * weight;
         float c = coverage.x + coverage.y + coverage.z;

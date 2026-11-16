@@ -211,15 +211,39 @@ struct ImpostorFrame {
     uv: vec2<f32>,
 };
 
-fn impostorFrame(frame: vec2<f32>, o: vec3<f32>, r: vec3<f32>, radius: f32) -> ImpostorFrame {
+/** where the ray (\`o\` + t \`r\`, in the copy's frame from its center) meets frame \`f\`'s plane at height \`h\`, in its uv */
+fn impostorPlaneAt(f: ImpostorFrame, o: vec3<f32>, r: vec3<f32>, radius: f32, h: f32) -> vec2<f32> {
+    let p = o + r * ((h - dot(o, f.d)) / dot(r, f.d));
+    return vec2<f32>(dot(p, f.right), dot(p, f.up)) / (2.0 * radius) + 0.5;
+}
+
+/** frame \`frame\`, the ray meeting its plane at the height of the ray's point nearest the center (\`nearest\`: in the tile) */
+fn impostorFrame(frame: vec2<f32>, o: vec3<f32>, r: vec3<f32>, radius: f32, nearest: vec3<f32>) -> ImpostorFrame {
     var f: ImpostorFrame;
     f.d = impostorDecode(frame / (ImpostorViews - 1.0));
     let u = select(vec3<f32>(0.0, 1.0, 0.0), vec3<f32>(0.0, 0.0, 1.0), abs(f.d.z) < 0.999);
     f.right = normalize(cross(u, f.d));
     f.up = cross(f.d, f.right);
-    let p = o - r * (dot(o, f.d) / dot(r, f.d));
-    f.uv = vec2<f32>(dot(p, f.right), dot(p, f.up)) / (2.0 * radius) + 0.5;
+    f.uv = impostorPlaneAt(f, o, r, radius, dot(nearest, f.d));
     return f;
+}
+
+/** reads of a view at the height read before (\`ImpostorAtlas.ParallaxSteps\`) */
+const ImpostorParallaxSteps = 1;
+
+/**
+ * a view read where the ray meets its front (\`ImpostorAtlas.hit\`): at its uv, then at the height read there, so that
+ * the three views agree on what lies off their planes (an elongated copy's views ghosted, jumping as it turned)
+ */
+fn impostorReadFront(entry: vec3<f32>, frame: vec2<f32>, f: ImpostorFrame, o: vec3<f32>, r: vec3<f32>, radius: f32) -> vec4<f32> {
+    var s = impostorRead(entry, frame, f.uv, radius);
+    for (var i = 0; i < ImpostorParallaxSteps; i++) {
+        if (s.x <= 0.0) {
+            break;
+        }
+        s = impostorRead(entry, frame, impostorPlaneAt(f, o, r, radius, s.y), radius);
+    }
+    return s;
 }
 
 /** a view's normal (x, y in its frame, z toward the camera) in the copy's frame */
@@ -278,15 +302,20 @@ fn impostorHit(sphere: vec4<f32>, point: vec3<f32>, impostorX: vec4<f32>, impost
     }
 
     let entry = impostorEntry(impostorX.w);
-    let v0 = impostorFrame(f0, o, r, radius);
-    let v1 = impostorFrame(f1, o, r, radius);
-    let v2 = impostorFrame(f2, o, r, radius);
-    let s0 = impostorRead(entry, f0, v0.uv, radius);
+    // the ray's point nearest the copy's center
+    let nearest = o - r * dot(o, r);
+    let v0 = impostorFrame(f0, o, r, radius, nearest);
+    let v1 = impostorFrame(f1, o, r, radius, nearest);
+    let v2 = impostorFrame(f2, o, r, radius, nearest);
+    var s0 = vec4<f32>(0.0);
     var s1 = vec4<f32>(0.0);
     var s2 = vec4<f32>(0.0);
-    if (!oneView) {
-        s1 = impostorRead(entry, f1, v1.uv, radius);
-        s2 = impostorRead(entry, f2, v2.uv, radius);
+    if (oneView) {
+        s0 = impostorRead(entry, f0, v0.uv, radius);
+    } else {
+        s0 = impostorReadFront(entry, f0, v0, o, r, radius);
+        s1 = impostorReadFront(entry, f1, v1, o, r, radius);
+        s2 = impostorReadFront(entry, f2, v2, o, r, radius);
     }
     let coverage = vec3<f32>(s0.x, s1.x, s2.x) * weight;
     let c = coverage.x + coverage.y + coverage.z;

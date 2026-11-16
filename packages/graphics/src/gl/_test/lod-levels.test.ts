@@ -284,6 +284,16 @@ describe('levels of detail by size on screen', () => {
     }
   });
 
+  it("reads each view at its front as ImpostorAtlas.hit does: from the ray's point nearest the center, then once more", () => {
+    expect(ImpostorAtlas.ParallaxSteps).toBe(1);
+    for (const c of [lodImpostorGlsl.lod_impostor_frag, lodImpostorWgsl.lod_impostor_wgsl]) {
+      expect(c).toMatch(/ImpostorParallaxSteps = 1;/);
+      expect(c).toMatch(/nearest = o - r \* dot\(o, r\)/);
+      // three views at their fronts, the one view of a tiny copy as before (one read)
+      expect(c.match(/impostorReadFront\(entry, f[012]/g)?.length).toBe(3);
+    }
+  });
+
   it("thins by the same rule in the vertex stages and the culling as ImpostorAtlas's, spheres never thinned", () => {
     const source = (path: string) => readFileSync(new URL(path, import.meta.url), 'utf8');
     const glsl = source('../webgl/shader/chunks/lod-impostor.glsl.ts');

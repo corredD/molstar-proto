@@ -45,6 +45,127 @@ function nearestFrame(d: Vec3) {
   return [Math.round(uv[0] * (V - 1)), Math.round(uv[1] * (V - 1))];
 }
 
+
+/** a seeded LCG in [0, 1) */
+function rng(seed: number) {
+  let s = seed >>> 0;
+  return () => (s = (Math.imul(s, 1664525) + 1013904223) >>> 0) / 4294967296;
+}
+
+/** spheres of radius `r` at `p` (x, y, z, group), their bounding sphere about the box's center */
+function item(p: number[], r: number, tile: number): ImpostorAtlas.Item {
+  const count = p.length / 4;
+  const positionGroup = new Float32Array(p);
+  const lo = [Infinity, Infinity, Infinity];
+  const hi = [-Infinity, -Infinity, -Infinity];
+  for (let k = 0; k < count; ++k) {
+    for (let a = 0; a < 3; ++a) {
+      lo[a] = Math.min(lo[a], p[4 * k + a]);
+      hi[a] = Math.max(hi[a], p[4 * k + a]);
+    }
+  }
+  const center = Vec3.create((lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2, (lo[2] + hi[2]) / 2);
+  let radius = 0;
+  for (let k = 0; k < count; ++k) {
+    radius = Math.max(radius, Math.hypot(p[4 * k] - center[0], p[4 * k + 1] - center[1], p[4 * k + 2] - center[2]) + r);
+  }
+  return { positionGroup, radii: new Float32Array(count).fill(r), count, center, radius, tile };
+}
+
+/** a thin bent rod with a head, 180 Å long: an elongated membrane protein (MG_312) */
+function stalk() {
+  const R = 180;
+  const p: number[] = [];
+  for (let k = 0; k < 400; ++k) {
+    const t = k / 399;
+    p.push(-R * 0.85 + 1.7 * R * t, R * 0.3 * Math.sin(t * 3), R * 0.25 * t * t, p.length / 4);
+  }
+  for (let k = 0; k < 120; ++k) {
+    const a = k * 2.399;
+    const z = 1 - (2 * k) / 119;
+    const s = Math.sqrt(1 - z * z);
+    p.push(-R * 0.85 + 20 * s * Math.cos(a), 20 * s * Math.sin(a), 20 * z, p.length / 4);
+  }
+  return item(p, 5, 64);
+}
+
+/** a ring of eight blobs, 145 Å across, seen near edge-on as the camera turns: an 8-mer (MG_224_8MER_GTP) */
+function ring() {
+  const R = 180;
+  const rand = rng(3);
+  const p: number[] = [];
+  for (let b = 0; b < 8; ++b) {
+    const a = (b / 8) * 2 * Math.PI;
+    for (let k = 0; k < 80; ++k) {
+      const u = [rand() - 0.5, rand() - 0.5, rand() - 0.5];
+      const l = Math.hypot(u[0], u[1], u[2]) || 1;
+      const s = 28 * Math.cbrt(rand());
+      p.push(R * 0.8 * Math.cos(a) + (u[0] / l) * s, R * 0.8 * Math.sin(a) + (u[1] / l) * s, (u[2] / l) * s * 0.6, p.length / 4);
+    }
+  }
+  return item(p, 5, 64);
+}
+
+/**
+ * An orbit of the camera about the item (1° steps, 60°, 20° above its equator), orthographic, `n` pixels across its
+ * bounding sphere: per step the impostor's mask (coverage cut at 0.35, \`ImpostorAtlas.hit\`) and the spheres' own; the
+ * impostor's overlap with the spheres (IoU) and its largest change in a step against its median (a jump)
+ */
+function orbit(it: ImpostorAtlas.Item, n: number) {
+  const atlas = ImpostorAtlas.create([it], 4096);
+  const R = it.radius;
+  const masks: Uint8Array[] = [];
+  let iou = 0;
+  const steps = 61;
+  const o = Vec3();
+  const r = Vec3();
+  for (let a = 0; a < steps; ++a) {
+    const ang = (a * Math.PI) / 180;
+    const w = Vec3.normalize(Vec3(), Vec3.create(Math.sin(ang) * Math.cos(0.35), Math.sin(0.35), Math.cos(ang) * Math.cos(0.35)));
+    const up = Vec3.normalize(Vec3(), Vec3.sub(Vec3(), Vec3.create(0, 1, 0), Vec3.scale(Vec3(), w, w[1])));
+    const right = Vec3.cross(Vec3(), up, w);
+    Vec3.negate(r, w);
+    const mask = new Uint8Array(n * n);
+    let inter = 0;
+    let union = 0;
+    for (let y = 0; y < n; ++y) {
+      for (let x = 0; x < n; ++x) {
+        const sx = ((x + 0.5) / n - 0.5) * 2 * R;
+        const sy = ((y + 0.5) / n - 0.5) * 2 * R;
+        for (let c = 0; c < 3; ++c) o[c] = sx * right[c] + sy * up[c];
+        // the spheres': any sphere the ray passes within its radius of
+        let truth = 0;
+        for (let k = 0; k < it.count && !truth; ++k) {
+          const px = it.positionGroup[4 * k] - it.center[0] - o[0];
+          const py = it.positionGroup[4 * k + 1] - it.center[1] - o[1];
+          const pz = it.positionGroup[4 * k + 2] - it.center[2] - o[2];
+          const t = px * w[0] + py * w[1] + pz * w[2];
+          if (px * px + py * py + pz * pz - t * t <= it.radii[k] * it.radii[k]) truth = 1;
+        }
+        for (let c = 0; c < 3; ++c) o[c] += 2 * R * w[c];
+        const m = ImpostorAtlas.hit(atlas, 0, o, r, w).coverage >= 0.35 ? 1 : 0;
+        mask[y * n + x] = m;
+        inter += m & truth;
+        union += m | truth;
+      }
+    }
+    iou += inter / union;
+    masks.push(mask);
+  }
+  const change: number[] = [];
+  for (let a = 1; a < steps; ++a) {
+    let x = 0;
+    let area = 0;
+    for (let p = 0; p < n * n; ++p) {
+      x += masks[a][p] ^ masks[a - 1][p];
+      area += masks[a][p];
+    }
+    change.push(x / area);
+  }
+  const sorted = [...change].sort((a, b) => a - b);
+  return { iou: iou / steps, jump: sorted[sorted.length - 1] / sorted[sorted.length >> 1] };
+}
+
 describe('impostor atlas', () => {
   it('maps directions to the octahedron and back', () => {
     for (const d of [
@@ -256,6 +377,17 @@ describe('impostor atlas', () => {
     expect(share(183, 12)).toBeCloseTo(0.5, 6);
     expect(share(183, 6)).toBeGreaterThanOrEqual(1);
   });
+
+  it('keeps a long thin item and a ring in shape and steady as the camera turns (each view read at its own height)', () => {
+    // the three views' planes through the center misplace what lies off them: an elongated item's views disagree, its
+    // blend ghosts (IoU 0.55, 0.65) and parts cross the cut at once as the weights move (jumps 7.3, 6.0 the median)
+    const s = orbit(stalk(), 48);
+    const r = orbit(ring(), 48);
+    expect(s.iou).toBeGreaterThan(0.7);
+    expect(r.iou).toBeGreaterThan(0.75);
+    expect(s.jump).toBeLessThan(5);
+    expect(r.jump).toBeLessThan(5);
+  }, 60000);
 
   it('fits thousands of items where the device allows 8192 a side, none left out', () => {
     // 5,457 targets (yeast_slab_z600nm): at the smallest tile (8) 72 × 72 texels each, more than 4096² holds
