@@ -129,6 +129,8 @@ export const assign_lod_impostor_varyings = `
 export const lod_impostor_frag = `
 #if defined(dLodImpostorLevel)
     const float ImpostorViews = 9.0;
+    // a copy of a radius below this many pixels reads its nearest view alone
+    const float ImpostorOneViewPixels = 4.0;
 
     vec2 impostorEncode(vec3 d) {
         d /= abs(d.x) + abs(d.y) + abs(d.z);
@@ -214,14 +216,27 @@ export const lod_impostor_frag = `
             weight = vec3(1.0 - f.y, 1.0 - f.x, f.x + f.y - 1.0);
         }
 
+        // a copy a few pixels across: its nearest view alone (one read, not three: millions of small copies far away)
+        float pixel = 2.0 * uLodScale / (uProjection[1][1] * uCssHeight) * (uIsOrtho == 1.0 ? 1.0 : -center.z);
+        bool oneView = radius < ImpostorOneViewPixels * pixel;
+        if (oneView) {
+            if (weight.y > weight.x && weight.y >= weight.z) f0 = f1;
+            else if (weight.z > weight.x && weight.z > weight.y) f0 = f2;
+            weight = vec3(1.0, 0.0, 0.0);
+        }
+
         vec3 entry = impostorEntry(vImpostorX.w);
         vec3 d0, r0, u0, d1, r1, u1, d2, r2, u2;
         vec2 uv0 = impostorPlane(f0, o, r, radius, d0, r0, u0);
         vec2 uv1 = impostorPlane(f1, o, r, radius, d1, r1, u1);
         vec2 uv2 = impostorPlane(f2, o, r, radius, d2, r2, u2);
         vec4 s0 = impostorRead(entry, f0, uv0, radius);
-        vec4 s1 = impostorRead(entry, f1, uv1, radius);
-        vec4 s2 = impostorRead(entry, f2, uv2, radius);
+        vec4 s1 = vec4(0.0);
+        vec4 s2 = vec4(0.0);
+        if (!oneView) {
+            s1 = impostorRead(entry, f1, uv1, radius);
+            s2 = impostorRead(entry, f2, uv2, radius);
+        }
         vec3 coverage = vec3(s0.x, s1.x, s2.x) * weight;
         float c = coverage.x + coverage.y + coverage.z;
         if (c < 0.35) return false;

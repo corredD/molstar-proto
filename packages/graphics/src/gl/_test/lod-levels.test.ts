@@ -14,6 +14,7 @@ import { Vec4 } from '@molstar/core/math/linear-algebra/3d/vec4';
 import { Spheres } from '@molstar/graphics/geo/geometry/spheres/spheres';
 import {
   canDrawImpostors,
+  ImpostorMinRadius,
   ParticleTargetRepresentationParams,
 } from '@molstar/graphics/repr/particles/representation/target/common';
 import { createSegmentedMdbList, LodView, type LodLevelsValue } from '../renderable.js';
@@ -271,6 +272,14 @@ describe('levels of detail by size on screen', () => {
     const ortho = LodView.set(LodView(), perspective(), 720, true);
     expect(LodView.getRange(value, 1, ortho, [0, 0, 0])[1]).toBeGreaterThan(1e6);
     expect(LodView.getRange(value, 1, ortho, [0, 0, 0])[0]).toBeLessThan(1e6);
+  });
+
+  it('every structure target can be a silhouette (Ludo: below 22 Å too), tiny copies by their nearest view', () => {
+    expect(ImpostorMinRadius).toBe(0);
+    // a copy a few pixels across reads one view, not three (the fragment stage of millions of lipids)
+    for (const c of [lodImpostorGlsl.lod_impostor_frag, lodImpostorWgsl.lod_impostor_wgsl]) {
+      expect(c).toMatch(/ImpostorOneViewPixels/);
+    }
   });
 
   it('presets by pixel size: their distances those at 1280x720 and 45°', () => {

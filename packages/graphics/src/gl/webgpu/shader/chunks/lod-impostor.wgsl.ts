@@ -124,6 +124,8 @@ const ImpostorFlatOctaves = 1.0;
 #endif
 #if defined(dLodImpostorLevel)
 const ImpostorViews = 9.0;
+/** a copy of a radius below this many pixels reads its nearest view alone */
+const ImpostorOneViewPixels = 4.0;
 
 fn impostorEncode(direction: vec3<f32>) -> vec2<f32> {
     let d = direction / (abs(direction.x) + abs(direction.y) + abs(direction.z));
@@ -222,7 +224,7 @@ fn impostorHit(sphere: vec4<f32>, point: vec3<f32>, impostorX: vec4<f32>, impost
     let g = impostorEncode(w) * (ImpostorViews - 1.0);
     let ij = min(floor(g), vec2<f32>(ImpostorViews - 2.0));
     let fr = g - ij;
-    let f0 = ij + vec2<f32>(1.0, 0.0);
+    var f0 = ij + vec2<f32>(1.0, 0.0);
     let f1 = ij + vec2<f32>(0.0, 1.0);
     var f2 = ij;
     var weight = vec3<f32>(fr.x, fr.y, 1.0 - fr.x - fr.y);
@@ -230,14 +232,29 @@ fn impostorHit(sphere: vec4<f32>, point: vec3<f32>, impostorX: vec4<f32>, impost
         f2 = ij + vec2<f32>(1.0);
         weight = vec3<f32>(1.0 - fr.y, 1.0 - fr.x, fr.x + fr.y - 1.0);
     }
+    // a copy a few pixels across: its nearest view alone (one read, not three: millions of small copies far away)
+    let pixel = 2.0 * uGlobal.uLodScale / (uGlobal.uProjection[1][1] * uGlobal.uCssHeight) * select(-center.z, 1.0, ortho);
+    let oneView = radius < ImpostorOneViewPixels * pixel;
+    if (oneView) {
+        if (weight.y > weight.x && weight.y >= weight.z) {
+            f0 = f1;
+        } else if (weight.z > weight.x && weight.z > weight.y) {
+            f0 = f2;
+        }
+        weight = vec3<f32>(1.0, 0.0, 0.0);
+    }
 
     let entry = impostorEntry(impostorX.w);
     let v0 = impostorFrame(f0, o, r, radius);
     let v1 = impostorFrame(f1, o, r, radius);
     let v2 = impostorFrame(f2, o, r, radius);
     let s0 = impostorRead(entry, f0, v0.uv, radius);
-    let s1 = impostorRead(entry, f1, v1.uv, radius);
-    let s2 = impostorRead(entry, f2, v2.uv, radius);
+    var s1 = vec4<f32>(0.0);
+    var s2 = vec4<f32>(0.0);
+    if (!oneView) {
+        s1 = impostorRead(entry, f1, v1.uv, radius);
+        s2 = impostorRead(entry, f2, v2.uv, radius);
+    }
     let coverage = vec3<f32>(s0.x, s1.x, s2.x) * weight;
     let c = coverage.x + coverage.y + coverage.z;
     if (c < 0.35) {

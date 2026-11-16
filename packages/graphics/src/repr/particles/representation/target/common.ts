@@ -87,10 +87,10 @@ import type { Representation } from '../../../representation.js';
 // ---- Params ----------------------------------------------------------------
 
 /**
- * The smallest target drawn as an impostor (Å, its bounding radius): smaller ones (lipids, ions: a handful of atoms) keep
- * their last level of spheres, which shows them as they are (`lod-impostor.md`)
+ * The smallest target drawn as an impostor (Å, its bounding radius): 0, every one, lipids and ions too (Ludo,
+ * 2026-11-15: "even below 22 Å can become silhouettes"); smaller ones would keep their last level of spheres
  */
-export const ImpostorMinRadius = 22;
+export const ImpostorMinRadius = 0;
 
 /**
  * The impostors' distance by default (`lodImpostorDistance` 0), in the model's radii: where the whole model fits a view
@@ -199,8 +199,7 @@ export const ParticleTargetStructureParams = {
     lodImpostor: PD.Boolean(true, {
       ...BaseGeometry.CullingLodCategory,
       description:
-        'The last level of detail: each copy far away drawn as an impostor, its silhouette from the nearest of the views made at load (`lod-impostor.md`); the last spheres cross-fade into it. Not for targets smaller than ' +
-        `${ImpostorMinRadius} Å in radius (lipids, ions).`,
+        'The last level of detail: each copy far away drawn as an impostor, its silhouette from the nearest of the views made at load (`lod-impostor.md`); the last spheres cross-fade into it.',
     }),
     lodImpostorBy: PD.Select<'size' | 'distance'>(
       'size',
