@@ -188,6 +188,10 @@ export interface GraphicsInfo {
     readonly radius: number;
     /** the distance applied (Å): `distance`, or the representation's default where 0 */
     readonly applied: number;
+    /** the far copies thinned out below this many pixels across, 0 off */
+    readonly thin: number;
+    /** how much the kept copies are enlarged: 0 not, 1 the area covered kept */
+    readonly thinScale: number;
   };
 }
 
@@ -1295,18 +1299,53 @@ export class MesoscaleApi extends ApiArea {
           { description: "By distance: silhouettes beyond this distance (Å); 0 the model's size" },
         ),
       ),
+      thin: OptionalParam(
+        PD.Numeric(
+          8,
+          { min: 0, max: 16 },
+          {
+            description:
+              'Far silhouettes thinned out below this many pixels across (a share kept, the others dropped); 0 off',
+          },
+        ),
+      ),
+      thinScale: OptionalParam(
+        PD.Numeric(
+          1,
+          { min: 0, max: 1.5 },
+          {
+            description:
+              'How much the silhouettes kept by the thinning are enlarged: 0 not at all, 1 to keep the area covered, up to 1.5',
+          },
+        ),
+      ),
       particles: PD.Text('', { description: 'A particle list (a model) by label or state ref; empty: every one' }),
     },
     async run(values, ctx) {
-      const { on, by, pixels, distance, particles } = values as {
+      const { on, by, pixels, distance, thin, thinScale, particles } = values as {
         on?: boolean;
         by?: 'size' | 'distance';
         pixels?: number;
         distance?: number;
+        thin?: number;
+        thinScale?: number;
         particles: string;
       };
-      if (on === undefined && by === undefined && pixels === undefined && distance === undefined) {
-        return ApiResult.fail('invalid', 'Nothing to change.', 'Give on, by, pixels or distance.');
+      if (
+        on === undefined &&
+        by === undefined &&
+        pixels === undefined &&
+        distance === undefined &&
+        thin === undefined &&
+        thinScale === undefined
+      ) {
+        return ApiResult.fail('invalid', 'Nothing to change.', 'Give on, by, pixels, distance, thin or thinScale.');
+      }
+      if (thin !== undefined && !(thin >= 0 && thin <= 16)) {
+        return ApiResult.fail('invalid', 'Thinning goes from 0 (off) to 16 pixels.', 'Nothing was changed.');
+      }
+      if (thinScale !== undefined && !(thinScale >= 0 && thinScale <= 1.5)) {
+        return ApiResult.fail('invalid', 'The enlargement goes from 0 to 1.5.', 'Nothing was changed.');
       }
       if (pixels !== undefined && !(pixels >= 4 && pixels <= 64)) {
         return ApiResult.fail('invalid', 'Pixels go from 4 to 64.', 'Nothing was changed.');
@@ -1336,6 +1375,8 @@ export class MesoscaleApi extends ApiArea {
         patch.lodImpostorDistance = distance;
         if (by === undefined) patch.lodImpostorBy = 'distance';
       }
+      if (thin !== undefined) patch.lodImpostorThin = thin;
+      if (thinScale !== undefined) patch.lodImpostorThinScale = thinScale;
       // one commit for every representation (bulk is one change)
       const b = ctx.plugin.state.data.build();
       const nodes: string[] = [];
@@ -1349,6 +1390,12 @@ export class MesoscaleApi extends ApiArea {
         b.to(r).update({ ...old, type });
         nodes.push(r.transform.ref);
       }
+      const thinning =
+        thin === 0
+          ? ', not thinned'
+          : thin !== undefined || thinScale !== undefined
+            ? `, thinned${thin ? ` below ${thin} px` : ''}${thinScale !== undefined ? `, the kept enlarged ×${thinScale}` : ''}`
+            : '';
       const what =
         on === false
           ? 'spheres'
@@ -1357,9 +1404,9 @@ export class MesoscaleApi extends ApiArea {
             : patch.lodImpostorBy === 'size'
               ? `silhouettes${pixels ? ` below ${pixels} px` : ' by size on screen'}`
               : 'silhouettes';
-      if (!nodes.length) return ApiResult.already(`Far proteins are already ${what}.`);
+      if (!nodes.length) return ApiResult.already(`Far proteins are already ${what}${thinning}.`);
       await b.commit();
-      return ApiResult.ok(`Far proteins drawn as ${what}.`, { nodes });
+      return ApiResult.ok(`Far proteins drawn as ${what}${thinning}.`, { nodes });
     },
   });
 
@@ -3253,6 +3300,8 @@ function graphicsOf(o: GraphicsObject): GraphicsInfo | undefined {
         by: at('lodImpostorBy') as 'size' | 'distance',
         pixels: at('lodImpostorPixels') as number,
         distance: at('lodImpostorDistance') as number,
+        thin: at('lodImpostorThin') as number,
+        thinScale: at('lodImpostorThinScale') as number,
       };
     },
     types.filter((t) => 'structure' in t),
@@ -3310,6 +3359,8 @@ const ImpostorDefaults: Record<string, unknown> = {
   lodImpostorBy: 'size',
   lodImpostorPixels: 12,
   lodImpostorDistance: 0,
+  lodImpostorThin: 8,
+  lodImpostorThinScale: 1,
 };
 
 /** A particle representation's type params, as `mesoscale.colorLevels` reads and writes them */

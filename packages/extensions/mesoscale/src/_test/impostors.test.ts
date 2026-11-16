@@ -117,6 +117,26 @@ describe('far proteins as silhouettes or spheres (mesoscale.impostors)', () => {
     expect(await v.api.run('mesoscale.impostors', { particles: list, pixels: 1000 })).toMatchObject({ ok: false });
   });
 
+  it('sets the thinning threshold (0 off) and the kept copies\' enlargement, one step each; the graphics state says so', async () => {
+    const v = await viewer();
+    const list = v.plugin.managers.particles.hierarchy.current.lists[0].cell.transform.ref;
+    expect(v.api.mesoscale!.graphicsState(list).value?.impostorSwitch).toMatchObject({ thin: 8, thinScale: 1 });
+    const before = steps(v);
+    expectOk(await v.api.run('mesoscale.impostors', { particles: list, thin: 4, thinScale: 0.5 }));
+    expect(steps(v)).toBe(before + 1);
+    for (const s of structures(v)) expect(s).toMatchObject({ lodImpostorThin: 4, lodImpostorThinScale: 0.5 });
+    expect(v.api.mesoscale!.graphicsState(list).value?.impostorSwitch).toMatchObject({ thin: 4, thinScale: 0.5 });
+    // off; the switch left as it was
+    expectOk(await v.api.run('mesoscale.impostors', { particles: list, thin: 0 }));
+    for (const s of structures(v)) expect(s).toMatchObject({ lodImpostorThin: 0, lodImpostorBy: 'size' });
+    expect(await v.api.run('mesoscale.impostors', { particles: list, thin: 0 })).toMatchObject({ ok: true });
+    // out of range
+    expect(await v.api.run('mesoscale.impostors', { particles: list, thin: 40 })).toMatchObject({ ok: false });
+    expect(await v.api.run('mesoscale.impostors', { particles: list, thinScale: 3 })).toMatchObject({ ok: false });
+    expectOk(await v.api.run('history.undo', {}));
+    for (const s of structures(v)) expect(s).toMatchObject({ lodImpostorThin: 4, lodImpostorThinScale: 0.5 });
+  });
+
   it("the distance slider's end: of the model's radius and the distance set, at least 1000 Å", () => {
     expect(farDistanceMax(0, 100)).toBe(1000);
     expect(farDistanceMax(500, 1000)).toBe(10000);

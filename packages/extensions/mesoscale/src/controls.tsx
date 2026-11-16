@@ -105,9 +105,14 @@ export function farDistanceMax(radius: number, committed: number) {
   return Math.max(1000, Math.round(radius * 20), Math.round(committed * 4));
 }
 
+/** The thinning's threshold in the box: "off" at 0 (and typed) */
+const formatThin = (v: number) => (v > 0 ? `${Math.round(v * 2) / 2}` : 'off');
+const parseThin = (text: string) => (/^\s*off\s*$/i.test(text) ? 0 : parseFloat(text));
+
 /**
  * Where a model's far proteins turn into silhouettes, shown while they do: by each protein's size on screen (below N
- * pixels) or its distance from the eye (beyond D); a slider live while dragged (previews), one step on release
+ * pixels) or its distance from the eye (beyond D); the far silhouettes thinned out (below a size, 0 off) and how much
+ * the kept ones are enlarged; a slider live while dragged (previews), one step on release
  */
 function FarSwitch(props: {
   area: MesoscaleApi;
@@ -117,7 +122,7 @@ function FarSwitch(props: {
 }) {
   const sw = mapState(props.graphics, (g) => g?.impostorSwitch);
   const overlaid = observableState(0);
-  const steps = gestureSteps<{ pixels?: number; distance?: number }>(props.api, {
+  const steps = gestureSteps<{ pixels?: number; distance?: number; thin?: number; thinScale?: number }>(props.api, {
     label: 'Where the silhouettes start',
     apply: (g, _key, change) => g.run('mesoscale.impostors', { particles: props.object, ...change }),
     changed: () => overlaid.set(overlaid.value + 1),
@@ -134,9 +139,11 @@ function FarSwitch(props: {
       pixels: o?.pixels ?? s?.pixels ?? 12,
       distance: o?.distance ?? (s?.distance || s?.applied || 1000),
       max,
+      thin: o?.thin ?? s?.thin ?? 8,
+      thinScale: o?.thinScale ?? s?.thinScale ?? 1,
     };
   });
-  const change = (patch: { pixels?: number; distance?: number }, end: boolean) => {
+  const change = (patch: { pixels?: number; distance?: number; thin?: number; thinScale?: number }, end: boolean) => {
     dragging = !end;
     steps.change('switch', patch);
     if (end) steps.settle();
@@ -181,6 +188,39 @@ function FarSwitch(props: {
               unit="Å"
               onPreview={(v) => change({ distance: v }, false)}
               onCommit={(v) => change({ distance: v }, true)}
+            />
+          </div>
+        )}
+      </Show>
+      {/* the far silhouettes thinned out, and how much the kept ones grow (Ludo, 2026-11-15) */}
+      <div class={classes.line}>
+        <div class={classes.label}>Thin below</div>
+        <Slider
+          aria-label="Far silhouettes thinned out below this size on screen; off at 0"
+          value={mapState(shown, (s) => s.thin)}
+          min={0}
+          max={16}
+          step={0.5}
+          unit="px"
+          format={formatThin}
+          parse={parseThin}
+          onPreview={(v) => change({ thin: v }, false)}
+          onCommit={(v) => change({ thin: v }, true)}
+        />
+      </div>
+      <Show when={mapState(shown, (s) => s.thin > 0)}>
+        {() => (
+          <div class={classes.line}>
+            <div class={classes.label}>Kept grow</div>
+            <Slider
+              aria-label="How much the silhouettes kept by the thinning are enlarged: 0 not, 1 the area covered kept"
+              value={mapState(shown, (s) => s.thinScale)}
+              min={0}
+              max={1.5}
+              step={0.05}
+              unit="×"
+              onPreview={(v) => change({ thinScale: v }, false)}
+              onCommit={(v) => change({ thinScale: v }, true)}
             />
           </div>
         )}

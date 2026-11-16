@@ -77,7 +77,7 @@ export const MesoscaleSkill: ViewerSkill = {
       id: 'draw_mesoscale_far_proteins',
       operation: 'mesoscale.impostors',
       description:
-        "Draws a mesoscale model's far proteins as silhouettes (impostors: each copy its outline, flat, the default) or as spheres (on false).",
+        "Draws a mesoscale model's far proteins as silhouettes (impostors: each copy its outline, flat, the default) or as spheres (on false); where they switch (by size on screen or distance), and the far ones thinned out (thin: below px, 0 off; thinScale: the kept ones enlarged, 0 to 1.5).",
     },
     {
       id: 'open_mesoscale_example',
