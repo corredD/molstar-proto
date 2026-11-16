@@ -122,13 +122,20 @@ describe('far proteins as silhouettes or spheres (mesoscale.impostors)', () => {
     const list = v.plugin.managers.particles.hierarchy.current.lists[0].cell.transform.ref;
     expect(v.api.mesoscale!.graphicsState(list).value?.impostorSwitch).toMatchObject({ thin: 8, thinScale: 1 });
     const before = steps(v);
-    expectOk(await v.api.run('mesoscale.impostors', { particles: list, thin: 4, thinScale: 0.5 }));
+    const r = await v.api.run('mesoscale.impostors', { particles: list, thin: 4, thinScale: 0.5 });
+    expectOk(r);
+    expect(JSON.stringify(r)).toContain('thinned below 4 px, the kept enlarged ×0.5');
     expect(steps(v)).toBe(before + 1);
     for (const s of structures(v)) expect(s).toMatchObject({ lodImpostorThin: 4, lodImpostorThinScale: 0.5 });
     expect(v.api.mesoscale!.graphicsState(list).value?.impostorSwitch).toMatchObject({ thin: 4, thinScale: 0.5 });
     // off; the switch left as it was
     expectOk(await v.api.run('mesoscale.impostors', { particles: list, thin: 0 }));
     for (const s of structures(v)) expect(s).toMatchObject({ lodImpostorThin: 0, lodImpostorBy: 'size' });
+    // the enlargement alone while not thinning: said so
+    expect(JSON.stringify(await v.api.run('mesoscale.impostors', { particles: list, thinScale: 0.7 }))).toContain(
+      'not thinned (the kept enlarged ×0.7 when thinning)',
+    );
+    expectOk(await v.api.run('history.undo', {}));
     expect(await v.api.run('mesoscale.impostors', { particles: list, thin: 0 })).toMatchObject({ ok: true });
     // out of range
     expect(await v.api.run('mesoscale.impostors', { particles: list, thin: 40 })).toMatchObject({ ok: false });

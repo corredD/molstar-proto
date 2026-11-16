@@ -1390,12 +1390,15 @@ export class MesoscaleApi extends ApiArea {
         b.to(r).update({ ...old, type });
         nodes.push(r.transform.ref);
       }
+      // the thinning as it ends up (the given over the first representation's)
+      const first = (reps[0].transform.params as { type: ParticleType }).type.params.structure as Record<string, unknown>;
+      const thinNow = thin ?? ((first.lodImpostorThin ?? ImpostorDefaults.lodImpostorThin) as number);
       const thinning =
-        thin === 0
-          ? ', not thinned'
-          : thin !== undefined || thinScale !== undefined
-            ? `, thinned${thin ? ` below ${thin} px` : ''}${thinScale !== undefined ? `, the kept enlarged ×${thinScale}` : ''}`
-            : '';
+        thin === undefined && thinScale === undefined
+          ? ''
+          : !(thinNow > 0)
+            ? `, not thinned${thinScale !== undefined ? ` (the kept enlarged ×${thinScale} when thinning)` : ''}`
+            : `, thinned below ${thinNow} px${thinScale !== undefined ? `, the kept enlarged ×${thinScale}` : ''}`;
       const what =
         on === false
           ? 'spheres'

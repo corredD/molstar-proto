@@ -106,8 +106,9 @@ export function farDistanceMax(radius: number, committed: number) {
 }
 
 /** The thinning's threshold in the box: "off" at 0 (and typed) */
-const formatThin = (v: number) => (v > 0 ? `${Math.round(v * 2) / 2}` : 'off');
-const parseThin = (text: string) => (/^\s*off\s*$/i.test(text) ? 0 : parseFloat(text));
+const formatThin = (v: number) => (v > 0 ? `${+v.toFixed(2)}` : 'off');
+/** "off" 0; a number with a point or a comma; anything else NaN (the box goes back) */
+const parseThin = (text: string) => (/^\s*off\s*$/i.test(text) ? 0 : Number(text.trim().replace(',', '.') || NaN));
 
 /**
  * Where a model's far proteins turn into silhouettes, shown while they do: by each protein's size on screen (below N
@@ -122,31 +123,45 @@ function FarSwitch(props: {
 }) {
   const sw = mapState(props.graphics, (g) => g?.impostorSwitch);
   const overlaid = observableState(0);
-  const steps = gestureSteps<{ pixels?: number; distance?: number; thin?: number; thinScale?: number }>(props.api, {
+  const steps = gestureSteps<{ pixels?: number; distance?: number }>(props.api, {
     label: 'Where the silhouettes start',
     apply: (g, _key, change) => g.run('mesoscale.impostors', { particles: props.object, ...change }),
     changed: () => overlaid.set(overlaid.value + 1),
   });
-  onCleanup(() => steps.settle());
+  // the thinning's steps their own (their label in the history)
+  const thinSteps = gestureSteps<{ thin?: number; thinScale?: number }>(props.api, {
+    label: 'How far silhouettes thin out',
+    apply: (g, _key, change) => g.run('mesoscale.impostors', { particles: props.object, ...change }),
+    changed: () => overlaid.set(overlaid.value + 1),
+  });
+  onCleanup(() => {
+    steps.settle();
+    thinSteps.settle();
+  });
   // the slider's end, held while dragged: the previews apply, so a max of the state's distance would follow the knob
   let max = 0;
   let dragging = false;
   const shown = derive([sw, overlaid.asReadonly] as const, (s) => {
     const o = steps.overlay('switch');
+    const t = thinSteps.overlay('thin');
     if (!dragging || !max) max = farDistanceMax(s?.radius ?? 0, s?.distance || s?.applied || 1000);
     return {
       by: s?.by ?? 'size',
       pixels: o?.pixels ?? s?.pixels ?? 12,
       distance: o?.distance ?? (s?.distance || s?.applied || 1000),
       max,
-      thin: o?.thin ?? s?.thin ?? 8,
-      thinScale: o?.thinScale ?? s?.thinScale ?? 1,
+      thin: t?.thin ?? s?.thin ?? 8,
+      thinScale: t?.thinScale ?? s?.thinScale ?? 1,
     };
   });
-  const change = (patch: { pixels?: number; distance?: number; thin?: number; thinScale?: number }, end: boolean) => {
+  const change = (patch: { pixels?: number; distance?: number }, end: boolean) => {
     dragging = !end;
     steps.change('switch', patch);
     if (end) steps.settle();
+  };
+  const changeThin = (patch: { thin?: number; thinScale?: number }, end: boolean) => {
+    thinSteps.change('thin', patch);
+    if (end) thinSteps.settle();
   };
   return (
     <div class={classes.tight}>
@@ -204,8 +219,8 @@ function FarSwitch(props: {
           unit="px"
           format={formatThin}
           parse={parseThin}
-          onPreview={(v) => change({ thin: v }, false)}
-          onCommit={(v) => change({ thin: v }, true)}
+          onPreview={(v) => changeThin({ thin: v }, false)}
+          onCommit={(v) => changeThin({ thin: v }, true)}
         />
       </div>
       <Show when={mapState(shown, (s) => s.thin > 0)}>
@@ -218,8 +233,8 @@ function FarSwitch(props: {
               min={0}
               max={1.5}
               step={0.05}
-              onPreview={(v) => change({ thinScale: v }, false)}
-              onCommit={(v) => change({ thinScale: v }, true)}
+              onPreview={(v) => changeThin({ thinScale: v }, false)}
+              onCommit={(v) => changeThin({ thinScale: v }, true)}
             />
           </div>
         )}
