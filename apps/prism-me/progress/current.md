@@ -84,9 +84,11 @@ is not built is [../TODO.md](../TODO.md).
   `me/night-integration` with the surface fit) and `mesh-volume-color`, as `me/all` (a08cbf8e7, 834 tests); pushed,
   published on mesoscope. [Morning summary](2026-11-14-morning.md). Lanes closed 2026-11-14 (worktrees, local
   branches, dev servers 1369–1376).
-- **`lod-impostor`** (Ludo, 2026-11-15, night; Opus, `~/prism-me-lanes/lod-impostor`, port 1381): far copies drawn as
-  octahedral impostors (silhouette + depth + the copy's color), Goodsell's look, a fade with no pop; checked on two
-  cellpack-mg; [brief](2026-11-15-lod-impostor.md) on its branch. Running.
+- **Merged 2026-11-15** (Ludo's word): `lod-impostor`, far proteins as silhouettes (octahedral impostors, 9×9 views,
+  parallax read, per-copy switch at 12 px or by distance, dithered fade), thinning below 8 px with Thin below / Kept grow
+  in Far proteins; big copies stable when orbiting (radius-cap regression fixed). Core entries in
+  [core-changes.md](../_spec/core-changes.md); [progress](2026-11-15-lod-impostor.md). Open for Ludo: default 24 px
+  (mid ×2.2 14.6 → 12.1 ms), 17×17 views for big targets, kept copies growing inside the band.
 - **Merged 2026-11-15** (Ludo's word): `slice-window`, grid slices from a GPU window of planes (frame rate at any
   size, binned preview for big maps, tiles for tilt series, hidden slices freed); core changes in
   [core-changes.md](../_spec/core-changes.md); [progress](2026-11-14-slice-window.md).

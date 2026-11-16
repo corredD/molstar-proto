@@ -125,6 +125,25 @@ specs (`.md`) these changes added are listed in the entries.
 
 ## graphics
 
+- **Far proteins as silhouettes (octahedral impostors, stochastic simplification)** — the last level of spheres can draw
+  each copy as one camera-facing card reading an atlas of 9×9 octahedral views per target (coverage, height, normal;
+  CPU-splatted, up to 8192 a side); the 3 nearest views blended, each read at the ray's front (parallax), depth written;
+  switched per copy by its size on screen (default 12 px) or by distance, with a dithered half-octave cross-fade; below
+  `lodImpostorThin` px (default 8, 0 off) copies thinned by a stable hash, the kept ones enlarged
+  (`lodImpostorThinScale`, area kept at 1). Own programs for the impostor levels on WebGL2 and WebGPU; the GPU culling
+  applies the same switch and thinning. Why: Ludo (2026-11-14/15) "LOD should look like David's paintings", and far
+  views faster than spheres (two Mycoplasma far 16–18 → 8–9 ms; mid distances slower, 8.8 → 14.6 ms at ×2.2). Files:
+  `graphics/src/repr/particles/impostor-atlas.ts` and the particles representation, `gl/webgl/shader/chunks/lod-impostor.glsl.ts`,
+  `gl/webgpu/shader/chunks/lod-impostor.wgsl.ts`, the culling. Commits (lane me/lod-impostor, merged 2026-11-15):
+  `ed9e98f51` `89f8c2996` `2c0806e6e` `943088bf5` `eefcb2145` `6665f7842` `0ee2dcbe1` `732e4dd3c` `cb586c76d`
+  `0c9e80395` `958a700ce` `f969e3134` `195fdbd0c` `23b82493d` `26ed1500b` `b96769fa4` `2cd49b025` `b1d07561b`
+  `9a6997161` `01112dacb` `752fbf37b` `1307aaea0` `e7aebd5df` `8058ab24e` `5e4f37651` `593d3c872` `5f5af257f`
+  `8a50557cc` `53cfea835` `888485fcf` `2ac69cc8f` `bdd49a412` `589110754` `b592229ec`. Tests:
+  `gl/_test/lod-impostor-programs.test.ts`, `repr/particles/_test/impostor-radius-cap.test.ts`, the atlas tests,
+  `plugin/headless/src/_test/webgpu-lod-impostor.test.ts` (Dawn; not run in the last rounds). Upstream: candidate after
+  review (large). Not mixed. Open: kept copies grow inside the cross-fade band; culling tests the unenlarged sphere
+  (a few px late at screen edges); 17×17 views for large targets; tile sizes per target.
+
 - **Color levels** — colors by size on screen: far a particle by compartment or entity, closer by chain, closest by
   atom; blended in the shader (`ColorLevels`, sphere and mesh programs on WebGL2 and WebGPU, far colors from
   `particle-hierarchy`, edges 0.27, 2.2, 28.8 px). Why: "colors that follow the zoom" (dynamic-color, Ludo 2026-10-30),
