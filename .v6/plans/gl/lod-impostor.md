@@ -26,8 +26,10 @@
   item's atlas entry negated (`-(entry + 1)`, the entry's place packed into 20 bits, `encodeEntry`). Why the scale: it is
   per member already (`aSegmentLod`), outside the merge key; no new segment data. The quad is the copy's invariant
   bounding sphere; the fragment stage takes the camera's direction in the copy's frame (the view's axes in it, two flat
-  varyings), the three nearest views and their weights (a triangle of the grid cell), each view read where the ray
-  meets its plane, coverage blended and cut at 0.35 (at 0.5 the blend lost the parts where the views disagree), height
+  varyings), the three nearest views and their weights (a triangle of the grid cell), each view read at the ray's front
+  (`ImpostorAtlas.hit`): at the height of the ray's point nearest the center (in the tile), then once more at the height
+  read there (`ParallaxSteps`; read where the ray met each view's plane, the views disagreed off it and an elongated
+  copy ghosted and jumped as the camera turned), coverage blended and cut at 0.35 (at 0.5 the blend lost the parts where the views disagree), height
   and normal blended by coverage; depth from the ray's point at that height. The copy's color (`vColor`, color levels
   at its center); picking gives the copy (its instance).
 - **The band** (`LodImpostorBand`, 0.5 octave): the boundary of the last spheres and the impostors widened both ways;
@@ -41,11 +43,14 @@
   of any radius (`ImpostorMinRadius` 0, Ludo: lipids and ions too); a copy under 4 px reads its nearest view alone
   (`ImpostorOneViewPixels`). All such targets take the define (one merge key), those without an entry (the atlas full)
   draw their last level as spheres with the band, never thinned.
-- **The switch** (`uLodImpostorSwitch`): by each copy's size on screen (12 px) or its distance from the eye; the
-  distance by default where a copy of the median radius is 12 px across in a 720-px view (`autoDistance`).
+- **The switch** (`uLodImpostorSwitch`): by each copy's size on screen (12 px, its own radius: the cap the ranges
+  cover is the largest item's, `radiusCap`; a 90th percentile of the copies fell to 17 Å with lipids and turned a
+  ribosome into a silhouette below 125 px) or its distance from the eye; the distance by default where a copy of the median radius is 12 px across in a 720-px view (`autoDistance`).
 - **Thinning** (stochastic simplification, Cook et al. 2007; `lodImpostorThin`, 8 px, 0 off): below that size a share
   `p = (size / s0)²` (at least 1/64) of the copies kept by a stable hash of their member and instance (`copyHash`,
-  PCG), larger by `1 / √(p · ThinArea)` (the area kept, the fade's included); one leaving shrinks out over a quarter of
+  PCG), larger by `1 / √(p · ThinArea)` (the area kept, the fade's included) to the power `lodImpostorThinScale` up to
+  1 (0 not enlarged), above 1 that times `1 + (k − 1)(1 − √p)` (at most k times the threshold's size; Graphics & Motion ›
+  Far proteins: Thin below, Kept grow); one leaving shrinks out over a quarter of
   `p` above it (no pop), then is culled. The vertex stage decides on WebGL; the GPU culling drops the others first by
   the same rule (`thinnedOut`, the frame's scale also in the clip ghost's pass). Open: inside the band (distance mode
   or a switch below 8 px) kept copies grow during the cross-fade.

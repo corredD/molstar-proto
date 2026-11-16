@@ -8,3 +8,9 @@
   8 px, 0 off): below that size a stable share is kept, larger, the area kept (stochastic simplification). The switch
   by distance defaults to where a median protein is 12 px across; its slider starts at 100 Å and shows the distance
   applied. Atlases up to 8192 a side (thousands of targets).
+- Big copies no longer jump as the camera turns: every copy switches at its own size on screen (the radius cap is the
+  largest target's; with lipids it had fallen to 17 Å, a ribosome a silhouette below 125 px), and each view is read at
+  the ray's front (parallax), so the three views agree for elongated proteins. Mid distances cost more (cellpack-mg
+  × 2.2: 10 → 15 ms) since proteins keep their spheres down to 12 px.
+- Graphics & Motion › Far proteins: Thin below (0–16 px, off) and Kept grow (0–1.5: how much the kept copies are
+  enlarged; `structure.lodImpostorThinScale`), also `mesoscale.impostors` `thin`, `thinScale`.
