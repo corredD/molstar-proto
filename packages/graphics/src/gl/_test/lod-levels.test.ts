@@ -303,6 +303,8 @@ describe('levels of detail by size on screen', () => {
     expect(ImpostorAtlas.ThinFade).toBe(0.25);
     expect(ImpostorAtlas.ThinArea).toBe(1 + (0.25 * 13) / 35);
     for (const c of [glsl, wgsl]) {
+      // the kept copies' enlargement to the power of its share (\`thinScale\`)
+      expect(c).toMatch(/pow\(inverse[sS]qrt\(min\(1\.0, p \* ImpostorThinArea\)\), (uObject\.)?uImpostorThin\.y\)/);
       expect(c).toMatch(/ImpostorThinMinKeep = 1\.0 \/ 64\.0/);
       expect(c).toMatch(/ImpostorThinFade = 0\.25/);
       expect(c).toMatch(/ImpostorThinArea = 1\.0 \+ ImpostorThinFade \* 13\.0 \/ 35\.0/);

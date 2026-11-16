@@ -147,7 +147,8 @@ export const assign_lod_impostor_varyings = `
                 #endif
                 float end = p * (1.0 + ImpostorThinFade);
                 float t = smoothstep(p, end, hash);
-                float factor = hash >= end ? 0.0 : inversesqrt(min(1.0, p * ImpostorThinArea)) * (1.0 - t);
+                // the kept ones enlarged by the area-keeping scale to the power \`uImpostorThin.y\` (\`thinScale\`)
+                float factor = hash >= end ? 0.0 : pow(inversesqrt(min(1.0, p * ImpostorThinArea)), uImpostorThin.y) * (1.0 - t);
                 if (factor <= 0.0) lodCulled = true;
                 vSphere.w *= factor;
             }

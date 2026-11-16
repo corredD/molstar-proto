@@ -128,7 +128,8 @@ export const assign_lod_impostor_varyings_wgsl = /* wgsl */ `
                 #endif
                 let end = p * (1.0 + ImpostorThinFade);
                 let t = smoothstep(p, end, hash);
-                let factor = select(inverseSqrt(min(1.0, p * ImpostorThinArea)) * (1.0 - t), 0.0, hash >= end);
+                // the kept ones enlarged by the area-keeping scale to the power \`uImpostorThin.y\` (\`thinScale\`)
+                let factor = select(pow(inverseSqrt(min(1.0, p * ImpostorThinArea)), uObject.uImpostorThin.y) * (1.0 - t), 0.0, hash >= end);
                 if (factor <= 0.0) {
                     lodCulled = true;
                 }

@@ -564,11 +564,14 @@ export namespace ImpostorAtlas {
     ValueCell.update(values.uLodImpostorSwitch, Vec4.set(v, mode, value, halfBand, cap));
   }
 
-  /** The size on screen below which far copies thin out (`thinKeep`), 0 off */
-  export function setThin(values: LodImpostorValues, pixels: number) {
+  /**
+   * The size on screen below which far copies thin out (\`thinKeep\`), 0 off; the share of the area-keeping enlargement
+   * the kept ones take (\`thinScale\`'s \`k\`: 0 none, 1 the area kept)
+   */
+  export function setThin(values: LodImpostorValues, pixels: number, scale = 1) {
     const v = values.uImpostorThin.ref.value;
-    if (v[0] === pixels) return;
-    ValueCell.update(values.uImpostorThin, Vec2.set(v, pixels, 0));
+    if (v[0] === pixels && v[1] === scale) return;
+    ValueCell.update(values.uImpostorThin, Vec2.set(v, pixels, scale));
   }
 
   /** What `getItem` reads: the spheres' centers and groups, their sizes by type, the size factor, the bounds */
@@ -663,18 +666,21 @@ export namespace ImpostorAtlas {
    */
   export const ThinArea = 1 + (ThinFade * 13) / 35;
 
-  /** the kept copies' scale: `1 / √(p ThinArea)` (the area covered kept, the fade's included), at most 1 */
-  export function thinScale(p: number) {
-    return 1 / Math.sqrt(Math.min(1, p * ThinArea));
+  /**
+   * the kept copies' scale: \`1 / √(p ThinArea)\` (the area covered kept, the fade's included; at least 1) to the power
+   * \`k\`: 0 not enlarged (the area thinned with the copies), 1 the area kept, above it more (Ludo: a control)
+   */
+  export function thinScale(p: number, k = 1) {
+    return Math.pow(1 / Math.sqrt(Math.min(1, p * ThinArea)), k);
   }
 
-  /** a copy's size factor at hash `h` where `p` is kept: `thinScale(p)`, shrinking to 0 over the fade, 0 beyond */
-  export function thinFactor(h: number, p: number) {
+  /** a copy's size factor at hash \`h\` where \`p\` is kept: \`thinScale(p, k)\`, shrinking to 0 over the fade, 0 beyond */
+  export function thinFactor(h: number, p: number, k = 1) {
     if (p >= 1) return 1;
     const end = p * (1 + ThinFade);
     if (h >= end) return 0;
     const t = Math.min(1, Math.max(0, (h - p) / (end - p)));
-    return thinScale(p) * (1 - t * t * (3 - 2 * t));
+    return thinScale(p, k) * (1 - t * t * (3 - 2 * t));
   }
 
   /** A copy's hash in [0, 1): of its segment (member) and its instance, PCG (the shaders' and the culling's) */

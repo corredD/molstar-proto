@@ -227,6 +227,16 @@ export const ParticleTargetStructureParams = {
         hideIf: (p: { lodImpostor?: boolean }) => !p.lodImpostor,
       },
     ),
+    lodImpostorThinScale: PD.Numeric(
+      1,
+      { min: 0, max: 1.5, step: 0.05 },
+      {
+        ...BaseGeometry.CullingLodCategory,
+        description:
+          'How much the copies kept by the thinning are enlarged: 0 not at all (the area thins with them), 1 to keep the area covered, above 1 more',
+        hideIf: (p: { lodImpostor?: boolean; lodImpostorThin?: number }) => !p.lodImpostor || !(p.lodImpostorThin! > 0),
+      },
+    ),
     lodImpostorDistance: PD.Numeric(
       0,
       { min: 0, max: 10000000, step: 1 },
@@ -756,6 +766,7 @@ export interface TargetVisual {
     code: number,
     impostorSwitch?: Spheres.LodImpostorSwitch,
     thin?: number,
+    thinScale?: number,
   ): void;
   destroy(): void;
 }
@@ -1252,6 +1263,7 @@ export function createTargetVisual(_targetId: number, materialId: number, graphi
     code: number,
     impostorSwitch?: Spheres.LodImpostorSwitch,
     thin = 0,
+    thinScale = 1,
   ) {
     if (!renderObject || renderObject.type !== 'spheres' || geometry?.kind !== 'spheres') return;
     const values = renderObject.values as unknown as SpheresValues;
@@ -1259,7 +1271,7 @@ export function createTargetVisual(_targetId: number, materialId: number, graphi
     ImpostorAtlas.setValues(values, on);
     const sw = on ? impostorSwitch : undefined;
     ImpostorAtlas.setSwitch(values, sw, Spheres.LodImpostorBand / 2);
-    ImpostorAtlas.setThin(values, on ? thin : 0);
+    ImpostorAtlas.setThin(values, on ? thin : 0, thinScale);
     const entry = on ? code : -2;
     const value = values.lodLevels.ref.value as Spheres.LodLevelsValue;
     const { k: _, ...current } = value.impostorSwitch ?? { k: 0 };

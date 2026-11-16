@@ -443,6 +443,25 @@ describe('impostor atlas', () => {
     expect(ImpostorAtlas.thinFactor(p * (1 + ImpostorAtlas.ThinFade / 2), p)).toBeGreaterThan(0);
   });
 
+  it('enlarges the kept copies by a chosen share of the area-keeping scale: 0 none, 1 the area kept, above more', () => {
+    const p = 0.25;
+    const full = ImpostorAtlas.thinScale(p);
+    expect(ImpostorAtlas.thinScale(p, 1)).toBeCloseTo(full, 12);
+    expect(ImpostorAtlas.thinScale(p, 0)).toBe(1);
+    expect(ImpostorAtlas.thinScale(p, 0.5)).toBeCloseTo(Math.sqrt(full), 12);
+    expect(ImpostorAtlas.thinScale(p, 1.5)).toBeCloseTo(full ** 1.5, 12);
+    // a kept copy's size factor follows; a leaving one still shrinks out over the fade
+    expect(ImpostorAtlas.thinFactor(0.1, p, 0)).toBe(1);
+    expect(ImpostorAtlas.thinFactor(0.1, p, 0.5)).toBeCloseTo(Math.sqrt(full), 12);
+    expect(ImpostorAtlas.thinFactor(p * (1 + ImpostorAtlas.ThinFade), p, 0)).toBe(0);
+    // on the values: the threshold and the scale's share (the shaders' \`uImpostorThin.xy\`)
+    const values = ImpostorAtlas.createValues();
+    ImpostorAtlas.setThin(values, 8, 0.5);
+    expect(Array.from(values.uImpostorThin.ref.value)).toEqual([8, 0.5]);
+    ImpostorAtlas.setThin(values, 8);
+    expect(Array.from(values.uImpostorThin.ref.value)).toEqual([8, 1]);
+  });
+
   it('by distance by default: where a copy of the median radius (by copies) is 12 px across in a 720-px view', () => {
     // a yeast slab: millions of copies of 20 to 90 Å, the model 24,000 Å in radius: a distance of proteins
     const d = ImpostorAtlas.autoDistance([
