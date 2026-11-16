@@ -144,10 +144,12 @@ fn impostorDecode(uv: vec2<f32>) -> vec3<f32> {
 
 /** the entry's corner (texels) and tile from its code (\`ImpostorAtlas.decodeEntry\`) */
 fn impostorEntry(code: f32) -> vec3<f32> {
-    let t = floor(code / 262144.0 + 1e-4);
-    let rest = code - t * 262144.0;
-    let y = floor(rest / 512.0 + 1e-4);
-    return vec3<f32>((rest - y * 512.0) * 8.0, y * 8.0, 8.0 * exp2(t));
+    // in integers: a float division may round across a bit at the top of the 22
+    let c = u32(code + 0.5);
+    let t = c >> 20u;
+    let y = (c >> 10u) & 1023u;
+    let x = c & 1023u;
+    return vec3<f32>(f32(x) * 8.0, f32(y) * 8.0, 8.0 * exp2(f32(t)));
 }
 
 /**

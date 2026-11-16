@@ -35,8 +35,11 @@ export namespace ImpostorAtlas {
   export const Views = 9;
   export const MinTile = 8;
   export const MaxTile = 64;
-  /** the widest atlas: its places in 8-texel steps fit 9 bits a side (`encodeEntry`) */
-  export const MaxWidth = 4096;
+  /**
+   * the widest atlas: its places in 8-texel steps fit 10 bits a side (`encodeEntry`); thousands of targets (a yeast slab:
+   * 5,457) need more than 4096² where the device allows
+   */
+  export const MaxWidth = 8192;
   /** subsamples per texel side of the splat (its coverage antialiased) */
   const Supersample = 2;
 
@@ -133,17 +136,17 @@ export namespace ImpostorAtlas {
 
   /**
    * An entry's place as one float the shaders decode: its corner `x`, `y` (multiples of 8 below `MaxWidth`) and its tile
-   * (8 to 64, a power of 2), 20 bits, exact in a 32-bit float
+   * (8 to 64, a power of 2), 22 bits, exact in a 32-bit float
    */
   export function encodeEntry(x: number, y: number, tile: number) {
-    return x / 8 + (y / 8) * 512 + Math.log2(tile / 8) * 262144;
+    return x / 8 + (y / 8) * 1024 + Math.log2(tile / 8) * 1048576;
   }
 
   export function decodeEntry(code: number) {
-    const t = Math.floor(code / 262144);
-    const rest = code - t * 262144;
-    const y = Math.floor(rest / 512);
-    return { x: (rest - y * 512) * 8, y: y * 8, tile: 8 << t };
+    const t = Math.floor(code / 1048576);
+    const rest = code - t * 1048576;
+    const y = Math.floor(rest / 1024);
+    return { x: (rest - y * 1024) * 8, y: y * 8, tile: 8 << t };
   }
 
   /**

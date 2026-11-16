@@ -120,6 +120,9 @@ describe('impostor atlas', () => {
       [0, 0, 8],
       [4088, 4088, 64],
       [512, 1024, 16],
+      // an atlas up to 8192 a side (a model of thousands of targets)
+      [8184, 8184, 64],
+      [8184, 0, 8],
     ]) {
       const code = ImpostorAtlas.encodeEntry(x, y, tile);
       expect(Math.fround(code)).toBe(code);
@@ -232,5 +235,23 @@ describe('impostor atlas', () => {
     // beyond the band the impostors flatten (the share 1 + flatness, at most 2)
     expect(dist(5000 * 2 ** (h + 1))).toBeCloseTo(2, 6);
     expect(dist(1e9)).toBe(2);
+  });
+
+  it('fits thousands of items where the device allows 8192 a side, none left out', () => {
+    // 5,457 targets (yeast_slab_z600nm): at the smallest tile (8) 72 × 72 texels each, more than 4096² holds
+    const e = {
+      positionGroup: new Float32Array([0, 0, 0, 0]),
+      radii: new Float32Array([2]),
+      count: 1,
+      center: Vec3(),
+      radius: 30,
+    };
+    const items = Array.from({ length: 5457 }, () => ({ ...e, tile: 8 }));
+    const small = ImpostorAtlas.create(items, 4096);
+    expect(small.codes.filter((c) => c < 0).length).toBeGreaterThan(0);
+    const large = ImpostorAtlas.create(items, 8192);
+    expect(large.codes.filter((c) => c < 0).length).toBe(0);
+    expect(large.image.width).toBeLessThanOrEqual(8192);
+    for (const c of large.codes.slice(-3)) expect(ImpostorAtlas.decodeEntry(c).y).toBeLessThan(8192);
   });
 });

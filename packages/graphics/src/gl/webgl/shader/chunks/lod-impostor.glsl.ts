@@ -156,10 +156,12 @@ export const lod_impostor_frag = `
 
     // the entry's corner (texels) and tile from its code (\`ImpostorAtlas.decodeEntry\`)
     vec3 impostorEntry(const in float code) {
-        float t = floor(code / 262144.0 + 1e-4);
-        float rest = code - t * 262144.0;
-        float y = floor(rest / 512.0 + 1e-4);
-        return vec3((rest - y * 512.0) * 8.0, y * 8.0, 8.0 * exp2(t));
+        // in integers: a float division may round across a bit at the top of the 22
+        int c = int(code + 0.5);
+        int t = c / 1048576;
+        int rest = c - t * 1048576;
+        int y = rest / 1024;
+        return vec3(float(rest - y * 1024) * 8.0, float(y) * 8.0, 8.0 * exp2(float(t)));
     }
 
     // coverage, front height (Å along the frame's direction) and the front's normal's x, y in the frame, of frame
