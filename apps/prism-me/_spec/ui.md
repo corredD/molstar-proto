@@ -180,7 +180,11 @@ protein below N px across, its own bounding sphere: a ribosome and a small prote
 to 64, log) or Distance (each copy beyond D Å from the eye; default where a typical copy is 12 px across in a 720-px
 view, a distance of proteins whatever the model's extent; 100 Å to 20 model radii, log); the slider live while dragged,
 one step on release. Every structure target, lipids too (Ludo: "even below 22 Å"); copies under 8 px thinned out (a
-share kept, larger: stochastic simplification), `lodImpostorThin`. A mode sets, by kind:
+share kept, larger: stochastic simplification), `lodImpostorThin`. Thin below (Ludo, 2026-11-15: "control the dropping
+threshold, and the scaling for the left visible"): the thinning's size on screen, 0 to 16 px, 0 shown "off" (default 8);
+Kept grow, while thinning: how much the kept copies are enlarged, 0 (not: the area thins with them) to 1.5, 1 the area
+covered kept (default), `lodImpostorThinScale`; both live while dragged, one step on release, the value applied in the
+box (`mesoscale.impostors` `thin`, `thinScale`). A mode sets, by kind:
 
 | Mode        | quality (structure, volume) | levels of detail (particle lists, structures), smallest sphere drawn | steps per cell (direct volume) |
 | ----------- | --------------------------- | -------------------------------------------------------------------- | ------------------------------ |
