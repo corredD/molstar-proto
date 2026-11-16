@@ -295,6 +295,10 @@ fn thinnedOut(sphere: vec4<f32>, segment: u32, i: u32) -> bool {
     if (th.w <= 0.0) {
         return false;
     }
+    // its last level its spheres, not its impostor (no entry: the atlas full), never thinned (the vertex stage's)
+    if (segmentData[segment * 3u + 2u][min(u32(th.w) - 1u, 3u)] >= 0.0) {
+        return false;
+    }
     let d = dot(uParams.uCameraPlane.xyz, sphere.xyz) + uParams.uCameraPlane.w;
     let pixel = th.y * select(max(d, 1e-3), 1.0, th.z > 0.0);
     let size = 2.0 * segmentData[segment * 3u].w / pixel;

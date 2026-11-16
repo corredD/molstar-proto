@@ -5,7 +5,9 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { ImpostorAtlas } from '../../geo/geometry/impostor-atlas.js';
 import { Mat4 } from '@molstar/core/math/linear-algebra/3d/mat4';
 import { ColorNames } from '@molstar/core/util/color/names';
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
@@ -280,6 +282,31 @@ describe('levels of detail by size on screen', () => {
     for (const c of [lodImpostorGlsl.lod_impostor_frag, lodImpostorWgsl.lod_impostor_wgsl]) {
       expect(c).toMatch(/ImpostorOneViewPixels/);
     }
+  });
+
+  it("thins by the same rule in the vertex stages and the culling as ImpostorAtlas's, spheres never thinned", () => {
+    const source = (path: string) => readFileSync(new URL(path, import.meta.url), 'utf8');
+    const glsl = source('../webgl/shader/chunks/lod-impostor.glsl.ts');
+    const wgsl = source('../webgpu/shader/chunks/lod-impostor.wgsl.ts');
+    const cull = source('../webgpu/shader/cell-cull.wgsl.ts');
+    expect(ImpostorAtlas.ThinMinKeep).toBe(1 / 64);
+    expect(ImpostorAtlas.ThinFade).toBe(0.25);
+    expect(ImpostorAtlas.ThinArea).toBe(1 + (0.25 * 13) / 35);
+    for (const c of [glsl, wgsl]) {
+      expect(c).toMatch(/ImpostorThinMinKeep = 1\.0 \/ 64\.0/);
+      expect(c).toMatch(/ImpostorThinFade = 0\.25/);
+      expect(c).toMatch(/ImpostorThinArea = 1\.0 \+ ImpostorThinFade \* 13\.0 \/ 35\.0/);
+    }
+    // the hash's constants (\`copyHash\`) in the three
+    for (const c of [glsl, wgsl, cull]) {
+      for (const k of ['0x9e3779b1u', '747796405u', '2891336453u', '277803737u']) expect(c).toContain(k);
+    }
+    expect(cull).toMatch(/1\.0 \/ 64\.0/);
+    expect(cull).toMatch(/p \* 1\.25/);
+    // the culling thins a segment's last level only where it is its impostor (its scale negative: an entry), as the
+    // vertex stage does; a member left out of the atlas (-1) keeps all its spheres
+    const thinned = cull.slice(cull.indexOf('fn thinnedOut'), cull.indexOf('fn copyInstance'));
+    expect(thinned).toMatch(/segmentData\[segment \* 3u \+ 2u\]\[[^\]]+\] >= 0\.0/);
   });
 
   it('presets by pixel size: their distances those at 1280x720 and 45°', () => {
