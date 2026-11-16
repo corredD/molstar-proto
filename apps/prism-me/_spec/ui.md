@@ -177,9 +177,10 @@ Graphics & Motion (Ludovic, 2026-10-24: on every object, what does not apply lef
 last level of spheres), every structure target of the model in one step (`mesoscale.impostors`; `lod-impostor.md`),
 shown where the model is drawn by its structures. While Silhouettes (Ludo, 2026-11-15): Switch by Size on screen (each
 protein below N px across, its own bounding sphere: a ribosome and a small protein at the same apparent size; 12 px, 4
-to 64, log) or Distance (each copy beyond D Å from the eye; default 2.6 times the model's radius, where the whole model
-fits the view; the model's radius / 10 to 20 times, log); the slider live while dragged, one step on release. A mode
-sets, by kind:
+to 64, log) or Distance (each copy beyond D Å from the eye; default where a typical copy is 12 px across in a 720-px
+view, a distance of proteins whatever the model's extent; 100 Å to 20 model radii, log); the slider live while dragged,
+one step on release. Every structure target, lipids too (Ludo: "even below 22 Å"); copies under 8 px thinned out (a
+share kept, larger: stochastic simplification), `lodImpostorThin`. A mode sets, by kind:
 
 | Mode        | quality (structure, volume) | levels of detail (particle lists, structures), smallest sphere drawn | steps per cell (direct volume) |
 | ----------- | --------------------------- | -------------------------------------------------------------------- | ------------------------------ |
