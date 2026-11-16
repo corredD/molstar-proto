@@ -526,8 +526,11 @@ function getImpostorAutoDistance(sources: readonly ImpostorAtlas.Source[], owner
   );
 }
 
-/** The radius the impostors' ranges cover by size on screen (`ImpostorAtlas.radiusCap`) */
-function getImpostorRadiusCap(sources: readonly ImpostorAtlas.Source[]) {
+/**
+ * The radius the impostors' ranges cover by size on screen (\`ImpostorAtlas.radiusCap\`: the largest item's), of the
+ * sources' radii alone (not their copies: lipids by the million once set it at 17 Å)
+ */
+export function getImpostorRadiusCap(sources: readonly ImpostorAtlas.Source[]) {
   return sources.length ? ImpostorAtlas.radiusCap(sources) : ImpostorMinRadius;
 }
 
