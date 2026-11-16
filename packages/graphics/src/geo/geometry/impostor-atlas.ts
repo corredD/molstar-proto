@@ -592,6 +592,18 @@ export namespace ImpostorAtlas {
     return (((word >>> 22) ^ word) >>> 0) / 4294967296;
   }
 
+  /**
+   * The radius the impostors' ranges cover by size on screen (\`LodImpostorSwitch.radii[1]\`): the largest item's, so
+   * that every copy switches at its own size on screen. (A 90th percentile by copies was 64 Å on cellpack-mg's proteins
+   * and 17 Å once its 1.1 M lipids had impostors: a ribosome, 183 Å, a silhouette below 125 px, its views blending
+   * visibly as the camera turned.)
+   */
+  export function radiusCap(items: readonly { readonly radius: number }[]) {
+    let cap = 0;
+    for (const it of items) cap = Math.max(cap, it.radius);
+    return cap;
+  }
+
   /** The size on screen (px) a typical copy has at the impostors' distance by default (`autoDistance`) */
   export const AutoPixels = 12;
 

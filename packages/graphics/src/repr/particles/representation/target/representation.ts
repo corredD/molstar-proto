@@ -284,7 +284,7 @@ export function ParticleTargetRepresentation(
     const { lodImpostorBy, lodImpostorPixels, lodImpostorDistance } = _props.structure;
     // the small items switch too (their spheres fade in at the last level): from the smallest drawn
     const r0 = 1;
-    const r1 = getImpostorRadiusCap(sources, owners);
+    const r1 = getImpostorRadiusCap(sources);
     if (lodImpostorBy === 'distance') {
       let value = lodImpostorDistance;
       // by default where a typical copy (the copies' median radius) is \`ImpostorAutoPixels\` px across in a 720-px-high
@@ -523,26 +523,9 @@ function getImpostorAutoDistance(sources: readonly ImpostorAtlas.Source[], owner
   );
 }
 
-/**
- * The radius the impostors' ranges cover by size on screen: the 90th percentile of the copies' (each target's radius
- * by its copies). The largest items (a few ribosomes) switch at it, a little larger on screen, so that the last spheres
- * of every copy are not drawn out to where the largest switch (`lod-impostor.md`: the far frames' cost)
- */
-function getImpostorRadiusCap(sources: readonly ImpostorAtlas.Source[], owners: readonly TargetVisual[]) {
-  const items = sources.map((s, i) => ({
-    r: s.radius,
-    n: owners[i]?.particleIndices ? OrderedSet.size(owners[i].particleIndices!) : 1,
-  }));
-  if (!items.length) return ImpostorMinRadius;
-  items.sort((a, b) => a.r - b.r);
-  let total = 0;
-  for (const it of items) total += it.n;
-  let acc = 0;
-  for (const it of items) {
-    acc += it.n;
-    if (acc >= 0.9 * total) return it.r;
-  }
-  return items[items.length - 1].r;
+/** The radius the impostors' ranges cover by size on screen (`ImpostorAtlas.radiusCap`) */
+function getImpostorRadiusCap(sources: readonly ImpostorAtlas.Source[]) {
+  return sources.length ? ImpostorAtlas.radiusCap(sources) : ImpostorMinRadius;
 }
 
 /**

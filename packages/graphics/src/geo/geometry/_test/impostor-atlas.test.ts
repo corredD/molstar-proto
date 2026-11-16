@@ -223,7 +223,7 @@ describe('impostor atlas', () => {
     expect(px(100, 200 / 12)).toBeCloseTo(0.5, 6); // 12 px: the band's middle
     // the same size on screen, whatever the radius: a ribosome and a small protein switch alike
     expect(px(250, 250 / 6)).toBeCloseTo(px(30, 30 / 6), 12);
-    // above the cap (the items' 90th percentile), a radius counts as the cap: the largest switch larger on screen,
+    // above the cap (\`radiusCap\`: the largest item's), a radius counts as the cap: the largest switch larger on screen,
     // within the ranges the culling draws
     const capped = ImpostorAtlas.switchShare(ImpostorAtlas.SwitchPixels, 12, h, 400, 400 / 6, 0, 100);
     expect(capped).toBeCloseTo(ImpostorAtlas.switchShare(ImpostorAtlas.SwitchPixels, 12, h, 100, 400 / 6, 0), 12);
@@ -235,6 +235,26 @@ describe('impostor atlas', () => {
     // beyond the band the impostors flatten (the share 1 + flatness, at most 2)
     expect(dist(5000 * 2 ** (h + 1))).toBeCloseTo(2, 6);
     expect(dist(1e9)).toBe(2);
+  });
+
+  it('switches every copy at its own size on screen: lipids by the million do not cap the large ones', () => {
+    // cellpack-mg: 1.1 M lipids (10-17 Å) and a few large complexes (a ribosome, 183 Å; a 6-mer, 312 Å)
+    const items = [
+      { radius: 10, count: 1100000 },
+      { radius: 17, count: 800000 },
+      { radius: 37, count: 200000 },
+      { radius: 183, count: 74 },
+      { radius: 312, count: 92 },
+    ];
+    const cap = ImpostorAtlas.radiusCap(items);
+    expect(cap).toBe(312);
+    // a ribosome 24 px across (twice the threshold of 12 px) is drawn by its spheres, not as a 125-px silhouette
+    const share = (R: number, px: number) =>
+      ImpostorAtlas.switchShare(ImpostorAtlas.SwitchPixels, 12, 0.25, R, (2 * R) / px, 0, cap);
+    expect(share(183, 24)).toBe(0);
+    expect(share(312, 24)).toBe(0);
+    expect(share(183, 12)).toBeCloseTo(0.5, 6);
+    expect(share(183, 6)).toBeGreaterThanOrEqual(1);
   });
 
   it('fits thousands of items where the device allows 8192 a side, none left out', () => {
