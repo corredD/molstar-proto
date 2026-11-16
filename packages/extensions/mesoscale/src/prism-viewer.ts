@@ -74,6 +74,12 @@ export const MesoscaleSkill: ViewerSkill = {
         'Colors a mesoscale model by the zoom: its compartments far away, its entities, chains and atoms (by element) closer; the edges in pixels an atom covers.',
     },
     {
+      id: 'draw_mesoscale_far_proteins',
+      operation: 'mesoscale.impostors',
+      description:
+        "Draws a mesoscale model's far proteins as silhouettes (impostors: each copy its outline, flat, the default) or as spheres (on false); where they switch (by size on screen or distance), and the far ones thinned out (thin: below px, 0 off; thinScale: the kept ones enlarged, 0 to 1.5).",
+    },
+    {
       id: 'open_mesoscale_example',
       operation: 'mesoscale.example',
       description: "Opens one of the Mesoscale Explorer's examples by id.",
@@ -160,6 +166,12 @@ export const MesoscaleExtension: ViewerExtension = {
         category,
         icon: 'palette',
         alias: ['color levels', 'colors by zoom', 'dynamic coloring', 'chameleon'],
+        action: 'Apply',
+      }),
+      operationCommand(api, m.impostors, {
+        category,
+        icon: 'gauge',
+        alias: ['far proteins', 'silhouettes', 'impostors', 'level of detail', 'lod'],
         action: 'Apply',
       }),
       operationCommand(api, m.fiber, {

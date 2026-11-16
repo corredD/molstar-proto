@@ -419,6 +419,16 @@ export type LodLevelsValue = [
   scale: number,
 ][] & {
   readonly pixelSize?: number;
+  /**
+   * where each copy turns into its impostor (`lod-impostor.md`, `Lod.LodImpostorSwitch`): the ranges of the last level
+   * and the one before cover every copy that can switch, the copies choose (`lod_impostor`)
+   */
+  readonly impostorSwitch?: {
+    readonly mode: 'pixels' | 'distance';
+    readonly value: number;
+    readonly radii: readonly [number, number];
+    readonly k: number;
+  };
 };
 
 /** The largest distance of a level converted from pixel sizes (`LodView`), for an open end */
@@ -439,6 +449,11 @@ export interface LodView {
    * culls of the same view and data are skipped (`createCullView`); 0 for none known (never skipped)
    */
   version: number;
+  /**
+   * How many times coarser these scales are than the frame's (the clip ghost's levels): the impostors' thinning divides
+   * it out, the vertex stage thinning by the frame's (`uLodScale`); 1 where absent
+   */
+  coarser?: number;
 }
 
 export function LodView(): LodView {
@@ -460,9 +475,49 @@ export namespace LodView {
   /**
    * Level `j`'s range and fade in distances, into `out` (min, max, overlap): as they are without `pixelSize`; with it the
    * pixel sizes divided by the depth scale, or (orthographic, or no view yet) all distances for the level of the view's
-   * pixel size and none for the others
+   * pixel size and none for the others (a level fading out at its end, an overlap, ends where the band starts)
    */
   export function getRange(levels: LodLevelsValue, j: number, view: LodView, out: number[]) {
+    const sw = levels.impostorSwitch;
+    const last = levels.length - 1;
+    if (!sw || j < last - 1 || last < 1) return getLevelRange(levels, j, view, out);
+    // a switch per copy: the last spheres and the impostors from where the last spheres start (the levels' rule) to
+    // where the last copy can switch; the overlap's sign their role (fading out, in), the band the copies'
+    const start = getLevelRange(levels, last - 1, view, out)[0];
+    if (view.depthScale <= 0 && !((levels.pixelSize ?? 0) > 0)) {
+      // orthographic with levels by distance: both from where the last spheres start, the copies choose
+      out[0] = start;
+      out[1] = MaxLodDistance;
+      out[2] = j === last ? -1 : 1;
+      return out;
+    }
+    if (view.depthScale <= 0 && (levels.pixelSize ?? 0) > 0) {
+      // orthographic: both where the last spheres would be, the copies choose
+      const drawn = view.pixelSize >= levels[last - 1][0];
+      out[0] = drawn ? 0 : -2;
+      out[1] = drawn ? MaxLodDistance : -1;
+      out[2] = j === last ? -1 : 1;
+      return out;
+    }
+    const [r0, r1] = sw.radii;
+    // in Å of distance from the camera plane: by size on screen 2R/N Å a pixel at the depth scale; by distance from
+    // the eye, the plane's distance below it (off axis): from half
+    const lo =
+      sw.mode === 'pixels' ? (2 * r0) / (sw.value * sw.k) / Math.max(view.depthScale, 1e-12) : (sw.value / sw.k) * 0.5;
+    const hi = sw.mode === 'pixels' ? (2 * r1 * sw.k) / sw.value / Math.max(view.depthScale, 1e-12) : sw.value * sw.k;
+    if (j === last) {
+      out[0] = Math.max(lo, start);
+      out[1] = MaxLodDistance;
+      out[2] = -1;
+    } else {
+      out[0] = start;
+      out[1] = Math.min(Math.max(hi, start), MaxLodDistance);
+      out[2] = 1;
+    }
+    return out;
+  }
+
+  function getLevelRange(levels: LodLevelsValue, j: number, view: LodView, out: number[]) {
     const [min, max, overlap] = levels[j];
     if (!((levels.pixelSize ?? 0) > 0)) {
       out[0] = min;
@@ -474,13 +529,27 @@ export namespace LodView {
       out[1] = Math.min(max / k, MaxLodDistance);
       out[2] = overlap / k;
     } else {
-      const drawn = min <= view.pixelSize && view.pixelSize < max;
+      // a level fading out over a band where the next fades in (its overlap negated: the impostors', \`lod-impostor.md\`)
+      // ends where the next starts: one a view
+      const next = levels[j + 1];
+      const end = overlap > 0 && next !== undefined && next[2] < 0 ? max - overlap : max;
+      const drawn = min <= view.pixelSize && view.pixelSize < end;
       out[0] = drawn ? 0 : -2;
       out[1] = drawn ? MaxLodDistance : -1;
       out[2] = 0;
     }
     return out;
   }
+}
+
+/**
+ * The program define of level `j` (`MultiDrawBaseData.define`): with impostors (`lod-impostor.md`) the last level's
+ * (`dLodImpostorLevel`) and the one before's (`dLodImpostorBand`); the others none, the sphere program as without
+ */
+export function getLodLevelDefine(levels: LodLevelsValue, j: number): string | undefined {
+  if ((levels as { readonly impostor?: number }).impostor === undefined || levels.length < 2) return undefined;
+  const last = levels.length - 1;
+  return j === last ? 'dLodImpostorLevel' : j === last - 1 ? 'dLodImpostorBand' : undefined;
 }
 
 /** The minimal set of values needed to cull a (segment of a) render item. */
@@ -807,6 +876,34 @@ export function createSegmentedMdbList(): SegmentedMdbList {
   // flattened lod tuples, avoids nested array loads in the hot cell loop; the ranges in distances (`prepare`)
   const lodMin: number[] = [];
   const lodMax: number[] = [];
+  /** the ranges of the segment being culled: the levels', a member's own at the impostors' switch (`setSegmentRanges`) */
+  const segMin: number[] = [];
+  const segMax: number[] = [];
+  /** the view the ranges were prepared for (`prepare`) */
+  let preparedView: LodView | undefined;
+
+  /**
+   * The segment's ranges: the levels', but with impostors switched by size on screen (`lod-impostor.md`) the last
+   * spheres' end and the impostors' start where this member's copies switch (its radius, up to the cap), not where the
+   * largest item's do: a small item's far cells draw no spheres (the shaders' `switchShare`, per copy, within them)
+   */
+  function setSegmentRanges(values: CullValues, levels: LodLevelsValue | undefined, count: number) {
+    for (let j = 0; j < count; ++j) {
+      segMin[j] = lodMin[j];
+      segMax[j] = lodMax[j];
+    }
+    const sw = levels?.impostorSwitch;
+    const view = preparedView;
+    if (!sw || sw.mode !== 'pixels' || count < 2 || !view || !(view.depthScale > 0)) return;
+    const sphere = values.invariantBoundingSphere?.ref.value;
+    if (!sphere) return;
+    const r = Math.min(sphere.radius, sw.radii[1]);
+    const last = count - 1;
+    const hi = (2 * r * sw.k) / sw.value / view.depthScale;
+    const lo = (2 * r) / (sw.value * sw.k) / view.depthScale;
+    segMax[last - 1] = Math.max(segMin[last - 1], Math.min(segMax[last - 1], hi));
+    segMin[last] = Math.max(segMin[last], Math.min(lo, segMax[last - 1]));
+  }
   const lodOverlap: number[] = [];
   const lodCount: number[] = [];
 
@@ -818,6 +915,7 @@ export function createSegmentedMdbList(): SegmentedMdbList {
   ): LodLevelsValue | undefined {
     const lodLevels = lodCell?.ref.value as LodLevelsValue | undefined;
     const hasLodLevels = !!lodLevels && lodLevels.length > 0;
+    preparedView = lod;
     const levelCount = hasLodLevels ? lodLevels.length : 1;
     // segmented (merged) items also carry their segments' level scales (`tSegment`, up to 4 levels) - members' scales
     // can differ, unlike min/max/overlap
@@ -852,6 +950,7 @@ export function createSegmentedMdbList(): SegmentedMdbList {
       } else {
         list[j].uniforms.length = 0;
       }
+      list[j].define = hasLodLevels ? getLodLevelDefine(lodLevels, j) : undefined;
     }
     if (uniformsNeedUpdate) {
       lodLevelsVersion = lodCell!.ref.version;
@@ -912,6 +1011,7 @@ export function createSegmentedMdbList(): SegmentedMdbList {
 
     const levelCount = lodLevels ? lodLevels.length : 0;
     for (let j = 0; j < levelCount; ++j) lodCount[j] = lodLevels![j][3];
+    setSegmentRanges(values, lodLevels, levelCount);
     const clip = getCullClipObjects(values);
 
     if (grid.cellSize <= 1) {
@@ -942,7 +1042,7 @@ export function createSegmentedMdbList(): SegmentedMdbList {
         // fade correct, matches the plain render path's full-detail draw for
         // ungridded objects, see the `cellSize <= 1` bail in createRenderable's cull)
         for (let j = 0, jl = lodLevels.length; j < jl; ++j) {
-          if (d + b.radius < lodMin[j] || d - b.radius > lodMax[j]) continue;
+          if (d + b.radius < segMin[j] || d - b.radius > segMax[j]) continue;
           emit(list[j], first, offset, drawCount, instanceCount, instanceBase);
         }
       } else {
@@ -1010,7 +1110,7 @@ export function createSegmentedMdbList(): SegmentedMdbList {
           const dMax = bd + br;
           const dMin = bd - br;
           for (let j = 0; j < levelCount; ++j) {
-            if (dMax < lodMin[j] || dMin > lodMax[j]) continue;
+            if (dMax < segMin[j] || dMin > segMax[j]) continue;
             emit(list[j], first, offset, lodCount[j], count, instanceBase + begin);
           }
         } else {
@@ -1032,9 +1132,9 @@ export function createSegmentedMdbList(): SegmentedMdbList {
           let level = lodLevels ? -1 : 0;
           if (lodLevels) {
             for (let j = 0; j < levelCount; ++j) {
-              if (dMax < lodMin[j] || dMin > lodMax[j]) continue;
+              if (dMax < segMin[j] || dMin > segMax[j]) continue;
               // overlaps a second level, or not within the one
-              if (level !== -1 || dMin < lodMin[j] || dMax > lodMax[j]) {
+              if (level !== -1 || dMin < segMin[j] || dMax > segMax[j]) {
                 level = -2;
                 break;
               }
@@ -1086,7 +1186,7 @@ export function createSegmentedMdbList(): SegmentedMdbList {
           const dMax = d + r;
           const dMin = d - r;
           for (let j = 0; j < levelCount; ++j) {
-            if (dMax < lodMin[j] || dMin > lodMax[j]) continue;
+            if (dMax < segMin[j] || dMin > segMax[j]) continue;
             emit(list[j], first, offset, lodCount[j], count, instanceBase + begin);
           }
         } else {

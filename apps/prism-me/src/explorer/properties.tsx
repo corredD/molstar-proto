@@ -479,7 +479,12 @@ export const Sections: readonly Section[] = [
     title: 'Graphics & Motion',
     when: ({ api, picked }) => !!api.mesoscale && !!picked.node && GraphicsKinds.has(picked.kind),
     render: ({ api, picked }) => (
-      <ObjectGraphics area={api.mesoscale!} object={picked.node!.ref} motion={GraphicsKinds.get(picked.kind)!} />
+      <ObjectGraphics
+        area={api.mesoscale!}
+        api={api}
+        object={picked.node!.ref}
+        motion={GraphicsKinds.get(picked.kind)!}
+      />
     ),
   },
   {

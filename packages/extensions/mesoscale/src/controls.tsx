@@ -52,11 +52,18 @@ export function GraphicsMode(props: { area: MesoscaleApi }) {
   );
 }
 
+/** Far proteins (`mesoscale.impostors`, lod-impostor.md): silhouettes (impostors) or spheres */
+const FarChoices = [
+  { id: 'silhouettes', label: 'Silhouettes' },
+  { id: 'spheres', label: 'Spheres' },
+];
+
 /**
- * One object's graphics (apps/prism-me/_spec/ui.md §4, Graphics & Motion): its quality, and its wiggle and tumble when
- * it moves (`motion`: a structure, a particle list; not a volume). Each acts on that object alone.
+ * One object's graphics (apps/prism-me/_spec/ui.md §4, Graphics & Motion): its quality, its far proteins as silhouettes
+ * or spheres (a model drawn by its structures), and its wiggle and tumble when it moves (`motion`: a structure, a
+ * particle list; not a volume). Each acts on that object alone.
  */
-export function ObjectGraphics(props: { area: MesoscaleApi; object: string; motion: boolean }) {
+export function ObjectGraphics(props: { area: MesoscaleApi; object: string; motion: boolean; api?: ViewerApi }) {
   const graphics = props.area.graphicsState(props.object);
   return (
     <div class={classes.stack}>
@@ -66,7 +73,172 @@ export function ObjectGraphics(props: { area: MesoscaleApi; object: string; moti
         active={mapState(graphics, (g) => g?.mode ?? '')}
         onPick={(id) => void props.area.graphics({ mode: id as GraphicsMode, object: props.object } as never)}
       />
+      <Show when={mapState(graphics, (g) => g?.impostors !== undefined)}>
+        {() => (
+          <div class={classes.tight}>
+            <Choices
+              label="Far proteins"
+              choices={FarChoices}
+              active={mapState(graphics, (g) => (g?.impostors === false ? 'spheres' : 'silhouettes'))}
+              onPick={(id) => void props.area.impostors({ on: id === 'silhouettes', particles: props.object } as never)}
+            />
+            {/* where they start, while they are silhouettes (Ludo, 2026-11-15) */}
+            <Show when={mapState(graphics, (g) => !!props.api && g?.impostors === true)}>
+              {() => <FarSwitch area={props.area} api={props.api!} object={props.object} graphics={graphics} />}
+            </Show>
+          </div>
+        )}
+      </Show>
       {props.motion ? <MotionRows area={props.area} graphics={graphics} of={{ object: props.object }} /> : null}
+    </div>
+  );
+}
+
+/** Where the silhouettes start (`mesoscale.impostors` by, pixels, distance; lod-impostor.md) */
+const SwitchChoices = [
+  { id: 'size', label: 'Size on screen' },
+  { id: 'distance', label: 'Distance' },
+];
+
+/** The far-distance slider's end: 20 times the model's radius, 4 times the distance set, at least 1000 Å */
+export function farDistanceMax(radius: number, committed: number) {
+  return Math.max(1000, Math.round(radius * 20), Math.round(committed * 4));
+}
+
+/** The thinning's threshold in the box: "off" at 0 (and typed) */
+const formatThin = (v: number) => (v > 0 ? `${+v.toFixed(2)}` : 'off');
+/** "off" 0; a number with a point or a comma; anything else NaN (the box goes back) */
+const parseThin = (text: string) => (/^\s*off\s*$/i.test(text) ? 0 : Number(text.trim().replace(',', '.') || NaN));
+
+/**
+ * Where a model's far proteins turn into silhouettes, shown while they do: by each protein's size on screen (below N
+ * pixels) or its distance from the eye (beyond D); the far silhouettes thinned out (below a size, 0 off) and how much
+ * the kept ones are enlarged; a slider live while dragged (previews), one step on release
+ */
+function FarSwitch(props: {
+  area: MesoscaleApi;
+  api: ViewerApi;
+  object: string;
+  graphics: ReadonlyState<GraphicsInfo | undefined>;
+}) {
+  const sw = mapState(props.graphics, (g) => g?.impostorSwitch);
+  const overlaid = observableState(0);
+  const steps = gestureSteps<{ pixels?: number; distance?: number }>(props.api, {
+    label: 'Where the silhouettes start',
+    apply: (g, _key, change) => g.run('mesoscale.impostors', { particles: props.object, ...change }),
+    changed: () => overlaid.set(overlaid.value + 1),
+  });
+  // the thinning's steps their own (their label in the history)
+  const thinSteps = gestureSteps<{ thin?: number; thinScale?: number }>(props.api, {
+    label: 'How far silhouettes thin out',
+    apply: (g, _key, change) => g.run('mesoscale.impostors', { particles: props.object, ...change }),
+    changed: () => overlaid.set(overlaid.value + 1),
+  });
+  onCleanup(() => {
+    steps.settle();
+    thinSteps.settle();
+  });
+  // the slider's end, held while dragged: the previews apply, so a max of the state's distance would follow the knob
+  let max = 0;
+  let dragging = false;
+  const shown = derive([sw, overlaid.asReadonly] as const, (s) => {
+    const o = steps.overlay('switch');
+    const t = thinSteps.overlay('thin');
+    if (!dragging || !max) max = farDistanceMax(s?.radius ?? 0, s?.distance || s?.applied || 1000);
+    return {
+      by: s?.by ?? 'size',
+      pixels: o?.pixels ?? s?.pixels ?? 12,
+      distance: o?.distance ?? (s?.distance || s?.applied || 1000),
+      max,
+      thin: t?.thin ?? s?.thin ?? 8,
+      thinScale: t?.thinScale ?? s?.thinScale ?? 1,
+    };
+  });
+  const change = (patch: { pixels?: number; distance?: number }, end: boolean) => {
+    dragging = !end;
+    steps.change('switch', patch);
+    if (end) steps.settle();
+  };
+  const changeThin = (patch: { thin?: number; thinScale?: number }, end: boolean) => {
+    thinSteps.change('thin', patch);
+    if (end) thinSteps.settle();
+  };
+  return (
+    <div class={classes.tight}>
+      <Choices
+        label="Switch by"
+        choices={SwitchChoices}
+        active={mapState(shown, (s) => s.by)}
+        onPick={(id) => void props.area.impostors({ by: id as 'size' | 'distance', particles: props.object } as never)}
+      />
+      <Show when={mapState(shown, (s) => s.by === 'size')}>
+        {() => (
+          <div class={classes.line}>
+            <div class={classes.label}>Below</div>
+            <Slider
+              aria-label="Silhouettes below this size on screen"
+              value={mapState(shown, (s) => s.pixels)}
+              min={4}
+              max={64}
+              step={1}
+              scale="log"
+              unit="px"
+              onPreview={(v) => change({ pixels: v }, false)}
+              onCommit={(v) => change({ pixels: v }, true)}
+            />
+          </div>
+        )}
+      </Show>
+      <Show when={mapState(shown, (s) => s.by === 'distance')}>
+        {() => (
+          <div class={classes.line}>
+            <div class={classes.label}>Beyond</div>
+            <Slider
+              aria-label="Silhouettes beyond this distance"
+              value={mapState(shown, (s) => s.distance)}
+              min={100}
+              max={mapState(shown, (s) => s.max)}
+              step={1}
+              scale="log"
+              unit="Å"
+              onPreview={(v) => change({ distance: v }, false)}
+              onCommit={(v) => change({ distance: v }, true)}
+            />
+          </div>
+        )}
+      </Show>
+      {/* the far silhouettes thinned out, and how much the kept ones grow (Ludo, 2026-11-15) */}
+      <div class={classes.line}>
+        <div class={classes.label}>Thin below</div>
+        <Slider
+          aria-label="Far silhouettes thinned out below this size on screen; off at 0"
+          value={mapState(shown, (s) => s.thin)}
+          min={0}
+          max={16}
+          step={0.5}
+          unit="px"
+          format={formatThin}
+          parse={parseThin}
+          onPreview={(v) => changeThin({ thin: v }, false)}
+          onCommit={(v) => changeThin({ thin: v }, true)}
+        />
+      </div>
+      <Show when={mapState(shown, (s) => s.thin > 0)}>
+        {() => (
+          <div class={classes.line}>
+            <div class={classes.label}>Kept grow</div>
+            <Slider
+              aria-label="How much the silhouettes kept by the thinning are enlarged: 0 not, 1 the area covered kept"
+              value={mapState(shown, (s) => s.thinScale)}
+              min={0}
+              max={1.5}
+              step={0.05}
+              onPreview={(v) => changeThin({ thinScale: v }, false)}
+              onCommit={(v) => changeThin({ thinScale: v }, true)}
+            />
+          </div>
+        )}
+      </Show>
     </div>
   );
 }

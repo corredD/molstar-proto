@@ -31,6 +31,7 @@ import {
 } from '@molstar/graphics/geo/geometry/transform-data';
 import { createColors } from '@molstar/graphics/geo/geometry/color-data';
 import { ColorLevels } from '@molstar/graphics/geo/geometry/color-levels';
+import { ImpostorAtlas } from '@molstar/graphics/geo/geometry/impostor-atlas';
 import { Color } from '@molstar/core/util/color';
 import { createSizes } from '@molstar/graphics/geo/geometry/size-data';
 import { createMarkers, type MarkerData } from '@molstar/graphics/geo/geometry/marker-data';
@@ -42,6 +43,7 @@ import { Mat4, Vec3 } from '@molstar/core/math/linear-algebra';
 import { calculateTransformBoundingSphere, createDataArray } from '@molstar/graphics/gl/renderable/util';
 import { isPromiseLike } from '@molstar/core/util/type-helpers';
 import type { SizeValues } from '@molstar/graphics/gl/renderable/schema';
+import type { SpheresValues } from '@molstar/graphics/gl/renderable/spheres';
 import { BaseGeometry } from '@molstar/graphics/geo/geometry/base';
 import { ColorTheme } from '@molstar/graphics/theme/color';
 import { SizeTheme } from '@molstar/graphics/theme/size';
@@ -83,6 +85,43 @@ import { getElementCountQuality, getQualityProps } from '../../../util.js';
 import type { Representation } from '../../../representation.js';
 
 // ---- Params ----------------------------------------------------------------
+
+/**
+ * The smallest target drawn as an impostor (Å, its bounding radius): 0, every one, lipids and ions too (Ludo,
+ * 2026-11-15: "even below 22 Å can become silhouettes"); smaller ones would keep their last level of spheres
+ */
+export const ImpostorMinRadius = 0;
+
+/**
+ * Whether spheres with `props` can draw their last level as impostors (`lod-impostor.md`): `lodImpostor`, spheres (not
+ * a blob surface), not approximate (no impostor path there), two to four levels (the culling's and the segments' four,
+ * `MaxCullLevels`), and flat varyings (WebGL1 has none: the entry would be interpolated)
+ */
+export function canDrawImpostors(
+  props: {
+    readonly lodImpostor?: boolean;
+    readonly type?: string;
+    readonly approximate?: boolean;
+    readonly lodLevels: readonly unknown[];
+  },
+  graphics: GraphicsContext | undefined,
+) {
+  const levels = props.lodLevels.length;
+  return (
+    !!props.lodImpostor &&
+    props.type !== 'blob-surface' &&
+    !props.approximate &&
+    levels >= 2 &&
+    levels <= 4 &&
+    (!graphics || graphics.capabilities.flatInterpolation)
+  );
+}
+
+/**
+ * The texel (Å) from which an impostor's views are splatted from the spheres of level 1 (a tenth of the atoms, scaled as
+ * that level draws them): cellpack-mg's atlas 9.5 s from every atom (M1 Pro)
+ */
+const ImpostorCoarseTexel = 3;
 
 /** Removes the params every target kind shares (see `ParticleTargetCommonParams`). */
 function withoutCommon<P extends PD.Params>(params: P): P {
@@ -151,6 +190,63 @@ export const ParticleTargetStructureParams = {
     sizeFactor: PD.Numeric(1, { min: 0.01, max: 10, step: 0.01 }),
     detail: PD.Numeric(0, { min: 0, max: 3, step: 1 }, BaseGeometry.CustomQualityParamInfo),
     tryUseImpostor: PD.Boolean(true),
+    lodImpostor: PD.Boolean(true, {
+      ...BaseGeometry.CullingLodCategory,
+      description:
+        'The last level of detail: each copy far away drawn as an impostor, its silhouette from the nearest of the views made at load (`lod-impostor.md`); the last spheres cross-fade into it.',
+    }),
+    lodImpostorBy: PD.Select<'size' | 'distance'>(
+      'size',
+      [
+        ['size', 'Size on screen'],
+        ['distance', 'Distance'],
+      ],
+      {
+        ...BaseGeometry.CullingLodCategory,
+        description:
+          'Where each copy turns into its impostor: by its own size on screen, or by its distance from the eye',
+        hideIf: (p: { lodImpostor?: boolean }) => !p.lodImpostor,
+      },
+    ),
+    lodImpostorPixels: PD.Numeric(
+      12,
+      { min: 4, max: 64, step: 1 },
+      {
+        ...BaseGeometry.CullingLodCategory,
+        description: 'Size on screen: each copy an impostor below this many pixels across (its bounding sphere)',
+        hideIf: (p: { lodImpostor?: boolean; lodImpostorBy?: string }) => !p.lodImpostor || p.lodImpostorBy !== 'size',
+      },
+    ),
+    lodImpostorThin: PD.Numeric(
+      8,
+      { min: 0, max: 16, step: 0.5 },
+      {
+        ...BaseGeometry.CullingLodCategory,
+        description:
+          'Far copies thinned out below this many pixels across (stochastic simplification: a share kept by a hash of each, larger, the area covered the same; the others not drawn); 0 off',
+        hideIf: (p: { lodImpostor?: boolean }) => !p.lodImpostor,
+      },
+    ),
+    lodImpostorThinScale: PD.Numeric(
+      1,
+      { min: 0, max: 1.5, step: 0.05 },
+      {
+        ...BaseGeometry.CullingLodCategory,
+        description:
+          'How much the copies kept by the thinning are enlarged: 0 not at all (the area thins with them), 1 to keep the area covered, above 1 more',
+        hideIf: (p: { lodImpostor?: boolean; lodImpostorThin?: number }) => !p.lodImpostor || !(p.lodImpostorThin! > 0),
+      },
+    ),
+    lodImpostorDistance: PD.Numeric(
+      0,
+      { min: 0, max: 10000000, step: 1 },
+      {
+        ...BaseGeometry.CullingLodCategory,
+        description: `Distance: each copy an impostor beyond this distance from the eye (Å); 0: where a typical copy is ${ImpostorAtlas.AutoPixels} px across in a 720-px view`,
+        hideIf: (p: { lodImpostor?: boolean; lodImpostorBy?: string }) =>
+          !p.lodImpostor || p.lodImpostorBy !== 'distance',
+      },
+    ),
   }),
   ...forType('blob-surface', {
     blobSize: BlobSurfaceCoreParams.blobSize,
@@ -654,6 +750,24 @@ export interface TargetVisual {
    * none of them is one of its particles
    */
   setParticleFrames(frames: ParticleFrames | undefined, start: number, end: number): boolean;
+  /**
+   * The spheres its impostor's views are made of (`ImpostorAtlas.Item`), their tile for the impostors starting at
+   * `pixelBoundary` Å a pixel: a structure or sites target drawn as spheres with `lodImpostor`, levels and the size of
+   * `ImpostorMinRadius`; undefined otherwise
+   */
+  getImpostorSource(pixelBoundary: number): ImpostorAtlas.Source | undefined;
+  /**
+   * The atlas its impostors read (undefined: none) and its entry in it (-1: its last level spheres): taken by a structure
+   * or sites target drawn as spheres with `lodImpostor`, also one without an entry (a small target), so that all merge
+   * as one (the define); the others none
+   */
+  setImpostor(
+    atlas: ImpostorAtlas | undefined,
+    code: number,
+    impostorSwitch?: Spheres.LodImpostorSwitch,
+    thin?: number,
+    thinScale?: number,
+  ): void;
   destroy(): void;
 }
 
@@ -1122,6 +1236,51 @@ export function createTargetVisual(_targetId: number, materialId: number, graphi
     if (state.clipping !== undefined) Visual.setClipping(renderObject, state.clipping, lociApply, true);
   }
 
+  /** whether its impostors can be on: a structure or sites target drawn as spheres with `lodImpostor` */
+  function hasImpostors() {
+    if (!renderObject || renderObject.type !== 'spheres' || !currentTarget || !isElementTarget(currentTarget))
+      return false;
+    return !!currentProps && canDrawImpostors(currentProps, graphics);
+  }
+
+  function getImpostorSource(pixelBoundary: number): ImpostorAtlas.Source | undefined {
+    if (!hasImpostors()) return;
+    const values = renderObject!.values as unknown as SpheresValues;
+    const { radius } = values.invariantBoundingSphere.ref.value;
+    if (radius < ImpostorMinRadius) return;
+    const tile = ImpostorAtlas.tileSize(radius, pixelBoundary);
+    // a texel of `ImpostorCoarseTexel` Å or more: the spheres of level 1 (a tenth, scaled) splatted, not every atom
+    const levels = values.lodLevels.ref.value as Spheres.LodLevelsValue;
+    const coarse = (2 * radius) / tile >= ImpostorCoarseTexel && levels.length > 2;
+    const prefix = coarse ? { count: levels[1][3] / 6, scale: levels[1][4] } : undefined;
+    // what its views depend on: the target, its spheres, sizes, size factor, bounds, tile and level
+    const key = `${_targetId}:${geometryVersion}:${values.tSize.ref.version}:${values.uSizeFactor.ref.value}:${radius}:${tile}:${prefix ? `${prefix.count},${prefix.scale}` : ''}`;
+    return { key, radius, tile, get: () => ImpostorAtlas.getItem(values, tile, prefix) };
+  }
+
+  function setImpostor(
+    atlas: ImpostorAtlas | undefined,
+    code: number,
+    impostorSwitch?: Spheres.LodImpostorSwitch,
+    thin = 0,
+    thinScale = 1,
+  ) {
+    if (!renderObject || renderObject.type !== 'spheres' || geometry?.kind !== 'spheres') return;
+    const values = renderObject.values as unknown as SpheresValues;
+    const on = hasImpostors() ? atlas : undefined;
+    ImpostorAtlas.setValues(values, on);
+    const sw = on ? impostorSwitch : undefined;
+    ImpostorAtlas.setSwitch(values, sw, Spheres.LodImpostorBand / 2);
+    ImpostorAtlas.setThin(values, on ? thin : 0, thinScale);
+    const entry = on ? code : -2;
+    const value = values.lodLevels.ref.value as Spheres.LodLevelsValue;
+    const { k: _, ...current } = value.impostorSwitch ?? { k: 0 };
+    const switchChanged = JSON.stringify(value.impostorSwitch ? current : undefined) !== JSON.stringify(sw);
+    if ((value.impostor ?? -2) !== entry || switchChanged) {
+      (geometry as Spheres).shaderData.update({ lodImpostor: entry, lodImpostorSwitch: sw ?? null });
+    }
+  }
+
   function destroy() {
     renderObject = undefined;
     geometry = undefined;
@@ -1149,6 +1308,8 @@ export function createTargetVisual(_targetId: number, materialId: number, graphi
     mark,
     setLayers,
     setParticleFrames,
+    getImpostorSource,
+    setImpostor,
     destroy,
   };
 }

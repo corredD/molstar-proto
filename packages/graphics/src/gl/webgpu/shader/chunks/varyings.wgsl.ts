@@ -8,6 +8,7 @@
 import { clip_flag_wgsl } from './clip.wgsl.js';
 import { assign_data_index_wgsl } from './read-from-texture.wgsl.js';
 import { assign_color_levels_wgsl } from './color-levels.wgsl.js';
+import { assign_lod_impostor_factor_wgsl } from './lod-impostor.wgsl.js';
 
 /**
  * \`VertexOutput\` with the varyings shared by the graphics programs at locations 0 to 8 and 15, and the program's
@@ -75,9 +76,10 @@ export const assign_quad_position_group_wgsl = /* wgsl */ `
 /**
  * Levels of detail of the items drawn as quads (spheres, points), after `out.vModelPosition`: `lodFactor` the level's
  * scale (a coarser level's fewer items larger) faded at the level's range (1 without levels), `lodCulled` beyond the
- * range
+ * range; with impostors (`dLodImpostor`, after `assign_lod_impostor_wgsl`) by the copy's distance, its share of the band
  */
-export const assign_lod_factor_wgsl = /* wgsl */ `
+function lodFactorWgsl(impostor: boolean) {
+  return /* wgsl */ `
     var lodFactor = 1.0;
     var lodCulled = false;
     let lod = uDraw.uLod;
@@ -89,15 +91,29 @@ export const assign_lod_factor_wgsl = /* wgsl */ `
             let lodScale = lod.w;
         #endif
         if (uGlobal.uModelScale != 1.0) {
-            lodFactor = lodScale;
+            #if defined(dLodImpostorLevel) || defined(dLodImpostorBand)
+                // the impostor's radius its bounding sphere's (\`assign_lod_impostor_varyings_wgsl\`)
+                lodFactor = select(lodScale, 1.0, lodImpostor);
+            #else
+                lodFactor = lodScale;
+            #endif
         } else {
+            #if defined(dLodImpostorLevel) || defined(dLodImpostorBand)
+${impostor ? assign_lod_impostor_factor_wgsl : ''}
+            #else
             let d = (dot(uGlobal.uCameraPlane.xyz, out.vModelPosition) + uGlobal.uCameraPlane.w) / uGlobal.uModelScale;
             let level = lodAt(d, lod.xyz, lodScale);
             lodFactor = level.factor;
             lodCulled = level.culled;
+            #endif
         }
     }
 `;
+}
+
+export const assign_lod_factor_wgsl = lodFactorWgsl(false);
+/** With impostors (\`dLodImpostor\`, spheres): their switch (\`assign_lod_impostor_factor_wgsl\`) */
+export const assign_lod_factor_impostor_wgsl = lodFactorWgsl(true);
 
 /**
  * Grid textures (smoothed colors etc.) by the prefix of their uniforms and the type define (the color type's grid value

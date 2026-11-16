@@ -433,6 +433,8 @@ export const GlobalUniformSchema = {
    * size in every pass of a frame (the pick at its scale)
    */
   uCssHeight: GlobalUniformSpec('f'),
+  /** the levels' view scale (`LodView.set`: coarser while the camera moves, `Renderer.setLodScale`), 1 at rest */
+  uLodScale: GlobalUniformSpec('f'),
 
   uCameraPosition: GlobalUniformSpec('v3'),
   uCameraDir: GlobalUniformSpec('v3'),
@@ -719,6 +721,36 @@ export const ColorLevelsSchema = {
 } as const;
 export type ColorLevelsSchema = typeof ColorLevelsSchema;
 export type ColorLevelsValues = Values<ColorLevelsSchema>;
+
+/** The last level of detail of spheres as octahedral impostors (`ImpostorAtlas`, `lod-impostor.md`) */
+export const LodImpostorSchema = {
+  /**
+   * the views of the items: coverage, front height and normal (x, y), a byte each; one texture for all its holders. Not
+   * `usedIf` its define: a render item binds its textures whatever the defines, and reads linear ones as such (the
+   * precompile signatures compare both)
+   */
+  tImpostor: TextureSpec('image-uint8', 'rgba', 'ubyte', 'linear', undefined, { shared: true }),
+  /** its size in texels */
+  uImpostorTexDim: ObjectUniformSpec('v2'),
+  /**
+   * where each copy switches (`ImpostorAtlas.switchShare`): x the mode (0 the levels' boundary, 1 by size on screen, 2
+   * by distance from the eye), y the threshold (pixels, Å), z the band's half in octaves, w the largest radius the
+   * ranges cover (by size: larger ones count as it), 0 none
+   */
+  uLodImpostorSwitch: ObjectUniformSpec('v4'),
+  /** stochastic simplification (`ImpostorAtlas.thinKeep`): x the size on screen (px) below which copies thin out, 0 off */
+  uImpostorThin: ObjectUniformSpec('v2'),
+  dLodImpostor: DefineSpec('boolean'),
+  /**
+   * the programs of the impostors' levels, per draw (\`MultiDrawBaseData.define\`, never set on values): the last level's
+   * (impostors, and the spheres of items without one), the band's (the last spheres, dithered); the other levels the
+   * sphere program as without impostors
+   */
+  dLodImpostorLevel: DefineSpec('boolean'),
+  dLodImpostorBand: DefineSpec('boolean'),
+} as const;
+export type LodImpostorSchema = typeof LodImpostorSchema;
+export type LodImpostorValues = Values<LodImpostorSchema>;
 
 export const BaseSchema = {
   dGeometryType: DefineSpec('string', [

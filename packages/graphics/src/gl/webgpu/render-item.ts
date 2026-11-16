@@ -1217,9 +1217,10 @@ export function createWebGPURenderItem<T extends ProgramVariant>(
       if (drawCount === 0 || instanceCount === 0 || !layersFit) return;
       if (externalTextures.length) refreshExternalTextures();
       const gpuGlobals = globals ? asWebGPUGlobalBindings(globals) : undefined;
-      const program = getWebGPUProgram(variant);
-      if (!program) return;
-      const state = bindProgram(program, gpuGlobals);
+      const base = getWebGPUProgram(variant);
+      if (!base) return;
+      let program = base;
+      let state = bindProgram(program, gpuGlobals);
       if (!state) return;
       const pass = state.encoder;
       if (indexBuffer) {
@@ -1238,6 +1239,15 @@ export function createWebGPURenderItem<T extends ProgramVariant>(
         // culled and level-of-detail ranges, `firstInstance` offsets the instanced attributes
         for (const level of mdbDataList) {
           if (level.count === 0) continue;
+          // a level with a program of its own (\`MultiDrawBaseData.define\`: the impostors'), bound in turn
+          const levelProgram = level.define ? getWebGPUProgram(variant, level.define) : base;
+          if (!levelProgram) continue;
+          if (levelProgram !== program) {
+            const bound = bindProgram(levelProgram, gpuGlobals);
+            if (!bound) continue;
+            program = levelProgram;
+            state = bound;
+          }
           const drawBlock = getDrawBlock(program, gpuGlobals ?? noGlobals, level);
           const object = getBindGroup(program, 2, objectBlock, textures, drawBlock);
           state.setBindGroup(2, object.group, object.offsets);

@@ -33,13 +33,19 @@ import {
   wboit_output_wgsl,
 } from './chunks/output.wgsl.js';
 import { packing_wgsl } from './chunks/packing.wgsl.js';
+import {
+  assign_lod_impostor_varyings_wgsl,
+  assign_lod_impostor_wgsl,
+  lod_impostor_varyings_wgsl,
+  lod_impostor_wgsl,
+} from './chunks/lod-impostor.wgsl.js';
 import { read_from_texture_wgsl } from './chunks/read-from-texture.wgsl.js';
 import {
   assign_quad_position_group_wgsl,
   assign_size_wgsl,
   assign_varyings_wgsl,
   vertex_output_wgsl,
-  assign_lod_factor_wgsl,
+  assign_lod_factor_impostor_wgsl,
 } from './chunks/varyings.wgsl.js';
 
 /** Sphere impostors: a screen-aligned quad per sphere covering its projection, ray-sphere intersection per fragment */
@@ -54,6 +60,7 @@ ${clip_functions_wgsl}
 ${packing_wgsl}
 ${sphere_shared_wgsl}
 ${color_levels_wgsl}
+${lod_impostor_wgsl}
 
 #if !defined(dClipPrimitive) && defined(dClipVariant_pixel) && defined(dClipObjects)
     #define dClipSphere
@@ -65,7 +72,8 @@ ${vertex_output_wgsl(`    // the sphere's view-space center (negated) and radius
 #if defined(dClipSphere)
     // 1 where the clip objects may cut the sphere (\`clipSphereClass\`): the fragment stage's clip tests skipped if 0
     @location(11) @interpolate(flat) vClipSome: u32,
-#endif`)}
+#endif
+${lod_impostor_varyings_wgsl}`)}
 
 /**
  * The quad corner \`mapping\` of the bounding rectangle of a perspective-projected 3D sphere (\`sphereBounds\`), with the
@@ -94,6 +102,7 @@ fn vertexMain(in: VertexInput) -> VertexOutput {
     position = applyWiggle(position, group, wiggle);
     let aTransform = affineTransform(in.aTransform0, in.aTransform1, in.aTransform2);
     let transform = uObject.uObjectTransform * applyTumble(aTransform, invariantBoundingSphere(in));
+    ${assign_lod_impostor_wgsl}
 
     let position4 = vec4<f32>(position, 1.0);
     out.vModelPosition = (uGlobal.uModel * transform * position4).xyz; // for clipping in the fragment stage, the color levels
@@ -132,8 +141,9 @@ fn vertexMain(in: VertexInput) -> VertexOutput {
     let modelScale = uGlobal.uModelScale;
     var radius = size * modelScale;
 
-    ${assign_lod_factor_wgsl}
+    ${assign_lod_factor_impostor_wgsl}
     radius *= lodFactor;
+    ${assign_lod_impostor_varyings_wgsl}
 
     var mvPosition = uGlobal.uModelView * transform * position4;
     out.vViewPosition = mvPosition.xyz;
@@ -295,6 +305,13 @@ fn resolveSphere(position: vec4<f32>) -> Resolved {
     #if defined(dClipSphere)
         // the raster tested the sphere: every one by pixel, as it drew it
         out.vClipSome = 1u;
+    #endif
+    #if defined(dLodImpostorLevel)
+        // a sphere (objects with impostors are not the raster's: \`isSphereRasterEligible\`)
+        out.vImpostorX = vec4<f32>(0.0, 0.0, 0.0, -1.0);
+    #endif
+    #if defined(dLodImpostorLevel) || defined(dLodImpostorBand)
+        out.vImpostorY = vec4<f32>(0.0, 0.0, 0.0, -1.0);
     #endif
     resolved.out = out;
     resolved.hit = true;
@@ -472,7 +489,30 @@ fn fragmentMain(fragmentIn: VertexOutput) -> FragmentOutput {
         #else
             let clipSome = false;
         #endif
-        let h = sphereImpostor(in.vSphere.w, in.vPoint, in.vSphere.xyz, clipFlag, clipSome);
+        #if defined(dLodImpostorLevel) || defined(dLodImpostorBand)
+            // the band alone dithers (-1: a sphere of no band)
+            if (in.vImpostorY.w != -1.0 && impostorDithered(fragmentIn.position, in.vImpostorY)) {
+                discard;
+            }
+        #endif
+        #if defined(dLodImpostorLevel)
+            var h: SphereHit;
+            if (in.vImpostorX.w >= 0.0) {
+                // a copy far away: its impostor (\`lod_impostor_wgsl\`)
+                let i = impostorHit(in.vSphere, in.vPoint, in.vImpostorX, in.vImpostorY);
+                h.hit = i.hit;
+                h.modelPosition = i.modelPosition;
+                h.viewPosition = i.viewPosition;
+                h.normal = i.normal;
+                h.depth = i.depth;
+                h.interior = false;
+                h.isCap = false;
+            } else {
+                h = sphereImpostor(in.vSphere.w, in.vPoint, in.vSphere.xyz, clipFlag, clipSome);
+            }
+        #else
+            let h = sphereImpostor(in.vSphere.w, in.vPoint, in.vSphere.xyz, clipFlag, clipSome);
+        #endif
         if (!h.hit || h.depth < 0.0 || h.depth > 1.0) {
             discard;
         }

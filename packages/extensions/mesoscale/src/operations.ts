@@ -177,6 +177,22 @@ export interface GraphicsInfo {
   readonly tumble?: number;
   /** A particle list's colors that follow the zoom (`mesoscale.colorLevels`): their edges, null off, none mixed */
   readonly colorLevels?: ColorLevels.Props | null;
+  /** A particle list's far proteins as silhouettes (`mesoscale.impostors`), or spheres; none mixed or none drawn */
+  readonly impostors?: boolean;
+  /** where they switch: by size on screen (pixels) or distance (Å, 0 the model's size); none mixed or none drawn */
+  readonly impostorSwitch?: {
+    readonly by: 'size' | 'distance';
+    readonly pixels: number;
+    readonly distance: number;
+    /** the model's radius (Å): the distance slider's upper scale */
+    readonly radius: number;
+    /** the distance applied (Å): `distance`, or the representation's default where 0 */
+    readonly applied: number;
+    /** the far copies thinned out below this many pixels across, 0 off */
+    readonly thin: number;
+    /** how much the kept copies are enlarged: 0 not, 1 the area covered kept */
+    readonly thinScale: number;
+  };
 }
 
 /** What a graphics mode sets on each kind of object (apps/prism-me/_spec/ui.md §4, Graphics & Motion) */
@@ -1251,6 +1267,149 @@ export class MesoscaleApi extends ApiArea {
       const painted = (one ? [one] : lists(ctx)).some((l) => !!clearedColors(ctx, l));
       const note = painted ? ' A color set in Look is that color until the atoms, and By zoom stays on.' : '';
       return ApiResult.ok(`Colors follow the zoom.${note}`, { nodes });
+    },
+  });
+
+  /**
+   * Far proteins as silhouettes (impostors, the default) or as their last level of spheres (`lod-impostor.md`;
+   * apps/prism-me/_spec/ui.md §4 Graphics & Motion): every structure target of the list(s), one step
+   */
+  readonly impostors = this.operation({
+    id: 'mesoscale.impostors',
+    title: 'Far proteins as silhouettes or spheres',
+    params: {
+      on: OptionalParam(
+        PD.Boolean(true, {
+          description:
+            'Silhouettes (impostors: each far copy its outline, flat) or off: spheres (the last level of detail)',
+        }),
+      ),
+      by: OptionalParam(
+        PD.Select<'size' | 'distance'>('size', PD.arrayToOptions(['size', 'distance'] as const), {
+          description: 'Where each copy switches: by its own size on screen, or by its distance from the eye',
+        }),
+      ),
+      pixels: OptionalParam(
+        PD.Numeric(12, { min: 4, max: 64 }, { description: 'By size: silhouettes below this many pixels across' }),
+      ),
+      distance: OptionalParam(
+        PD.Numeric(
+          0,
+          { min: 0 },
+          { description: "By distance: silhouettes beyond this distance (Å); 0 the model's size" },
+        ),
+      ),
+      thin: OptionalParam(
+        PD.Numeric(
+          8,
+          { min: 0, max: 16 },
+          {
+            description:
+              'Far silhouettes thinned out below this many pixels across (a share kept, the others dropped); 0 off',
+          },
+        ),
+      ),
+      thinScale: OptionalParam(
+        PD.Numeric(
+          1,
+          { min: 0, max: 1.5 },
+          {
+            description:
+              'How much the silhouettes kept by the thinning are enlarged: 0 not at all, 1 to keep the area covered, up to 1.5',
+          },
+        ),
+      ),
+      particles: PD.Text('', { description: 'A particle list (a model) by label or state ref; empty: every one' }),
+    },
+    async run(values, ctx) {
+      const { on, by, pixels, distance, thin, thinScale, particles } = values as {
+        on?: boolean;
+        by?: 'size' | 'distance';
+        pixels?: number;
+        distance?: number;
+        thin?: number;
+        thinScale?: number;
+        particles: string;
+      };
+      if (
+        on === undefined &&
+        by === undefined &&
+        pixels === undefined &&
+        distance === undefined &&
+        thin === undefined &&
+        thinScale === undefined
+      ) {
+        return ApiResult.fail('invalid', 'Nothing to change.', 'Give on, by, pixels, distance, thin or thinScale.');
+      }
+      if (thin !== undefined && !(thin >= 0 && thin <= 16)) {
+        return ApiResult.fail('invalid', 'Thinning goes from 0 (off) to 16 pixels.', 'Nothing was changed.');
+      }
+      if (thinScale !== undefined && !(thinScale >= 0 && thinScale <= 1.5)) {
+        return ApiResult.fail('invalid', 'The enlargement goes from 0 to 1.5.', 'Nothing was changed.');
+      }
+      if (pixels !== undefined && !(pixels >= 4 && pixels <= 64)) {
+        return ApiResult.fail('invalid', 'Pixels go from 4 to 64.', 'Nothing was changed.');
+      }
+      if (distance !== undefined && !(distance >= 0)) {
+        return ApiResult.fail('invalid', "A distance is 0 (the model's size) or more.", 'Nothing was changed.');
+      }
+      const one = particles.trim() ? oneList(ctx, particles) : undefined;
+      if (isFailure(one)) return one;
+      const reps = (one ? [one] : lists(ctx))
+        .flatMap((l) => l.representations.map((r) => r.cell))
+        .filter(
+          (r) => !!(r.transform.params as { type?: { params?: { structure?: object } } }).type?.params?.structure,
+        );
+      if (!reps.length) {
+        return ApiResult.fail('not-found', 'No particles are drawn by their structures.', 'Show a model as targets.');
+      }
+      // what is given, over each representation's own; a threshold given for a mode switches to it
+      const patch: Record<string, unknown> = {};
+      if (on !== undefined) patch.lodImpostor = on;
+      if (by !== undefined) patch.lodImpostorBy = by;
+      if (pixels !== undefined) {
+        patch.lodImpostorPixels = pixels;
+        if (by === undefined) patch.lodImpostorBy = 'size';
+      }
+      if (distance !== undefined) {
+        patch.lodImpostorDistance = distance;
+        if (by === undefined) patch.lodImpostorBy = 'distance';
+      }
+      if (thin !== undefined) patch.lodImpostorThin = thin;
+      if (thinScale !== undefined) patch.lodImpostorThinScale = thinScale;
+      // one commit for every representation (bulk is one change)
+      const b = ctx.plugin.state.data.build();
+      const nodes: string[] = [];
+      for (const r of reps) {
+        const old = r.transform.params as { type: ParticleType };
+        const structure = old.type.params.structure as Record<string, unknown>;
+        // absent: the params' defaults (on, by size on screen)
+        const next = { ...structure, ...patch };
+        if (Object.keys(patch).every((k) => (structure[k] ?? ImpostorDefaults[k]) === next[k])) continue;
+        const type = { ...old.type, params: { ...old.type.params, structure: next } };
+        b.to(r).update({ ...old, type });
+        nodes.push(r.transform.ref);
+      }
+      // the thinning as it ends up (the given over the first representation's)
+      const first = (reps[0].transform.params as { type: ParticleType }).type.params.structure as Record<string, unknown>;
+      const thinNow = thin ?? ((first.lodImpostorThin ?? ImpostorDefaults.lodImpostorThin) as number);
+      const thinning =
+        thin === undefined && thinScale === undefined
+          ? ''
+          : !(thinNow > 0)
+            ? `, not thinned${thinScale !== undefined ? ` (the kept enlarged ×${thinScale} when thinning)` : ''}`
+            : `, thinned below ${thinNow} px${thinScale !== undefined ? `, the kept enlarged ×${thinScale}` : ''}`;
+      const what =
+        on === false
+          ? 'spheres'
+          : patch.lodImpostorBy === 'distance'
+            ? `silhouettes${distance ? ` beyond ${distance} Å` : ' by distance'}`
+            : patch.lodImpostorBy === 'size'
+              ? `silhouettes${pixels ? ` below ${pixels} px` : ' by size on screen'}`
+              : 'silhouettes';
+      if (!nodes.length) return ApiResult.already(`Far proteins are already ${what}${thinning}.`);
+      await b.commit();
+      return ApiResult.ok(`Far proteins drawn as ${what}${thinning}.`, { nodes });
     },
   });
 
@@ -3131,13 +3290,81 @@ function graphicsOf(o: GraphicsObject): GraphicsInfo | undefined {
     levelsOf,
     types.filter((t) => 'structure' in t),
   );
+  // far proteins as silhouettes (absent: the param's default, on)
+  const impostors = common(
+    (t) => (t as { structure: { lodImpostor?: boolean } }).structure.lodImpostor !== false,
+    types.filter((t) => 'structure' in t),
+  );
+  const impostorSwitch = common(
+    (t) => {
+      const s = (t as { structure: Record<string, unknown> }).structure;
+      const at = (k: string) => s[k] ?? ImpostorDefaults[k];
+      return {
+        by: at('lodImpostorBy') as 'size' | 'distance',
+        pixels: at('lodImpostorPixels') as number,
+        distance: at('lodImpostorDistance') as number,
+        thin: at('lodImpostorThin') as number,
+        thinScale: at('lodImpostorThinScale') as number,
+      };
+    },
+    types.filter((t) => 'structure' in t),
+  );
   return {
     ...(mode ? { mode } : {}),
     ...(colorLevels !== undefined ? { colorLevels } : {}),
+    ...(impostors !== undefined ? { impostors } : {}),
+    ...(impostorSwitch !== undefined
+      ? { impostorSwitch: { ...impostorSwitch, radius: drawnRadius(o), applied: appliedDistance(o) } }
+      : {}),
     wiggle: common((t) => findAnimation(t)?.wiggleAmplitude ?? 0) ?? 0,
     tumble: common((t) => findAnimation(t)?.tumbleAmplitude ?? 0) ?? 0,
   };
 }
+
+/** The radius of what an object's representations draw (their render objects' bounds), 0 for none */
+function drawnRadius(o: GraphicsObject) {
+  let radius = 0;
+  for (const r of o.representations) {
+    const repr = (
+      r.obj?.data as
+        | {
+            repr?: {
+              renderObjects?: readonly { values: { boundingSphere: { ref: { value: { radius: number } } } } }[];
+            };
+          }
+        | undefined
+    )?.repr;
+    for (const ro of repr?.renderObjects ?? []) radius = Math.max(radius, ro.values.boundingSphere.ref.value.radius);
+  }
+  return radius;
+}
+
+/** The impostors' distance as an object's representations apply it (their level value's switch), 0 for none */
+function appliedDistance(o: GraphicsObject) {
+  for (const r of o.representations) {
+    const repr = (
+      r.obj?.data as
+        | { repr?: { renderObjects?: readonly { values: { lodLevels?: { ref: { value: unknown } } } }[] } }
+        | undefined
+    )?.repr;
+    for (const ro of repr?.renderObjects ?? []) {
+      const sw = (ro.values.lodLevels?.ref.value as { impostorSwitch?: { mode: string; value: number } } | undefined)
+        ?.impostorSwitch;
+      if (sw?.mode === 'distance') return sw.value;
+    }
+  }
+  return 0;
+}
+
+/** The impostors' structure params by default, where a representation has none (`mesoscale.impostors`) */
+const ImpostorDefaults: Record<string, unknown> = {
+  lodImpostor: true,
+  lodImpostorBy: 'size',
+  lodImpostorPixels: 12,
+  lodImpostorDistance: 0,
+  lodImpostorThin: 8,
+  lodImpostorThinScale: 1,
+};
 
 /** A particle representation's type params, as `mesoscale.colorLevels` reads and writes them */
 type ParticleType = { params: { structure: { colorLevels?: { name: string; params: object } } } };

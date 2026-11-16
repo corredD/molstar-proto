@@ -160,6 +160,7 @@ describe('uniform-buffer', () => {
       ['uModelScale', 840],
       ['uDrawingBufferSize', 848],
       ['uCssHeight', 856],
+      ['uLodScale', 860],
       ['uCameraPosition', 864],
       ['uCameraDir', 880],
       ['uCameraPlane', 896],
