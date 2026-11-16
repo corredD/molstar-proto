@@ -41,7 +41,6 @@ import {
   type ParticleTargetRepresentationProps,
   createTargetVisual,
   canDrawImpostors,
-  ImpostorAutoDistance,
   ImpostorMinRadius,
   createParticleTargetPropsProvider,
   getTargetGeometryChoice,
@@ -61,7 +60,6 @@ import {
 import type { Mesh } from '@molstar/graphics/geo/geometry/mesh/mesh';
 import { Spheres } from '@molstar/graphics/geo/geometry/spheres/spheres';
 import { ImpostorAtlas } from '@molstar/graphics/geo/geometry/impostor-atlas';
-import { Sphere3D } from '@molstar/core/math/geometry';
 
 export { ParticleTargetRepresentationParams };
 export type { ParticleTargetRepresentationProps };
@@ -277,7 +275,7 @@ export function ParticleTargetRepresentation(
   /**
    * Where each copy switches (`lod-impostor.md`): by size on screen or distance (the structure props), the radii of the
    * smallest and largest item (the ranges cover them; the band-only small items from the smallest's), the distance by
-   * default the model's radius times `ImpostorAutoDistance`
+   * default where a typical copy is `ImpostorAutoPixels` px across (`getImpostorAutoDistance`)
    */
   function getImpostorSwitch(
     sources: readonly ImpostorAtlas.Source[],
@@ -289,18 +287,9 @@ export function ParticleTargetRepresentation(
     const r1 = getImpostorRadiusCap(sources, owners);
     if (lodImpostorBy === 'distance') {
       let value = lodImpostorDistance;
-      if (!(value > 0)) {
-        const b = Sphere3D();
-        let first = true;
-        for (const v of targetVisuals.values()) {
-          const bs = v.renderObject?.values.boundingSphere.ref.value as Sphere3D | undefined;
-          if (!bs || bs.radius <= 0) continue;
-          if (first) Sphere3D.copy(b, bs);
-          else Sphere3D.expandBySphere(b, b, bs);
-          first = false;
-        }
-        value = Math.max(1, b.radius * ImpostorAutoDistance);
-      }
+      // by default where a typical copy (the copies' median radius) is \`ImpostorAutoPixels\` px across in a 720-px-high
+      // view of 45°: a distance of the proteins, not of the model (a slab's radius is tens of thousands of Å)
+      if (!(value > 0)) value = getImpostorAutoDistance(sources, owners);
       return { mode: 'distance', value, radii: [r0, r1] };
     }
     return { mode: 'pixels', value: lodImpostorPixels, radii: [r0, r1] };
@@ -522,6 +511,16 @@ export function ParticleTargetRepresentation(
       getParticleTargetSignatures(props, ctx),
     destroy,
   };
+}
+
+/** The impostors' distance by default (`lodImpostorDistance` 0, `ImpostorAtlas.autoDistance`) */
+function getImpostorAutoDistance(sources: readonly ImpostorAtlas.Source[], owners: readonly TargetVisual[]) {
+  return ImpostorAtlas.autoDistance(
+    sources.map((s, i) => ({
+      radius: s.radius,
+      count: owners[i]?.particleIndices ? OrderedSet.size(owners[i].particleIndices!) : 1,
+    })),
+  );
 }
 
 /**

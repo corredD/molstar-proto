@@ -584,4 +584,28 @@ export namespace ImpostorAtlas {
     const word = Math.imul(((x >>> ((x >>> 28) + 4)) ^ x) >>> 0, 277803737) >>> 0;
     return (((word >>> 22) ^ word) >>> 0) / 4294967296;
   }
+
+  /** The size on screen (px) a typical copy has at the impostors' distance by default (`autoDistance`) */
+  export const AutoPixels = 12;
+
+  /**
+   * The impostors' distance by default: where a copy of the median radius (`items` by their copies) is `AutoPixels`
+   * across in a 720-px-high view of 45°, a distance of the proteins whatever the model's extent (a slab's radius is tens
+   * of thousands of Å)
+   */
+  export function autoDistance(items: readonly { readonly radius: number; readonly count: number }[]) {
+    const sorted = [...items].sort((a, b) => a.radius - b.radius);
+    let total = 0;
+    for (const it of sorted) total += it.count;
+    let acc = 0;
+    let median = 30;
+    for (const it of sorted) {
+      acc += it.count;
+      if (acc >= 0.5 * total) {
+        median = it.radius;
+        break;
+      }
+    }
+    return Math.round((2 * median) / AutoPixels / ((2 * Math.tan(Math.PI / 8)) / 720));
+  }
 }

@@ -286,4 +286,14 @@ describe('impostor atlas', () => {
     expect(ImpostorAtlas.thinFactor(p * (1 + ImpostorAtlas.ThinFade), p)).toBe(0);
     expect(ImpostorAtlas.thinFactor(p * (1 + ImpostorAtlas.ThinFade / 2), p)).toBeGreaterThan(0);
   });
+
+  it('by distance by default: where a copy of the median radius (by copies) is 12 px across in a 720-px view', () => {
+    // a yeast slab: millions of copies of 20 to 90 Å, the model 24,000 Å in radius: a distance of proteins
+    const d = ImpostorAtlas.autoDistance([
+      { radius: 20, count: 1000 },
+      { radius: 50, count: 3000 },
+      { radius: 90, count: 500 },
+    ]);
+    expect(d).toBeCloseTo((2 * 50) / 12 / ((2 * Math.tan(Math.PI / 8)) / 720), 0);
+  });
 });

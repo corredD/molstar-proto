@@ -93,12 +93,6 @@ import type { Representation } from '../../../representation.js';
 export const ImpostorMinRadius = 0;
 
 /**
- * The impostors' distance by default (`lodImpostorDistance` 0), in the model's radii: where the whole model fits a view
- * of 45° (1 / sin 22.5°): closer, one looks at its proteins; farther, at the cell
- */
-export const ImpostorAutoDistance = 2.6;
-
-/**
  * Whether spheres with `props` can draw their last level as impostors (`lod-impostor.md`): `lodImpostor`, spheres (not
  * a blob surface), not approximate (no impostor path there), two to four levels (the culling's and the segments' four,
  * `MaxCullLevels`), and flat varyings (WebGL1 has none: the entry would be interpolated)
@@ -224,7 +218,7 @@ export const ParticleTargetStructureParams = {
       },
     ),
     lodImpostorThin: PD.Numeric(
-      4,
+      8,
       { min: 0, max: 16, step: 0.5 },
       {
         ...BaseGeometry.CullingLodCategory,
@@ -238,7 +232,7 @@ export const ParticleTargetStructureParams = {
       { min: 0, max: 10000000, step: 1 },
       {
         ...BaseGeometry.CullingLodCategory,
-        description: `Distance: each copy an impostor beyond this distance from the eye (Å); 0: ${ImpostorAutoDistance} times the model's radius, where the whole model fits the view`,
+        description: `Distance: each copy an impostor beyond this distance from the eye (Å); 0: where a typical copy is ${ImpostorAtlas.AutoPixels} px across in a 720-px view`,
         hideIf: (p: { lodImpostor?: boolean; lodImpostorBy?: string }) =>
           !p.lodImpostor || p.lodImpostorBy !== 'distance',
       },
