@@ -33,6 +33,11 @@ export function lod_impostor_varyings(qualifier: 'out' | 'in') {
     const float ImpostorThinMinKeep = 1.0 / 64.0;
     const float ImpostorThinFade = 0.25;
     const float ImpostorThinArea = 1.0 + ImpostorThinFade * 13.0 / 35.0;
+    // the kept copies' scale (\`ImpostorAtlas.thinScale\`): \`g\` the area-keeping one, to the power \`k\` up to 1, above
+    // it bounded (at most \`k\` times the threshold's size)
+    float impostorThinScale(const in float g, const in float p, const in float k) {
+        return k <= 1.0 ? pow(g, k) : g * (1.0 + (k - 1.0) * (1.0 - sqrt(min(p, 1.0))));
+    }
     #if __VERSION__ != 100
         float impostorCopyHash(const in float segment, const in float instance) {
             uint x = (uint(segment) * 0x9e3779b1u) ^ uint(instance);
@@ -147,8 +152,8 @@ export const assign_lod_impostor_varyings = `
                 #endif
                 float end = p * (1.0 + ImpostorThinFade);
                 float t = smoothstep(p, end, hash);
-                // the kept ones enlarged by the area-keeping scale to the power \`uImpostorThin.y\` (\`thinScale\`)
-                float factor = hash >= end ? 0.0 : pow(inversesqrt(min(1.0, p * ImpostorThinArea)), uImpostorThin.y) * (1.0 - t);
+                // the kept ones enlarged by \`uImpostorThin.y\` of the area-keeping scale (\`thinScale\`)
+                float factor = hash >= end ? 0.0 : impostorThinScale(inversesqrt(min(1.0, p * ImpostorThinArea)), p, uImpostorThin.y) * (1.0 - t);
                 if (factor <= 0.0) lodCulled = true;
                 vSphere.w *= factor;
             }

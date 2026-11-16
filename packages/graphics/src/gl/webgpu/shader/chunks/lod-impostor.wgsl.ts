@@ -128,8 +128,8 @@ export const assign_lod_impostor_varyings_wgsl = /* wgsl */ `
                 #endif
                 let end = p * (1.0 + ImpostorThinFade);
                 let t = smoothstep(p, end, hash);
-                // the kept ones enlarged by the area-keeping scale to the power \`uImpostorThin.y\` (\`thinScale\`)
-                let factor = select(pow(inverseSqrt(min(1.0, p * ImpostorThinArea)), uObject.uImpostorThin.y) * (1.0 - t), 0.0, hash >= end);
+                // the kept ones enlarged by \`uImpostorThin.y\` of the area-keeping scale (\`thinScale\`)
+                let factor = select(impostorThinScale(inverseSqrt(min(1.0, p * ImpostorThinArea)), p, uObject.uImpostorThin.y) * (1.0 - t), 0.0, hash >= end);
                 if (factor <= 0.0) {
                     lodCulled = true;
                 }
@@ -151,6 +151,14 @@ const ImpostorFlatOctaves = 1.0;
 const ImpostorThinMinKeep = 1.0 / 64.0;
 const ImpostorThinFade = 0.25;
 const ImpostorThinArea = 1.0 + ImpostorThinFade * 13.0 / 35.0;
+
+/**
+ * the kept copies' scale (\`ImpostorAtlas.thinScale\`): \`g\` the area-keeping one, to the power \`k\` up to 1, above it
+ * bounded (at most \`k\` times the threshold's size)
+ */
+fn impostorThinScale(g: f32, p: f32, k: f32) -> f32 {
+    return select(g * (1.0 + (k - 1.0) * (1.0 - sqrt(min(p, 1.0)))), pow(g, k), k <= 1.0);
+}
 fn impostorCopyHash(segment: u32, instance: u32) -> f32 {
     var x = (segment * 0x9e3779b1u) ^ instance;
     x = x * 747796405u + 2891336453u;

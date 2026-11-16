@@ -668,10 +668,13 @@ export namespace ImpostorAtlas {
 
   /**
    * the kept copies' scale: \`1 / √(p ThinArea)\` (the area covered kept, the fade's included; at least 1) to the power
-   * \`k\`: 0 not enlarged (the area thinned with the copies), 1 the area kept, above it more (Ludo: a control)
+   * \`k\` up to 1 (0 not enlarged: the area thinned with the copies); above 1 that times \`1 + (k - 1)(1 - √p)\`, a kept
+   * copy at most \`k\` times the threshold's size and as at 1 where the thinning starts (Ludo: "a bit above"; an exponent
+   * above 1 drew the farthest copies the largest)
    */
   export function thinScale(p: number, k = 1) {
-    return Math.pow(1 / Math.sqrt(Math.min(1, p * ThinArea)), k);
+    const g = 1 / Math.sqrt(Math.min(1, p * ThinArea));
+    return k <= 1 ? Math.pow(g, k) : g * (1 + (k - 1) * (1 - Math.sqrt(Math.min(1, p))));
   }
 
   /** a copy's size factor at hash \`h\` where \`p\` is kept: \`thinScale(p, k)\`, shrinking to 0 over the fade, 0 beyond */

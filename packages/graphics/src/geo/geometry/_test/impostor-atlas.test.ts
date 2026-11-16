@@ -449,7 +449,16 @@ describe('impostor atlas', () => {
     expect(ImpostorAtlas.thinScale(p, 1)).toBeCloseTo(full, 12);
     expect(ImpostorAtlas.thinScale(p, 0)).toBe(1);
     expect(ImpostorAtlas.thinScale(p, 0.5)).toBeCloseTo(Math.sqrt(full), 12);
-    expect(ImpostorAtlas.thinScale(p, 1.5)).toBeCloseTo(full ** 1.5, 12);
+    // above 1 bounded: a kept copy drawn at most k times the threshold's size, whatever its own (an exponent drew a
+    // 1-px copy 21 px across at 1.5, the farthest the largest), and as at 1 where the thinning starts
+    for (const k of [1.25, 1.5]) {
+      for (let s = 0.25; s < 8; s += 0.25) {
+        const drawn = s * ImpostorAtlas.thinScale(ImpostorAtlas.thinKeep(s, 8), k);
+        expect(drawn).toBeLessThanOrEqual(k * 8 + 1e-9);
+        expect(drawn).toBeGreaterThanOrEqual(s);
+      }
+      expect(ImpostorAtlas.thinScale(ImpostorAtlas.thinKeep(7.999, 8), k)).toBeCloseTo(1, 2);
+    }
     // a kept copy's size factor follows; a leaving one still shrinks out over the fade
     expect(ImpostorAtlas.thinFactor(0.1, p, 0)).toBe(1);
     expect(ImpostorAtlas.thinFactor(0.1, p, 0.5)).toBeCloseTo(Math.sqrt(full), 12);
