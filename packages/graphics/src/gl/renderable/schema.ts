@@ -738,6 +738,8 @@ export const LodImpostorSchema = {
    * ranges cover (by size: larger ones count as it), 0 none
    */
   uLodImpostorSwitch: ObjectUniformSpec('v4'),
+  /** stochastic simplification (`ImpostorAtlas.thinKeep`): x the size on screen (px) below which copies thin out, 0 off */
+  uImpostorThin: ObjectUniformSpec('v2'),
   dLodImpostor: DefineSpec('boolean'),
   /**
    * the programs of the impostors' levels, per draw (\`MultiDrawBaseData.define\`, never set on values): the last level's

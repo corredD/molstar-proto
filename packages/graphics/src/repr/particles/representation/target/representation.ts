@@ -270,7 +270,8 @@ export function ParticleTargetRepresentation(
     // (\`computeParticleTargetSignatures\`)
     const atlas = impostors?.atlas ?? ImpostorAtlas.None;
     const sw = getImpostorSwitch(sources, impostors?.visuals ?? []);
-    for (const visual of targetVisuals.values()) visual.setImpostor(atlas, entries.get(visual) ?? -1, sw);
+    const thin = _props.structure.lodImpostorThin ?? 0;
+    for (const visual of targetVisuals.values()) visual.setImpostor(atlas, entries.get(visual) ?? -1, sw, thin);
   }
 
   /**

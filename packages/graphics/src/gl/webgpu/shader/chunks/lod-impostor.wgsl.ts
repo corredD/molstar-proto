@@ -112,6 +112,29 @@ export const assign_lod_impostor_varyings_wgsl = /* wgsl */ `
         out.vImpostorX = vec4<f32>(normalize(vec3<f32>(m[0][0], m[1][0], m[2][0])), -lodImpostorScale - 1.0);
         out.vImpostorY = vec4<f32>(normalize(vec3<f32>(m[0][1], m[1][1], m[2][1])), lodImpostorShare);
         radius = lodImpostorSphere.w * modelScale;
+        // stochastic simplification (\`ImpostorAtlas.thinFactor\`): below \`uImpostorThin.x\` px across a share of the
+        // copies kept by their hash, larger; the others shrink out, then are culled (the GPU culling drops them first)
+        let thin = uObject.uImpostorThin.x;
+        if (thin > 0.0) {
+            let dCopy = (dot(uGlobal.uCameraPlane.xyz, lodImpostorCenter) + uGlobal.uCameraPlane.w) / uGlobal.uModelScale;
+            let pixelT = 2.0 * uGlobal.uLodScale / (uGlobal.uProjection[1][1] * uGlobal.uCssHeight) * select(dCopy, 1.0, uGlobal.uIsOrtho == 1.0);
+            let size = 2.0 * lodImpostorSphere.w / pixelT;
+            if (size < thin) {
+                let p = max(ImpostorThinMinKeep, (size / thin) * (size / thin));
+                #if defined(dSegmented)
+                    let hash = impostorCopyHash(u32(in.aSegment.w), u32(in.aInstance));
+                #else
+                    let hash = impostorCopyHash(0u, u32(in.aInstance));
+                #endif
+                let end = p * (1.0 + ImpostorThinFade);
+                let t = smoothstep(p, end, hash);
+                let factor = select(inverseSqrt(p) * (1.0 - t), 0.0, hash >= end);
+                if (factor <= 0.0) {
+                    lodCulled = true;
+                }
+                radius *= factor;
+            }
+        }
     }
 #endif
 `;
@@ -123,6 +146,15 @@ export const lod_impostor_wgsl = /* wgsl */ `
 const ImpostorFlatOctaves = 1.0;
 #endif
 #if defined(dLodImpostorLevel)
+/** stochastic simplification (\`ImpostorAtlas\`: ThinMinKeep, ThinFade, copyHash) */
+const ImpostorThinMinKeep = 1.0 / 64.0;
+const ImpostorThinFade = 0.25;
+fn impostorCopyHash(segment: u32, instance: u32) -> f32 {
+    var x = (segment * 0x9e3779b1u) ^ instance;
+    x = x * 747796405u + 2891336453u;
+    let word = ((x >> ((x >> 28u) + 4u)) ^ x) * 277803737u;
+    return f32((word >> 22u) ^ word) / 4294967296.0;
+}
 const ImpostorViews = 9.0;
 /** a copy of a radius below this many pixels reads its nearest view alone */
 const ImpostorOneViewPixels = 4.0;

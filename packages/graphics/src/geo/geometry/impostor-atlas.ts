@@ -434,6 +434,7 @@ export namespace ImpostorAtlas {
       tImpostor: ValueCell.create(Empty),
       uImpostorTexDim: ValueCell.create(Vec2.create(1, 1)),
       uLodImpostorSwitch: ValueCell.create(Vec4.create(0, 0, 0, 0)),
+      uImpostorThin: ValueCell.create(Vec2.create(0, 0)),
       dLodImpostor: ValueCell.create(false),
       dLodImpostorLevel: ValueCell.create(false),
       dLodImpostorBand: ValueCell.create(false),
@@ -468,6 +469,13 @@ export namespace ImpostorAtlas {
     const cap = sw?.radii?.[1] ?? 0;
     if (v[0] === mode && v[1] === value && v[2] === halfBand && v[3] === cap) return;
     ValueCell.update(values.uLodImpostorSwitch, Vec4.set(v, mode, value, halfBand, cap));
+  }
+
+  /** The size on screen below which far copies thin out (`thinKeep`), 0 off */
+  export function setThin(values: LodImpostorValues, pixels: number) {
+    const v = values.uImpostorThin.ref.value;
+    if (v[0] === pixels) return;
+    ValueCell.update(values.uImpostorThin, Vec2.set(v, pixels, 0));
   }
 
   /** What `getItem` reads: the spheres' centers and groups, their sizes by type, the size factor, the bounds */
@@ -539,5 +547,41 @@ export namespace ImpostorAtlas {
     const t = Math.min(1, Math.max(0, (l + halfBand) / (2 * halfBand)));
     const s = t * t * (3 - 2 * t);
     return s + Math.min(1, Math.max(0, (l - halfBand) / FlatOctaves));
+  }
+
+  /**
+   * Stochastic simplification of the far copies (Cook, Halstead, Planck, Ryu 2007, \`lod-impostor.md\`): below \`s0\`
+   * pixels across a share \`p\` of the copies is kept (\`thinKeep\`, by area: \`(size / s0)²\`, at least
+   * \`ThinMinKeep\`), each copy by its hash (\`copyHash\`: the same copies at every frame, no flicker), the kept ones
+   * larger by \`1 / √p\` (\`thinScale\`: the area covered kept); a copy leaving shrinks to nothing over \`ThinFade\` above
+   * \`p\` (\`thinFactor\`), then is culled (no pop)
+   */
+  export const ThinMinKeep = 1 / 64;
+  export const ThinFade = 0.25;
+
+  export function thinKeep(size: number, s0: number) {
+    if (!(s0 > 0) || size >= s0) return 1;
+    return Math.max(ThinMinKeep, (size / s0) * (size / s0));
+  }
+
+  export function thinScale(p: number) {
+    return 1 / Math.sqrt(p);
+  }
+
+  /** a copy's size factor at hash `h` where `p` is kept: `thinScale(p)`, shrinking to 0 over the fade, 0 beyond */
+  export function thinFactor(h: number, p: number) {
+    if (p >= 1) return 1;
+    const end = p * (1 + ThinFade);
+    if (h >= end) return 0;
+    const t = Math.min(1, Math.max(0, (h - p) / (end - p)));
+    return thinScale(p) * (1 - t * t * (3 - 2 * t));
+  }
+
+  /** A copy's hash in [0, 1): of its segment (member) and its instance, PCG (the shaders' and the culling's) */
+  export function copyHash(segment: number, instance: number) {
+    let x = (Math.imul(segment >>> 0, 0x9e3779b1) ^ (instance >>> 0)) >>> 0;
+    x = (Math.imul(x, 747796405) + 2891336453) >>> 0;
+    const word = Math.imul(((x >>> ((x >>> 28) + 4)) ^ x) >>> 0, 277803737) >>> 0;
+    return (((word >>> 22) ^ word) >>> 0) / 4294967296;
   }
 }

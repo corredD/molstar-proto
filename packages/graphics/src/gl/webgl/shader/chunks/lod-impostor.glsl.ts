@@ -29,6 +29,19 @@ export function lod_impostor_varyings(qualifier: 'out' | 'in') {
     #else
         flat ${qualifier} vec4 vImpostorX;
     #endif
+    // stochastic simplification (\`ImpostorAtlas\`: ThinMinKeep, ThinFade, copyHash)
+    const float ImpostorThinMinKeep = 1.0 / 64.0;
+    const float ImpostorThinFade = 0.25;
+    #if __VERSION__ != 100
+        float impostorCopyHash(const in float segment, const in float instance) {
+            uint x = (uint(segment) * 0x9e3779b1u) ^ uint(instance);
+            x = x * 747796405u + 2891336453u;
+            uint word = ((x >> ((x >> 28u) + 4u)) ^ x) * 277803737u;
+            return float((word >> 22u) ^ word) / 4294967296.0;
+        }
+    #else
+        float impostorCopyHash(const in float segment, const in float instance) { return 0.0; }
+    #endif
 #endif
 `;
 }
@@ -118,6 +131,26 @@ export const assign_lod_impostor_varyings = `
         vImpostorX = vec4(normalize(vec3(m[0][0], m[1][0], m[2][0])), -lodImpostorScale - 1.0);
         vImpostorY = vec4(normalize(vec3(m[0][1], m[1][1], m[2][1])), lodImpostorShare);
         vSphere.w = lodImpostorSphere.w * uModelScale;
+        // stochastic simplification (\`ImpostorAtlas.thinFactor\`): below \`uImpostorThin.x\` px across a share of the
+        // copies kept by their hash, larger; the others shrink out, then are culled (the GPU culling drops them first)
+        if (uImpostorThin.x > 0.0) {
+            float dCopy = (dot(uCameraPlane.xyz, lodImpostorCenter) + uCameraPlane.w) / uModelScale;
+            float pixelT = 2.0 * uLodScale / (uProjection[1][1] * uCssHeight) * (uIsOrtho == 1.0 ? 1.0 : dCopy);
+            float size = 2.0 * lodImpostorSphere.w / pixelT;
+            if (size < uImpostorThin.x) {
+                float p = max(ImpostorThinMinKeep, (size / uImpostorThin.x) * (size / uImpostorThin.x));
+                #if defined(dSegmented)
+                    float hash = impostorCopyHash(aSegment.w, aInstance);
+                #else
+                    float hash = impostorCopyHash(0.0, aInstance);
+                #endif
+                float end = p * (1.0 + ImpostorThinFade);
+                float t = smoothstep(p, end, hash);
+                float factor = hash >= end ? 0.0 : inversesqrt(p) * (1.0 - t);
+                if (factor <= 0.0) lodCulled = true;
+                vSphere.w *= factor;
+            }
+        }
     } else {
         vImpostorX = vec4(0.0, 0.0, 0.0, -1.0);
         vImpostorY = vec4(0.0, 0.0, 0.0, lodImpostorShare);

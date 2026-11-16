@@ -126,6 +126,12 @@ const SphereTestSchema = {
    * level plus one (0 off)
    */
   uImpostorSwitch: UniformSpec('v4'),
+  /**
+   * stochastic simplification (`ImpostorAtlas.thinFactor`): the impostors' copies thinned out culled here, so that they
+   * cost nothing: x the size (px) below which, y the Å a pixel covers per Å of depth (or everywhere, orthographic), z 1
+   * orthographic, w the last level plus one (0 off)
+   */
+  uImpostorThin: UniformSpec('v4'),
   /** how far the animations may move a sphere (wiggle, tumble, `getAnimationSlack`), added to the tested radii */
   uAnimationSlack: UniformSpec('f'),
   ...HiZSchema,

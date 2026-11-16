@@ -223,6 +223,16 @@ export const ParticleTargetStructureParams = {
         hideIf: (p: { lodImpostor?: boolean; lodImpostorBy?: string }) => !p.lodImpostor || p.lodImpostorBy !== 'size',
       },
     ),
+    lodImpostorThin: PD.Numeric(
+      4,
+      { min: 0, max: 16, step: 0.5 },
+      {
+        ...BaseGeometry.CullingLodCategory,
+        description:
+          'Far copies thinned out below this many pixels across (stochastic simplification: a share kept by a hash of each, larger, the area covered the same; the others not drawn); 0 off',
+        hideIf: (p: { lodImpostor?: boolean }) => !p.lodImpostor,
+      },
+    ),
     lodImpostorDistance: PD.Numeric(
       0,
       { min: 0, max: 10000000, step: 1 },
@@ -747,7 +757,12 @@ export interface TargetVisual {
    * or sites target drawn as spheres with `lodImpostor`, also one without an entry (a small target), so that all merge
    * as one (the define); the others none
    */
-  setImpostor(atlas: ImpostorAtlas | undefined, code: number, impostorSwitch?: Spheres.LodImpostorSwitch): void;
+  setImpostor(
+    atlas: ImpostorAtlas | undefined,
+    code: number,
+    impostorSwitch?: Spheres.LodImpostorSwitch,
+    thin?: number,
+  ): void;
   destroy(): void;
 }
 
@@ -1238,13 +1253,19 @@ export function createTargetVisual(_targetId: number, materialId: number, graphi
     return { key, radius, tile, get: () => ImpostorAtlas.getItem(values, tile, prefix) };
   }
 
-  function setImpostor(atlas: ImpostorAtlas | undefined, code: number, impostorSwitch?: Spheres.LodImpostorSwitch) {
+  function setImpostor(
+    atlas: ImpostorAtlas | undefined,
+    code: number,
+    impostorSwitch?: Spheres.LodImpostorSwitch,
+    thin = 0,
+  ) {
     if (!renderObject || renderObject.type !== 'spheres' || geometry?.kind !== 'spheres') return;
     const values = renderObject.values as unknown as SpheresValues;
     const on = hasImpostors() ? atlas : undefined;
     ImpostorAtlas.setValues(values, on);
     const sw = on ? impostorSwitch : undefined;
     ImpostorAtlas.setSwitch(values, sw, Spheres.LodImpostorBand / 2);
+    ImpostorAtlas.setThin(values, on ? thin : 0);
     const entry = on ? code : -2;
     const value = values.lodLevels.ref.value as Spheres.LodLevelsValue;
     const { k: _, ...current } = value.impostorSwitch ?? { k: 0 };

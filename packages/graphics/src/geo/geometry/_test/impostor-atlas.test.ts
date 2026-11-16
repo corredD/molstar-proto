@@ -254,4 +254,36 @@ describe('impostor atlas', () => {
     expect(large.image.width).toBeLessThanOrEqual(8192);
     for (const c of large.codes.slice(-3)) expect(ImpostorAtlas.decodeEntry(c).y).toBeLessThan(8192);
   });
+
+  // stochastic simplification (Cook, Halstead, Planck, Ryu 2007): below a size on screen a share of the copies kept,
+  // by a hash of each, the kept ones larger so that the area covered stays
+  it('thins copies below a size on screen, by a stable hash, keeping the area', () => {
+    const s0 = 4;
+    // at s0 and above all kept; below, the share by area, at least the floor
+    expect(ImpostorAtlas.thinKeep(8, s0)).toBe(1);
+    expect(ImpostorAtlas.thinKeep(4, s0)).toBe(1);
+    expect(ImpostorAtlas.thinKeep(2, s0)).toBeCloseTo(0.25, 12);
+    expect(ImpostorAtlas.thinKeep(0.01, s0)).toBe(ImpostorAtlas.ThinMinKeep);
+    // the hash: the same for a copy every time, in [0, 1), spread evenly
+    expect(ImpostorAtlas.copyHash(3, 12345)).toBe(ImpostorAtlas.copyHash(3, 12345));
+    let below = 0;
+    const n = 20000;
+    for (let i = 0; i < n; ++i) {
+      const h = ImpostorAtlas.copyHash(7, i);
+      expect(h).toBeGreaterThanOrEqual(0);
+      expect(h).toBeLessThan(1);
+      if (h < 0.25) below++;
+    }
+    expect(Math.abs(below / n - 0.25)).toBeLessThan(0.01);
+    // the area kept: the share kept times the scale's square is 1 (above the floor)
+    for (const size of [3.9, 2, 1, 0.6]) {
+      const p = ImpostorAtlas.thinKeep(size, s0);
+      expect(p * ImpostorAtlas.thinScale(p) ** 2).toBeCloseTo(1, 12);
+    }
+    // a copy's size factor: 1/√p kept, shrinking to 0 over the fade above p, 0 beyond (culled)
+    const p = 0.25;
+    expect(ImpostorAtlas.thinFactor(0.1, p)).toBeCloseTo(2, 12);
+    expect(ImpostorAtlas.thinFactor(p * (1 + ImpostorAtlas.ThinFade), p)).toBe(0);
+    expect(ImpostorAtlas.thinFactor(p * (1 + ImpostorAtlas.ThinFade / 2), p)).toBeGreaterThan(0);
+  });
 });

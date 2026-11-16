@@ -11,6 +11,7 @@ import { ValueCell } from '@molstar/core/util';
 import { isDebugMode } from '@molstar/core/util/debug';
 import { Mat4 } from '@molstar/core/math/linear-algebra/3d/mat4';
 import { Vec4 } from '@molstar/core/math/linear-algebra/3d/vec4';
+import type { Vec2 } from '@molstar/core/math/linear-algebra/3d/vec2';
 import { Frustum3D } from '@molstar/core/math/geometry/primitives/frustum3d';
 import type { Plane3D } from '@molstar/core/math/geometry/primitives/plane3d';
 import type { Sphere3D } from '@molstar/core/math/geometry/primitives/sphere3d';
@@ -401,6 +402,7 @@ export function createMergedCuller(
     uLevels: ValueCell.create(Mat4()),
     uLevelCount: levelCountCell,
     uImpostorSwitch: ValueCell.create(Vec4()),
+    uImpostorThin: ValueCell.create(Vec4()),
     uAnimationSlack: ValueCell.create(0),
     uCellCount: ValueCell.create(0),
     ...createHiZValues(createEmptyHiZ(resources)),
@@ -843,6 +845,15 @@ export function createMergedCuller(
     );
   }
   const impostorSwitch = Vec4();
+  const impostorThin = Vec4();
+  /** the impostors' thinning for `lod` (`uImpostorThin`): off without impostors */
+  function setImpostorThin(lod: LodView) {
+    const lodLevels = members[0].lodLevels?.ref.value as (LodLevelsValue & { impostor?: number }) | undefined;
+    const thin = (members[0] as { uImpostorThin?: ValueCell<Vec2> }).uImpostorThin?.ref.value[0] ?? 0;
+    const on = thin > 0 && lodLevels?.impostor !== undefined && levelCount >= 2 && levelCount <= 4;
+    const ortho = !(lod.depthScale > 0);
+    Vec4.set(impostorThin, on ? thin : 0, ortho ? lod.pixelSize : lod.depthScale, ortho ? 1 : 0, on ? levelCount : 0);
+  }
 
   /**
    * per segment its invariant sphere, its first instance and largest sphere's radius (`padding`: the largest size times
@@ -1367,6 +1378,10 @@ export function createMergedCuller(
       setPyramid(pyramid);
       setPlane(cellValues.uCameraPlane, cameraPlane);
       ValueCell.update(cellValues.uLevels, Mat4.copy(cellValues.uLevels.ref.value, levelRanges));
+      setImpostorThin(lod);
+      if (!Vec4.exactEquals(cellValues.uImpostorThin.ref.value, impostorThin)) {
+        ValueCell.update(cellValues.uImpostorThin, Vec4.copy(cellValues.uImpostorThin.ref.value, impostorThin));
+      }
       if (!Vec4.exactEquals(cellValues.uImpostorSwitch.ref.value, impostorSwitch)) {
         ValueCell.update(cellValues.uImpostorSwitch, Vec4.copy(cellValues.uImpostorSwitch.ref.value, impostorSwitch));
       }
