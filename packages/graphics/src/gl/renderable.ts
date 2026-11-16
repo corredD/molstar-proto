@@ -449,6 +449,11 @@ export interface LodView {
    * culls of the same view and data are skipped (`createCullView`); 0 for none known (never skipped)
    */
   version: number;
+  /**
+   * How many times coarser these scales are than the frame's (the clip ghost's levels): the impostors' thinning divides
+   * it out, the vertex stage thinning by the frame's (`uLodScale`); 1 where absent
+   */
+  coarser?: number;
 }
 
 export function LodView(): LodView {

@@ -825,6 +825,7 @@ namespace Renderer {
       if (ghostLodOf !== lodView.version || lodView.version === 0) {
         ghostLodView.depthScale = lodView.depthScale * ClipGhostLevelScale;
         ghostLodView.pixelSize = lodView.pixelSize * ClipGhostLevelScale;
+        ghostLodView.coarser = ClipGhostLevelScale;
         ghostLodView.version = lodView.version === 0 ? 0 : ++viewVersions;
         ghostLodOf = lodView.version;
       }

@@ -852,7 +852,10 @@ export function createMergedCuller(
     const thin = (members[0] as { uImpostorThin?: ValueCell<Vec2> }).uImpostorThin?.ref.value[0] ?? 0;
     const on = thin > 0 && lodLevels?.impostor !== undefined && levelCount >= 2 && levelCount <= 4;
     const ortho = !(lod.depthScale > 0);
-    Vec4.set(impostorThin, on ? thin : 0, ortho ? lod.pixelSize : lod.depthScale, ortho ? 1 : 0, on ? levelCount : 0);
+    // the frame's scale, as the vertex stage's (\`uLodScale\`): the ghost's view is coarser
+    const coarser = lod.coarser ?? 1;
+    const scale = (ortho ? lod.pixelSize : lod.depthScale) / coarser;
+    Vec4.set(impostorThin, on ? thin : 0, scale, ortho ? 1 : 0, on ? levelCount : 0);
   }
 
   /**
