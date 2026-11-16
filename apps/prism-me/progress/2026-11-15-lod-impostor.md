@@ -362,7 +362,9 @@ One reviewer acting as its own skeptic, over `386790c26..21a29cff2`: 3 must, 4 s
 | a test of the shader/culling parity (nit)                                                               | `8a50557cc` (constants, hash, the sign check)  |
 | the one-view test reads a name only; the cull tests the unenlarged sphere (nits)                        | left open                                      |
 
-Checks: `npx tsc -b`, the app's, vitest (graphics, mesoscale; `backend-neutral` as before), the Dawn tests (see below).
+Checks: `npx tsc -b`, the app's, vitest (graphics, mesoscale; `backend-neutral` as before). The Dawn tests did not run
+this round: the `webgpu` package would not install (npm hung); the WGSL change is one guard and one constant, held by
+the source test.
 
 ### Core changes (added)
 
