@@ -275,14 +275,18 @@ describe('impostor atlas', () => {
       if (h < 0.25) below++;
     }
     expect(Math.abs(below / n - 0.25)).toBeLessThan(0.01);
-    // the area kept: the share kept times the scale's square is 1 (above the floor)
-    for (const size of [3.9, 2, 1, 0.6]) {
+    // the area drawn, the fade's included: the mean over the hashes of the factor's square is 1 (one copy's area)
+    for (const size of [3.9, 3.6, 3, 2, 1, 0.6, 0.2]) {
       const p = ImpostorAtlas.thinKeep(size, s0);
-      expect(p * ImpostorAtlas.thinScale(p) ** 2).toBeCloseTo(1, 12);
+      let area = 0;
+      const m = 200000;
+      for (let i = 0; i < m; ++i) area += ImpostorAtlas.thinFactor((i + 0.5) / m, p) ** 2;
+      expect(Math.abs(area / m - 1)).toBeLessThan(0.01);
     }
     // a copy's size factor: 1/√p kept, shrinking to 0 over the fade above p, 0 beyond (culled)
     const p = 0.25;
-    expect(ImpostorAtlas.thinFactor(0.1, p)).toBeCloseTo(2, 12);
+    expect(ImpostorAtlas.thinFactor(0.1, p)).toBeCloseTo(ImpostorAtlas.thinScale(p), 12);
+    expect(ImpostorAtlas.thinScale(p)).toBeGreaterThan(1);
     expect(ImpostorAtlas.thinFactor(p * (1 + ImpostorAtlas.ThinFade), p)).toBe(0);
     expect(ImpostorAtlas.thinFactor(p * (1 + ImpostorAtlas.ThinFade / 2), p)).toBeGreaterThan(0);
   });

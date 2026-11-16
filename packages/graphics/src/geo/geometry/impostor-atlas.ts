@@ -553,7 +553,7 @@ export namespace ImpostorAtlas {
    * Stochastic simplification of the far copies (Cook, Halstead, Planck, Ryu 2007, \`lod-impostor.md\`): below \`s0\`
    * pixels across a share \`p\` of the copies is kept (\`thinKeep\`, by area: \`(size / s0)²\`, at least
    * \`ThinMinKeep\`), each copy by its hash (\`copyHash\`: the same copies at every frame, no flicker), the kept ones
-   * larger by \`1 / √p\` (\`thinScale\`: the area covered kept); a copy leaving shrinks to nothing over \`ThinFade\` above
+   * larger by about \`1 / √p\` (\`thinScale\`: the area covered kept, the fade's included); a copy leaving shrinks to nothing over \`ThinFade\` above
    * \`p\` (\`thinFactor\`), then is culled (no pop)
    */
   export const ThinMinKeep = 1 / 64;
@@ -564,8 +564,15 @@ export namespace ImpostorAtlas {
     return Math.max(ThinMinKeep, (size / s0) * (size / s0));
   }
 
+  /**
+   * The area the kept and the fading copies draw, per kept copy at scale 1: the fade's `∫(1 - smoothstep)² = 13/35`
+   * over its `ThinFade` share
+   */
+  export const ThinArea = 1 + (ThinFade * 13) / 35;
+
+  /** the kept copies' scale: `1 / √(p ThinArea)` (the area covered kept, the fade's included), at most 1 */
   export function thinScale(p: number) {
-    return 1 / Math.sqrt(p);
+    return 1 / Math.sqrt(Math.min(1, p * ThinArea));
   }
 
   /** a copy's size factor at hash `h` where `p` is kept: `thinScale(p)`, shrinking to 0 over the fade, 0 beyond */

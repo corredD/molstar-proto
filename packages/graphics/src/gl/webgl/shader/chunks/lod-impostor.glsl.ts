@@ -29,9 +29,10 @@ export function lod_impostor_varyings(qualifier: 'out' | 'in') {
     #else
         flat ${qualifier} vec4 vImpostorX;
     #endif
-    // stochastic simplification (\`ImpostorAtlas\`: ThinMinKeep, ThinFade, copyHash)
+    // stochastic simplification (\`ImpostorAtlas\`: ThinMinKeep, ThinFade, ThinArea, copyHash)
     const float ImpostorThinMinKeep = 1.0 / 64.0;
     const float ImpostorThinFade = 0.25;
+    const float ImpostorThinArea = 1.0 + ImpostorThinFade * 13.0 / 35.0;
     #if __VERSION__ != 100
         float impostorCopyHash(const in float segment, const in float instance) {
             uint x = (uint(segment) * 0x9e3779b1u) ^ uint(instance);
@@ -146,7 +147,7 @@ export const assign_lod_impostor_varyings = `
                 #endif
                 float end = p * (1.0 + ImpostorThinFade);
                 float t = smoothstep(p, end, hash);
-                float factor = hash >= end ? 0.0 : inversesqrt(p) * (1.0 - t);
+                float factor = hash >= end ? 0.0 : inversesqrt(min(1.0, p * ImpostorThinArea)) * (1.0 - t);
                 if (factor <= 0.0) lodCulled = true;
                 vSphere.w *= factor;
             }

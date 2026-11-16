@@ -128,7 +128,7 @@ export const assign_lod_impostor_varyings_wgsl = /* wgsl */ `
                 #endif
                 let end = p * (1.0 + ImpostorThinFade);
                 let t = smoothstep(p, end, hash);
-                let factor = select(inverseSqrt(p) * (1.0 - t), 0.0, hash >= end);
+                let factor = select(inverseSqrt(min(1.0, p * ImpostorThinArea)) * (1.0 - t), 0.0, hash >= end);
                 if (factor <= 0.0) {
                     lodCulled = true;
                 }
@@ -146,9 +146,10 @@ export const lod_impostor_wgsl = /* wgsl */ `
 const ImpostorFlatOctaves = 1.0;
 #endif
 #if defined(dLodImpostorLevel)
-/** stochastic simplification (\`ImpostorAtlas\`: ThinMinKeep, ThinFade, copyHash) */
+/** stochastic simplification (\`ImpostorAtlas\`: ThinMinKeep, ThinFade, ThinArea, copyHash) */
 const ImpostorThinMinKeep = 1.0 / 64.0;
 const ImpostorThinFade = 0.25;
+const ImpostorThinArea = 1.0 + ImpostorThinFade * 13.0 / 35.0;
 fn impostorCopyHash(segment: u32, instance: u32) -> f32 {
     var x = (segment * 0x9e3779b1u) ^ instance;
     x = x * 747796405u + 2891336453u;
