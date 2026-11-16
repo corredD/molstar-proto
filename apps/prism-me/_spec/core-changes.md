@@ -315,6 +315,39 @@ specs (`.md`) these changes added are listed in the entries.
   between draws was picked up only at the next scene update (a tilt slice drew one texture with the other's layout,
   the 2× zoom Ludo saw). WebGL (`9610bce0d`) and WebGPU (`a854aa2c0`). Tests: `gl/_test/webgl-texture-rebind.test.ts`,
   the Dawn slice tests. Upstream: candidate (a bug fix on its own). Not mixed.
+- **Merged members whose instances a GPU writer makes (`gpuInstances`), pooled per view** (lipid-procedural) — a
+  gridless member of a merged render object can have its instance rows written by a GPU kernel instead of the CPU: the
+  culler hands the writer its rows (master's compaction by index, `CulledData`), draws the member at its levels of
+  detail (spheres scaled per level), and keeps a pool per segment with a live count, its dead slots past any far plane
+  (zero rows drew spheres at the origin); a writer's view hook makes the rows again where the view changed; the
+  culler's layout key holds each member's writer version (a replaced writer writes its member), and CPU writes of rows
+  are counted per segment (`GpuInstanceTarget.cpuWrites`) so a writer knows when the CPU wrote over its rows. Why: a
+  lipid membrane made per view on the GPU (Ludo, 2026-11-08: the cutter's lipids only on the triangles in view, nearest
+  first within a budget), written by the cutter's kernels straight into the culler's rows. Files:
+  `graphics/src/gl/renderable/merged-culler.ts`, `gl/renderable/merged.ts`, `gl/webgpu/shader/cell-cull.wgsl.ts`; spec
+  `.v6/plans/gl/merged-render-objects.md`. Commits (lane me/lipid-procedural): `b08d2d574` `9008d77de` `bde208175`
+  `4ac0c0de8` `f99c9e0b1` `a6d265ce8` `1ed7faf2c` `2f9cbf270` `e31d53beb` `9d16271ff` `4c01547d0` `0cadec122`
+  `eb1e42174` `5dcb0d7f0` `e32d53bfa` `546e27771` `412f4cb6b`. Tests: `gl/_test/merged-culler.test.ts`,
+  `plugin/headless/src/_test/webgpu-gpu-instances.test.ts` (Dawn). Upstream: not upstream. Mixed: `9d16271ff` and
+  `0cadec122` (mesoscale's kernels), `412f4cb6b` (prism-me's TODO).
+- **A mesh's patch texture (`dPatchTexture`, WebGPU)** (lipid-procedural round 5) — a mesh can draw a texture mapped
+  by planes and cells as the lipid cutter maps its patch (the lipid under each point, no slide), mipmapped, read in the
+  colour variants only. Why: a cut membrane's far look, the patch's top view on the mesh's own triangles (a billion
+  lipids at x600). Files: `graphics/src/geo/geometry/mesh/mesh.ts`, `gl/renderable/mesh.ts`, `gl/webgpu/context.ts`,
+  `gl/webgpu/shader/mesh.wgsl.ts`, `gl/webgpu/wgsl-declarations.ts`, `gl/webgpu/wgsl-conventions.md`. Commits (lane
+  me/lipid-procedural): `835dffca8` `9ad038804` `d55a15ff2` `f9526c7c6` `3b71b9e84` `8c22bec21`. Tests:
+  `gl/_test/patch-texture.test.ts`, `gl/_test/shader-parity.test.ts`,
+  `plugin/headless/src/_test/webgpu-patch-texture.test.ts` (Dawn). Upstream: not upstream. Mixed: `9ad038804` (mesoscale's far surface), `3b71b9e84` (the lane's progress
+  file).
+- **A patch mesh's middle look: shells, beneath and parallax (WebGPU)** (lipid-procedural rounds 8 and 10) — the
+  patch texture's mesh drawn, at middle distances, as a parallax march over the heads' heights (the texture's alpha,
+  the profile's normal at every px, a pixel guard), as layered shells over a band of triangles (those past the band's
+  live count clipped), or beneath close lipids. Why: a cut membrane's middle distance (Ludo compares Coarse, Parallax
+  and Shells live; Parallax his pick, 2026-11-10). Files: `graphics/src/geo/geometry/mesh/mesh.ts`,
+  `gl/renderable/mesh.ts`, `gl/webgpu/shader/mesh.wgsl.ts`. Commits (lane me/lipid-procedural): `03625d096`
+  `6cb4e25b8` `071950423` `1ac9459eb` `4300e6a0d` `e2057de87`. Tests: `gl/_test/shader-parity.test.ts`,
+  `plugin/headless/src/_test/webgpu-patch-shells.test.ts` (Dawn),
+  `extensions/mesoscale/src/_test/lipid-switch.webgpu.test.ts`. Upstream: not upstream. Mixed: `071950423` (a mesoscale test), `4300e6a0d` (mostly mesoscale's cutter).
 
 ## plugin
 
