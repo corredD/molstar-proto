@@ -715,6 +715,12 @@ Fibers mock exposed the adapter's `excludeFibers` bug (§11).
     scene; a snapshot is materialized per step, never stored; time is steps, tracks within a step, and clocks a model
     can be resolved at ([stories.md](stories.md)). Clipping by geometry joins the view
     ([views.md](views.md#clipping-decided-ludo-2026-11-11-after-davids-review-not-built)).
+14. **(v0.6) Bands by evaluators.** (14 is the placement proposal's, lane `mvs-spec-placement`.) David (relayed by Ludo,
+    2026-11-20): bands as conditionals on the camera and the scene, fast, possibly `(band :evaluator … :params …)`.
+    **Proposed:** a band names an evaluator from a registry (a measure with a range, or a test), never code; a `copy`
+    evaluator runs per copy where the renderer can switch per copy (prism-me's silhouettes), a `scene` one on the
+    camera's rest; a band may blend into the next; `silhouette` joins the hints ([bands.md](bands.md)). Built in lane
+    `mvs-lod-bands` with entities drawn from their structures.
 
 ## 12. Packaging
 

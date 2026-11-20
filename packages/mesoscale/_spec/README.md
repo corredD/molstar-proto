@@ -139,19 +139,20 @@ signature names is exported by some entry of the two packages).
 
 ## Files
 
-| File                                                       | Says                                                                                                      |
-| ---------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| [format.md](format.md)                                     | what a document means: its sections, biology, resources, frames, evidence, superstructures, instances     |
-| [mesoql.md](mesoql.md)                                     | what a MesoQL address means and what it materializes to                                                   |
-| [ir.md](ir.md)                                             | the IR: its tree, the placement set, `resolve` nodes, ids and keys                                        |
-| [runtime.md](runtime.md)                                   | the pipeline, the resolver and adapter contracts, the built-in resolvers, refine stages, failures         |
-| [streaming.md](streaming.md)                               | streamed models: the source, the `meso-tiles` manifest, the provider, the planner and budget, the session |
-| [views.md](views.md)                                       | what one document restores: session state, looks, the semantic camera, tours                              |
-| [stories.md](stories.md)                                   | scene, views and stories as three parts; stories' patches; time and animation (decided, not built)        |
-| [archive.md](archive.md)                                   | the `.mesoviewx` archive, byte ranges and `meso-placements+f32` (decided, not built)                      |
-| [prism.md](prism.md)                                       | how prism-me opens, shows and edits a document (a design)                                                 |
-| [renderer-recommendations.md](renderer-recommendations.md) | what the prototypes showed about Mol\*'s renderer                                                         |
-| [design.md](design.md)                                     | the design record: rationale, measurements, open decisions, packaging, references                         |
+| File                                                       | Says                                                                                                       |
+| ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| [format.md](format.md)                                     | what a document means: its sections, biology, resources, frames, evidence, superstructures, instances      |
+| [mesoql.md](mesoql.md)                                     | what a MesoQL address means and what it materializes to                                                    |
+| [ir.md](ir.md)                                             | the IR: its tree, the placement set, `resolve` nodes, ids and keys                                         |
+| [runtime.md](runtime.md)                                   | the pipeline, the resolver and adapter contracts, the built-in resolvers, refine stages, failures          |
+| [streaming.md](streaming.md)                               | streamed models: the source, the `meso-tiles` manifest, the provider, the planner and budget, the session  |
+| [bands.md](bands.md)                                       | (v0.6, proposed) bands by evaluators: size, distance, the eye's compartment, the view; blends; silhouettes |
+| [views.md](views.md)                                       | what one document restores: session state, looks, the semantic camera, tours                               |
+| [stories.md](stories.md)                                   | scene, views and stories as three parts; stories' patches; time and animation (decided, not built)         |
+| [archive.md](archive.md)                                   | the `.mesoviewx` archive, byte ranges and `meso-placements+f32` (decided, not built)                       |
+| [prism.md](prism.md)                                       | how prism-me opens, shows and edits a document (a design)                                                  |
+| [renderer-recommendations.md](renderer-recommendations.md) | what the prototypes showed about Mol\*'s renderer                                                          |
+| [design.md](design.md)                                     | the design record: rationale, measurements, open decisions, packaging, references                          |
 
 ## Generated references
 

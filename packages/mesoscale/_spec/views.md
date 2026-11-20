@@ -193,6 +193,9 @@ carries its own `size` range, so two rules about the same distance repeat the nu
 threshold for all of them at once. Bands name the ranges once. (Not `levels`: that word is streaming's levels 0, 1 and
 2, and `TileManifest.levels`, above.)
 
+**(v0.6) Proposed: evaluators.** A band names an evaluator (size on screen, distance, the eye inside a compartment, the
+view shown) with params, and may blend into the next: [bands.md](bands.md).
+
 ```lisp
 (bands
   (band far  :size [0 2])
