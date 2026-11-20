@@ -7,7 +7,7 @@
 import type { MesoViewSpecDoc } from '@molstar/meso-spec/format';
 import type { ParticleTarget } from '@molstar/model/model/particles/particle-list';
 import type { RuntimeContext } from '@molstar/core/task';
-import type { Asset } from '@molstar/core/util/assets';
+import { Asset } from '@molstar/core/util/assets';
 import type { PluginContext } from '@molstar/plugin/context';
 import { loadParticleTarget, type ParticleTargetSource } from '@molstar/plugin/state/helpers/particle-targets';
 import { RootStructureDefinition } from '@molstar/plugin/state/helpers/root-structure';
@@ -78,12 +78,13 @@ export class EntityStructureCache {
     plugin: PluginContext,
     ctx: RuntimeContext,
     wanted: readonly EntityStructure[],
+    fetch?: (url: string) => Promise<Uint8Array | undefined>,
   ): Promise<Map<string, ParticleTarget | { readonly error: string }>> {
     const out = new Map<string, ParticleTarget | { readonly error: string }>();
     for (const s of wanted) {
       let entry = this.loaded.get(s.key);
       if (!entry) {
-        entry = await loadOne(plugin, ctx, s);
+        entry = await loadOne(plugin, ctx, s, fetch);
         this.loaded.set(s.key, entry);
       }
       out.set(s.key, entry.target ?? { error: entry.error ?? 'not loaded' });
@@ -101,10 +102,24 @@ export class EntityStructureCache {
   }
 }
 
-async function loadOne(plugin: PluginContext, ctx: RuntimeContext, s: EntityStructure): Promise<Loaded> {
+async function loadOne(
+  plugin: PluginContext,
+  ctx: RuntimeContext,
+  s: EntityStructure,
+  fetch?: (url: string) => Promise<Uint8Array | undefined>,
+): Promise<Loaded> {
   const assets: Asset.Wrapper[] = [];
   try {
-    let target = await loadParticleTarget(plugin, ctx, s.source, assets);
+    // a host that fetches for the viewer: its bytes, as a file of the address's name
+    let source = s.source;
+    if (fetch && source.kind === 'url') {
+      const url = typeof source.url === 'string' ? source.url : source.url.url;
+      const bytes = await fetch(url);
+      if (!bytes) throw new Error(`${url} could not be fetched`);
+      const name = url.slice(url.lastIndexOf('/') + 1) || 'structure';
+      source = { kind: 'file', file: Asset.File(new File([bytes as BlobPart], name)) };
+    }
+    let target = await loadParticleTarget(plugin, ctx, source, assets);
     if (s.assembly && target.kind === 'structure') {
       const model = target.structure;
       const built = await RootStructureDefinition.create(plugin, ctx, model.model, {

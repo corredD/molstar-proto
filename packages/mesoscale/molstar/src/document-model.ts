@@ -126,6 +126,8 @@ export interface MesoDocumentOptions {
   readonly resolvers?: readonly Resolver<any>[];
   /** A resource's text by absolute address (the viewer's asset manager); undefined when it cannot be read. */
   readonly fetchText?: (url: string) => Promise<string | undefined>;
+  /** An entity's structure file by absolute address (lane `mvs-lod-bands`); none: no structure is fetched, spheres. */
+  readonly fetchBinary?: (url: string) => Promise<Uint8Array | undefined>;
   /** How many steps Undo can take back (`options.ui.undoSteps`): the IRs whose placements are kept, besides the current. */
   readonly undoSteps?: number;
 }
@@ -207,8 +209,9 @@ export class MesoDocumentModel {
       structures: {
         of: (t) => {
           const doc = this.session?.stepDoc ?? this.doc;
-          return doc ? entityStructureOf(doc, t.entity) : undefined;
+          return doc && this.options.fetchBinary ? entityStructureOf(doc, t.entity) : undefined;
         },
+        fetch: (url) => this.options.fetchBinary?.(url) ?? Promise.resolve(undefined),
       },
     });
     // a new budget in Settings (or its Undo) is a stream step now, no step of the History
@@ -221,6 +224,8 @@ export class MesoDocumentModel {
    */
   setFocus(focus: StreamFocus | undefined): Promise<EditRecord | undefined> {
     this.focus = focus;
+    // the camera rested: the scene bands evaluated again (lane `mvs-lod-bands`; no step)
+    if (focus) void this.adapter.cameraRested();
     return this.session?.setFocus(focus) ?? Promise.resolve(undefined);
   }
   /**

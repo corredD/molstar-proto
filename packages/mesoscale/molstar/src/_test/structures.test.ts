@@ -8,7 +8,7 @@
 
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { compile } from '@molstar/meso-spec/runtime';
+import { compile, updateView } from '@molstar/meso-spec/runtime';
 import { DefaultResolvers } from '@molstar/meso-spec/resolvers';
 import { exosomeDoc, ExosomeResources } from '@molstar/meso-spec/examples';
 import { type PlacementSet, placementSets } from '@molstar/meso-spec/ir';
@@ -18,6 +18,8 @@ import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
 import type { PrismViewer } from '@molstar/prism-viewer/viewer';
 import type { ParticleList } from '@molstar/model/model/particles/particle-list';
 import { Asset } from '@molstar/core/util/assets';
+import { StateSelection } from '@molstar/core/state';
+import { PluginStateObject as SO } from '@molstar/plugin/state/objects';
 import { afterEach, describe, expect, it } from 'vitest';
 import { type AdapterStructures, PrismMesoAdapter } from '../prism-adapter.js';
 
@@ -120,5 +122,123 @@ describe('entities drawn from their structures (headless)', () => {
     expect(unavailable.length).toBe(1);
     expect(unavailable[0]).toMatchObject({ phase: 'render' });
     expect(unavailable[0].message).toMatch(/catalase/);
+  });
+});
+
+/** The `structure` params of the representation drawing a list's structures (its silhouettes) */
+function silhouettesOf(v: PrismViewer, ref: string) {
+  const q = StateSelection.Generators.byRef(ref).subtree().ofType(SO.Particle.Representation3D);
+  // the representation drawing the structures (`target`), else the list's first
+  const cells = v.plugin.state.data.select(q);
+  const cell =
+    cells.find((c) => (c.transform.params as { type?: { name?: string } }).type?.name === 'target') ?? cells[0];
+  const p = cell?.transform.params as { type: { params: { structure?: Record<string, unknown> } } } | undefined;
+  const s = p?.type.params.structure ?? {};
+  return { on: s.lodImpostor, by: s.lodImpostorBy, pixels: s.lodImpostorPixels, distance: s.lodImpostorDistance };
+}
+
+/** Exosome with bands: catalase atoms near, silhouettes below 12 px; in the lumen view, atoms at every size */
+function bandedExosome(): MesoViewSpecDoc {
+  const d = exosomeDoc();
+  return {
+    ...d,
+    bands: [
+      { id: 'b.near', size: [12, null] },
+      { id: 'b.far', size: [0, 12], blend: { width: 0.5 } },
+      { id: 'b.lumen', evaluator: 'meso.view', params: { view: 'v.lumen' } },
+    ],
+    scales: [
+      { id: 's.atoms', select: '(entity e.catalase)', at: 'b.near', show: { representation: 'structure' } },
+      {
+        id: 's.shape',
+        select: '(entity e.catalase)',
+        at: 'b.far',
+        show: { representation: ['silhouette', 'spheres'] },
+      },
+      { id: 's.lumen', select: '(entity e.catalase)', at: 'b.lumen', show: { representation: 'structure' } },
+    ],
+  };
+}
+
+describe('bands drive the silhouettes (headless)', () => {
+  it("a list of a type drawn from its structure takes the bands' silhouettes; a scene band switches them", {
+    tags: ['medium'],
+  }, async () => {
+    const doc = bandedExosome();
+    const { v, adapter, result, report } = await session(catalaseFrom(readFileSync(fixture)), doc);
+    expect(report.issues?.filter((i) => /^bands\.|representation\.fallback/.test(i.code))).toEqual([]);
+    const sets = placementSets(result.ir!);
+    const catalase = new Set(typesOf(sets, 'e.catalase').map((x) => x.set.key));
+    expect(catalase.size).toBeGreaterThan(0);
+    const before = new Map(sets.map((s) => [s.key, silhouettesOf(v, adapter.listRef(s.key)!)]));
+    for (const s of sets) {
+      const now = silhouettesOf(v, adapter.listRef(s.key)!);
+      if (catalase.has(s.key)) expect(now).toMatchObject({ on: true, by: 'size', pixels: 12 });
+      else expect(now).toEqual(before.get(s.key));
+    }
+    // the lumen view: its band holds, atoms at every size (silhouettes off)
+    const lumen = updateView({ ...doc, session: { view: 'v.lumen' } }, result.ir!);
+    await adapter.commit(lumen);
+    for (const key of catalase) expect(silhouettesOf(v, adapter.listRef(key)!).on).toBe(false);
+    // back: silhouettes again
+    await adapter.commit(updateView(doc, lumen));
+    for (const key of catalase) expect(silhouettesOf(v, adapter.listRef(key)!)).toMatchObject({ on: true, pixels: 12 });
+  });
+
+  it('without structures the bands decide nothing: the lists are left as they are', { tags: ['medium'] }, async () => {
+    const doc = bandedExosome();
+    const none: AdapterStructures = { of: () => undefined };
+    const { v, adapter, result } = await session(none, doc);
+    const plain = await session(none, exosomeDoc());
+    for (const s of placementSets(result.ir!))
+      expect(silhouettesOf(v, adapter.listRef(s.key)!)).toEqual(silhouettesOf(plain.v, plain.adapter.listRef(s.key)!));
+  });
+});
+
+describe('the representations of a list with structures (headless)', () => {
+  it('a target representation draws the structures; the spheres leave them out; a list without has spheres only', {
+    tags: ['medium'],
+  }, async () => {
+    const { v, adapter, result } = await session(catalaseFrom(readFileSync(fixture)));
+    const sets = placementSets(result.ir!);
+    const catalase = new Set(typesOf(sets, 'e.catalase').map((x) => x.set.key));
+    for (const s of sets) {
+      const q = StateSelection.Generators.byRef(adapter.listRef(s.key)!).subtree().ofType(SO.Particle.Representation3D);
+      const reps = v.plugin.state.data
+        .select(q)
+        .map((c) => c.transform.params as { type: { name: string; params: { excludeTargets?: boolean } } });
+      if (catalase.has(s.key)) {
+        expect(reps.map((r) => r.type.name)).toEqual(['spacefill', 'target']);
+        expect(reps[0].type.params.excludeTargets).toBe(true);
+      } else {
+        expect(reps.map((r) => r.type.name)).toEqual(['spacefill']);
+        expect(reps[0].type.params.excludeTargets).not.toBe(true);
+      }
+    }
+  });
+
+  it("a host that fetches for the viewer: a structure's address read through its fetch", {
+    tags: ['medium'],
+  }, async () => {
+    const asked: string[] = [];
+    const bytes = readFileSync(fixture);
+    const structures: AdapterStructures = {
+      of: (t) =>
+        t.entity === 'e.catalase'
+          ? {
+              key: 'u',
+              name: 'catalase',
+              source: { kind: 'url', url: 'https://example.org/x/1c26.bcif', isBinary: true },
+            }
+          : undefined,
+      fetch: async (url) => {
+        asked.push(url);
+        return new Uint8Array(bytes);
+      },
+    };
+    const { adapter, result } = await session(structures);
+    expect(asked).toEqual(['https://example.org/x/1c26.bcif']);
+    const [{ set, type }] = typesOf(placementSets(result.ir!), 'e.catalase');
+    expect((adapter.listObject(set.key)!.data as ParticleList).targetMapping?.get(type)?.kind).toBe('structure');
   });
 });

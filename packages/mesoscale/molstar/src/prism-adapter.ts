@@ -10,10 +10,12 @@ import { Color } from '@molstar/core/util/color';
 import {
   type IR,
   type IRLook,
+  type IRShape,
   type MesoLoci,
   type PlacementSet,
   type PlacementType,
   placementSets,
+  walk,
 } from '@molstar/meso-spec/ir';
 import { PluginStateObject as SO } from '@molstar/plugin/state/objects';
 import { type Issue, issue } from '@molstar/meso-spec/format';
@@ -24,6 +26,8 @@ import {
   flattenInstances,
   planCommit,
   type RendererAdapter,
+  type BandInput,
+  sceneBandsHolding,
 } from '@molstar/meso-spec/runtime';
 import type { ViewerApi } from '@molstar/prism-viewer/api';
 import type { PrismViewer } from '@molstar/prism-viewer/viewer';
@@ -41,6 +45,7 @@ import { streamNode } from '@molstar/meso-spec/runtime';
 import { isMissingList, MesoPlacements, MesoTilePlacements, placementStore, toParticleList } from './particle-list.js';
 import { type EntityStructure, EntityStructureCache } from './entity-structures.js';
 import { Task } from '@molstar/core/task';
+import { bandPlan } from './band-plan.js';
 
 // The Prism adapter (design.md §6.5): the IR into a Prism viewer through its operations, as prism-me's rules ask (one
 // representation per list, looks as layers through `particles.look`, never a representation per type). Per commit, by
@@ -96,6 +101,8 @@ export interface AdapterLabels {
  */
 export interface AdapterStructures {
   of(type: PlacementType): EntityStructure | undefined;
+  /** A structure file by address; absent: the viewer's asset manager fetches it. */
+  readonly fetch?: (url: string) => Promise<Uint8Array | undefined>;
 }
 
 /** A copy as the document names it: its population (or instance) and its ordinal there. */
@@ -191,6 +198,87 @@ export class PrismMesoAdapter implements RendererAdapter {
   /** The entities' structures loaded, by source: kept across commits, so a re-pack loads nothing again. */
   private readonly structureCache = new EntityStructureCache();
 
+  /** The scene bands that held at the last band pass, and the IR it drew (lane `mvs-lod-bands`). */
+  private bandsHeld: ReadonlySet<string> = new Set();
+  private bandsIR: IR | undefined;
+
+  /** What the scene bands read now: the canvas camera (else the view's), the view shown, the compartments' shapes. */
+  private bandInput(ir: IR): BandInput {
+    const camera = this.viewer.plugin.canvas3d?.camera;
+    const eye = camera ? [...camera.position] : [...(ir.view.camera?.position ?? [0, 0, 0])];
+    const target = camera ? [...camera.target] : [...(ir.view.camera?.target ?? [0, 0, 0])];
+    const compartments = new Map<string, IRShape>();
+    for (const [n] of walk(ir.root))
+      if (n.kind === 'compartment') compartments.set(n.params.compartment, n.params.shape);
+    return {
+      camera: { eye, target, fov: camera?.state.fov ?? Math.PI / 4 },
+      viewport: { width: camera?.viewport.width ?? 0, height: camera?.viewport.height ?? 0 },
+      view: ir.view.id,
+      compartments,
+    };
+  }
+
+  /**
+   * The view's bands drawn (_spec/bands.md "In prism-me"): each list its rules target given its silhouettes (on at a
+   * bound, or off) from the scene bands that hold now; a list already so is not written. Returns the lists written.
+   */
+  private async applyBands(ir: IR, issues: Issue[]): Promise<number> {
+    const view = ir.view;
+    this.bandsIR = ir;
+    if (!view.scales?.length) {
+      this.bandsHeld = new Set();
+      return 0;
+    }
+    const held = sceneBandsHolding(view.bands ?? [], this.bandInput(ir));
+    this.bandsHeld = held;
+    const store = this.store;
+    const plan = bandPlan(view, held, (set) => {
+      const out = new Set<number>();
+      for (const [t, target] of store.get(set)?.targetMapping ?? []) if (target.kind === 'structure') out.add(t);
+      return out;
+    });
+    issues.push(...plan.issues);
+    const state = this.viewer.plugin.state.data;
+    const b = state.build();
+    let written = 0;
+    for (const [key, patch] of plan.lists) {
+      const ref = this.placed.get(key)?.ref;
+      if (!ref) continue;
+      const q = StateSelection.Generators.byRef(ref).subtree().ofType(SO.Particle.Representation3D);
+      for (const cell of state.select(q)) {
+        const old = cell.transform.params as {
+          type?: { name: string; params: { structure?: Record<string, unknown> } };
+        };
+        if (!old.type) continue;
+        // a representation made with partial params has no `structure` group: its defaults, as drawn
+        const list = store.get(key);
+        const structure =
+          old.type.params.structure ?? (list ? structureDefaults(this.viewer.plugin, list, old.type.name) : undefined);
+        if (!structure) continue;
+        if (Object.entries(patch).every(([k, v]) => structure[k] === v)) continue;
+        b.to(cell).update({
+          ...old,
+          type: { ...old.type, params: { ...old.type.params, structure: { ...structure, ...patch } } },
+        });
+        written++;
+      }
+    }
+    if (written) await keepCamera(this.viewer.plugin.canvas3d, () => this.viewer.plugin.runTask(state.updateTree(b)));
+    return written;
+  }
+
+  /**
+   * The camera rested (the canvas camera feed): the scene bands evaluated again; when the ones that hold changed, the
+   * lists' silhouettes are written again, out of History (view state, as streamed tiles). Returns the lists written.
+   */
+  async cameraRested(): Promise<number> {
+    const ir = this.bandsIR;
+    if (!ir?.view.scales?.length || !ir.view.bands?.some((b) => b.tier === 'scene')) return 0;
+    const held = sceneBandsHolding(ir.view.bands, this.bandInput(ir));
+    if (held.size === this.bandsHeld.size && [...held].every((id) => this.bandsHeld.has(id))) return 0;
+    return this.applyBands(ir, []);
+  }
+
   /**
    * The structure targets of each set's types, by set key, loading what is not loaded yet; what could not load is said
    * once per commit (`resource.unavailable`) and its copies stay spheres.
@@ -206,7 +294,7 @@ export class PrismMesoAdapter implements RendererAdapter {
     const plugin = this.viewer.plugin;
     const loaded = await plugin.runTask(
       Task.create('Load the entities’ structures', (ctx) =>
-        this.structureCache.load(plugin, ctx, [...wanted.values()]),
+        this.structureCache.load(plugin, ctx, [...wanted.values()], port.fetch),
       ),
     );
     for (const [key, t] of loaded) {
@@ -497,6 +585,8 @@ export class PrismMesoAdapter implements RendererAdapter {
     // representation hints: spheres drawn; surface, and structure where no structure is drawn, fall back to spheres here,
     // said once per hint
     const issues: Issue[] = [...renderIssues];
+    // the view's bands: each targeted list's silhouettes (lane `mvs-lod-bands`)
+    await this.applyBands(source, issues);
     await this.drawAnnotations(ir, issues);
     if (ir.view.cutaway?.length)
       issues.push(
@@ -775,14 +865,28 @@ export class PrismMesoAdapter implements RendererAdapter {
   private async represent(set: PlacementSet, ref: string, label: string, was?: Drawn) {
     const particles = this.particles();
     const type = was?.name ?? this.options.representation ?? 'spacefill';
+    // types drawn from their structures (lane `mvs-lod-bands`): a `target` representation draws them (their sphere
+    // levels, their silhouettes) and the spheres leave them out, as prism-me draws a structure painted into a list
+    const structures =
+      !!this.store.get(set.key)?.targetMapping?.size &&
+      this.viewer.plugin.representation.particles.registry.has('target');
+    const params = {
+      ...(was?.params ?? (set.fibers && type === 'spacefill' ? { excludeFibers: false } : {})),
+      ...(structures && type === 'spacefill' ? { excludeTargets: true } : {}),
+    };
     const r = await particles.representation({
       type,
       particles: ref,
       // spacefill hides fiber particles by default (a Fibers representation draws them); here a filament's subunits are
       // the copies to draw (renderer-recommendations.md A8)
-      params: was?.params ?? (set.fibers && type === 'spacefill' ? { excludeFibers: false } : {}),
+      params,
     } as Parameters<typeof particles.representation>[0]);
     if (!r.ok) throw new Error(`Could not show ${label}: ${r.message}`);
+    if (!structures || type === 'target') return;
+    const t = await particles.representation({ type: 'target', particles: ref } as Parameters<
+      typeof particles.representation
+    >[0]);
+    if (!t.ok) throw new Error(`Could not show the structures of ${label}: ${t.message}`);
   }
 
   /** The type and params of a list's first representation (the one the adapter made, as the person left it). */
@@ -1004,6 +1108,16 @@ function sameLayers(a: readonly ParticleLayerProps[], b: readonly ParticleLayerP
 }
 
 /** A tile representation's params: the type's defaults and its default themes, as `particles.representation` makes them. */
+/** A representation type's default `structure` group for a list (its silhouettes' params among them); none without one. */
+function structureDefaults(plugin: PluginContext, data: ParticleList, type: string) {
+  const provider = plugin.representation.particles.registry.get(type);
+  if (!provider) return undefined;
+  const defaults = PD.getDefaultValues(provider.getParams(plugin.representation.particles.themes, data)) as {
+    structure?: Record<string, unknown>;
+  };
+  return defaults.structure;
+}
+
 function tileRepresentationParams(plugin: PluginContext, data: ParticleList, type: string): never {
   const { registry, themes } = plugin.representation.particles;
   const provider = registry.get(type);

@@ -56,6 +56,12 @@ export interface MesoViewSpecOptions {
   readonly fetchText?: (url: string) => Promise<string | undefined>;
   /** The resolvers a document's models are resolved by; default: the runtime's (`DefaultResolvers`). */
   readonly resolvers?: MesoDocumentOptions['resolvers'];
+  /**
+   * An entity's structure file by absolute address (lane `mvs-lod-bands`). Default: the viewer's asset manager; but a
+   * host that gives `fetchText` fetches for the extension, so without `fetchBinary` no structure is fetched (its copies
+   * are spheres).
+   */
+  readonly fetchBinary?: (url: string) => Promise<Uint8Array | undefined>;
 }
 
 /** What `mesoviewspec.save` gives. */
@@ -187,6 +193,9 @@ export class MesoViewSpecApi extends ApiArea {
       {
         fetchText: options.fetchText ?? ((url) => fetchWithAssets(ctx, url)),
         ...(options.resolvers ? { resolvers: options.resolvers } : {}),
+        ...((options.fetchBinary ?? (options.fetchText ? undefined : (url: string) => fetchBinaryWithAssets(ctx, url)))
+          ? { fetchBinary: options.fetchBinary ?? ((url: string) => fetchBinaryWithAssets(ctx, url)) }
+          : {}),
       },
     );
     this.#unregister = this.model.register();
@@ -986,6 +995,23 @@ function foreignAddresses(uris: readonly string[], base: string | undefined): st
 }
 
 /** A resource's text through the viewer's asset manager; undefined when it cannot be read. */
+/** A file's bytes through the viewer's asset manager; undefined when it cannot be read. */
+async function fetchBinaryWithAssets(ctx: ApiAreaContext, url: string): Promise<Uint8Array | undefined> {
+  const { plugin } = ctx;
+  try {
+    const wrapper = await plugin.runTask(
+      plugin.managers.asset.resolve(Asset.getUrlAsset(plugin.managers.asset, url), 'binary'),
+    );
+    try {
+      return new Uint8Array(wrapper.data as Uint8Array);
+    } finally {
+      wrapper.dispose();
+    }
+  } catch {
+    return undefined;
+  }
+}
+
 async function fetchWithAssets(ctx: ApiAreaContext, url: string): Promise<string | undefined> {
   const { plugin } = ctx;
   try {
