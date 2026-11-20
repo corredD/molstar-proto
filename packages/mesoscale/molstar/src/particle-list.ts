@@ -7,7 +7,7 @@
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
 import type { PlacementSet, PlacementType } from '@molstar/meso-spec/ir';
 import { CustomProperties } from '@molstar/model/model/custom-property';
-import type { ParticleList } from '@molstar/model/model/particles/particle-list';
+import type { ParticleList, ParticleTarget } from '@molstar/model/model/particles/particle-list';
 import type { PluginContext } from '@molstar/plugin/context';
 import { PluginStateObject as SO, PluginStateTransform } from '@molstar/plugin/state/objects';
 
@@ -39,7 +39,16 @@ export interface ListLabels {
   readonly describe?: (type: PlacementType) => string | undefined;
 }
 
-export function toParticleList(set: PlacementSet, label: string, labels?: ListLabels): ParticleList {
+/**
+ * The list of `set`. `targets`: a type's structure by its index (an entity drawn from its structure, lane
+ * `mvs-lod-bands`); the other types are spheres of their radius.
+ */
+export function toParticleList(
+  set: PlacementSet,
+  label: string,
+  labels?: ListLabels,
+  targets?: ReadonlyMap<number, ParticleTarget>,
+): ParticleList {
   const n = set.count;
   const radii = new Float32Array(n);
   const keys = new Int32Array(n);
@@ -62,6 +71,7 @@ export function toParticleList(set: PlacementSet, label: string, labels?: ListLa
     targets: set.types,
     entities: set.types,
     targetInfo,
+    ...(targets?.size ? { targetMapping: targets } : {}),
     entityInfo,
     coordinates: set.positions,
     rotations: set.rotations,

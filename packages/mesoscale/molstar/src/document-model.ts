@@ -56,6 +56,7 @@ import {
   documentLooks,
   documentOutline,
 } from './document-tree.js';
+import { entityStructureOf } from './entity-structures.js';
 import { placementStore } from './particle-list.js';
 import { type AdapterViewer, PrismMesoAdapter } from './prism-adapter.js';
 import { type EditRecord, type EditRun, MesoSession } from './session.js';
@@ -201,6 +202,13 @@ export class MesoDocumentModel {
       labels: {
         copy: (population, ordinal) => (this.isInstance(population) ? population : `${population}#${ordinal}`),
         describe: (t) => this.describe(t),
+      },
+      // an entity drawn from its structure (lane `mvs-lod-bands`): the document the step compiles
+      structures: {
+        of: (t) => {
+          const doc = this.session?.stepDoc ?? this.doc;
+          return doc ? entityStructureOf(doc, t.entity) : undefined;
+        },
       },
     });
     // a new budget in Settings (or its Undo) is a stream step now, no step of the History

@@ -29,7 +29,7 @@ import type { ViewerApi } from '@molstar/prism-viewer/api';
 import type { PrismViewer } from '@molstar/prism-viewer/viewer';
 // the `particles` API area's types (the feature is lazy: `extensions.load('particles')` before its first use)
 import type {} from '@molstar/prism-viewer/features/particles';
-import type { ParticleList } from '@molstar/model/model/particles/particle-list';
+import type { ParticleList, ParticleTarget } from '@molstar/model/model/particles/particle-list';
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
 import type { PluginContext } from '@molstar/plugin/context';
 import {
@@ -39,6 +39,8 @@ import {
 import { ParticlesRepresentation3D } from '@molstar/plugin/state/transforms/particles/representation';
 import { streamNode } from '@molstar/meso-spec/runtime';
 import { isMissingList, MesoPlacements, MesoTilePlacements, placementStore, toParticleList } from './particle-list.js';
+import { type EntityStructure, EntityStructureCache } from './entity-structures.js';
+import { Task } from '@molstar/core/task';
 
 // The Prism adapter (design.md §6.5): the IR into a Prism viewer through its operations, as prism-me's rules ask (one
 // representation per list, looks as layers through `particles.look`, never a representation per type). Per commit, by
@@ -86,6 +88,14 @@ export interface AdapterLabels {
   copy(population: string, ordinal: number): string;
   /** A type's description under the copy's id (its entity, its compartment). */
   describe(type: PlacementType): string | undefined;
+}
+
+/**
+ * What a type is drawn from (lane `mvs-lod-bands`): its entity's structure, loaded once and made the type's target in
+ * its list, so Mol*'s sphere levels and silhouettes have atoms; none: a sphere of the type's radius.
+ */
+export interface AdapterStructures {
+  of(type: PlacementType): EntityStructure | undefined;
 }
 
 /** A copy as the document names it: its population (or instance) and its ordinal there. */
@@ -174,8 +184,54 @@ export class PrismMesoAdapter implements RendererAdapter {
       readonly representation?: string;
       readonly sizeFactor?: number;
       readonly labels?: AdapterLabels;
+      readonly structures?: AdapterStructures;
     } = {},
   ) {}
+
+  /** The entities' structures loaded, by source: kept across commits, so a re-pack loads nothing again. */
+  private readonly structureCache = new EntityStructureCache();
+
+  /**
+   * The structure targets of each set's types, by set key, loading what is not loaded yet; what could not load is said
+   * once per commit (`resource.unavailable`) and its copies stay spheres.
+   */
+  private async structureTargets(sets: readonly PlacementSet[], issues: Issue[]) {
+    const out = new Map<string, Map<number, ParticleTarget>>();
+    const port = this.options.structures;
+    if (!port || !sets.length) return out;
+    const wanted = new Map<string, EntityStructure>();
+    const byType = sets.map((s) => s.typeTable.map((t) => port.of(t)));
+    for (const types of byType) for (const s of types) if (s) wanted.set(s.key, s);
+    if (!wanted.size) return out;
+    const plugin = this.viewer.plugin;
+    const loaded = await plugin.runTask(
+      Task.create('Load the entities’ structures', (ctx) =>
+        this.structureCache.load(plugin, ctx, [...wanted.values()]),
+      ),
+    );
+    for (const [key, t] of loaded) {
+      if ('error' in t) {
+        const s = wanted.get(key)!;
+        issues.push(
+          issue(
+            'resource.unavailable',
+            'warning',
+            'render',
+            `the structure of ${s.name} could not be loaded (${t.error}): its copies are drawn as spheres`,
+          ),
+        );
+      }
+    }
+    sets.forEach((set, i) => {
+      const targets = new Map<number, ParticleTarget>();
+      byType[i].forEach((s, type) => {
+        const t = s && loaded.get(s.key);
+        if (t && !('error' in t)) targets.set(type, t);
+      });
+      if (targets.size) out.set(set.key, targets);
+    });
+    return out;
+  }
 
   /**
    * Lets go of the expansions and bounds of sets not drawn; an expansion a drawn one repeats (two levels of
@@ -391,13 +447,22 @@ export class PrismMesoAdapter implements RendererAdapter {
     }
     // an empty set (a model whose input is missing) has nothing Prism can draw: no list (spacefill refuses it)
     const newTiles: PlacementSet[] = [];
-    for (const set of [...plan.add.filter((x) => x.count > 0), ...relist]) {
+    const listed = [...plan.add.filter((x) => x.count > 0), ...relist];
+    // the entities' structures of the lists made now (not tiles: streamed copies stay spheres in this lane)
+    const renderIssues: Issue[] = [];
+    const targets = await this.structureTargets(
+      listed.filter((s) => !tiles.has(s.key) && !store.has(s.key)),
+      renderIssues,
+    );
+    for (const set of listed) {
       if (tiles.has(set.key)) {
         newTiles.push(set);
         continue;
       }
       const label = listLabel(set);
-      if (!store.has(set.key)) store.set(set.key, toParticleList(set, label, this.labelsOf(set.key)));
+      if (!store.has(set.key)) {
+        store.set(set.key, toParticleList(set, label, this.labelsOf(set.key), targets.get(set.key)));
+      }
       const b = v.plugin.state.data.build().toRoot().apply(MesoPlacements, { key: set.key, label });
       await v.plugin.runTask(v.plugin.state.data.updateTree(b));
       this.placed.set(set.key, { ref: b.ref, label });
@@ -429,8 +494,9 @@ export class PrismMesoAdapter implements RendererAdapter {
         : false;
     this.cameraMoved = cameraSet;
     const t3 = now();
-    // representation hints: spheres drawn; structure and surface fall back to spheres here, said once per hint
-    const issues: Issue[] = [];
+    // representation hints: spheres drawn; surface, and structure where no structure is drawn, fall back to spheres here,
+    // said once per hint
+    const issues: Issue[] = [...renderIssues];
     await this.drawAnnotations(ir, issues);
     if (ir.view.cutaway?.length)
       issues.push(
@@ -451,8 +517,15 @@ export class PrismMesoAdapter implements RendererAdapter {
           `${partial.length} look${partial.length === 1 ? '' : 's'} on part of a population (${partial.reduce((n, l) => n + (l.runs!.length >> 1), 0)} copy runs) not drawn: Prism layers select whole targets only`,
         ),
       );
+    // a type drawn from its structure honours `structure` (lane `mvs-lod-bands`)
+    const drawnAsStructure = (l: IRLook) => {
+      const mapping = store.get(l.set)?.targetMapping;
+      return !!mapping && l.types.every((t) => mapping.get(t)?.kind === 'structure');
+    };
     for (const hint of ['structure', 'surface'] as const) {
-      const n = ir.view.looks.filter((l) => l.representation === hint).length;
+      const n = ir.view.looks.filter(
+        (l) => l.representation === hint && !(hint === 'structure' && drawnAsStructure(l)),
+      ).length;
       if (n)
         issues.push(
           issue(
@@ -861,6 +934,7 @@ export class PrismMesoAdapter implements RendererAdapter {
 
   async dispose() {
     await this.clear();
+    this.structureCache.dispose();
   }
 }
 
