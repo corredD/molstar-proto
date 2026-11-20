@@ -54,6 +54,56 @@ evaluate, possibly a reference to some runtime, as `(Band :evaluator xxx :params
   on Windows: `cli.test` (8) and `spec.test` (5) (ESM `c:` URLs, CRLF headers, `symbol.unknown` unregistered),
   `one-look-writer` (path separator), `paint-mode` "Place Auto keeps the mesh…" (fails on `origin/prism-me` alone too).
 
+- Gate fixes: `c060a4acf` (validation, view edits, partial rules), `faac7dbb0` (the band plan), `8b0ccfc6b` (loading),
+  `dd6d16265` (the adapter). Medium suites 195 pass; unit failures the base's 15.
+- App check through the API (port 1390, `mesoviewspec.open {example: 'exosome-bands'}`, after the fixes): opens in 1.5
+  s, 8CAT from RCSB; both catalase lists drawn by a `target` representation beside their spheres, silhouettes by size
+  below 12 px; the lumen view turns them off, the overview on again; `mesoscale.impostors {pixels: 30}` on them, then
+  the camera moved and left to rest (the pane hidden: a draw signalled by hand), 12 px again; no console error. Not seen
+  on a GPU (no WebGL here): Ludo's check.
+
 ## Gate
 
+Reviewer (Opus) and skeptic (Opus), read-only, on `4a3ed96ce..587595586`. R = reviewer, S = skeptic.
+
+| Finding                                                                                                                  | Verdict              | Fix                                                                                              |
+| ------------------------------------------------------------------------------------------------------------------------ | -------------------- | ------------------------------------------------------------------------------------------------ |
+| R1, S10: a camera rest's write races a commit (a stale plan, a write to a list deleted)                                  | confirmed (reading)  | a commit waits for a rest's write in flight; a rest writes nothing while a commit runs; no throw |
+| S2, R4: a list the bands wrote keeps its silhouettes when no rule that holds targets it                                  | confirmed (S ran it) | what it had is kept and put back                                                                 |
+| S3, R3: a distance band from 0 gives `lodImpostorDistance: 0`, prism-me's automatic distance                             | confirmed (S ran it) | silhouettes everywhere: a tiny distance                                                          |
+| S1: `validate` throws on an evaluator that is no string                                                                  | confirmed (S ran it) | refused (`bands.shape`)                                                                          |
+| S4, R9: a view's bands not checked (another evaluator, overlaps as the view has them, not a list, an id twice)           | confirmed (S ran it) | all checked, at the view's entry                                                                 |
+| R2: an Undo or a person's toggle not drawn over until a scene band flips                                                 | confirmed            | a rest writes wherever the params differ; bands.md: the bands own them                           |
+| R5: two commits at once load a structure twice, one never disposed                                                       | confirmed (reading)  | the load is kept, shared                                                                         |
+| R6, S8: an abort, or a network failure, kept as a failure for the adapter's life                                         | confirmed (reading)  | neither kept; the structures let go when the owner is disposed                                   |
+| R7: the declared format not passed; a query in the address                                                               | confirmed            | the format passed; the file named without its query                                              |
+| R8: an edit that gives a kept list's entity another structure is not loaded                                              | confirmed            | not fixed: said in bands.md (a kept list's data is its owner's, kept for Undo); taken at re-pack |
+| R10: an edit to bands or rules classified as a model edit (a full compile)                                               | confirmed            | `classifyEdit` strips `bands` and `scales`                                                       |
+| R11: no test of the camera rest, Undo, view overlaps, distance 0, a retry                                                | confirmed            | tests for each                                                                                   |
+| S5, R13: `spheres` on a structure type drawn as atoms unsaid; `fade` drawn as dither unsaid                              | confirmed (S ran it) | said (`representation.fallback`, `bands.blend`)                                                  |
+| S6: later rules do not always win (a surface-only rule skipped; a held scene rule and gaps; a scene rule and a distance) | confirmed (S ran it) | hints painted on the measure's line in rule order                                                |
+| S7: a rule on part of a type dropped unsaid                                                                              | confirmed (S ran it) | `scales.partial`                                                                                 |
+| S9: `adopt` keeps stale band state; a fresh-page restore fills lists without structures                                  | confirmed (reading)  | `adopt` loads the structures and takes the restored view's bands; `forget`, `clear` drop them    |
+| S11: a re-pack loses the `target` representation's params; a stripped one not redrawn                                    | confirmed (reading)  | kept on re-pack; a list missing it is drawn again                                                |
+| S12: size with a range; overlap only between neighbours; a blend wider than its band                                     | confirmed (S ran it) | refused                                                                                          |
+| R12: the plan throws on a copy band without a range                                                                      | confirmed            | filtered                                                                                         |
+| S15: a superstructure's entities never drawn from structures                                                             | confirmed            | looked up there too                                                                              |
+| R14, S15: two doc comments above one function                                                                            | confirmed            | moved back                                                                                       |
+| R15: `runtime/index.ts` rewritten LF                                                                                     | confirmed            | CRLF as it was, the exports added                                                                |
+| R16: the viewport in drawing-buffer pixels                                                                               | confirmed            | over the pixel ratio                                                                             |
+| R16: a rest's issues never shown                                                                                         | confirmed            | not fixed: said in bands.md (said at the next commit)                                            |
+| R17: `bands.overlap` without ids                                                                                         | confirmed            | both bands' ids                                                                                  |
+| R7: a `selection` ignored, not in the key                                                                                | confirmed            | in the key; not applied, said                                                                    |
+| S13: `IRView.scales` rebuilt each view edit                                                                              | confirmed, harmless  | none (the adapter diffs the params)                                                              |
+| S14: the CPU measures differ from the GPU's (Euclidean distance, full radius)                                            | plausible            | none yet: only scene tests run on the CPU                                                        |
+
 ## Open
+
+- Ludo's check by eye (GPU): `exosome-bands` on 1390, zoom out on the catalase (atoms, then silhouettes below 12 px with
+  the dither), the lumen view (atoms at every size).
+- David reads `_spec/bands.md` (its four open questions).
+- Not built (bands.md "Not yet"): a switch between other representations, `envelope`, `detail`, `source` per band; CPU
+  copy measures; evaluators from extensions; `bands` in the S-expression spelling; a selection applied; a kept list
+  given another structure by an edit.
+- The paint lane `mvs-paint-docs` merges prism-me too: both lanes resolve the same conflicts; whichever merges second
+  into `me/mesoviewspec` takes the other's resolutions.
