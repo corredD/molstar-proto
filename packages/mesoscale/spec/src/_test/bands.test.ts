@@ -10,7 +10,7 @@ import type { Band, MesoViewSpecDoc, ScaleRule } from '../format/doc.js';
 import { validate } from '../format/validate.js';
 import { bandEvaluatorSpec } from '../format/bands.js';
 import { DefaultResolvers } from '../resolvers/index.js';
-import { compile, updateView } from '../runtime/runtime.js';
+import { classifyEdit, compile, updateView } from '../runtime/runtime.js';
 import { bandHolds, type BandInput, measureCopy, sceneBandsHolding } from '../runtime/bands.js';
 import type { IRBand } from '../ir/ir.js';
 
@@ -42,7 +42,7 @@ function banded(edit: (d: MesoViewSpecDoc) => Partial<MesoViewSpecDoc> = () => (
 
 const codes = (doc: MesoViewSpecDoc) =>
   validate(doc)
-    .filter((i) => /^(bands|scales)\./.test(i.code) || i.path?.match(/^\/(bands|scales)|\/bands\//))
+    .filter((i) => /^(bands|scales)\./.test(i.code) || i.path?.match(/^\/(bands|scales)|\/bands(\/|$)/))
     .map((i) => `${i.code} ${i.severity} ${i.path}`);
 
 describe('bands: the document', () => {
@@ -86,13 +86,77 @@ describe('bands: the document', () => {
         { id: 'b.a', size: [0, 12] },
         { id: 'b.b', size: [10, 40] },
         { id: 'b.c', evaluator: 'meso.distance', range: [0, 100], blend: { width: 2 } },
-        { id: 'b.d', evaluator: 'meso.distance', range: [100, 150], blend: { width: 2 } },
+        { id: 'b.d', evaluator: 'meso.distance', range: [100, 150], blend: { width: 0.5 } },
         { id: 'b.e', evaluator: 'meso.distance', range: [150, null] },
       ],
       scales: [],
       views: exosomeDoc().views,
     }));
     expect(codes(doc)).toEqual(['bands.overlap error /bands/1/size', 'bands.overlap error /bands/3/blend']);
+  });
+
+  // the gate's findings (reviewer 9, 17; skeptic 1, 4, 12)
+  it('never throws on an evaluator that is no string; size with a range; a blend with nothing to blend into', () => {
+    const doc = banded(() => ({
+      bands: [
+        { id: 'b.a', evaluator: 7 as unknown as string, range: [0, 1] },
+        { id: 'b.b', size: [0, 12], range: [0, 13] },
+        { id: 'b.c', evaluator: 'meso.distance', range: [10, null], blend: { width: 0.5 } },
+        { id: 'b.d', evaluator: 'meso.distance', range: [2, 3], blend: { width: 4 } },
+      ],
+      scales: [],
+      views: exosomeDoc().views,
+    }));
+    expect(() => validate(doc)).not.toThrow();
+    expect(codes(doc)).toEqual([
+      'bands.shape error /bands/0/evaluator',
+      'bands.shape error /bands/1/size',
+      'bands.shape error /bands/2/blend',
+      'bands.overlap error /bands/3/blend',
+    ]);
+  });
+
+  it('an overlap with an earlier band that is not the neighbour; the issue names both bands', () => {
+    const doc = banded(() => ({
+      bands: [
+        { id: 'b.a', size: [0, 100] },
+        { id: 'b.b', size: [10, 20] },
+        { id: 'b.c', size: [30, 40] },
+      ],
+      scales: [],
+      views: exosomeDoc().views,
+    }));
+    const issues = validate(doc).filter((i) => i.code === 'bands.overlap');
+    expect(issues.map((i) => [i.path, i.ids])).toEqual([
+      ['/bands/1/size', ['b.b', 'b.a']],
+      ['/bands/2/size', ['b.c', 'b.a']],
+    ]);
+  });
+
+  it("a view's bands: not a list, twice the same, another evaluator, an overlap as the view has them", () => {
+    const at = (bands: unknown) =>
+      codes(
+        banded((b) => ({
+          views: b.views!.map((v) => (v.id === 'v.overview' ? ({ ...v, bands } as typeof v) : v)),
+        })),
+      );
+    expect(at(3)).toEqual(['value.missing error /views/0/bands']);
+    expect(
+      at([
+        { id: 'b.far', range: [0, 6] },
+        { id: 'b.far', range: [0, 5] },
+      ]),
+    ).toEqual(['bands.shape error /views/0/bands/1/id']);
+    expect(at([{ id: 'b.far', evaluator: 'meso.distance' }])).toEqual(['bands.shape error /views/0/bands/0/evaluator']);
+    // far [0, 20) against the document's mid [12, 40)
+    expect(at([{ id: 'b.far', range: [0, 20] }])).toEqual(['bands.overlap error /views/0/bands/0/range']);
+    // blends of 3 octaves on far (at 12) and mid (at 40) overlap
+    expect(
+      at([
+        { id: 'b.far', blend: { width: 3 } },
+        { id: 'b.mid', blend: { width: 3 } },
+      ]),
+    ).toContain('bands.overlap error /views/0/bands/1/blend');
   });
 
   it('bands.evaluator: one the viewer lacks is a warning; params checked against the evaluator', () => {
@@ -255,5 +319,34 @@ describe('bands: the view', () => {
     const r = await compile(exosomeDoc(), options());
     expect(r.ir!.view.bands).toBeUndefined();
     expect(r.ir!.view.scales).toBeUndefined();
+  });
+});
+
+describe('bands: edits and partial rules (gate: reviewer 10, skeptic 7)', () => {
+  const options = () => ({
+    resolvers: DefaultResolvers,
+    load: (id: string) => ExosomeResources[id]?.(),
+    cache: new Map() as Map<string, never>,
+  });
+
+  it('a band re-thresholded or a rule edited is a view edit: nothing resolved again', () => {
+    const doc = banded();
+    const rethresholded: MesoViewSpecDoc = {
+      ...doc,
+      bands: doc.bands!.map((b) => (b.id === 'b.far' ? { ...b, size: [0, 20] as [number, number] } : b)),
+    };
+    expect(classifyEdit(doc, rethresholded)).toBe('view');
+    expect(classifyEdit(doc, { ...doc, scales: doc.scales!.slice(1) })).toBe('view');
+    expect(classifyEdit(exosomeDoc(), doc)).toBe('view');
+  });
+
+  it('a rule that picks part of a type is said, and targets none of it', async () => {
+    const doc = banded(() => ({
+      scales: [{ id: 's.few', select: '(copies p.catalase 0 3)', at: 'b.far', show: { representation: 'silhouette' } }],
+    }));
+    const r = await compile(doc, options());
+    const v = r.ir!.view;
+    expect(v.scales?.[0].targets).toEqual([]);
+    expect(v.issues?.filter((i) => i.code === 'scales.partial').map((i) => i.ids)).toEqual([['s.few']]);
   });
 });

@@ -61,6 +61,7 @@ export const BandEvaluatorSpecs: readonly BandEvaluatorSpec[] = [
 
 /** An evaluator by id (`meso.size`, or `meso.size@1` for a version); undefined when this viewer does not have it. */
 export function bandEvaluatorSpec(id: string): BandEvaluatorSpec | undefined {
+  if (typeof id !== 'string') return undefined;
   const at = id.lastIndexOf('@');
   const name = at < 0 ? id : id.slice(0, at);
   const version = at < 0 ? undefined : Number(id.slice(at + 1));

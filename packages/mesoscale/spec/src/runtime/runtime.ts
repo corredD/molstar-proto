@@ -672,8 +672,18 @@ export async function compile(doc: MesoViewSpecDoc, o: RuntimeOptions, depth = 0
 
 /** What an edit touches (_spec/views.md): `view` when only views, tours, session or metadata differ (no resolution). */
 export function classifyEdit(prev: MesoViewSpecDoc, next: MesoViewSpecDoc): 'none' | 'view' | 'model' {
-  // the revision is the committer's label, not content (format/patch.ts)
-  const strip = ({ views: _v, tours: _t, session: _s, metadata: _m, revision: _r, ...rest }: MesoViewSpecDoc) => rest;
+  // the revision is the committer's label, not content (format/patch.ts); bands and scale rules are view state (they
+  // choose among what is resolved: _spec/bands.md)
+  const strip = ({
+    views: _v,
+    tours: _t,
+    session: _s,
+    metadata: _m,
+    revision: _r,
+    bands: _b,
+    scales: _c,
+    ...rest
+  }: MesoViewSpecDoc) => rest;
   const bare = ({ revision: _r, ...rest }: MesoViewSpecDoc) => rest;
   if (contentHash(bare(prev)) === contentHash(bare(next))) return 'none';
   return contentHash(strip(prev)) === contentHash(strip(next)) ? 'view' : 'model';
@@ -1244,6 +1254,20 @@ export function deriveView(doc: MesoViewSpecDoc, root: IRNode, shown?: Id): IRVi
             )
             .map((t) => t.index);
           if (types.length) targets.push({ set: s.key, types });
+          // part of a type: a rule decides per type (Prism sets drawings per list), so it is not drawn so
+          const partial = s.typeTable.filter(
+            (t) => !types.includes(t.index) && runsSize(intersectRuns(tr[t.index], runs)) > 0,
+          ).length;
+          if (partial)
+            issues.push(
+              issue(
+                'scales.partial',
+                'warning',
+                'resolve',
+                `${r.id} picks part of ${partial} type${partial === 1 ? '' : 's'} of ${s.key}: a rule applies to whole types, those copies keep their default`,
+                { ids: [r.id] },
+              ),
+            );
         }
         const hint = r.show?.representation;
         return {

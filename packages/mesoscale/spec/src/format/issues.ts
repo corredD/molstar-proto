@@ -85,6 +85,7 @@ export const IssueCodes = {
   'bands.evaluator': "A band's evaluator is not one this viewer has, or its params are not the evaluator's",
   'bands.blend': 'A blend the viewer cannot draw as asked: drawn at the width it has, or as a switch',
   'scales.shape': 'A scale rule names a band the document lacks, or has no band',
+  'scales.partial': 'A scale rule picks part of a type: rules apply to whole types, those copies keep their default',
   assumption: 'The resolver made a choice the document did not make',
 } as const;
 
