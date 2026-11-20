@@ -22,6 +22,8 @@ import { StateSelection } from '@molstar/core/state';
 import { PluginStateObject as SO } from '@molstar/plugin/state/objects';
 import { afterEach, describe, expect, it } from 'vitest';
 import { type AdapterStructures, PrismMesoAdapter } from '../prism-adapter.js';
+import { EntityStructureCache } from '../entity-structures.js';
+import { Task } from '@molstar/core/task';
 
 // A document's entities drawn from their structures (lane `mvs-lod-bands`, scope A): an entity with a structure is its
 // type's target in the list (`targetMapping`), so Mol*'s sphere levels and silhouettes have atoms to work on; loaded
@@ -240,5 +242,47 @@ describe('the representations of a list with structures (headless)', () => {
     expect(asked).toEqual(['https://example.org/x/1c26.bcif']);
     const [{ set, type }] = typesOf(placementSets(result.ir!), 'e.catalase');
     expect((adapter.listObject(set.key)!.data as ParticleList).targetMapping?.get(type)?.kind).toBe('structure');
+  });
+});
+
+// the gate's findings on loading (reviewer 5, 6, 7; skeptic 8)
+describe('loading the structures (headless)', () => {
+  const url = 'https://example.org/x/1c26.bcif?v=2';
+  const source = { kind: 'url' as const, url, isBinary: true, format: 'mmcif' };
+
+  it('two loads at once share one fetch; a fetched file is named without its query', { tags: ['medium'] }, async () => {
+    const v = await createPrismViewerHeadless({ spec: createMesoscaleExplorerSpec('') });
+    viewers.push(v);
+    const cache = new EntityStructureCache();
+    const asked: string[] = [];
+    const fetch = async (u: string) => {
+      asked.push(u);
+      await new Promise((r) => setTimeout(r, 20));
+      return new Uint8Array(readFileSync(fixture));
+    };
+    const wanted = [{ key: 'k', name: 'catalase', source }];
+    const [a, b] = await Promise.all([
+      v.plugin.runTask(Task.create('a', (ctx) => cache.load(v.plugin, ctx, wanted, fetch))),
+      v.plugin.runTask(Task.create('b', (ctx) => cache.load(v.plugin, ctx, wanted, fetch))),
+    ]);
+    expect(asked).toEqual([url]);
+    expect(a.get('k')).toBe(b.get('k'));
+    expect((a.get('k') as { kind?: string }).kind).toBe('structure');
+    cache.dispose();
+  });
+
+  it('a failed fetch is not kept: the next load tries again', { tags: ['medium'] }, async () => {
+    const v = await createPrismViewerHeadless({ spec: createMesoscaleExplorerSpec('') });
+    viewers.push(v);
+    const cache = new EntityStructureCache();
+    let up = false;
+    const fetch = async () => (up ? new Uint8Array(readFileSync(fixture)) : undefined);
+    const wanted = [{ key: 'k', name: 'catalase', source }];
+    const first = await v.plugin.runTask(Task.create('a', (ctx) => cache.load(v.plugin, ctx, wanted, fetch)));
+    expect(first.get('k')).toMatchObject({ error: expect.stringMatching(/could not be fetched/) });
+    up = true;
+    const second = await v.plugin.runTask(Task.create('b', (ctx) => cache.load(v.plugin, ctx, wanted, fetch)));
+    expect((second.get('k') as { kind?: string }).kind).toBe('structure');
+    cache.dispose();
   });
 });
