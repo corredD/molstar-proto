@@ -153,6 +153,13 @@ namespace Transformer {
      * Return an empty array or undefined to opt out.
      */
     getDependencies?(params: P): StateTransform.Ref[] | undefined;
+
+    /**
+     * Its dependencies are weak: one that is deleted, or not in the tree, is waited for (and linked when it comes)
+     * instead of putting the cell in error or throwing; `apply` and `update` get the dependencies that have objects
+     * (dependencies.md §3). Present and pending ones still order the cell after them.
+     */
+    readonly weakDependencies?: boolean;
   }
 
   export interface Definition<

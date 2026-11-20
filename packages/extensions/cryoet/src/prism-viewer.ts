@@ -6,6 +6,7 @@
 
 import { operationCommand } from '@molstar/prism-viewer/commands/operations';
 import type { ViewerExtension, ViewerSkill } from '@molstar/prism-viewer/spec';
+import { MeshVolumeColor } from './mesh-volume.js';
 import { CryoetApi } from './operations.js';
 
 declare module '@molstar/prism-viewer/api' {
@@ -32,7 +33,11 @@ export const CryoetSkill: ViewerSkill = {
     'targets_by_class gives each class (or another attribute: cc, score) its own target, to decorate classes apart.',
     'slice_tomogram shows a gray slice of a tomogram or tilt series (axis z steps through its images; contrast in σ).',
     'get_meshes lists the segmentation meshes (OBJ, PLY, VTP); style_mesh shows, hides, fades or colors one and draws',
-    'it as a surface, a wireframe or both.',
+    'it as a surface, a wireframe or both; it colors one by a volume of the scene (volume; sample surface, or mean, min',
+    'or max along the normal within ±depth Å; in σ; invert for a tomogram, whose protein is dark; detail texture for',
+    "the volume's detail, a grid at its voxels read per pixel, whatever the mesh's resolution).",
+    "set_pixel_size changes a volume's pixel size (Å) when its file's is wrong (meshes and particles keep theirs); reset",
+    "gives the file's back.",
   ].join('\n'),
   tools: [
     {
@@ -55,12 +60,20 @@ export const CryoetSkill: ViewerSkill = {
       operation: 'cryoet.slice',
       description: 'Shows a gray slice of a tomogram or tilt series.',
     },
+    {
+      id: 'set_pixel_size',
+      operation: 'cryoet.volume',
+      description:
+        "Sets a volume's pixel size (Å), when its file's is wrong: the map scaled about the origin; reset: the file's.",
+    },
   ],
 };
 
 export const CryoetExtension: ViewerExtension = {
   id: 'cryoet',
   title: 'Cryo-ET',
+  // a mesh's color by a volume is a state transform: registered, so a session that has it opens
+  plugin: { registry: [{ actions: [MeshVolumeColor] }] },
   api: { cryoet: (ctx) => new CryoetApi(ctx) },
   commands: (api) => {
     const c = api.cryoet;
@@ -82,6 +95,12 @@ export const CryoetExtension: ViewerExtension = {
         category,
         icon: 'zoom-in',
         alias: ['resolution', 'level', 'binning', 'ome-zarr level', 'finer', 'coarser'],
+      }),
+      operationCommand(api, c.volume, {
+        category,
+        icon: 'ruler',
+        alias: ['pixel size', 'voxel size', 'angstrom per pixel', 'scale volume', 'rescale tomogram'],
+        action: 'Apply',
       }),
       operationCommand(api, c.mesh, {
         category,

@@ -5,15 +5,23 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { ImpostorAtlas } from '../../geo/geometry/impostor-atlas.js';
 import { Mat4 } from '@molstar/core/math/linear-algebra/3d/mat4';
 import { ColorNames } from '@molstar/core/util/color/names';
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
 import { ValueCell } from '@molstar/core/util/value-cell';
 import { Vec4 } from '@molstar/core/math/linear-algebra/3d/vec4';
 import { Spheres } from '@molstar/graphics/geo/geometry/spheres/spheres';
-import { ParticleTargetRepresentationParams } from '@molstar/graphics/repr/particles/representation/target/common';
+import {
+  canDrawImpostors,
+  ImpostorMinRadius,
+  ParticleTargetRepresentationParams,
+} from '@molstar/graphics/repr/particles/representation/target/common';
 import { createSegmentedMdbList, LodView, type LodLevelsValue } from '../renderable.js';
+import * as lodImpostorGlsl from '../webgl/shader/chunks/lod-impostor.glsl.js';
+import * as lodImpostorWgsl from '../webgpu/shader/chunks/lod-impostor.wgsl.js';
 
 const Fov = Math.PI / 4;
 
@@ -108,6 +116,210 @@ describe('levels of detail by size on screen', () => {
     const distances = values.lodLevels.ref.value as LodLevelsValue;
     expect(distances.pixelSize).toBeUndefined();
     expect(distances.map((l) => [l[0], l[1]])).toEqual(lodLevels.map((l) => [l.minDistance, l.maxDistance]));
+  });
+
+  it('the last level as impostors: one item a copy, its entry in the scale, a band where the last spheres fade', () => {
+    const lodLevels = Spheres.LodPixelPresets.quality.lodLevels;
+    // 1000 spheres in a cloud, so that the levels' prefixes are long
+    const centers = new Float32Array(3000).map((_, i) => ((i * 7919) % 101) - 50);
+    const spheres = Spheres.create(
+      centers,
+      new Float32Array(1000).map((_, i) => i),
+      1000,
+    );
+    const props = { ...PD.getDefaultValues(Spheres.Params), lodLevels, lodPixelSize: 3 };
+    const values = Spheres.Utils.createValuesSimple(spheres, props, ColorNames.orange, 1);
+    const plain = (values.lodLevels.ref.value as LodLevelsValue).map((l) => [...l]);
+
+    spheres.shaderData.update({ lodImpostor: 1234 });
+    const value = values.lodLevels.ref.value as Spheres.LodLevelsValue;
+    expect(value.impostor).toBe(1234);
+    const last = value.length - 1;
+    // one item, the first of the coarsest order; its scale the entry, negated (`lod_impostor`)
+    expect(value[last][3]).toBe(6);
+    expect(value[last][4]).toBe(-1235);
+    // the boundary of the last spheres and the impostors widened into a band of `LodImpostorBand` octaves, both levels
+    // drawn in it and fading over all of it
+    const b = plain[last][0];
+    const k = Math.pow(2, Spheres.LodImpostorBand / 2);
+    expect(value[last][0]).toBeCloseTo(b / k, 12);
+    expect(value[last - 1][1]).toBeCloseTo(b * k, 12);
+    // the last fading in (its overlap negated), the one before out
+    expect(value[last][2]).toBeCloseTo(-(b * k - b / k), 12);
+    expect(value[last - 1][2]).toBeCloseTo(b * k - b / k, 12);
+    // the other levels as they were
+    for (let j = 0; j < last - 1; ++j) expect([...value[j]]).toEqual(plain[j]);
+
+    // a small item keeping its spheres: the same ranges (one merge key), its last level spheres
+    spheres.shaderData.update({ lodImpostor: -1 });
+    const band = values.lodLevels.ref.value as Spheres.LodLevelsValue;
+    expect(band.map((l) => [l[0], l[1], l[2]])).toEqual(value.map((l) => [l[0], l[1], l[2]]));
+    expect(band[last][4]).toBe(plain[last][4]);
+    spheres.shaderData.update({ lodImpostor: 1234 });
+
+    // the same props again: the levels kept (the props' overlaps read back, not the band's)
+    const version = values.lodLevels.ref.version;
+    Spheres.Utils.updateValues(values, props);
+    expect(values.lodLevels.ref.version).toBe(version);
+    // kept by a props update, dropped by -1
+    Spheres.Utils.updateValues(values, { ...props, lodPixelSize: 4 });
+    expect((values.lodLevels.ref.value as Spheres.LodLevelsValue).impostor).toBe(1234);
+    spheres.shaderData.update({ lodImpostor: -2 });
+    expect((values.lodLevels.ref.value as Spheres.LodLevelsValue).impostor).toBeUndefined();
+    // off: the levels as before, the band's overlaps gone (a negative overlap shrinks spheres to nothing)
+    const off = values.lodLevels.ref.value as LodLevelsValue;
+    expect(off.map((l) => l[2])).toEqual(plain.map((l) => l[2]));
+    expect(off.map((l) => l[3])).toEqual(plain.map((l) => l[3]));
+    expect((values.lodLevels.ref.value as LodLevelsValue)[last][4]).toBeGreaterThan(0);
+  });
+
+  it('orthographic with impostors: one level a view, the band not drawn twice', () => {
+    const lodLevels = Spheres.LodPixelPresets.quality.lodLevels;
+    const centers = new Float32Array(3000).map((_, i) => ((i * 7919) % 101) - 50);
+    const spheres = Spheres.create(
+      centers,
+      new Float32Array(1000).map((_, i) => i),
+      1000,
+    );
+    const props = { ...PD.getDefaultValues(Spheres.Params), lodLevels, lodPixelSize: 3 };
+    const values = Spheres.Utils.createValuesSimple(spheres, props, ColorNames.orange, 1);
+    spheres.shaderData.update({ lodImpostor: 7 });
+    const value = values.lodLevels.ref.value as LodLevelsValue;
+    const last = value.length - 1;
+    // the Å a pixel covers in the middle of the band, at its ends
+    for (const px of [value[last][0] * 1.01, (value[last][0] + value[last - 1][1]) / 2, value[last - 1][1] * 0.99]) {
+      const view = { depthScale: 0, pixelSize: px, version: 1 };
+      const drawn = value.map((_, j) => LodView.getRange(value, j, view, [0, 0, 0])).filter((r) => r[1] > 0);
+      expect(drawn.length).toBe(1);
+    }
+  });
+
+  it('impostors where they can draw: spheres, two to four levels, not approximate, flat varyings', () => {
+    const lodLevels = Spheres.LodPixelPresets.quality.lodLevels;
+    const props = { lodImpostor: true, type: 'spacefill', approximate: false, lodLevels };
+    const flat = { capabilities: { flatInterpolation: true } } as any;
+    expect(canDrawImpostors(props, flat)).toBe(true);
+    expect(canDrawImpostors({ ...props, lodImpostor: false }, flat)).toBe(false);
+    expect(canDrawImpostors({ ...props, type: 'blob-surface' }, flat)).toBe(false);
+    // approximate spheres have no impostor path (discs of the bounding sphere)
+    expect(canDrawImpostors({ ...props, approximate: true }, flat)).toBe(false);
+    // one level, or more than the culling's four (\`MaxCullLevels\`, the segments' four scales)
+    expect(canDrawImpostors({ ...props, lodLevels: lodLevels.slice(0, 1) }, flat)).toBe(false);
+    expect(canDrawImpostors({ ...props, lodLevels: [...lodLevels, lodLevels[3]] }, flat)).toBe(false);
+    // WebGL1: the entry in a varying that is not flat
+    expect(canDrawImpostors(props, { capabilities: { flatInterpolation: false } } as any)).toBe(false);
+  });
+
+  it("a switch per copy: the band levels' ranges cover every copy that can switch, in view distances", () => {
+    const lodLevels = Spheres.LodPixelPresets.quality.lodLevels;
+    const centers = new Float32Array(3000).map((_, i) => ((i * 7919) % 101) - 50);
+    const spheres = Spheres.create(
+      centers,
+      new Float32Array(1000).map((_, i) => i),
+      1000,
+    );
+    const props = { ...PD.getDefaultValues(Spheres.Params), lodLevels, lodPixelSize: 3 };
+    const values = Spheres.Utils.createValuesSimple(spheres, props, ColorNames.orange, 1);
+    const k = Math.pow(2, Spheres.LodImpostorBand / 2);
+    const view = LodView.set(LodView(), perspective(), 720, false);
+    const range = (j: number) => LodView.getRange(values.lodLevels.ref.value as LodLevelsValue, j, view, [0, 0, 0]);
+    const plainStart = (() => {
+      spheres.shaderData.update({ lodImpostor: 7 });
+      return range(2)[0];
+    })();
+
+    // by distance: the last spheres to D·k, the impostors from D/k (half: the eye's distance above the plane's)
+    spheres.shaderData.update({ lodImpostorSwitch: { mode: 'distance', value: 50000, radii: [25, 250] } });
+    expect(range(2)[1]).toBeCloseTo(50000 * k, 6);
+    expect(range(3)[0]).toBeCloseTo(Math.max((50000 / k) * 0.5, plainStart), 6);
+    // the roles: the last spheres fade out (overlap above 0), the impostors in (below)
+    expect(range(2)[2]).toBeGreaterThan(0);
+    expect(range(3)[2]).toBeLessThan(0);
+    // never before the last spheres start
+    spheres.shaderData.update({ lodImpostorSwitch: { mode: 'distance', value: 10, radii: [25, 250] } });
+    expect(range(3)[0]).toBeCloseTo(plainStart, 6);
+
+    // by size on screen: the smallest item switches first, the largest last (2R/N Å a pixel, times or over k)
+    spheres.shaderData.update({ lodImpostorSwitch: { mode: 'pixels', value: 12, radii: [25, 250] } });
+    expect(range(2)[1]).toBeCloseTo((2 * 250 * k) / 12 / view.depthScale, 3);
+    expect(range(3)[0]).toBeCloseTo(Math.max((2 * 25) / (12 * k) / view.depthScale, plainStart), 3);
+
+    // orthographic: both drawn beyond the last spheres' start, the copies choose
+    const ortho = { depthScale: 0, pixelSize: 60, version: 1 };
+    const value = values.lodLevels.ref.value as LodLevelsValue;
+    expect(LodView.getRange(value, 2, ortho, [0, 0, 0])[1]).toBeGreaterThan(0);
+    expect(LodView.getRange(value, 3, ortho, [0, 0, 0])[1]).toBeGreaterThan(0);
+    expect(LodView.getRange(value, 1, ortho, [0, 0, 0])[1]).toBeLessThan(0);
+  });
+
+  it("a switch per copy: the culling's view and the shaders' pixel the same", () => {
+    // the shaders' pixel: the camera's CSS height and the view's lod scale (\`LodView.set\`'s scale: coarser while moving)
+    const chunks = [lodImpostorGlsl.assign_lod_impostor_factor, lodImpostorWgsl.assign_lod_impostor_factor_wgsl];
+    for (const c of chunks) {
+      expect(c).toMatch(/uLodScale/);
+      expect(c).toMatch(/uCssHeight/);
+    }
+  });
+
+  it('a switch per copy, orthographic with levels by distance: the impostors drawn', () => {
+    // orthographic with levels by distance (\`lodPixelSize\` 0): the impostors drawn where the last spheres are
+    const k = Math.pow(2, 0.25);
+    const value = Object.assign(
+      [
+        [0, 500, 0, 600, 1],
+        [500, 1e7, -1, 6, -1],
+      ],
+      { impostor: 0, impostorSwitch: { mode: 'pixels', value: 12, radii: [1, 100], k } },
+    ) as unknown as LodLevelsValue;
+    const ortho = LodView.set(LodView(), perspective(), 720, true);
+    expect(LodView.getRange(value, 1, ortho, [0, 0, 0])[1]).toBeGreaterThan(1e6);
+    expect(LodView.getRange(value, 1, ortho, [0, 0, 0])[0]).toBeLessThan(1e6);
+  });
+
+  it('every structure target can be a silhouette (Ludo: below 22 Å too), tiny copies by their nearest view', () => {
+    expect(ImpostorMinRadius).toBe(0);
+    // a copy a few pixels across reads one view, not three (the fragment stage of millions of lipids)
+    for (const c of [lodImpostorGlsl.lod_impostor_frag, lodImpostorWgsl.lod_impostor_wgsl]) {
+      expect(c).toMatch(/ImpostorOneViewPixels/);
+    }
+  });
+
+  it("reads each view at its front as ImpostorAtlas.hit does: from the ray's point nearest the center, then once more", () => {
+    expect(ImpostorAtlas.ParallaxSteps).toBe(1);
+    for (const c of [lodImpostorGlsl.lod_impostor_frag, lodImpostorWgsl.lod_impostor_wgsl]) {
+      expect(c).toMatch(/ImpostorParallaxSteps = 1;/);
+      expect(c).toMatch(/nearest = o - r \* dot\(o, r\)/);
+      // three views at their fronts, the one view of a tiny copy as before (one read)
+      expect(c.match(/impostorReadFront\(entry, f[012]/g)?.length).toBe(3);
+    }
+  });
+
+  it("thins by the same rule in the vertex stages and the culling as ImpostorAtlas's, spheres never thinned", () => {
+    const source = (path: string) => readFileSync(new URL(path, import.meta.url), 'utf8');
+    const glsl = source('../webgl/shader/chunks/lod-impostor.glsl.ts');
+    const wgsl = source('../webgpu/shader/chunks/lod-impostor.wgsl.ts');
+    const cull = source('../webgpu/shader/cell-cull.wgsl.ts');
+    expect(ImpostorAtlas.ThinMinKeep).toBe(1 / 64);
+    expect(ImpostorAtlas.ThinFade).toBe(0.25);
+    expect(ImpostorAtlas.ThinArea).toBe(1 + (0.25 * 13) / 35);
+    for (const c of [glsl, wgsl]) {
+      // the kept copies' enlargement to the power of its share (\`thinScale\`)
+      expect(c).toMatch(/impostorThinScale\(inverse[sS]qrt\(min\(1\.0, p \* ImpostorThinArea\)\), p, (uObject\.)?uImpostorThin\.y\)/);
+      expect(c).toMatch(/g \* \(1\.0 \+ \(k - 1\.0\) \* \(1\.0 - sqrt\(min\(p, 1\.0\)\)\)\)/);
+      expect(c).toMatch(/ImpostorThinMinKeep = 1\.0 \/ 64\.0/);
+      expect(c).toMatch(/ImpostorThinFade = 0\.25/);
+      expect(c).toMatch(/ImpostorThinArea = 1\.0 \+ ImpostorThinFade \* 13\.0 \/ 35\.0/);
+    }
+    // the hash's constants (\`copyHash\`) in the three
+    for (const c of [glsl, wgsl, cull]) {
+      for (const k of ['0x9e3779b1u', '747796405u', '2891336453u', '277803737u']) expect(c).toContain(k);
+    }
+    expect(cull).toMatch(/1\.0 \/ 64\.0/);
+    expect(cull).toMatch(/p \* 1\.25/);
+    // the culling thins a segment's last level only where it is its impostor (its scale negative: an entry), as the
+    // vertex stage does; a member left out of the atlas (-1) keeps all its spheres
+    const thinned = cull.slice(cull.indexOf('fn thinnedOut'), cull.indexOf('fn copyInstance'));
+    expect(thinned).toMatch(/segmentData\[segment \* 3u \+ 2u\]\[[^\]]+\] >= 0\.0/);
   });
 
   it('presets by pixel size: their distances those at 1280x720 and 45°', () => {

@@ -261,15 +261,18 @@ export class CryoetPortalApi extends ApiArea {
     const data = this.ctx.plugin.state.data.cells.get(volume)?.obj?.data as Volume | undefined;
     if (!ts || !data?.grid) return undefined;
     const tomogram = this.tomogramOf(ts.run);
-    const tomogramGrid = tomogram
+    // each box as drawn: with its pixel size, before the move
+    const read = tomogram
       ? (this.ctx.plugin.state.data.cells.get(tomogram)?.obj?.data as Volume | undefined)?.grid
       : undefined;
+    const tomogramGrid = tomogram && read ? scaledGrid(read, volumeScale(this.ctx, tomogram)) : undefined;
+    const seriesGrid = scaledGrid(data.grid, volumeScale(this.ctx, volume));
     // where the tomogram is now, not where it was read (review S3): a stage move is its transform decorator
     const tomogramAt = tomogram && tomogramGrid ? volumeMatrix(this.ctx, tomogram) : undefined;
     return {
       current: volumeMatrix(this.ctx, volume),
       tomogram: tomogramGrid,
-      matrix: (p: TiltSeriesPlace) => tiltSeriesMatrix(p, data.grid, ts.series.tiltAxis, tomogramGrid, tomogramAt),
+      matrix: (p: TiltSeriesPlace) => tiltSeriesMatrix(p, seriesGrid, ts.series.tiltAxis, tomogramGrid, tomogramAt),
     };
   }
 
@@ -736,6 +739,28 @@ function volumeMatrix(ctx: Pick<ApiContext, 'plugin'>, ref: string): Mat4 {
     }
     at = next.transform.ref;
   }
+}
+
+/** A volume's pixel size over the file's (its transform decorator's `scale`, 1 without one) */
+function volumeScale(ctx: Pick<ApiContext, 'plugin'>, ref: string): number {
+  const { cells, tree } = ctx.plugin.state.data;
+  for (let at = ref; ; ) {
+    const next = tree.children
+      .get(at)
+      .toArray()
+      .map((c) => cells.get(c))
+      .find((c) => c?.transform.transformer.definition.isDecorator);
+    if (!next) return 1;
+    if (next.transform.transformer === VolumeTransform) return (next.transform.params as { scale?: number }).scale ?? 1;
+    at = next.transform.ref;
+  }
+}
+
+/** A grid scaled about the origin by `k` (a volume's pixel size over the file's): its box as drawn, before any move */
+function scaledGrid(grid: Grid, k: number): Grid {
+  if (k === 1) return grid;
+  const matrix = Mat4.mul(Mat4(), Mat4.fromUniformScaling(Mat4(), k), Grid.getGridToCartesianTransform(grid));
+  return { ...grid, transform: { kind: 'matrix', matrix } };
 }
 
 /** A volume's box as read (its grid's corners in Å): the portal's zarrs are axis-aligned */

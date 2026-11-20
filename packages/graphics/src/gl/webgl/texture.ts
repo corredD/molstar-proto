@@ -4,6 +4,7 @@
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
  * @author Gianluca Tomasello <giagitom@gmail.com>
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { SegmentedArray } from '../segmented-array.js';
@@ -539,6 +540,23 @@ export function createTexture(
     sourceData = image;
   }
 
+  /** `Texture.loadLayer`: one `texSubImage3D` of the layer */
+  function loadLayer(image: TextureImage<any>, layer: number) {
+    if (destroyed) return;
+    if (!is3d) throw new Error('loadLayer needs a 3d texture');
+    if (image.width !== width || image.height !== height || layer < 0 || layer >= depth) {
+      throw new Error(`layer ${layer} of ${image.width} × ${image.height} outside ${width} × ${height} × ${depth}`);
+    }
+    ensureStorage();
+    invalidateBindings();
+    gl.bindTexture(target, texture);
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+    (gl as WebGL2RenderingContext).texSubImage3D(target, 0, 0, 0, layer, width, height, 1, format, type, image.array);
+    gl.bindTexture(target, null);
+    sourceData = undefined;
+  }
+
   function mipmap() {
     if (destroyed) return;
     if (target !== gl.TEXTURE_2D) {
@@ -598,6 +616,7 @@ export function createTexture(
     load,
     loadData,
     loadRows,
+    loadLayer,
     mipmap,
     getSource: () => ({ kind, format: _format, type: _type, filter: _filter, data: sourceData, mipmap: hasMipmap }),
     bind: (id: TextureId) => {

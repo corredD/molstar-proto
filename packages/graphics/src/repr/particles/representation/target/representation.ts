@@ -40,6 +40,8 @@ import {
   ParticleTargetRepresentationParams,
   type ParticleTargetRepresentationProps,
   createTargetVisual,
+  canDrawImpostors,
+  ImpostorMinRadius,
   createParticleTargetPropsProvider,
   getTargetGeometryChoice,
   getTargetGeometryUtils,
@@ -56,6 +58,8 @@ import {
   withMergedSignatures,
 } from '../../../signatures.js';
 import type { Mesh } from '@molstar/graphics/geo/geometry/mesh/mesh';
+import { Spheres } from '@molstar/graphics/geo/geometry/spheres/spheres';
+import { ImpostorAtlas } from '@molstar/graphics/geo/geometry/impostor-atlas';
 
 export { ParticleTargetRepresentationParams };
 export type { ParticleTargetRepresentationProps };
@@ -105,6 +109,11 @@ export function ParticleTargetRepresentation(
   const targetVisuals = new Map<number, TargetVisual>();
 
   let mergedByType = new Map<string, MergedEntry<TargetVisual>>();
+
+  /** The impostors' atlas of the targets (`lod-impostor.md`), with what it was made from: kept while that is the same */
+  let impostors: { key: string[]; atlas: ImpostorAtlas; visuals: TargetVisual[] } | undefined;
+  /** the splatted views of the items, by their keys (`ImpostorAtlas.createCached`) */
+  const impostorBlocks = new Map<string, Uint8Array>();
 
   /** What the last full update built from: a later one changing the clip alone sets it on the visuals (`isClipOnly`) */
   let built: { particles: ParticleList; theme: Theme; props: ParticleTargetRepresentationProps } | undefined;
@@ -206,6 +215,7 @@ export function ParticleTargetRepresentation(
         }
       }
 
+      updateImpostors();
       // `previewed` kept: an update of the same particles (a theme) leaves a preview's instances where it put them
       updateRenderObjectList(entries);
       geometryState.snapshot();
@@ -213,6 +223,79 @@ export function ParticleTargetRepresentation(
       updated.next(version++);
     });
     return serialize(task);
+  }
+
+  /**
+   * The atlas of the impostors of the visuals that have them (`TargetVisual.getImpostorItem`), made again where their
+   * spheres, sizes or tiles changed; each visual given it and its entry, the others none. One texture for all
+   * (`tImpostor` shared): merged, the members read the first's
+   */
+  function updateImpostors() {
+    const levels = _props.lodLevels;
+    const boundary = getImpostorBoundary(_props);
+    const sources: ImpostorAtlas.Source[] = [];
+    const owners: TargetVisual[] = [];
+    for (const visual of targetVisuals.values()) {
+      const source = levels.length >= 2 ? visual.getImpostorSource(boundary) : undefined;
+      if (!source) continue;
+      sources.push(source);
+      owners.push(visual);
+    }
+    // the same sources: the atlas kept; else packed again, the blocks of the unchanged ones from the cache
+    const same =
+      impostors &&
+      impostors.visuals.length === owners.length &&
+      impostors.visuals.every((v, i) => v === owners[i] && impostors!.key[i] === sources[i].key);
+    if (!same) {
+      impostors = sources.length
+        ? {
+            key: sources.map((s) => s.key),
+            atlas: ImpostorAtlas.createCached(
+              sources,
+              graphics?.resources.limits.maxTextureSize ?? 4096,
+              impostorBlocks,
+            ),
+            visuals: owners,
+          }
+        : undefined;
+      // none: the blocks let go (impostors off)
+      if (!impostors) impostorBlocks.clear();
+    }
+    const entries = new Map<TargetVisual, number>();
+    if (impostors)
+      for (let i = 0; i < impostors.visuals.length; ++i) entries.set(impostors.visuals[i], impostors.atlas.codes[i]);
+    // on for the targets that can take them even where none has an entry (small targets alone): the define as derived
+    // (\`computeParticleTargetSignatures\`)
+    const atlas = impostors?.atlas ?? ImpostorAtlas.None;
+    const sw = getImpostorSwitch(sources, impostors?.visuals ?? []);
+    const thin = _props.structure.lodImpostorThin ?? 0;
+    const thinScale = _props.structure.lodImpostorThinScale ?? 1;
+    for (const visual of targetVisuals.values()) {
+      visual.setImpostor(atlas, entries.get(visual) ?? -1, sw, thin, thinScale);
+    }
+  }
+
+  /**
+   * Where each copy switches (`lod-impostor.md`): by size on screen or distance (the structure props), the radii of the
+   * smallest and largest item (the ranges cover them; the band-only small items from the smallest's), the distance by
+   * default where a typical copy is `ImpostorAutoPixels` px across (`getImpostorAutoDistance`)
+   */
+  function getImpostorSwitch(
+    sources: readonly ImpostorAtlas.Source[],
+    owners: readonly TargetVisual[],
+  ): Spheres.LodImpostorSwitch | undefined {
+    const { lodImpostorBy, lodImpostorPixels, lodImpostorDistance } = _props.structure;
+    // the small items switch too (their spheres fade in at the last level): from the smallest drawn
+    const r0 = 1;
+    const r1 = getImpostorRadiusCap(sources);
+    if (lodImpostorBy === 'distance') {
+      let value = lodImpostorDistance;
+      // by default where a typical copy (the copies' median radius) is \`ImpostorAutoPixels\` px across in a 720-px-high
+      // view of 45°: a distance of the proteins, not of the model (a slab's radius is tens of thousands of Å)
+      if (!(value > 0)) value = getImpostorAutoDistance(sources, owners);
+      return { mode: 'distance', value, radii: [r0, r1] };
+    }
+    return { mode: 'pixels', value: lodImpostorPixels, radii: [r0, r1] };
   }
 
   function updateRenderObjectList(entries: { visual: TargetVisual; renderObject: GraphicsRenderObject }[]) {
@@ -386,6 +469,8 @@ export function ParticleTargetRepresentation(
     targetVisuals.clear();
     mergedByType.clear();
     renderObjects.length = 0;
+    impostors = undefined;
+    impostorBlocks.clear();
   }
 
   return {
@@ -429,6 +514,24 @@ export function ParticleTargetRepresentation(
       getParticleTargetSignatures(props, ctx),
     destroy,
   };
+}
+
+/** The impostors' distance by default (`lodImpostorDistance` 0, `ImpostorAtlas.autoDistance`) */
+function getImpostorAutoDistance(sources: readonly ImpostorAtlas.Source[], owners: readonly TargetVisual[]) {
+  return ImpostorAtlas.autoDistance(
+    sources.map((s, i) => ({
+      radius: s.radius,
+      count: owners[i]?.particleIndices ? OrderedSet.size(owners[i].particleIndices!) : 1,
+    })),
+  );
+}
+
+/**
+ * The radius the impostors' ranges cover by size on screen (\`ImpostorAtlas.radiusCap\`: the largest item's), of the
+ * sources' radii alone (not their copies: lipids by the million once set it at 17 Å)
+ */
+export function getImpostorRadiusCap(sources: readonly ImpostorAtlas.Source[]) {
+  return sources.length ? ImpostorAtlas.radiusCap(sources) : ImpostorMinRadius;
 }
 
 /**
@@ -495,7 +598,10 @@ function computeParticleTargetSignatures(
         ? getSurfaceSignatureDefines(tProps, ctx.graphics)
         : target.kind === 'shape' && target.shape.geometry.kind === 'mesh'
           ? { dVaryingGroup: [(target.shape.geometry as Mesh).varyingGroup.ref.value] }
-          : undefined;
+          : // impostors (`lod-impostor.md`): every structure or sites target drawn as spheres takes them where on
+            choice === 'structure-spheres' && canDrawImpostors(tProps, ctx.graphics)
+            ? { dLodImpostor: [true] }
+            : undefined;
     const utils = getTargetGeometryUtils(target, choice);
     const signatures = getGeometrySignatures(utils, tProps, { ...ctx, size }, visualDefines);
     for (const s of signatures) {
@@ -522,6 +628,18 @@ function computeParticleTargetSignatures(
     );
   }
   return uniqueSignatures(out);
+}
+
+/**
+ * Where the impostors start, in Å a CSS pixel (`lod-impostor.md`): the end of the level before the last, by size on
+ * screen, or its distance at 1280x720 and 45° (as `Spheres.LodPixelPresets`); what the tiles are sized for
+ */
+function getImpostorBoundary(props: ParticleTargetRepresentationProps) {
+  const levels = props.lodLevels;
+  if (levels.length < 2) return 0;
+  const level = levels[levels.length - 2];
+  if (props.lodPixelSize > 0) return Spheres.getLodPixelBoundary(level, props.lodPixelSize);
+  return (level.maxDistance * 2 * Math.tan(Math.PI / 8)) / 720;
 }
 
 function getParticleTargetParams(ctx: RepresentationContext, particles: ParticleList | undefined) {

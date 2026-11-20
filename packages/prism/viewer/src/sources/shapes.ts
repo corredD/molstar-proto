@@ -76,8 +76,13 @@ export function shapeEntries(state: State): ShapeEntry[] {
             const rc = state.cells.get(r);
             if (!rc) continue;
             if (!rc.state.isGhost && SO.Shape.Representation3D.is(rc.obj)) representations.push(rc);
-            // its transform (`shape.transform`): a provider again, the representations under it
-            else if (rc.transform.transformer === TransformShapeProvider) collect(r);
+            // its transform (`shape.transform`) or another decorator of it (a mesh colored by a volume): a provider
+            // again, the representations under it
+            else if (
+              rc.transform.transformer === TransformShapeProvider ||
+              (rc.transform.transformer.definition.isDecorator && SO.Shape.Provider.is(rc.obj))
+            )
+              collect(r);
           }
         };
         collect(child);

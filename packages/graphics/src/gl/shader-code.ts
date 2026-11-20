@@ -80,7 +80,15 @@ function ignoreDefine(name: string, variant: string, defines: ShaderDefines): bo
     }
     if (variant !== 'emissive') {
       // emissive bloom seeds from the object's color, so keep the color/overpaint/emissive defines for it
-      ignore.push('dColorType', 'dUsePalette', 'dOverpaintType', 'dOverpaint', 'dEmissiveType', 'dEmissive');
+      ignore.push(
+        'dColorType',
+        'dColorGridFragment',
+        'dUsePalette',
+        'dOverpaintType',
+        'dOverpaint',
+        'dEmissiveType',
+        'dEmissive',
+      );
     }
     return ignore.includes(name);
   }

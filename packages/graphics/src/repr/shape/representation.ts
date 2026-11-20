@@ -23,6 +23,10 @@ import { createMarkers } from '@molstar/graphics/geo/geometry/marker-data';
 import { type MarkerAction, MarkerActions } from '@molstar/core/util/marker-action';
 import { ValueCell } from '@molstar/core/util';
 import { createColors } from '@molstar/graphics/geo/geometry/color-data';
+import { applyMeshColorGrid } from '@molstar/graphics/geo/geometry/mesh/color-smoothing';
+import type { MeshValues } from '@molstar/graphics/gl/renderable/mesh';
+import type { Texture } from '@molstar/graphics/gl/texture';
+import { NoLayerGrid } from '@molstar/graphics/geo/geometry/layer-type';
 import { createSizes, type SizeData } from '@molstar/graphics/geo/geometry/size-data';
 import { type Loci, isEveryLoci, EmptyLoci } from '@molstar/model/model/loci';
 import { Interval, OrderedSet } from '@molstar/core/data/int';
@@ -86,6 +90,23 @@ export function ShapeRepresentation<D, G extends Geometry, P extends Geometry.Pa
   let locationIt: LocationIterator;
   let positionIt: LocationIterator;
   let graphics = builder.graphics;
+  /** The texture of the shape's color grid (`Shape.colorGrid`), made with the graphics context */
+  let colorGridTexture: Texture | undefined;
+
+  /** A mesh shape's color grid in place of its colors; its texture destroyed without one */
+  function applyColorGrid(values: GraphicsRenderObject<G['kind']>['values']) {
+    if (!_shape.colorGrid && !colorGridTexture) return;
+    const owned = (t: Texture | undefined): t is Texture => !!t && !!graphics?.resources.ownsTexture(t);
+    // its texture: ours, or the copy the scene made of it in a new context (`transferTextures`)
+    const current = owned(values.tColorGrid.ref.value) ? values.tColorGrid.ref.value : colorGridTexture;
+    const grid = _shape.geometry.kind === 'mesh' ? _shape.colorGrid : undefined;
+    const texture = grid ? applyMeshColorGrid(values as MeshValues, grid, graphics, current) : undefined;
+    if (owned(current) && current !== texture) {
+      if (values.tColorGrid.ref.value === current) ValueCell.update(values.tColorGrid, NoLayerGrid.texture);
+      current.destroy();
+    }
+    colorGridTexture = texture;
+  }
 
   if (builder.modifyState) Representation.updateState(_state, builder.modifyState(_state));
 
@@ -166,6 +187,7 @@ export function ShapeRepresentation<D, G extends Geometry, P extends Geometry.Pa
           newProps.batchSize,
         );
         const values = geometryUtils.createValues(_shape.geometry, transform, locationIt, _theme, newProps);
+        applyColorGrid(values);
         const state = geometryUtils.createRenderableState(newProps);
         if (builder.modifyState) Object.assign(state, builder.modifyState(state));
         Representation.updateState(_state, state);
@@ -225,6 +247,7 @@ export function ShapeRepresentation<D, G extends Geometry, P extends Geometry.Pa
         if (updateState.updateColor) {
           // console.log('update color')
           createColors(locationIt, positionIt, _theme.color, _renderObject.values);
+          applyColorGrid(_renderObject.values);
         }
 
         if (updateState.updateSize) {
@@ -412,6 +435,8 @@ export function ShapeRepresentation<D, G extends Geometry, P extends Geometry.Pa
       getGeometrySignatures(geometryUtils, { ...PD.getDefaultValues(currentParams), ...props }, ctx),
     destroy() {
       renderObjects.length = 0;
+      colorGridTexture?.destroy();
+      colorGridTexture = undefined;
       if (_renderObject) {
         _renderObject.state.disposed = true;
         _renderObject = undefined;

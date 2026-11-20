@@ -40,6 +40,8 @@ export function isSphereRasterEligible(values: SpheresValues) {
   // a clipping table's rows (`dClipTable`) are no flags: the kernels clip pixels by the layer's values as flags
   if (values.dClipObjects.ref.value && values.dClipping.ref.value && values.dClipTable.ref.value) return false;
   if (values.dWiggleAnimation.ref.value || values.dTumbleAnimation.ref.value) return false;
+  // levels chosen per copy, dithered in the band before the impostors (\`lod-impostor.md\`): the raster's are per sphere
+  if (values.dLodImpostor.ref.value) return false;
   const lod = values.uLod.ref.value;
   if (values.dLodFade.ref.value && lod[3] === 0 && (lod[0] !== 0 || lod[1] !== 0)) return false;
   return canRasterSpheres(values);

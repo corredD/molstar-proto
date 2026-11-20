@@ -8,6 +8,7 @@
 import { clip_flag_wgsl } from './clip.wgsl.js';
 import { assign_data_index_wgsl } from './read-from-texture.wgsl.js';
 import { assign_color_levels_wgsl } from './color-levels.wgsl.js';
+import { assign_lod_impostor_factor_wgsl } from './lod-impostor.wgsl.js';
 
 /**
  * \`VertexOutput\` with the varyings shared by the graphics programs at locations 0 to 8 and 15, and the program's
@@ -27,6 +28,9 @@ struct VertexOutput {
 // group), the transparency with the emissive
 #if defined(dColorType_varying)
     @location(3) vColor: vec4<f32>,
+#endif
+#if defined(dColorType_grid) && defined(dColorGridFragment)
+    @location(7) vColorGridPosition: vec3<f32>,
 #endif
 #if defined(dNeedsMarker) || (defined(dClipObjects) && defined(dClipping))
     #if !defined(dVaryingGroup)
@@ -72,9 +76,10 @@ export const assign_quad_position_group_wgsl = /* wgsl */ `
 /**
  * Levels of detail of the items drawn as quads (spheres, points), after `out.vModelPosition`: `lodFactor` the level's
  * scale (a coarser level's fewer items larger) faded at the level's range (1 without levels), `lodCulled` beyond the
- * range
+ * range; with impostors (`dLodImpostor`, after `assign_lod_impostor_wgsl`) by the copy's distance, its share of the band
  */
-export const assign_lod_factor_wgsl = /* wgsl */ `
+function lodFactorWgsl(impostor: boolean) {
+  return /* wgsl */ `
     var lodFactor = 1.0;
     var lodCulled = false;
     let lod = uDraw.uLod;
@@ -86,15 +91,29 @@ export const assign_lod_factor_wgsl = /* wgsl */ `
             let lodScale = lod.w;
         #endif
         if (uGlobal.uModelScale != 1.0) {
-            lodFactor = lodScale;
+            #if defined(dLodImpostorLevel) || defined(dLodImpostorBand)
+                // the impostor's radius its bounding sphere's (\`assign_lod_impostor_varyings_wgsl\`)
+                lodFactor = select(lodScale, 1.0, lodImpostor);
+            #else
+                lodFactor = lodScale;
+            #endif
         } else {
+            #if defined(dLodImpostorLevel) || defined(dLodImpostorBand)
+${impostor ? assign_lod_impostor_factor_wgsl : ''}
+            #else
             let d = (dot(uGlobal.uCameraPlane.xyz, out.vModelPosition) + uGlobal.uCameraPlane.w) / uGlobal.uModelScale;
             let level = lodAt(d, lod.xyz, lodScale);
             lodFactor = level.factor;
             lodCulled = level.culled;
+            #endif
         }
     }
 `;
+}
+
+export const assign_lod_factor_wgsl = lodFactorWgsl(false);
+/** With impostors (\`dLodImpostor\`, spheres): their switch (\`assign_lod_impostor_factor_wgsl\`) */
+export const assign_lod_factor_impostor_wgsl = lodFactorWgsl(true);
 
 /**
  * Grid textures (smoothed colors etc.) by the prefix of their uniforms and the type define (the color type's grid value
@@ -113,8 +132,9 @@ const GridTextures = [
  * and the GPU color smoothing write them), linear within a slice and between slices, as `texture3dFrom2dLinear` on
  * WebGL; for the mesh programs, which can have grid data
  */
-export const grid_functions_wgsl = GridTextures.map(
-  ({ texture, prefix, type }) => /* wgsl */ `
+export const grid_functions_wgsl =
+  GridTextures.map(
+    ({ texture, prefix, type }) => /* wgsl */ `
 #if defined(${type}_volume) || defined(${type}_volumeInstance) || defined(${type}_grid)
     fn texture3dFrom2dLinear_${texture}(pos: vec3<f32>) -> vec4<f32> {
         let gridDim = uObject.u${prefix}GridDim;
@@ -136,7 +156,23 @@ export const grid_functions_wgsl = GridTextures.map(
     }
 #endif
 `,
-).join('');
+  ).join('') +
+  /* wgsl */ `
+#if defined(dColorType_grid) && defined(dColorGridFragment)
+    /**
+     * The color grid at the grid position \`pos\` of a fragment, at its cell centers (the atlas' texels are half a cell
+     * off in x and y); the palette coordinate in w, as the vertex stage's \`vColor\`
+     */
+    fn colorGridFragment(pos: vec3<f32>) -> vec4<f32> {
+        let offset = vec3<f32>(0.5 / uObject.uColorGridDim.xy, 0.0);
+        var color = vec4<f32>(texture3dFrom2dLinear_tColorGrid(pos + offset).rgb, 1.0);
+        #if defined(dUsePalette)
+            color.w = ((color.r * 256.0 * 256.0 * 255.0 + color.g * 256.0 * 255.0 + color.b * 255.0) - 1.0) / 16777214.0;
+        #endif
+        return color;
+    }
+#endif
+`;
 
 /** The value of a grid texture at the model space `position` */
 function grid_value_wgsl(texture: string, position: string) {
@@ -205,6 +241,10 @@ export const assign_varyings_wgsl = /* wgsl */ `
             // the local position (volume) or the model position (volumeInstance), see \`ColorTypeIndex\`
             let colorGridPosition = select(${GridPosition}, ${GridModelPosition}, uObject.uColorIndexType == 1);
             out.vColor = vec4<f32>(${grid_value_wgsl('tColorGrid', 'colorGridPosition')}.rgb, 1.0);
+            #if defined(dColorGridFragment)
+                let colorGridTransform = uObject.uColorGridTransform;
+                out.vColorGridPosition = (colorGridTransform.w * (colorGridPosition - colorGridTransform.xyz)) / uObject.uColorGridDim;
+            #endif
         #endif
 
         #if defined(dUsePalette)

@@ -4,6 +4,7 @@
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
  * @author Gianluca Tomasello <giagitom@gmail.com>
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import type { GraphicsContext } from '@molstar/graphics/gl/context';
@@ -20,14 +21,14 @@ import {
 } from '@molstar/graphics/geo/geometry/transform-data';
 import { createRenderObject, type GraphicsRenderObject } from '@molstar/graphics/gl/render-object';
 import { PickingId } from '@molstar/graphics/geo/geometry/picking';
-import { type Loci, isEveryLoci, EmptyLoci } from '@molstar/model/model/loci';
+import { type Loci, isEveryLoci, EmptyLoci, EveryLoci } from '@molstar/model/model/loci';
 import { Interval, OrderedSet } from '@molstar/core/data/int';
 import { type LocationCallback, VisualUpdateState } from '../util.js';
 import { ColorTheme } from '@molstar/graphics/theme/color';
 import { ValueCell } from '@molstar/core/util';
 import { createSizes } from '@molstar/graphics/geo/geometry/size-data';
 import { createColors } from '@molstar/graphics/geo/geometry/color-data';
-import type { MarkerAction } from '@molstar/core/util/marker-action';
+import { MarkerAction } from '@molstar/core/util/marker-action';
 import { Mat4 } from '@molstar/core/math/linear-algebra';
 import type { Overpaint } from '@molstar/graphics/theme/overpaint';
 import type { Transparency } from '@molstar/graphics/theme/transparency';
@@ -114,7 +115,23 @@ interface VolumeVisualBuilder<P extends VolumeParams, G extends Geometry> {
     currentTheme: Theme,
   ): void;
   initUpdateState?: (state: VisualUpdateState, volume: Volume, newProps: PD.Values<P>, newTheme: Theme) => void;
+  /**
+   * Updates `geometry` in place where it can instead of creating it again (`setUpdateState` asked to): true where done,
+   * so that what a new geometry implies (markers, colors and locations made again) is left out; e.g. a slice moved within
+   * its window of planes (slice.ts)
+   */
+  updateGeometry?: (
+    geometry: G,
+    newVolume: Volume,
+    currentVolume: Volume,
+    newProps: PD.Values<P>,
+    currentProps: PD.Values<P>,
+    newTheme: Theme,
+    graphics: GraphicsContext | undefined,
+  ) => boolean;
   mustRecreate?: (volumeKey: VolumeKey, props: PD.Values<P>) => boolean;
+  /** The visual shown or hidden (e.g. a slice frees its window of planes once hidden a while) */
+  setVisibility?: (geometry: G, visible: boolean) => void;
   dispose?: (geometry: G) => void;
 }
 
@@ -134,6 +151,7 @@ export function VolumeVisual<G extends Geometry, P extends VolumeParams & Geomet
     eachLocation,
     setUpdateState,
     initUpdateState,
+    updateGeometry,
     mustRecreate,
     dispose,
   } = builder;
@@ -158,6 +176,8 @@ export function VolumeVisual<G extends Geometry, P extends VolumeParams & Geomet
 
   let geometry: G;
   let geometryVersion = -1;
+  /** the geometry updated in place (`updateGeometry`): its groups may stand for other locations now */
+  let updatedInPlace = false;
   let locationIt: LocationIterator;
   let positionIt: LocationIterator;
 
@@ -198,6 +218,16 @@ export function VolumeVisual<G extends Geometry, P extends VolumeParams & Geomet
     }
 
     setUpdateState(updateState, newVolume, currentVolume, newProps, currentProps, newTheme, currentTheme);
+
+    // before the checks below: what they find (another context) is made again whatever the builder could update
+    updatedInPlace = false;
+    if (
+      updateState.createGeometry &&
+      updateGeometry?.(geometry, newVolume, currentVolume, newProps, currentProps, newTheme, graphics)
+    ) {
+      updateState.createGeometry = false;
+      updatedInPlace = true;
+    }
 
     // after a backend switch or restore: textures and buffers of the previous context are rendered or computed again,
     // geometry relying on what the new context lacks (`GeometryUtils.isCompatible`) is created again, for the new context
@@ -330,6 +360,10 @@ export function VolumeVisual<G extends Geometry, P extends VolumeParams & Geomet
       }
 
       updateRenderableState(renderObject.state, newProps);
+
+      // what was marked is no longer what is drawn there (a new geometry has its markers made again): cleared, a no-op
+      // where nothing is marked
+      if (updatedInPlace) Visual.mark(renderObject, EveryLoci, MarkerAction.Clear, lociApply);
     }
 
     currentProps = newProps;
@@ -447,6 +481,7 @@ export function VolumeVisual<G extends Geometry, P extends VolumeParams & Geomet
     },
     setVisibility(visible: boolean) {
       Visual.setVisibility(renderObject, visible);
+      if (geometry) builder.setVisibility?.(geometry, visible);
     },
     setPickable(pickable: boolean) {
       Visual.setPickable(renderObject, pickable);

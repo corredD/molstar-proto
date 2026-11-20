@@ -26,6 +26,7 @@ import {
   InteriorSchema,
   AnimationSchema,
   ColorLevelsSchema,
+  LodImpostorSchema,
 } from './schema.js';
 import { SpheresShaderCode } from '../shader-code.js';
 import { ValueCell } from '@molstar/core/util';
@@ -73,6 +74,7 @@ export function createSphereResolveValues(): SphereResolveValues {
 export const SpheresSchema = {
   ...BaseSchema,
   ...ColorLevelsSchema,
+  ...LodImpostorSchema,
   ...SizeSchema,
 
   tPositionGroup: DataSpec('rgba32f'),

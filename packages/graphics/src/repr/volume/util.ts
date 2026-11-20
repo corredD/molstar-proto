@@ -184,7 +184,8 @@ export function getVolumeTexture2dLayout(dim: Vec3, padding = 0) {
   let rows = 1;
   let columns = width;
   if (powerOfTwoSize < width * dim[2]) {
-    columns = Math.floor(powerOfTwoSize / width);
+    // at least one column: a slice wider than the square (a grid longer in x than its other sides together)
+    columns = Math.max(1, Math.floor(powerOfTwoSize / width));
     rows = Math.ceil(dim[2] / columns);
     width *= columns;
     height *= rows;

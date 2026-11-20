@@ -31,6 +31,7 @@ import {
   isStreamedForStructure,
   volumeCenter,
   volumeMatrixOf,
+  volumeScaleOf,
   volumeTransformCell,
 } from '../sources/volume-transform.js';
 import { IdentityTransform, rigidTransformParams, wantedTransform } from './rigid-transform.js';
@@ -341,17 +342,18 @@ export class VolumeApi extends ApiArea {
       let next: TransformParam = wanted;
       if (compose) {
         // turned about the center where it is now
-        const center = Vec3.transformMat4(Vec3(), volumeCenter(data), now);
+        const scale = volumeScaleOf(state, ref);
+        const center = Vec3.transformMat4(Vec3(), volumeCenter(data, scale), now);
         const delta = getTransformFromParams(wanted, center);
         next = { name: 'matrix', params: { data: Mat4.mul(Mat4(), delta, now), transpose: false } };
       }
-      if (Mat4.areEqual(volumeMatrixOf(next, data), now, 1e-3)) {
+      if (Mat4.areEqual(volumeMatrixOf(next, data, volumeScaleOf(state, ref)), now, 1e-3)) {
         return ApiResult.already(
           existing ? `${name} is already placed so.` : `${name} is already where it was loaded.`,
         );
       }
       const build = state.build();
-      if (existing) build.to(existing).update({ transform: next });
+      if (existing) build.to(existing).update((p: any) => ({ ...p, transform: next }));
       else build.to(vol.cell).insert(VolumeTransform, { transform: next });
       await ctx.plugin.runTask(state.updateTree(build));
       return ApiResult.ok(`Moved ${name}.`, { nodes: [ref] });
@@ -374,7 +376,14 @@ export class VolumeApi extends ApiArea {
         return ApiResult.already(`${name} is already where it was loaded.`);
       }
       // removing the decorator would take its subtree (the representations) with it: it is set to identity instead
-      await ctx.plugin.runTask(state.updateTree(state.build().to(existing).update({ transform: IdentityTransform })));
+      await ctx.plugin.runTask(
+        state.updateTree(
+          state
+            .build()
+            .to(existing)
+            .update((p: any) => ({ ...p, transform: IdentityTransform })),
+        ),
+      );
       return ApiResult.ok(`${name} is back where it was loaded.`, { nodes: [ref] });
     },
   });

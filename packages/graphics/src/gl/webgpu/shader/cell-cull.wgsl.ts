@@ -261,6 +261,59 @@ fn rasterized(sphere: vec4<f32>, segment: u32, j: u32) -> bool {
     return r * uParams.uRasterScale <= uParams.uRasterRadius * sqrt(max(d * d - r * r, 0.0));
 }
 
+/**
+ * The levels an instance with sphere \`sphere\` of \`segment\` may draw at with impostors switched by size on screen
+ * (\`uImpostorSwitch\`, \`lod-impostor.md\`): the last spheres up to where its member's copies switch (its radius, up to
+ * the cap), the impostors from there, as \`setSegmentRanges\` on the CPU; all where off
+ */
+fn switchLevels(sphere: vec4<f32>, segment: u32) -> u32 {
+    let sw = uParams.uImpostorSwitch;
+    if (sw.w <= 0.0) {
+        return 0xffffffffu;
+    }
+    let last = u32(sw.w) - 1u;
+    let r = min(segmentData[segment * 3u].w, sw.z);
+    let d = dot(uParams.uCameraPlane.xyz, sphere.xyz) + uParams.uCameraPlane.w;
+    let spheresEnd = max(uParams.uLevels[last - 1u].x, min(uParams.uLevels[last - 1u].y, r * sw.x));
+    let impostorsStart = max(uParams.uLevels[last].x, min(r * sw.y, spheresEnd));
+    var mask = 0xffffffffu;
+    if (d - sphere.w > spheresEnd) {
+        mask &= ~(1u << (last - 1u));
+    }
+    if (d + sphere.w < impostorsStart) {
+        mask &= ~(1u << last);
+    }
+    return mask;
+}
+
+/**
+ * Whether the impostor of instance \`i\` (sphere \`sphere\`, of \`segment\`) is thinned out (\`uImpostorThin\`,
+ * \`ImpostorAtlas.thinFactor\` 0): below the size a share of the copies kept by their hash, the others not drawn
+ */
+fn thinnedOut(sphere: vec4<f32>, segment: u32, i: u32) -> bool {
+    let th = uParams.uImpostorThin;
+    if (th.w <= 0.0) {
+        return false;
+    }
+    // its last level its spheres, not its impostor (no entry: the atlas full), never thinned (the vertex stage's)
+    if (segmentData[segment * 3u + 2u][min(u32(th.w) - 1u, 3u)] >= 0.0) {
+        return false;
+    }
+    let d = dot(uParams.uCameraPlane.xyz, sphere.xyz) + uParams.uCameraPlane.w;
+    let pixel = th.y * select(max(d, 1e-3), 1.0, th.z > 0.0);
+    let size = 2.0 * segmentData[segment * 3u].w / pixel;
+    if (size >= th.x) {
+        return false;
+    }
+    let p = max(1.0 / 64.0, (size / th.x) * (size / th.x));
+    // the copy's hash (\`ImpostorAtlas.copyHash\`), of its segment and its instance as the vertex stage reads them
+    var x = (segment * 0x9e3779b1u) ^ u32(culledInstance(i));
+    x = x * 747796405u + 2891336453u;
+    let word = ((x >> ((x >> 28u) + 4u)) ^ x) * 277803737u;
+    let hash = f32((word >> 22u) ^ word) / 4294967296.0;
+    return hash >= p * 1.25;
+}
+
 /** instance \`i\` into slot \`t\` of a region, by its index */
 fn copyInstance(i: u32, t: u32) {
     indices[t] = i;
@@ -297,7 +350,11 @@ fn main(
         }
         if (mask != 0u || ghostCell) {
             sphere = instanceSphere(instance, segment);
-            mask &= sphereLevels(sphere);
+            mask &= sphereLevels(sphere) & switchLevels(sphere, segment);
+            // the impostors thinned out: not drawn at the last level
+            if (uParams.uImpostorThin.w > 0.0 && thinnedOut(sphere, segment, instance)) {
+                mask &= ~(1u << (u32(uParams.uImpostorThin.w) - 1u));
+            }
             // clipped by its center, as the vertex stage clips instances (\`clip_instance_wgsl\`)
             let centerClipped = uParams.uClipInstance != 0 && clipTest(sphere.xyz, 0);
             if (centerClipped) {

@@ -1,0 +1,116 @@
+/**
+ * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
+ *
+ * @author Ludovic Autin <autin@scripps.edu>
+ */
+
+import { Box3D } from '@molstar/core/math/geometry';
+import { Mat4, Tensor, Vec3 } from '@molstar/core/math/linear-algebra';
+import type { RuntimeContext } from '@molstar/core/task';
+import type { Grid } from './grid.js';
+
+/**
+ * A grid binned by `factor` along each side, or by a factor per axis (x, y, z; a side shorter than it: by its length):
+ * each voxel the mean of its block of the grid, a partial block at the far edge the mean of what it holds; Float32 whatever the grid's type. Its voxels
+ * are where their blocks' centers are (Å): the voxel size times the factor, voxel 0 moved half a block less one voxel.
+ * Its stats are its own; periodic while its blocks tile its sides. The grid itself at 1×.
+ */
+export async function binGrid(
+  grid: Grid,
+  factor: number | readonly [number, number, number],
+  ctx?: RuntimeContext,
+): Promise<Grid> {
+  const factors = typeof factor === 'number' ? [factor, factor, factor] : factor;
+  const f = Math.max(...factors.map(Math.floor));
+  if (!(f > 1)) return grid;
+  const { space, data } = grid.cells;
+  const dims = space.dimensions;
+  const by = [0, 1, 2].map((a) => Math.max(1, Math.min(Math.floor(factors[a]), dims[a])));
+  const out = [0, 1, 2].map((a) => Math.ceil(dims[a] / by[a]));
+  const [a0, a1, a2] = space.axisOrderSlowToFast;
+  const binned = Tensor.Space(out, [a0, a1, a2], Float32Array);
+  // the binned grid's index along each axis of each voxel of the grid, and its stride: one pass in memory order, a
+  // binned slab (of the slowest axis) at a time: its sums alone held (a 41 × 3000² tilt series: 18 MB, not 738)
+  const strides = Tensor.strides(binned)!;
+  const step = [0, 1, 2].map((a) => Int32Array.from({ length: dims[a] }, (_, i) => Math.floor(i / by[a]) * strides[a]));
+  const read = Tensor.strides(space);
+  const [s1, s2] = [step[a1], step[a2]];
+  const [n0, n1, n2] = [dims[a0], dims[a1], dims[a2]];
+  const sums = new Float64Array(out[a1] * out[a2]);
+  // each voxel's count: the product of its block's lengths along the three axes (shorter at the far edge)
+  const length = [0, 1, 2].map((a) =>
+    Int32Array.from({ length: out[a] }, (_, i) => Math.min(by[a], dims[a] - i * by[a])),
+  );
+  const [l0, l1, l2] = [length[a0], length[a1], length[a2]];
+  const [b1, b2] = [strides[a1], strides[a2]];
+  const values = binned.create();
+  let min = Infinity;
+  let max = -Infinity;
+  let sum = 0;
+  let sumSq = 0;
+  const c = [0, 0, 0];
+  for (let k0 = 0; k0 < out[a0]; k0++) {
+    sums.fill(0);
+    for (let i0 = k0 * by[a0], e0 = Math.min(n0, i0 + by[a0]); i0 < e0; i0++) {
+      if (ctx?.shouldUpdate) await ctx.update({ message: `Binning ${by.join('×')}…`, current: i0, max: n0 });
+      c[a0] = i0;
+      for (let i1 = 0; i1 < n1; i1++) {
+        c[a1] = i1;
+        const o = s1[i1];
+        if (read) {
+          let at = i0 * read[a0] + i1 * read[a1];
+          const r2 = read[a2];
+          for (let i2 = 0; i2 < n2; i2++, at += r2) sums[o + s2[i2]] += data[at];
+        } else {
+          for (let i2 = 0; i2 < n2; i2++) {
+            c[a2] = i2;
+            sums[o + s2[i2]] += space.get(data, c[0], c[1], c[2]);
+          }
+        }
+      }
+    }
+    // the slab's means, in memory order
+    const offset = k0 * strides[a0];
+    for (let j1 = 0; j1 < out[a1]; j1++) {
+      const n = l0[k0] * l1[j1];
+      for (let j2 = 0; j2 < out[a2]; j2++) {
+        const o = j1 * b1 + j2 * b2;
+        const v = sums[o] / (n * l2[j2]);
+        values[offset + o] = v;
+        if (v < min) min = v;
+        if (v > max) max = v;
+        sum += v;
+        sumSq += v * v;
+      }
+    }
+  }
+  const count = values.length;
+  const mean = sum / count;
+  const stats = { min, max, mean, sigma: Math.sqrt(Math.max(0, sumSq / count - mean * mean)) };
+  // periodic still when its blocks tile each side (a partial block would wrap onto the next cell's first)
+  const tiles = dims.every((n, a) => n % by[a] === 0);
+  return {
+    ...grid,
+    transform: binnedTransform(grid, by, out),
+    cells: Tensor.create(binned, values),
+    stats,
+    ...(grid.periodicity === 'xyz' && !tiles ? { periodicity: 'none' as const } : {}),
+  };
+}
+
+/** The transform of a grid binned `by` along each axis to `out` voxels: voxel 0 at its block's center, `by` times the voxel */
+function binnedTransform(grid: Grid, by: number[], out: number[]): Grid.Transform {
+  const shift = Vec3.create((by[0] - 1) / 2, (by[1] - 1) / 2, (by[2] - 1) / 2);
+  const { transform } = grid;
+  if (transform.kind === 'matrix') {
+    const m = Mat4.mul(Mat4(), transform.matrix, Mat4.fromTranslation(Mat4(), shift));
+    return { kind: 'matrix', matrix: Mat4.mul(m, m, Mat4.fromScaling(Mat4(), Vec3.create(by[0], by[1], by[2]))) };
+  }
+  // fractional: voxel i at min + i·Δ, Δ = size / dimensions; binned, min + shift·Δ and by·Δ for each of `out` voxels
+  const dims = grid.cells.space.dimensions;
+  const size = Box3D.size(Vec3(), transform.fractionalBox);
+  const delta = Vec3.create(size[0] / dims[0], size[1] / dims[1], size[2] / dims[2]);
+  const min = Vec3.add(Vec3(), transform.fractionalBox.min, Vec3.mul(Vec3(), shift, delta));
+  const extent = Vec3.create(out[0] * by[0] * delta[0], out[1] * by[1] * delta[1], out[2] * by[2] * delta[2]);
+  return { ...transform, fractionalBox: Box3D.create(min, Vec3.add(Vec3(), min, extent)) };
+}

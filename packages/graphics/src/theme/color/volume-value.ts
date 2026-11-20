@@ -3,6 +3,7 @@
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { ColorTheme } from '../color.js';
@@ -49,6 +50,26 @@ export function getVolumeValueColorThemeParams(ctx: ThemeDataContext) {
   return VolumeValueColorThemeParams; // TODO return copy
 }
 
+/**
+ * The domain of the values the palette spans, in the volume's values (absolute: a relative domain, in σ about the mean,
+ * converted): as the theme colors a position (`color`) and the direct volume normalizes it
+ */
+export function getVolumeValueDomain(volume: Volume, props: PD.Values<VolumeValueColorThemeParams>): [number, number] {
+  const { min, max, mean, sigma } = volume.grid.stats;
+  const domain: [number, number] = props.domain.name === 'custom' ? [...props.domain.params] : [min, max];
+  const { isRelative } = props;
+  if (props.domain.name === 'auto' && isRelative) {
+    domain[0] = (domain[0] - mean) / sigma;
+    domain[1] = (domain[1] - mean) / sigma;
+  }
+  if (props.domain.name === 'auto' && props.domain.params.symmetric) {
+    const m = Math.max(Math.abs(domain[0]), Math.abs(domain[1]));
+    domain[0] = -m;
+    domain[1] = m;
+  }
+  return isRelative ? [domain[0] * sigma + mean, domain[1] * sigma + mean] : domain;
+}
+
 export function VolumeValueColorTheme(
   ctx: ThemeDataContext,
   props: PD.Values<VolumeValueColorThemeParams>,
@@ -75,7 +96,7 @@ export function VolumeValueColorTheme(
       // and we only need to provide the domain and palette here
 
       // the shader normalizes absolute values by the grid's min and max
-      const [d0, d1] = isRelative ? [domain[0] * sigma + mean, domain[1] * sigma + mean] : domain;
+      const [d0, d1] = getVolumeValueDomain(ctx.volume, props);
       const normalizedDomain = [normalize(d0, min, max), normalize(d1, min, max)] as [number, number];
 
       const palette = ColorTheme.Palette(colorList.colors, colorList.kind, normalizedDomain, defaultColor);

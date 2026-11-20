@@ -2,6 +2,7 @@
  * Copyright (c) 2020-2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 import { common } from './chunks/common.glsl.js';
 import { read_from_texture } from './chunks/read-from-texture.glsl.js';
@@ -55,6 +56,49 @@ varying vec3 vPosition;
     #define dInterpolation_cubic
 #endif
 
+#ifdef dSliceWindow
+    // a window of the slice's planes (ImageSchema.dSliceWindow): the raw value of the image's texel at uv, as the
+    // texture of the image samples it (nearest, clamped), its rows flipped (the image's are uploaded flipped)
+    float sliceValueAt(ivec2 p) {
+        ivec2 size = ivec2(uImageTexDim);
+        p = clamp(p, ivec2(0), size - 1);
+        // binned: the block holding the texel (blocks from the plane's first row and column, as the image's rows); in
+        // tiles: the tile's layer, the texel in it
+        ivec2 q = ivec2(p.x, size.y - 1 - p.y) / ivec2(uSliceBin);
+        ivec4 t = ivec4(uSliceTiles);
+        ivec2 tile = q / t.xy;
+        int layer = (uSliceLayer * t.w + tile.y) * t.z + tile.x;
+        return texelFetch(tSliceTex, ivec3(q - tile * t.xy, layer), 0).r;
+    }
+
+    float sliceValue(vec2 uv) {
+        return sliceValueAt(ivec2(floor(uv * uImageTexDim)));
+    }
+
+    /** the value in the colors' domain, clamped: what the image's color stands for */
+    vec4 sampleImage(vec2 uv) {
+        float t = clamp((sliceValue(uv) - uSliceDomain.z) / (uSliceDomain.w - uSliceDomain.z), 0.0, 1.0);
+        return vec4(t);
+    }
+
+    /** the value in the grid's range, as the image's texture of values samples it (linear) */
+    float sliceRangeValue(vec2 uv) {
+        vec2 st = uv * uImageTexDim - 0.5;
+        vec2 f = fract(st);
+        ivec2 p = ivec2(floor(st));
+        float v = mix(
+            mix(sliceValueAt(p), sliceValueAt(p + ivec2(1, 0)), f.x),
+            mix(sliceValueAt(p + ivec2(0, 1)), sliceValueAt(p + ivec2(1, 1)), f.x),
+            f.y
+        );
+        return (v - uSliceDomain.x) / (uSliceDomain.y - uSliceDomain.x);
+    }
+#else
+    vec4 sampleImage(vec2 uv) {
+        return texture2D(tImageTex, uv);
+    }
+#endif
+
 #if defined(dInterpolation_cubic)
     #if defined(dInterpolation_catmulrom) || defined(dInterpolation_mitchell)
         #if defined(dInterpolation_catmulrom)
@@ -98,7 +142,7 @@ varying vec3 vPosition;
         }
     #endif
 
-    vec4 biCubic(sampler2D tex, vec2 texCoord) {
+    vec4 biCubic(vec2 texCoord) {
         vec2 texelSize = 1.0 / uImageTexDim;
         texCoord -= texelSize / 2.0;
         vec4 nSum = vec4(0.0);
@@ -106,7 +150,7 @@ varying vec3 vPosition;
         vec2 cell = fract(texCoord * uImageTexDim);
         for (float m = -1.0; m <= 2.0; ++m) {
             for (float n = -1.0; n <= 2.0; ++n) {
-                vec4 vecData = texture2D(tex, texCoord + texelSize * vec2(m, n));
+                vec4 vecData = sampleImage(texCoord + texelSize * vec2(m, n));
                 float c = abs(cubicFilter(m - cell.x) * cubicFilter(-n + cell.y));
                 nSum += vecData * c;
                 nDenom += c;
@@ -123,20 +167,34 @@ void main() {
     ${clip_pixel}
 
     #if defined(dInterpolation_cubic)
-        #ifdef dUsePalette
-            vec4 material = texture2D(tImageTex, vUv);
+        #if defined(dUsePalette) && !defined(dSliceWindow)
+            vec4 material = sampleImage(vUv);
             if (material.rgb != vec3(1.0)) {
-                material = biCubic(tImageTex, vUv);
+                material = biCubic(vUv);
             }
         #else
-            vec4 material = biCubic(tImageTex, vUv);
+            vec4 material = biCubic(vUv);
         #endif
     #else
-        vec4 material = texture2D(tImageTex, vUv);
+        vec4 material = sampleImage(vUv);
+    #endif
+
+    #ifdef dSliceWindow
+        // the value in the domain (filtered) to its color: the palette's, or the uniform color times it
+        #ifdef dUsePalette
+            material.rgb = texture2D(tPalette, vec2(material.r, 0.0)).rgb;
+        #else
+            material.rgb = uColor * material.r;
+        #endif
+        material.a = 0.0;
     #endif
 
     if (uIsoLevel >= 0.0) {
-        if (texture2D(tValueTex, vUv).r < uIsoLevel) discard;
+        #ifdef dSliceWindow
+            if (sliceRangeValue(vUv) < uIsoLevel) discard;
+        #else
+            if (texture2D(tValueTex, vUv).r < uIsoLevel) discard;
+        #endif
 
         material.a = uAlpha;
     } else {
@@ -232,7 +290,7 @@ void main() {
     #elif defined(dRenderVariant_emissive)
         gl_FragColor = vec4(emissive);
     #elif defined(dRenderVariant_color) || defined(dRenderVariant_tracing)
-        #ifdef dUsePalette
+        #if defined(dUsePalette) && !defined(dSliceWindow)
             if (material.rgb == vec3(1.0)) {
                 material.rgb = uPaletteDefault;
             } else {

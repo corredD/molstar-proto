@@ -24,7 +24,14 @@ import { type ObjectPose, placementWith, poseOf } from '@molstar/stage-tools-ext
 import type { LabelInfo, StageApi } from '@molstar/stage-tools-extension/operations';
 import { Decorations, MeshControls, ObliqueSlice, Slice, VolumeData } from '@molstar/cryoet-extension/controls';
 import type { CryoetApi, DecorationsInfo, TargetDecoration } from '@molstar/cryoet-extension/operations';
-import { ImportColors, ObjectGraphics, ZoomColors } from '@molstar/mesoscale-extension/controls';
+import {
+  FiberSettings,
+  GrowBlock,
+  ImportColors,
+  ObjectGraphics,
+  PaintBrush,
+  ZoomColors,
+} from '@molstar/mesoscale-extension/controls';
 import type { MesoGroupBy } from '@molstar/mesoscale-extension/model';
 import type { MesoscaleInfo } from '@molstar/mesoscale-extension/operations';
 import {
@@ -63,6 +70,7 @@ import { gestureSteps } from '@molstar/prism-viewer/sources/gesture-steps';
 import { VolumeTransfer } from '@molstar/prism-viewer/views/volume/volume-transfer';
 import { PlainCut, type Way, wayOf } from './clips.js';
 import { DistanceProps } from './distance-properties.js';
+import { GroupProps } from './group-properties.js';
 import { addClip, clippable, hideHandles, movable, showClipHandles, showHandles, showTheme } from './menu.js';
 import type { ExplorerApi, NodeRef, RepresentationInfo } from './operations.js';
 import { Hint, Line, PropertiesFrame, PropertiesSlot, propertiesClasses as classes } from './properties-view.js';
@@ -84,7 +92,7 @@ import { CategoryThemes } from './tree-view.js';
 // The properties of the row picked in the explorer's tree (_spec/ui.md §4): its name and kind, a model's Group by
 // above the sections (the tree's grouping of its rows: view state), then the sections that apply on Prism's
 // `SectionList` (properties-view.tsx), in ui.md §4's order: Data, Look, Representation, Isosurface, Direct volume,
-// Decoration, Slice, Position, Clips, Labels, Graphics & Motion; a clip's, a label's and a distance's own section. They
+// Decoration, Slice, Position, Clips, Labels, Paint, Graphics & Motion; a clip's, a label's and a distance's own section. They
 // act through the API as the person; a slider once released (one step).
 
 /** The row picked: its key in the tree, what it is, what it stands for */
@@ -408,11 +416,101 @@ export const Sections: readonly Section[] = [
     render: ({ api, picked }) => <Labels api={api} stage={api.stage!} at={picked.key} />,
   },
   {
+    // a structure as a brush (paint-layer round 2, Ludo 2026-11-10): Paint with it, into a list or the Painting list
+    id: 'paint-structure',
+    title: 'Paint',
+    when: ({ api, picked }) => !!api.mesoscale && picked.kind === 'structure' && !!picked.node,
+    render: ({ api, picked }) => (
+      <PaintBrush area={api.mesoscale!} particles="" entity={-1} name={picked.label} structure={picked.node!.ref} />
+    ),
+  },
+  {
+    // a model's entity as a brush (progress/2026-11-08-paint.md): Paint with it, and how
+    id: 'paint',
+    title: 'Paint',
+    when: ({ api, picked }) =>
+      !!api.mesoscale &&
+      picked.kind === 'entity' &&
+      !!picked.node &&
+      'particles' in picked.node &&
+      picked.node.particles.entities?.length === 1,
+    render: ({ api, picked }) => {
+      const node = picked.node as Extract<NodeRef, { particles: unknown }>;
+      return (
+        <PaintBrush
+          area={api.mesoscale!}
+          particles={node.ref}
+          entity={node.particles.entities![0]}
+          name={picked.label}
+        />
+      );
+    },
+  },
+  {
+    // a group of instances as a brush (paint-group): Paint with it, all its members a copy
+    id: 'paint-group-brush',
+    title: 'Paint',
+    when: ({ api, picked }) =>
+      !!api.mesoscale && picked.kind === 'paint group' && !!picked.node && 'particles' in picked.node,
+    render: ({ api, picked }) => {
+      const node = picked.node as Extract<NodeRef, { particles: unknown }>;
+      return (
+        <PaintBrush
+          area={api.mesoscale!}
+          particles={node.ref}
+          entity={node.paintGroup!}
+          group={node.paintGroup!}
+          name={picked.label.replace(/ · .*$/, '')}
+        />
+      );
+    },
+  },
+  {
+    // a list's instances made a group (paint-group; cellPAINT's grouping): Pick instances, Make group
+    id: 'group',
+    title: 'Group',
+    when: ({ api, picked }) =>
+      // a model (a list with entities: its groups are rows of it; review S3)
+      !!api.mesoscale && !!picked.node && picked.kind === 'mesoscale model',
+    render: ({ api, picked }) => <GroupProps api={api} particles={picked.node!.ref} />,
+  },
+  {
+    // a grow from an instance (progress/2026-11-11-grow.md): on a list, its model, its entities and targets; its source
+    // the particle right-clicked (Grow from this instance…) or the last painted
+    id: 'grow',
+    title: 'Grow',
+    when: ({ api, picked }) =>
+      !!api.mesoscale &&
+      !!picked.node &&
+      ('particles' in picked.node || picked.kind === 'mesoscale model' || picked.kind === 'particle list'),
+    render: ({ api, picked }) => <GrowBlock area={api.mesoscale!} api={api} particles={picked.node!.ref} />,
+  },
+  {
+    // a model's entity's fibers (progress/2026-11-08-paint.md, Round 3): its painted fibers' rise, twist and jitter
+    id: 'fiber',
+    title: 'Fiber',
+    when: ({ api, picked }) =>
+      !!api.mesoscale &&
+      picked.kind === 'entity' &&
+      !!picked.node &&
+      'particles' in picked.node &&
+      picked.node.particles.entities?.length === 1,
+    render: ({ api, picked }) => {
+      const node = picked.node as Extract<NodeRef, { particles: unknown }>;
+      return <FiberSettings area={api.mesoscale!} particles={node.ref} entity={node.particles.entities![0]} />;
+    },
+  },
+  {
     id: 'graphics',
     title: 'Graphics & Motion',
     when: ({ api, picked }) => !!api.mesoscale && !!picked.node && GraphicsKinds.has(picked.kind),
     render: ({ api, picked }) => (
-      <ObjectGraphics area={api.mesoscale!} object={picked.node!.ref} motion={GraphicsKinds.get(picked.kind)!} />
+      <ObjectGraphics
+        area={api.mesoscale!}
+        api={api}
+        object={picked.node!.ref}
+        motion={GraphicsKinds.get(picked.kind)!}
+      />
     ),
   },
   {
@@ -471,7 +569,11 @@ function registerSections(shell: ShellModel) {
       id: s.id,
       slot: PropertiesSlot,
       title: s.title,
-      when: (ctx: ShellViewContext) => s.when(ctx.subject as Subject),
+      // a group of instances' row (paint-group): its Paint only (its node would read as the whole list's; review M1)
+      when: (ctx: ShellViewContext) =>
+        (ctx.subject as Subject).picked.kind === 'paint group'
+          ? s.id === 'paint-group-brush'
+          : s.when(ctx.subject as Subject),
       render: domView<ShellViewContext>(({ ctx }) => s.render(ctx.subject as Subject)),
     })),
   );

@@ -402,3 +402,60 @@ describe('State dependencies - deferred resolution', () => {
     expect(b.errorText).toMatch(/Unresolved dependency|missing dep|intentional/);
   });
 });
+
+describe('State dependencies - weak (`weakDependencies`)', () => {
+  /** A leaf of its dependency's value + 100, or -1 without it: its dependency from its params, weak */
+  function weakPick() {
+    return StateTransformer.create<Root, Leaf, { which: string }>(NS, {
+      name: uniq('weak-pick'),
+      from: [Root],
+      to: [Leaf],
+      display: { name: 'Weak pick' },
+      params: () => ({ which: PD.Text('') }) as any,
+      weakDependencies: true,
+      getDependencies: (params) => (params.which ? [params.which as StateTransform.Ref] : []),
+      apply({ params, dependencies }) {
+        const dep = dependencies?.[params.which] as Leaf | undefined;
+        return new Leaf({ value: dep ? dep.data.value + 100 : -1 });
+      },
+    });
+  }
+
+  it('is evaluated without a deleted dependency, and with it again when it comes back', async () => {
+    const state = newState();
+    const A = constLeaf();
+    const W = weakPick();
+    const b = state.build();
+    b.toRoot<Root>().apply(A as any, { value: 1 }, { ref: 'leaf-a' });
+    b.toRoot<Root>().apply(W as any, { which: 'leaf-a' }, { ref: 'weak' });
+    await state.runTask(state.updateTree(b));
+    expect((state.cells.get('weak')!.obj as Leaf).data.value).toBe(101);
+
+    const del = state.build();
+    del.delete('leaf-a');
+    await state.runTask(state.updateTree(del));
+    const cell = state.cells.get('weak')!;
+    expect(cell.status).toBe('ok');
+    expect((cell.obj as Leaf).data.value).toBe(-1);
+
+    const back = state.build();
+    back.toRoot<Root>().apply(A as any, { value: 7 }, { ref: 'leaf-a' });
+    await state.runTask(state.updateTree(back));
+    expect((state.cells.get('weak')!.obj as Leaf).data.value).toBe(107);
+  });
+
+  it('waits for a dependency that is not in the tree, instead of throwing', async () => {
+    const state = newState();
+    const A = constLeaf();
+    const W = weakPick();
+    const b = state.build();
+    b.toRoot<Root>().apply(W as any, { which: 'later' }, { ref: 'weak' });
+    await state.runTask(state.updateTree(b));
+    expect((state.cells.get('weak')!.obj as Leaf).data.value).toBe(-1);
+
+    const add = state.build();
+    add.toRoot<Root>().apply(A as any, { value: 3 }, { ref: 'later' });
+    await state.runTask(state.updateTree(add));
+    expect((state.cells.get('weak')!.obj as Leaf).data.value).toBe(103);
+  });
+});

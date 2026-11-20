@@ -8,12 +8,7 @@ import { it } from 'vitest';
 import { DefaultPrismViewerSpec } from '@molstar/prism-viewer/default-spec';
 import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
 import type { PrismViewer } from '@molstar/prism-viewer/viewer';
-import {
-  checkLinear,
-  quadraticControl,
-  scaling,
-  scalingAsync,
-} from '../../../../sequences/core/_test/model/scaling.js';
+import { checkLinear, quadraticControl, scaling, scalingAsync } from '../../../../../test-harness/src/scaling.js';
 import { CryoetExtension } from '../prism-viewer.js';
 
 // `cryoet.mesh` coloring N meshes in one call (`test:scaling`; packages/prism/AGENTS.md, bulk operations are one

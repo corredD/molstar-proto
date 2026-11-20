@@ -86,6 +86,12 @@ export interface Texture {
    * the texture holds another size, or the image is flipped
    */
   loadRows?: (image: TextureImage<any>, rows: readonly number[]) => void;
+  /**
+   * Writes the 2d `image` (the texture's width × height, rows as given: not flipped) into layer `layer` of this 3d
+   * texture, the other layers kept (a window of slices moved by a plane, `repr/volume/slice-window.ts`); allocates the
+   * defined size first (`define`). The texture keeps no source after it (`getSource`)
+   */
+  loadLayer?: (image: TextureImage<any>, layer: number) => void;
   /** no-op where unsupported (non-power-of-two sizes on WebGL1) */
   mipmap: () => void;
   /** Use `layer` to attach a z-slice of a 3D texture */

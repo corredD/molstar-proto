@@ -10,6 +10,38 @@ the app, in his words; the lane turns it into spec and tests.
 
 <!-- - **Title**: what I want to see. Check: what I do in the app and what I expect. -->
 
+### Paint and grow (Ludo, 2026-11-13), in this order
+
+1. **grow-helix round 3b** (running, `me/grow-helix`, port 1368): a spiral skips copies that would land on an earlier
+   arm and goes on until Count is placed. Then merge into prism-me, push, and update mesoscope (decisions 10, 15).
+2. **Decisions lane** (waits on Ludo's OK; after the merge), from the
+   [decisions doc](https://claude.ai/artifact/Jh985ir9vUiRxaUagxuKqV): a fiber unit as Grow source uses its offset as up
+   (1); Place Auto switches to Surface over a mesh (2); painted fibers keep their helix settings, a plain walk's up
+   follows the normal (3); Helix and Spiral get Count and Turns, linked (8, 21); Tiling uses Count in space too, no
+   Rings (11); Color… leaves a VTP's array theme alone (13). The spec records all answered decisions.
+3. **density-weight**: built in lane `density-fit` (Paint and Grow › Fit to, Contrast, Threshold; merged with the night
+   lanes in `me/night-integration`). Left: the handedness flip of a mirrored tomogram (plan, Decided 4), a target's kind
+   offsets in the fit, the copy under the pointer on a moved list
+   ([progress/2026-11-13-density-fit.md](progress/2026-11-13-density-fit.md)).
+4. **Geodesic spiral** (only if decision 23 says geodesic): the spiral by distance over the surface, even on caps and
+   vesicles.
+5. **Paint speed on cellpack-mg** (a stroke ~1.3 s on 2.1 M particles): one lane per cost of the paint-layer profile:
+   per-target transforms (~300 ms), fiber tubes (~340 ms), the culler (~175 ms).
+6. **Cleanup**: the mesoscale package's `test:scaling` tier does not start (old harness path, `heapTests`); a surface
+   projection allocates ~170 KB a pick (walk, Tiling, Helix, Spiral); `check:workspace` fails on prism-me
+   (`@molstar/plugin-ui ./*.css`).
+7. **Not built yet**: a protein bank for fibers (only `alanine.pdb`); the Seq\* link (part B); editing a fiber's
+   sequence after it is painted.
+
+### MesoViewSpec and lipids (see progress/current.md)
+
+- **MesoViewSpec app lanes**: `mvs-drive` (lane 4) last marked running; then `mvs-views` with `mvs-model-edits`,
+  `mvs-agent`, `mvs-streaming-app` (prism.md §12.2).
+- **Lipid membranes** (`lipid-tiles`, `lipid-procedural`): wait on Ludo's try on 1353 and 1354; then shells, the clip
+  pop and the PR (rounds 4–9).
+
+### Older items (2026-10-25)
+
 In this order (Ludo, 2026-10-25), one at a time; the looks' owner (PR #8), the measure hint (PR #7) and the app as a
 spec (lane `app-spec`) are built. From the architecture's decisions ([_spec/architecture.md](_spec/architecture.md) §7:
 refactor in place) and the review of the distances (PR #5):
@@ -97,6 +129,46 @@ maintainer first (2026-10-25). All are v6 (master); the MRC reader and the parti
   and steady frame and the draw calls per list, at 1, 10, 100 and 1,000 lists, on a machine with a GL context (`gl`
   installed; `molstar/src/_test/r5-cases.ts` already records them when `gl` loads).
 
+- **Far views faster** (lod-impostor, 2026-11-15): on cellpack-mg a far frame is about 2 M one-sphere copies (lipids,
+  small targets); impostors replace about 0.1 M. Next: sub-pixel copies culled, or far cells drawn as one. Also: a GPU
+  culler made without levels keeps none (levels added later are not drawn); WebGL's close-up +6% and mid +28% with
+  impostors; a depth test where centers and surfaces are in different orders.
+- **Impostors, left open by lod-impostor's review** (`progress/2026-11-15-lod-impostor.md`): a test of the particle
+  representation's wiring (atlas kept on a color change, rebuilt on sizes, off and on at runtime); the close-up cost of
+  the spheres' program with the define (a program per level?); the atlas built with yields or shared across lists; nits
+  (writeTile allocations, one shrink for all tiles, the tile boundary at the nominal radius).
+
+- **Grow › Helix, what it left** (lane `grow-helix`, 2026-11-13; progress/2026-11-13-grow-helix.md): the mesoscale
+  package's `test:scaling` tier does not start (its config's `heapTests` and the `*.scaling.ts` harness import
+  `sequences/core/_test/model/scaling.js` are gone: `@molstar/test-harness/scaling` now); `meshSurface.project`
+  allocates about 170 KB a pick (the helix's scaling guard; the walk and Tiling share it); `mesoscale.fiber` run before
+  a list's move was inserted put the painted copies above the move in a test (drawn unmoved; not checked in the app); a
+  helix's Turns only (the brief's "or the length the path reaches" not built).
+- **Paint, what rounds 1 and 2 left** (lane `paint`, 2026-11-08/09; progress/2026-11-08-paint.md): a fibre edited and
+  wrapped on a surface after it is painted (round 2 paints a new one); collision checks (mesobuild's) so copies do not
+  overlap; an eraser (a stroke removing copies) and a stroke's undo kept apart from the list's other edits; painting
+  with a list's target (lists without entities) from its row; the copy under the pointer's cost on a surface brush (each
+  move redraws, so the next pick redraws the pick pass: measure on MG in the browser; if it shows, a draw whose only
+  change is a non-picked object keeps the pick, a graphics change of its own); the copy under the pointer with a list
+  moved or scaled (drawn at the scene's point, its turn not the list frame's: review S4a; a scaled list's step and
+  radius used as scene distances: N9); paint's and the gizmos' trackball holds restore each other's bindings (S3: one
+  holder in graphics, or paint removing only its Alt triggers); `host.ray` on a real canvas (S6); a fibre painted on a
+  list without fibres at load has no Fibers representation (N2); the copy built off the main thread (N6), hidden with
+  its entity (N7); a far bound on the depth (N8); fake timers in paint-mode.test.ts (N10); a pick normal test on Dawn
+  (headless WebGPU picks did not answer reliably here); lists whose targets come from a class (refused now); the
+  review's nits: Esc while the mode is on also stops the page's other Esc handlers once, the host names the brush by id
+  as text (a name "3" would win), the principal axis read where `targetMapping` is on the list (not a decorator's), a
+  real 100 ms wait in paint-mode.test.ts.
+
+- **Paint, what rounds 3 to 5 left** (lane `paint`, 2026-11-09; progress/2026-11-08-paint.md, Round 5 and its review): a
+  protein bank (cellPACK_data has `alanine.pdb` only; the 19 others from the CCD's ideal coordinates, in the units'
+  frame, on Ludo's word); the Seq\* link (a painted fibre's points as a Seq\* sequence's positions, highlight both ways:
+  `Translator` external systems and a particle 3D view); a painted fibre's sequence changed after it is painted; a
+  stroke drawn without rebuilding the whole list (2.1 M particles: about 1.2 s a stroke on cellpack-mg, the
+  representation's update; the painted copies as a list of their own); the review's nits: the cursor's moves dirty the
+  scene's bounds (N1), the depth clamp along the ray against the planes' view depth (N2), the sliders narrower than
+  `mesoscale.fiber` (N4), a string a point in `withUnits` (S6); the `*.scaling.ts` configs of io, cryoet and mesoscale
+  import Seq*'s old harness path (moved to `@molstar/test-harness`, b50bd2f07): broken on prism-me.
 - **Fibre points drawn twice** (lane `fibers-targeted`, 2026-11-08; to decide): a cellPACK fibre's points keep their
   one-atom target under the new tubes (the yeast slab: 2.3M extra instances). Leave fibre points untargeted in the
   reader (lighter, tubes only), or keep both (a cellPACK fibre whose points carry an ingredient)?
@@ -218,7 +290,12 @@ maintainer first (2026-10-25). All are v6 (master); the MRC reader and the parti
 - Color import per compartment (v5 parity): one entity per name across compartments; per-compartment layers
   (`ParticleLayerProps.compartments`) would restore it.
 - Snapshot descriptions' links: `#key`, `i<names>`, `g<group>.<names>`.
-- Tilt angles (`.tlt`, `.rawtlt`) with the images of a tilt series; binning large tomograms.
+- Tilt angles (`.tlt`, `.rawtlt`) with the images of a tilt series; binning large tomograms before they load (a loaded
+  MRC bins: lane `data-controls`).
+- A level read (an OME-Zarr's, an MRC binned): a distance anchored to voxels keeps their indices in the old grid (it
+  fails, or lands elsewhere; review S1 of `data-controls`): remap them in the level's write. The MRC's `bin` takes 1–8
+  (3, 5… are not listed levels); a stack is told by its name (.st, .ali, .mrcs) only; Array's first pick is the first
+  cell array, not the VTP's first scalar; a bare array name found in both point and cell data takes the point's.
 - Decorating by a string column (a tomogram name).
 - Keys on cuts (animation).
 - A distance follows its objects: moving a structure, a list or a volume (or a particle with its handle) moves the

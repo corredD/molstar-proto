@@ -42,6 +42,9 @@ export const assign_color_varying = `
         vec3 cgridSource = uColorIndexType == 1 ? gridModelPosition : position;
         vec3 cgridPos = (uColorGridTransform.w * (cgridSource - uColorGridTransform.xyz)) / uColorGridDim;
         vColor.rgb = texture3dFrom2dLinear(tColorGrid, cgridPos, uColorGridDim, uColorGridTexDim).rgb;
+        #ifdef dColorGridFragment
+            vColorGridPosition = cgridPos;
+        #endif
     #endif
 
     #ifdef dUsePalette

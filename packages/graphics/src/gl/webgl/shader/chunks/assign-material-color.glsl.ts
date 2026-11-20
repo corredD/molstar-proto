@@ -18,13 +18,30 @@ export const assign_material_color = `
     float materialOpacity = 1.0;
 #endif
 
+#if defined(dRenderVariant_color) || defined(dRenderVariant_tracing) || defined(dRenderVariant_emissive)
+    #if defined(dColorType_grid) && defined(dColorGridFragment)
+        // the grid at its cell centers: the 2d layout's texels are half a cell off in x and y (\`texture3dFrom2dLinear\`)
+        vec3 varyingColor = texture3dFrom2dLinear(tColorGrid, vColorGridPosition + vec3(0.5 / uColorGridDim.xy, 0.0), uColorGridDim, uColorGridTexDim).rgb;
+        #ifdef dUsePalette
+            float paletteV = ((varyingColor.r * 256.0 * 256.0 * 255.0 + varyingColor.g * 256.0 * 255.0 + varyingColor.b * 255.0) - 1.0) / PALETTE_SCALE;
+        #endif
+    #else
+        #if defined(dColorType_varying)
+            vec3 varyingColor = vColor.rgb;
+        #endif
+        #ifdef dUsePalette
+            float paletteV = vPaletteV;
+        #endif
+    #endif
+#endif
+
 #if defined(dRenderVariant_color) || defined(dRenderVariant_tracing)
     #if defined(dUsePalette)
-        vec4 material = vec4(texture2D(tPalette, vec2(vPaletteV, 0.5)).rgb, uAlpha);
+        vec4 material = vec4(texture2D(tPalette, vec2(paletteV, 0.5)).rgb, uAlpha);
     #elif defined(dColorType_uniform)
         vec4 material = vec4(uColor, uAlpha);
     #elif defined(dColorType_varying)
-        vec4 material = vec4(vColor.rgb, uAlpha);
+        vec4 material = vec4(varyingColor, uAlpha);
     #endif
 
     // mix material with overpaint; the levels already folded a Look color into vColor (color-levels.md)
@@ -119,11 +136,11 @@ export const assign_material_color = `
     }
     // glow with the object's own color so emissive isn't double-counted via the lit buffer
     #if defined(dUsePalette)
-        vec3 emissiveColor = texture2D(tPalette, vec2(vPaletteV, 0.5)).rgb;
+        vec3 emissiveColor = texture2D(tPalette, vec2(paletteV, 0.5)).rgb;
     #elif defined(dColorType_uniform)
         vec3 emissiveColor = uColor;
     #elif defined(dColorType_varying)
-        vec3 emissiveColor = vColor.rgb;
+        vec3 emissiveColor = varyingColor;
     #else
         vec3 emissiveColor = vec3(1.0);
     #endif

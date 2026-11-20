@@ -125,6 +125,8 @@ export type NodeRef =
         readonly compartments?: number[];
         readonly targets?: number[];
       };
+      /** A group of instances of the list (paint-group; its id): a brush, no particle of its own */
+      readonly paintGroup?: number;
     };
 
 /** The particle representation types as the explorer names them (the others by their own label) */
@@ -716,9 +718,11 @@ function sceneObjects(plugin: PluginContext): SceneObject[] {
     });
   }
   for (const l of plugin.managers.particles.hierarchy.current.lists) {
-    const data = l.cell.obj?.data;
+    // as it is drawn: its decorators' particles, the painted copies and their entities with them (paint-layer round 2:
+    // the Painting list has none of its own)
+    const data = (l.representations[0]?.cell.obj?.data.sourceData as ParticleList | undefined) ?? l.cell.obj?.data;
     // a MesoViewSpec document's list: not a row, the document's rows are (prism.md §4.1, lists are not rows)
-    if (isDocumentList(data)) continue;
+    if (isDocumentList(l.cell.obj?.data)) continue;
     const model = !!(data?.entityInfo?.size || data?.compartmentInfo?.size);
     out.push({
       ref: l.cell.transform.ref,
@@ -979,6 +983,8 @@ function structureLook(plugin: PluginContext, node: NodeRef): StructureLook | un
 
 /** The loci of a node: its object's, or its part's */
 function lociOf(plugin: PluginContext, node: NodeRef): Loci {
+  // a group of instances (paint-group) has no particle of its own: not the whole list
+  if ('particles' in node && node.paintGroup !== undefined) return EmptyLoci;
   const cell = plugin.state.data.cells.get(node.ref);
   const obj = cell?.obj;
   if (SO.Molecule.Structure.is(obj)) {

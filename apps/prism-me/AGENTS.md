@@ -56,10 +56,12 @@ and tries the app. Why: one long session serializes everything and buries upstre
   (without `-R`, `gh` targets molstar/molstar, the fork's parent). Its body as David's: What, Changes, Notes for review
   (defaults, public API, what is left open), Testing (what ran, what was checked in the app, with what data). Ludovic
   merges.
-- **A library fix** (anything under `packages/` outside the three extensions that upstream would want) is its own lane
-  from `origin/master`, not from `prism-me`, with a failing test first and a `CHANGELOG.md` line if it applies to 5.x;
-  it goes upstream only when Ludovic says so. `prism-me` gets it by the next master merge (or a cherry-pick if a lane
-  needs it now).
+- **Core changes live on `prism-me`** (Ludo, 2026-11-14, replacing "a library fix is its own lane from master"),
+  because Ludo tests and follows everything in one place. A change to the Mol\* core or Prism (anything under
+  `packages/` outside the three extensions) is made in the lane that needs it, from `prism-me`, as its own commits
+  (no app or extension hunks in them, so they can be cherry-picked onto master later), with a failing test first.
+  The lane records each one in [_spec/core-changes.md](_spec/core-changes.md) (what, why, files, commits, upstream
+  status) and the app-side change in `_spec/ui.md`/`features.md` as usual. Upstream only on Ludo's word.
 - **Master comes in** about once a week, one merge commit on `prism-me` (`Merge origin/master (v6 #…) into prism-me`),
   adapted in a commit of its own, gate run before the push.
 - **Corrections become rules:** when Ludovic corrects a choice that should hold, add it above as "(Ludovic, date) rule,

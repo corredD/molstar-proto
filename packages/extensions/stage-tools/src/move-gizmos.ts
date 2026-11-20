@@ -10,6 +10,7 @@ import { PluginStateObject as SO } from '@molstar/plugin/state/objects';
 import { observableState } from '@molstar/prism-ui/reactive/observable-state';
 import type { ReadonlyState } from '@molstar/prism-ui/reactive/readonly-state';
 import { GizmoHandles, PlacementHandles } from '@molstar/prism-viewer/sources/gizmos';
+import { shapeCellOf } from './drawn.js';
 import type { ObjectPlacement, StageApi } from './operations.js';
 
 // An object moved by hand (apps/prism-me/_spec/ui.md, Prism first): Prism's handles (`GizmoHandles`, its transform
@@ -40,7 +41,8 @@ export class ObjectMoveGizmos {
       // what a drag starts from: the object and what is under it; a mesh's placement is its shape's, above it
       cells: (key) => {
         const cell = plugin.state.data.cells.get(key);
-        return cell && SO.Shape.Representation3D.is(cell.obj) ? [cell.transform.parent] : [key];
+        const shape = cell && SO.Shape.Representation3D.is(cell.obj) ? shapeCellOf({ plugin }, cell) : undefined;
+        return shape ? [shape.transform.ref] : [key];
       },
       preview: async (key, from, next) => area.previewMove(key, moveBetween(from, next)),
       commit: async (key, from, next) => {

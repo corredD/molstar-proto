@@ -192,6 +192,45 @@ describe('culling a segment', () => {
     expect(reference.flat().length).toBeGreaterThan(0);
   });
 
+  // impostors switched by size on screen (\`lod-impostor.md\`): each member's last spheres end, and its impostors start,
+  // where its own copies (its radius) switch, not where the largest item's do: a small item's far cells draw no spheres
+  it("ends a member's last spheres at its own switch by size on screen", () => {
+    const { frustum, cameraPlane } = view(Vec3.create(95, 95, -300), Vec3.create(95, 95, 95));
+    const t = Math.tan(Math.PI / 8);
+    const lod = LodView.set(LodView(), Mat4.perspective(Mat4(), -t, t, t, -t, 1, 2000), 720, false);
+    const k = Math.pow(2, 0.25);
+    const value = Object.assign(
+      [
+        [0, 0.5, 0, 600, 1],
+        [0.5, Infinity, -1, 6, -1],
+      ],
+      { pixelSize: 3, impostor: 0, impostorSwitch: { mode: 'pixels', value: 12, radii: [1, 100], k } },
+    ) as unknown as LodLevelsValue;
+    const lodLevels = ValueCell.create(value);
+    const run = (radius: number) => {
+      const mdb = createSegmentedMdbList();
+      const prepared = mdb.prepare(lodLevels, grid.cellCount, false, lod);
+      mdb.cullSegment(
+        { ...values, lodLevels, invariantBoundingSphere: ValueCell.create(Sphere3D.create(Vec3(), radius)) },
+        ZeroCullSegment,
+        prepared,
+        cameraPlane,
+        frustum,
+        null,
+        createGraphicsStats(),
+        false,
+        false,
+        0,
+      );
+      return mdb.list.map((l) => l.instanceCounts.subarray(0, l.count).reduce((a, b) => a + b, 0));
+    };
+    const [spheresLarge] = run(100);
+    const [spheresSmall, impostorsSmall] = run(2);
+    // the small item's copies are below 12 px across from much nearer: its spheres end there
+    expect(spheresSmall).toBeLessThan(spheresLarge);
+    expect(impostorsSmall).toBeGreaterThan(0);
+  });
+
   it('with wiggling atoms, draws the cells whose spheres grown by the wiggle reach into view', () => {
     const { frustum, cameraPlane } = view(Vec3.create(300, 95, -100), Vec3.create(95, 95, 95));
     const value = [[0, 1e7, 0, 600, 1]] as unknown as LodLevelsValue;

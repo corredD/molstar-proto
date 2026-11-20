@@ -4,9 +4,10 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import { Mat4, Vec3 } from '@molstar/core/math/linear-algebra';
+import { Mat4, Tensor, Vec3 } from '@molstar/core/math/linear-algebra';
 import { type StateObjectCell, type StateObjectSelector, StateTransform } from '@molstar/core/state';
 import { Color } from '@molstar/core/util/color';
+import { ColorListOptionsScale } from '@molstar/core/util/color/lists';
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
 import type { ParticleList, ParticleTarget } from '@molstar/model/model/particles/particle-list';
 import { Grid, Volume } from '@molstar/model/model/volume';
@@ -32,7 +33,10 @@ import {
 import { VolumeRepresentation3D } from '@molstar/plugin/state/transforms/volume/representation';
 import { omeZarrLevelNeeds, VolumeFromOmeZarr } from '@molstar/plugin/state/formats/volume/ome-zarr';
 import type { OmeZarrFormat } from '@molstar/model/formats/volume/ome-zarr';
+import { Ccp4Format } from '@molstar/model/formats/volume/ccp4';
+import { VolumeFromCcp4 } from '@molstar/plugin/state/formats/volume/ccp4';
 import { gridText, volumeStats, voxelText } from '@molstar/prism-viewer/api/volume';
+import { VolumeTransform } from '@molstar/plugin/state/transforms/volume/ops';
 import { type ApiContext, ApiArea, type ApiFailure, ApiResult } from '@molstar/prism-viewer/api/area';
 import { OptionalParam } from '@molstar/prism-viewer/api/params';
 import { isFailure, labelOf as structureLabel, loadedStructures, pickOne } from '@molstar/prism-viewer/api/scope';
@@ -45,6 +49,18 @@ import { mb } from './portal-run.js';
 import type { ViewerApi } from '@molstar/prism-viewer/api';
 import { ButtonsType } from '@molstar/core/util/input/input-observer';
 import { isEmptyLoci } from '@molstar/model/model/loci';
+import {
+  MeshVolumeColor,
+  type MeshVolumeColorProps,
+  MeshVolumeColorParams,
+  colorBandOf,
+  sampledArrayOf,
+  type VolumeDetail,
+  VolumeDetails,
+  type VolumeSample,
+  VolumeSamples,
+  voxelOf,
+} from './mesh-volume.js';
 
 // The `cryoet` area (apps/prism-me/_spec/features.md, "CryoET"): what decorates a particle list and how the particles
 // map to targets (`decorations`, `decorate`, `classes`), and the slices of a tomogram or a tilt series (`slice`).
@@ -136,7 +152,12 @@ export interface VolumeDataInfo {
   /** Its format (OME-ZARR, CCP4…) */
   readonly source: string;
   readonly grid: string;
+  /** Its voxel as drawn, "20 Å (file: 10 Å)" when its pixel size is not the file's */
   readonly voxel: string;
+  /** Its pixel size in use (Å, along x, at the finest level) */
+  readonly pixelSize: number;
+  /** The file's (Å, along x, at the finest level: what Reset goes back to) */
+  readonly filePixelSize: number;
   /** The bytes of its voxels, decoded */
   readonly bytes: number;
   /** Its levels, coarsest to finest; empty: one resolution (an MRC map, a single-level OME-Zarr) */
@@ -157,9 +178,59 @@ export interface MeshInfo {
   readonly opacity: number;
   /** Its uniform color, when it has one */
   readonly color?: number;
+  /** The point and cell arrays it can be colored by (a VTP's), by key ("cell:Labels") */
+  readonly arrays?: readonly MeshArray[];
+  /** Its color by an array, when it is so colored */
+  readonly colorBy?: MeshColorBy;
+  /** Its color by a volume, when it is so colored */
+  readonly volumeColor?: MeshVolumeColorBy;
+  /** The volume it was colored by and keeps the values of, when it is colored otherwise now (Volume again: this one) */
+  readonly volumeKept?: { readonly volume: string; readonly label: string };
   /** Its scale (1: as in the file; a mesh in pixels: the pixel size, Å) */
   readonly scale: number;
 }
+
+/** A point or cell array of a mesh, by key ("point:Curvature") and as its color theme names it ("Point: Curvature") */
+export interface MeshArray {
+  readonly key: string;
+  readonly label: string;
+  /** Its values' range (a vector's: its length's), when the file is read */
+  readonly range?: readonly [number, number];
+}
+
+/** A mesh colored by an array: its key, its color scale (a color list: viridis…), its range (auto: the array's) */
+export interface MeshColorBy {
+  readonly array: string;
+  readonly colorList: string;
+  readonly range: 'auto' | readonly [number, number];
+}
+
+/**
+ * A mesh colored by a volume: the volume (its ref and label), where it is read (at the surface, or the mean, min or max
+ * along the normal within ±depth Å), its colors, its range in σ (auto: ±2σ), inverted or not, and the array its values
+ * are kept in ("cell:density_tomogram")
+ */
+export interface MeshVolumeColorBy {
+  readonly volume: string;
+  readonly label: string;
+  readonly sample: VolumeSample;
+  readonly depth: number;
+  /** At the vertices, or a grid at the volume's voxels read per pixel */
+  readonly detail: VolumeDetail;
+  /** Texture: a cell's side (Å), the voxel's or, over the grid's cap, more */
+  readonly cell?: number;
+  /** Texture: the grid over its cap (`MaxColorGridCells`), its cells coarser than the voxels */
+  readonly capped?: true;
+  readonly colorList: string;
+  readonly range: 'auto' | readonly [number, number];
+  readonly invert: boolean;
+  readonly array: string;
+  /** Its volume is not in the scene (removed): the mesh is gray until it comes back */
+  readonly missing?: true;
+}
+
+/** The color scales an array is colored with (a color list's name: viridis, plasma…) */
+export const MeshColorLists: readonly (readonly [string, string])[] = ColorListOptionsScale.map(([k, l]) => [k, l]);
 
 const ListParam = () =>
   PD.Text('', { description: 'A particle list by label or state ref; empty: the only one loaded' });
@@ -209,13 +280,59 @@ export class CryoetApi extends ApiArea {
     );
   }
 
+  /**
+   * Shows a volume's grid slice at `index` outside the state while its slider is dragged, where the slice is drawn from
+   * a window of its planes on the GPU (graphics `repr/volume/slice-window.ts`: a move is a uniform, or a plane copied at
+   * the window's edge): the representation updated once a frame, the latest index winning; the gesture's release
+   * commits it (`slice`, one undo step, which drops what is still pending). False where it is not (no such slice, drawn
+   * on the CPU): the caller steps through the state instead
+   */
+  previewSlice(volume: string, axis: SliceAxis, index: number): boolean {
+    const plugin = this.ctx.plugin;
+    const v = oneVolume({ plugin }, volume || undefined);
+    if (isFailure(v) || !windowedSlice(v, axis)) return false;
+    const previews = slicePreviewsOf(plugin);
+    const ref = v.cell.transform.ref;
+    const key = `${ref}:${axis}`;
+    const pending = previews.pending.get(key);
+    if (pending) pending.index = index;
+    else previews.pending.set(key, { volume: ref, axis, index });
+    if (!previews.scheduled) {
+      previews.scheduled = true;
+      const frame =
+        typeof requestAnimationFrame === 'function' ? requestAnimationFrame : (f: () => void) => setTimeout(f, 16);
+      frame(() => this.applySlicePreviews());
+    }
+    return true;
+  }
+
+  /** The pending previews applied: each slice looked up again (removed meanwhile: skipped) */
+  private applySlicePreviews() {
+    const plugin = this.ctx.plugin;
+    const previews = slicePreviewsOf(plugin);
+    previews.scheduled = false;
+    for (const { volume, axis, index } of previews.pending.values()) {
+      const v = oneVolume({ plugin }, volume);
+      if (isFailure(v)) continue;
+      const repr = windowedSlice(v, axis);
+      if (!repr) continue;
+      const n = v.cell.obj!.data.grid.cells.space.dimensions[AxisIndex[axis]] - 1;
+      repr
+        .createOrUpdate({ dimension: { name: axis, params: Math.max(0, Math.min(n, Math.round(index))) } })
+        .run()
+        .then(() => plugin.canvas3d?.requestDraw())
+        .catch(() => undefined);
+    }
+    previews.pending.clear();
+  }
+
   /** What a volume's data is and its levels (by state ref), following the state tree while watched: a read for views */
   dataState(volume: string): ReadonlyState<VolumeDataInfo | undefined> {
     const plugin = this.ctx.plugin;
     return watchedState(
       () => {
         const v = oneVolume({ plugin }, volume || undefined);
-        return isFailure(v) ? undefined : volumeDataOf(v);
+        return isFailure(v) ? undefined : volumeDataOf({ plugin }, v);
       },
       () => plugin.state.data.events.changed,
       { compare: (a, b) => JSON.stringify(a) === JSON.stringify(b) },
@@ -227,6 +344,20 @@ export class CryoetApi extends ApiArea {
     const plugin = this.ctx.plugin;
     return watchedState(
       () => meshes({ plugin }),
+      () => plugin.state.data.events.changed,
+      { compare: (a, b) => JSON.stringify(a) === JSON.stringify(b) },
+    );
+  }
+
+  /** The volumes of the scene a mesh can be colored by (ref, label), following the state tree while watched */
+  volumesState(): ReadonlyState<readonly { ref: string; label: string }[]> {
+    const plugin = this.ctx.plugin;
+    return watchedState(
+      () =>
+        plugin.managers.volume.hierarchy.current.volumes.map((v) => ({
+          ref: v.cell.transform.ref,
+          label: entryLabel({ plugin }, v.cell),
+        })),
       () => plugin.state.data.events.changed,
       { compare: (a, b) => JSON.stringify(a) === JSON.stringify(b) },
     );
@@ -276,16 +407,122 @@ export class CryoetApi extends ApiArea {
           },
         ),
       ),
+      array: OptionalParam(
+        PD.Text('', {
+          description:
+            'Colors it by a point or cell array of its file (a VTP): "cell:Labels", "point:Curvature", or a name',
+        }),
+      ),
+      colorList: OptionalParam(
+        PD.Text('', { description: "The color scale of its array's colors: viridis, plasma, red-white-blue…" }),
+      ),
+      range: OptionalParam(
+        PD.Value<'auto' | [number, number]>('auto', {
+          description:
+            "The values its array's colors span: auto (the array's), or [min, max]; by a volume, in σ (auto: ±2σ)",
+        }),
+      ),
+      volume: OptionalParam(
+        PD.Text('', {
+          description: 'Colors it by a volume of the scene (by name or ref): its density on the mesh, in σ',
+        }),
+      ),
+      sample: OptionalParam(
+        PD.Select<VolumeSample>('surface', [
+          ['surface', 'At surface'],
+          ['mean', 'Projected: mean'],
+          ['min', 'Projected: min'],
+          ['max', 'Projected: max'],
+        ]),
+      ),
+      depth: OptionalParam(
+        PD.Numeric(
+          2,
+          { min: 0, max: 1000, step: 0.1 },
+          { description: "Along the normal, ± Å (Projected); a new color by a volume: 2 of the volume's voxels" },
+        ),
+      ),
+      invert: OptionalParam(PD.Boolean(false, { description: "Inverts the volume's color scale" })),
+      detail: OptionalParam(
+        PD.Select<VolumeDetail>(
+          'vertex',
+          [
+            ['vertex', 'Vertex'],
+            ['texture', 'Texture'],
+          ],
+          {
+            description:
+              "Colors at the vertices, or a grid at the volume's voxels read per pixel (the volume's detail)",
+          },
+        ),
+      ),
     },
     async run(values, ctx) {
-      const { mesh, visible, visuals, opacity, color, colors, scale } = values as typeof values & {
-        scale?: number;
-        visible?: boolean;
-        visuals?: 'mesh' | 'wireframe' | 'both';
-        opacity?: number;
-        color?: string;
-        colors?: { mesh: string; color: string }[];
+      const { mesh, visible, visuals, opacity, color, colors, scale, array, colorList, range } =
+        values as typeof values & {
+          scale?: number;
+          visible?: boolean;
+          visuals?: 'mesh' | 'wireframe' | 'both';
+          opacity?: number;
+          color?: string;
+          colors?: { mesh: string; color: string }[];
+          array?: string;
+          colorList?: string;
+          range?: 'auto' | [number, number];
+        };
+      const { volume, sample, depth, invert, detail } = values as {
+        volume?: string;
+        sample?: VolumeSample;
+        depth?: number;
+        invert?: boolean;
+        detail?: VolumeDetail;
       };
+      const byVolume =
+        volume !== undefined ||
+        sample !== undefined ||
+        depth !== undefined ||
+        invert !== undefined ||
+        detail !== undefined;
+      if (byVolume && (color !== undefined || colors !== undefined || array !== undefined)) {
+        return ApiResult.fail(
+          'invalid',
+          'A volume, a color or an array: one.',
+          'Give volume to color it by a volume, color for one color, array for an array.',
+        );
+      }
+      if (sample !== undefined && !VolumeSamples.includes(sample)) {
+        return ApiResult.fail('invalid', `'${sample}' is not a sample.`, `Samples: ${VolumeSamples.join(', ')}.`);
+      }
+      if (detail !== undefined && !VolumeDetails.includes(detail)) {
+        return ApiResult.fail('invalid', `'${detail}' is not a detail.`, `Details: ${VolumeDetails.join(', ')}.`);
+      }
+      if (depth !== undefined && !(Number.isFinite(depth) && depth > 0)) {
+        return ApiResult.fail('invalid', 'depth: a length in Å over 0.');
+      }
+      const v = volume !== undefined ? oneVolume(ctx, volume || undefined) : undefined;
+      if (isFailure(v)) return v;
+      const byArray = array !== undefined || colorList !== undefined || range !== undefined;
+      if (byArray && (color !== undefined || colors !== undefined)) {
+        return ApiResult.fail(
+          'invalid',
+          'A color or an array, not both.',
+          'Give color for one color, array for an array.',
+        );
+      }
+      if (colorList !== undefined && !MeshColorLists.some(([k]) => k === colorList)) {
+        return ApiResult.fail(
+          'invalid',
+          `'${colorList}' is not a color scale.`,
+          `Scales: ${MeshColorLists.map(([k]) => k).join(', ')}.`,
+        );
+      }
+      if (
+        range !== undefined &&
+        range !== 'auto' &&
+        !(Array.isArray(range) && range.length === 2 && range.every(Number.isFinite) && range[0] < range[1])
+      ) {
+        return ApiResult.fail('invalid', 'range: auto, or [min, max] with min under max.');
+      }
       const all = meshes(ctx);
       // the meshes indexed once, by ref and by name (lowercased): an entry of `colors` found without a scan
       const byRef = new Map(all.map((m) => [m.ref, m]));
@@ -338,25 +575,86 @@ export class CryoetApi extends ApiArea {
         for (const m of find(mesh)) picked.push({ ...m, color: parsed });
         if (!picked.length) return missing(mesh);
       }
+      // each mesh's color by a volume (its decorator's params), all checked before the write: a volume given, or its
+      // sample, depth or invert, or the colors and range of a mesh shown by a volume
+      const byVolumes = new Map<string, MeshVolumeColorProps>();
+      for (const m of picked) {
+        const node = volumeNodeOf(ctx, m.ref);
+        const old = node?.transform.params as MeshVolumeColorProps | undefined;
+        const shown = !!old?.show && array === undefined;
+        if (!byVolume && !(shown && (colorList !== undefined || range !== undefined))) continue;
+        if (!v && !old) {
+          return ApiResult.fail('invalid', `${m.label} is not colored by a volume.`, 'Give the volume to color it by.');
+        }
+        const drawn = v ? lastDecorator(ctx, v) : undefined;
+        const grid = (drawn?.obj?.data as Volume | undefined)?.grid;
+        const fresh = !old || (drawn && drawn.transform.ref !== old.volume);
+        byVolumes.set(m.ref, {
+          ...(old ?? PD.getDefaultValues(MeshVolumeColorParams)),
+          ...(drawn ? { volume: drawn.transform.ref } : {}),
+          ...(drawn && fresh ? { name: arrayName(ctx, m.ref, entryLabel(ctx, v!.cell)) } : {}),
+          ...(!old && grid ? { depth: Math.round(200 * voxelOf(grid)) / 100 } : {}),
+          ...(sample !== undefined ? { sample } : {}),
+          ...(depth !== undefined ? { depth } : {}),
+          ...(colorList !== undefined ? { colorList } : {}),
+          ...(range !== undefined ? { range } : {}),
+          ...(invert !== undefined ? { invert } : {}),
+          ...(detail !== undefined ? { detail } : {}),
+          show: true,
+        });
+      }
+      // each mesh's theme by an array, all checked before the write
+      const themes = new Map<string, unknown>();
+      if (byArray) {
+        for (const m of picked) {
+          if (byVolumes.has(m.ref)) continue;
+          const cell = ctx.plugin.state.data.cells.get(m.ref)!;
+          const theme = arrayTheme(cell, { array, colorList, range });
+          if (theme === 'none') {
+            return ApiResult.fail(
+              'invalid',
+              `${m.label} has no arrays to color by.`,
+              'A VTP with point or cell arrays has them; give its color.',
+            );
+          }
+          if (typeof theme === 'string') {
+            return ApiResult.fail('not-found', `${m.label} has no array '${array}'.`, `Arrays: ${theme}.`);
+          }
+          themes.set(m.ref, theme.value);
+        }
+      }
       const b = ctx.plugin.state.data.build();
       const nodes: string[] = [];
       for (const m of picked) {
         const cell = ctx.plugin.state.data.cells.get(m.ref)!;
         const old = cell.transform.params as any;
+        const uniform = m.color !== undefined ? { name: 'uniform', params: { color: m.color } } : undefined;
         const next = {
           ...old,
           ...(visuals ? { visuals: visuals === 'both' ? ['mesh', 'wireframe'] : [visuals] } : {}),
           ...(opacity !== undefined ? { alpha: opacity } : {}),
-          ...(m.color !== undefined && old.coloring
-            ? { coloring: { name: 'uniform', params: { color: m.color } } }
-            : {}),
+          // an OBJ's and a PLY's color is their `coloring`, a VTP's its `colorTheme`
+          ...(uniform && old.coloring ? { coloring: uniform } : {}),
+          ...(uniform && old.colorTheme ? { colorTheme: uniform } : {}),
+          ...(themes.has(m.ref) ? { colorTheme: themes.get(m.ref) } : {}),
         };
         if (JSON.stringify(next) !== JSON.stringify(old)) {
           b.to(cell).update(next);
           nodes.push(m.ref);
         }
-        // the scale is the shape's: its instance transform (OBJ, PLY, VTP shapes have one)
+        // its color by a volume: on, changed, or off (kept, its array with it) for a color or an array
         const shape = shapeCellOf(ctx, m.ref);
+        const node = volumeNodeOf(ctx, m.ref);
+        const oldVolume = node?.transform.params as MeshVolumeColorProps | undefined;
+        const nextVolume =
+          byVolumes.get(m.ref) ??
+          (oldVolume?.show && (uniform || themes.has(m.ref)) ? { ...oldVolume, show: false } : undefined);
+        if (nextVolume && JSON.stringify(nextVolume) !== JSON.stringify(oldVolume)) {
+          if (node) b.to(node).update(nextVolume);
+          else if (shape) b.to(shape).insert(MeshVolumeColor, nextVolume);
+          nodes.push(m.ref);
+        }
+        // the scale is the shape's: its instance transform (OBJ, PLY, VTP shapes have one)
         if (scale !== undefined && shape && scale > 0 && Math.abs(scaleOf(shape) - scale) > 1e-6) {
           b.to(shape).update((p: any) => ({
             ...p,
@@ -714,6 +1012,8 @@ export class CryoetApi extends ApiArea {
       const n = data.grid.cells.space.dimensions[AxisIndex[axis]];
       // the slice of this axis (one per axis): moved, or made
       const existing = sliceRepresentation(v, axis);
+      // a drag's preview still pending would move it back after this
+      slicePreviewsOf(ctx.plugin).pending.delete(`${v.cell.transform.ref}:${axis}`);
       const old = existing?.cell.transform.params as any;
       const i = Math.max(0, Math.min(n - 1, Math.round(index ?? old?.type?.params?.dimension?.params ?? (n - 1) / 2)));
       const k = contrast ?? (old?.colorTheme?.params?.domain?.name === 'custom' ? undefined : 3);
@@ -826,12 +1126,66 @@ export class CryoetApi extends ApiArea {
     },
   });
 
-  readonly level = this.operation({
-    id: 'cryoet.level',
-    title: 'Read a volume at another resolution (an OME-Zarr level)',
+  readonly volume = this.operation({
+    id: 'cryoet.volume',
+    title: "Set a volume's pixel size",
     params: {
       volume: PD.Text('', { description: 'A volume by label or state ref; empty: the only one loaded' }),
-      level: PD.Text('', { description: 'The level by its path ("0": the finest, 1× binning)' }),
+      pixelSize: OptionalParam(
+        PD.Numeric(
+          1,
+          { min: 0.001, max: 10000, step: 0.01 },
+          {
+            description:
+              "Its pixel size (Å, along x, at the finest level): the volume scaled about the origin as if the file's header said so",
+          },
+        ),
+      ),
+      reset: OptionalParam(PD.Boolean(false, { description: "Goes back to the file's pixel size" })),
+    },
+    async run({ volume, pixelSize: wanted, reset }, ctx) {
+      const v = oneVolume(ctx, volume || undefined);
+      if (isFailure(v)) return v;
+      const name = v.cell.obj?.label ?? 'The volume';
+      if (wanted !== undefined && reset) {
+        return ApiResult.fail('invalid', 'A pixel size or reset: not both.');
+      }
+      if (wanted === undefined && !reset) {
+        return ApiResult.fail('invalid', 'Give a pixel size (Å), or reset for the file’s.');
+      }
+      if (wanted !== undefined && !(wanted > 0 && Number.isFinite(wanted))) {
+        return ApiResult.fail('invalid', 'A pixel size is more than 0 Å.', 'reset goes back to the file’s.');
+      }
+      const pixelSize = reset ? null : wanted!;
+      const file = filePixelSize(v);
+      // the factor over the file's: 1 exactly for the file's own, so Reset gives it back to the bit
+      const k = pixelSize === null || Math.abs(pixelSize - file) < 1e-6 * file ? 1 : pixelSize / file;
+      if (k === volumeScale(ctx, v)) {
+        return ApiResult.already(`${name}'s pixel size is ${+(file * k).toFixed(4)} Å already.`);
+      }
+      // the stage tools place what goes with the volume (its labels, clips, plane slices), in the same step
+      if (!(ctx.api as { stage?: unknown }).stage)
+        return ApiResult.fail('blocked', 'A pixel size needs the stage tools.');
+      const r = await ctx.api.run('stage.scale', { target: v.cell.transform.ref, scale: k });
+      if (!r.ok) return r;
+      return ApiResult.ok(
+        k === 1
+          ? `${name} has the file's pixel size, ${+file.toFixed(4)} Å.`
+          : `${name} has a pixel size of ${+(file * k).toFixed(4)} Å.`,
+        { nodes: [v.cell.transform.ref] },
+      );
+    },
+  });
+
+  readonly level = this.operation({
+    id: 'cryoet.level',
+    title: 'Read a volume at another resolution (an OME-Zarr level, an MRC binned)',
+    params: {
+      volume: PD.Text('', { description: 'A volume by label or state ref; empty: the only one loaded' }),
+      level: PD.Text('', {
+        description:
+          'The level by its path: an OME-Zarr\'s ("0": the finest, 1× binning); an MRC\'s binning ("1", "2", "4")',
+      }),
       large: PD.Boolean(false, { description: "Read a level over the volume's size guard (asked first)" }),
     },
     async run({ volume, level, large }, ctx) {
@@ -839,8 +1193,20 @@ export class CryoetApi extends ApiArea {
       if (isFailure(v)) return v;
       const zarr = zarrOf(v);
       const name = v.cell.obj?.label ?? 'The volume';
-      if (!zarr) return ApiResult.fail('invalid', `${name} has one resolution.`, 'Only an OME-Zarr volume has levels.');
-      const levels = levelViews(zarr);
+      if (!zarr) {
+        const mrc = ccp4Of(v);
+        if (mrc && binLevels(mrc).length > 1) return binTo(ctx, v, mrc, level);
+        return ApiResult.fail(
+          'invalid',
+          `${name} has one resolution.`,
+          mrc?.stack
+            ? 'A tilt series or an image stack: its images are not binned together.'
+            : mrc
+              ? `It is too small to bin (its longest side under ${2 * MinBinnedSide} voxels).`
+              : 'Only an OME-Zarr volume or an MRC map has levels.',
+        );
+      }
+      const levels = levelViews(zarr, volumeScale(ctx, v));
       const to = zarr.file.levels.find((l) => l.path === level);
       if (!to) {
         return ApiResult.fail(
@@ -869,16 +1235,7 @@ export class CryoetApi extends ApiArea {
         level: to.path,
         maxSizeMB: large ? Math.max(zarr.maxSizeMB, Math.ceil(needs / 1e6)) : zarr.maxSizeMB,
       });
-      for (const axis of Axes) {
-        const r = sliceRepresentation(v, axis);
-        if (!r) continue;
-        const p = r.cell.transform.params as any;
-        const index = sameIndex(p.type.params.dimension.params, AxisIndex[axis], zarr.level, to);
-        b.to(r.cell).update({
-          ...p,
-          type: { ...p.type, params: { ...p.type.params, dimension: { name: axis, params: index } } },
-        });
-      }
+      moveSlices(b, v, zarr.level, to);
       const failure = await commitWatched(ctx, v.cell.transform.ref, b);
       const read = ctx.plugin.state.data.cells.get(v.cell.transform.ref)?.obj?.data as Volume | undefined;
       if (failure || (read?.sourceData as OmeZarrFormat | undefined)?.data.level.path !== to.path) {
@@ -916,6 +1273,27 @@ function obliqueRepresentations(v: VolumeRef) {
     const p = r.cell.transform.params as { type?: { name?: string; params?: { mode?: string } } };
     return p?.type?.name === 'slice' && p.type.params?.mode === 'plane';
   });
+}
+
+/** The slices' previews waiting for the next frame, per plugin (`previewSlice`): by volume (state ref) and axis */
+type SlicePreviews = {
+  readonly pending: Map<string, { volume: string; axis: SliceAxis; index: number }>;
+  scheduled: boolean;
+};
+const slicePreviews = new WeakMap<object, SlicePreviews>();
+function slicePreviewsOf(plugin: object): SlicePreviews {
+  let p = slicePreviews.get(plugin);
+  if (!p) slicePreviews.set(plugin, (p = { pending: new Map(), scheduled: false }));
+  return p;
+}
+
+/** The representation of a volume's slice of one axis where it is drawn from a window of its planes (`dSliceWindow`) */
+function windowedSlice(v: VolumeRef, axis: SliceAxis) {
+  const repr = sliceRepresentation(v, axis)?.cell.obj?.data.repr;
+  const windowed = repr?.renderObjects.some(
+    (o) => (o.values as { dSliceWindow?: { ref: { value: boolean } } }).dSliceWindow?.ref.value,
+  );
+  return windowed ? repr : undefined;
 }
 
 /** A volume's slice of one axis, if it has one */
@@ -1043,12 +1421,10 @@ function sliceOf(ctx: Pick<ApiContext, 'plugin'>, v: VolumeRef): SliceInfo | und
       visible: !r.cell.state.isHidden,
     };
   });
-  return { dimensions: [x, y, z], slices, obliques, radius: Grid.getBoundingSphere(data.grid).radius };
+  return { dimensions: [x, y, z], slices, obliques, radius: Grid.getBoundingSphere(drawn).radius };
 }
 
 // --- a volume's data and its levels (cryoet.level) -------------------------------------------------------------------
-
-type ZarrLevel = OmeZarrFormat['data']['level'];
 
 /** An OME-Zarr volume's file, its level read now and its size guard; undefined: not an OME-Zarr read by its transform */
 function zarrOf(v: VolumeRef) {
@@ -1060,13 +1436,13 @@ function zarrOf(v: VolumeRef) {
 }
 
 /** An OME-Zarr's levels, coarsest to finest, each its binning against the finest */
-function levelViews(zarr: NonNullable<ReturnType<typeof zarrOf>>): VolumeLevelView[] {
+function levelViews(zarr: NonNullable<ReturnType<typeof zarrOf>>, k = 1): VolumeLevelView[] {
   const finest = Math.min(...zarr.file.levels.map((l) => l.scale[0]));
   return [...zarr.file.levels]
     .sort((a, b) => b.scale[0] - a.scale[0])
     .map((l) => {
       const binning = Math.round((l.scale[0] / finest) * 10) / 10;
-      const spacing = l.scale[0];
+      const spacing = l.scale[0] * k;
       return {
         path: l.path,
         binning,
@@ -1079,24 +1455,174 @@ function levelViews(zarr: NonNullable<ReturnType<typeof zarrOf>>): VolumeLevelVi
     });
 }
 
-function volumeDataOf(v: VolumeRef): VolumeDataInfo | undefined {
+/** A volume's scale: its pixel size over the file's (its transform decorator's `scale`, 1 without one) */
+function volumeScale(ctx: Pick<ApiContext, 'plugin'>, v: VolumeRef): number {
+  const { tree, cells } = ctx.plugin.state.data;
+  for (let at = v.cell.transform.ref; ; ) {
+    const next = tree.children
+      .get(at)
+      .toArray()
+      .map((c) => cells.get(c))
+      .find((c) => c?.transform.transformer.definition.isDecorator);
+    if (!next) return 1;
+    if (next.transform.transformer === VolumeTransform) return (next.transform.params as { scale?: number }).scale ?? 1;
+    at = next.transform.ref;
+  }
+}
+
+/** The file's pixel size (Å along x, at the finest level): what the volume says before its pixel size is set */
+function filePixelSize(v: VolumeRef): number {
+  const zarr = zarrOf(v);
+  if (zarr) return Math.min(...zarr.file.levels.map((l) => l.scale[0]));
+  const mrc = ccp4Of(v);
+  if (mrc) return mrc.one.scale[0];
+  const g = Grid.getGridToCartesianTransform(v.cell.obj!.data.grid);
+  return Math.hypot(g[0], g[1], g[2]);
+}
+
+function volumeDataOf(ctx: Pick<ApiContext, 'plugin'>, v: VolumeRef): VolumeDataInfo | undefined {
   const data = v.cell.obj?.data;
   if (!data) return;
-  const stats = volumeStats(data);
+  const k = volumeScale(ctx, v);
   const zarr = zarrOf(v);
-  const levels = zarr && zarr.file.levels.length > 1 ? levelViews(zarr) : [];
+  const mrc = zarr ? undefined : ccp4Of(v);
+  const levels = zarr && zarr.file.levels.length > 1 ? levelViews(zarr, k) : mrc ? binLevels(mrc, k) : [];
+  const several = levels.length > 1;
+  // the voxel as drawn (a scaled volume's last decorator's grid), the file's beside it when changed
+  const stats = volumeStats((lastDecorator(ctx, v).obj?.data as Volume | undefined) ?? data);
+  const file = filePixelSize(v);
   return {
     source: data.sourceData.kind.toUpperCase(),
     grid: gridText(stats),
-    voxel: voxelText(stats),
+    voxel: k === 1 ? voxelText(stats) : `${voxelText(stats)} (file: ${voxelText(volumeStats(data))})`,
+    pixelSize: file * k,
+    filePixelSize: file,
     bytes: (data.grid.cells.data as unknown as ArrayBufferView).byteLength ?? 0,
-    levels,
-    ...(levels.length ? { level: zarr!.level.path } : {}),
+    levels: several ? levels : [],
+    ...(several ? { level: zarr ? zarr.level.path : String(mrc!.bin) } : {}),
   };
 }
 
+/** Each grid slice of a volume moved to the index at its place (Å) in another level's grid (an index past it fails) */
+function moveSlices(b: ReturnType<ApiContext['plugin']['build']>, v: VolumeRef, from: LevelFrame, to: LevelFrame) {
+  for (const axis of Axes) {
+    const r = sliceRepresentation(v, axis);
+    if (!r) continue;
+    const p = r.cell.transform.params as any;
+    const index = sameIndex(p.type.params.dimension.params, AxisIndex[axis], from, to);
+    b.to(r.cell).update({
+      ...p,
+      type: { ...p.type, params: { ...p.type.params, dimension: { name: axis, params: index } } },
+    });
+  }
+}
+
+// --- an MRC binned (its levels: VolumeFromCcp4's `bin`) ---------------------------------------------------------------
+
+/** The binnings an MRC map can be read at; 8× only over 1000 voxels a side */
+const Binnings = [1, 2, 4, 8] as const;
+/** A binning is listed while the map's longest side keeps this many voxels */
+const MinBinnedSide = 8;
+
+type Ccp4Read = NonNullable<ReturnType<typeof ccp4Of>>;
+
+/** An MRC (CCP4) map read by its transform: its grid at 1× (from the file), the bytes of its type, its binning now */
+function ccp4Of(v: VolumeRef) {
+  const data = v.cell.obj?.data;
+  if (v.cell.transform.transformer !== VolumeFromCcp4 || !data || !Ccp4Format.is(data.sourceData)) return undefined;
+  const bin = (v.cell.transform.params as { bin?: number } | undefined)?.bin ?? 1;
+  const { header, values } = data.sourceData.data;
+  const order = Tensor.convertToCanonicalAxisIndicesFastToSlow([header.MAPC - 1, header.MAPR - 1, header.MAPS - 1]);
+  const size = order([header.NC, header.NR, header.NS]);
+  // the grid read now, back to 1×: binned by its binning along each side, by its length along a shorter one
+  const g = Grid.getGridToCartesianTransform(data.grid);
+  const scale: number[] = [];
+  const translation: number[] = [];
+  for (let a = 0; a < 3; a++) {
+    const by = Math.max(1, Math.min(bin, size[a]));
+    scale[a] = g[5 * a] / by;
+    translation[a] = g[12 + a] - ((by - 1) / 2) * scale[a];
+  }
+  // a tilt series or an image stack (as Ccp4Provider names them): its images along z are not binned together
+  const stack = /\.(st|ali|mrcs)$/i.test(v.cell.obj?.label ?? '');
+  return { bin, one: { translation, scale, size } as LevelFrame, bytes: values.BYTES_PER_ELEMENT, stack };
+}
+
+/** An MRC's grid binned by `f` (as `binGrid`): voxel 0 at its block's center, the voxel `f` times (a side's length) */
+function binnedFrame(one: LevelFrame, f: number): LevelFrame {
+  const translation: number[] = [];
+  const scale: number[] = [];
+  const size: number[] = [];
+  for (let a = 0; a < 3; a++) {
+    const by = Math.max(1, Math.min(f, one.size[a]));
+    translation[a] = one.translation[a] + ((by - 1) / 2) * one.scale[a];
+    scale[a] = one.scale[a] * by;
+    size[a] = Math.ceil(one.size[a] / by);
+  }
+  return { translation, scale, size };
+}
+
+/** An MRC's levels, coarsest to finest: 1× as read (its type's bytes), each binning a Float32 grid */
+function binLevels(mrc: Ccp4Read, k = 1): VolumeLevelView[] {
+  const longest = Math.max(...Array.from(mrc.one.size));
+  return Binnings.filter((f) => f === 1 || (!mrc.stack && longest / f >= MinBinnedSide && (f < 8 || longest > 1000)))
+    .reverse()
+    .map((f) => {
+      const frame = binnedFrame(mrc.one, f);
+      const size = [frame.size[0], frame.size[1], frame.size[2]] as const;
+      const bytes = size[0] * size[1] * size[2] * (f === 1 ? mrc.bytes : 4);
+      const spacing = frame.scale[0] * k;
+      return {
+        path: String(f),
+        binning: f,
+        spacing,
+        size,
+        bytes,
+        large: false,
+        label: `${f}× · ${+spacing.toFixed(1)} Å · ${mb(bytes)}`,
+      };
+    });
+}
+
+/**
+ * An MRC read at another binning, as `cryoet.level` reads an OME-Zarr's level: one write (its `bin`, each slice at its
+ * place in Å), then its windows and transfer functions refit in σ
+ */
+async function binTo(ctx: ApiContext, v: VolumeRef, mrc: Ccp4Read, level: string) {
+  const name = v.cell.obj?.label ?? 'The volume';
+  const levels = binLevels(mrc, volumeScale(ctx, v));
+  const view = levels.find((l) => l.path === level.trim().replace(/×$/, ''));
+  if (!view) {
+    return ApiResult.fail(
+      'not-found',
+      `${name} has no level '${level}'.`,
+      `Levels: ${levels.map((l) => `${l.path} (${l.label})`).join(', ')}.`,
+    );
+  }
+  if (view.binning === mrc.bin) return ApiResult.already(`${name} is read at ${view.label}.`);
+  const stats = { ...v.cell.obj!.data.grid.stats };
+  const windows = windowsOf(v, stats);
+  const b = ctx.plugin.state.data.build();
+  b.to(v.cell).update({ ...(v.cell.transform.params as object), bin: view.binning });
+  moveSlices(b, v, binnedFrame(mrc.one, mrc.bin), binnedFrame(mrc.one, view.binning));
+  const failure = await commitWatched(ctx, v.cell.transform.ref, b);
+  const read = ctx.plugin.state.data.cells.get(v.cell.transform.ref);
+  if (failure || ((read?.transform.params as { bin?: number } | undefined)?.bin ?? 1) !== view.binning) {
+    return ApiResult.fail('failed', failure ?? `Could not read ${name} at ${view.label}.`, 'It stays at its level.');
+  }
+  await refit(ctx, v.cell.transform.ref, windows, stats);
+  return ApiResult.ok(`Reading ${name} at ${view.label}.`, { nodes: [v.cell.transform.ref] });
+}
+
+/** A level's grid along x, y and z: voxel i at translation + i·scale (Å), `size` voxels */
+interface LevelFrame {
+  readonly translation: ArrayLike<number>;
+  readonly scale: ArrayLike<number>;
+  readonly size: ArrayLike<number>;
+}
+
 /** A grid slice's index at one level, the index at the same place (Å) at another: voxel i at translation + i·scale */
-function sameIndex(index: number, axis: number, from: ZarrLevel, to: ZarrLevel) {
+function sameIndex(index: number, axis: number, from: LevelFrame, to: LevelFrame) {
   const at = from.translation[axis] + index * from.scale[axis];
   const i = Math.round((at - to.translation[axis]) / to.scale[axis]);
   return Math.max(0, Math.min(to.size[axis] - 1, i));
@@ -1295,10 +1821,25 @@ export function particleListData(ctx: Pick<ApiContext, 'plugin'>, ref: string): 
 
 /** The list as the representations get it: with its decorations */
 
+/**
+ * The particles the list's offsets apply to: its deepest decorator's but its offsets' (its targets, their names and
+ * objects, and its particles: a decorator that adds particles, mesoscale's painted copies, adds them here too, so an
+ * instance or a kind of them is offset as the file's are; paint-layer, 2026-11-10)
+ */
 function dataOf(ctx: Pick<ApiContext, 'plugin'>, l: ParticleListRef): ParticleList | undefined {
-  const deepest =
-    decoratorCell(ctx, l, ParticleListWithTargets) ?? decoratorCell(ctx, l, ParticleListTargetsFromAttribute);
-  return (deepest?.obj?.data as ParticleList | undefined) ?? l.cell.obj?.data;
+  const { tree, cells } = ctx.plugin.state.data;
+  let data = l.cell.obj?.data as ParticleList | undefined;
+  for (let ref: StateTransform.Ref = l.cell.transform.ref; ; ) {
+    const decorator = tree.children
+      .get(ref)
+      .toArray()
+      .map((c) => tree.transforms.get(c))
+      .find((t) => t?.transformer.definition.isDecorator);
+    if (!decorator) return data;
+    if (decorator.transformer !== ParticleListOffsets)
+      data = (cells.get(decorator.ref)?.obj?.data as ParticleList) ?? data;
+    ref = decorator.ref;
+  }
 }
 
 function describe(ctx: Pick<ApiContext, 'plugin'>, l: ParticleListRef): DecorationsInfo {
@@ -1388,6 +1929,10 @@ function meshes(ctx: Pick<ApiContext, 'plugin'>): MeshInfo[] {
     const data = cells.get(root)?.obj;
     if (!SO.Data.String.is(data) && !SO.Data.Binary.is(data) && !SO.Data.Response.is(data)) continue;
     const p = cell.transform.params as any;
+    const node = volumeNodeOf(ctx, cell.transform.ref);
+    const arrays = arraysOf(cell, cells.get(cell.transform.parent));
+    const byVolume = node && volumeColorByOf(ctx, node);
+    const kept = node && !byVolume ? volumeColorByOf(ctx, node, true) : undefined;
     out.push({
       ref: cell.transform.ref,
       label: data.label,
@@ -1395,17 +1940,167 @@ function meshes(ctx: Pick<ApiContext, 'plugin'>): MeshInfo[] {
       visuals: Array.isArray(p?.visuals) ? p.visuals : ['mesh'],
       opacity: p?.alpha ?? 1,
       ...(p?.coloring?.name === 'uniform' ? { color: p.coloring.params.color } : {}),
+      ...(p?.colorTheme?.name === 'uniform' ? { color: p.colorTheme.params.color } : {}),
+      ...(arrays.length ? { arrays } : {}),
+      ...(arrays.length && p?.colorTheme?.name === 'attribute' && !byVolume
+        ? { colorBy: colorByOf(p.colorTheme.params) }
+        : {}),
+      ...(byVolume ? { volumeColor: byVolume } : {}),
+      ...(kept ? { volumeKept: { volume: kept.volume, label: kept.label } } : {}),
       scale: scaleOf(shapeCellOf(ctx, cell.transform.ref)),
     });
   }
   return out;
 }
 
-/** The shape a mesh representation draws (its `transforms` param: the OBJ, PLY, VTP shapes') */
+/** The definition of a mesh's color theme by an array (a VTP's `colorTheme`, its `attribute` choice), if it has one */
+function arrayThemeParams(cell: StateObjectCell): PD.Params | undefined {
+  const def = cell.params?.definition?.colorTheme as PD.Any | undefined;
+  if (def?.type !== 'mapped' || !def.select.options.some(([name]) => name === 'attribute')) return undefined;
+  const group = def.map('attribute');
+  return group.type === 'group' ? group.params : undefined;
+}
+
+/** A VTP's point or cell array as its file holds it (io's `VtpScalarArray`) */
+type FileArray = { readonly numberOfComponents: number; readonly values: { toArray(): ArrayLike<number> } };
+type FileArrays = {
+  readonly pointData: ReadonlyMap<string, FileArray>;
+  readonly cellData: ReadonlyMap<string, FileArray>;
+};
+
+/** The arrays a mesh can be colored by: its color theme's (a VTP's point and cell arrays), each its range from its file */
+function arraysOf(cell: StateObjectCell, shape?: StateObjectCell): MeshArray[] {
+  const name = arrayThemeParams(cell)?.name;
+  if (name?.type !== 'select') return [];
+  const file = (shape?.obj?.data as { data?: { source?: FileArrays } } | undefined)?.data?.source;
+  return name.options
+    .filter(([key]) => key !== '')
+    .map(([key, label]) => {
+      const [kind, array] = [String(key).split(':')[0], String(key).slice(String(key).indexOf(':') + 1)];
+      const values =
+        kind === 'point' ? file?.pointData?.get(array) : kind === 'cell' ? file?.cellData?.get(array) : undefined;
+      const range = values && rangeOf(values);
+      return { key: String(key), label, ...(range ? { range } : {}) };
+    });
+}
+
+/** The range of an array's values (a vector's: its length's), once per array */
+const ranges = new WeakMap<FileArray, readonly [number, number] | undefined>();
+function rangeOf(a: FileArray): readonly [number, number] | undefined {
+  if (ranges.has(a)) return ranges.get(a);
+  const values = a.values.toArray();
+  const n = Math.max(1, a.numberOfComponents);
+  let min = Infinity;
+  let max = -Infinity;
+  for (let i = 0; i + n <= values.length; i += n) {
+    let v = values[i];
+    if (n > 1) {
+      let sq = 0;
+      for (let c = 0; c < n; c++) sq += values[i + c] * values[i + c];
+      v = Math.sqrt(sq);
+    }
+    if (v < min) min = v;
+    if (v > max) max = v;
+  }
+  const range = min <= max ? ([min, max] as const) : undefined;
+  ranges.set(a, range);
+  return range;
+}
+
+function colorByOf(p: { name: string; colors: string; domain: { name: string; params: unknown } }): MeshColorBy {
+  const range = p.domain.name === 'custom' ? (p.domain.params as [number, number]) : 'auto';
+  return { array: p.name, colorList: p.colors, range };
+}
+
+/**
+ * A mesh's color theme by an array, its array, colors or range changed (its others kept, or as the theme opens);
+ * 'none': it has no arrays; a string: the array is none of them (its arrays, listed)
+ */
+function arrayTheme(
+  cell: StateObjectCell,
+  change: { array?: string; colorList?: string; range?: 'auto' | [number, number] },
+): { value: unknown } | string {
+  const params = arrayThemeParams(cell);
+  const arrays = arraysOf(cell);
+  if (!params || !arrays.length) return 'none';
+  const old = (cell.transform.params as any)?.colorTheme;
+  const base = old?.name === 'attribute' ? old.params : PD.getDefaultValues(params);
+  let name = base.name;
+  if (change.array !== undefined) {
+    const a = change.array.trim();
+    const found =
+      arrays.find((x) => x.key === a) ??
+      arrays.find((x) => x.key.replace(/^(point|cell):/, '').toLowerCase() === a.toLowerCase());
+    if (!found) return arrays.map((x) => x.key).join(', ');
+    name = found.key;
+  }
+  const symmetric = base.domain?.name === 'auto' ? !!base.domain.params?.symmetric : false;
+  // another array without a range: Auto (the last array's custom range is not this one's)
+  const range = change.range ?? (name !== base.name && base.domain?.name === 'custom' ? 'auto' : undefined);
+  const domain =
+    range === undefined
+      ? base.domain
+      : range === 'auto'
+        ? { name: 'auto', params: { symmetric } }
+        : { name: 'custom', params: [range[0], range[1]] };
+  return { value: { name: 'attribute', params: { ...base, name, colors: change.colorList ?? base.colors, domain } } };
+}
+
+/**
+ * The shape a mesh representation draws (its `transforms` param: the OBJ, PLY, VTP shapes'): its parent, past the
+ * decorators of the shape
+ */
 function shapeCellOf(ctx: Pick<ApiContext, 'plugin'>, repr: string): StateObjectCell | undefined {
   const { cells, tree } = ctx.plugin.state.data;
-  const parent = cells.get(tree.transforms.get(repr)?.parent ?? '');
+  let parent = cells.get(tree.transforms.get(repr)?.parent ?? '');
+  // past the decorators of a shape: its color by a volume, a move (`shape.transform`)
+  while (parent?.transform.transformer.definition.isDecorator && SO.Shape.Provider.is(parent.obj)) {
+    parent = cells.get(parent.transform.parent);
+  }
   return parent && SO.Shape.Provider.is(parent.obj) ? parent : undefined;
+}
+
+/** A mesh representation's color by a volume (its decorator above it), if it has one */
+function volumeNodeOf(ctx: Pick<ApiContext, 'plugin'>, repr: string): StateObjectCell | undefined {
+  const { cells, tree } = ctx.plugin.state.data;
+  const parent = cells.get(tree.transforms.get(repr)?.parent ?? '');
+  return parent?.transform.transformer === MeshVolumeColor ? parent : undefined;
+}
+
+/** A mesh's color by a volume as `cryoet.meshes` gives it, when shown (or `hidden` too): its volume by its drawn cell */
+function volumeColorByOf(
+  ctx: Pick<ApiContext, 'plugin'>,
+  node: StateObjectCell,
+  hidden = false,
+): MeshVolumeColorBy | undefined {
+  const p = node.transform.params as MeshVolumeColorProps;
+  if (!p.show && !hidden) return undefined;
+  const v = ctx.plugin.managers.volume.hierarchy.current.volumes.find(
+    (x) => x.cell.transform.ref === p.volume || lastDecorator(ctx, x).transform.ref === p.volume,
+  );
+  const kind = sampledArrayOf(node.obj?.data)?.kind ?? 'point';
+  const band = p.detail === 'texture' ? colorBandOf(node.obj?.data) : undefined;
+  return {
+    volume: v?.cell.transform.ref ?? p.volume,
+    label: v ? entryLabel(ctx, v.cell) : p.volume,
+    sample: p.sample,
+    depth: p.depth,
+    detail: p.detail,
+    ...(band ? { cell: Math.round(100 * band.spacing) / 100 } : {}),
+    ...(band?.capped ? { capped: true as const } : {}),
+    colorList: p.colorList,
+    range: p.range,
+    invert: p.invert,
+    array: `${kind}:${p.name}`,
+    ...(v ? {} : { missing: true as const }),
+  };
+}
+
+/** The name of the array a mesh keeps a volume's values in: density_<volume>, not one of its file's own */
+function arrayName(ctx: Pick<ApiContext, 'plugin'>, repr: string, volume: string): string {
+  const name = `density_${volume.replace(/\.[^.]*$/, '')}`;
+  const file = (shapeCellOf(ctx, repr)?.obj?.data as { data?: { source?: FileArrays } } | undefined)?.data?.source;
+  return file?.pointData?.has(name) || file?.cellData?.has(name) ? `${name}_volume` : name;
 }
 
 /** A shape's scale: of its first instance transform (1 when none) */
