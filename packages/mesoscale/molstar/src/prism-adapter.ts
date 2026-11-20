@@ -47,6 +47,9 @@ import { type EntityStructure, EntityStructureCache } from './entity-structures.
 import { Task } from '@molstar/core/task';
 import { bandPlan } from './band-plan.js';
 
+/** The silhouettes' params the bands write (`structure.*`): put back as they were when no rule targets a list. */
+const ImpostorKeys = ['lodImpostor', 'lodImpostorBy', 'lodImpostorPixels', 'lodImpostorDistance'] as const;
+
 // The Prism adapter (design.md §6.5): the IR into a Prism viewer through its operations, as prism-me's rules ask (one
 // representation per list, looks as layers through `particles.look`, never a representation per type). Per commit, by
 // key (`planCommit`): new sets become lists with a spacefill representation, gone sets are deleted, kept sets are not
@@ -130,6 +133,8 @@ interface Expansion {
 interface Drawn {
   readonly name: string;
   readonly params: Record<string, unknown>;
+  /** The `target` representation's params, a list drawn from structures (lane `mvs-lod-bands`). */
+  readonly target?: Record<string, unknown>;
 }
 
 export class PrismMesoAdapter implements RendererAdapter {
@@ -198,39 +203,49 @@ export class PrismMesoAdapter implements RendererAdapter {
   /** The entities' structures loaded, by source: kept across commits, so a re-pack loads nothing again. */
   private readonly structureCache = new EntityStructureCache();
 
-  /** The scene bands that held at the last band pass, and the IR it drew (lane `mvs-lod-bands`). */
-  private bandsHeld: ReadonlySet<string> = new Set();
+  /** The IR the last band pass drew (lane `mvs-lod-bands`): what a camera rest evaluates again. */
   private bandsIR: IR | undefined;
+  /**
+   * The lists the bands wrote, by set key, with their silhouettes' params as they were before (put back when no rule
+   * that holds targets them any more: they are the person's again).
+   */
+  private readonly bandsWrote = new Map<string, Readonly<Record<string, unknown>>>();
+  /**
+   * Commits in flight: a camera rest writes nothing while one runs; and a camera rest's write in flight, which a commit
+   * waits for before it reads or deletes a list (gate 1: no plan from cells about to change, no write to a cell gone).
+   */
+  private committing = 0;
+  private restWrite: Promise<number> | undefined;
 
   /** What the scene bands read now: the canvas camera (else the view's), the view shown, the compartments' shapes. */
   private bandInput(ir: IR): BandInput {
-    const camera = this.viewer.plugin.canvas3d?.camera;
+    const canvas = this.viewer.plugin.canvas3d;
+    const camera = canvas?.camera;
     const eye = camera ? [...camera.position] : [...(ir.view.camera?.position ?? [0, 0, 0])];
     const target = camera ? [...camera.target] : [...(ir.view.camera?.target ?? [0, 0, 0])];
     const compartments = new Map<string, IRShape>();
     for (const [n] of walk(ir.root))
       if (n.kind === 'compartment') compartments.set(n.params.compartment, n.params.shape);
+    // CSS pixels: the drawing buffer's over the pixel ratio
+    const ratio = canvas?.webgl?.pixelRatio ?? 1;
     return {
       camera: { eye, target, fov: camera?.state.fov ?? Math.PI / 4 },
-      viewport: { width: camera?.viewport.width ?? 0, height: camera?.viewport.height ?? 0 },
+      viewport: { width: (camera?.viewport.width ?? 0) / ratio, height: (camera?.viewport.height ?? 0) / ratio },
       view: ir.view.id,
       compartments,
     };
   }
 
   /**
-   * The view's bands drawn (_spec/bands.md "In prism-me"): each list its rules target given its silhouettes (on at a
-   * bound, or off) from the scene bands that hold now; a list already so is not written. Returns the lists written.
+   * The view's bands drawn (_spec/bands.md "In prism-me"): each list the rules that hold target given its silhouettes
+   * (on at a bound, or off) from the scene bands that hold now; a list the bands wrote and that no rule that holds
+   * targets now given back what it had. A list already so is not written. Returns the representations written.
    */
   private async applyBands(ir: IR, issues: Issue[]): Promise<number> {
     const view = ir.view;
     this.bandsIR = ir;
-    if (!view.scales?.length) {
-      this.bandsHeld = new Set();
-      return 0;
-    }
-    const held = sceneBandsHolding(view.bands ?? [], this.bandInput(ir));
-    this.bandsHeld = held;
+    if (!view.scales?.length && !this.bandsWrote.size) return 0;
+    const held = view.scales?.length ? sceneBandsHolding(view.bands ?? [], this.bandInput(ir)) : new Set<string>();
     const store = this.store;
     const plan = bandPlan(view, held, (set) => {
       const out = new Set<number>();
@@ -238,12 +253,18 @@ export class PrismMesoAdapter implements RendererAdapter {
       return out;
     });
     issues.push(...plan.issues);
+    // what each list is given: the plan's, else (written before, untargeted now) what it had
+    const patches = new Map<string, Readonly<Record<string, unknown>>>(plan.lists);
+    for (const [key, had] of this.bandsWrote) if (!plan.lists.has(key)) patches.set(key, had);
     const state = this.viewer.plugin.state.data;
     const b = state.build();
     let written = 0;
-    for (const [key, patch] of plan.lists) {
+    for (const [key, patch] of patches) {
       const ref = this.placed.get(key)?.ref;
-      if (!ref) continue;
+      if (!ref || !state.cells.has(ref)) {
+        this.bandsWrote.delete(key);
+        continue;
+      }
       const q = StateSelection.Generators.byRef(ref).subtree().ofType(SO.Particle.Representation3D);
       for (const cell of state.select(q)) {
         const old = cell.transform.params as {
@@ -255,6 +276,8 @@ export class PrismMesoAdapter implements RendererAdapter {
         const structure =
           old.type.params.structure ?? (list ? structureDefaults(this.viewer.plugin, list, old.type.name) : undefined);
         if (!structure) continue;
+        if (plan.lists.has(key) && !this.bandsWrote.has(key))
+          this.bandsWrote.set(key, Object.fromEntries(ImpostorKeys.map((k) => [k, structure[k]])));
         if (Object.entries(patch).every(([k, v]) => structure[k] === v)) continue;
         b.to(cell).update({
           ...old,
@@ -262,21 +285,31 @@ export class PrismMesoAdapter implements RendererAdapter {
         });
         written++;
       }
+      if (!plan.lists.has(key)) this.bandsWrote.delete(key);
     }
     if (written) await keepCamera(this.viewer.plugin.canvas3d, () => this.viewer.plugin.runTask(state.updateTree(b)));
     return written;
   }
 
   /**
-   * The camera rested (the canvas camera feed): the scene bands evaluated again; when the ones that hold changed, the
-   * lists' silhouettes are written again, out of History (view state, as streamed tiles). Returns the lists written.
+   * The camera rested (the canvas camera feed): the bands evaluated again and the lists' silhouettes written where they
+   * differ (a scene band that flipped, or an Undo or a person's toggle that put other values back: the bands own the
+   * silhouettes of the lists they target), out of History (view state, as streamed tiles). Nothing while a commit runs
+   * or after one began meanwhile (it draws its own bands); never throws. Returns the representations written.
    */
   async cameraRested(): Promise<number> {
     const ir = this.bandsIR;
-    if (!ir?.view.scales?.length || !ir.view.bands?.some((b) => b.tier === 'scene')) return 0;
-    const held = sceneBandsHolding(ir.view.bands, this.bandInput(ir));
-    if (held.size === this.bandsHeld.size && [...held].every((id) => this.bandsHeld.has(id))) return 0;
-    return this.applyBands(ir, []);
+    if (!ir || this.committing || this.restWrite || (!ir.view.scales?.length && !this.bandsWrote.size)) return 0;
+    const write = this.applyBands(ir, []).catch((e) => {
+      console.warn('mesoviewspec: the bands could not be drawn again on a camera rest', e);
+      return 0;
+    });
+    this.restWrite = write;
+    try {
+      return await write;
+    } finally {
+      if (this.restWrite === write) this.restWrite = undefined;
+    }
   }
 
   /**
@@ -472,13 +505,18 @@ export class PrismMesoAdapter implements RendererAdapter {
 
   async commit(source: IR): Promise<CommitReport> {
     this.cameraMoved = false;
+    this.committing++;
     try {
+      // a camera rest's write in flight lands first (gate 1)
+      if (this.restWrite) await this.restWrite;
       const report = await this.draw(source);
       this.unsure = undefined;
       return report;
     } catch (e) {
       this.unsure = { camera: this.cameraMoved || !!this.unsure?.camera };
       throw e;
+    } finally {
+      this.committing--;
     }
   }
 
@@ -531,7 +569,7 @@ export class PrismMesoAdapter implements RendererAdapter {
       if (!p || !v.plugin.state.data.cells.get(p.ref)?.obj) {
         this.placed.delete(key);
         if (set.count) relist.push(set);
-      } else if (!this.hasRepresentation(p.ref)) redraw.push(set);
+      } else if (!this.hasRepresentation(p.ref, key)) redraw.push(set);
     }
     // an empty set (a model whose input is missing) has nothing Prism can draw: no list (spacefill refuses it)
     const newTiles: PlacementSet[] = [];
@@ -883,19 +921,32 @@ export class PrismMesoAdapter implements RendererAdapter {
     } as Parameters<typeof particles.representation>[0]);
     if (!r.ok) throw new Error(`Could not show ${label}: ${r.message}`);
     if (!structures || type === 'target') return;
-    const t = await particles.representation({ type: 'target', particles: ref } as Parameters<
-      typeof particles.representation
-    >[0]);
+    const t = await particles.representation({
+      type: 'target',
+      particles: ref,
+      ...(was?.target ? { params: was.target } : {}),
+    } as Parameters<typeof particles.representation>[0]);
     if (!t.ok) throw new Error(`Could not show the structures of ${label}: ${t.message}`);
   }
 
-  /** The type and params of a list's first representation (the one the adapter made, as the person left it). */
+  /**
+   * The type and params of a list's representation (the one the adapter made, as the person left it), and of its
+   * `target` representation where it has one (gate: skeptic 11).
+   */
   private representationType(ref: string): Drawn | undefined {
+    const types = this.representationsOf(ref);
+    const main = types.find((t) => t.name !== 'target') ?? types[0];
+    const target = types.find((t) => t.name === 'target');
+    if (!main) return undefined;
+    return { name: main.name, params: main.params, ...(target && main !== target ? { target: target.params } : {}) };
+  }
+
+  private representationsOf(ref: string) {
     const q = StateSelection.Generators.byRef(ref).subtree().ofType(SO.Particle.Representation3D);
-    const params = this.viewer.plugin.state.data.select(q)[0]?.transform.params as
-      | { type?: { name: string; params: Record<string, unknown> } }
-      | undefined;
-    return params?.type ? { name: params.type.name, params: params.type.params } : undefined;
+    return this.viewer.plugin.state.data
+      .select(q)
+      .map((c) => (c.transform.params as { type?: { name: string; params: Record<string, unknown> } }).type)
+      .filter((t): t is { name: string; params: Record<string, unknown> } => !!t);
   }
 
   /**
@@ -920,13 +971,21 @@ export class PrismMesoAdapter implements RendererAdapter {
     this.placed = new Map();
     const filled: string[] = [];
     const b = state.build();
+    // a list filled on a fresh page is drawn from its structures too (gate: skeptic 9)
+    const targets = await this.structureTargets(
+      placementSets(ir).filter((x) => cells.has(x.key) && !store.has(x.key)),
+      [],
+    );
     for (const set of placementSets(ir)) {
       const cell = cells.get(set.key);
       if (!cell) continue;
       this.placed.set(set.key, { ref: cell.ref, label: cell.label });
       if (store.has(set.key) && !(cell.list && isMissingList(cell.list))) continue;
       if (!store.has(set.key))
-        store.set(set.key, toParticleList(set, cell.label || listLabel(set), this.labelsOf(set.key)));
+        store.set(
+          set.key,
+          toParticleList(set, cell.label || listLabel(set), this.labelsOf(set.key), targets.get(set.key)),
+        );
       filled.push(set.key);
       b.to(cell.ref).update((old: { fill?: number }) => ({ ...old, fill: (old.fill ?? 0) + 1 }));
     }
@@ -960,6 +1019,8 @@ export class PrismMesoAdapter implements RendererAdapter {
     }
     this.annotationsSaid = annotationsKey(ir);
     this.prev = ir;
+    // the bands of the restored view, evaluated again at the next camera rest (gate: skeptic 9)
+    this.bandsIR = source;
     this.index(source);
     // a kept tile's looks are what they were before the restore: the restored view's written over them
     await this.writeTileLooks(ir.view.looks);
@@ -973,9 +1034,18 @@ export class PrismMesoAdapter implements RendererAdapter {
     return { filled };
   }
 
-  private hasRepresentation(ref: string) {
-    const q = StateSelection.Generators.byRef(ref).subtree().ofType(SO.Particle.Representation3D);
-    return this.viewer.plugin.state.data.select(q).length > 0;
+  /**
+   * Whether a list is drawn as the adapter made it: a representation, and where its list has structures (and Prism the
+   * `target` type) its `target` one and another beside (an Undo may strip one: gate, skeptic 11).
+   */
+  private hasRepresentation(ref: string, key?: string) {
+    const names = this.representationsOf(ref).map((t) => t.name);
+    if (!names.length) return false;
+    const structures =
+      key !== undefined &&
+      !!this.store.get(key)?.targetMapping?.size &&
+      this.viewer.plugin.representation.particles.registry.has('target');
+    return !structures || (names.includes('target') && names.some((n) => n !== 'target'));
   }
 
   private particles() {
@@ -1011,6 +1081,8 @@ export class PrismMesoAdapter implements RendererAdapter {
     this.bounds.clear();
     this.sets.clear();
     this.expansionInfo.clear();
+    this.bandsIR = undefined;
+    this.bandsWrote.clear();
     this.revision++;
   }
 
@@ -1032,12 +1104,19 @@ export class PrismMesoAdapter implements RendererAdapter {
     this.prev = undefined;
     this.sets.clear();
     this.expansionInfo.clear();
+    this.bandsIR = undefined;
+    this.bandsWrote.clear();
     this.revision++;
     await this.viewer.plugin.runTask(this.viewer.plugin.state.data.updateTree(b));
   }
 
   async dispose() {
     await this.clear();
+    this.structureCache.dispose();
+  }
+
+  /** Lets go of the structures loaded (the document's owner is disposed; the lists it kept for Undo go with it). */
+  releaseStructures() {
     this.structureCache.dispose();
   }
 }
@@ -1107,7 +1186,6 @@ function sameLayers(a: readonly ParticleLayerProps[], b: readonly ParticleLayerP
   return true;
 }
 
-/** A tile representation's params: the type's defaults and its default themes, as `particles.representation` makes them. */
 /** A representation type's default `structure` group for a list (its silhouettes' params among them); none without one. */
 function structureDefaults(plugin: PluginContext, data: ParticleList, type: string) {
   const provider = plugin.representation.particles.registry.get(type);
@@ -1118,6 +1196,7 @@ function structureDefaults(plugin: PluginContext, data: ParticleList, type: stri
   return defaults.structure;
 }
 
+/** A tile representation's params: the type's defaults and its default themes, as `particles.representation` makes them. */
 function tileRepresentationParams(plugin: PluginContext, data: ParticleList, type: string): never {
   const { registry, themes } = plugin.representation.particles;
   const provider = registry.get(type);

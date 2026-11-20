@@ -782,6 +782,7 @@ export class MesoDocumentModel {
     this.unfollowBudget();
     this.session?.dispose();
     this.session = undefined;
+    this.adapter.releaseStructures();
     this.ev.dispose();
   }
 

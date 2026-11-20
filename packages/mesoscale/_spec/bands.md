@@ -120,14 +120,24 @@ silhouettes below 12 px with a 0.5-octave blend, and from its structure at every
 - **What Prism can draw:** silhouettes below a size (a band starting at 0 px) or beyond a distance (a band with no upper
   bound); a size bound within 4-64 px (outside, the nearest, said); one far drawing per list (types of one list that
   disagree: the first type's, said). Anything else is drawn as structures and said (`representation.fallback`).
-- **Structure at every band:** `lodImpostor` off, the sphere levels alone. **A list no rule targets** is left as the
-  person had it.
+- **Structure at every band:** `lodImpostor` off, the sphere levels alone. **The bands own** the silhouettes' params of
+  the lists their rules target: a person's toggle, or an Undo that puts other values back, is drawn over again at the
+  next camera rest. **A list no rule that holds targets** (rules removed, a scene band no longer held) gets back what it
+  had before the bands wrote it; one they never wrote is left as the person had it.
+- **The measure's line:** a held scene rule holds everywhere; each copy rule then paints its band, later rules over
+  earlier ones. Silhouettes at every size or distance are drawn beyond a tiny distance (0 is prism-me's automatic
+  distance). `spheres` on a structure type is drawn as its structure (atoms), `surface` as its structure, `fade` as the
+  dither, each said.
 - **The blend width** is prism-me's 0.5 octave (`LodImpostorBand`, 0.25 each side of the bound); another width, or none,
   is drawn at 0.5 and said (`bands.blend`).
 - **Scene bands** are evaluated at each commit and when the camera rests (the canvas camera feed); when the bands that
   hold change, the lists' params are written again, out of History (view state, as streamed tiles), never per frame.
 - **Not yet:** a switch between other representations (two lists and their visibility), `envelope`, `detail` and
-  `source` per band; copy measures on the CPU; evaluators from extensions; the S-expression spelling of `bands`.
+  `source` per band; copy measures on the CPU; evaluators from extensions; the S-expression spelling of `bands`; an
+  entity's `selection` (it is part of the structure's key, not applied); an edit that gives a kept list's entity another
+  structure (taken at the next re-pack or open: a kept list's data is its owner's, kept for Undo); what a camera rest's
+  band pass would say is not shown (it is at the next commit). A rule that picks part of a type is said
+  (`scales.partial`) and applies to none of it.
 
 ## What it touched
 

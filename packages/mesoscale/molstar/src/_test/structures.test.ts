@@ -286,3 +286,102 @@ describe('loading the structures (headless)', () => {
     cache.dispose();
   });
 });
+
+// the gate's findings on the adapter (reviewer 1, 2, 4, 11; skeptic 2, 9, 10, 11)
+describe('bands in the adapter: the gate (headless)', () => {
+  /** Exosome with catalase silhouettes below 20 px (prism-me's default is 12) */
+  function at20(): MesoViewSpecDoc {
+    const d = bandedExosome();
+    return {
+      ...d,
+      bands: d.bands!.map((b) =>
+        b.id === 'b.near'
+          ? { ...b, size: [20, null] as [number, null] }
+          : b.id === 'b.far'
+            ? { ...b, size: [0, 20] as [number, number] }
+            : b,
+      ),
+    };
+  }
+  const catalaseKeys = (ir: { root: unknown }) => [
+    ...new Set(typesOf(placementSets(ir as never), 'e.catalase').map((x) => x.set.key)),
+  ];
+
+  it('a list no rule targets any more gets back what it had', { tags: ['medium'] }, async () => {
+    const { v, adapter, result } = await session(catalaseFrom(readFileSync(fixture)), at20());
+    const keys = catalaseKeys(result.ir!);
+    for (const k of keys) expect(silhouettesOf(v, adapter.listRef(k)!)).toMatchObject({ on: true, pixels: 20 });
+    // the rules removed (a view edit): prism-me's own again
+    await adapter.commit(updateView(exosomeDoc(), result.ir!));
+    for (const k of keys) expect(silhouettesOf(v, adapter.listRef(k)!).pixels).not.toBe(20);
+  });
+
+  it('a camera rest puts back what the bands say after something else changed it (an Undo, a toggle)', {
+    tags: ['medium'],
+  }, async () => {
+    const { v, adapter, result } = await session(catalaseFrom(readFileSync(fixture)), at20());
+    const [key] = catalaseKeys(result.ir!);
+    const ref = adapter.listRef(key)!;
+    const state = v.plugin.state.data;
+    const q = StateSelection.Generators.byRef(ref).subtree().ofType(SO.Particle.Representation3D);
+    const cell = state
+      .select(q)
+      .find((c) => (c.transform.params as { type: { name: string } }).type.name === 'target')!;
+    const old = cell.transform.params as { type: { name: string; params: { structure: Record<string, unknown> } } };
+    await v.plugin.runTask(
+      state.updateTree(
+        state
+          .build()
+          .to(cell)
+          .update({
+            ...old,
+            type: {
+              ...old.type,
+              params: { ...old.type.params, structure: { ...old.type.params.structure, lodImpostorPixels: 30 } },
+            },
+          }),
+      ),
+    );
+    expect(silhouettesOf(v, ref).pixels).toBe(30);
+    expect(await adapter.cameraRested()).toBeGreaterThan(0);
+    expect(silhouettesOf(v, ref).pixels).toBe(20);
+    expect(await adapter.cameraRested()).toBe(0);
+  });
+
+  it('a camera rest during a commit writes nothing; the commit draws its own bands', { tags: ['medium'] }, async () => {
+    const { v, adapter, result } = await session(catalaseFrom(readFileSync(fixture)), at20());
+    const keys = catalaseKeys(result.ir!);
+    const commit = adapter.commit(updateView(bandedExosome(), result.ir!));
+    const rest = adapter.cameraRested();
+    expect(await rest).toBe(0);
+    await commit;
+    for (const k of keys) expect(silhouettesOf(v, adapter.listRef(k)!)).toMatchObject({ on: true, pixels: 12 });
+    // and a commit right after a rest's write: no error, the commit's bands win
+    const rest2 = adapter.cameraRested();
+    await adapter.commit(updateView(at20(), result.ir!));
+    await rest2;
+    for (const k of keys) expect(silhouettesOf(v, adapter.listRef(k)!).pixels).toBe(20);
+  });
+
+  it('a list whose target representation was stripped is drawn again with it', { tags: ['medium'] }, async () => {
+    const { v, adapter, result } = await session(catalaseFrom(readFileSync(fixture)), at20());
+    const [key] = catalaseKeys(result.ir!);
+    const ref = adapter.listRef(key)!;
+    const state = v.plugin.state.data;
+    const q = StateSelection.Generators.byRef(ref).subtree().ofType(SO.Particle.Representation3D);
+    const target = state
+      .select(q)
+      .find((c) => (c.transform.params as { type: { name: string } }).type.name === 'target')!;
+    await v.plugin.runTask(state.updateTree(state.build().delete(target.transform.ref)));
+    expect(state.select(q).map((c) => (c.transform.params as { type: { name: string } }).type.name)).toEqual([
+      'spacefill',
+    ]);
+    await adapter.commit(updateView(at20(), result.ir!));
+    expect(
+      state
+        .select(q)
+        .map((c) => (c.transform.params as { type: { name: string } }).type.name)
+        .sort(),
+    ).toEqual(['spacefill', 'target']);
+  });
+});

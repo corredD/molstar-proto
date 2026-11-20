@@ -1018,7 +1018,6 @@ function foreignAddresses(uris: readonly string[], base: string | undefined): st
   return [...out];
 }
 
-/** A resource's text through the viewer's asset manager; undefined when it cannot be read. */
 /** A file's bytes through the viewer's asset manager; undefined when it cannot be read. */
 async function fetchBinaryWithAssets(ctx: ApiAreaContext, url: string): Promise<Uint8Array | undefined> {
   const { plugin } = ctx;
@@ -1036,6 +1035,7 @@ async function fetchBinaryWithAssets(ctx: ApiAreaContext, url: string): Promise<
   }
 }
 
+/** A resource's text through the viewer's asset manager; undefined when it cannot be read. */
 async function fetchWithAssets(ctx: ApiAreaContext, url: string): Promise<string | undefined> {
   const { plugin } = ctx;
   try {
