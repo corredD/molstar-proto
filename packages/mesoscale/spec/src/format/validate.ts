@@ -15,9 +15,11 @@ import {
   type MesoViewSpecDoc,
   type Model,
   type Population,
+  type RepresentationHint,
   type Superstructure,
   type TileManifest,
 } from './doc.js';
+import { bandEvaluatorSpec, type BandEvaluatorSpec, bandFamily, bandShape } from './bands.js';
 import { type Issue, type IssueCode, issue } from './issues.js';
 import { parseMesoQL, type QType } from './mesoql.js';
 import { ConcentrationToMolar, DensityToPerA2, isLengthUnit, isUnitOf } from './units.js';
@@ -45,7 +47,9 @@ export type Kind =
   | 'superstructure'
   | 'tour'
   | 'instance'
-  | 'look';
+  | 'look'
+  | 'band'
+  | 'scale';
 
 const Sections: readonly [keyof MesoViewSpecDoc, Kind][] = [
   ['frames', 'frame'],
@@ -63,7 +67,11 @@ const Sections: readonly [keyof MesoViewSpecDoc, Kind][] = [
   ['views', 'view'],
   ['superstructures', 'superstructure'],
   ['tours', 'tour'],
+  ['bands', 'band'],
+  ['scales', 'scale'],
 ];
+
+const Hints: readonly RepresentationHint[] = ['spheres', 'structure', 'surface', 'silhouette'];
 
 // the words a field takes (doc.ts): a typo is refused here, not met late as a resolver's unsupported case
 const Locations: readonly Location[] = ['interior', 'membrane', 'outer-surface', 'inner-surface', 'exterior'];
@@ -569,10 +577,10 @@ export function validate(doc: MesoViewSpecDoc, nested = false): Issue[] {
       address(l.select, `/views/${i}/looks/${j}/select`, 'selection', true);
       if (l.color !== undefined && !/^#[0-9a-fA-F]{6}$/.test(l.color))
         err('value.range', `color ${l.color} is #rrggbb`, `/views/${i}/looks/${j}/color`);
-      if (l.representation !== undefined && !['spheres', 'structure', 'surface'].includes(l.representation))
+      if (l.representation !== undefined && !Hints.includes(l.representation))
         err(
           'value.range',
-          `representation ${l.representation} is spheres, structure or surface`,
+          `representation ${l.representation} is ${Hints.join(', ')}`,
           `/views/${i}/looks/${j}/representation`,
         );
       if (l.transparency !== undefined && !(l.transparency >= 0 && l.transparency <= 1))
@@ -586,6 +594,7 @@ export function validate(doc: MesoViewSpecDoc, nested = false): Issue[] {
       if (typeof a.target === 'string') address(a.target, `/views/${i}/annotations/${j}/target`, 'selection');
     });
   });
+  validateBands(doc, { err, warn, ref, address });
   ref(doc.session?.view, 'view', '/session/view');
   ref(doc.session?.tour, 'tour', '/session/tour');
   (doc.tours ?? []).forEach((t, i) =>
@@ -677,6 +686,136 @@ const isBox = (b: any): b is Box =>
 const isRecord = (x: unknown): x is Record<string, never> => typeof x === 'object' && x !== null && !Array.isArray(x);
 const inside = (b: Box, outer: Box, tol = 1e-3) =>
   b.min.every((x, k) => x >= outer.min[k] - tol && b.max[k] <= outer.max[k] + tol);
+
+interface BandChecks {
+  readonly err: (code: IssueCode, message: string, path: string, ids?: Id[]) => void;
+  readonly warn: (code: IssueCode, message: string, path: string, ids?: Id[]) => void;
+  readonly ref: (id: Id | undefined, want: Kind | readonly Kind[], path: string) => void;
+  readonly address: (q: string | undefined, path: string, want: QType, required?: boolean) => void;
+}
+
+/** `[lo, hi)` with finite lo ≥ 0, lo < hi; hi null for no bound. */
+const isBandRange = (r: unknown): r is readonly [number, number | null] =>
+  Array.isArray(r) &&
+  r.length === 2 &&
+  Number.isFinite(r[0]) &&
+  r[0] >= 0 &&
+  (r[1] === null || (Number.isFinite(r[1]) && r[1] > r[0]));
+
+/**
+ * Bands and scale rules (_spec/bands.md, proposed v0.6): each band the shape its evaluator asks for, its params the
+ * evaluator's; bands of one family (an evaluator and its params) and their blends do not overlap; a view's bands are the
+ * document's; a rule names bands that exist and hints that are hints.
+ */
+function validateBands(doc: MesoViewSpecDoc, c: BandChecks) {
+  const bands = Array.isArray(doc.bands) ? doc.bands : [];
+  const params = (spec: BandEvaluatorSpec, ps: unknown, path: string, id: Id) => {
+    const given = isRecord(ps) ? (ps as Record<string, unknown>) : {};
+    if (ps !== undefined && !isRecord(ps))
+      return c.err('bands.evaluator', 'params is an object', `${path}/params`, [id]);
+    for (const [name, kind] of Object.entries(spec.params)) {
+      const v = given[name];
+      if (v === undefined)
+        c.err('bands.evaluator', `${spec.id} takes ${name} (a ${kind} id)`, `${path}/params/${name}`, [id]);
+      else if (typeof v !== 'string')
+        c.err('bands.evaluator', `${name} is a ${kind} id`, `${path}/params/${name}`, [id]);
+      else c.ref(v, kind, `${path}/params/${name}`);
+    }
+    for (const name of Object.keys(given))
+      if (!(name in spec.params))
+        c.err('bands.evaluator', `${spec.id} takes no param ${name}`, `${path}/params/${name}`, [id]);
+  };
+  const blend = (b: { blend?: unknown }, spec: BandEvaluatorSpec, path: string, id: Id) => {
+    if (b.blend === undefined) return;
+    const bl = b.blend as { width?: unknown; by?: unknown };
+    if (spec.kind !== 'measure' || spec.tier !== 'copy')
+      return c.err('bands.shape', 'only a band of a copy measure blends', `${path}/blend`, [id]);
+    if (!isRecord(bl) || !(typeof bl.width === 'number' && bl.width >= 0 && Number.isFinite(bl.width)))
+      return c.err('value.range', 'a blend has a width: 0 or more octaves', `${path}/blend`, [id]);
+    if (bl.by !== undefined && bl.by !== 'dither' && bl.by !== 'fade')
+      c.err('value.range', `blend by ${JSON.stringify(bl.by)} is dither or fade`, `${path}/blend/by`, [id]);
+  };
+
+  // measures of each family, for the overlaps
+  const families = new Map<string, { lo: number; hi: number | null; blend?: number; path: string; field: string }[]>();
+  const specs = new Map<Id, BandEvaluatorSpec>();
+  bands.forEach((b, i) => {
+    const p = `/bands/${i}`;
+    if (b.size !== undefined && b.evaluator !== undefined)
+      return c.err('bands.shape', 'a band has size (meso.size) or an evaluator, not both', `${p}/size`, [b.id]);
+    const { evaluator, range } = bandShape(b);
+    const field = b.size !== undefined ? 'size' : 'range';
+    const spec = bandEvaluatorSpec(evaluator);
+    if (!spec)
+      return c.warn('bands.evaluator', `${evaluator}: no such evaluator here, the band never holds`, `${p}/evaluator`, [
+        b.id,
+      ]);
+    specs.set(b.id, spec);
+    params(spec, b.params, p, b.id);
+    if (spec.kind === 'measure') {
+      if (range === undefined)
+        return c.err('bands.shape', `${spec.id} is a measure: give a range`, `${p}/range`, [b.id]);
+      if (!isBandRange(range))
+        return c.err('bands.shape', 'a range is [lo, hi), 0 ≤ lo < hi, hi null for no bound', `${p}/${field}`, [b.id]);
+      const f = bandFamily(spec.id, b.params);
+      if (!families.has(f)) families.set(f, []);
+      families.get(f)!.push({ lo: range[0], hi: range[1], blend: b.blend?.width, path: p, field });
+    } else if (range !== undefined) {
+      return c.err('bands.shape', `${spec.id} is a test: a band of it has no range`, `${p}/${field}`, [b.id]);
+    }
+    blend(b, spec, p, b.id);
+  });
+  for (const members of families.values()) {
+    const sorted = [...members].sort((a, b) => a.lo - b.lo);
+    for (let k = 1; k < sorted.length; k++) {
+      const a = sorted[k - 1];
+      const b = sorted[k];
+      if (a.hi === null || a.hi > b.lo) c.err('bands.overlap', 'bands of one family overlap', `${b.path}/${b.field}`);
+    }
+    // blends sit on upper bounds: two may not overlap
+    const blended = sorted.filter((m) => m.blend && m.hi !== null);
+    for (let k = 1; k < blended.length; k++) {
+      const a = blended[k - 1];
+      const b = blended[k];
+      if (a.hi! * 2 ** (a.blend! / 2) > b.hi! * 2 ** (-b.blend! / 2))
+        c.err('bands.overlap', 'two blends of one family overlap', `${b.path}/blend`);
+    }
+  }
+  // a view's bands: the document's, re-thresholded
+  const byId = new Map(bands.map((b) => [b.id, b]));
+  (doc.views ?? []).forEach((v, i) =>
+    (Array.isArray(v.bands) ? v.bands : []).forEach((o, j) => {
+      const p = `/views/${i}/bands/${j}`;
+      const b = byId.get(o?.id);
+      const spec = b && specs.get(b.id);
+      if (!b) return c.err('bands.shape', `${o?.id} is no band of the document`, `${p}/id`, [o?.id]);
+      if (!spec) return;
+      if (o.params !== undefined) params(spec, o.params, p, o.id);
+      const r = o.range ?? o.size;
+      if (r !== undefined && (spec.kind !== 'measure' || !isBandRange(r)))
+        c.err('bands.shape', 'a range is [lo, hi) of a measure', `${p}/${o.range !== undefined ? 'range' : 'size'}`, [
+          o.id,
+        ]);
+      blend(o, spec, p, o.id);
+    }),
+  );
+  // scale rules
+  (Array.isArray(doc.scales) ? doc.scales : []).forEach((r, i) => {
+    const p = `/scales/${i}`;
+    c.address(r.select, `${p}/select`, 'selection', true);
+    const at = typeof r.at === 'string' ? [r.at] : Array.isArray(r.at) ? r.at : [];
+    if (!at.length) c.err('scales.shape', 'a rule holds at one band or more (at)', `${p}/at`, [r.id]);
+    else if (at.some((a) => !byId.has(a)))
+      c.err('scales.shape', `${at.filter((a) => !byId.has(a)).join(', ')}: no such band`, `${p}/at`, [r.id]);
+    if (!isRecord(r.show)) return c.err('value.missing', 'a rule shows something (show)', `${p}/show`, [r.id]);
+    const hint = (r.show as { representation?: unknown }).representation;
+    const hints = hint === undefined ? [] : Array.isArray(hint) ? hint : [hint];
+    if (hints.some((h) => !Hints.includes(h as RepresentationHint)) || (Array.isArray(hint) && !hint.length))
+      c.err('value.range', `representation is ${Hints.join(', ')}, or a list of them`, `${p}/show/representation`, [
+        r.id,
+      ]);
+  });
+}
 
 /**
  * A tile manifest checked against the stream model it feeds (_spec/streaming.md): pure, synchronous, phase `load`, code

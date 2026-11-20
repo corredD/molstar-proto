@@ -39,54 +39,59 @@ Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for m
 
 ## Codes
 
-| Code                      | Meaning                                                                                                |
-| ------------------------- | ------------------------------------------------------------------------------------------------------ |
-| `format.version`          | The format or version is not one this runtime reads                                                    |
-| `id.invalid`              | An id does not match the id pattern                                                                    |
-| `id.duplicate`            | Two nodes have the same id                                                                             |
-| `ref.missing`             | A reference names no node                                                                              |
-| `ref.kind`                | A reference names a node of the wrong kind                                                             |
-| `compartment.cycle`       | Compartments contain each other                                                                        |
-| `frame.world`             | Not exactly one world frame                                                                            |
-| `frame.handedness`        | A frame does not say its handedness                                                                    |
-| `frame.unaligned`         | A spatial resource is in a frame with no alignment to the world                                        |
-| `location.membrane`       | A membrane location in a compartment without a membrane                                                |
-| `unit.unknown`            | A unit is not one the format knows                                                                     |
-| `value.range`             | A value is out of its range                                                                            |
-| `value.missing`           | A required value is missing, or is not the shape it should be (a list, an object)                      |
-| `model.overlap`           | A population is realized by more than one model                                                        |
-| `model.unrealized`        | A population is realized by no model: the default resolver packs it                                    |
-| `model.cycle`             | Models avoid each other's copies in a cycle                                                            |
-| `resolver.unknown`        | No resolver for a model method                                                                         |
-| `resolver.unsupported`    | The resolver cannot realize part of what the document asks                                             |
-| `resolver.failed`         | The resolver threw                                                                                     |
-| `resource.unavailable`    | A resource could not be loaded                                                                         |
-| `constraint.unmet`        | A constraint was not met                                                                               |
-| `relation.ignored`        | A relation no resolver of the scene honours (it stays the document's statement)                        |
-| `catalog.unexpanded`      | A catalog was not expanded into populations                                                            |
-| `stream.unsupported`      | A stream the runtime does not support (a rotated frame, avoid or refines, a superstructure)            |
-| `stream.manifest`         | A stream manifest is unavailable or invalid                                                            |
-| `stream.tile`             | A tile failed to load or disagreed with its manifest                                                   |
-| `stream.budget`           | One tile alone exceeds the stream budget                                                               |
-| `patch.shape`             | A patch, or one of its ops, is not the shape it should be                                              |
-| `patch.base`              | A patch's base is not the document's revision                                                          |
-| `patch.target`            | An op names no node a patch can address, or an anchor names no sibling                                 |
-| `relation.path`           | A relation on a population that follows a traced path: binders are placed on it, bends are not applied |
-| `superstructure.cycle`    | Superstructures contain each other                                                                     |
-| `superstructure.depth`    | Superstructures nest deeper than the runtime resolves                                                  |
-| `cellpack.geometry`       | A cellPACK compartment that is not a sphere imports as one, or not at all                              |
-| `cellpack.fiber`          | A cellPACK fiber with no length or path in the serialized recipe: not imported                         |
-| `cellpack.count-conflict` | A cellPACK ingredient with both a count and a molarity: one wins                                       |
-| `mesoql.syntax`           | A MesoQL address is not one well-formed S-expression                                                   |
-| `mesoql.form`             | A MesoQL expression is not a form like (entity e.x)                                                    |
-| `mesoql.symbol.unknown`   | A MesoQL symbol is not one the language has                                                            |
-| `mesoql.ref.missing`      | A MesoQL id names no node                                                                              |
-| `mesoql.ref.kind`         | A MesoQL id names a node of the wrong kind for its argument                                            |
-| `mesoql.type`             | A MesoQL expression is not the type its slot asks for                                                  |
-| `mesoql.keyword`          | A MesoQL keyword is unknown, repeated, valueless or given the wrong kind of value                      |
-| `mesoql.range`            | A MesoQL range is not a label range like 53-63                                                         |
-| `mesoql.arity`            | A MesoQL symbol has too few or too many arguments                                                      |
-| `mesoql.argument`         | A MesoQL argument is not the kind its symbol takes                                                     |
-| `mesoql.site`             | A MesoQL `site` names a site its entity does not have                                                  |
-| `mesoql.empty`            | A MesoQL selection finds nothing in this resolution                                                    |
-| `assumption`              | The resolver made a choice the document did not make                                                   |
+| Code                      | Meaning                                                                                                                                                     |
+| ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `format.version`          | The format or version is not one this runtime reads                                                                                                         |
+| `id.invalid`              | An id does not match the id pattern                                                                                                                         |
+| `id.duplicate`            | Two nodes have the same id                                                                                                                                  |
+| `ref.missing`             | A reference names no node                                                                                                                                   |
+| `ref.kind`                | A reference names a node of the wrong kind                                                                                                                  |
+| `compartment.cycle`       | Compartments contain each other                                                                                                                             |
+| `frame.world`             | Not exactly one world frame                                                                                                                                 |
+| `frame.handedness`        | A frame does not say its handedness                                                                                                                         |
+| `frame.unaligned`         | A spatial resource is in a frame with no alignment to the world                                                                                             |
+| `location.membrane`       | A membrane location in a compartment without a membrane                                                                                                     |
+| `unit.unknown`            | A unit is not one the format knows                                                                                                                          |
+| `value.range`             | A value is out of its range                                                                                                                                 |
+| `value.missing`           | A required value is missing, or is not the shape it should be (a list, an object)                                                                           |
+| `model.overlap`           | A population is realized by more than one model                                                                                                             |
+| `model.unrealized`        | A population is realized by no model: the default resolver packs it                                                                                         |
+| `model.cycle`             | Models avoid each other's copies in a cycle                                                                                                                 |
+| `resolver.unknown`        | No resolver for a model method                                                                                                                              |
+| `resolver.unsupported`    | The resolver cannot realize part of what the document asks                                                                                                  |
+| `resolver.failed`         | The resolver threw                                                                                                                                          |
+| `resource.unavailable`    | A resource could not be loaded                                                                                                                              |
+| `constraint.unmet`        | A constraint was not met                                                                                                                                    |
+| `relation.ignored`        | A relation no resolver of the scene honours (it stays the document's statement)                                                                             |
+| `catalog.unexpanded`      | A catalog was not expanded into populations                                                                                                                 |
+| `stream.unsupported`      | A stream the runtime does not support (a rotated frame, avoid or refines, a superstructure)                                                                 |
+| `stream.manifest`         | A stream manifest is unavailable or invalid                                                                                                                 |
+| `stream.tile`             | A tile failed to load or disagreed with its manifest                                                                                                        |
+| `stream.budget`           | One tile alone exceeds the stream budget                                                                                                                    |
+| `patch.shape`             | A patch, or one of its ops, is not the shape it should be                                                                                                   |
+| `patch.base`              | A patch's base is not the document's revision                                                                                                               |
+| `patch.target`            | An op names no node a patch can address, or an anchor names no sibling                                                                                      |
+| `relation.path`           | A relation on a population that follows a traced path: binders are placed on it, bends are not applied                                                      |
+| `superstructure.cycle`    | Superstructures contain each other                                                                                                                          |
+| `superstructure.depth`    | Superstructures nest deeper than the runtime resolves                                                                                                       |
+| `cellpack.geometry`       | A cellPACK compartment that is not a sphere imports as one, or not at all                                                                                   |
+| `cellpack.fiber`          | A cellPACK fiber with no length or path in the serialized recipe: not imported                                                                              |
+| `cellpack.count-conflict` | A cellPACK ingredient with both a count and a molarity: one wins                                                                                            |
+| `mesoql.syntax`           | A MesoQL address is not one well-formed S-expression                                                                                                        |
+| `mesoql.form`             | A MesoQL expression is not a form like (entity e.x)                                                                                                         |
+| `mesoql.symbol.unknown`   | A MesoQL symbol is not one the language has                                                                                                                 |
+| `mesoql.ref.missing`      | A MesoQL id names no node                                                                                                                                   |
+| `mesoql.ref.kind`         | A MesoQL id names a node of the wrong kind for its argument                                                                                                 |
+| `mesoql.type`             | A MesoQL expression is not the type its slot asks for                                                                                                       |
+| `mesoql.keyword`          | A MesoQL keyword is unknown, repeated, valueless or given the wrong kind of value                                                                           |
+| `mesoql.range`            | A MesoQL range is not a label range like 53-63                                                                                                              |
+| `mesoql.arity`            | A MesoQL symbol has too few or too many arguments                                                                                                           |
+| `mesoql.argument`         | A MesoQL argument is not the kind its symbol takes                                                                                                          |
+| `mesoql.site`             | A MesoQL `site` names a site its entity does not have                                                                                                       |
+| `mesoql.empty`            | A MesoQL selection finds nothing in this resolution                                                                                                         |
+| `bands.shape`             | A band is not the shape its evaluator asks for (a measure without a range, a test with one, a range upside down), or a view names a band the document lacks |
+| `bands.overlap`           | Two bands of one family overlap, or their blends do                                                                                                         |
+| `bands.evaluator`         | A band's evaluator is not one this viewer has, or its params are not the evaluator's                                                                        |
+| `bands.blend`             | A blend the viewer cannot draw as asked: drawn at the width it has, or as a switch                                                                          |
+| `scales.shape`            | A scale rule names a band the document lacks, or has no band                                                                                                |
+| `assumption`              | The resolver made a choice the document did not make                                                                                                        |

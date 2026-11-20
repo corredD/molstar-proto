@@ -79,6 +79,12 @@ export const IssueCodes = {
   'mesoql.argument': 'A MesoQL argument is not the kind its symbol takes',
   'mesoql.site': 'A MesoQL `site` names a site its entity does not have',
   'mesoql.empty': 'A MesoQL selection finds nothing in this resolution',
+  'bands.shape':
+    'A band is not the shape its evaluator asks for (a measure without a range, a test with one, a range upside down), or a view names a band the document lacks',
+  'bands.overlap': 'Two bands of one family overlap, or their blends do',
+  'bands.evaluator': "A band's evaluator is not one this viewer has, or its params are not the evaluator's",
+  'bands.blend': 'A blend the viewer cannot draw as asked: drawn at the width it has, or as a switch',
+  'scales.shape': 'A scale rule names a band the document lacks, or has no band',
   assumption: 'The resolver made a choice the document did not make',
 } as const;
 

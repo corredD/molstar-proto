@@ -71,6 +71,10 @@ export interface MesoViewSpecDoc {
   readonly activities?: readonly Activity[];
   /** Persistent view state: what a session restores. */
   readonly views?: readonly View[];
+  /** (v0.6, proposed) Named bands: where a measure of the camera and the copies lies, or a test holds (_spec/bands.md). */
+  readonly bands?: readonly Band[];
+  /** (v0.6, proposed) What the copies are shown as while a band holds (views.md, scale rules). */
+  readonly scales?: readonly ScaleRule[];
   readonly session?: { readonly view?: Id; readonly tour?: Id };
   /** Guided walks through the views. */
   readonly tours?: readonly Tour[];
@@ -522,7 +526,53 @@ export interface Look {
   readonly representation?: RepresentationHint;
 }
 
-export type RepresentationHint = 'spheres' | 'structure' | 'surface';
+/** `silhouette` (v0.6, _spec/bands.md): each copy its outline seen from the camera, filled with its color, with depth. */
+export type RepresentationHint = 'spheres' | 'structure' | 'surface' | 'silhouette';
+
+/** `[lo, hi)` of a band's measure; `null`: no upper bound (JSON has no infinity). */
+export type BandRange = readonly [number, number | null];
+
+/**
+ * A band (v0.6, proposed, _spec/bands.md): where a measure lies in a range, or where a test holds, named once so scale
+ * rules and views refer to it. `evaluator` is an id from the registry (`format/bands.ts`), never code; `size` is
+ * shorthand for `meso.size` over that range.
+ */
+export interface Band {
+  readonly id: Id;
+  /** `meso.size`, `meso.distance`, `meso.eye-inside`, `meso.view`; `name@version` pins a version. */
+  readonly evaluator?: string;
+  /** The evaluator's params, checked against it. */
+  readonly params?: Readonly<Record<string, unknown>>;
+  /** For a measure: where the band holds. A test has none. */
+  readonly range?: BandRange;
+  /** Shorthand: `evaluator: 'meso.size'` over this range. */
+  readonly size?: BandRange;
+  /** How a band of a copy measure hands over to the next at its upper bound (octaves, centred on the bound). */
+  readonly blend?: { readonly width: number; readonly by?: 'dither' | 'fade' };
+}
+
+/** A view's band: one of the document's (same id) with another range, params or blend; never another evaluator. */
+export interface BandOverride {
+  readonly id: Id;
+  readonly params?: Readonly<Record<string, unknown>>;
+  readonly range?: BandRange;
+  readonly size?: BandRange;
+  readonly blend?: { readonly width: number; readonly by?: 'dither' | 'fade' };
+}
+
+/**
+ * A scale rule (views.md, decided 2026-11-11): what the copies `select` picks are shown as while a band of `at` holds
+ * (any of them). Later rules win, field by field; a view's look wins over a rule.
+ */
+export interface ScaleRule {
+  readonly id: Id;
+  readonly select: MesoQL;
+  readonly at: Id | readonly Id[];
+  readonly show: {
+    /** A hint, or a fallback chain tried in order. */
+    readonly representation?: RepresentationHint | readonly RepresentationHint[];
+  };
+}
 
 /**
  * A camera (design.md §5.1): numeric (`position`, `target`, in the view's frame and the document's length unit), or
@@ -566,6 +616,8 @@ export interface View {
    */
   readonly cutaway?: MesoQL;
   readonly description?: string;
+  /** (v0.6, proposed) The document's bands as this view re-thresholds them (_spec/bands.md). */
+  readonly bands?: readonly BandOverride[];
 }
 
 /** An ordered walk through views (design.md §5.1), as MolViewSpec's snapshots: each step a view and how long it holds. */

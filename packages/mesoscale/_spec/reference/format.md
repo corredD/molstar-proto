@@ -82,6 +82,8 @@ A unit quaternion, x y z w.
 | `evidence?`        | `readonly Evidence[]`                        |                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | `activities?`      | `readonly Activity[]`                        | The processing steps that turned data into data (acquisition, reconstruction, segmentation, picking, packing).                                                                                                                                                                                                                                                                                                                                                 |
 | `views?`           | `readonly View[]`                            | Persistent view state: what a session restores.                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `bands?`           | `readonly Band[]`                            | (v0.6, proposed) Named bands: where a measure of the camera and the copies lies, or a test holds (_spec/bands.md).                                                                                                                                                                                                                                                                                                                                             |
+| `scales?`          | `readonly ScaleRule[]`                       | (v0.6, proposed) What the copies are shown as while a band holds (views.md, scale rules).                                                                                                                                                                                                                                                                                                                                                                      |
 | `session?`         | `{ readonly view?: Id; readonly tour?: Id }` |                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | `tours?`           | `readonly Tour[]`                            | Guided walks through the views.                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | `custom?`          | `Readonly<Record<string, unknown>>`          | Extensions, by namespace (`{ "cellpack": {…} }`): a reader that does not know a namespace keeps and ignores it.                                                                                                                                                                                                                                                                                                                                                |
@@ -496,9 +498,57 @@ runtime into MesoLoci (ir/loci.ts).
 
 ## RepresentationHint
 
+`silhouette` (v0.6, _spec/bands.md): each copy its outline seen from the camera, filled with its color, with depth.
+
 - `'spheres'`
 - `'structure'`
 - `'surface'`
+- `'silhouette'`
+
+## BandRange
+
+`[lo, hi)` of a band's measure; `null`: no upper bound (JSON has no infinity).
+
+`readonly [number, number | null]`
+
+## Band
+
+A band (v0.6, proposed, _spec/bands.md): where a measure lies in a range, or where a test holds, named once so scale
+rules and views refer to it. `evaluator` is an id from the registry (`format/bands.ts`), never code; `size` is shorthand
+for `meso.size` over that range.
+
+| Field        | Type                                                           | Meaning                                                                                                 |
+| ------------ | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `id`         | `Id`                                                           |                                                                                                         |
+| `evaluator?` | `string`                                                       | `meso.size`, `meso.distance`, `meso.eye-inside`, `meso.view`; `name@version` pins a version.            |
+| `params?`    | `Readonly<Record<string, unknown>>`                            | The evaluator's params, checked against it.                                                             |
+| `range?`     | `BandRange`                                                    | For a measure: where the band holds. A test has none.                                                   |
+| `size?`      | `BandRange`                                                    | Shorthand: `evaluator: 'meso.size'` over this range.                                                    |
+| `blend?`     | `{ readonly width: number; readonly by?: 'dither' \| 'fade' }` | How a band of a copy measure hands over to the next at its upper bound (octaves, centred on the bound). |
+
+## BandOverride
+
+A view's band: one of the document's (same id) with another range, params or blend; never another evaluator.
+
+| Field     | Type                                                           | Meaning |
+| --------- | -------------------------------------------------------------- | ------- |
+| `id`      | `Id`                                                           |         |
+| `params?` | `Readonly<Record<string, unknown>>`                            |         |
+| `range?`  | `BandRange`                                                    |         |
+| `size?`   | `BandRange`                                                    |         |
+| `blend?`  | `{ readonly width: number; readonly by?: 'dither' \| 'fade' }` |         |
+
+## ScaleRule
+
+A scale rule (views.md, decided 2026-11-11): what the copies `select` picks are shown as while a band of `at` holds (any
+of them). Later rules win, field by field; a view's look wins over a rule.
+
+| Field    | Type                                                                                                                                    | Meaning |
+| -------- | --------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| `id`     | `Id`                                                                                                                                    |         |
+| `select` | `MesoQL`                                                                                                                                |         |
+| `at`     | `Id \| readonly Id[]`                                                                                                                   |         |
+| `show`   | `{ /** A hint, or a fallback chain tried in order. */ readonly representation?: RepresentationHint \| readonly RepresentationHint[]; }` |         |
 
 ## Camera
 
@@ -530,17 +580,18 @@ re-resolve, and it frames the same copies wherever they now are.
 
 ## View
 
-| Field          | Type                    | Meaning                                                                                                                                                                                              |
-| -------------- | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `id`           | `Id`                    |                                                                                                                                                                                                      |
-| `label?`       | `string`                |                                                                                                                                                                                                      |
-| `frame?`       | `Id`                    |                                                                                                                                                                                                      |
-| `camera?`      | `Camera`                |                                                                                                                                                                                                      |
-| `looks?`       | `readonly Look[]`       | Later looks win where selectors overlap.                                                                                                                                                             |
-| `selection?`   | `MesoQL`                |                                                                                                                                                                                                      |
-| `annotations?` | `readonly Annotation[]` |                                                                                                                                                                                                      |
-| `cutaway?`     | `MesoQL`                | What to cut away so the focus shows (a MesoQL address: the copies hidden between the camera and the focus). A renderer that cannot clip by copies says so; the prototype's Prism adapter reports it. |
-| `description?` | `string`                |                                                                                                                                                                                                      |
+| Field          | Type                      | Meaning                                                                                                                                                                                              |
+| -------------- | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`           | `Id`                      |                                                                                                                                                                                                      |
+| `label?`       | `string`                  |                                                                                                                                                                                                      |
+| `frame?`       | `Id`                      |                                                                                                                                                                                                      |
+| `camera?`      | `Camera`                  |                                                                                                                                                                                                      |
+| `looks?`       | `readonly Look[]`         | Later looks win where selectors overlap.                                                                                                                                                             |
+| `selection?`   | `MesoQL`                  |                                                                                                                                                                                                      |
+| `annotations?` | `readonly Annotation[]`   |                                                                                                                                                                                                      |
+| `cutaway?`     | `MesoQL`                  | What to cut away so the focus shows (a MesoQL address: the copies hidden between the camera and the focus). A renderer that cannot clip by copies says so; the prototype's Prism adapter reports it. |
+| `description?` | `string`                  |                                                                                                                                                                                                      |
+| `bands?`       | `readonly BandOverride[]` | (v0.6, proposed) The document's bands as this view re-thresholds them (_spec/bands.md).                                                                                                              |
 
 ## Tour
 

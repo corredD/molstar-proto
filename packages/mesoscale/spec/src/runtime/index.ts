@@ -70,3 +70,12 @@ export {
   DefaultReaders,
   meshArea,
 } from './readers.js';
+export {
+  type BandCamera,
+  type BandInput,
+  bandHolds,
+  irBands,
+  measureCopy,
+  sceneBandsHolding,
+  sceneTest,
+} from './bands.js';

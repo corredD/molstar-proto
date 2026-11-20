@@ -10,6 +10,8 @@ export {
   type IRNodeOf,
   type IRKind,
   type IRLook,
+  type IRBand,
+  type IRScale,
   type IRView,
   type IR,
   walk,

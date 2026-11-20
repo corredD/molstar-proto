@@ -4,7 +4,7 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import type { Box, Issue, StreamLevel, TileEntry } from '@molstar/meso-spec/format';
+import type { Box, Issue, RepresentationHint, StreamLevel, TileEntry } from '@molstar/meso-spec/format';
 import type { PlacementType } from './placements.js';
 import type { PlacementSet } from './placements.js';
 
@@ -129,7 +129,34 @@ export interface IRLook {
    */
   readonly runs?: readonly number[];
   /** The view's hint (_spec/views.md); absent: spheres. */
-  readonly representation?: 'spheres' | 'structure' | 'surface';
+  readonly representation?: RepresentationHint;
+}
+
+/**
+ * A band as the view resolves it (_spec/bands.md, proposed v0.6): its evaluator's id (no version), version, kind and
+ * tier from the registry; the view's range, params and blend over the document's. A band whose evaluator this runtime
+ * lacks is not here (it never holds).
+ */
+export interface IRBand {
+  readonly id: string;
+  readonly evaluator: string;
+  readonly version: number;
+  readonly kind: 'measure' | 'test';
+  readonly tier: 'copy' | 'scene';
+  readonly params?: Readonly<Record<string, unknown>>;
+  /** A measure's `[lo, hi)`; `null`: no upper bound. */
+  readonly range?: readonly [number, number | null];
+  readonly blend?: { readonly width: number; readonly by: 'dither' | 'fade' };
+}
+
+/** A scale rule materialized (views.md): the whole types its address covers, by set; its bands; what it shows. */
+export interface IRScale {
+  readonly id: string;
+  /** Any of these bands holding, the rule holds. */
+  readonly at: readonly string[];
+  /** A hint or a fallback chain, in order. */
+  readonly representation?: readonly RepresentationHint[];
+  readonly targets: readonly { readonly set: string; readonly types: readonly number[] }[];
 }
 
 export interface IRView {
@@ -158,6 +185,10 @@ export interface IRView {
     readonly text: string;
     readonly position?: readonly number[];
   }[];
+  /** (v0.6, proposed) The document's bands as this view resolves them; absent without bands. */
+  readonly bands?: readonly IRBand[];
+  /** (v0.6, proposed) The scale rules, document's order, materialized; absent without rules. */
+  readonly scales?: readonly IRScale[];
 }
 
 export interface IR {

@@ -53,6 +53,10 @@ export {
   type MesoQL,
   type Look,
   type RepresentationHint,
+  type Band,
+  type BandOverride,
+  type BandRange,
+  type ScaleRule,
   type Camera,
   type Annotation,
   type View,
@@ -127,3 +131,12 @@ export {
   traceToText,
   traceToSexprData,
 } from './trace.js';
+export {
+  type BandEvaluatorSpec,
+  type BandParamKind,
+  BandEvaluatorSpecs,
+  bandEvaluatorSpec,
+  bandShape,
+  bandFamily,
+  viewBands,
+} from './bands.js';

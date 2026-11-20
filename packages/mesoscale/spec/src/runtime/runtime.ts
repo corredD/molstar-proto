@@ -33,6 +33,7 @@ import {
   type IR,
   type IRLook,
   type IRNode,
+  type IRScale,
   type IRShape,
   type IRView,
   EmptyLoci,
@@ -45,6 +46,7 @@ import {
   runsSize,
   typeRuns,
 } from '@molstar/meso-spec/ir';
+import { irBands } from './bands.js';
 import { isAbort, throwIfAborted } from './cancel.js';
 import { DefaultReaders, meshArea, readerFor } from './readers.js';
 import { level0IR, type TileProvider } from './streaming.js';
@@ -1226,8 +1228,36 @@ export function deriveView(doc: MesoViewSpecDoc, root: IRNode, shown?: Id): IRVi
   const at = l0 === ir ? materialize : materializer(doc, l0, issues, false);
   const camera = deriveCamera(doc, view, l0, at);
   const place = viewFrame(doc, view).place;
+  // (v0.6, proposed, _spec/bands.md) the bands as this view resolves them; the scale rules on the whole types they cover
+  const bands = irBands(doc, view);
+  const scales = doc.scales?.length
+    ? doc.scales.map((r): IRScale => {
+        const loci = materialize(r.select);
+        const targets: { set: string; types: number[] }[] = [];
+        for (const s of sets) {
+          const runs = loci.copies.get(s.key);
+          if (!runs) continue;
+          const tr = typeRuns(s);
+          const types = s.typeTable
+            .filter(
+              (t) => runsSize(tr[t.index]) > 0 && runsSize(intersectRuns(tr[t.index], runs)) === runsSize(tr[t.index]),
+            )
+            .map((t) => t.index);
+          if (types.length) targets.push({ set: s.key, types });
+        }
+        const hint = r.show?.representation;
+        return {
+          id: r.id,
+          at: typeof r.at === 'string' ? [r.at] : [...r.at],
+          ...(hint !== undefined ? { representation: typeof hint === 'string' ? [hint] : [...hint] } : {}),
+          targets,
+        };
+      })
+    : undefined;
   return {
     id: view?.id ?? 'default',
+    ...(bands ? { bands } : {}),
+    ...(scales ? { scales } : {}),
     camera,
     looks: [...looks, ...partial],
     selection: selection?.length ? selection : undefined,
