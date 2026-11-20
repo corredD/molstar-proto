@@ -6,7 +6,7 @@
 
 import type { IRBand, IRScale, IRView } from '@molstar/meso-spec/ir';
 import { describe, expect, it } from 'vitest';
-import { bandPlan } from '../band-plan.js';
+import { bandPlan, EverywhereDistance } from '../band-plan.js';
 
 // The bands of a view as Prism draws them (lane `mvs-lod-bands`, bands.md "In prism-me"): structure then silhouette at
 // a size or distance bound is one list with prism-me's silhouettes on (`lodImpostor`, its `by`, the bound); structure
@@ -139,5 +139,81 @@ describe('the band plan', () => {
     );
     expect(p.lists.get('S')).toMatchObject({ lodImpostor: true, lodImpostorPixels: 12 });
     expect(p.issues.map((i) => i.code)).toEqual(['representation.fallback']);
+  });
+});
+
+// the gate's findings (reviewer 3, 12, 13; skeptic 3, 5, 6)
+describe('the band plan: the gate', () => {
+  const sceneSil = (id: string): IRScale => rule(id, ['in'], ['silhouette']);
+
+  it('silhouettes at every distance: a tiny distance, not 0 (prism-me reads 0 as its automatic distance)', () => {
+    const p = plan(view([dist('all', 0, null)], [rule('a', ['all'], ['silhouette'])]));
+    expect(p.lists.get('S')).toEqual({
+      lodImpostor: true,
+      lodImpostorBy: 'distance',
+      lodImpostorDistance: EverywhereDistance,
+    });
+    expect(p.issues).toEqual([]);
+    // a held scene rule saying silhouette, alone: the same
+    expect(plan(view([inside], [sceneSil('s')]), new Set(['in'])).lists.get('S')).toMatchObject({
+      lodImpostorBy: 'distance',
+      lodImpostorDistance: EverywhereDistance,
+    });
+  });
+
+  it('spheres asked on a structure type, and a fade: said', () => {
+    const spheres = plan(
+      view(
+        [size('near', 12, null), size('far', 0, 12, 0.5)],
+        [rule('a', ['near'], ['structure']), rule('b', ['far'], ['spheres'])],
+      ),
+    );
+    expect(spheres.lists.get('S')).toEqual({ lodImpostor: false });
+    expect(spheres.issues.map((i) => i.code)).toEqual(['representation.fallback']);
+    const far: IRBand = { ...size('far', 0, 12), blend: { width: 0.5, by: 'fade' } };
+    const fade = plan(
+      view([size('near', 12, null), far], [rule('a', ['near'], ['structure']), rule('b', ['far'], ['silhouette'])]),
+    );
+    expect(fade.issues.map((i) => i.code)).toEqual(['bands.blend']);
+  });
+
+  it('later rules win: a later surface-only rule is drawn as structure, said', () => {
+    const p = plan(
+      view([size('far', 0, 12, 0.5)], [rule('a', ['far'], ['silhouette']), rule('b', ['far'], ['surface'])]),
+    );
+    expect(p.lists.get('S')).toEqual({ lodImpostor: false });
+    expect(p.issues.map((i) => i.code)).toEqual(['representation.fallback']);
+  });
+
+  it('a held scene rule covers the gaps; later copy rules paint over it', () => {
+    // silhouette everywhere (held), then structure near [40, inf): silhouettes below 40 px, the gap [12, 40) included
+    const p = plan(
+      view(
+        [size('near', 40, null, 0.5), size('far', 0, 12), inside],
+        [sceneSil('s'), rule('a', ['near'], ['structure'])],
+      ),
+      new Set(['in']),
+    );
+    expect(p.lists.get('S')).toEqual({ lodImpostor: true, lodImpostorBy: 'size', lodImpostorPixels: 40 });
+    // a later held scene rule wins over the earlier copy rules
+    const q = plan(
+      view([size('near', 40, null), inside], [rule('a', ['near'], ['structure']), sceneSil('s')]),
+      new Set(['in']),
+    );
+    expect(q.lists.get('S')).toMatchObject({ lodImpostorBy: 'distance', lodImpostorDistance: EverywhereDistance });
+  });
+
+  it('a held scene rule and a distance rule: silhouettes beyond the distance rule', () => {
+    const p = plan(
+      view([dist('close', 0, 1000, 0.5), inside], [sceneSil('s'), rule('a', ['close'], ['structure'])]),
+      new Set(['in']),
+    );
+    expect(p.lists.get('S')).toEqual({ lodImpostor: true, lodImpostorBy: 'distance', lodImpostorDistance: 1000 });
+    expect(p.issues).toEqual([]);
+  });
+
+  it('a copy band without a range (a document with errors) does not throw', () => {
+    const bad: IRBand = { id: 'x', evaluator: 'meso.size', version: 1, kind: 'measure', tier: 'copy' };
+    expect(() => plan(view([bad], [rule('a', ['x'], ['silhouette'])]))).not.toThrow();
   });
 });

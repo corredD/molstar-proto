@@ -30,21 +30,34 @@ export const PrismBlendOctaves = 0.5;
 const PixelsMin = 4;
 const PixelsMax = 64;
 
-/** The first hint of a chain a structure type can be drawn as here; surface cannot. */
-function drawable(chain: readonly RepresentationHint[] | undefined): RepresentationHint | undefined {
-  return chain?.find((h) => h === 'structure' || h === 'silhouette' || h === 'spheres');
+/** Silhouettes at every distance: beyond this (Å); 0 is prism-me's automatic distance, not "everywhere" (gate 3). */
+export const EverywhereDistance = 1e-3;
+
+/** What a rule says a structure type is drawn as, and whether the chain had to fall back to say it. */
+function drawable(chain: readonly RepresentationHint[] | undefined): { hint: RepresentationHint; fell: boolean } {
+  const hint = chain?.find((h) => h === 'structure' || h === 'silhouette' || h === 'spheres');
+  // a chain of nothing Prism draws on a structure type (surface): its structure, said
+  return hint ? { hint, fell: false } : { hint: 'structure', fell: !!chain?.length };
+}
+
+interface Layer {
+  readonly band: IRBand;
+  readonly hint: RepresentationHint;
 }
 
 interface TypeHints {
   /** What a rule holding everywhere (a scene band) says. */
   base?: RepresentationHint;
-  /** What rules on copy bands say, by band. */
-  readonly byBand: Map<string, RepresentationHint>;
+  /** What rules on copy bands say, in rule order (later wins). */
+  layers: Layer[];
+  /** A rule's chain fell back to structure (surface asked). */
+  fell: boolean;
 }
 
 /**
  * The silhouettes of each list the view's rules target, from its bands, the scene bands that hold now (`held`) and the
- * types drawn from structures (`structureTypes`: a sphere type has no silhouette and decides nothing).
+ * types drawn from structures (`structureTypes`: a sphere type has no silhouette and decides nothing). A list the rules
+ * that hold do not target is not in the plan (the adapter puts back what it had).
  */
 export function bandPlan(
   view: IRView,
@@ -58,10 +71,10 @@ export function bandPlan(
   // each structure type's hints, the rules in order (later wins)
   const types = new Map<string, Map<number, TypeHints>>();
   for (const rule of view.scales) {
-    const hint = drawable(rule.representation);
-    if (!hint) continue;
+    const { hint, fell } = drawable(rule.representation);
+    if (!rule.representation?.length) continue;
     const everywhere = rule.at.some((id) => bands.get(id)?.tier === 'scene' && held.has(id));
-    const copy = rule.at.filter((id) => bands.get(id)?.tier === 'copy');
+    const copy = rule.at.map((id) => bands.get(id)).filter((b): b is IRBand => b?.tier === 'copy' && !!b.range);
     if (!everywhere && !copy.length) continue;
     for (const t of rule.targets) {
       const withStructure = structureTypes(t.set);
@@ -70,11 +83,12 @@ export function bandPlan(
         let bySet = types.get(t.set);
         if (!bySet) types.set(t.set, (bySet = new Map()));
         let h = bySet.get(type);
-        if (!h) bySet.set(type, (h = { byBand: new Map() }));
+        if (!h) bySet.set(type, (h = { layers: [], fell: false }));
+        h.fell ||= fell;
         if (everywhere) {
           h.base = hint;
-          h.byBand.clear();
-        } else for (const b of copy) h.byBand.set(b, hint);
+          h.layers = [];
+        } else for (const band of copy) h.layers.push({ band, hint });
       }
     }
   }
@@ -102,6 +116,26 @@ export function bandPlan(
   return { lists, issues };
 }
 
+interface Segment {
+  lo: number;
+  hi: number;
+  hint: RepresentationHint;
+}
+
+/** `hint` painted over [lo, hi) of `segments` (later paint wins). */
+function paint(segments: Segment[], lo: number, hi: number, hint: RepresentationHint): Segment[] {
+  const out: Segment[] = [];
+  for (const s of segments) {
+    if (s.hi <= lo || s.lo >= hi) out.push(s);
+    else {
+      if (s.lo < lo) out.push({ lo: s.lo, hi: lo, hint: s.hint });
+      if (s.hi > hi) out.push({ lo: hi, hi: s.hi, hint: s.hint });
+    }
+  }
+  out.push({ lo, hi, hint });
+  return out.sort((a, b) => a.lo - b.lo);
+}
+
 /** One type's silhouettes; `say`: its issues are said (the type the list is drawn as). */
 function typePatch(
   set: string,
@@ -113,54 +147,60 @@ function typePatch(
   const tell = (code: string, message: string) => {
     if (say) issues.push(issue(code, 'info', 'render', `${set}: ${message}`));
   };
-  const named = [...h.byBand.keys()].map((id) => all.find((b) => b.id === id)!).filter((b) => b);
-  // the copy bands in play: those rules name, and with a base, the others of their evaluator
-  const evaluators = new Set(named.map((b) => b.evaluator));
-  const inPlay = h.base ? all.filter((b) => b.tier === 'copy' && evaluators.has(b.evaluator)) : named;
-  const hintOf = (b: IRBand) => h.byBand.get(b.id) ?? h.base;
-  const silhouettes = inPlay.filter((b) => hintOf(b) === 'silhouette');
-  if (!silhouettes.length) {
-    if (h.base === 'silhouette') {
-      tell('representation.fallback', `silhouettes at every size: drawn below ${PixelsMax} px`);
-      return { lodImpostor: true, lodImpostorBy: 'size', lodImpostorPixels: PixelsMax };
-    }
-    return h.base || named.length ? { lodImpostor: false } : undefined;
+  if (h.fell)
+    tell(
+      'representation.fallback',
+      'a rule asks for no drawing Prism has for a structure (surface): drawn as structures',
+    );
+  if (!h.base && !h.layers.length) return undefined;
+  const evaluators = new Set(h.layers.map((l) => l.band.evaluator));
+  if (evaluators.size > 1 || h.layers.some((l) => l.band.params)) {
+    tell('representation.fallback', 'rules on bands of two measures: Prism switches by one, drawn as structures');
+    return { lodImpostor: false };
   }
-  const evaluator = silhouettes[0].evaluator;
-  const sorted = [...silhouettes].sort((a, b) => a.range![0] - b.range![0]);
-  const lo = sorted[0].range![0];
-  const hi = sorted[sorted.length - 1].range![1];
-  const contiguous =
-    silhouettes.every((b) => b.evaluator === evaluator && !b.params && b.range) &&
-    sorted.every((b, k) => k === 0 || sorted[k - 1].range![1] === b.range![0]);
+  const evaluator = h.layers[0]?.band.evaluator;
+  // the measure's line, painted: everywhere what a held scene rule says, then each copy rule over its band
+  let segments: Segment[] = h.base ? [{ lo: 0, hi: Number.POSITIVE_INFINITY, hint: h.base }] : [];
+  for (const l of h.layers)
+    segments = paint(segments, l.band.range![0], l.band.range![1] ?? Number.POSITIVE_INFINITY, l.hint);
+  if (segments.some((s) => s.hint === 'spheres'))
+    tell('representation.fallback', 'spheres asked for a structure: Prism draws its structure (atoms) there');
+  // the silhouettes: one interval
+  const sil = segments.filter((s) => s.hint === 'silhouette');
+  if (!sil.length) return { lodImpostor: false };
+  const lo = sil[0].lo;
+  const hi = sil[sil.length - 1].hi;
+  const contiguous = sil.every((s, k) => k === 0 || sil[k - 1].hi === s.lo);
+  if (contiguous && lo === 0 && hi === Number.POSITIVE_INFINITY)
+    return { lodImpostor: true, lodImpostorBy: 'distance', lodImpostorDistance: EverywhereDistance };
   // Prism's one switch: silhouettes below a size, or beyond a distance
-  const drawable =
-    contiguous && ((evaluator === 'meso.size' && lo === 0) || (evaluator === 'meso.distance' && hi === null));
-  if (!drawable) {
+  const ok =
+    contiguous &&
+    ((evaluator === 'meso.size' && lo === 0) || (evaluator === 'meso.distance' && hi === Number.POSITIVE_INFINITY));
+  if (!ok) {
     tell(
       'representation.fallback',
       'silhouettes asked in a band Prism cannot draw them in (only below a size or beyond a distance): drawn as structures',
     );
     return { lodImpostor: false };
   }
-  // the blend at the switch: the silhouettes' upper bound by size; by distance, the band ending where they start
+  // the blend at the switch: the band of the measure whose upper bound it is
   const bound = evaluator === 'meso.size' ? hi : lo;
-  const blender =
-    evaluator === 'meso.size'
-      ? sorted[sorted.length - 1]
-      : all.find((b) => b.evaluator === evaluator && !b.params && b.range?.[1] === lo);
+  const blender = all.find((b) => b.evaluator === evaluator && !b.params && b.range?.[1] === bound);
   const width = blender?.blend?.width;
-  if (bound !== null && width !== PrismBlendOctaves)
+  if (width !== PrismBlendOctaves || blender?.blend?.by === 'fade')
     tell(
       'bands.blend',
-      `the hand-over at ${bound} ${evaluator === 'meso.size' ? 'px' : 'Å'} is drawn as Prism's ${PrismBlendOctaves} octave dither (asked: ${width === undefined ? 'a switch' : `${width} octave`})`,
+      `the hand-over at ${bound} ${evaluator === 'meso.size' ? 'px' : 'Å'} is drawn as Prism's ${PrismBlendOctaves} octave dither (asked: ${width === undefined ? 'a switch' : `${width} octave${blender?.blend?.by === 'fade' ? ' fade' : ''}`})`,
     );
-  if (evaluator === 'meso.distance') return { lodImpostor: true, lodImpostorBy: 'distance', lodImpostorDistance: lo };
-  const pixels = hi === null ? PixelsMax : Math.min(PixelsMax, Math.max(PixelsMin, hi));
-  if (hi === null || pixels !== hi)
+  if (evaluator === 'meso.distance') {
+    return { lodImpostor: true, lodImpostorBy: 'distance', lodImpostorDistance: lo > 0 ? lo : EverywhereDistance };
+  }
+  const pixels = Math.min(PixelsMax, Math.max(PixelsMin, hi));
+  if (pixels !== hi)
     tell(
       'representation.fallback',
-      `silhouettes below ${hi ?? 'any'} px: drawn below ${pixels} px (Prism's ${PixelsMin}-${PixelsMax})`,
+      `silhouettes below ${hi} px: drawn below ${pixels} px (Prism's ${PixelsMin}-${PixelsMax})`,
     );
   return { lodImpostor: true, lodImpostorBy: 'size', lodImpostorPixels: pixels };
 }
