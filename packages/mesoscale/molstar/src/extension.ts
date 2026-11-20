@@ -111,10 +111,17 @@ const OpenParams = {
   data: OptionalParam(PD.Text('', { multiline: true, description: 'The document: its JSON or its S-expression' })),
   file: OptionalParam(PD.Value<File | null>(null, { isHidden: true, description: 'A document file' })),
   example: OptionalParam(
-    PD.Select<'tiled'>('tiled', [['tiled', 'The tiled fixture (streamed)']], {
-      description:
-        'An example made in code: tiled, the streaming fixture (32 tiles of 400 copies, loaded around the camera)',
-    }),
+    PD.Select<'tiled' | 'exosome-bands'>(
+      'tiled',
+      [
+        ['tiled', 'The tiled fixture (streamed)'],
+        ['exosome-bands', 'The exosome with LOD bands (catalase atoms near, silhouettes far)'],
+      ],
+      {
+        description:
+          'An example made in code: tiled, the streaming fixture (32 tiles of 400 copies, loaded around the camera); exosome-bands, the exosome with LOD bands (catalase from its structure near, silhouettes far)',
+      },
+    ),
   ),
   files: OptionalParam(
     PD.Value<readonly File[]>([], {
@@ -695,7 +702,13 @@ export class MesoViewSpecApi extends ApiArea {
         );
       }
       const url = absolute(values.url?.trim());
-      let read: { doc: MesoViewSpecDoc; tiles?: (resource: string) => TileProvider | undefined } | ApiFailure;
+      let read:
+        | {
+            doc: MesoViewSpecDoc;
+            tiles?: (resource: string) => TileProvider | undefined;
+            files?: ReadonlyMap<string, string | Uint8Array>;
+          }
+        | ApiFailure;
       if (values.example) read = await exampleDocument(values.example);
       else {
         let text: string | undefined;
@@ -724,7 +737,7 @@ export class MesoViewSpecApi extends ApiArea {
           );
         }
       }
-      const files = new Map<string, string | Uint8Array>();
+      const files = new Map<string, string | Uint8Array>(read.files ?? []);
       for (const f of values.files ?? []) files.set(f.name, new Uint8Array(await f.arrayBuffer()));
       let step: Awaited<ReturnType<MesoDocumentModel['open']>>;
       // a tour of the document open stops now, not after its step's hold (not awaited: its next view may queue behind)
@@ -909,10 +922,21 @@ const ExampleTileMs = 150;
  * An example made in code (`mesoviewspec.open` `example`): `tiled`, the streaming lane's fixture (streaming.md,
  * "Fixture"), with its provider. Its module is loaded only then (the examples are large).
  */
-async function exampleDocument(
-  example: 'tiled',
-): Promise<{ doc: MesoViewSpecDoc; tiles: (resource: string) => TileProvider | undefined } | ApiFailure> {
-  if (example !== 'tiled') return ApiResult.fail('invalid', `No example ${example}.`, 'Give example tiled.');
+async function exampleDocument(example: 'tiled' | 'exosome-bands'): Promise<
+  | {
+      doc: MesoViewSpecDoc;
+      tiles?: (resource: string) => TileProvider | undefined;
+      files?: ReadonlyMap<string, string | Uint8Array>;
+    }
+  | ApiFailure
+> {
+  // the exosome with bands (lane `mvs-lod-bands`): its fixtures as files beside it
+  if (example === 'exosome-bands') {
+    const { exosomeBandsDoc, exosomeFiles } = await import('@molstar/meso-spec/examples');
+    return { doc: exosomeBandsDoc(), files: exosomeFiles() };
+  }
+  if (example !== 'tiled')
+    return ApiResult.fail('invalid', `No example ${example}.`, 'Give example tiled or exosome-bands.');
   const { tiledFixture } = await import('@molstar/meso-spec/examples');
   const { doc, provider } = tiledFixture({ delayMs: ExampleTileMs });
   return { doc, tiles: (resource) => (resource === 'r.tiles' ? provider : undefined) };

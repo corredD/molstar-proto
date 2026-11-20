@@ -11,7 +11,9 @@ export {
 export {
   ExosomeRecipe,
   ExosomeResources,
+  exosomeBandsDoc,
   exosomeDoc,
+  exosomeFiles,
 } from './exosome.js';
 export {
   galleryDoc,

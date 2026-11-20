@@ -17,7 +17,7 @@ runtime, as `(band :evaluator … :params (…))`.
              :blend (:width 0.5 :by dither))           ; into mid, at 12 px
 
   ; a condition: holds or not
-  (band in-cell :evaluator meso.eye-inside :params (:compartment (compartment c.cell))))
+  (band in-cell :evaluator meso.eye-inside :params (:compartment c.cell)))
 
 (scales
   (scale s.near-atoms :select (population p.catalase) :at near :show (:representation structure))
@@ -35,8 +35,8 @@ runtime, as `(band :evaluator … :params (…))`.
   **`params`** are checked against the evaluator's schema (`bands.evaluator`). An evaluator the viewer does not have is
   reported (`bands.evaluator`, a warning) and its bands never hold, so their rules' defaults apply.
 - **An evaluator is a measure or a test.** A measure gives a number, and its band holds over a **`range [lo hi)`**
-  (half-open; `inf` for no bound). A test gives true or false, and its band holds while it is true; a test band has no
-  range (`bands.shape`).
+  (half-open; `inf` for no bound, `null` in JSON). A test gives true or false, and its band holds while it is true; a
+  test band has no range (`bands.shape`).
 - **Families.** Bands with the same evaluator and the same params form a family. Their ranges may not overlap
   (`bands.overlap`, as decided); a gap is allowed, and no band of the family holds there. Bands of different families
   are independent: at one moment `far` and `in-cell` may both hold.
@@ -53,8 +53,8 @@ An evaluator is a pure function of what the viewer knows at a moment. It allocat
 measure per copy) or per scene. It declares a **tier**:
 
 - **`copy`**: measured for each copy, so copies of one population may sit in different bands. Where the renderer can
-  switch per copy for the representations involved, it does so on the GPU every frame; elsewhere the population is
-  measured by its median copy on the camera's rest.
+  switch per copy for the representations involved, it does so on the GPU every frame (built: prism-me's silhouettes).
+  Elsewhere the population would be measured by its median copy on the camera's rest (not built).
 - **`scene`**: one value for the whole scene, evaluated on the camera's rest (the canvas camera feed, as streaming's)
   and when the view changes.
 
@@ -70,15 +70,16 @@ measure per copy) or per scene. It declares a **tier**:
 
 ### The registry (v0.6)
 
-| Id                | Kind    | Tier  | Params                    | Gives                                                                                         |
-| ----------------- | ------- | ----- | ------------------------- | --------------------------------------------------------------------------------------------- |
-| `meso.size`       | measure | copy  | none                      | the copy's bounding sphere projected, its diameter in CSS pixels                              |
-| `meso.distance`   | measure | copy  | none                      | the eye's distance to the copy's centre, Å                                                    |
-| `meso.eye-inside` | test    | scene | `compartment`: an address | the eye is inside the compartment's geometry (a sphere, an ellipsoid, a box; a mesh: its box) |
-| `meso.view`       | test    | scene | `view`: an id             | the view shown is this one                                                                    |
+| Id                | Kind    | Tier  | Params               | Gives                                                                                                                    |
+| ----------------- | ------- | ----- | -------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `meso.size`       | measure | copy  | none                 | the copy's bounding sphere projected, its diameter in CSS pixels                                                         |
+| `meso.distance`   | measure | copy  | none                 | the eye's distance to the copy's centre, Å                                                                               |
+| `meso.eye-inside` | test    | scene | `compartment`: an id | the eye is inside the compartment's geometry (a sphere, an ellipsoid, a box); a mesh cannot tell: the band does not hold |
+| `meso.view`       | test    | scene | `view`: an id        | the view shown is this one                                                                                               |
 
 Ids carry a version (`meso.size@1`); an id alone means the newest the viewer has. An extension may register its own,
-under its own prefix, with a schema; a document that names it opens anywhere and degrades as above.
+under its own prefix, with a schema; a document that names it opens anywhere and degrades as above (not built: the v0.6
+registry is fixed, `format/bands.ts`).
 
 ## Blend
 
@@ -101,31 +102,46 @@ color, with depth. It needs the entity's structure (or its sites); otherwise it 
 (`[silhouette spheres]`), with a `render` issue. How a silhouette is drawn (its views, its tile size, flat or lit, far
 copies thinned) is drawing quality and stays the viewer's ([views.md](views.md#two-kinds-of-level-of-detail)).
 
-## In prism-me (lane `mvs-lod-bands`)
+## In prism-me (built, lane `mvs-lod-bands`)
 
-- **Structures:** an entity with a `structure` resource is drawn from it (its list's target); its copies are spheres
-  until it loads, or if it cannot (`resource.unavailable`).
-- **`structure` then `silhouette` at a `meso.size` or `meso.distance` bound** is one list with prism-me's silhouettes
-  on: `lodImpostor`, `lodImpostorBy` (`size` or `distance`), and the bound as `lodImpostorPixels` or
-  `lodImpostorDistance`. The switch and its blend run per copy on the GPU. Inside `structure`, the sphere levels are the
-  viewer's (pixel LOD).
-- **No `silhouette` rule:** `lodImpostor` off; the sphere levels alone, as today.
-- **The blend width** is prism-me's 0.5 octave (`LodImpostorBand`, 0.25 each side of the bound); another width is drawn
-  at 0.5 and said (`bands.blend`).
-- **Scene bands** are evaluated on the camera's rest; when the bands that hold change, the lists' params are written
-  again, out of History (view state, as streamed tiles), never per frame.
+Try it: Ctrl+K, "Open a MesoViewSpec document", example `exosome-bands`
+(`mesoviewspec.open {example: 'exosome-bands'}`): the exosome with catalase from its structure (8CAT) near, as
+silhouettes below 12 px with a 0.5-octave blend, and from its structure at every size in the lumen view.
+
+- **Structures:** an entity with a `structure` resource (a PDB accession: the RCSB BinaryCIF; an absolute `bcif`,
+  `mmcif` or `pdb` URI) is loaded once and becomes its type's target in its list. The list is drawn by a `target`
+  representation (the structure's sphere levels and silhouettes) beside its spheres, which leave those types out, as
+  prism-me draws a structure painted into a list. One that cannot load is said (`resource.unavailable`) and its copies
+  stay spheres. A host that fetches for the viewer passes `fetchBinary`; one that gives `fetchText` and not it fetches
+  no structure. Streamed tiles stay spheres.
+- **`structure` then `silhouette` at a `meso.size` or `meso.distance` bound** sets prism-me's silhouettes on the list:
+  `lodImpostor`, `lodImpostorBy` (`size` or `distance`), and the bound as `lodImpostorPixels` or `lodImpostorDistance`.
+  The switch and its blend run per copy on the GPU. Inside `structure`, the sphere levels are the viewer's (pixel LOD).
+- **What Prism can draw:** silhouettes below a size (a band starting at 0 px) or beyond a distance (a band with no upper
+  bound); a size bound within 4-64 px (outside, the nearest, said); one far drawing per list (types of one list that
+  disagree: the first type's, said). Anything else is drawn as structures and said (`representation.fallback`).
+- **Structure at every band:** `lodImpostor` off, the sphere levels alone. **A list no rule targets** is left as the
+  person had it.
+- **The blend width** is prism-me's 0.5 octave (`LodImpostorBand`, 0.25 each side of the bound); another width, or none,
+  is drawn at 0.5 and said (`bands.blend`).
+- **Scene bands** are evaluated at each commit and when the camera rests (the canvas camera feed); when the bands that
+  hold change, the lists' params are written again, out of History (view state, as streamed tiles), never per frame.
 - **Not yet:** a switch between other representations (two lists and their visibility), `envelope`, `detail` and
-  `source` per band.
+  `source` per band; copy measures on the CPU; evaluators from extensions; the S-expression spelling of `bands`.
 
-## What building it touches
+## What it touched
 
 | Where                                    | What                                                                                                                |
 | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
 | `format/doc.ts`                          | `Band {id, evaluator?, params?, range?, size?, blend?}`, `bands`, `View.bands`, `ScaleRule` with `at`, `silhouette` |
+| `format/bands.ts` (new)                  | the registry: ids, versions, kinds, tiers, params; the `size` shorthand; a view's bands                             |
 | `format/validate.ts`, `format/issues.ts` | `bands.overlap`, `bands.shape`, `bands.evaluator`, `bands.blend`, `scales.shape`                                    |
-| `runtime/bands.ts` (new)                 | the registry, the evaluators, which bands hold for a camera                                                         |
-| `ir`                                     | `IRView` gets the bands as the view resolves them and the rules                                                     |
-| `molstar/prism-adapter.ts`               | structures as targets; bands to `lodImpostor*`; scene bands on the camera's rest                                    |
+| `runtime/bands.ts` (new)                 | the evaluators, which bands hold for a camera, the bands a view resolves                                            |
+| `ir`                                     | `IRView.bands` (as the view resolves them), `IRView.scales` (rules on whole types)                                  |
+| `molstar/entity-structures.ts` (new)     | an entity's structure as a load source; the loaded structures, once each                                            |
+| `molstar/band-plan.ts` (new)             | a view's bands and rules as each list's silhouettes                                                                 |
+| `molstar/prism-adapter.ts`               | structures as targets, the `target` representation; the plan written each commit and when the camera rests          |
+| `molstar/extension.ts`                   | `fetchBinary`; the `exosome-bands` example                                                                          |
 
 ## Open, for David
 

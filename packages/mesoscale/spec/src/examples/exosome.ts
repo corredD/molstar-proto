@@ -330,3 +330,39 @@ export function exosomeDoc(options: { relax?: boolean } = {}): MesoViewSpecDoc {
 
   return b.build().doc;
 }
+
+/**
+ * The exosome with bands (_spec/bands.md, proposed v0.6; lane `mvs-lod-bands`): catalase drawn from its structure near,
+ * as silhouettes below 12 px with Prism's 0.5-octave blend, and from its structure at every size in the lumen view.
+ */
+export function exosomeBandsDoc(): MesoViewSpecDoc {
+  const d = exosomeDoc();
+  return {
+    ...d,
+    metadata: { ...d.metadata, title: `${d.metadata.title} (LOD bands)` },
+    bands: [
+      { id: 'b.near', size: [12, null] },
+      { id: 'b.far', size: [0, 12], blend: { width: 0.5, by: 'dither' } },
+      { id: 'b.lumen', evaluator: 'meso.view', params: { view: 'v.lumen' } },
+    ],
+    scales: [
+      { id: 's.atoms', select: '(entity e.catalase)', at: 'b.near', show: { representation: 'structure' } },
+      {
+        id: 's.shape',
+        select: '(entity e.catalase)',
+        at: 'b.far',
+        show: { representation: ['silhouette', 'spheres'] },
+      },
+      { id: 's.lumen', select: '(entity e.catalase)', at: 'b.lumen', show: { representation: 'structure' } },
+    ],
+  };
+}
+
+/** The exosome's fixture resources as files by name, as a person would drop them beside the document. */
+export function exosomeFiles(): Map<string, string> {
+  const files = new Map<string, string>();
+  files.set('exosome.cellpack-gpu.json', JSON.stringify(ExosomeRecipe));
+  files.set('membrane.obj', String(syntheticVesicleObj()));
+  files.set('catalase_picks.star', String(syntheticPicksStar()));
+  return files;
+}

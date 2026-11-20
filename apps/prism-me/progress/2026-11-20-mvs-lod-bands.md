@@ -31,6 +31,29 @@ evaluate, possibly a reference to some runtime, as `(Band :evaluator xxx :params
 
 ## Log
 
+- `4a3ed96ce`: `origin/prism-me` (`ecd830ae0`) merged in. Conflicts: mesoscale `operations.ts` (git aligned prism-me's
+  new grow code against colors-by-zoom; prism-me's side taken and the owned list's redraw re-applied in colors-by-zoom),
+  explorer `operations.ts` (prism-me's list data as drawn; a document's list still no row), explorer `ui.tsx` (both),
+  `features.md` (prism-me's rows and the five MesoViewSpec rows), `TODO.md` and `current.md` (prism-me's). Types clean;
+  the failures left are the base's (below).
+- `43584ea22`: the spec draft, `_spec/bands.md`; pointers in views.md, README.md, design.md (decision 15; 14 is the
+  placement proposal's).
+- `dd7c6587a` (tests) `dc1ed359b`: entities drawn from their structures. Decided: the structures load inside the step
+  that makes the list (an open waits for them: about 1 s for 8CAT), so Undo restores lists with their targets; a type
+  without one, or one that fails, stays a sphere.
+- `7f01bce51` (tests) `21c35fbd8`: bands, evaluators, scale rules, `silhouette`; the references regenerated (through a
+  one-off vitest run of `generateReference`: `pnpm spec` does not run on Windows). `runtime/index.ts` is rewritten LF
+  (it was CRLF, one of the base's "no Mol\* header" misses).
+- `20ee41366` (tests) `5c0cb0e18`: the band plan and the adapter. Found on the way: the adapter drew document lists with
+  `spacefill`, which draws one sphere a copy and ignores targets; a list with structures now has a `target`
+  representation beside its spheres (`excludeTargets`), as prism-me draws a painted structure. And the app's tests
+  opening exosome reached RCSB (8CAT); `fetchBinary` now carries structure fetches, and a host that gives `fetchText`
+  without it fetches none (the tests' harnesses), so the tests stay off the network.
+- The `exosome-bands` example (`mesoviewspec.open {example: 'exosome-bands'}`), its fixtures given as files.
+- Checks: types clean; mesoscale molstar, extension and prism-me medium suites 189 pass. Unit failures are the base's 15
+  on Windows: `cli.test` (8) and `spec.test` (5) (ESM `c:` URLs, CRLF headers, `symbol.unknown` unregistered),
+  `one-look-writer` (path separator), `paint-mode` "Place Auto keeps the mesh…" (fails on `origin/prism-me` alone too).
+
 ## Gate
 
 ## Open

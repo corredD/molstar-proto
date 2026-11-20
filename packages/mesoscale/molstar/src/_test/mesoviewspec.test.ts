@@ -405,3 +405,16 @@ describe('the stub', () => {
     expect(source).not.toMatch(/from '@molstar\/meso-spec|from '\.\/document-model|from '\.\/extension/);
   });
 });
+
+describe('the exosome with bands (lane mvs-lod-bands)', () => {
+  it('opens as an example, its fixtures beside it; no structure fetched by a host that fetches itself', {
+    tags: ['medium'],
+  }, async () => {
+    const { v, fake, run } = await open();
+    const r = await run('mesoviewspec.open', { example: 'exosome-bands' });
+    expect(r.ok).toBe(true);
+    expect(lists(v)).toBeGreaterThan(0);
+    expect(fake.asked).toEqual([]);
+    expect(r.warnings?.join('\n') ?? '').not.toMatch(/bands\.|scales\./);
+  });
+});
