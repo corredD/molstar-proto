@@ -197,9 +197,6 @@ export const GlobalUniformSchema = {
     uAudioTumbleScale: UniformSpec('f'),
     uAudioObjectTransformScale: UniformSpec('f'),
     uAudioAssemblyAxisAmplitudeScale: UniformSpec('f'),
-    uAudioAssemblyAxisCount: UniformSpec('i'),
-    uAudioAssemblyAxisCenter: UniformSpec('v3'),
-    uAudioAssemblyAxes: UniformSpec('v3[]'),
     uAudioLodMotionScale: UniformSpec('f'),
     uAudioStemDrums: UniformSpec('f'),
     uAudioStemBass: UniformSpec('f'),
@@ -462,6 +459,10 @@ export const AnimationSchema = {
     uObjectTransformStrength: UniformSpec('f', 'material'),
     uObjectTransformFloor: UniformSpec('f', 'material'),
     uObjectTransformMode: UniformSpec('i', 'material'),
+    /** the symmetry axes of the object's own structure (model space), set by the audio-reactive animation */
+    uAudioAssemblyAxisCount: UniformSpec('i', 'material'),
+    uAudioAssemblyAxisCenter: UniformSpec('v3', 'material'),
+    uAudioAssemblyAxes: UniformSpec('v3[]', 'material'),
 } as const;
 export type AnimationSchema = typeof AnimationSchema
 export type AnimationValues = Values<AnimationSchema>

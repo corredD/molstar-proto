@@ -11,7 +11,7 @@ import { PluginAnimationManager } from '../mol-plugin-state/manager/animation';
 import { isTimingMode } from '../mol-util/debug';
 import { printTimerResults } from '../mol-gl/webgl/timer';
 import { Vec3 } from '../mol-math/linear-algebra';
-import { AudioReactiveAssemblyAxisMaxCount, getSelectedStructureAssemblyAxes } from '../mol-plugin-state/helpers/assembly-symmetry-axis';
+import { syncStructureAssemblyAxes } from '../mol-plugin-state/helpers/assembly-symmetry-axis';
 
 const MaxProperFrameDelta = 1000 / 30;
 
@@ -25,8 +25,6 @@ export class PluginAnimationLoop {
 
     private currentFrame: number | undefined = undefined;
     private _isAnimating = false;
-    private readonly audioAssemblyAxes = new Array<number>(AudioReactiveAssemblyAxisMaxCount * 3).fill(0);
-    private readonly audioAssemblyAxisCenter = Vec3();
 
     get isAnimating() {
         return this._isAnimating;
@@ -37,7 +35,8 @@ export class PluginAnimationLoop {
         const audioFrame = this.plugin.managers.audioReactive.tick(t);
         const audioParams = this.plugin.managers.audioReactive.state.params.value;
         const stems = this.plugin.managers.audioReactive.stems;
-        const assemblyAxisCount = getSelectedStructureAssemblyAxes(this.plugin, audioParams.assemblyAxisOrder, this.audioAssemblyAxes, this.audioAssemblyAxisCenter);
+        // each structure's objects get their own structure's symmetry axes
+        syncStructureAssemblyAxes(this.plugin, audioParams.assemblyAxisOrder);
         const animationOptions = this.plugin.managers.structure.component.state.options.animation;
         // Zero out the assembly-axis scale for local/global axis modes so the shader takes the
         // flat (radius-independent) path instead of the Stokes-Einstein–scaled assembly path.
@@ -73,9 +72,6 @@ export class PluginAnimationLoop {
             tumbleScale: audioParams.tumbleEffectScale,
             objectTransformScale: audioParams.objectTransformEffectScale,
             assemblyAxisAmplitudeScale,
-            assemblyAxisCount,
-            assemblyAxisCenter: this.audioAssemblyAxisCenter,
-            assemblyAxes: this.audioAssemblyAxes,
             lodMotionScale,
             stemDrums: stems.drums,
             stemBass: stems.bass,

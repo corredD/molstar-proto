@@ -109,9 +109,6 @@ export type AudioReactiveFrame = {
     tumbleScale: number,
     objectTransformScale: number,
     assemblyAxisAmplitudeScale: number,
-    assemblyAxisCount: number,
-    assemblyAxisCenter: Vec3,
-    assemblyAxes: number[],
     lodMotionScale: number,
     /** each separated stem's level (0-1), or its stand-in from the bands */
     stemDrums: number,
@@ -328,9 +325,6 @@ namespace Renderer {
             uAudioTumbleScale: ValueCell.create(1),
             uAudioObjectTransformScale: ValueCell.create(1),
             uAudioAssemblyAxisAmplitudeScale: ValueCell.create(1),
-            uAudioAssemblyAxisCount: ValueCell.create(0),
-            uAudioAssemblyAxisCenter: ValueCell.create(Vec3.create(0, 0, 0)),
-            uAudioAssemblyAxes: ValueCell.create(new Array<number>(32 * 3).fill(0)),
             uAudioLodMotionScale: ValueCell.create(1),
             uAudioStemDrums: ValueCell.create(0),
             uAudioStemBass: ValueCell.create(0),
@@ -951,9 +945,6 @@ namespace Renderer {
                 ValueCell.updateIfChanged(globalUniforms.uAudioTumbleScale, frame.tumbleScale);
                 ValueCell.updateIfChanged(globalUniforms.uAudioObjectTransformScale, frame.objectTransformScale);
                 ValueCell.updateIfChanged(globalUniforms.uAudioAssemblyAxisAmplitudeScale, frame.assemblyAxisAmplitudeScale);
-                ValueCell.updateIfChanged(globalUniforms.uAudioAssemblyAxisCount, frame.assemblyAxisCount);
-                ValueCell.update(globalUniforms.uAudioAssemblyAxisCenter, frame.assemblyAxisCenter);
-                ValueCell.update(globalUniforms.uAudioAssemblyAxes, frame.assemblyAxes);
                 ValueCell.updateIfChanged(globalUniforms.uAudioLodMotionScale, frame.lodMotionScale);
                 ValueCell.updateIfChanged(globalUniforms.uAudioStemDrums, frame.stemDrums);
                 ValueCell.updateIfChanged(globalUniforms.uAudioStemBass, frame.stemBass);

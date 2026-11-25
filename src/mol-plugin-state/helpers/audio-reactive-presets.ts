@@ -253,7 +253,7 @@ export const AudioReactivePresetDefinitions: readonly AudioReactivePresetDefinit
     {
         name: 'stem-drift',
         label: 'Stem Drift',
-        description: 'One stem per motion, gently: the bass moves the subunits along the symmetry axes, the drums nudge the whole capsid, the other instruments shimmer the atoms. Best with Stem Separation on.',
+        description: 'One stem per motion: the drums burst the subunits out along the symmetry axes on each hit, the bass sways the whole capsid, the other instruments shimmer the atoms. Picked when Stem Separation is turned on.',
         analysis: {
             fftSize: 2048,
             analysisSampleRate: 24000,
@@ -286,13 +286,13 @@ export const AudioReactivePresetDefinitions: readonly AudioReactivePresetDefinit
             audioWiggleSource: 'stemOther',
             audioWiggleStrength: 1.3,
             audioWiggleFloor: 0.1,
-            audioTumbleSource: 'stemBass',
-            audioTumbleStrength: 2.2,
-            audioTumbleFloor: 0.12,
+            audioTumbleSource: 'stemDrums',
+            audioTumbleStrength: 2.8,
+            audioTumbleFloor: 0.04,
             objectTransformEnabled: true,
             objectTransformSpeed: 0.45,
             objectTransformAmplitude: 0.6,
-            objectTransformSource: 'stemDrums',
+            objectTransformSource: 'stemBass',
             objectTransformStrength: 0.8,
             objectTransformFloor: 0.05,
         }

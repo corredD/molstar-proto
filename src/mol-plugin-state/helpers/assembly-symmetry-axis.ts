@@ -2,10 +2,13 @@
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author OpenAI
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { Structure } from '../../mol-model/structure';
 import { Vec3 } from '../../mol-math/linear-algebra';
+import { ValueCell } from '../../mol-util';
+import type { AnimationData } from '../../mol-geo/geometry/animation';
 import { PluginContext } from '../../mol-plugin/context';
 import { AssemblySymmetryData, AssemblySymmetryDataProvider, AssemblySymmetryProvider, AssemblySymmetryValue } from '../../extensions/assembly-symmetry/prop';
 
@@ -99,13 +102,57 @@ export function getStructureAssemblyAxes(structure: Structure, order: AudioReact
     return writeAssemblyAxes(axes, outAxes, outCenter);
 }
 
-export function getSelectedStructureAssemblyAxes(plugin: PluginContext, order: AudioReactiveAssemblyAxisOrder, outAxes: number[], outCenter: Vec3) {
-    for (const selected of plugin.managers.structure.hierarchy.selection.structures) {
-        const structure = selected.cell.obj?.data;
-        if (!structure) continue;
-        const count = getStructureAssemblyAxes(structure, order, outAxes, outCenter);
-        if (count > 0) return count;
+type StructureAxes = { key: string, count: number, axes: number[], center: Vec3 };
+
+const symmetryIds = new WeakMap<object, number>();
+let nextSymmetryId = 1;
+const structureAxes = new WeakMap<Structure, StructureAxes>();
+/** which axes each object's values hold (keyed by its axes cell, new when the object is rebuilt) */
+const appliedAxes = new WeakMap<object, string>();
+
+/** the axes of `structure` for `order`, cached until its symmetry or the order changes */
+function getCachedStructureAxes(structure: Structure, order: AudioReactiveAssemblyAxisOrder): StructureAxes {
+    const symmetry = getAssemblySymmetry(structure);
+    let symmetryId = 0;
+    if (symmetry) {
+        symmetryId = symmetryIds.get(symmetry) ?? 0;
+        if (!symmetryId) symmetryIds.set(symmetry, symmetryId = nextSymmetryId++);
     }
-    clearAssemblyAxes(outAxes, outCenter);
-    return 0;
+    const key = `${symmetryId}:${order}`;
+    const cached = structureAxes.get(structure);
+    if (cached?.key === key) return cached;
+    const axes = new Array<number>(AudioReactiveAssemblyAxisMaxCount * 3).fill(0);
+    const center = Vec3();
+    const count = getStructureAssemblyAxes(structure, order, axes, center);
+    const entry = { key: `${key}:${count}`, count, axes, center };
+    structureAxes.set(structure, entry);
+    return entry;
+}
+
+/**
+ * Gives every loaded structure's render objects its own symmetry axes and centre (model space; the shader moves them by
+ * each instance's transform), so a second virus explodes along its axes, not the first one's. Cheap when nothing
+ * changed: one cache lookup per structure and one per object.
+ */
+export function syncStructureAssemblyAxes(plugin: PluginContext, order: AudioReactiveAssemblyAxisOrder) {
+    for (const s of plugin.managers.structure.hierarchy.current.structures) {
+        const structure = s.cell.obj?.data;
+        if (!structure) continue;
+        const entry = getCachedStructureAxes(structure, order);
+        for (const component of s.components) {
+            for (const r of component.representations) {
+                const repr = r.cell.obj?.data.repr;
+                if (!repr) continue;
+                for (const ro of repr.renderObjects) {
+                    const values = ro.values as Partial<AnimationData>;
+                    if (!values.uAudioAssemblyAxes || !values.uAudioAssemblyAxisCount || !values.uAudioAssemblyAxisCenter) continue;
+                    if (appliedAxes.get(values.uAudioAssemblyAxes) === entry.key) continue;
+                    ValueCell.update(values.uAudioAssemblyAxisCount, entry.count);
+                    ValueCell.update(values.uAudioAssemblyAxisCenter, Vec3.clone(entry.center));
+                    ValueCell.update(values.uAudioAssemblyAxes, entry.axes.slice());
+                    appliedAxes.set(values.uAudioAssemblyAxes, entry.key);
+                }
+            }
+        }
+    }
 }

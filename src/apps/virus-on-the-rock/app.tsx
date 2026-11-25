@@ -1001,12 +1001,18 @@ export class VirusOnTheRockApp {
             await this.ensureSpacefillRepresentation(structure);
             if (token !== this.syncToken) return;
         }
+        // a structure just styled has the preset's spacefill: give it the chosen mode too
+        await this.setRepresentationMode(this.state.value.representationMode);
+        if (token !== this.syncToken) return;
 
         const structureRef = this.currentStructureRef ?? allStructures[0];
         if (token !== this.syncToken) return;
 
-        await this.ensureAssemblySymmetry(structureRef);
-        if (token !== this.syncToken) return;
+        // every structure explodes along its own axes: each needs its symmetry, not only the current one
+        for (const s of allStructures) {
+            await this.ensureAssemblySymmetry(s);
+            if (token !== this.syncToken) return;
+        }
 
         const structure = structureRef.cell.obj?.data;
         const symmetry = structure ? AssemblySymmetryProvider.get(structure).value : void 0;
@@ -1228,12 +1234,15 @@ export class VirusOnTheRockApp {
         const update = plugin.state.data.build();
         for (const cell of cells) {
             const ref = cell.transform.ref;
+            // the committed params, not the update's draft: the draft is a proxy revoked once the update ends, and
+            // reading it on the way back to spacefill threw ("proxy that has been revoked"), leaving the blob
+            const committedType = (cell.transform.params as any)?.type;
             update.to(ref).update((old: any) => {
                 if (!old?.type) return;
                 // idempotent: re-applying the current mode must not rebuild the geometry
                 if (mode === 'blob-surface') {
                     if (old.type.name === 'blob-surface') return;
-                    this.spacefillTypeCache.set(ref, old.type);
+                    if (committedType?.name !== 'blob-surface') this.spacefillTypeCache.set(ref, committedType);
                     old.type = getBlobSurfaceTypeParams();
                 } else {
                     if (old.type.name !== 'blob-surface') return;
@@ -1443,7 +1452,12 @@ function StemSeparationCard({ app }: { app: VirusOnTheRockApp }) {
             {(['off', ...StemModelIds] as const).map(id => <button
                 key={id}
                 className={`vor-chip ${current === id ? 'vor-active' : ''}`}
-                onClick={() => manager.setParams({ stemModel: id })}
+                onClick={() => {
+                    manager.setParams({ stemModel: id });
+                    // the stems only move the virus through the Stem sources: turning separation on picks the preset
+                    // that uses them (any other preset can be picked after)
+                    if (id !== 'off' && app.state.value.activePreset !== 'stem-drift') void app.applyAudioPreset('stem-drift');
+                }}
                 title={id === 'off' ? 'No separation: the stems come from the frequency bands, with no delay.' : StemModels[id].description}
             >
                 {id === 'off' ? 'Off' : StemModels[id].label}

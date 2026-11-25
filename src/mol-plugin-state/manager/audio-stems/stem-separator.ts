@@ -71,6 +71,8 @@ const LevelRangeDb = 24;
 const ReferenceBelowMixDb = 15;
 /** running peaks fall this fast, dB per second */
 const PeakDecayDbPerSecond = 0.6;
+/** the drums keep their hits: instant attack, a short release, whatever the band smoothing */
+const DrumsReleaseMs = 160;
 
 function applyAttackRelease(previous: number, target: number, dtMs: number, attackMs: number, releaseMs: number) {
     if (dtMs <= 0) return target;
@@ -262,7 +264,9 @@ export class StemSeparator {
             const reference = Math.max(this.peaks[s], this.mixPeak - ReferenceBelowMixDb);
             const linear = Math.min(1, Math.max(0, (db[s] - (reference - LevelRangeDb)) / LevelRangeDb));
             const target = linear * linear;
-            this.levels[s] = applyAttackRelease(this.levels[s], target, dtMs, attackMs, releaseMs);
+            this.levels[s] = s === 'drums'
+                ? applyAttackRelease(this.levels[s], target, dtMs, 0, DrumsReleaseMs)
+                : applyAttackRelease(this.levels[s], target, dtMs, attackMs, releaseMs);
         }
         return { ...this.levels };
     }

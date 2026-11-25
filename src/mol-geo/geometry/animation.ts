@@ -2,8 +2,10 @@
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
+import { Vec3 } from '../../mol-math/linear-algebra';
 import { ValueCell } from '../../mol-util';
 import { ParamDefinition as PD } from '../../mol-util/param-definition';
 
@@ -33,7 +35,13 @@ export type AnimationData = {
     uObjectTransformStrength: ValueCell<number>,
     uObjectTransformFloor: ValueCell<number>,
     uObjectTransformMode: ValueCell<number>,
+    uAudioAssemblyAxisCount: ValueCell<number>,
+    uAudioAssemblyAxisCenter: ValueCell<Vec3>,
+    uAudioAssemblyAxes: ValueCell<number[]>,
 }
+
+/** room for this many symmetry axes per object (the shader's uAudioAssemblyAxes[32]) */
+export const AnimationAssemblyAxisMaxCount = 32;
 
 export const ObjectTransformModeOptions = [
     ['uniform', 'Uniform'],
@@ -221,6 +229,10 @@ export function createAnimationValues(props: AnimationProps) {
         uObjectTransformStrength: ValueCell.create(props.objectTransformStrength),
         uObjectTransformFloor: ValueCell.create(props.objectTransformFloor),
         uObjectTransformMode: ValueCell.create(getObjectTransformModeIndex(props.objectTransformMode)),
+        // filled per structure each frame (syncStructureAssemblyAxes): none until then
+        uAudioAssemblyAxisCount: ValueCell.create(0),
+        uAudioAssemblyAxisCenter: ValueCell.create(Vec3.create(0, 0, 0)),
+        uAudioAssemblyAxes: ValueCell.create(new Array<number>(AnimationAssemblyAxisMaxCount * 3).fill(0)),
     };
 }
 
