@@ -2,6 +2,7 @@
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author OpenAI
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { AnimationProps } from '../../mol-geo/geometry/animation';
@@ -12,6 +13,7 @@ export type AudioReactivePresetName =
     | 'bass-groove'
     | 'bass-groove-strong'
     | 'bass-spectrum'
+    | 'subtle-drift'
     | 'ambient-pulse'
     | 'performance'
     | 'full-spectrum';
@@ -198,6 +200,53 @@ export const AudioReactivePresetDefinitions: readonly AudioReactivePresetDefinit
             objectTransformSource: 'midsTreble',
             objectTransformStrength: 0.9,
             objectTransformFloor: 0.08,
+        }
+    },
+    {
+        name: 'subtle-drift',
+        label: 'Subtle Drift',
+        description: 'Gentle motion: slow envelopes, small displacements, the bass breathing and the rest shimmering.',
+        analysis: {
+            fftSize: 2048,
+            analysisSampleRate: 24000,
+            bandNormalizationGain: 8,
+            amplitudeAttackMs: 60,
+            amplitudeReleaseMs: 450,
+            bandAttackMs: 60,
+            bandReleaseMs: 500,
+            beatAttackMs: 20,
+            beatReleaseMs: 380,
+            dominantFrequencyAttackMs: 40,
+            dominantFrequencyReleaseMs: 300,
+            beatThreshold: 1.3,
+            beatSensitivity: 6,
+            beatBaselineMs: 400,
+        },
+        animation: {
+            atomWiggleEnabled: true,
+            wiggleMode: 'position',
+            wiggleSpeed: 3,
+            wiggleAmplitude: 0.3,
+            wiggleFrequency: 0.15,
+            instanceTumbleEnabled: true,
+            tumbleSpeed: 0.5,
+            tumbleAmplitude: 3,
+            tumbleFrequency: 0.15,
+            tumbleTranslationMode: 'axis',
+            tumbleAxisSource: 'assembly',
+            tumbleAxis: 'z',
+            audioWiggleSource: 'midsTreble',
+            audioWiggleStrength: 0.7,
+            audioWiggleFloor: 0.05,
+            audioTumbleSource: 'bass',
+            audioTumbleStrength: 1.2,
+            audioTumbleFloor: 0.05,
+            objectTransformEnabled: true,
+            objectTransformSpeed: 0.3,
+            objectTransformAmplitude: 0.35,
+            objectTransformSource: 'midsTreble',
+            objectTransformStrength: 0.5,
+            objectTransformFloor: 0.03,
         }
     },
     {

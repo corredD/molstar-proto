@@ -2,6 +2,7 @@
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author OpenAI
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import * as React from 'react';
@@ -102,7 +103,17 @@ const AudioUrlPresets = [
 ] as const;
 const DefaultAudioUrlPreset = AudioUrlPresets.find(p => p.url === DefaultAudioUrl) ?? AudioUrlPresets[0];
 const ExamplePdbIds = ['2tbv', '2plv'] as const;
+const DefaultPresetName: AudioReactivePresetName = 'subtle-drift';
+/** Starting values of the effect knobs: gentle, with the beat threshold where the presets keep it */
+const DefaultEffectKnobs: Partial<AudioReactiveAnimationManagerValues> = {
+    wiggleEffectScale: 0.6,
+    tumbleEffectScale: 0.6,
+    objectTransformEffectScale: 0.5,
+    assemblyAxisAmplitudeScale: 3,
+    beatThreshold: 1.3,
+};
 const FeaturedPresetNames: readonly AudioReactivePresetName[] = [
+    'subtle-drift',
     'bass-spectrum',
     'bass-groove-strong',
     'full-spectrum',
@@ -355,7 +366,7 @@ async function resolveAudioUrl(url: string) {
 function createInitialState(params: AudioReactiveAnimationManagerValues, animation: AnimationProps): VirusOnTheRockState {
     const axisState = getAxisModeState(animation);
     return {
-        activePreset: 'bass-spectrum',
+        activePreset: DefaultPresetName,
         loadedEntries: [],
         audioLoaded: false,
         ...axisState,
@@ -638,8 +649,9 @@ export class VirusOnTheRockApp {
             this.viewer.plugin.log.error(`Failed to load default audio ${DefaultAudioLabel}: ${error}`);
         }
 
-        await this.applyAudioPreset('bass-spectrum');
-        this.viewer.plugin.managers.audioReactive.setParams({ assemblyAxisAmplitudeScale: 15, beatThreshold: 0.05 });
+        // the effect scales and beat threshold are the user's knobs, kept across presets: set once here
+        this.viewer.plugin.managers.audioReactive.setParams(DefaultEffectKnobs);
+        await this.applyAudioPreset(DefaultPresetName);
         await this.syncSelectedStructure();
     }
 
