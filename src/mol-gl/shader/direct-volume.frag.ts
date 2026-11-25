@@ -85,6 +85,7 @@ uniform float uXrayEdgeFalloff;
 uniform float uCelSteps;
 uniform float uExposure;
 uniform float uAudioIllumination;
+uniform float uAudioHue;
 
 uniform int uRenderMask;
 

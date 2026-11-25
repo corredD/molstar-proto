@@ -110,5 +110,14 @@ export const apply_light_color = `
     gl_FragColor = vec4(outgoingLight, color.a);
 #endif
 
+// the colour-spectrum channel: hues rotate around the grey axis, each ~20 A cell by its own random share
+if (uAudioHue > 0.0) {
+    float cellRandom = fract(sin(dot(floor(vModelPosition * 0.05), vec3(12.9898, 78.233, 37.719))) * 43758.5453);
+    float hueAngle = uAudioHue * 6.2831853 * (0.25 + 0.75 * cellRandom);
+    float hc = cos(hueAngle), hs = sin(hueAngle);
+    vec3 k = vec3(0.57735);
+    gl_FragColor.rgb = gl_FragColor.rgb * hc + cross(k, gl_FragColor.rgb) * hs + k * dot(k, gl_FragColor.rgb) * (1.0 - hc);
+}
+
 gl_FragColor.rgb *= uExposure;
 `;

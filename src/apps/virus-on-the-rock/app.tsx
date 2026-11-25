@@ -11,6 +11,8 @@ import { BehaviorSubject, Subscription } from 'rxjs';
 import { AssemblySymmetryData, AssemblySymmetryDataProvider, AssemblySymmetryProvider, AssemblySymmetryValue } from '../../extensions/assembly-symmetry/prop';
 import { getAssemblySymmetryConfig, tryCreateAssemblySymmetry } from '../../extensions/assembly-symmetry/behavior';
 import { Vec3 } from '../../mol-math/linear-algebra/3d/vec3';
+import { Mat4 } from '../../mol-math/linear-algebra/3d/mat4';
+import type { GraphicsRenderObject } from '../../mol-gl/render-object';
 import { Vec4 } from '../../mol-math/linear-algebra/3d/vec4';
 import { ValueCell } from '../../mol-util/value-cell';
 import { setSubtreeVisibility } from '../../mol-plugin/behavior/static/state';
@@ -27,7 +29,7 @@ import { SpacefillRepresentationProvider } from '../../mol-repr/structure/repres
 import { DefaultAudioBandDefinitions } from '../../mol-plugin-state/manager/audio-reactor';
 import { AudioProminenceRadar } from '../../mol-plugin-ui/controls/audio-prominence-radar';
 import { AudioReactivePresetDefinitions, AudioReactivePresetName, getAudioReactivePreset, getPresetRoutes } from '../../mol-plugin-state/helpers/audio-reactive-presets';
-import { AudioRouteSources, AudioRouteTargets, createAudioRoute, getDefaultAudioRoutes, type AudioRoute } from '../../mol-plugin-state/manager/audio-routing';
+import { AudioRouteSources, AudioRouteTargets, createAudioRoute, getAudioRouteSourceLabel, getAudioRouteTargetLabel, getDefaultAudioRoutes, type AudioRoute } from '../../mol-plugin-state/manager/audio-routing';
 import { AudioReactiveAnimationManagerValues, type AudioReactiveStatus, getStemDelaySeconds } from '../../mol-plugin-state/manager/audio-reactive-animation';
 import { StemModelIds, StemModels, type StemName, StemNames } from '../../mol-plugin-state/manager/audio-stems/stem-models';
 import { AudioReactiveAssemblyAxisOrder } from '../../mol-plugin-state/helpers/assembly-symmetry-axis';
@@ -120,6 +122,13 @@ const BeatCyclePeakFloor = 0.05;
 /** the camera-zoom channel narrows the field of view by this much per unit of drive, at most CameraZoomMax */
 const CameraZoomPerDrive = 0.08;
 const CameraZoomMax = 0.3;
+/** camera spin: radians per second at a drive of 1; camera rock: the swing at a drive of 1 and its period */
+const CameraSpinRadPerSecond = 0.5;
+const CameraRockRadians = 0.25;
+const CameraRockPeriodSeconds = 4;
+/** opacity: fades this much per unit of drive, never below OpacityMin */
+const OpacityPerDrive = 0.4;
+const OpacityMin = 0.15;
 /** Starting values of the effect knobs: the beat threshold where the presets keep it (0.05 fired a beat every frame), a moderate axis travel */
 const DefaultEffectKnobs: Partial<AudioReactiveAnimationManagerValues> = {
     wiggleEffectScale: 1,
@@ -471,6 +480,15 @@ function getSceneVisualizerFrame(app: VirusOnTheRockApp, width: number, height: 
     };
 }
 
+/** the route lines: this many samples (~5 s at the status rate), each line scaled by its own recent maximum */
+const RouteLineSamples = 150;
+const RouteLineMinScale = 0.25;
+const RouteSourceColors: Partial<Record<AudioRoute['source'], string>> = {
+    stemDrums: '#ff7b72', stemBass: '#79c0ff', stemOther: '#7ee787', stemVocals: '#d2a8ff',
+    beat: '#ffd166', amplitude: '#f0f6fc', subBass: '#4dabf7', bass: '#56d4ff', lowMids: '#63e6be',
+    mids: '#a9e34b', highMids: '#ffa94d', treble: '#ff8787', midsTreble: '#e599f7',
+};
+
 function buildWavePath(samples: ArrayLike<number>, x0: number, x1: number, centerY: number, amplitude: number) {
     if (samples.length === 0) return '';
 
@@ -569,6 +587,8 @@ export class VirusOnTheRockApp {
             this.viewer.plugin.canvas3d!.didDraw.subscribe(() => {
                 this.updateAudioReactiveClips();
                 this.updateAudioCameraZoom();
+                this.updateAudioCameraMotion();
+                this.updateAudioOpacity();
             })
         );
 
@@ -1430,6 +1450,58 @@ export class VirusOnTheRockApp {
         if (Math.abs(camera.state.fov - fov) > 1e-4) camera.setState({ fov });
     }
 
+    private cameraMotionLastMs = 0;
+    private cameraRockTime = 0;
+    private cameraRockAngle = 0;
+
+    /**
+     * The camera-spin and camera-rock channels: the camera turns around its target, about its up axis, by increments,
+     * so the user's own orbit stays theirs. Spin keeps turning at a speed set by its drive; rock swings back and forth,
+     * as wide as its drive
+     */
+    private updateAudioCameraMotion() {
+        const camera = this.viewer.plugin.canvas3d?.camera;
+        if (!camera) return;
+        const now = performance.now();
+        const dt = this.cameraMotionLastMs > 0 ? Math.min(100, now - this.cameraMotionLastMs) / 1000 : 0;
+        this.cameraMotionLastMs = now;
+        const drives = this.viewer.plugin.managers.audioReactive.drives;
+        let angle = drives.cameraSpin * CameraSpinRadPerSecond * dt;
+        this.cameraRockTime += dt;
+        const rock = drives.cameraRock > 1e-3
+            ? drives.cameraRock * CameraRockRadians * Math.sin(2 * Math.PI * this.cameraRockTime / CameraRockPeriodSeconds)
+            : 0;
+        angle += rock - this.cameraRockAngle;
+        this.cameraRockAngle = rock;
+        if (Math.abs(angle) < 1e-6) return;
+        const { position, target, up } = camera.state;
+        const offset = Vec3.sub(Vec3(), position, target);
+        const rotation = Mat4.fromRotation(Mat4(), angle, up);
+        Vec3.transformMat4(offset, offset, rotation);
+        camera.setState({ position: Vec3.add(Vec3(), target, offset) });
+    }
+
+    /** the alpha factor the opacity channel last gave each object, to give 1 back when it stops */
+    private readonly fadedObjects = new Set<GraphicsRenderObject>();
+
+    /** the opacity channel: objects fade (down to OpacityMin) through their alpha factor, drawn transparent meanwhile */
+    private updateAudioOpacity() {
+        const canvas3d = this.viewer.plugin.canvas3d;
+        if (!canvas3d) return;
+        const drive = this.viewer.plugin.managers.audioReactive.drives.opacity;
+        const factor = drive > 1e-3 ? Math.max(OpacityMin, 1 - OpacityPerDrive * drive) : 1;
+        if (factor === 1 && this.fadedObjects.size === 0) return;
+        for (const ro of canvas3d.getRenderObjects()) {
+            if (factor === 1 && !this.fadedObjects.has(ro)) continue;
+            ro.state.alphaFactor = factor;
+            const alpha = (ro.values as { alpha?: { ref: { value: number } } }).alpha?.ref.value ?? 1;
+            ro.state.opaque = alpha * factor >= 1;
+            ro.state.writeDepth = ro.state.opaque;
+            if (factor === 1) this.fadedObjects.delete(ro);
+            else this.fadedObjects.add(ro);
+        }
+    }
+
     private restoreClipBaseStates() {
         const canvas3d = this.viewer.plugin.canvas3d;
         if (!canvas3d) return;
@@ -1602,10 +1674,13 @@ function AudioVisualizerOverlay(props: {
     const { width, height } = useWindowSize();
     const [radialOffset, setRadialOffset] = React.useState(() => ({ x: 0, y: 0 }));
     const [radialScale, setRadialScale] = React.useState(1);
+    const routes = useBehavior(props.app.viewer.plugin.managers.audioReactive.state.routes);
+    // each route's recent values, a ring per route, pushed once per status update (~30 Hz)
+    const historyRef = React.useRef({ values: new Map<number, Float32Array>(), head: 0, lastStatus: undefined as AudioReactiveStatus | undefined });
 
     if (!status || width <= 0 || height <= 0) return null;
 
-    const { waveform, spectrum } = status.visualization;
+    const { spectrum } = status.visualization;
     const sceneFrame = getSceneVisualizerFrame(props.app, width, height);
     const overlayOpacity = status.playing ? 1 : status.loaded ? 0.58 : 0.22;
     const mix = status.frame.mix;
@@ -1621,11 +1696,42 @@ function AudioVisualizerOverlay(props: {
     const barMaxHeight = Math.min(height * 0.24, 170);
     const reflectionMaxHeight = Math.min(height * 0.12, 72);
 
+    // the wave line: one line per enabled audio route, what it sent over the last seconds
     const waveCenterY = barBaseY - Math.min(120, height * 0.14);
-    const waveAmplitude = Math.min(height * 0.11, 82) * (0.45 + mix * 0.95);
-    const wavePath = props.showWaveformLine
-        ? buildWavePath(waveform, width * 0.08, width * 0.92, waveCenterY, waveAmplitude)
-        : '';
+    const waveAmplitude = Math.min(height * 0.11, 82);
+    if (status !== historyRef.current.lastStatus) {
+        historyRef.current.lastStatus = status;
+        const head = historyRef.current.head = (historyRef.current.head + 1) % RouteLineSamples;
+        for (const route of routes ?? []) {
+            let h = historyRef.current.values.get(route.id);
+            if (!h) historyRef.current.values.set(route.id, h = new Float32Array(RouteLineSamples));
+            h[head] = status.routeValues.get(route.id) ?? 0;
+        }
+    }
+    const routeLines: { id: number, path: string, color: string, label: string, labelX: number, labelY: number }[] = [];
+    if (props.showWaveformLine) {
+        const enabled = (routes ?? []).filter(r => r.enabled);
+        const x0 = width * 0.08, x1 = width * 0.9;
+        enabled.forEach((route, k) => {
+            const h = historyRef.current.values.get(route.id);
+            if (!h) return;
+            let max = RouteLineMinScale;
+            for (const v of h) if (v > max) max = v;
+            const ordered = new Float32Array(RouteLineSamples);
+            for (let i = 0; i < RouteLineSamples; i++) ordered[i] = h[(historyRef.current.head + 1 + i) % RouteLineSamples] / max;
+            // stacked a little so overlapping lines stay apart
+            const centerY = waveCenterY + (k - (enabled.length - 1) / 2) * 10;
+            const lastY = centerY - ordered[RouteLineSamples - 1] * waveAmplitude;
+            routeLines.push({
+                id: route.id,
+                path: buildWavePath(ordered, x0, x1, centerY, waveAmplitude),
+                color: RouteSourceColors[route.source] ?? '#9fb3c8',
+                label: `${getAudioRouteSourceLabel(route.source)} → ${getAudioRouteTargetLabel(route.target)}`,
+                labelX: x1 + 8,
+                labelY: lastY + 4,
+            });
+        });
+    }
 
     const now = Date.now();
     const hueShift = Math.sin(now * 0.00032) * 12;
@@ -1809,10 +1915,11 @@ function AudioVisualizerOverlay(props: {
                 </g>
             </>}
 
-            {wavePath && <>
-                <path className='vor-wave-shadow' d={wavePath} />
-                <path className='vor-wave-line' d={wavePath} />
-            </>}
+            {routeLines.map(line => <React.Fragment key={line.id}>
+                <path className='vor-wave-shadow' d={line.path} />
+                <path className='vor-route-line' d={line.path} style={{ stroke: line.color, filter: `drop-shadow(0 0 10px ${line.color})` }} />
+                <text className='vor-route-line-label' x={line.labelX} y={line.labelY} fill={line.color}>{line.label}</text>
+            </React.Fragment>)}
 
             {props.showHistogramBars && <g className='vor-bar-group'>
                 {barRects.map((bar, index) => <React.Fragment key={index}>

@@ -123,6 +123,7 @@ export type AudioReactiveFrame = {
     driveWiggle: number,
     driveObject: number,
     illumination: number,
+    hue: number,
 };
 
 export const RendererParams = {
@@ -345,6 +346,7 @@ namespace Renderer {
             uAudioDriveWiggle: ValueCell.create(0),
             uAudioDriveObject: ValueCell.create(0),
             uAudioIllumination: ValueCell.create(0),
+            uAudioHue: ValueCell.create(0),
         };
         const globalUniformList = Object.entries(globalUniforms);
 
@@ -972,6 +974,7 @@ namespace Renderer {
                 ValueCell.updateIfChanged(globalUniforms.uAudioDriveWiggle, frame.driveWiggle);
                 ValueCell.updateIfChanged(globalUniforms.uAudioDriveObject, frame.driveObject);
                 ValueCell.updateIfChanged(globalUniforms.uAudioIllumination, frame.illumination);
+                ValueCell.updateIfChanged(globalUniforms.uAudioHue, frame.hue);
             },
             setProps: (props: Partial<RendererProps>) => {
                 if (props.backgroundColor !== undefined && props.backgroundColor !== p.backgroundColor) {

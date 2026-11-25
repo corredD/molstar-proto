@@ -37,6 +37,10 @@ export const AudioRouteTargets = [
     ['object', 'Whole object'],
     ['illumination', 'Illumination'],
     ['cameraZoom', 'Camera zoom'],
+    ['cameraSpin', 'Camera spin'],
+    ['cameraRock', 'Camera rock'],
+    ['colorSpectrum', 'Colors: spectrum'],
+    ['opacity', 'Opacity (fade)'],
     ['clipPosition', 'Clip object: position'],
     ['clipSize', 'Clip object: size'],
 ] as const;
@@ -68,7 +72,7 @@ export function getAudioRouteTargetLabel(target: AudioRouteTarget) {
 export function createZeroDrives(): AudioRouteDrives {
     return {
         symAxis: 0, instanceRandom: 0, instanceAxis: 0, instanceNormal: 0, wiggle: 0, object: 0,
-        illumination: 0, cameraZoom: 0, clipPosition: 0, clipSize: 0,
+        illumination: 0, cameraZoom: 0, cameraSpin: 0, cameraRock: 0, colorSpectrum: 0, opacity: 0, clipPosition: 0, clipSize: 0,
     };
 }
 
@@ -80,9 +84,9 @@ export function createAudioRoute(route: Omit<AudioRoute, 'id'>): AudioRoute {
 /** The starting routes: drums and bass explode the capsid along its symmetry axes, the rest of the band wiggles the atoms, the voice lights it */
 export function getDefaultAudioRoutes(): AudioRoute[] {
     return [
-        // gains matched to the motion of the first version (bass x3.8 times the bass/beat axis drive, about 4)
-        createAudioRoute({ enabled: true, source: 'stemDrums', mode: 'onset', target: 'symAxis', gain: 3.5, floor: 0, releaseMs: 260 }),
-        createAudioRoute({ enabled: true, source: 'stemBass', mode: 'level', target: 'symAxis', gain: 3, floor: 0, releaseMs: 220 }),
+        // the symmetry axes at 6.5 (Ludo's pick, 2026-11-25)
+        createAudioRoute({ enabled: true, source: 'stemDrums', mode: 'onset', target: 'symAxis', gain: 6.5, floor: 0, releaseMs: 260 }),
+        createAudioRoute({ enabled: true, source: 'stemBass', mode: 'level', target: 'symAxis', gain: 6.5, floor: 0, releaseMs: 220 }),
         createAudioRoute({ enabled: true, source: 'stemOther', mode: 'level', target: 'wiggle', gain: 2, floor: 0.2, releaseMs: 350 }),
         createAudioRoute({ enabled: true, source: 'stemVocals', mode: 'level', target: 'illumination', gain: 0.6, floor: 0, releaseMs: 400 }),
     ];

@@ -17,6 +17,8 @@ const MaxProperFrameDelta = 1000 / 30;
 
 /** how bright the illumination channel's glow gets at a drive of 1 (added to the emissive) */
 const IlluminationGlow = 0.35;
+/** how far the colour-spectrum channel turns the hues at a drive of 1, in turns */
+const HueTurnPerDrive = 0.25;
 
 export class PluginAnimationLoop {
     private lastTickT: number = 0;
@@ -83,6 +85,7 @@ export class PluginAnimationLoop {
             driveWiggle: drives.wiggle,
             driveObject: drives.object,
             illumination: drives.illumination * IlluminationGlow,
+            hue: Math.min(1, drives.colorSpectrum * HueTurnPerDrive),
         });
         this.plugin.canvas3d?.tick(t as now.Timestamp, options);
 

@@ -210,6 +210,8 @@ export const GlobalUniformSchema = {
     uAudioDriveWiggle: UniformSpec('f'),
     uAudioDriveObject: UniformSpec('f'),
     uAudioIllumination: UniformSpec('f'),
+    /** the colour-spectrum channel: how far hues rotate (1: a full turn at most) */
+    uAudioHue: UniformSpec('f'),
 } as const;
 export type GlobalUniformSchema = typeof GlobalUniformSchema
 export type GlobalUniformValues = Values<GlobalUniformSchema>

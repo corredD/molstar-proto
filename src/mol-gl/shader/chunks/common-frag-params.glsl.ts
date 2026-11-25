@@ -79,6 +79,8 @@ uniform float uCelSteps;
 uniform float uExposure;
 // the illumination channel of the audio routing: an added glow
 uniform float uAudioIllumination;
+// the colour-spectrum channel of the audio routing: a hue rotation, by region
+uniform float uAudioHue;
 
 uniform mat4 uProjection;
 
