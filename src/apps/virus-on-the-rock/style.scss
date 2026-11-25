@@ -529,6 +529,28 @@ html, body, #app {
     }
 }
 
+.vor-affect {
+    .vor-chip {
+        padding: 4px 8px;
+        font-size: 0.78rem;
+    }
+}
+
+.vor-routing-save {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+
+    .vor-input,
+    .vor-select {
+        width: auto;
+        flex: 1 1 120px;
+        padding: 6px 8px;
+        border-radius: 8px;
+    }
+}
+
 .vor-route {
     display: grid;
     gap: 4px;

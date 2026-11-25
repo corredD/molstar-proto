@@ -3,6 +3,7 @@
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
  * @author Gianluca Tomasello <giagitom@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { Viewport } from '../mol-canvas3d/camera/util';
@@ -120,6 +121,7 @@ export type AudioReactiveFrame = {
     driveInstanceRandom: number,
     driveInstanceAxis: number,
     driveInstanceNormal: number,
+    driveInstanceWave: number,
     driveWiggle: number,
     driveObject: number,
     illumination: number,
@@ -343,6 +345,7 @@ namespace Renderer {
             uAudioDriveInstanceRandom: ValueCell.create(0),
             uAudioDriveInstanceAxis: ValueCell.create(0),
             uAudioDriveInstanceNormal: ValueCell.create(0),
+            uAudioDriveInstanceWave: ValueCell.create(0),
             uAudioDriveWiggle: ValueCell.create(0),
             uAudioDriveObject: ValueCell.create(0),
             uAudioIllumination: ValueCell.create(0),
@@ -971,6 +974,7 @@ namespace Renderer {
                 ValueCell.updateIfChanged(globalUniforms.uAudioDriveInstanceRandom, frame.driveInstanceRandom);
                 ValueCell.updateIfChanged(globalUniforms.uAudioDriveInstanceAxis, frame.driveInstanceAxis);
                 ValueCell.updateIfChanged(globalUniforms.uAudioDriveInstanceNormal, frame.driveInstanceNormal);
+                ValueCell.updateIfChanged(globalUniforms.uAudioDriveInstanceWave, frame.driveInstanceWave);
                 ValueCell.updateIfChanged(globalUniforms.uAudioDriveWiggle, frame.driveWiggle);
                 ValueCell.updateIfChanged(globalUniforms.uAudioDriveObject, frame.driveObject);
                 ValueCell.updateIfChanged(globalUniforms.uAudioIllumination, frame.illumination);

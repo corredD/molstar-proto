@@ -38,6 +38,12 @@ export type AnimationData = {
     uAudioAssemblyAxisCount: ValueCell<number>,
     uAudioAssemblyAxisCenter: ValueCell<Vec3>,
     uAudioAssemblyAxes: ValueCell<number[]>,
+    /** how many uAudioAffectRanges entries apply; 0 means this object is outside the audio scope */
+    uAudioAffectCount: ValueCell<number>,
+    /** 0: this mesh bakes many instances, so instance motion stays off unless the scope covers all of it */
+    uAudioAffectInstances: ValueCell<number>,
+    /** xyz = instance, group start, group end; instance < 0 is every instance, group start < 0 is every group */
+    uAudioAffectRanges: ValueCell<number[]>,
 }
 
 /** room for this many symmetry axes per object (the shader's uAudioAssemblyAxes[32]) */
@@ -233,6 +239,15 @@ export function createAnimationValues(props: AnimationProps) {
         uAudioAssemblyAxisCount: ValueCell.create(0),
         uAudioAssemblyAxisCenter: ValueCell.create(Vec3.create(0, 0, 0)),
         uAudioAssemblyAxes: ValueCell.create(new Array<number>(AnimationAssemblyAxisMaxCount * 3).fill(0)),
+        // everything, until syncAudioAffect narrows it (audio-affect.ts; the shader's uAudioAffectRanges[8])
+        uAudioAffectCount: ValueCell.create(1),
+        uAudioAffectInstances: ValueCell.create(1),
+        uAudioAffectRanges: ValueCell.create((() => {
+            const ranges = new Array<number>(8 * 4).fill(0);
+            ranges[0] = -1;
+            ranges[1] = -1;
+            return ranges;
+        })()),
     };
 }
 

@@ -29,7 +29,8 @@ import { SpacefillRepresentationProvider } from '../../mol-repr/structure/repres
 import { DefaultAudioBandDefinitions } from '../../mol-plugin-state/manager/audio-reactor';
 import { AudioProminenceRadar } from '../../mol-plugin-ui/controls/audio-prominence-radar';
 import { AudioReactivePresetDefinitions, AudioReactivePresetName, getAudioReactivePreset, getPresetRoutes } from '../../mol-plugin-state/helpers/audio-reactive-presets';
-import { AudioRouteSources, AudioRouteTargets, createAudioRoute, getAudioRouteSourceLabel, getAudioRouteTargetLabel, getDefaultAudioRoutes, type AudioRoute } from '../../mol-plugin-state/manager/audio-routing';
+import { describeAudioAffect, listAudioAffectChoices } from '../../mol-plugin-state/helpers/audio-affect';
+import { AudioAffectLevels, AudioRouteSources, AudioRouteTargets, canonicalAudioAffect, createAudioRoute, draftsFromRoutes, getAudioRouteSourceLabel, getAudioRouteTargetLabel, getDefaultAudioRoutes, loadStoredAudioRouting, parseAudioRouting, routesFromDrafts, storeAudioRouting, type AudioAffect, type AudioRoute, type AudioRoutingPreset } from '../../mol-plugin-state/manager/audio-routing';
 import { AudioReactiveAnimationManagerValues, type AudioReactiveStatus, getStemDelaySeconds } from '../../mol-plugin-state/manager/audio-reactive-animation';
 import { StemModelIds, StemModels, type StemName, StemNames } from '../../mol-plugin-state/manager/audio-stems/stem-models';
 import { AudioReactiveAssemblyAxisOrder } from '../../mol-plugin-state/helpers/assembly-symmetry-axis';
@@ -1604,12 +1605,150 @@ function StemSeparationCard({ app }: { app: VirusOnTheRockApp }) {
     </div>;
 }
 
+const AffectShort: Record<AudioAffect['level'], string> = {
+    all: 'All', model: 'Model', entity: 'Entity', instance: 'Instance', chain: 'Chain', residue: 'Residue', atom: 'Atom',
+};
+
+function AudioAffectRow({ app }: { app: VirusOnTheRockApp }) {
+    const manager = app.viewer.plugin.managers.audioReactive;
+    const affect = useBehavior(manager.state.affect);
+    const hierarchy = useBehavior(manager.plugin.managers.structure.hierarchy.behaviors.selection);
+    const choices = React.useMemo(
+        () => affect ? listAudioAffectChoices(manager.plugin, affect) : [],
+        [manager, affect, hierarchy],
+    );
+    if (!affect) return null;
+    const selected = JSON.stringify(canonicalAudioAffect(affect));
+    const known = choices.some(choice => choice.id === selected);
+    return <>
+        <div className='vor-chip-row vor-affect'>
+            {AudioAffectLevels.map(([level, label]) => <button
+                key={level}
+                className={`vor-chip ${affect.level === level ? 'vor-active' : ''}`}
+                title={label}
+                onClick={() => manager.setAffectLevel(level)}
+            >{AffectShort[level]}</button>)}
+        </div>
+        {affect.level !== 'all' && <div className='vor-route-row'>
+            <select
+                className='vor-select'
+                value={known ? selected : ''}
+                title='Which one. Clicking the structure picks it too.'
+                onChange={e => {
+                    const choice = choices.find(item => item.id === e.target.value);
+                    if (choice) manager.setAffect(choice.affect);
+                }}
+            >
+                {!known && <option value=''>{describeAudioAffect(manager.plugin, affect)}</option>}
+                {choices.map(choice => <option key={choice.id} value={choice.id}>{choice.label}</option>)}
+            </select>
+        </div>}
+        {affect.level !== 'all' && <p className='vor-help'>{describeAudioAffect(manager.plugin, affect)}. Click the structure to pick another.</p>}
+    </>;
+}
+
+function AudioRoutingLibrary({ app }: { app: VirusOnTheRockApp }) {
+    const manager = app.viewer.plugin.managers.audioReactive;
+    const [presets, setPresets] = React.useState<AudioRoutingPreset[]>(() => loadStoredAudioRouting());
+    const [name, setName] = React.useState('My routing');
+    const [picked, setPicked] = React.useState('');
+    const fileRef = React.useRef<HTMLInputElement>(null);
+
+    const remember = (next: AudioRoutingPreset[]) => {
+        const stored = storeAudioRouting(next);
+        setPresets(stored);
+        return stored;
+    };
+
+    const save = () => {
+        const trimmed = name.trim() || 'Routing';
+        const preset: AudioRoutingPreset = {
+            version: 1,
+            name: trimmed,
+            routes: draftsFromRoutes(manager.state.routes.value),
+            affect: canonicalAudioAffect(manager.state.affect.value),
+        };
+        const without = presets.filter(item => item.name !== trimmed);
+        remember([preset, ...without]);
+        setPicked(trimmed);
+        setName(trimmed);
+    };
+
+    const load = (presetName: string) => {
+        setPicked(presetName);
+        const preset = presets.find(item => item.name === presetName);
+        if (!preset) return;
+        manager.setRoutes(routesFromDrafts(preset.routes));
+        manager.setAffect(preset.affect);
+    };
+
+    const download = () => {
+        const text = JSON.stringify({
+            version: 1,
+            name: name.trim() || 'Routing',
+            routes: draftsFromRoutes(manager.state.routes.value),
+            affect: canonicalAudioAffect(manager.state.affect.value),
+        }, null, 2);
+        const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `${(name.trim() || 'audio-routing').replace(/[^\w.-]+/g, '_')}.json`;
+        link.click();
+        URL.revokeObjectURL(url);
+    };
+
+    const importFile = (file: File | undefined) => {
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = () => {
+            const parsed = typeof reader.result === 'string' ? parseAudioRouting(reader.result) : undefined;
+            if (!parsed) return;
+            const byName = new Map(presets.map(item => [item.name, item]));
+            for (const preset of parsed) byName.set(preset.name, preset);
+            const stored = remember([...byName.values()]);
+            const first = parsed[0];
+            if (!first) return;
+            setName(first.name);
+            setPicked(first.name);
+            if (stored.some(item => item.name === first.name)) loadFrom(stored, first.name);
+        };
+        reader.readAsText(file);
+    };
+
+    const loadFrom = (list: AudioRoutingPreset[], presetName: string) => {
+        const preset = list.find(item => item.name === presetName);
+        if (!preset) return;
+        manager.setRoutes(routesFromDrafts(preset.routes));
+        manager.setAffect(preset.affect);
+    };
+
+    return <div className='vor-routing-save'>
+        <input className='vor-input' value={name} aria-label='Routing preset name' onChange={e => setName(e.target.value)} />
+        <button className='vor-chip' title='Keep these routes and who they affect in this browser' onClick={save}>Save</button>
+        <select className='vor-select' value={picked} aria-label='Saved routing presets' onChange={e => load(e.target.value)}>
+            <option value=''>Saved…</option>
+            {presets.map(preset => <option key={preset.name} value={preset.name}>{preset.name}</option>)}
+        </select>
+        <button className='vor-chip' title='Remove the selected saved routing' disabled={!picked} onClick={() => {
+            remember(presets.filter(item => item.name !== picked));
+            setPicked('');
+        }}>Delete</button>
+        <button className='vor-chip' title='Download this routing as JSON' onClick={download}>Export</button>
+        <button className='vor-chip' title='Load a routing JSON file' onClick={() => fileRef.current?.click()}>Import</button>
+        <input ref={fileRef} className='vor-file' type='file' accept='application/json,.json' hidden onChange={e => {
+            importFile(e.target.files?.[0]);
+            e.target.value = '';
+        }} />
+    </div>;
+}
+
 function AudioRoutingCard({ app }: { app: VirusOnTheRockApp }) {
     const manager = app.viewer.plugin.managers.audioReactive;
     const routes = useBehavior(manager.state.routes);
     const status = useBehavior(manager.state.status) as AudioReactiveStatus | undefined;
     if (!routes) return null;
     return <div className='vor-stack'>
+        <AudioAffectRow app={app} />
         {routes.map(route => {
             const value = status?.routeValues.get(route.id) ?? 0;
             return <div key={route.id} className={`vor-route ${route.enabled ? '' : 'vor-route-off'}`}>
@@ -1646,10 +1785,12 @@ function AudioRoutingCard({ app }: { app: VirusOnTheRockApp }) {
         })}
         <div className='vor-chip-row'>
             <button className='vor-chip' onClick={() => manager.setRoutes([...routes, createAudioRoute({ enabled: true, source: 'stemDrums', mode: 'onset', target: 'symAxis', gain: 1, floor: 0, releaseMs: 250 })])}>+ Add route</button>
+            <button className='vor-chip' title='A traveling wave on instance positions. Its height is this route’s source — pick the stem on the new row. It moves even when Instance Beats is off.' onClick={() => manager.setRoutes([...routes, createAudioRoute({ enabled: true, source: 'stemDrums', mode: 'level', target: 'instanceWave', gain: 6, floor: 0, releaseMs: 280 })])}>+ Instance wave</button>
             <button className='vor-chip' title='Drums and bass to the symmetry axes, other to the atoms, vocals to the illumination' onClick={() => manager.setRoutes(getDefaultAudioRoutes())}>Defaults</button>
         </div>
+        <AudioRoutingLibrary app={app} />
         <p className='vor-help'>
-            Each route sends an audio source to a visual channel; a channel sums its routes. The symmetry-axis channel also steps the beat cycle. The stems come from the separation when it runs, from the bands otherwise.
+            Each route sends an audio source to a visual channel; a channel sums its routes. Who limits the structure motion (instances, atoms, the whole object). Camera, clipping, colour and light stay on the whole view. A chain, residue or atom moves with its instance; atom wiggle stays on those atoms. The wave’s height is the route’s source. Save keeps the routes and who they affect.
         </p>
     </div>;
 }

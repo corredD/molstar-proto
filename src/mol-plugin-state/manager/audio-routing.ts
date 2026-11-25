@@ -33,6 +33,7 @@ export const AudioRouteTargets = [
     ['instanceRandom', 'Instances: random'],
     ['instanceAxis', 'Instances: along an axis'],
     ['instanceNormal', 'Instances: along the normal'],
+    ['instanceWave', 'Instances: position wave'],
     ['wiggle', 'Atoms: wiggle'],
     ['object', 'Whole object'],
     ['illumination', 'Illumination'],
@@ -71,7 +72,7 @@ export function getAudioRouteTargetLabel(target: AudioRouteTarget) {
 
 export function createZeroDrives(): AudioRouteDrives {
     return {
-        symAxis: 0, instanceRandom: 0, instanceAxis: 0, instanceNormal: 0, wiggle: 0, object: 0,
+        symAxis: 0, instanceRandom: 0, instanceAxis: 0, instanceNormal: 0, instanceWave: 0, wiggle: 0, object: 0,
         illumination: 0, cameraZoom: 0, cameraSpin: 0, cameraRock: 0, colorSpectrum: 0, opacity: 0, clipPosition: 0, clipSize: 0,
     };
 }
@@ -166,4 +167,176 @@ export class AudioRouter {
         this.values.clear();
         for (const t of Object.keys(this.drives) as AudioRouteTarget[]) this.drives[t] = 0;
     }
+}
+
+/** Who the structure motion follows, coarse to fine. Camera, clipping, colour and light stay on the whole view. */
+export const AudioAffectLevels = [
+    ['all', 'All models'],
+    ['model', 'One model'],
+    ['entity', 'One entity'],
+    ['instance', 'One instance'],
+    ['chain', 'One chain'],
+    ['residue', 'One residue'],
+    ['atom', 'One atom'],
+] as const;
+export type AudioAffectLevel = typeof AudioAffectLevels[number][0];
+
+export type AudioAffect = {
+    level: AudioAffectLevel,
+    /** hierarchy model ref, filled when the model is in the scene */
+    modelRef?: string,
+    entryId?: string,
+    modelNum?: number,
+    entityId?: string,
+    /** assembly operator name; which copy */
+    operatorName?: string,
+    asymId?: string,
+    /** auth seq id */
+    seqId?: number,
+    insCode?: string,
+    atomId?: string,
+    altId?: string,
+};
+
+export function defaultAudioAffect(): AudioAffect {
+    return { level: 'all' };
+}
+
+/** a route as stored: no runtime id */
+export type AudioRouteDraft = Omit<AudioRoute, 'id'>;
+
+export type AudioRoutingPreset = {
+    version: 1,
+    name: string,
+    routes: AudioRouteDraft[],
+    affect: AudioAffect,
+};
+
+const AudioRoutingStorageKey = 'vor.audioRouting.v1';
+const MaxStoredAudioRoutingPresets = 50;
+
+const AudioRouteSourceSet = new Set<string>(AudioRouteSources.map(s => s[0]));
+const AudioRouteTargetSet = new Set<string>(AudioRouteTargets.map(t => t[0]));
+const AudioAffectLevelSet = new Set<string>(AudioAffectLevels.map(l => l[0]));
+
+export function canonicalAudioAffect(affect: AudioAffect): AudioAffect {
+    const out: AudioAffect = { level: affect.level };
+    if (affect.modelRef) out.modelRef = affect.modelRef;
+    if (affect.entryId) out.entryId = affect.entryId;
+    if (affect.modelNum !== undefined) out.modelNum = affect.modelNum;
+    if (affect.entityId) out.entityId = affect.entityId;
+    if (affect.operatorName) out.operatorName = affect.operatorName;
+    if (affect.asymId) out.asymId = affect.asymId;
+    if (affect.seqId !== undefined) out.seqId = affect.seqId;
+    if (affect.insCode) out.insCode = affect.insCode;
+    if (affect.atomId) out.atomId = affect.atomId;
+    if (affect.altId) out.altId = affect.altId;
+    return out;
+}
+
+export function sameAudioAffect(a: AudioAffect, b: AudioAffect) {
+    const x = canonicalAudioAffect(a);
+    const y = canonicalAudioAffect(b);
+    return (Object.keys(x) as (keyof AudioAffect)[]).length === (Object.keys(y) as (keyof AudioAffect)[]).length
+        && (Object.keys(x) as (keyof AudioAffect)[]).every(k => x[k] === y[k]);
+}
+
+function clampNumber(value: unknown, min: number, max: number, fallback: number) {
+    return typeof value === 'number' && Number.isFinite(value) ? Math.min(max, Math.max(min, value)) : fallback;
+}
+
+function draftFromUnknown(value: unknown): AudioRouteDraft | undefined {
+    if (!value || typeof value !== 'object') return;
+    const v = value as Partial<AudioRouteDraft>;
+    if (typeof v.source !== 'string' || !AudioRouteSourceSet.has(v.source)) return;
+    if (typeof v.target !== 'string' || !AudioRouteTargetSet.has(v.target)) return;
+    if (v.mode !== 'level' && v.mode !== 'onset') return;
+    return {
+        enabled: v.enabled !== false,
+        source: v.source,
+        mode: v.mode,
+        target: v.target,
+        gain: clampNumber(v.gain, 0, 40, 1),
+        floor: clampNumber(v.floor, 0, 40, 0),
+        releaseMs: clampNumber(v.releaseMs, 0, 10000, 250),
+    };
+}
+
+function affectFromUnknown(value: unknown): AudioAffect {
+    if (!value || typeof value !== 'object') return defaultAudioAffect();
+    const v = value as Partial<AudioAffect>;
+    if (typeof v.level !== 'string' || !AudioAffectLevelSet.has(v.level)) return defaultAudioAffect();
+    const affect: AudioAffect = { level: v.level as AudioAffectLevel };
+    if (typeof v.modelRef === 'string' && v.modelRef) affect.modelRef = v.modelRef;
+    if (typeof v.entryId === 'string' && v.entryId) affect.entryId = v.entryId;
+    if (typeof v.modelNum === 'number' && Number.isFinite(v.modelNum)) affect.modelNum = v.modelNum;
+    if (typeof v.entityId === 'string' && v.entityId) affect.entityId = v.entityId;
+    if (typeof v.operatorName === 'string' && v.operatorName) affect.operatorName = v.operatorName;
+    if (typeof v.asymId === 'string' && v.asymId) affect.asymId = v.asymId;
+    if (typeof v.seqId === 'number' && Number.isFinite(v.seqId)) affect.seqId = v.seqId;
+    if (typeof v.insCode === 'string' && v.insCode) affect.insCode = v.insCode;
+    if (typeof v.atomId === 'string' && v.atomId) affect.atomId = v.atomId;
+    if (typeof v.altId === 'string' && v.altId) affect.altId = v.altId;
+    return affect;
+}
+
+/** One preset, or a library file `{ presets: [...] }` / a bare array. Unknown routes are dropped. */
+export function parseAudioRouting(text: string): AudioRoutingPreset[] | undefined {
+    let data: unknown;
+    try {
+        data = JSON.parse(text);
+    } catch {
+        return;
+    }
+    const list = Array.isArray(data) ? data
+        : data && typeof data === 'object' && Array.isArray((data as { presets?: unknown }).presets) ? (data as { presets: unknown[] }).presets
+            : [data];
+    const presets: AudioRoutingPreset[] = [];
+    for (const item of list) {
+        if (!item || typeof item !== 'object') continue;
+        const record = item as Partial<AudioRoutingPreset> & { routes?: unknown };
+        const routes = Array.isArray(record.routes) ? record.routes.map(draftFromUnknown).filter((d): d is AudioRouteDraft => !!d) : [];
+        if (!routes.length) continue;
+        const name = typeof record.name === 'string' && record.name.trim() ? record.name.trim().slice(0, 80) : 'Routing';
+        presets.push({ version: 1, name, routes, affect: affectFromUnknown(record.affect) });
+    }
+    return presets.length ? presets : undefined;
+}
+
+export function serializeAudioRouting(presets: readonly AudioRoutingPreset[]) {
+    return JSON.stringify({ version: 1, presets }, null, 2);
+}
+
+export function routesFromDrafts(routes: readonly AudioRouteDraft[]) {
+    return routes.map(route => createAudioRoute(route));
+}
+
+/** Drop the runtime id. Loading assigns a fresh one. */
+export function draftsFromRoutes(routes: readonly AudioRoute[]): AudioRouteDraft[] {
+    return routes.map(({ enabled, source, mode, target, gain, floor, releaseMs }) => ({ enabled, source, mode, target, gain, floor, releaseMs }));
+}
+
+function storage(): Storage | undefined {
+    try {
+        return typeof localStorage === 'undefined' ? undefined : localStorage;
+    } catch {
+        return undefined;
+    }
+}
+
+export function loadStoredAudioRouting(): AudioRoutingPreset[] {
+    const raw = storage()?.getItem(AudioRoutingStorageKey);
+    if (!raw) return [];
+    return parseAudioRouting(raw) ?? [];
+}
+
+export function storeAudioRouting(presets: readonly AudioRoutingPreset[]) {
+    const kept = presets.slice(0, MaxStoredAudioRoutingPresets);
+    try {
+        // private mode and a full store throw; the caller still keeps the list in memory
+        storage()?.setItem(AudioRoutingStorageKey, serializeAudioRouting(kept));
+    } catch {
+        // ignored
+    }
+    return kept;
 }

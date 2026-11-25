@@ -3,6 +3,7 @@
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
  * @author Gianluca Tomasello <giagitom@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { ValueCell } from '../../mol-util';
@@ -207,6 +208,7 @@ export const GlobalUniformSchema = {
     uAudioDriveInstanceRandom: UniformSpec('f'),
     uAudioDriveInstanceAxis: UniformSpec('f'),
     uAudioDriveInstanceNormal: UniformSpec('f'),
+    uAudioDriveInstanceWave: UniformSpec('f'),
     uAudioDriveWiggle: UniformSpec('f'),
     uAudioDriveObject: UniformSpec('f'),
     uAudioIllumination: UniformSpec('f'),
@@ -473,6 +475,10 @@ export const AnimationSchema = {
     uAudioAssemblyAxisCount: UniformSpec('i', 'material'),
     uAudioAssemblyAxisCenter: UniformSpec('v3', 'material'),
     uAudioAssemblyAxes: UniformSpec('v3[]', 'material'),
+    /** audio-affect.ts: who the structure motion follows. Count 0 excludes the object. */
+    uAudioAffectCount: UniformSpec('i', 'material'),
+    uAudioAffectInstances: UniformSpec('i', 'material'),
+    uAudioAffectRanges: UniformSpec('v4[]', 'material'),
 } as const;
 export type AnimationSchema = typeof AnimationSchema
 export type AnimationValues = Values<AnimationSchema>

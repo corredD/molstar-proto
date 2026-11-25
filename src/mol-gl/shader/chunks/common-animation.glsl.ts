@@ -2,6 +2,7 @@
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 export const common_animation = `
@@ -58,7 +59,11 @@ uniform float uAudioDriveSymAxis;
 uniform float uAudioDriveInstanceRandom;
 uniform float uAudioDriveInstanceAxis;
 uniform float uAudioDriveInstanceNormal;
+uniform float uAudioDriveInstanceWave;
 uniform float uAudioDriveWiggle;
+uniform int uAudioAffectCount;
+uniform int uAudioAffectInstances;
+uniform vec4 uAudioAffectRanges[8];
 uniform float uAudioDriveObject;
 
 #ifdef dWiggle
@@ -148,14 +153,45 @@ bool hasResolvedAssemblyTumbleAxis() {
     return uTumbleAxisSource != 2 || uAudioAssemblyAxisCount > 0;
 }
 
+bool audioAffects(float instanceIndex, float groupId) {
+    for (int i = 0; i < 8; ++i) {
+        if (i >= uAudioAffectCount) return false;
+        vec4 span = uAudioAffectRanges[i];
+        if (span.x >= 0.0 && abs(instanceIndex - span.x) > 0.5) continue;
+        if (span.y < 0.0 || (groupId >= span.y && groupId < span.z)) return true;
+    }
+    return false;
+}
+
+bool audioAffectsInstance(float instanceIndex) {
+    if (uAudioAffectInstances == 0) return false;
+    for (int i = 0; i < 8; ++i) {
+        if (i >= uAudioAffectCount) return false;
+        float instance = uAudioAffectRanges[i].x;
+        if (instance < 0.0 || abs(instanceIndex - instance) <= 0.5) return true;
+    }
+    return false;
+}
+
+bool audioAffectsWholeObject() {
+    for (int i = 0; i < 8; ++i) {
+        if (i >= uAudioAffectCount) return false;
+        vec4 span = uAudioAffectRanges[i];
+        if (span.x < 0.0 && span.y < 0.0) return true;
+    }
+    return false;
+}
+
 float getAssemblyAxisDrive() {
     return clamp(uAudioBass * 0.9 + uAudioSubBass * 1.25 + uAudioBeatIntensity * 0.35, 0.0, 3.0);
 }
 
 vec3 applyWiggle(vec3 pos, float groupId, float instanceId) {
     if (!uEnableAnimation || !uAtomWiggleEnabled) return pos;
-    // the routed drive of the wiggle channel, times the wiggle sensitivity knob
-    float amplitude = uWiggleAmplitude * pow(clamp(uAudioDriveWiggle * uAudioWiggleScale, 0.0, 40.0), 0.65);
+    // the routed drive of the wiggle channel, times the wiggle sensitivity knob, only on the atoms in scope
+    float amplitude = audioAffects(instanceId, groupId)
+        ? uWiggleAmplitude * pow(clamp(uAudioDriveWiggle * uAudioWiggleScale, 0.0, 40.0), 0.65)
+        : 0.0;
     #ifdef dWiggle
         #if defined(dWiggleType_instance)
             amplitude += readFromTexture(tWiggle, instanceId, uWiggleTexDim).a * uWiggleStrength;
@@ -188,14 +224,19 @@ vec3 applyWiggle(vec3 pos, float groupId, float instanceId) {
 }
 
 mat4 applyTumble(mat4 transform, float instanceIndex, float uObjectId) {
-    if (!uEnableAnimation || !uInstanceTumbleEnabled) return transform;
+    if (!uEnableAnimation) return transform;
+    // the position wave is its own route: it still runs when Instance Beats is off, or the tumble amplitude is 0
+    float driveWave = clamp(uAudioDriveInstanceWave * uAudioTumbleScale, 0.0, 40.0);
+    if (!uInstanceTumbleEnabled && driveWave <= 0.0) return transform;
+    if (!audioAffectsInstance(instanceIndex)) return transform;
     // the instance channels add up, each scaled by its routed drive and the instance sensitivity knob
     float driveRandom = clamp(uAudioDriveInstanceRandom * uAudioTumbleScale, 0.0, 40.0);
     float driveAxis = clamp(uAudioDriveInstanceAxis * uAudioTumbleScale, 0.0, 40.0);
     float driveNormal = clamp(uAudioDriveInstanceNormal * uAudioTumbleScale, 0.0, 40.0);
     float driveSym = clamp(uAudioDriveSymAxis * uAudioTumbleScale, 0.0, 40.0);
     float tumbleAmplitude = uTumbleAmplitude * uAudioLodMotionScale;
-    if (tumbleAmplitude > 0.0 && uTumbleSpeed > 0.0 && uTumbleFrequency > 0.0 && driveRandom + driveAxis + driveNormal + driveSym > 0.0) {
+    bool hasNoise = uInstanceTumbleEnabled && tumbleAmplitude > 0.0 && uTumbleSpeed > 0.0 && uTumbleFrequency > 0.0 && driveRandom + driveAxis + driveNormal + driveSym > 0.0;
+    if (hasNoise || driveWave > 0.0) {
         // Scale amplitude inversely with bounding-sphere radius (Stokes-Einstein: D ~ 1/r)
         float amplitude = tumbleAmplitude / max(uInvariantBoundingSphere.w, 1.0);
         float t = uTime * uTumbleSpeed;
@@ -204,7 +245,7 @@ mat4 applyTumble(mat4 transform, float instanceIndex, float uObjectId) {
         vec3 instanceCenter = transform[3].xyz + localCenter;
         // Per-instance rotation angles from layered noise (Brownian-like): the random channel
         mat3 rot = mat3(1.0);
-        if (driveRandom > 0.0) {
+        if (hasNoise && driveRandom > 0.0) {
             float angleX = (fbm(vec3(seed, t, 0.0)) / 0.4375 - 1.0) * amplitude * driveRandom;
             float angleY = (fbm(vec3(seed, 0.0, t)) / 0.4375 - 1.0) * amplitude * driveRandom;
             float angleZ = (fbm(vec3(0.0, seed, t)) / 0.4375 - 1.0) * amplitude * driveRandom;
@@ -223,7 +264,7 @@ mat4 applyTumble(mat4 transform, float instanceIndex, float uObjectId) {
 
         vec3 offset = vec3(0.0);
         // random: per-instance translation from layered noise (Brownian-like)
-        if (driveRandom > 0.0) {
+        if (hasNoise && driveRandom > 0.0) {
             offset += vec3(
                 (fbm(vec3(seed + 31.7, t, 0.0)) / 0.4375 - 1.0),
                 (fbm(vec3(seed + 31.7, 0.0, t)) / 0.4375 - 1.0),
@@ -231,21 +272,29 @@ mat4 applyTumble(mat4 transform, float instanceIndex, float uObjectId) {
             ) * amplitude * driveRandom;
         }
         // along an axis: the instance's own (local) or a world axis, flat, radius-independent
-        if (driveAxis > 0.0) {
+        if (hasNoise && driveAxis > 0.0) {
             vec3 axis = uTumbleAxisSource == 1 ? getGlobalTumbleAxisVector(uTumbleAxis, instanceCenter) : getTumbleAxisVector(transform, uTumbleAxis);
             offset += axis * tumbleAmplitude * driveAxis;
         }
         // along the normal: straight out from the assembly's centre (the structure's origin without symmetry)
-        if (driveNormal > 0.0) {
+        if (hasNoise && driveNormal > 0.0) {
             vec3 center = transform[3].xyz + mat3(transform) * uAudioAssemblyAxisCenter;
             vec3 radial = instanceCenter - (uAudioAssemblyAxisCount > 0 ? center : vec3(0.0));
             float radialLength = length(radial);
             if (radialLength > 0.00001) offset += radial / radialLength * tumbleAmplitude * driveNormal;
         }
         // the symmetry axes: out along the nearest axis of the structure's symmetry, Stokes-Einstein scaled
-        if (driveSym > 0.0 && uAudioAssemblyAxisCount > 0) {
+        if (hasNoise && driveSym > 0.0 && uAudioAssemblyAxisCount > 0) {
             vec3 axis = getResolvedAssemblyTumbleAxisVector(transform, instanceCenter);
             offset += axis * amplitude * driveSym * max(uAudioAssemblyAxisAmplitudeScale, 1.0);
+        }
+        // position wave: neighbours along the assembly rise in turn. The height is the channel's drive,
+        // which is the route's source (the picked stem) after its gain and release.
+        if (driveWave > 0.0) {
+            float along = dot(instanceCenter, vec3(0.02, 0.0, 0.015));
+            float phase = along + instanceIndex * 0.35 + uTime * 1.6;
+            float waveAmp = max(uTumbleAmplitude, 4.0) * uAudioLodMotionScale * driveWave;
+            offset += vec3(sin(phase), sin(phase + 2.094395), sin(phase + 4.18879)) * (waveAmp * 0.5);
         }
 
         // === FINAL MATRIX ASSEMBLY ===
@@ -267,6 +316,7 @@ mat4 applyTumble(mat4 transform, float instanceIndex, float uObjectId) {
 
 mat4 applyObjectTransform(mat4 transform, float uObjectId) {
     if (!uEnableAnimation || !uObjectTransformEnabled || uObjectTransformAmplitude <= 0.0 || uObjectTransformSpeed <= 0.0) return transform;
+    if (!audioAffectsWholeObject()) return transform;
 
     float drive = pow(clamp(uAudioDriveObject * uAudioObjectTransformScale, 0.0, 40.0), 0.65);
     float amplitude = uObjectTransformAmplitude * drive * uAudioLodMotionScale;

@@ -3,6 +3,7 @@
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
  * @author Gianluca Tomasello <giagitom@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { ParamDefinition as PD } from '../../mol-util/param-definition';
@@ -46,6 +47,7 @@ import { isPromiseLike } from '../../mol-util/type-helpers';
 import { Substance } from '../../mol-theme/substance';
 import { Emissive } from '../../mol-theme/emissive';
 import { Wiggle } from '../../mol-theme/wiggle';
+import { bindAudioAffect } from './audio-affect-binding';
 
 export interface UnitsVisual<P extends RepresentationProps = {}> extends Visual<StructureGroup, P> { }
 
@@ -54,7 +56,9 @@ function createUnitsRenderObject<G extends Geometry>(structureGroup: StructureGr
     const transform = createUnitsTransform(structureGroup, props.includeParent, geometry.boundingSphere, props.cellSize, props.batchSize);
     const values = createValues(geometry, transform, locationIt, theme, props);
     const state = createRenderableState(props);
-    return createRenderObject(geometry.kind, values, state, materialId);
+    const renderObject = createRenderObject(geometry.kind, values, state, materialId);
+    bindAudioAffect(renderObject, { kind: 'units', structure: structureGroup.structure, group: structureGroup.group });
+    return renderObject;
 }
 
 interface UnitsVisualBuilder<P extends StructureParams, G extends Geometry> {

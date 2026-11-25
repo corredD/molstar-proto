@@ -6,6 +6,7 @@
  * @author Gianluca Tomasello <giagitom@gmail.com>
  * @author Herman Bergwerf <post@hbergwerf.nl>
  * @author Adam Midlik <midlik@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { BehaviorSubject, Subject, Subscription, debounceTime, merge } from 'rxjs';
@@ -1266,6 +1267,8 @@ namespace Canvas3D {
             resetTime,
             setAudioFrame: frame => {
                 renderer.setAudioFrame(frame);
+                // the position wave still displaces instances when tumble amplitude is 0, which would not mark the scene animated
+                if (frame.driveInstanceWave > 0) forceNextRender = true;
             },
             pause,
             resume,

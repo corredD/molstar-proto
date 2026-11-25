@@ -3,6 +3,7 @@
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
  * @author Gianluca Tomasello <giagitom@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { ParamDefinition as PD } from '../../mol-util/param-definition';
@@ -42,6 +43,7 @@ import { Substance } from '../../mol-theme/substance';
 import { Spheres } from '../../mol-geo/geometry/spheres/spheres';
 import { Emissive } from '../../mol-theme/emissive';
 import { Wiggle } from '../../mol-theme/wiggle';
+import { bindAudioAffect } from './audio-affect-binding';
 import { Points } from '../../mol-geo/geometry/points/points';
 import { Image } from '../../mol-geo/geometry/image/image';
 
@@ -52,7 +54,9 @@ function createComplexRenderObject<G extends Geometry>(structure: Structure, geo
     const transform = createIdentityTransform();
     const values = createValues(geometry, transform, locationIt, theme, props);
     const state = createRenderableState(props);
-    return createRenderObject(geometry.kind, values, state, materialId);
+    const renderObject = createRenderObject(geometry.kind, values, state, materialId);
+    bindAudioAffect(renderObject, { kind: 'serial', structure });
+    return renderObject;
 }
 
 interface ComplexVisualBuilder<P extends StructureParams, G extends Geometry> {

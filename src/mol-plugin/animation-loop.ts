@@ -1,8 +1,9 @@
 /**
- * Copyright (c) 2020-2025 mol* contributors, licensed under MIT, See LICENSE file for more info.
+ * Copyright (c) 2020-2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author David Sehnal <david.sehnal@gmail.com>
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { PluginContext } from './context';
@@ -11,6 +12,7 @@ import { PluginAnimationManager } from '../mol-plugin-state/manager/animation';
 import { isTimingMode } from '../mol-util/debug';
 import { printTimerResults } from '../mol-gl/webgl/timer';
 import { Vec3 } from '../mol-math/linear-algebra';
+import { syncAudioAffect } from '../mol-plugin-state/helpers/audio-affect';
 import { syncStructureAssemblyAxes } from '../mol-plugin-state/helpers/assembly-symmetry-axis';
 
 const MaxProperFrameDelta = 1000 / 30;
@@ -42,6 +44,7 @@ export class PluginAnimationLoop {
         const stems = this.plugin.managers.audioReactive.stems;
         // each structure's objects get their own structure's symmetry axes
         syncStructureAssemblyAxes(this.plugin, audioParams.assemblyAxisOrder);
+        syncAudioAffect(this.plugin, this.plugin.managers.audioReactive.state.affect.value);
         // the audio routing: each visual channel's drive (symmetry axes, instances, atoms, object, illumination)
         const drives = this.plugin.managers.audioReactive.drives;
         const assemblyAxisAmplitudeScale = audioParams.assemblyAxisAmplitudeScale;
@@ -82,6 +85,7 @@ export class PluginAnimationLoop {
             driveInstanceRandom: drives.instanceRandom,
             driveInstanceAxis: drives.instanceAxis,
             driveInstanceNormal: drives.instanceNormal,
+            driveInstanceWave: drives.instanceWave,
             driveWiggle: drives.wiggle,
             driveObject: drives.object,
             illumination: drives.illumination * IlluminationGlow,
