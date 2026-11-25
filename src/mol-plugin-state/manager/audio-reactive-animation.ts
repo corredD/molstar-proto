@@ -2,9 +2,12 @@
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author OpenAI
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { BehaviorSubject } from 'rxjs';
+import { StemModelId, StemModels, StemName } from './audio-stems/stem-models';
+import { StemLevels, StemSeparator, StemSeparatorOptions, StemSeparatorStatus } from './audio-stems/stem-separator';
 import { ParamDefinition as PD } from '../../mol-util/param-definition';
 import { PluginContext } from '../../mol-plugin/context';
 import {
@@ -60,6 +63,9 @@ export const AudioReactiveAnimationManagerParams = {
     onsetWeight: PD.Numeric(DefaultAudioReactorParams.onsetWeight, { min: 0, max: 16, step: 0.1 }, { category: 'Prominence', description: 'How much a sudden jump counts against a steady level. Raise it so a quiet transient can out-rank a loud sustained band.' }),
     temperature: PD.Numeric(DefaultAudioReactorParams.temperature, { min: 0, max: 40, step: 0.5 }, { category: 'Prominence', description: 'Sharpness of the prominence distribution. High values let the loudest band claim almost all the weight.' }),
     activityThreshold: PD.Numeric(DefaultAudioReactorParams.activityThreshold, { min: 0, max: 1, step: 0.005 }, { category: 'Prominence', description: 'Bands quieter than this are treated as silent and excluded, so the rest share the full weight.' }),
+    stemModel: PD.Select<'off' | StemModelId>('off', [['off', 'Off'], ...Object.values(StemModels).map(m => [m.id, m.label] as [StemModelId, string])], { category: 'Stems', label: 'Separation', description: 'Split the audio into drums, bass, other and vocals with a model run in the browser (WebGPU). The audio is delayed so the stems line up with what is heard.' }),
+    stemExecutionProvider: PD.Select<'webgpu' | 'wasm'>('webgpu', [['webgpu', 'WebGPU'], ['wasm', 'CPU (WASM)']], { category: 'Stems', label: 'Run On', hideIf: p => p.stemModel === 'off' }),
+    stemDelaySeconds: PD.Numeric(0, { min: 0, max: 25, step: 0.5 }, { category: 'Stems', label: 'Audio Delay', hideIf: p => p.stemModel === 'off', description: 'How late the audio is heard, seconds; 0 uses the model\'s default. It must cover the model\'s latency, or the stems fall back to the band analysis.' }),
 } as const;
 export type AudioReactiveAnimationManagerParams = typeof AudioReactiveAnimationManagerParams
 export type AudioReactiveAnimationManagerValues = PD.Values<AudioReactiveAnimationManagerParams>;
@@ -77,8 +83,33 @@ export type AudioReactiveStatus = {
     sampleRate?: number,
     frame: AudioReactiveFrame<DefaultAudioBandKey>,
     visualization: AudioReactiveVisualizationFrame,
+    /** each stem's level (0-1): from the separation model where it runs and keeps up, else from the bands */
+    stems: StemLevels,
+    /** whether `stems` came from the separation model this frame */
+    stemsSeparated: boolean,
+    stemStatus: StemSeparatorStatus,
     error?: string,
 };
+
+const ZeroStems: StemLevels = { drums: 0, bass: 0, other: 0, vocals: 0 };
+
+/** stand-ins for the stems from the band analysis, when no model separates them */
+function getBandStems(frame: AudioReactiveFrame<DefaultAudioBandKey>): StemLevels {
+    const b = frame.frequencyBands;
+    return {
+        drums: Math.min(1, Math.max(frame.beatIntensity, frame.bandOnsets.highMids)),
+        bass: Math.max(b.subBass, b.bass),
+        other: (b.lowMids + b.highMids + b.treble) / 3,
+        vocals: b.mids,
+    };
+}
+
+export function getStemDelaySeconds(params: AudioReactiveAnimationManagerValues) {
+    if (params.stemModel === 'off') return 0;
+    return params.stemDelaySeconds > 0 ? params.stemDelaySeconds : StemModels[params.stemModel].delaySeconds;
+}
+
+export type { StemName, StemLevels };
 
 const AudioReactiveWaveformSampleCount = 96;
 const AudioReactiveSpectrumSampleCount = 56;
@@ -90,6 +121,9 @@ const InitialAudioReactiveStatus: AudioReactiveStatus = {
     analysisBlocked: false,
     frame: EmptyAudioReactiveFrame,
     visualization: EmptyAudioReactiveVisualization,
+    stems: ZeroStems,
+    stemsSeparated: false,
+    stemStatus: { state: 'off' },
 };
 
 function getAudioContextCtor(): (new() => AudioContext) | undefined {
@@ -185,6 +219,23 @@ export class AudioReactiveAnimationManager {
     private lastTickMs = 0;
     private silenceWhilePlayingMs = 0;
     private reactor = new AudioReactor();
+    /** what is heard runs through this, late by the stem model's latency (0 with no model) */
+    private delayNode?: DelayNode;
+    private separator?: StemSeparator;
+    private stemStatus: StemSeparatorStatus = { state: 'off' };
+    private currentStems: StemLevels = ZeroStems;
+    private stemsSeparated = false;
+
+    /** where the stem worker, the onnxruntime files and local weights are; next to the app page by default */
+    stemSeparatorOptions: StemSeparatorOptions = {
+        workerUrl: new URL('stem-worker.js', globalThis.document?.baseURI ?? 'http://localhost/').href,
+        wasmPath: new URL('ort/', globalThis.document?.baseURI ?? 'http://localhost/').href,
+        localBaseUrls: [
+            new URL('models/stems/', globalThis.document?.baseURI ?? 'http://localhost/').href,
+            // the dev server serves the repository at the root, the app under build/<app>/
+            new URL('../../models/stems/', globalThis.document?.baseURI ?? 'http://localhost/').href,
+        ],
+    };
 
     constructor(readonly plugin: PluginContext) {
         this.syncReactorParams();
@@ -192,6 +243,31 @@ export class AudioReactiveAnimationManager {
 
     get frame() {
         return this.currentFrame;
+    }
+
+    /** each stem's level (0-1) this frame: separated by the model where it keeps up, from the bands otherwise */
+    get stems() {
+        return this.currentStems;
+    }
+
+    private syncStems() {
+        const params = this.state.params.value;
+        if (this.delayNode && this.audioContext) {
+            const delay = getStemDelaySeconds(params);
+            if (Math.abs(this.delayNode.delayTime.value - delay) > 1e-3) {
+                this.delayNode.delayTime.setValueAtTime(delay, this.audioContext.currentTime);
+                this.separator?.reset();
+            }
+        }
+        if (params.stemModel === 'off' && !this.separator) return;
+        if (!this.separator) {
+            if (!this.audioContext || !this.sourceNode) return;
+            this.separator = new StemSeparator(this.audioContext, this.sourceNode, this.stemSeparatorOptions, status => {
+                this.stemStatus = status;
+                this.updateStatus(void 0, true);
+            });
+        }
+        void this.separator.setModel(params.stemModel === 'off' ? undefined : params.stemModel, params.stemExecutionProvider);
     }
 
     private getReactorParams() {
@@ -242,6 +318,7 @@ export class AudioReactiveAnimationManager {
         this.state.params.next(next);
         this.syncReactorParams();
         this.syncAnalyserConfig();
+        this.syncStems();
         this.updateStatus(void 0, true);
     }
 
@@ -257,6 +334,9 @@ export class AudioReactiveAnimationManager {
             sampleRate: this.audioContext?.sampleRate,
             frame: this.currentFrame,
             visualization: this.visualization,
+            stems: this.currentStems,
+            stemsSeparated: this.stemsSeparated,
+            stemStatus: this.stemStatus,
             error,
         });
     }
@@ -299,10 +379,16 @@ export class AudioReactiveAnimationManager {
         }
         if (!this.sourceNode) {
             this.sourceNode = this.audioContext.createMediaElementSource(audio);
-            this.sourceNode.connect(this.analyser);
+            // source -> delay -> analyser -> speakers: the analysis follows what is heard; the stem separator taps the
+            // source ahead of the delay
+            this.delayNode = this.audioContext.createDelay(30);
+            this.delayNode.delayTime.value = getStemDelaySeconds(this.state.params.value);
+            this.sourceNode.connect(this.delayNode);
+            this.delayNode.connect(this.analyser);
             this.analyser.connect(this.audioContext.destination);
         }
         this.syncAnalyserConfig();
+        this.syncStems();
     }
 
     private async waitForLoad(audio: HTMLAudioElement) {
@@ -333,6 +419,7 @@ export class AudioReactiveAnimationManager {
 
         this.sourceLabel = label;
         this.reactor.reset();
+        this.separator?.reset();
         this.currentFrame = EmptyAudioReactiveFrame;
         clearAudioReactiveVisualization(this.visualization);
         this.lastTickMs = 0;
@@ -374,6 +461,7 @@ export class AudioReactiveAnimationManager {
         audio.pause();
         audio.currentTime = 0;
         this.reactor.reset();
+        this.separator?.reset();
         this.currentFrame = EmptyAudioReactiveFrame;
         clearAudioReactiveVisualization(this.visualization);
         this.lastTickMs = 0;
@@ -392,11 +480,24 @@ export class AudioReactiveAnimationManager {
         this.releaseObjectUrl();
         this.sourceLabel = void 0;
         this.reactor.reset();
+        this.separator?.reset();
         this.currentFrame = EmptyAudioReactiveFrame;
         clearAudioReactiveVisualization(this.visualization);
         this.lastTickMs = 0;
         this.silenceWhilePlayingMs = 0;
         this.updateStatus(void 0, true);
+    }
+
+    private updateStems(dtMs: number, paused: boolean) {
+        const params = this.state.params.value;
+        let separated: StemLevels | undefined;
+        if (!paused && this.separator && this.audioContext && params.stemModel !== 'off') {
+            // the audio heard now entered the graph one delay ago
+            const heard = this.audioContext.currentTime - getStemDelaySeconds(params);
+            separated = this.separator.sample(heard, dtMs, params.bandAttackMs, params.bandReleaseMs);
+        }
+        this.stemsSeparated = !!separated;
+        this.currentStems = separated ?? getBandStems(this.currentFrame);
     }
 
     tick(timeMs: number): AudioReactiveFrame<DefaultAudioBandKey> {
@@ -434,6 +535,7 @@ export class AudioReactiveAnimationManager {
                 writeSpectrumSamples(this.frequencyDomainData, this.visualization.spectrum);
                 this.currentFrame = this.reactor.analyze(this.timeDomainData, sampleRate, dtMs);
             }
+            this.updateStems(dtMs, audio.paused || audio.ended);
             this.updateStatus(void 0, false, timeMs);
         } catch (e) {
             this.updateStatus(`${e}`, true, timeMs);
@@ -445,6 +547,8 @@ export class AudioReactiveAnimationManager {
     dispose() {
         this.clear();
         this.sourceNode?.disconnect();
+        this.separator?.dispose();
+        this.delayNode?.disconnect();
         this.analyser?.disconnect();
         this.audioContext?.close();
         this.state.audioPlayer.complete();

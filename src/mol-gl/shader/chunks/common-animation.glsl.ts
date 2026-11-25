@@ -50,6 +50,10 @@ uniform int uAudioAssemblyAxisCount;
 uniform vec3 uAudioAssemblyAxisCenter;
 uniform vec3 uAudioAssemblyAxes[32];
 uniform float uAudioLodMotionScale;
+uniform float uAudioStemDrums;
+uniform float uAudioStemBass;
+uniform float uAudioStemOther;
+uniform float uAudioStemVocals;
 
 #ifdef dWiggle
     uniform vec2 uWiggleTexDim;
@@ -70,6 +74,10 @@ float getAudioSource(int source) {
     if (source == 10) return uAudioTreble;
     if (source == 11) return uAudioDominantFrequency;
     if (source == 12) return clamp(uAudioMix * 0.25 + uAudioMids * 0.45 + uAudioHighMids * 0.35 + uAudioTreble * 0.25, 0.0, 2.0);
+    if (source == 13) return uAudioStemDrums;
+    if (source == 14) return uAudioStemBass;
+    if (source == 15) return uAudioStemOther;
+    if (source == 16) return uAudioStemVocals;
     return 1.0;
 }
 

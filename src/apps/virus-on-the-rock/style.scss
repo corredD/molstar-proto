@@ -500,3 +500,31 @@ html, body, #app {
     font-size: 0.86rem;
     line-height: 1.45;
 }
+
+.vor-stem-meters {
+    display: grid;
+    gap: 6px;
+}
+
+.vor-stem-meter {
+    display: grid;
+    grid-template-columns: 56px 1fr;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.8rem;
+    color: var(--vor-text-dim);
+
+    div {
+        height: 8px;
+        border-radius: 4px;
+        background: rgba(255, 255, 255, 0.08);
+        overflow: hidden;
+    }
+
+    i {
+        display: block;
+        height: 100%;
+        border-radius: 4px;
+        transition: width 60ms linear;
+    }
+}

@@ -19,3 +19,6 @@ dev.pem
 dev-key.pem
 
 data/sym/syminfo.lib
+
+# stem-separation weights (downloaded, not committed)
+models/

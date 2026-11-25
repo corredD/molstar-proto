@@ -19,7 +19,12 @@ const Apps = [
     { kind: 'app', name: 'docking-viewer' },
     { kind: 'app', name: 'mesoscale-explorer' },
     { kind: 'app', name: 'mvs-stories', globalName: 'mvsStories', filename: 'mvs-stories.js' },
-    { kind: 'app', name: 'virus-on-the-rock' },
+    {
+        kind: 'app', name: 'virus-on-the-rock',
+        // the stem separator's worker, and the onnxruntime-web WebGPU runtime it loads from ./ort/
+        workers: [{ entry: './src/mol-plugin-state/manager/audio-stems/stem-worker.ts', outfile: 'stem-worker.js' }],
+        copy: ['ort-wasm-simd-threaded.asyncify.wasm', 'ort-wasm-simd-threaded.asyncify.mjs'].map(f => ({ from: `./node_modules/onnxruntime-web/dist/${f}`, to: `ort/${f}` })),
+    },
 
     // Examples
     { kind: 'example', name: 'proteopedia-wrapper' },
@@ -256,6 +261,33 @@ async function createBundle(app) {
     await ctx.rebuild();
 
     if (!isProduction) await ctx.watch();
+
+    for (const file of app.copy || []) {
+        const to = path.join(prefix, file.to);
+        fs.mkdirSync(path.dirname(to), { recursive: true });
+        fs.copyFileSync(file.from, to);
+    }
+    for (const worker of app.workers || []) await createWorkerBundle(prefix, worker);
+}
+
+async function createWorkerBundle(prefix, worker) {
+    const ctx = await esbuild.context({
+        entryPoints: [worker.entry],
+        tsconfig: './tsconfig.json',
+        bundle: true,
+        format: 'esm',
+        platform: 'browser',
+        minify: isProduction,
+        sourcemap: includeSourceMap,
+        outfile: path.join(prefix, worker.outfile),
+        color: true,
+        logLevel: 'info',
+        define: {
+            'process.env.NODE_ENV': JSON.stringify(NODE_ENV_PRD ? 'production' : 'development'),
+        },
+    });
+    await ctx.rebuild();
+    if (!isProduction) await ctx.watch();
 }
 
 async function createTheme(appName, themeName) {
@@ -428,7 +460,8 @@ async function main() {
 
         const ext = path.extname(filePath).toLowerCase();
         const contentType = ext === '.html' ? 'text/html; charset=utf-8'
-            : ext === '.js' ? 'text/javascript; charset=utf-8'
+            : ext === '.js' || ext === '.mjs' ? 'text/javascript; charset=utf-8'
+                : ext === '.wasm' ? 'application/wasm'
                 : ext === '.css' ? 'text/css; charset=utf-8'
                     : ext === '.json' ? 'application/json; charset=utf-8'
                         : ext === '.svg' ? 'image/svg+xml'

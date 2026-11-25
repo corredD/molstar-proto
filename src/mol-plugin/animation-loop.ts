@@ -36,6 +36,7 @@ export class PluginAnimationLoop {
         await this.plugin.managers.animation.tick(t, options?.isSynchronous, options?.animation);
         const audioFrame = this.plugin.managers.audioReactive.tick(t);
         const audioParams = this.plugin.managers.audioReactive.state.params.value;
+        const stems = this.plugin.managers.audioReactive.stems;
         const assemblyAxisCount = getSelectedStructureAssemblyAxes(this.plugin, audioParams.assemblyAxisOrder, this.audioAssemblyAxes, this.audioAssemblyAxisCenter);
         const animationOptions = this.plugin.managers.structure.component.state.options.animation;
         // Zero out the assembly-axis scale for local/global axis modes so the shader takes the
@@ -76,6 +77,10 @@ export class PluginAnimationLoop {
             assemblyAxisCenter: this.audioAssemblyAxisCenter,
             assemblyAxes: this.audioAssemblyAxes,
             lodMotionScale,
+            stemDrums: stems.drums,
+            stemBass: stems.bass,
+            stemOther: stems.other,
+            stemVocals: stems.vocals,
         });
         this.plugin.canvas3d?.tick(t as now.Timestamp, options);
 

@@ -113,6 +113,11 @@ export type AudioReactiveFrame = {
     assemblyAxisCenter: Vec3,
     assemblyAxes: number[],
     lodMotionScale: number,
+    /** each separated stem's level (0-1), or its stand-in from the bands */
+    stemDrums: number,
+    stemBass: number,
+    stemOther: number,
+    stemVocals: number,
 };
 
 export const RendererParams = {
@@ -327,6 +332,10 @@ namespace Renderer {
             uAudioAssemblyAxisCenter: ValueCell.create(Vec3.create(0, 0, 0)),
             uAudioAssemblyAxes: ValueCell.create(new Array<number>(32 * 3).fill(0)),
             uAudioLodMotionScale: ValueCell.create(1),
+            uAudioStemDrums: ValueCell.create(0),
+            uAudioStemBass: ValueCell.create(0),
+            uAudioStemOther: ValueCell.create(0),
+            uAudioStemVocals: ValueCell.create(0),
         };
         const globalUniformList = Object.entries(globalUniforms);
 
@@ -946,6 +955,10 @@ namespace Renderer {
                 ValueCell.update(globalUniforms.uAudioAssemblyAxisCenter, frame.assemblyAxisCenter);
                 ValueCell.update(globalUniforms.uAudioAssemblyAxes, frame.assemblyAxes);
                 ValueCell.updateIfChanged(globalUniforms.uAudioLodMotionScale, frame.lodMotionScale);
+                ValueCell.updateIfChanged(globalUniforms.uAudioStemDrums, frame.stemDrums);
+                ValueCell.updateIfChanged(globalUniforms.uAudioStemBass, frame.stemBass);
+                ValueCell.updateIfChanged(globalUniforms.uAudioStemOther, frame.stemOther);
+                ValueCell.updateIfChanged(globalUniforms.uAudioStemVocals, frame.stemVocals);
             },
             setProps: (props: Partial<RendererProps>) => {
                 if (props.backgroundColor !== undefined && props.backgroundColor !== p.backgroundColor) {

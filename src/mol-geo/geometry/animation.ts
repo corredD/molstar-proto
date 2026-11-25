@@ -62,6 +62,10 @@ export const AudioReactiveSourceOptions = [
     ['treble', 'Treble'],
     ['dominantFrequency', 'Dominant Freq'],
     ['midsTreble', 'Mids/Treble'],
+    ['stemDrums', 'Stem: Drums'],
+    ['stemBass', 'Stem: Bass'],
+    ['stemOther', 'Stem: Other'],
+    ['stemVocals', 'Stem: Vocals'],
 ] as const;
 export type AudioReactiveSourceName = typeof AudioReactiveSourceOptions[number][0];
 
@@ -100,6 +104,10 @@ function getAudioReactiveSourceIndex(source: AudioReactiveSourceName): number {
         case 'treble': return 10;
         case 'dominantFrequency': return 11;
         case 'midsTreble': return 12;
+        case 'stemDrums': return 13;
+        case 'stemBass': return 14;
+        case 'stemOther': return 15;
+        case 'stemVocals': return 16;
     }
 }
 

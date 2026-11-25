@@ -201,6 +201,10 @@ export const GlobalUniformSchema = {
     uAudioAssemblyAxisCenter: UniformSpec('v3'),
     uAudioAssemblyAxes: UniformSpec('v3[]'),
     uAudioLodMotionScale: UniformSpec('f'),
+    uAudioStemDrums: UniformSpec('f'),
+    uAudioStemBass: UniformSpec('f'),
+    uAudioStemOther: UniformSpec('f'),
+    uAudioStemVocals: UniformSpec('f'),
 } as const;
 export type GlobalUniformSchema = typeof GlobalUniformSchema
 export type GlobalUniformValues = Values<GlobalUniformSchema>
