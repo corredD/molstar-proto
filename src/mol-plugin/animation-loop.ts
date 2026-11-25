@@ -15,6 +15,9 @@ import { syncStructureAssemblyAxes } from '../mol-plugin-state/helpers/assembly-
 
 const MaxProperFrameDelta = 1000 / 30;
 
+/** how bright the illumination channel's glow gets at a drive of 1 (added to the emissive) */
+const IlluminationGlow = 0.35;
+
 export class PluginAnimationLoop {
     private lastTickT: number = 0;
     // Proper time is used to prevent animations from skipping
@@ -37,13 +40,9 @@ export class PluginAnimationLoop {
         const stems = this.plugin.managers.audioReactive.stems;
         // each structure's objects get their own structure's symmetry axes
         syncStructureAssemblyAxes(this.plugin, audioParams.assemblyAxisOrder);
-        const animationOptions = this.plugin.managers.structure.component.state.options.animation;
-        // Zero out the assembly-axis scale for local/global axis modes so the shader takes the
-        // flat (radius-independent) path instead of the Stokes-Einstein–scaled assembly path.
-        const assemblyAxisAmplitudeScale = (
-            animationOptions.tumbleTranslationMode === 'axis' &&
-            animationOptions.tumbleAxisSource !== 'assembly'
-        ) ? 0 : audioParams.assemblyAxisAmplitudeScale;
+        // the audio routing: each visual channel's drive (symmetry axes, instances, atoms, object, illumination)
+        const drives = this.plugin.managers.audioReactive.drives;
+        const assemblyAxisAmplitudeScale = audioParams.assemblyAxisAmplitudeScale;
         // LOD motion scale: when enabled, amplify all motion proportionally to camera distance
         // so animations remain visible when zoomed out of a large scene.
         let lodMotionScale = 1.0;
@@ -77,6 +76,13 @@ export class PluginAnimationLoop {
             stemBass: stems.bass,
             stemOther: stems.other,
             stemVocals: stems.vocals,
+            driveSymAxis: drives.symAxis,
+            driveInstanceRandom: drives.instanceRandom,
+            driveInstanceAxis: drives.instanceAxis,
+            driveInstanceNormal: drives.instanceNormal,
+            driveWiggle: drives.wiggle,
+            driveObject: drives.object,
+            illumination: drives.illumination * IlluminationGlow,
         });
         this.plugin.canvas3d?.tick(t as now.Timestamp, options);
 

@@ -26,7 +26,8 @@ import { BlobSurfaceRepresentationProvider } from '../../mol-repr/structure/repr
 import { SpacefillRepresentationProvider } from '../../mol-repr/structure/representation/spacefill';
 import { DefaultAudioBandDefinitions } from '../../mol-plugin-state/manager/audio-reactor';
 import { AudioProminenceRadar } from '../../mol-plugin-ui/controls/audio-prominence-radar';
-import { AudioReactivePresetDefinitions, AudioReactivePresetName, getAudioReactivePreset } from '../../mol-plugin-state/helpers/audio-reactive-presets';
+import { AudioReactivePresetDefinitions, AudioReactivePresetName, getAudioReactivePreset, getPresetRoutes } from '../../mol-plugin-state/helpers/audio-reactive-presets';
+import { AudioRouteSources, AudioRouteTargets, createAudioRoute, getDefaultAudioRoutes, type AudioRoute } from '../../mol-plugin-state/manager/audio-routing';
 import { AudioReactiveAnimationManagerValues, type AudioReactiveStatus, getStemDelaySeconds } from '../../mol-plugin-state/manager/audio-reactive-animation';
 import { StemModelIds, StemModels, type StemName, StemNames } from '../../mol-plugin-state/manager/audio-stems/stem-models';
 import { AudioReactiveAssemblyAxisOrder } from '../../mol-plugin-state/helpers/assembly-symmetry-axis';
@@ -104,19 +105,31 @@ const AudioUrlPresets = [
 ] as const;
 const DefaultAudioUrlPreset = AudioUrlPresets.find(p => p.url === DefaultAudioUrl) ?? AudioUrlPresets[0];
 const ExamplePdbIds = ['2tbv', '2plv'] as const;
-const DefaultPresetName: AudioReactivePresetName = 'subtle-drift';
-/** the beat cycle steps on a rise of its drive past this, and re-arms once it falls under the release level */
-const BeatCycleTriggerLevel = 0.5;
-const BeatCycleReleaseLevel = 0.25;
+const DefaultPresetName: AudioReactivePresetName = 'drums-bass-burst';
+/**
+ * The beat cycle steps when the symmetry-axis drive rises past this share of its running peak, and re-arms once it falls
+ * under the release share: relative, so it follows whatever routes drive the axes, at any gain
+ */
+const BeatCycleTriggerLevel = 0.75;
+const BeatCycleReleaseLevel = 0.3;
+const BeatCyclePeakDecayMs = 3000;
+const BeatCycleAverageMs = 400;
+/** no two steps closer than this, ms */
+const BeatCycleMinIntervalMs = 400;
+const BeatCyclePeakFloor = 0.05;
+/** the camera-zoom channel narrows the field of view by this much per unit of drive, at most CameraZoomMax */
+const CameraZoomPerDrive = 0.08;
+const CameraZoomMax = 0.3;
 /** Starting values of the effect knobs: the beat threshold where the presets keep it (0.05 fired a beat every frame), a moderate axis travel */
 const DefaultEffectKnobs: Partial<AudioReactiveAnimationManagerValues> = {
     wiggleEffectScale: 1,
     tumbleEffectScale: 1,
     objectTransformEffectScale: 1,
-    assemblyAxisAmplitudeScale: 8,
+    assemblyAxisAmplitudeScale: 15,
     beatThreshold: 1.1,
 };
 const FeaturedPresetNames: readonly AudioReactivePresetName[] = [
+    'drums-bass-burst',
     'subtle-drift',
     'stem-drift',
     'bass-spectrum',
@@ -488,6 +501,10 @@ export class VirusOnTheRockApp {
     private cycleTargetsCustomized = false;
     private syncToken = 0;
     private beatTriggerActive = false;
+    private beatCyclePeak = BeatCyclePeakFloor;
+    private beatCycleAverage = 0;
+    private beatCycleLastStepMs = 0;
+    private beatCycleLastMs = 0;
     private beatCycleCount = 0;
     private beatCycleIndex = 0;
     private lastRandomPdbId: string | undefined;
@@ -549,7 +566,10 @@ export class VirusOnTheRockApp {
         }));
 
         this.subscriptions.add(
-            this.viewer.plugin.canvas3d!.didDraw.subscribe(() => this.updateAudioReactiveClips())
+            this.viewer.plugin.canvas3d!.didDraw.subscribe(() => {
+                this.updateAudioReactiveClips();
+                this.updateAudioCameraZoom();
+            })
         );
 
         this.uiRoot.render(<VirusOnTheRockControls app={this} />);
@@ -841,13 +861,22 @@ export class VirusOnTheRockApp {
             return;
         }
 
-        // the drums stem: the separated drums where a model runs, else the kick's onset normalized by its peak. Not the
-        // beat detector's intensity against `beatThreshold` (the detector's flux multiplier, ~1.1-1.35): a 0-1
+        // the symmetry-axis channel's drive (whatever routes feed it: drums, bass...), relative to its running peak. Not
+        // the beat detector's intensity against `beatThreshold` (the detector's flux multiplier, ~1.1-1.35): a 0-1
         // intensity never reached it, so the cycle only ran while the start-up forced it to 0.05
-        const drive = status.stems.drums;
+        const now = performance.now();
+        const dt = this.beatCycleLastMs > 0 ? now - this.beatCycleLastMs : 16;
+        this.beatCycleLastMs = now;
+        const raw = status.drives.symAxis;
+        // a hit is the drive rising above its short average (a sustained bass keeps the drive high, never a hit)
+        this.beatCycleAverage += (raw - this.beatCycleAverage) * (1 - Math.exp(-dt / BeatCycleAverageMs));
+        const excess = Math.max(0, raw - this.beatCycleAverage);
+        this.beatCyclePeak = Math.max(excess, BeatCyclePeakFloor, this.beatCyclePeak * Math.exp(-dt / BeatCyclePeakDecayMs));
+        const drive = excess / this.beatCyclePeak;
         const beatActive = this.beatTriggerActive ? drive > BeatCycleReleaseLevel : drive >= BeatCycleTriggerLevel;
-        const shouldAdvance = this.isAxisCycleActive() && beatActive && !this.beatTriggerActive;
+        const shouldAdvance = this.isAxisCycleActive() && beatActive && !this.beatTriggerActive && now - this.beatCycleLastStepMs >= BeatCycleMinIntervalMs;
         this.beatTriggerActive = beatActive;
+        if (shouldAdvance) this.beatCycleLastStepMs = now;
 
         if (!shouldAdvance) return;
 
@@ -1185,6 +1214,8 @@ export class VirusOnTheRockApp {
 
     async applyAudioPreset(name: AudioReactivePresetName) {
         const preset = getAudioReactivePreset(name);
+        // a preset is its routes too: which audio drives which channel
+        this.viewer.plugin.managers.audioReactive.setRoutes(getPresetRoutes(preset));
         const current = this.state.value;
         this.viewer.plugin.managers.audioReactive.setParams({
             ...preset.analysis,
@@ -1303,10 +1334,10 @@ export class VirusOnTheRockApp {
         const canvas3d = this.viewer.plugin.canvas3d;
         if (!canvas3d) return;
 
-        const audioFrame = this.viewer.plugin.managers.audioReactive.frame;
-        // Low-freq drive: beat + bass blend (same weighting as assembly axis mode).
-        const drive = audioFrame.beatIntensity * 0.6 + audioFrame.frequencyBands.bass * 0.4;
-        const scaledDrive = drive * this.state.value.audioClipScale;
+        // the routed clip channels: a plane moves along its normal (position), the other shapes grow (size)
+        const drives = this.viewer.plugin.managers.audioReactive.drives;
+        const positionDrive = drives.clipPosition * this.state.value.audioClipScale;
+        const scaledDrive = drives.clipSize * this.state.value.audioClipScale;
 
         for (const ro of canvas3d.getRenderObjects()) {
             if (!ro.state.visible) continue;
@@ -1349,7 +1380,7 @@ export class VirusOnTheRockApp {
                     const nx = 2 * (qx * qy + qz * qw);
                     const ny = 1 - 2 * (qx * qx + qz * qz);
                     const nz = 2 * (qy * qz - qx * qw);
-                    const offset = scaledDrive * 50; // 50 Å at drive=1, scale=1
+                    const offset = positionDrive * 50; // 50 Å at drive=1, scale=1
                     workPosition[i * 3 + 0] = basePosition[i * 3 + 0] + nx * offset;
                     workPosition[i * 3 + 1] = basePosition[i * 3 + 1] + ny * offset;
                     workPosition[i * 3 + 2] = basePosition[i * 3 + 2] + nz * offset;
@@ -1377,6 +1408,26 @@ export class VirusOnTheRockApp {
             ValueCell.update(v.uClipObjectPosition, workPosition);
             ValueCell.update(v.uClipObjectScale, workScale);
         }
+    }
+
+    /** the field of view when the camera-zoom channel started driving it, restored when it stops */
+    private cameraZoomBaseFov?: number;
+
+    /** the camera-zoom channel: a punch-in of the field of view, so the user's own orbit and zoom stay theirs */
+    private updateAudioCameraZoom() {
+        const camera = this.viewer.plugin.canvas3d?.camera;
+        if (!camera) return;
+        const drive = this.viewer.plugin.managers.audioReactive.drives.cameraZoom;
+        if (drive <= 1e-3) {
+            if (this.cameraZoomBaseFov !== undefined) {
+                camera.setState({ fov: this.cameraZoomBaseFov });
+                this.cameraZoomBaseFov = undefined;
+            }
+            return;
+        }
+        if (this.cameraZoomBaseFov === undefined) this.cameraZoomBaseFov = camera.state.fov;
+        const fov = this.cameraZoomBaseFov * (1 - Math.min(CameraZoomMax, CameraZoomPerDrive * drive));
+        if (Math.abs(camera.state.fov - fov) > 1e-4) camera.setState({ fov });
     }
 
     private restoreClipBaseStates() {
@@ -1461,9 +1512,6 @@ function StemSeparationCard({ app }: { app: VirusOnTheRockApp }) {
                 className={`vor-chip ${current === id ? 'vor-active' : ''}`}
                 onClick={() => {
                     manager.setParams({ stemModel: id });
-                    // the stems only move the virus through the Stem sources: turning separation on picks the preset
-                    // that uses them (any other preset can be picked after)
-                    if (id !== 'off' && app.state.value.activePreset !== 'stem-drift') void app.applyAudioPreset('stem-drift');
                 }}
                 title={id === 'off' ? 'No separation: the stems come from the frequency bands, with no delay.' : StemModels[id].description}
             >
@@ -1481,6 +1529,56 @@ function StemSeparationCard({ app }: { app: VirusOnTheRockApp }) {
             The audio is heard <b>{getStemDelaySeconds(params).toFixed(1)} s</b> late so the stems line up with it.
             Use the <b>Stem</b> sources (or the Stem Drift preset) to drive the motion by stem.
         </p>}
+    </div>;
+}
+
+function AudioRoutingCard({ app }: { app: VirusOnTheRockApp }) {
+    const manager = app.viewer.plugin.managers.audioReactive;
+    const routes = useBehavior(manager.state.routes);
+    const status = useBehavior(manager.state.status) as AudioReactiveStatus | undefined;
+    if (!routes) return null;
+    return <div className='vor-stack'>
+        {routes.map(route => {
+            const value = status?.routeValues.get(route.id) ?? 0;
+            return <div key={route.id} className={`vor-route ${route.enabled ? '' : 'vor-route-off'}`}>
+                <div className='vor-route-row'>
+                    <input
+                        type='checkbox'
+                        checked={route.enabled}
+                        title={route.enabled ? 'On: click to mute this route' : 'Off: click to turn this route on'}
+                        onChange={e => manager.updateRoute(route.id, { enabled: e.target.checked })}
+                    />
+                    <select className='vor-select' value={route.source} onChange={e => manager.updateRoute(route.id, { source: e.target.value as AudioRoute['source'] })}>
+                        {AudioRouteSources.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                    </select>
+                    <select className='vor-select vor-route-mode' value={route.mode} title='Level follows how loud the source is; Hits follows how much it just rose' onChange={e => manager.updateRoute(route.id, { mode: e.target.value as AudioRoute['mode'] })}>
+                        <option value='level'>Level</option>
+                        <option value='onset'>Hits</option>
+                    </select>
+                    <button className='vor-chip vor-route-remove' title='Remove this route' onClick={() => manager.removeRoute(route.id)}>×</button>
+                </div>
+                <div className='vor-route-row'>
+                    <span className='vor-route-arrow'>→</span>
+                    <select className='vor-select' value={route.target} onChange={e => manager.updateRoute(route.id, { target: e.target.value as AudioRoute['target'] })}>
+                        {AudioRouteTargets.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                    </select>
+                </div>
+                <div className='vor-route-row'>
+                    <label className='vor-route-gain' title='Sensitivity: how much the source moves the channel'>
+                        Gain {route.gain.toFixed(2)}
+                        <input type='range' min='0' max='4' step='0.05' value={route.gain} onChange={e => manager.updateRoute(route.id, { gain: parseFloat(e.target.value) })} />
+                    </label>
+                    <div className='vor-route-meter' title='What this route sends now'><i style={{ width: `${Math.min(100, value * 50)}%` }} /></div>
+                </div>
+            </div>;
+        })}
+        <div className='vor-chip-row'>
+            <button className='vor-chip' onClick={() => manager.setRoutes([...routes, createAudioRoute({ enabled: true, source: 'stemDrums', mode: 'onset', target: 'symAxis', gain: 1, floor: 0, releaseMs: 250 })])}>+ Add route</button>
+            <button className='vor-chip' title='Drums and bass to the symmetry axes, other to the atoms, vocals to the illumination' onClick={() => manager.setRoutes(getDefaultAudioRoutes())}>Defaults</button>
+        </div>
+        <p className='vor-help'>
+            Each route sends an audio source to a visual channel; a channel sums its routes. The symmetry-axis channel also steps the beat cycle. The stems come from the separation when it runs, from the bands otherwise.
+        </p>
     </div>;
 }
 
@@ -1874,6 +1972,10 @@ function VirusOnTheRockControls({ app }: { app: VirusOnTheRockApp }) {
 
             <ControlCard title='Stem Separation'>
                 <StemSeparationCard app={app} />
+            </ControlCard>
+
+            <ControlCard title='Audio Routing'>
+                <AudioRoutingCard app={app} />
             </ControlCard>
 
             <ControlCard title='Prominence'>

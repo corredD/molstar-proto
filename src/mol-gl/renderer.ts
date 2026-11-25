@@ -115,6 +115,14 @@ export type AudioReactiveFrame = {
     stemBass: number,
     stemOther: number,
     stemVocals: number,
+    /** each visual channel's drive (audio routing) */
+    driveSymAxis: number,
+    driveInstanceRandom: number,
+    driveInstanceAxis: number,
+    driveInstanceNormal: number,
+    driveWiggle: number,
+    driveObject: number,
+    illumination: number,
 };
 
 export const RendererParams = {
@@ -330,6 +338,13 @@ namespace Renderer {
             uAudioStemBass: ValueCell.create(0),
             uAudioStemOther: ValueCell.create(0),
             uAudioStemVocals: ValueCell.create(0),
+            uAudioDriveSymAxis: ValueCell.create(0),
+            uAudioDriveInstanceRandom: ValueCell.create(0),
+            uAudioDriveInstanceAxis: ValueCell.create(0),
+            uAudioDriveInstanceNormal: ValueCell.create(0),
+            uAudioDriveWiggle: ValueCell.create(0),
+            uAudioDriveObject: ValueCell.create(0),
+            uAudioIllumination: ValueCell.create(0),
         };
         const globalUniformList = Object.entries(globalUniforms);
 
@@ -950,6 +965,13 @@ namespace Renderer {
                 ValueCell.updateIfChanged(globalUniforms.uAudioStemBass, frame.stemBass);
                 ValueCell.updateIfChanged(globalUniforms.uAudioStemOther, frame.stemOther);
                 ValueCell.updateIfChanged(globalUniforms.uAudioStemVocals, frame.stemVocals);
+                ValueCell.updateIfChanged(globalUniforms.uAudioDriveSymAxis, frame.driveSymAxis);
+                ValueCell.updateIfChanged(globalUniforms.uAudioDriveInstanceRandom, frame.driveInstanceRandom);
+                ValueCell.updateIfChanged(globalUniforms.uAudioDriveInstanceAxis, frame.driveInstanceAxis);
+                ValueCell.updateIfChanged(globalUniforms.uAudioDriveInstanceNormal, frame.driveInstanceNormal);
+                ValueCell.updateIfChanged(globalUniforms.uAudioDriveWiggle, frame.driveWiggle);
+                ValueCell.updateIfChanged(globalUniforms.uAudioDriveObject, frame.driveObject);
+                ValueCell.updateIfChanged(globalUniforms.uAudioIllumination, frame.illumination);
             },
             setProps: (props: Partial<RendererProps>) => {
                 if (props.backgroundColor !== undefined && props.backgroundColor !== p.backgroundColor) {

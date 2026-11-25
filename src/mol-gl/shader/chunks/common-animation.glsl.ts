@@ -54,6 +54,12 @@ uniform float uAudioStemDrums;
 uniform float uAudioStemBass;
 uniform float uAudioStemOther;
 uniform float uAudioStemVocals;
+uniform float uAudioDriveSymAxis;
+uniform float uAudioDriveInstanceRandom;
+uniform float uAudioDriveInstanceAxis;
+uniform float uAudioDriveInstanceNormal;
+uniform float uAudioDriveWiggle;
+uniform float uAudioDriveObject;
 
 #ifdef dWiggle
     uniform vec2 uWiggleTexDim;
@@ -148,10 +154,8 @@ float getAssemblyAxisDrive() {
 
 vec3 applyWiggle(vec3 pos, float groupId, float instanceId) {
     if (!uEnableAnimation || !uAtomWiggleEnabled) return pos;
-    float amplitude = uWiggleAmplitude;
-    if (uAudioWiggleSource != 0) {
-        amplitude *= clamp(getSoftAudioDrive(uAudioWiggleSource, uAudioWiggleStrength, uAudioWiggleFloor, uAudioWiggleScale), 0.0, 8.0);
-    }
+    // the routed drive of the wiggle channel, times the wiggle sensitivity knob
+    float amplitude = uWiggleAmplitude * pow(clamp(uAudioDriveWiggle * uAudioWiggleScale, 0.0, 8.0), 0.65);
     #ifdef dWiggle
         #if defined(dWiggleType_instance)
             amplitude += readFromTexture(tWiggle, instanceId, uWiggleTexDim).a * uWiggleStrength;
@@ -185,27 +189,25 @@ vec3 applyWiggle(vec3 pos, float groupId, float instanceId) {
 
 mat4 applyTumble(mat4 transform, float instanceIndex, float uObjectId) {
     if (!uEnableAnimation || !uInstanceTumbleEnabled) return transform;
-    float tumbleAmplitude = uTumbleAmplitude;
-    if (uAudioTumbleSource != 0) {
-        tumbleAmplitude *= clamp((uAudioTumbleFloor + getAudioSource(uAudioTumbleSource) * uAudioTumbleStrength) * uAudioTumbleScale, 0.0, 8.0);
-    }
-    tumbleAmplitude *= uAudioLodMotionScale;
-    if (tumbleAmplitude > 0.0 && uTumbleSpeed > 0.0 && uTumbleFrequency > 0.0) {
+    // the instance channels add up, each scaled by its routed drive and the instance sensitivity knob
+    float driveRandom = clamp(uAudioDriveInstanceRandom * uAudioTumbleScale, 0.0, 8.0);
+    float driveAxis = clamp(uAudioDriveInstanceAxis * uAudioTumbleScale, 0.0, 8.0);
+    float driveNormal = clamp(uAudioDriveInstanceNormal * uAudioTumbleScale, 0.0, 8.0);
+    float driveSym = clamp(uAudioDriveSymAxis * uAudioTumbleScale, 0.0, 8.0);
+    float tumbleAmplitude = uTumbleAmplitude * uAudioLodMotionScale;
+    if (tumbleAmplitude > 0.0 && uTumbleSpeed > 0.0 && uTumbleFrequency > 0.0 && driveRandom + driveAxis + driveNormal + driveSym > 0.0) {
         // Scale amplitude inversely with bounding-sphere radius (Stokes-Einstein: D ~ 1/r)
         float amplitude = tumbleAmplitude / max(uInvariantBoundingSphere.w, 1.0);
         float t = uTime * uTumbleSpeed;
         float seed = (instanceIndex * 127.1 + uObjectId * 311.7) * uTumbleFrequency;
         vec3 localCenter = mat3(transform) * uInvariantBoundingSphere.xyz;
         vec3 instanceCenter = transform[3].xyz + localCenter;
-        bool axisMode = uTumbleTranslationMode == 1;
-        bool assemblyAxisMode = axisMode && uTumbleAxisSource == 2 && uAudioAssemblyAxisCount > 0;
-
-        // Per-instance rotation angles from layered noise (Brownian-like)
+        // Per-instance rotation angles from layered noise (Brownian-like): the random channel
         mat3 rot = mat3(1.0);
-        if (!axisMode) {
-            float angleX = (fbm(vec3(seed, t, 0.0)) / 0.4375 - 1.0) * amplitude;
-            float angleY = (fbm(vec3(seed, 0.0, t)) / 0.4375 - 1.0) * amplitude;
-            float angleZ = (fbm(vec3(0.0, seed, t)) / 0.4375 - 1.0) * amplitude;
+        if (driveRandom > 0.0) {
+            float angleX = (fbm(vec3(seed, t, 0.0)) / 0.4375 - 1.0) * amplitude * driveRandom;
+            float angleY = (fbm(vec3(seed, 0.0, t)) / 0.4375 - 1.0) * amplitude * driveRandom;
+            float angleZ = (fbm(vec3(0.0, seed, t)) / 0.4375 - 1.0) * amplitude * driveRandom;
 
             float cx = cos(angleX); float sx = sin(angleX);
             float cy = cos(angleY); float sy = sin(angleY);
@@ -219,32 +221,31 @@ mat4 applyTumble(mat4 transform, float instanceIndex, float uObjectId) {
             );
         }
 
-        // Per-instance translation offset from layered noise (Brownian-like)
-        vec3 offset;
-        if (axisMode) {
-            vec3 axis;
-            if (assemblyAxisMode) {
-                axis = getResolvedAssemblyTumbleAxisVector(transform, instanceCenter);
-            } else if (uTumbleAxisSource == 1) {
-                axis = getGlobalTumbleAxisVector(uTumbleAxis, instanceCenter);
-            } else {
-                axis = getTumbleAxisVector(transform, uTumbleAxis);
-            }
-            float axisDrive = uAudioTumbleSource != 0 ? getAssemblyAxisDrive() : 1.0;
-            if (uAudioAssemblyAxisAmplitudeScale > 0.0) {
-                // Assembly-axis: Stokes-Einstein-scaled amplitude with bass drive and explicit extra scale.
-                offset = axis * amplitude * axisDrive * uAudioAssemblyAxisAmplitudeScale;
-            } else {
-                // Local / global axis: flat world-space displacement, radius-independent.
-                // tumbleAmplitude is already audio-reactive; all instances travel equally.
-                offset = axis * tumbleAmplitude * axisDrive;
-            }
-        } else {
-            offset = vec3(
+        vec3 offset = vec3(0.0);
+        // random: per-instance translation from layered noise (Brownian-like)
+        if (driveRandom > 0.0) {
+            offset += vec3(
                 (fbm(vec3(seed + 31.7, t, 0.0)) / 0.4375 - 1.0),
                 (fbm(vec3(seed + 31.7, 0.0, t)) / 0.4375 - 1.0),
                 (fbm(vec3(0.0, seed + 31.7, t)) / 0.4375 - 1.0)
-            ) * amplitude;
+            ) * amplitude * driveRandom;
+        }
+        // along an axis: the instance's own (local) or a world axis, flat, radius-independent
+        if (driveAxis > 0.0) {
+            vec3 axis = uTumbleAxisSource == 1 ? getGlobalTumbleAxisVector(uTumbleAxis, instanceCenter) : getTumbleAxisVector(transform, uTumbleAxis);
+            offset += axis * tumbleAmplitude * driveAxis;
+        }
+        // along the normal: straight out from the assembly's centre (the structure's origin without symmetry)
+        if (driveNormal > 0.0) {
+            vec3 center = transform[3].xyz + mat3(transform) * uAudioAssemblyAxisCenter;
+            vec3 radial = instanceCenter - (uAudioAssemblyAxisCount > 0 ? center : vec3(0.0));
+            float radialLength = length(radial);
+            if (radialLength > 0.00001) offset += radial / radialLength * tumbleAmplitude * driveNormal;
+        }
+        // the symmetry axes: out along the nearest axis of the structure's symmetry, Stokes-Einstein scaled
+        if (driveSym > 0.0 && uAudioAssemblyAxisCount > 0) {
+            vec3 axis = getResolvedAssemblyTumbleAxisVector(transform, instanceCenter);
+            offset += axis * amplitude * driveSym * max(uAudioAssemblyAxisAmplitudeScale, 1.0);
         }
 
         // === FINAL MATRIX ASSEMBLY ===
@@ -267,7 +268,7 @@ mat4 applyTumble(mat4 transform, float instanceIndex, float uObjectId) {
 mat4 applyObjectTransform(mat4 transform, float uObjectId) {
     if (!uEnableAnimation || !uObjectTransformEnabled || uObjectTransformAmplitude <= 0.0 || uObjectTransformSpeed <= 0.0) return transform;
 
-    float drive = getSoftAudioDrive(uObjectTransformSource, uObjectTransformStrength, uObjectTransformFloor, uAudioObjectTransformScale);
+    float drive = pow(clamp(uAudioDriveObject * uAudioObjectTransformScale, 0.0, 2.0), 0.65);
     float amplitude = uObjectTransformAmplitude * drive * uAudioLodMotionScale;
     if (amplitude <= 0.0) return transform;
 

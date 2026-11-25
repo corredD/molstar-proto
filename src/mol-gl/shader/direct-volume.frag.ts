@@ -84,6 +84,7 @@ uniform bool uTransparentBackground;
 uniform float uXrayEdgeFalloff;
 uniform float uCelSteps;
 uniform float uExposure;
+uniform float uAudioIllumination;
 
 uniform int uRenderMask;
 

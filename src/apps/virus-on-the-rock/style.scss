@@ -528,3 +528,62 @@ html, body, #app {
         transition: width 60ms linear;
     }
 }
+
+.vor-route {
+    display: grid;
+    gap: 4px;
+    padding: 8px;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.04);
+
+    &.vor-route-off {
+        opacity: 0.5;
+    }
+}
+
+.vor-route-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+
+    .vor-select {
+        flex: 1;
+        min-width: 0;
+    }
+}
+
+.vor-route-mode {
+    flex: 0 0 88px !important;
+}
+
+.vor-route-remove {
+    min-width: 28px;
+    padding: 0 8px;
+}
+
+.vor-route-arrow {
+    width: 18px;
+    text-align: center;
+    color: var(--vor-text-dim);
+}
+
+.vor-route-gain {
+    display: grid;
+    flex: 1;
+    font-size: 0.75rem;
+    color: var(--vor-text-dim);
+}
+
+.vor-route-meter {
+    flex: 0 0 70px;
+    height: 8px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.08);
+    overflow: hidden;
+
+    i {
+        display: block;
+        height: 100%;
+        background: #79c0ff;
+    }
+}

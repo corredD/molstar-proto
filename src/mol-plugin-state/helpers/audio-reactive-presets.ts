@@ -5,10 +5,12 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import { AnimationProps } from '../../mol-geo/geometry/animation';
+import { AnimationProps, AudioReactiveSourceName } from '../../mol-geo/geometry/animation';
 import { AudioReactiveAnimationManagerValues } from '../manager/audio-reactive-animation';
+import { AudioRoute, AudioRouteSource, AudioRouteTarget, createAudioRoute, getDefaultAudioRoutes } from '../manager/audio-routing';
 
 export type AudioReactivePresetName =
+    | 'drums-bass-burst'
     | 'punchy-drums'
     | 'bass-groove'
     | 'bass-groove-strong'
@@ -24,10 +26,53 @@ export type AudioReactivePresetDefinition = {
     label: string,
     description: string,
     analysis: Partial<AudioReactiveAnimationManagerValues>,
+    /** the shape of each motion (amplitudes, speeds) and which motions are on */
     animation: Partial<AnimationProps>,
+    /** which audio drives which channel; without it, made from the animation's audio sources (getPresetRoutes) */
+    routes?: () => AudioRoute[],
 };
 
 export const AudioReactivePresetDefinitions: readonly AudioReactivePresetDefinition[] = [
+    {
+        name: 'drums-bass-burst',
+        label: 'Drums & Bass Burst',
+        description: 'Drum hits and the bass burst the capsid out along its symmetry axes (with the beat cycle), the other instruments wiggle the atoms, the voice lights it. Best with Stem Separation on.',
+        analysis: {
+            fftSize: 1024,
+            analysisSampleRate: 24000,
+            bandNormalizationGain: 12,
+            amplitudeAttackMs: 10,
+            amplitudeReleaseMs: 160,
+            bandAttackMs: 12,
+            bandReleaseMs: 220,
+            beatAttackMs: 0,
+            beatReleaseMs: 190,
+            dominantFrequencyAttackMs: 10,
+            dominantFrequencyReleaseMs: 130,
+            beatThreshold: 1.1,
+            beatSensitivity: 12,
+            beatBaselineMs: 210,
+        },
+        animation: {
+            atomWiggleEnabled: true,
+            wiggleMode: 'position',
+            wiggleSpeed: 6,
+            wiggleAmplitude: 0.7,
+            wiggleFrequency: 0.18,
+            instanceTumbleEnabled: true,
+            tumbleSpeed: 1.05,
+            tumbleAmplitude: 8,
+            tumbleFrequency: 0.18,
+            tumbleTranslationMode: 'axis',
+            tumbleAxisSource: 'assembly',
+            tumbleAxis: 'z',
+            // on, but still until a route drives it
+            objectTransformEnabled: true,
+            objectTransformSpeed: 0.55,
+            objectTransformAmplitude: 0.8,
+        },
+        routes: getDefaultAudioRoutes,
+    },
     {
         name: 'punchy-drums',
         label: 'Punchy Drums',
@@ -434,6 +479,44 @@ export const AudioReactivePresetDefinitions: readonly AudioReactivePresetDefinit
         }
     },
 ] as const;
+
+function toRouteSource(source: AudioReactiveSourceName): AudioRouteSource | undefined {
+    switch (source) {
+        case 'off': return undefined;
+        case 'peakAmplitude': case 'mix': return 'amplitude';
+        case 'dominantFrequency': return 'midsTreble';
+        default: return source;
+    }
+}
+
+/**
+ * A preset's routes: its own, or made from its animation's audio sources (the presets from before the routing): the
+ * wiggle source to the wiggle, the tumble source to the symmetry axes, an axis or random by its translation mode, the
+ * object source to the whole object
+ */
+export function getPresetRoutes(preset: AudioReactivePresetDefinition): AudioRoute[] {
+    if (preset.routes) return preset.routes();
+    const a = preset.animation;
+    const routes: AudioRoute[] = [];
+    const add = (source: AudioReactiveSourceName | undefined, target: AudioRouteTarget, gain = 1, floor = 0, mode: 'level' | 'onset' = 'level') => {
+        const s = source && toRouteSource(source);
+        if (!s) return;
+        routes.push(createAudioRoute({ enabled: true, source: s, mode, target, gain, floor, releaseMs: 200 }));
+    };
+    add(a.audioWiggleSource, 'wiggle', a.audioWiggleStrength, a.audioWiggleFloor);
+    const tumbleTarget: AudioRouteTarget = a.tumbleTranslationMode === 'axis'
+        ? (a.tumbleAxisSource === 'assembly' ? 'symAxis' : 'instanceAxis')
+        : 'instanceRandom';
+    // the old symmetry-axis motion was also multiplied by the bass: a bass route alongside
+    if (tumbleTarget === 'symAxis') {
+        add(a.audioTumbleSource, tumbleTarget, (a.audioTumbleStrength ?? 1) * 0.5, a.audioTumbleFloor);
+        add('bass', 'symAxis', 0.8);
+    } else {
+        add(a.audioTumbleSource, tumbleTarget, a.audioTumbleStrength, a.audioTumbleFloor);
+    }
+    if (a.objectTransformEnabled) add(a.objectTransformSource, 'object', a.objectTransformStrength, a.objectTransformFloor);
+    return routes;
+}
 
 export function getAudioReactivePreset(name: AudioReactivePresetName) {
     const preset = AudioReactivePresetDefinitions.find(p => p.name === name);

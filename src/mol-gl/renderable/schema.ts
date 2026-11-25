@@ -202,6 +202,14 @@ export const GlobalUniformSchema = {
     uAudioStemBass: UniformSpec('f'),
     uAudioStemOther: UniformSpec('f'),
     uAudioStemVocals: UniformSpec('f'),
+    /** each visual channel's drive, the sum of its audio routes */
+    uAudioDriveSymAxis: UniformSpec('f'),
+    uAudioDriveInstanceRandom: UniformSpec('f'),
+    uAudioDriveInstanceAxis: UniformSpec('f'),
+    uAudioDriveInstanceNormal: UniformSpec('f'),
+    uAudioDriveWiggle: UniformSpec('f'),
+    uAudioDriveObject: UniformSpec('f'),
+    uAudioIllumination: UniformSpec('f'),
 } as const;
 export type GlobalUniformSchema = typeof GlobalUniformSchema
 export type GlobalUniformValues = Values<GlobalUniformSchema>

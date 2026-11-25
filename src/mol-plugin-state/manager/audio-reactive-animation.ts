@@ -7,6 +7,7 @@
 
 import { BehaviorSubject } from 'rxjs';
 import { StemModelId, StemModels, StemName } from './audio-stems/stem-models';
+import { AudioRoute, AudioRouteDrives, AudioRouter, createZeroDrives, getDefaultAudioRoutes } from './audio-routing';
 import { StemLevels, StemSeparator, StemSeparatorOptions, StemSeparatorStatus } from './audio-stems/stem-separator';
 import { ParamDefinition as PD } from '../../mol-util/param-definition';
 import { PluginContext } from '../../mol-plugin/context';
@@ -88,6 +89,10 @@ export type AudioReactiveStatus = {
     /** whether `stems` came from the separation model this frame */
     stemsSeparated: boolean,
     stemStatus: StemSeparatorStatus,
+    /** each visual channel's drive this frame (the sum of its routes) */
+    drives: AudioRouteDrives,
+    /** each route's value this frame, by route id */
+    routeValues: ReadonlyMap<number, number>,
     error?: string,
 };
 
@@ -133,6 +138,8 @@ const InitialAudioReactiveStatus: AudioReactiveStatus = {
     stems: ZeroStems,
     stemsSeparated: false,
     stemStatus: { state: 'off' },
+    drives: createZeroDrives(),
+    routeValues: new Map(),
 };
 
 function getAudioContextCtor(): (new() => AudioContext) | undefined {
@@ -212,7 +219,11 @@ export class AudioReactiveAnimationManager {
         audioPlayer: new BehaviorSubject<HTMLAudioElement | null>(null),
         status: new BehaviorSubject<AudioReactiveStatus>(InitialAudioReactiveStatus),
         params: new BehaviorSubject<AudioReactiveAnimationManagerValues>(PD.getDefaultValues(AudioReactiveAnimationManagerParams)),
+        /** which audio source drives which visual channel (audio-routing.ts) */
+        routes: new BehaviorSubject<AudioRoute[]>(getDefaultAudioRoutes()),
     };
+
+    private router = new AudioRouter();
 
     private objectUrl?: string;
     private sourceLabel?: string;
@@ -256,6 +267,24 @@ export class AudioReactiveAnimationManager {
     }
 
     /** each stem's level (0-1) this frame: separated by the model where it keeps up, from the bands otherwise */
+    /** each visual channel's drive this frame */
+    get drives(): Readonly<AudioRouteDrives> {
+        return this.router.drives;
+    }
+
+    setRoutes(routes: AudioRoute[]) {
+        this.state.routes.next(routes);
+        this.updateStatus(void 0, true);
+    }
+
+    updateRoute(id: number, patch: Partial<Omit<AudioRoute, 'id'>>) {
+        this.setRoutes(this.state.routes.value.map(r => r.id === id ? { ...r, ...patch } : r));
+    }
+
+    removeRoute(id: number) {
+        this.setRoutes(this.state.routes.value.filter(r => r.id !== id));
+    }
+
     get stems() {
         return this.currentStems;
     }
@@ -347,6 +376,8 @@ export class AudioReactiveAnimationManager {
             stems: this.currentStems,
             stemsSeparated: this.stemsSeparated,
             stemStatus: this.stemStatus,
+            drives: { ...this.router.drives },
+            routeValues: new Map(this.router.values),
             error,
         });
     }
@@ -553,6 +584,7 @@ export class AudioReactiveAnimationManager {
                 this.currentFrame = this.reactor.analyze(this.timeDomainData, sampleRate, dtMs);
             }
             this.updateStems(dtMs, audio.paused || audio.ended);
+            this.router.update(this.state.routes.value, this.currentFrame, this.currentStems, dtMs);
             this.updateStatus(void 0, false, timeMs);
         } catch (e) {
             this.updateStatus(`${e}`, true, timeMs);
@@ -570,6 +602,7 @@ export class AudioReactiveAnimationManager {
         this.audioContext?.close();
         this.state.audioPlayer.complete();
         this.state.status.complete();
+        this.state.routes.complete();
         this.state.params.complete();
     }
 }

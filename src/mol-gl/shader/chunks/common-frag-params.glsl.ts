@@ -77,6 +77,8 @@ bool interior;
 uniform float uXrayEdgeFalloff;
 uniform float uCelSteps;
 uniform float uExposure;
+// the illumination channel of the audio routing: an added glow
+uniform float uAudioIllumination;
 
 uniform mat4 uProjection;
 

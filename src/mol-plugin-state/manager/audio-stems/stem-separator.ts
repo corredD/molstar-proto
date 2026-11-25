@@ -67,14 +67,13 @@ registerProcessor('molstar-stem-tap', StemTap);
 const TimelineSeconds = 90;
 /** the mix's running peak falls this fast, dB per second */
 const PeakDecayDbPerSecond = 0.6;
-/** how long a stem's recent average remembers, seconds: short for the drums, so each hit stands out */
-const DrumsAverageSeconds = 0.35;
-const StemAverageSeconds = 1.5;
-/** a stem at its recent average reads this far up the range: (dB - average + floor) / range, squared */
-const ExcitationFloorDb = 3;
-const ExcitationRangeDb = 10;
-/** a stem this far under the mix's peak counts as absent */
-const SilentBelowMixDb = 30;
+/**
+ * A stem's level: its dB within this range under its reference (its own running peak, never more than
+ * ReferenceBelowMixDb under the mix's), squared. An absolute loudness: how much a stem just rose is the routes' Hits
+ * mode, not the stem's
+ */
+const LevelRangeDb = 24;
+const ReferenceBelowMixDb = 15;
 /** the drums keep their hits: instant attack, a short release, whatever the band smoothing */
 const DrumsReleaseMs = 160;
 
@@ -98,7 +97,7 @@ export class StemSeparator {
     private times: number[] = [];
     private energies: Record<StemName, number[]> = { drums: [], bass: [], other: [], vocals: [] };
 
-    private averages: Record<StemName, number> = { drums: -120, bass: -120, other: -120, vocals: -120 };
+    private peaks: Record<StemName, number> = { drums: -120, bass: -120, other: -120, vocals: -120 };
     private mixPeak = -120;
     private levels: StemLevels = { drums: 0, bass: 0, other: 0, vocals: 0 };
     private lastSampleTime = -1;
@@ -192,7 +191,7 @@ export class StemSeparator {
         for (const s of StemNames) this.energies[s] = [];
         this.lastSampleTime = -1;
         for (const s of StemNames) {
-            this.averages[s] = -120;
+            this.peaks[s] = -120;
             this.levels[s] = 0;
         }
         this.mixPeak = -120;
@@ -264,15 +263,10 @@ export class StemSeparator {
         const mixDb = 10 * Math.log10(mix + 1e-12);
         this.mixPeak = Math.max(mixDb, this.mixPeak - PeakDecayDbPerSecond * dtSec);
         for (const s of StemNames) {
-            // how far a stem stands above its own recent average: music sits near its peak, so a level against the
-            // peak stays high and steady; against the recent average a drum hit, a bass note, a sung phrase stand out
-            const memory = s === 'drums' ? DrumsAverageSeconds : StemAverageSeconds;
-            if (this.averages[s] <= -119) this.averages[s] = db[s];
-            else this.averages[s] += (db[s] - this.averages[s]) * (1 - Math.exp(-dtSec / memory));
-            const excitation = Math.min(1, Math.max(0, (db[s] - this.averages[s] + ExcitationFloorDb) / ExcitationRangeDb));
-            // a stem far under the mix (no singer, no bass line) stays still
-            const presence = Math.min(1, Math.max(0, (db[s] - (this.mixPeak - SilentBelowMixDb)) / 6));
-            const target = excitation * excitation * presence;
+            this.peaks[s] = Math.max(db[s], this.peaks[s] - PeakDecayDbPerSecond * dtSec);
+            const reference = Math.max(this.peaks[s], this.mixPeak - ReferenceBelowMixDb);
+            const linear = Math.min(1, Math.max(0, (db[s] - (reference - LevelRangeDb)) / LevelRangeDb));
+            const target = linear * linear;
             this.levels[s] = s === 'drums'
                 ? applyAttackRelease(this.levels[s], target, dtMs, 0, DrumsReleaseMs)
                 : applyAttackRelease(this.levels[s], target, dtMs, attackMs, releaseMs);

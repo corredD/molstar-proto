@@ -18,7 +18,7 @@ export const apply_light_color = `
     #endif
 
     #if defined(dRenderVariant_color) || defined(dRenderVariant_tracing)
-        material.rgb += material.rgb * emissive;
+        material.rgb += material.rgb * (emissive + uAudioIllumination);
     #endif
 
     gl_FragColor = material;
@@ -104,7 +104,7 @@ export const apply_light_color = `
     outgoingLight = clamp(outgoingLight, 0.01, 0.99); // prevents black artifacts on specular highlight with transparent background
 
     #if defined(dRenderVariant_color) || defined(dRenderVariant_tracing)
-        outgoingLight += color.rgb * emissive;
+        outgoingLight += color.rgb * (emissive + uAudioIllumination);
     #endif
 
     gl_FragColor = vec4(outgoingLight, color.a);
