@@ -105,13 +105,16 @@ const AudioUrlPresets = [
 const DefaultAudioUrlPreset = AudioUrlPresets.find(p => p.url === DefaultAudioUrl) ?? AudioUrlPresets[0];
 const ExamplePdbIds = ['2tbv', '2plv'] as const;
 const DefaultPresetName: AudioReactivePresetName = 'subtle-drift';
+/** the beat cycle steps on a rise of its drive past this, and re-arms once it falls under the release level */
+const BeatCycleTriggerLevel = 0.5;
+const BeatCycleReleaseLevel = 0.25;
 /** Starting values of the effect knobs: the beat threshold where the presets keep it (0.05 fired a beat every frame), a moderate axis travel */
 const DefaultEffectKnobs: Partial<AudioReactiveAnimationManagerValues> = {
     wiggleEffectScale: 1,
     tumbleEffectScale: 1,
     objectTransformEffectScale: 1,
     assemblyAxisAmplitudeScale: 8,
-    beatThreshold: 1.3,
+    beatThreshold: 1.1,
 };
 const FeaturedPresetNames: readonly AudioReactivePresetName[] = [
     'subtle-drift',
@@ -838,7 +841,11 @@ export class VirusOnTheRockApp {
             return;
         }
 
-        const beatActive = status.frame.beatIntensity >= this.state.value.beatThreshold;
+        // the drums stem: the separated drums where a model runs, else the kick's onset normalized by its peak. Not the
+        // beat detector's intensity against `beatThreshold` (the detector's flux multiplier, ~1.1-1.35): a 0-1
+        // intensity never reached it, so the cycle only ran while the start-up forced it to 0.05
+        const drive = status.stems.drums;
+        const beatActive = this.beatTriggerActive ? drive > BeatCycleReleaseLevel : drive >= BeatCycleTriggerLevel;
         const shouldAdvance = this.isAxisCycleActive() && beatActive && !this.beatTriggerActive;
         this.beatTriggerActive = beatActive;
 

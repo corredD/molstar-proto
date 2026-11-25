@@ -94,10 +94,19 @@ export type AudioReactiveStatus = {
 const ZeroStems: StemLevels = { drums: 0, bass: 0, other: 0, vocals: 0 };
 
 /** stand-ins for the stems from the band analysis, when no model separates them */
-function getBandStems(frame: AudioReactiveFrame<DefaultAudioBandKey>): StemLevels {
+/** the kick's onset (sub-bass, bass) or a detected beat: what stands in for the drums with no separation */
+function getBandDrumsOnset(frame: AudioReactiveFrame<DefaultAudioBandKey>) {
+    return Math.max(frame.bandOnsets.subBass, frame.bandOnsets.bass, frame.beatIntensity);
+}
+
+/** the band onsets span a few hundredths to a few tenths by track: normalized by their running peak */
+const BandDrumsPeakDecayMs = 3000;
+const BandDrumsPeakFloor = 0.05;
+
+function getBandStems(frame: AudioReactiveFrame<DefaultAudioBandKey>, drums: number): StemLevels {
     const b = frame.frequencyBands;
     return {
-        drums: Math.min(1, Math.max(frame.beatIntensity, frame.bandOnsets.highMids)),
+        drums,
         bass: Math.max(b.subBass, b.bass),
         other: (b.lowMids + b.highMids + b.treble) / 3,
         vocals: b.mids,
@@ -225,6 +234,7 @@ export class AudioReactiveAnimationManager {
     private stemStatus: StemSeparatorStatus = { state: 'off' };
     private currentStems: StemLevels = ZeroStems;
     private stemsSeparated = false;
+    private bandDrumsPeak = BandDrumsPeakFloor;
 
     /** where the stem worker, the onnxruntime files and local weights are; next to the app page by default */
     stemSeparatorOptions: StemSeparatorOptions = {
@@ -497,7 +507,14 @@ export class AudioReactiveAnimationManager {
             separated = this.separator.sample(heard, dtMs, params.bandAttackMs, params.bandReleaseMs);
         }
         this.stemsSeparated = !!separated;
-        this.currentStems = separated ?? getBandStems(this.currentFrame);
+        if (separated) {
+            this.currentStems = separated;
+            return;
+        }
+        const onset = getBandDrumsOnset(this.currentFrame);
+        this.bandDrumsPeak = Math.max(onset, BandDrumsPeakFloor, this.bandDrumsPeak * Math.exp(-dtMs / BandDrumsPeakDecayMs));
+        const drums = Math.min(1, onset / this.bandDrumsPeak);
+        this.currentStems = getBandStems(this.currentFrame, drums * drums);
     }
 
     tick(timeMs: number): AudioReactiveFrame<DefaultAudioBandKey> {
