@@ -155,7 +155,7 @@ float getAssemblyAxisDrive() {
 vec3 applyWiggle(vec3 pos, float groupId, float instanceId) {
     if (!uEnableAnimation || !uAtomWiggleEnabled) return pos;
     // the routed drive of the wiggle channel, times the wiggle sensitivity knob
-    float amplitude = uWiggleAmplitude * pow(clamp(uAudioDriveWiggle * uAudioWiggleScale, 0.0, 8.0), 0.65);
+    float amplitude = uWiggleAmplitude * pow(clamp(uAudioDriveWiggle * uAudioWiggleScale, 0.0, 40.0), 0.65);
     #ifdef dWiggle
         #if defined(dWiggleType_instance)
             amplitude += readFromTexture(tWiggle, instanceId, uWiggleTexDim).a * uWiggleStrength;
@@ -190,10 +190,10 @@ vec3 applyWiggle(vec3 pos, float groupId, float instanceId) {
 mat4 applyTumble(mat4 transform, float instanceIndex, float uObjectId) {
     if (!uEnableAnimation || !uInstanceTumbleEnabled) return transform;
     // the instance channels add up, each scaled by its routed drive and the instance sensitivity knob
-    float driveRandom = clamp(uAudioDriveInstanceRandom * uAudioTumbleScale, 0.0, 8.0);
-    float driveAxis = clamp(uAudioDriveInstanceAxis * uAudioTumbleScale, 0.0, 8.0);
-    float driveNormal = clamp(uAudioDriveInstanceNormal * uAudioTumbleScale, 0.0, 8.0);
-    float driveSym = clamp(uAudioDriveSymAxis * uAudioTumbleScale, 0.0, 8.0);
+    float driveRandom = clamp(uAudioDriveInstanceRandom * uAudioTumbleScale, 0.0, 40.0);
+    float driveAxis = clamp(uAudioDriveInstanceAxis * uAudioTumbleScale, 0.0, 40.0);
+    float driveNormal = clamp(uAudioDriveInstanceNormal * uAudioTumbleScale, 0.0, 40.0);
+    float driveSym = clamp(uAudioDriveSymAxis * uAudioTumbleScale, 0.0, 40.0);
     float tumbleAmplitude = uTumbleAmplitude * uAudioLodMotionScale;
     if (tumbleAmplitude > 0.0 && uTumbleSpeed > 0.0 && uTumbleFrequency > 0.0 && driveRandom + driveAxis + driveNormal + driveSym > 0.0) {
         // Scale amplitude inversely with bounding-sphere radius (Stokes-Einstein: D ~ 1/r)
@@ -268,7 +268,7 @@ mat4 applyTumble(mat4 transform, float instanceIndex, float uObjectId) {
 mat4 applyObjectTransform(mat4 transform, float uObjectId) {
     if (!uEnableAnimation || !uObjectTransformEnabled || uObjectTransformAmplitude <= 0.0 || uObjectTransformSpeed <= 0.0) return transform;
 
-    float drive = pow(clamp(uAudioDriveObject * uAudioObjectTransformScale, 0.0, 2.0), 0.65);
+    float drive = pow(clamp(uAudioDriveObject * uAudioObjectTransformScale, 0.0, 40.0), 0.65);
     float amplitude = uObjectTransformAmplitude * drive * uAudioLodMotionScale;
     if (amplitude <= 0.0) return transform;
 

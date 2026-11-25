@@ -89,7 +89,7 @@ export function getDefaultAudioRoutes(): AudioRoute[] {
 }
 
 /** the most a channel's drive reaches, whatever the sum of its routes */
-const MaxDrive = 4;
+const MaxDrive = 40;
 /** onsets: the running peak they are normalized by falls back over this long */
 const OnsetPeakDecayMs = 3000;
 const OnsetPeakFloor = 0.02;

@@ -1566,9 +1566,9 @@ function AudioRoutingCard({ app }: { app: VirusOnTheRockApp }) {
                 <div className='vor-route-row'>
                     <label className='vor-route-gain' title='Sensitivity: how much the source moves the channel'>
                         Gain {route.gain.toFixed(2)}
-                        <input type='range' min='0' max='4' step='0.05' value={route.gain} onChange={e => manager.updateRoute(route.id, { gain: parseFloat(e.target.value) })} />
+                        <input type='range' min='0' max='20' step='0.1' value={route.gain} onChange={e => manager.updateRoute(route.id, { gain: parseFloat(e.target.value) })} />
                     </label>
-                    <div className='vor-route-meter' title='What this route sends now'><i style={{ width: `${Math.min(100, value * 50)}%` }} /></div>
+                    <div className='vor-route-meter' title='What this route sends now'><i style={{ width: `${Math.min(100, value * 12.5)}%` }} /></div>
                 </div>
             </div>;
         })}
