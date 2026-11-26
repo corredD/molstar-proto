@@ -287,6 +287,22 @@ describe('cpu channels', () => {
             expect(Array.from(ro.values.uClipObjectPosition.ref.value)).toEqual([1, 2, 3, 0, 0, 0]);
         });
 
+        it('after a frame that threw while writing back, writes the base values back on the next one', () => {
+            const { target, drives, clip, channels, frames } = setup();
+            const ro = clipObject();
+            target.objects = [ro];
+            clip.enabled = true;
+            drives.clipPosition = 1;
+            frames(1);
+            drives.clipPosition = 0;
+            const getRenderObjects = target.getRenderObjects;
+            target.getRenderObjects = () => { throw new Error('lost context'); };
+            expect(() => channels.update()).toThrow('lost context');
+            target.getRenderObjects = getRenderObjects;
+            frames(1);
+            expect(Array.from(ro.values.uClipObjectPosition.ref.value)).toEqual([1, 2, 3, 0, 0, 0]);
+        });
+
         it('skips hidden objects', () => {
             const { target, drives, clip, frames } = setup();
             const ro = clipObject();
@@ -306,6 +322,21 @@ describe('cpu channels', () => {
             clip.enabled = true;
             frames(50, 16);
             expect(target.calls).toEqual([]);
+        });
+
+        it('after a frame that threw, reads the render objects again', () => {
+            const { target, drives, clip, channels, frames } = setup();
+            target.objects = [clipObject()];
+            clip.enabled = true;
+            drives.clipPosition = 1;
+            drives.background = 1;
+            target.setBackgroundColor = () => { throw new Error('lost context'); };
+            expect(() => channels.update()).toThrow('lost context');
+            // the next frame's list: a new object, which the clip pass must move
+            const added = clipObject();
+            target.objects = [added];
+            frames(1);
+            expect(Array.from(added.values.uClipObjectPosition.ref.value)).toEqual([1, 52, 3, 0, 0, 0]);
         });
 
         it('reads the render objects once a frame', () => {
