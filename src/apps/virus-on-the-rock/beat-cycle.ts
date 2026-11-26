@@ -51,7 +51,8 @@ export class BeatCycle {
         this.peak = Math.max(excess, BeatCyclePeakFloor, this.peak * Math.exp(-dt / BeatCyclePeakDecayMs));
         const drive = excess / this.peak;
         const beatActive = this.triggerActive ? drive > BeatCycleReleaseLevel : drive >= BeatCycleTriggerLevel;
-        const shouldAdvance = this.ports.canStep() && beatActive && !this.triggerActive && now - this.lastStepMs >= BeatCycleMinIntervalMs;
+        // canStep last: it is called only on a candidate step (it allocates in the app)
+        const shouldAdvance = beatActive && !this.triggerActive && now - this.lastStepMs >= BeatCycleMinIntervalMs && this.ports.canStep();
         this.triggerActive = beatActive;
         if (!shouldAdvance) return false;
         this.lastStepMs = now;
