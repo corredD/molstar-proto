@@ -109,6 +109,20 @@ describe('beat cycle', () => {
         expect(hit(c, 1, T + 200)).toBe(true);
     });
 
+    it('asks whether it can step only on a candidate step', () => {
+        // canStep allocates in the app (the enabled cycle options): a silent or steady frame must not call it
+        let calls = 0;
+        const c = cycle(1, () => { calls += 1; return true; });
+        for (let i = 0; i < 1000; i++) c.feed(0, T + i * 16);
+        expect(calls).toBe(0);
+        // a hit while the trigger is latched is no candidate either
+        expect(c.feed(1, T + 16000)).toBe(true);
+        expect(calls).toBe(1);
+        c.feed(1, T + 16100);
+        c.feed(2, T + 16200);
+        expect(calls).toBe(1);
+    });
+
     it('reset clears the count', () => {
         const c = cycle(2);
         expect(hit(c, 1, T)).toBe(false);
