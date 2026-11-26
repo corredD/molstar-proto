@@ -1267,8 +1267,14 @@ namespace Canvas3D {
             resetTime,
             setAudioFrame: frame => {
                 renderer.setAudioFrame(frame);
-                // the position wave still displaces instances when tumble amplitude is 0, which would not mark the scene animated
-                if (frame.driveInstanceWave > 0) forceNextRender = true;
+                // a narrowed route, or the position wave, still moves when tumble amplitude is 0
+                let moving = frame.driveInstanceWave > 0;
+                if (!moving) {
+                    for (let i = 0; i < frame.scopeCount; i++) {
+                        if (frame.scopeDrive[i] > 0) { moving = true; break; }
+                    }
+                }
+                if (moving) forceNextRender = true;
             },
             pause,
             resume,

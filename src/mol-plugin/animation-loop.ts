@@ -44,7 +44,7 @@ export class PluginAnimationLoop {
         const stems = this.plugin.managers.audioReactive.stems;
         // each structure's objects get their own structure's symmetry axes
         syncStructureAssemblyAxes(this.plugin, audioParams.assemblyAxisOrder);
-        syncAudioAffect(this.plugin, this.plugin.managers.audioReactive.state.affect.value);
+        syncAudioAffect(this.plugin);
         // the audio routing: each visual channel's drive (symmetry axes, instances, atoms, object, illumination)
         const drives = this.plugin.managers.audioReactive.drives;
         const assemblyAxisAmplitudeScale = audioParams.assemblyAxisAmplitudeScale;
@@ -90,6 +90,9 @@ export class PluginAnimationLoop {
             driveObject: drives.object,
             illumination: drives.illumination * IlluminationGlow,
             hue: Math.min(1, drives.colorSpectrum * HueTurnPerDrive),
+            scopeCount: this.plugin.managers.audioReactive.scopeCount,
+            scopeKind: this.plugin.managers.audioReactive.scopeKind,
+            scopeDrive: this.plugin.managers.audioReactive.scopeDrive,
         });
         this.plugin.canvas3d?.tick(t as now.Timestamp, options);
 

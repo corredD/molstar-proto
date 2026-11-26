@@ -4,8 +4,8 @@
  * @author Ludovic Autin <autin@scripps.edu>
  *
  * Audio routing: each route takes one audio source (a stem, a band, the beat) to one visual channel, with its own gain,
- * floor and release. A channel's drive is the sum of its routes, computed on the CPU each frame and handed to the
- * shaders (motion, illumination) or to the app (camera, clipping) as one number per channel.
+ * floor and release. A channel's drive is the sum of the routes that apply to everyone. A route that names one model,
+ * entity, instance, or chain is handed to the shader on its own, so that chain can follow it alone.
  */
 
 import type { AudioReactiveFrame, DefaultAudioBandKey } from './audio-reactor';
@@ -60,6 +60,8 @@ export type AudioRoute = {
     floor: number,
     /** how long a peak takes to fall back, ms (the rise is immediate) */
     releaseMs: number,
+    /** who this route moves. Only structure-motion targets use it; anything else stays All. */
+    affect: AudioAffect,
 };
 
 export function getAudioRouteSourceLabel(source: AudioRouteSource) {
@@ -78,8 +80,9 @@ export function createZeroDrives(): AudioRouteDrives {
 }
 
 let nextRouteId = 1;
-export function createAudioRoute(route: Omit<AudioRoute, 'id'>): AudioRoute {
-    return { id: nextRouteId++, ...route };
+export function createAudioRoute(route: Omit<AudioRoute, 'id' | 'affect'> & { affect?: AudioAffect }): AudioRoute {
+    const { affect, ...rest } = route;
+    return { id: nextRouteId++, ...rest, affect: affect ? canonicalAudioAffect(affect) : defaultAudioAffect() };
 }
 
 /** The starting routes: drums and bass explode the capsid along its symmetry axes, the rest of the band wiggles the atoms, the voice lights it */
@@ -126,9 +129,15 @@ export class AudioRouter {
     readonly drives = createZeroDrives();
     /** each route's current value, by id */
     readonly values = new Map<number, number>();
+    /** routes narrowed to one part of the structure. Length matches scopeCount; kind and drive are the shader slots. */
+    readonly scopes: AudioScopeSlot[] = [];
+    readonly scopeKind = new Array<number>(AudioScopeSlotCount).fill(0);
+    readonly scopeDrive = new Array<number>(AudioScopeSlotCount).fill(0);
+    scopeCount = 0;
 
     update(routes: readonly AudioRoute[], frame: AudioReactiveFrame<DefaultAudioBandKey>, stems: StemLevels, dtMs: number) {
         for (const t of Object.keys(this.drives) as AudioRouteTarget[]) this.drives[t] = 0;
+        this.scopes.length = 0;
         for (const route of routes) {
             let state = this.states.get(route.id);
             if (!state) this.states.set(route.id, state = { previous: 0, peak: OnsetPeakFloor, value: 0 });
@@ -146,9 +155,20 @@ export class AudioRouter {
                 ? target
                 : state.value + (target - state.value) * (1 - Math.exp(-dtMs / route.releaseMs));
             this.values.set(route.id, state.value);
-            if (route.enabled) this.drives[route.target] += state.value;
+            if (!route.enabled) continue;
+            if (route.affect && route.affect.level !== 'all' && routeHasScope(route.target) && this.scopes.length < AudioScopeSlotCount) {
+                this.scopes.push({ kind: AudioScopeKinds[route.target], drive: Math.min(MaxDrive, state.value), affect: route.affect });
+            } else {
+                this.drives[route.target] += state.value;
+            }
         }
         for (const t of Object.keys(this.drives) as AudioRouteTarget[]) this.drives[t] = Math.min(MaxDrive, this.drives[t]);
+        this.scopeCount = this.scopes.length;
+        for (let i = 0; i < AudioScopeSlotCount; i++) {
+            const slot = this.scopes[i];
+            this.scopeKind[i] = slot ? slot.kind : 0;
+            this.scopeDrive[i] = slot ? slot.drive : 0;
+        }
         // forget removed routes
         if (this.states.size > routes.length) {
             const ids = new Set(routes.map(r => r.id));
@@ -165,8 +185,37 @@ export class AudioRouter {
     reset() {
         this.states.clear();
         this.values.clear();
+        this.scopes.length = 0;
+        this.scopeCount = 0;
+        this.scopeKind.fill(0);
+        this.scopeDrive.fill(0);
         for (const t of Object.keys(this.drives) as AudioRouteTarget[]) this.drives[t] = 0;
     }
+}
+
+/** shader slot ids for a route that can be limited to one part of the structure */
+export const AudioScopeSlotCount = 8;
+export const AudioScopeKinds = {
+    symAxis: 1,
+    instanceRandom: 2,
+    instanceAxis: 3,
+    instanceNormal: 4,
+    instanceWave: 5,
+    wiggle: 6,
+    object: 7,
+} as const;
+export type AudioScopeTarget = keyof typeof AudioScopeKinds;
+export type AudioScopeSlot = { kind: number, drive: number, affect: AudioAffect };
+
+export function routeHasScope(target: AudioRouteTarget): target is AudioScopeTarget {
+    return Object.prototype.hasOwnProperty.call(AudioScopeKinds, target);
+}
+
+/** How far the route's menu goes. Atom wiggle can name one atom; the other structure channels stop at a chain. */
+export function maxScopeLevel(target: AudioRouteTarget): AudioAffectLevel {
+    if (target === 'wiggle') return 'atom';
+    if (routeHasScope(target)) return 'chain';
+    return 'all';
 }
 
 /** Who the structure motion follows, coarse to fine. Camera, clipping, colour and light stay on the whole view. */
@@ -208,8 +257,10 @@ export type AudioRouteDraft = Omit<AudioRoute, 'id'>;
 export type AudioRoutingPreset = {
     version: 1,
     name: string,
+    /** each with its own affect */
     routes: AudioRouteDraft[],
-    affect: AudioAffect,
+    /** files from before the per-route affect: the one affect every route took; read, not written */
+    affect?: AudioAffect,
 };
 
 const AudioRoutingStorageKey = 'vor.audioRouting.v1';
@@ -245,12 +296,15 @@ function clampNumber(value: unknown, min: number, max: number, fallback: number)
     return typeof value === 'number' && Number.isFinite(value) ? Math.min(max, Math.max(min, value)) : fallback;
 }
 
-function draftFromUnknown(value: unknown): AudioRouteDraft | undefined {
+function draftFromUnknown(value: unknown, fallback?: AudioAffect): AudioRouteDraft | undefined {
     if (!value || typeof value !== 'object') return;
     const v = value as Partial<AudioRouteDraft>;
     if (typeof v.source !== 'string' || !AudioRouteSourceSet.has(v.source)) return;
     if (typeof v.target !== 'string' || !AudioRouteTargetSet.has(v.target)) return;
     if (v.mode !== 'level' && v.mode !== 'onset') return;
+    const own = (v as { affect?: unknown }).affect;
+    let affect = own !== undefined ? affectFromUnknown(own) : (fallback ?? defaultAudioAffect());
+    if (!routeHasScope(v.target)) affect = defaultAudioAffect();
     return {
         enabled: v.enabled !== false,
         source: v.source,
@@ -259,6 +313,7 @@ function draftFromUnknown(value: unknown): AudioRouteDraft | undefined {
         gain: clampNumber(v.gain, 0, 40, 1),
         floor: clampNumber(v.floor, 0, 40, 0),
         releaseMs: clampNumber(v.releaseMs, 0, 10000, 250),
+        affect,
     };
 }
 
@@ -295,10 +350,11 @@ export function parseAudioRouting(text: string): AudioRoutingPreset[] | undefine
     for (const item of list) {
         if (!item || typeof item !== 'object') continue;
         const record = item as Partial<AudioRoutingPreset> & { routes?: unknown };
-        const routes = Array.isArray(record.routes) ? record.routes.map(draftFromUnknown).filter((d): d is AudioRouteDraft => !!d) : [];
+        const fallback = affectFromUnknown(record.affect);
+        const routes = Array.isArray(record.routes) ? record.routes.map(item => draftFromUnknown(item, fallback)).filter((d): d is AudioRouteDraft => !!d) : [];
         if (!routes.length) continue;
         const name = typeof record.name === 'string' && record.name.trim() ? record.name.trim().slice(0, 80) : 'Routing';
-        presets.push({ version: 1, name, routes, affect: affectFromUnknown(record.affect) });
+        presets.push({ version: 1, name, routes });
     }
     return presets.length ? presets : undefined;
 }
@@ -313,7 +369,9 @@ export function routesFromDrafts(routes: readonly AudioRouteDraft[]) {
 
 /** Drop the runtime id. Loading assigns a fresh one. */
 export function draftsFromRoutes(routes: readonly AudioRoute[]): AudioRouteDraft[] {
-    return routes.map(({ enabled, source, mode, target, gain, floor, releaseMs }) => ({ enabled, source, mode, target, gain, floor, releaseMs }));
+    return routes.map(({ enabled, source, mode, target, gain, floor, releaseMs, affect }) => ({
+        enabled, source, mode, target, gain, floor, releaseMs, affect: canonicalAudioAffect(affect),
+    }));
 }
 
 function storage(): Storage | undefined {

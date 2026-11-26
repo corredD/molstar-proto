@@ -244,8 +244,7 @@ export function createAnimationValues(props: AnimationProps) {
         uAudioAffectInstances: ValueCell.create(1),
         uAudioAffectRanges: ValueCell.create((() => {
             const ranges = new Array<number>(8 * 4).fill(0);
-            ranges[0] = -1;
-            ranges[1] = -1;
+            for (let i = 0; i < 8; i++) ranges[i * 4 + 3] = -1;
             return ranges;
         })()),
     };

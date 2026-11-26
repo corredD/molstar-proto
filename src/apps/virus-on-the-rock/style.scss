@@ -624,3 +624,20 @@ html, body, #app {
     stroke: rgba(6, 10, 20, 0.85);
     stroke-width: 3px;
 }
+
+.vor-route-who {
+    .vor-route-who-label {
+        flex: 0 0 34px;
+        font-size: 0.75rem;
+        color: var(--vor-text-dim);
+    }
+
+    .vor-route-who-fixed {
+        font-size: 0.75rem;
+        color: var(--vor-text-dim);
+    }
+
+    .vor-route-level {
+        flex: 0 0 104px !important;
+    }
+}

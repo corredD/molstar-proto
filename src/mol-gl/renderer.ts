@@ -126,6 +126,10 @@ export type AudioReactiveFrame = {
     driveObject: number,
     illumination: number,
     hue: number,
+    /** narrowed routes, parallel arrays of length 8 (audio-routing.ts) */
+    scopeCount: number,
+    scopeKind: ArrayLike<number>,
+    scopeDrive: ArrayLike<number>,
 };
 
 export const RendererParams = {
@@ -350,6 +354,9 @@ namespace Renderer {
             uAudioDriveObject: ValueCell.create(0),
             uAudioIllumination: ValueCell.create(0),
             uAudioHue: ValueCell.create(0),
+            uAudioScopeCount: ValueCell.create(0),
+            uAudioScopeKind: ValueCell.create(new Array<number>(8).fill(0)),
+            uAudioScopeDrive: ValueCell.create(new Array<number>(8).fill(0)),
         };
         const globalUniformList = Object.entries(globalUniforms);
 
@@ -979,6 +986,21 @@ namespace Renderer {
                 ValueCell.updateIfChanged(globalUniforms.uAudioDriveObject, frame.driveObject);
                 ValueCell.updateIfChanged(globalUniforms.uAudioIllumination, frame.illumination);
                 ValueCell.updateIfChanged(globalUniforms.uAudioHue, frame.hue);
+                ValueCell.updateIfChanged(globalUniforms.uAudioScopeCount, frame.scopeCount);
+                const scopeKind = globalUniforms.uAudioScopeKind.ref.value;
+                const scopeDrive = globalUniforms.uAudioScopeDrive.ref.value;
+                let scopeChanged = false;
+                for (let i = 0; i < 8; i++) {
+                    const kind = frame.scopeKind[i] ?? 0;
+                    const drive = frame.scopeDrive[i] ?? 0;
+                    if (scopeKind[i] !== kind || scopeDrive[i] !== drive) scopeChanged = true;
+                    scopeKind[i] = kind;
+                    scopeDrive[i] = drive;
+                }
+                if (scopeChanged) {
+                    ValueCell.update(globalUniforms.uAudioScopeKind, scopeKind);
+                    ValueCell.update(globalUniforms.uAudioScopeDrive, scopeDrive);
+                }
             },
             setProps: (props: Partial<RendererProps>) => {
                 if (props.backgroundColor !== undefined && props.backgroundColor !== p.backgroundColor) {

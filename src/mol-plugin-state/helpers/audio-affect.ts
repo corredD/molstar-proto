@@ -3,8 +3,8 @@
  *
  * @author Ludovic Autin <autin@scripps.edu>
  *
- * Who the audio motion follows (audio-routing.ts). Each structure render object gets a few
- * (instance, group-start, group-end) ranges. The shader drops motion outside them.
+ * Who one audio route moves (audio-routing.ts). Each narrowed route is one shader slot.
+ * A render object gets that slot's (instance, group-start, group-end), or a miss.
  * Group index is the element index in the unit (units visuals) or the serial element index
  * (complex visuals). A chain, residue or atom still moves its whole instance: one instance
  * matrix cannot leave the rest of that copy behind. Atom wiggle stays on the atoms in range.
@@ -18,17 +18,10 @@ import { Model } from '../../mol-model/structure/model';
 import { getAudioAffectBinding } from '../../mol-repr/structure/audio-affect-binding';
 import { ValueCell } from '../../mol-util';
 import { ModelRef } from '../manager/structure/hierarchy-state';
-import { AudioAffect, AudioAffectLevel, canonicalAudioAffect } from '../manager/audio-routing';
+import { AudioAffect, AudioAffectLevel, AudioScopeSlotCount, canonicalAudioAffect } from '../manager/audio-routing';
 
-/** the shader's uAudioAffectRanges[8] */
+/** the shader's uAudioAffectRanges[8], one slot per narrowed route */
 export const AudioAffectRangeCount = 8;
-
-const AllRangePacked = (() => {
-    const packed = new Array<number>(AudioAffectRangeCount * 4).fill(0);
-    packed[0] = -1;
-    packed[1] = -1;
-    return packed;
-})();
 
 type Range = { instance: number, groupStart: number, groupEnd: number };
 
@@ -302,40 +295,50 @@ function instancesAllowed(kind: 'units' | 'serial', ranges: Range[], elementCoun
     return 0;
 }
 
-function pack(ranges: Range[], countOut: { count: number }) {
-    const packed = new Array<number>(AudioAffectRangeCount * 4).fill(0);
-    const count = Math.min(ranges.length, AudioAffectRangeCount);
-    for (let i = 0; i < count; i++) {
-        packed[i * 4] = ranges[i].instance;
-        packed[i * 4 + 1] = ranges[i].groupStart;
-        packed[i * 4 + 2] = ranges[i].groupEnd;
-    }
-    countOut.count = count;
-    return packed;
-}
-
-function packedKey(packed: number[], count: number, instances: number) {
-    return `${instances}:${count}:${packed.join(',')}`;
-}
-
 const written = new WeakMap<object, string>();
+/** by affect-ranges cell, the scopes and the structure binding its slots were last computed for */
+const scopesFor = new WeakMap<object, { key: string, binding: ReturnType<typeof getAudioAffectBinding> }>();
+const slotPacked = new Array<number>(AudioScopeSlotCount * 4);
 
-function writeAffect(values: AnimationData, packed: number[], count: number, instances: number) {
-    const key = packedKey(packed, count, instances);
+function writeSlots(values: AnimationData) {
+    const key = slotPacked.join(',');
     const cell = values.uAudioAffectRanges;
     if (!cell || written.get(cell) === key) return;
-    ValueCell.update(values.uAudioAffectCount, count);
-    ValueCell.update(values.uAudioAffectInstances, instances);
-    ValueCell.update(cell, packed.slice());
+    ValueCell.update(cell, slotPacked.slice());
     written.set(cell, key);
 }
 
+function packSlot(plugin: PluginContext, binding: ReturnType<typeof getAudioAffectBinding>, affect: AudioAffect, offset: number) {
+    const miss = () => {
+        slotPacked[offset] = 0;
+        slotPacked[offset + 1] = 0;
+        slotPacked[offset + 2] = 0;
+        slotPacked[offset + 3] = -1;
+    };
+    if (!binding) return miss();
+    const owner = modelForStructure(plugin, binding.structure);
+    if (!owner || owner.cell.transform.ref !== affect.modelRef) return miss();
+    const ranges = binding.kind === 'units'
+        ? rangesForUnits(binding.structure, binding.group, affect)
+        : rangesForSerial(binding.structure, affect);
+    if (!ranges.length) return miss();
+    const range = ranges.find(item => item.instance < 0 && item.groupStart < 0) ?? ranges[0];
+    slotPacked[offset] = range.instance;
+    slotPacked[offset + 1] = range.groupStart;
+    slotPacked[offset + 2] = range.groupEnd;
+    // a baked serial mesh cannot move one copy, so instance motion stays off and atom wiggle keeps the span
+    slotPacked[offset + 3] = instancesAllowed(binding.kind, ranges, binding.structure.elementCount) ? 1 : 0;
+}
+
 /**
- * Pushes the affect ranges onto every loaded structure's render objects. Cheap when nothing changed:
- * one key compare per object.
+ * Pushes each narrowed route's range onto every loaded structure's render objects.
+ * Cheap when nothing changed: one key compare per object.
  */
-export function syncAudioAffect(plugin: PluginContext, affect: AudioAffect) {
-    const resolved = resolveAudioAffect(plugin, affect);
+export function syncAudioAffect(plugin: PluginContext) {
+    const scopes = plugin.managers.audioReactive.scopes;
+    const resolved = scopes.map(slot => resolveAudioAffect(plugin, slot.affect));
+    // what the slots name: an object already written for it is skipped (a rebuilt object has a new cell)
+    const scopesKey = resolved.map(affect => JSON.stringify(canonicalAudioAffect(affect))).join('|');
     for (const s of plugin.managers.structure.hierarchy.current.structures) {
         const structure = s.cell.obj?.data;
         if (!structure) continue;
@@ -345,29 +348,32 @@ export function syncAudioAffect(plugin: PluginContext, affect: AudioAffect) {
                 if (!repr) continue;
                 for (const ro of repr.renderObjects) {
                     const values = ro.values as Partial<AnimationData>;
-                    if (!values.uAudioAffectRanges || !values.uAudioAffectCount || !values.uAudioAffectInstances) continue;
+                    if (!values.uAudioAffectRanges) continue;
                     const binding = getAudioAffectBinding(ro);
-                    if (!binding) {
-                        if (resolved.level === 'all') writeAffect(values as AnimationData, AllRangePacked, 1, 1);
-                        else writeAffect(values as AnimationData, AllRangePacked, 0, 0);
-                        continue;
+                    const last = scopesFor.get(values.uAudioAffectRanges);
+                    if (last && last.key === scopesKey && last.binding === binding) continue;
+                    scopesFor.set(values.uAudioAffectRanges, { key: scopesKey, binding });
+                    for (let i = 0; i < AudioScopeSlotCount; i++) {
+                        if (i >= resolved.length) {
+                            slotPacked[i * 4] = 0;
+                            slotPacked[i * 4 + 1] = 0;
+                            slotPacked[i * 4 + 2] = 0;
+                            slotPacked[i * 4 + 3] = -1;
+                        } else {
+                            packSlot(plugin, binding, resolved[i], i * 4);
+                        }
                     }
-                    const owner = modelForStructure(plugin, binding.structure);
-                    const inModel = resolved.level === 'all' || (!!owner && owner.cell.transform.ref === resolved.modelRef);
-                    let ranges: Range[] = [];
-                    if (inModel) {
-                        ranges = binding.kind === 'units'
-                            ? rangesForUnits(binding.structure, binding.group, resolved)
-                            : rangesForSerial(binding.structure, resolved);
-                    }
-                    const counted = { count: 0 };
-                    const packed = ranges.length ? pack(ranges, counted) : AllRangePacked;
-                    const instances = ranges.length ? instancesAllowed(binding.kind, ranges, binding.structure.elementCount) : 0;
-                    writeAffect(values as AnimationData, packed, counted.count, instances);
+                    writeSlots(values as AnimationData);
                 }
             }
         }
     }
+}
+
+/** Drop detail finer than `maxLevel`. */
+export function clampAffectToLevel(affect: AudioAffect, maxLevel: AudioAffectLevel): AudioAffect {
+    if (LevelRank[affect.level] <= LevelRank[maxLevel]) return affect;
+    return clearFiner(affect, maxLevel);
 }
 
 function clearFiner(affect: AudioAffect, level: AudioAffectLevel): AudioAffect {
@@ -483,6 +489,67 @@ export function audioAffectFromLoci(plugin: PluginContext, loci: StructureElemen
     const alt = h.atoms.label_alt_id.value(element);
     if (alt) affect.altId = alt;
     return canonicalAudioAffect(affect);
+}
+
+/**
+ * All, then the loaded models down to `maxLevel`. Residue and atom rows appear only under the chain
+ * already picked, so a capsid does not list every residue of every copy.
+ */
+export function listRouteScopeChoices(plugin: PluginContext, affect: AudioAffect, maxLevel: AudioAffectLevel): AudioAffectChoice[] {
+    const choices: AudioAffectChoice[] = [];
+    const push = (next: AudioAffect, label: string) => {
+        const canonical = canonicalAudioAffect(next);
+        choices.push({ id: JSON.stringify(canonical), label, affect: canonical });
+    };
+    push({ level: 'all' }, 'All');
+    const max = LevelRank[maxLevel];
+    const selected = canonicalAudioAffect(affect);
+    for (const model of hierarchyModels(plugin)) {
+        const data = modelData(model);
+        if (!data) continue;
+        const modelLabel = data.label || data.entryId || `model ${data.modelNum}`;
+        const modelAffect: AudioAffect = { level: 'model', modelRef: model.cell.transform.ref, entryId: data.entryId, modelNum: data.modelNum };
+        push(modelAffect, modelLabel);
+        if (max < LevelRank.entity) continue;
+        for (const entity of entityIds(data)) {
+            const entityAffect: AudioAffect = { ...modelAffect, level: 'entity', entityId: entity.id };
+            push(entityAffect, `· ${entity.label}`);
+            if (max < LevelRank.instance) continue;
+            const operators = operatorsOf(model, entity.id);
+            for (let i = 0; i < operators.length; i++) {
+                const name = operators[i];
+                const instanceAffect: AudioAffect = { ...entityAffect, level: 'instance', operatorName: name };
+                push(instanceAffect, `·· Instance ${i + 1}`);
+                if (max < LevelRank.chain) continue;
+                for (const chain of chainsOf(data, entity.id)) {
+                    const chainAffect: AudioAffect = { ...instanceAffect, level: 'chain', asymId: chain.asymId };
+                    const chainLabel = chain.authId && chain.authId !== chain.asymId ? `${chain.asymId} (${chain.authId})` : chain.asymId;
+                    push(chainAffect, `··· Chain ${chainLabel}`);
+                    const onChain = max >= LevelRank.residue
+                        && LevelRank[selected.level] >= LevelRank.chain
+                        && selected.modelRef === modelAffect.modelRef
+                        && selected.entityId === entity.id
+                        && selected.operatorName === name
+                        && selected.asymId === chain.asymId;
+                    if (!onChain) continue;
+                    for (const residue of residuesOf(data, entity.id, chain.asymId)) {
+                        const ins = residue.insCode || undefined;
+                        const residueAffect: AudioAffect = { ...chainAffect, level: 'residue', seqId: residue.seqId, insCode: ins };
+                        push(residueAffect, `···· ${residue.compId} ${residue.seqId}${residue.insCode}`);
+                        const onResidue = max >= LevelRank.atom
+                            && LevelRank[selected.level] >= LevelRank.residue
+                            && selected.seqId === residue.seqId
+                            && (selected.insCode || '') === (residue.insCode || '');
+                        if (!onResidue) continue;
+                        for (const atom of atomsOf(data, residueAffect)) {
+                            push({ ...residueAffect, level: 'atom', atomId: atom.atomId, altId: atom.altId || undefined }, `····· ${atom.altId ? `${atom.atomId} ${atom.altId}` : atom.atomId}`);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return choices;
 }
 
 export function listAudioAffectChoices(plugin: PluginContext, affect: AudioAffect): AudioAffectChoice[] {

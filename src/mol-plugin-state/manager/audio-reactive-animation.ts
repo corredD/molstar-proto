@@ -5,10 +5,10 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import { BehaviorSubject, Subscription } from 'rxjs';
+import { BehaviorSubject } from 'rxjs';
 import { StemModelId, StemModels, StemName } from './audio-stems/stem-models';
-import { AudioAffect, AudioAffectLevel, AudioRoute, AudioRouteDrives, AudioRouter, createZeroDrives, defaultAudioAffect, getDefaultAudioRoutes, sameAudioAffect } from './audio-routing';
-import { audioAffectFromLoci, resolveAudioAffect, specializeAudioAffect } from '../helpers/audio-affect';
+import { AudioAffect, AudioAffectLevel, AudioRoute, AudioRouteDrives, AudioRouter, AudioScopeSlot, canonicalAudioAffect, createZeroDrives, defaultAudioAffect, getDefaultAudioRoutes, maxScopeLevel, sameAudioAffect } from './audio-routing';
+import { audioAffectFromLoci, clampAffectToLevel, resolveAudioAffect, specializeAudioAffect } from '../helpers/audio-affect';
 import { StructureElement } from '../../mol-model/structure';
 import { StemLevels, StemSeparator, StemSeparatorOptions, StemSeparatorStatus } from './audio-stems/stem-separator';
 import { ParamDefinition as PD } from '../../mol-util/param-definition';
@@ -221,14 +221,11 @@ export class AudioReactiveAnimationManager {
         audioPlayer: new BehaviorSubject<HTMLAudioElement | null>(null),
         status: new BehaviorSubject<AudioReactiveStatus>(InitialAudioReactiveStatus),
         params: new BehaviorSubject<AudioReactiveAnimationManagerValues>(PD.getDefaultValues(AudioReactiveAnimationManagerParams)),
-        /** which audio source drives which visual channel (audio-routing.ts) */
+        /** which audio source drives which visual channel, and who each route moves (audio-routing.ts) */
         routes: new BehaviorSubject<AudioRoute[]>(getDefaultAudioRoutes()),
-        /** which part of the loaded models the structure motion follows */
-        affect: new BehaviorSubject<AudioAffect>(defaultAudioAffect()),
     };
 
     private router = new AudioRouter();
-    private readonly subscriptions = new Subscription();
 
     private objectUrl?: string;
     private sourceLabel?: string;
@@ -265,25 +262,32 @@ export class AudioReactiveAnimationManager {
 
     constructor(readonly plugin: PluginContext) {
         this.syncReactorParams();
-        this.subscriptions.add(plugin.managers.structure.selection.events.changed.subscribe(() => this.adoptSelection()));
-        // the viewer click focuses (selection mode is off); that pick is what the Who row follows
-        this.subscriptions.add(plugin.managers.structure.focus.behaviors.current.subscribe(() => this.adoptSelection()));
-        this.subscriptions.add(plugin.managers.structure.hierarchy.behaviors.selection.subscribe(() => {
-            const affect = this.state.affect.value;
-            if (affect.level === 'all') return;
-            const resolved = resolveAudioAffect(plugin, affect);
-            if (!sameAudioAffect(resolved, affect)) this.state.affect.next(resolved);
-        }));
     }
 
     get frame() {
         return this.currentFrame;
     }
 
-    /** each stem's level (0-1) this frame: separated by the model where it keeps up, from the bands otherwise */
-    /** each visual channel's drive this frame */
+    /** each visual channel's drive this frame, from the routes on All */
     get drives(): Readonly<AudioRouteDrives> {
         return this.router.drives;
+    }
+
+    /** the routes narrowed to one part of the structure this frame: one shader slot each */
+    get scopes(): readonly AudioScopeSlot[] {
+        return this.router.scopes;
+    }
+
+    get scopeCount() {
+        return this.router.scopeCount;
+    }
+
+    get scopeKind(): ArrayLike<number> {
+        return this.router.scopeKind;
+    }
+
+    get scopeDrive(): ArrayLike<number> {
+        return this.router.scopeDrive;
     }
 
     setRoutes(routes: AudioRoute[]) {
@@ -299,20 +303,28 @@ export class AudioReactiveAnimationManager {
         this.setRoutes(this.state.routes.value.filter(r => r.id !== id));
     }
 
-    setAffect(affect: AudioAffect) {
-        const resolved = affect.level === 'all' ? affect : resolveAudioAffect(this.plugin, affect);
-        if (sameAudioAffect(resolved, this.state.affect.value)) return;
-        this.state.affect.next(resolved);
+    /** Who one route moves, kept no finer than its channel allows (maxScopeLevel) */
+    setRouteAffect(id: number, affect: AudioAffect) {
+        const route = this.state.routes.value.find(r => r.id === id);
+        if (!route) return;
+        const max = maxScopeLevel(route.target);
+        const next = max === 'all' || affect.level === 'all'
+            ? defaultAudioAffect()
+            : canonicalAudioAffect(clampAffectToLevel(resolveAudioAffect(this.plugin, affect), max));
+        if (sameAudioAffect(next, route.affect)) return;
+        this.updateRoute(id, { affect: next });
     }
 
-    /** Narrow or widen who the motion follows. A current pick is kept; otherwise the first loaded part at that level. */
-    setAffectLevel(level: AudioAffectLevel) {
-        if (level === 'all') {
-            this.setAffect(defaultAudioAffect());
-            return;
-        }
-        const picked = this.affectFromSelection(level);
-        this.setAffect(picked ?? specializeAudioAffect(this.plugin, this.state.affect.value, level));
+    /**
+     * Narrow a route to what is selected or focused in the viewer (a click), at `level`; with nothing picked, the first
+     * loaded part at that level. False where the route's channel cannot be narrowed
+     */
+    pickRouteAffect(id: number, level: AudioAffectLevel) {
+        const route = this.state.routes.value.find(r => r.id === id);
+        if (!route || maxScopeLevel(route.target) === 'all') return false;
+        const picked = level === 'all' ? defaultAudioAffect() : this.affectFromSelection(level);
+        this.setRouteAffect(id, picked ?? specializeAudioAffect(this.plugin, route.affect, level));
+        return true;
     }
 
     private affectFromSelection(level: AudioAffectLevel): AudioAffect | undefined {
@@ -327,15 +339,6 @@ export class AudioReactiveAnimationManager {
         const focus = this.plugin.managers.structure.focus.current?.loci;
         if (!focus || StructureElement.Loci.isEmpty(focus)) return;
         return audioAffectFromLoci(this.plugin, focus, level);
-    }
-
-    /** A click in the viewer chooses the model, entity, instance, chain, residue or atom at the current level. */
-    private adoptSelection() {
-        const level = this.state.affect.value.level;
-        if (level === 'all') return;
-        const picked = this.affectFromSelection(level);
-        if (!picked || sameAudioAffect(picked, this.state.affect.value)) return;
-        this.state.affect.next(picked);
     }
 
     get stems() {
@@ -648,7 +651,6 @@ export class AudioReactiveAnimationManager {
 
     dispose() {
         this.clear();
-        this.subscriptions.unsubscribe();
         this.sourceNode?.disconnect();
         this.separator?.dispose();
         this.delayNode?.disconnect();
@@ -657,7 +659,6 @@ export class AudioReactiveAnimationManager {
         this.state.audioPlayer.complete();
         this.state.status.complete();
         this.state.routes.complete();
-        this.state.affect.complete();
         this.state.params.complete();
     }
 }

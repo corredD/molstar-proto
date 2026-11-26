@@ -30,7 +30,7 @@ import { DefaultAudioBandDefinitions } from '../../mol-plugin-state/manager/audi
 import { AudioProminenceRadar } from '../../mol-plugin-ui/controls/audio-prominence-radar';
 import { AudioReactivePresetDefinitions, AudioReactivePresetName, getAudioReactivePreset, getPresetRoutes } from '../../mol-plugin-state/helpers/audio-reactive-presets';
 import { describeAudioAffect, listAudioAffectChoices } from '../../mol-plugin-state/helpers/audio-affect';
-import { AudioAffectLevels, AudioRouteSources, AudioRouteTargets, canonicalAudioAffect, createAudioRoute, draftsFromRoutes, getAudioRouteSourceLabel, getAudioRouteTargetLabel, getDefaultAudioRoutes, loadStoredAudioRouting, parseAudioRouting, routesFromDrafts, storeAudioRouting, type AudioAffect, type AudioRoute, type AudioRoutingPreset } from '../../mol-plugin-state/manager/audio-routing';
+import { AudioAffectLevels, AudioRouteSources, AudioRouteTargets, canonicalAudioAffect, createAudioRoute, draftsFromRoutes, getAudioRouteSourceLabel, maxScopeLevel, getAudioRouteTargetLabel, getDefaultAudioRoutes, loadStoredAudioRouting, parseAudioRouting, routesFromDrafts, storeAudioRouting, type AudioAffect, type AudioRoute, type AudioRoutingPreset } from '../../mol-plugin-state/manager/audio-routing';
 import { AudioReactiveAnimationManagerValues, type AudioReactiveStatus, getStemDelaySeconds } from '../../mol-plugin-state/manager/audio-reactive-animation';
 import { StemModelIds, StemModels, type StemName, StemNames } from '../../mol-plugin-state/manager/audio-stems/stem-models';
 import { AudioReactiveAssemblyAxisOrder } from '../../mol-plugin-state/helpers/assembly-symmetry-axis';
@@ -1605,46 +1605,62 @@ function StemSeparationCard({ app }: { app: VirusOnTheRockApp }) {
     </div>;
 }
 
-const AffectShort: Record<AudioAffect['level'], string> = {
+const AffectLevelRank: Record<AudioAffect['level'], number> = {
+    all: 0, model: 1, entity: 2, instance: 3, chain: 4, residue: 5, atom: 6,
+};
+const AffectLevelShort: Record<AudioAffect['level'], string> = {
     all: 'All', model: 'Model', entity: 'Entity', instance: 'Instance', chain: 'Chain', residue: 'Residue', atom: 'Atom',
 };
 
-function AudioAffectRow({ app }: { app: VirusOnTheRockApp }) {
+/** One route's Who row: how fine (level), which one, and a pick from what is clicked in the viewer */
+function RouteAffectRow({ app, route }: { app: VirusOnTheRockApp, route: AudioRoute }) {
     const manager = app.viewer.plugin.managers.audioReactive;
-    const affect = useBehavior(manager.state.affect);
     const hierarchy = useBehavior(manager.plugin.managers.structure.hierarchy.behaviors.selection);
+    const affect = route.affect;
+    const max = maxScopeLevel(route.target);
     const choices = React.useMemo(
-        () => affect ? listAudioAffectChoices(manager.plugin, affect) : [],
+        () => affect.level === 'all' ? [] : listAudioAffectChoices(manager.plugin, affect),
         [manager, affect, hierarchy],
     );
-    if (!affect) return null;
+    if (max === 'all') {
+        return <div className='vor-route-row vor-route-who'>
+            <span className='vor-route-who-label'>Who</span>
+            <span className='vor-route-who-fixed'>the whole view</span>
+        </div>;
+    }
+    const levels = AudioAffectLevels.filter(([level]) => AffectLevelRank[level] <= AffectLevelRank[max]);
     const selected = JSON.stringify(canonicalAudioAffect(affect));
     const known = choices.some(choice => choice.id === selected);
-    return <>
-        <div className='vor-chip-row vor-affect'>
-            {AudioAffectLevels.map(([level, label]) => <button
-                key={level}
-                className={`vor-chip ${affect.level === level ? 'vor-active' : ''}`}
-                title={label}
-                onClick={() => manager.setAffectLevel(level)}
-            >{AffectShort[level]}</button>)}
-        </div>
-        {affect.level !== 'all' && <div className='vor-route-row'>
-            <select
-                className='vor-select'
-                value={known ? selected : ''}
-                title='Which one. Clicking the structure picks it too.'
-                onChange={e => {
-                    const choice = choices.find(item => item.id === e.target.value);
-                    if (choice) manager.setAffect(choice.affect);
-                }}
-            >
-                {!known && <option value=''>{describeAudioAffect(manager.plugin, affect)}</option>}
-                {choices.map(choice => <option key={choice.id} value={choice.id}>{choice.label}</option>)}
-            </select>
-        </div>}
-        {affect.level !== 'all' && <p className='vor-help'>{describeAudioAffect(manager.plugin, affect)}. Click the structure to pick another.</p>}
-    </>;
+    return <div className='vor-route-row vor-route-who'>
+        <span className='vor-route-who-label'>Who</span>
+        <select
+            className='vor-select vor-route-level'
+            value={affect.level}
+            title={max === 'atom'
+                ? 'How much of the structure this route moves'
+                : 'How much of the structure this route moves. A chain moves with its whole copy, so instance motion stops at the chain'}
+            onChange={e => manager.pickRouteAffect(route.id, e.target.value as AudioAffect['level'])}
+        >
+            {levels.map(([level]) => <option key={level} value={level}>{AffectLevelShort[level]}</option>)}
+        </select>
+        {affect.level !== 'all' && <select
+            className='vor-select'
+            value={known ? selected : ''}
+            title={describeAudioAffect(manager.plugin, affect)}
+            onChange={e => {
+                const choice = choices.find(item => item.id === e.target.value);
+                if (choice) manager.setRouteAffect(route.id, choice.affect);
+            }}
+        >
+            {!known && <option value=''>{describeAudioAffect(manager.plugin, affect)}</option>}
+            {choices.map(choice => <option key={choice.id} value={choice.id}>{choice.label}</option>)}
+        </select>}
+        {affect.level !== 'all' && <button
+            className='vor-chip vor-route-remove'
+            title='Pick what is clicked or selected in the viewer'
+            onClick={() => manager.pickRouteAffect(route.id, affect.level)}
+        >◎</button>}
+    </div>;
 }
 
 function AudioRoutingLibrary({ app }: { app: VirusOnTheRockApp }) {
@@ -1666,7 +1682,6 @@ function AudioRoutingLibrary({ app }: { app: VirusOnTheRockApp }) {
             version: 1,
             name: trimmed,
             routes: draftsFromRoutes(manager.state.routes.value),
-            affect: canonicalAudioAffect(manager.state.affect.value),
         };
         const without = presets.filter(item => item.name !== trimmed);
         remember([preset, ...without]);
@@ -1676,10 +1691,7 @@ function AudioRoutingLibrary({ app }: { app: VirusOnTheRockApp }) {
 
     const load = (presetName: string) => {
         setPicked(presetName);
-        const preset = presets.find(item => item.name === presetName);
-        if (!preset) return;
-        manager.setRoutes(routesFromDrafts(preset.routes));
-        manager.setAffect(preset.affect);
+        loadFrom(presets, presetName);
     };
 
     const download = () => {
@@ -1687,7 +1699,6 @@ function AudioRoutingLibrary({ app }: { app: VirusOnTheRockApp }) {
             version: 1,
             name: name.trim() || 'Routing',
             routes: draftsFromRoutes(manager.state.routes.value),
-            affect: canonicalAudioAffect(manager.state.affect.value),
         }, null, 2);
         const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
         const link = document.createElement('a');
@@ -1718,8 +1729,9 @@ function AudioRoutingLibrary({ app }: { app: VirusOnTheRockApp }) {
     const loadFrom = (list: AudioRoutingPreset[], presetName: string) => {
         const preset = list.find(item => item.name === presetName);
         if (!preset) return;
+        // a saved affect names its model by entry id too: reattached to the models loaded now
         manager.setRoutes(routesFromDrafts(preset.routes));
-        manager.setAffect(preset.affect);
+        for (const route of manager.state.routes.value) manager.setRouteAffect(route.id, route.affect);
     };
 
     return <div className='vor-routing-save'>
@@ -1748,7 +1760,6 @@ function AudioRoutingCard({ app }: { app: VirusOnTheRockApp }) {
     const status = useBehavior(manager.state.status) as AudioReactiveStatus | undefined;
     if (!routes) return null;
     return <div className='vor-stack'>
-        <AudioAffectRow app={app} />
         {routes.map(route => {
             const value = status?.routeValues.get(route.id) ?? 0;
             return <div key={route.id} className={`vor-route ${route.enabled ? '' : 'vor-route-off'}`}>
@@ -1770,10 +1781,15 @@ function AudioRoutingCard({ app }: { app: VirusOnTheRockApp }) {
                 </div>
                 <div className='vor-route-row'>
                     <span className='vor-route-arrow'>→</span>
-                    <select className='vor-select' value={route.target} onChange={e => manager.updateRoute(route.id, { target: e.target.value as AudioRoute['target'] })}>
+                    <select className='vor-select' value={route.target} onChange={e => {
+                        manager.updateRoute(route.id, { target: e.target.value as AudioRoute['target'] });
+                        // a channel that cannot be narrowed as far keeps what it can of the Who
+                        manager.setRouteAffect(route.id, route.affect);
+                    }}>
                         {AudioRouteTargets.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
                     </select>
                 </div>
+                <RouteAffectRow app={app} route={route} />
                 <div className='vor-route-row'>
                     <label className='vor-route-gain' title='Sensitivity: how much the source moves the channel'>
                         Gain {route.gain.toFixed(2)}
@@ -1790,7 +1806,7 @@ function AudioRoutingCard({ app }: { app: VirusOnTheRockApp }) {
         </div>
         <AudioRoutingLibrary app={app} />
         <p className='vor-help'>
-            Each route sends an audio source to a visual channel; a channel sums its routes. Who limits the structure motion (instances, atoms, the whole object). Camera, clipping, colour and light stay on the whole view. A chain, residue or atom moves with its instance; atom wiggle stays on those atoms. The wave’s height is the route’s source. Save keeps the routes and who they affect.
+            Each route sends an audio source to a visual channel; a channel sums its routes. Who narrows a route's motion to one model, entity, instance or chain (atom wiggle down to one residue or atom); ◎ takes what you clicked in the viewer. Camera, clipping, colour and light always act on the whole view. Up to 8 routes can be narrowed at once. The wave's height is its route's source. Save keeps the routes and who each moves.
         </p>
     </div>;
 }

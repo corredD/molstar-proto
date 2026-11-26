@@ -211,6 +211,10 @@ export const GlobalUniformSchema = {
     uAudioDriveInstanceWave: UniformSpec('f'),
     uAudioDriveWiggle: UniformSpec('f'),
     uAudioDriveObject: UniformSpec('f'),
+    /** narrowed routes: how many, which channel (audio-routing.ts AudioScopeKinds), and that route's drive */
+    uAudioScopeCount: UniformSpec('i'),
+    uAudioScopeKind: UniformSpec('i[]'),
+    uAudioScopeDrive: UniformSpec('f[]'),
     uAudioIllumination: UniformSpec('f'),
     /** the colour-spectrum channel: how far hues rotate (1: a full turn at most) */
     uAudioHue: UniformSpec('f'),
@@ -475,7 +479,7 @@ export const AnimationSchema = {
     uAudioAssemblyAxisCount: UniformSpec('i', 'material'),
     uAudioAssemblyAxisCenter: UniformSpec('v3', 'material'),
     uAudioAssemblyAxes: UniformSpec('v3[]', 'material'),
-    /** audio-affect.ts: who the structure motion follows. Count 0 excludes the object. */
+    /** audio-affect.ts: one vec4 per narrowed route. w < 0 means this object is outside that route. */
     uAudioAffectCount: UniformSpec('i', 'material'),
     uAudioAffectInstances: UniformSpec('i', 'material'),
     uAudioAffectRanges: UniformSpec('v4[]', 'material'),

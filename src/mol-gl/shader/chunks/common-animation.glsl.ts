@@ -61,10 +61,12 @@ uniform float uAudioDriveInstanceAxis;
 uniform float uAudioDriveInstanceNormal;
 uniform float uAudioDriveInstanceWave;
 uniform float uAudioDriveWiggle;
-uniform int uAudioAffectCount;
-uniform int uAudioAffectInstances;
-uniform vec4 uAudioAffectRanges[8];
 uniform float uAudioDriveObject;
+uniform int uAudioScopeCount;
+uniform int uAudioScopeKind[8];
+uniform float uAudioScopeDrive[8];
+// one slot per narrowed route: x instance or -1, y group start or -1, z group end, w < 0 miss, w < 0.5 atoms only
+uniform vec4 uAudioAffectRanges[8];
 
 #ifdef dWiggle
     uniform vec2 uWiggleTexDim;
@@ -153,33 +155,20 @@ bool hasResolvedAssemblyTumbleAxis() {
     return uTumbleAxisSource != 2 || uAudioAssemblyAxisCount > 0;
 }
 
-bool audioAffects(float instanceIndex, float groupId) {
+// kind: 1 symmetry, 2 instance random, 3 instance axis, 4 instance normal, 5 instance wave, 6 atom wiggle, 7 whole object
+float scopedDrive(int kind, float instanceIndex, float groupId, bool instanceOnly) {
+    float extra = 0.0;
     for (int i = 0; i < 8; ++i) {
-        if (i >= uAudioAffectCount) return false;
+        if (i >= uAudioScopeCount) break;
+        if (uAudioScopeKind[i] != kind) continue;
         vec4 span = uAudioAffectRanges[i];
+        if (span.w < 0.0) continue;
+        if (instanceOnly && span.w < 0.5) continue;
         if (span.x >= 0.0 && abs(instanceIndex - span.x) > 0.5) continue;
-        if (span.y < 0.0 || (groupId >= span.y && groupId < span.z)) return true;
+        if (!instanceOnly && span.y >= 0.0 && !(groupId >= span.y && groupId < span.z)) continue;
+        extra += uAudioScopeDrive[i];
     }
-    return false;
-}
-
-bool audioAffectsInstance(float instanceIndex) {
-    if (uAudioAffectInstances == 0) return false;
-    for (int i = 0; i < 8; ++i) {
-        if (i >= uAudioAffectCount) return false;
-        float instance = uAudioAffectRanges[i].x;
-        if (instance < 0.0 || abs(instanceIndex - instance) <= 0.5) return true;
-    }
-    return false;
-}
-
-bool audioAffectsWholeObject() {
-    for (int i = 0; i < 8; ++i) {
-        if (i >= uAudioAffectCount) return false;
-        vec4 span = uAudioAffectRanges[i];
-        if (span.x < 0.0 && span.y < 0.0) return true;
-    }
-    return false;
+    return extra;
 }
 
 float getAssemblyAxisDrive() {
@@ -188,9 +177,10 @@ float getAssemblyAxisDrive() {
 
 vec3 applyWiggle(vec3 pos, float groupId, float instanceId) {
     if (!uEnableAnimation || !uAtomWiggleEnabled) return pos;
-    // the routed drive of the wiggle channel, times the wiggle sensitivity knob, only on the atoms in scope
-    float amplitude = audioAffects(instanceId, groupId)
-        ? uWiggleAmplitude * pow(clamp(uAudioDriveWiggle * uAudioWiggleScale, 0.0, 40.0), 0.65)
+    // routes on All, plus any route narrowed onto this atom
+    float wiggleDrive = uAudioDriveWiggle + scopedDrive(6, instanceId, groupId, false);
+    float amplitude = wiggleDrive > 0.0
+        ? uWiggleAmplitude * pow(clamp(wiggleDrive * uAudioWiggleScale, 0.0, 40.0), 0.65)
         : 0.0;
     #ifdef dWiggle
         #if defined(dWiggleType_instance)
@@ -225,15 +215,13 @@ vec3 applyWiggle(vec3 pos, float groupId, float instanceId) {
 
 mat4 applyTumble(mat4 transform, float instanceIndex, float uObjectId) {
     if (!uEnableAnimation) return transform;
-    // the position wave is its own route: it still runs when Instance Beats is off, or the tumble amplitude is 0
-    float driveWave = clamp(uAudioDriveInstanceWave * uAudioTumbleScale, 0.0, 40.0);
+    // routes on All, plus any route narrowed onto this instance. The wave still runs when Instance Beats is off.
+    float driveWave = clamp((uAudioDriveInstanceWave + scopedDrive(5, instanceIndex, 0.0, true)) * uAudioTumbleScale, 0.0, 40.0);
     if (!uInstanceTumbleEnabled && driveWave <= 0.0) return transform;
-    if (!audioAffectsInstance(instanceIndex)) return transform;
-    // the instance channels add up, each scaled by its routed drive and the instance sensitivity knob
-    float driveRandom = clamp(uAudioDriveInstanceRandom * uAudioTumbleScale, 0.0, 40.0);
-    float driveAxis = clamp(uAudioDriveInstanceAxis * uAudioTumbleScale, 0.0, 40.0);
-    float driveNormal = clamp(uAudioDriveInstanceNormal * uAudioTumbleScale, 0.0, 40.0);
-    float driveSym = clamp(uAudioDriveSymAxis * uAudioTumbleScale, 0.0, 40.0);
+    float driveRandom = clamp((uAudioDriveInstanceRandom + scopedDrive(2, instanceIndex, 0.0, true)) * uAudioTumbleScale, 0.0, 40.0);
+    float driveAxis = clamp((uAudioDriveInstanceAxis + scopedDrive(3, instanceIndex, 0.0, true)) * uAudioTumbleScale, 0.0, 40.0);
+    float driveNormal = clamp((uAudioDriveInstanceNormal + scopedDrive(4, instanceIndex, 0.0, true)) * uAudioTumbleScale, 0.0, 40.0);
+    float driveSym = clamp((uAudioDriveSymAxis + scopedDrive(1, instanceIndex, 0.0, true)) * uAudioTumbleScale, 0.0, 40.0);
     float tumbleAmplitude = uTumbleAmplitude * uAudioLodMotionScale;
     bool hasNoise = uInstanceTumbleEnabled && tumbleAmplitude > 0.0 && uTumbleSpeed > 0.0 && uTumbleFrequency > 0.0 && driveRandom + driveAxis + driveNormal + driveSym > 0.0;
     if (hasNoise || driveWave > 0.0) {
@@ -314,11 +302,10 @@ mat4 applyTumble(mat4 transform, float instanceIndex, float uObjectId) {
     return transform;
 }
 
-mat4 applyObjectTransform(mat4 transform, float uObjectId) {
+mat4 applyObjectTransform(mat4 transform, float instanceIndex, float uObjectId) {
     if (!uEnableAnimation || !uObjectTransformEnabled || uObjectTransformAmplitude <= 0.0 || uObjectTransformSpeed <= 0.0) return transform;
-    if (!audioAffectsWholeObject()) return transform;
 
-    float drive = pow(clamp(uAudioDriveObject * uAudioObjectTransformScale, 0.0, 40.0), 0.65);
+    float drive = pow(clamp((uAudioDriveObject + scopedDrive(7, instanceIndex, 0.0, true)) * uAudioObjectTransformScale, 0.0, 40.0), 0.65);
     float amplitude = uObjectTransformAmplitude * drive * uAudioLodMotionScale;
     if (amplitude <= 0.0) return transform;
 
@@ -372,6 +359,6 @@ mat4 applyObjectTransform(mat4 transform, float uObjectId) {
 }
 
 mat4 applyTransformAnimation(mat4 transform, float instanceIndex, float uObjectId) {
-    return applyObjectTransform(applyTumble(transform, instanceIndex, uObjectId), uObjectId);
+    return applyObjectTransform(applyTumble(transform, instanceIndex, uObjectId), instanceIndex, uObjectId);
 }
 `;
