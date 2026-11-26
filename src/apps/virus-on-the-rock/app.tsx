@@ -10,7 +10,6 @@ import { BehaviorSubject, Subscription } from 'rxjs';
 import { AssemblySymmetryData, AssemblySymmetryDataProvider, AssemblySymmetryProvider } from '../../extensions/assembly-symmetry/prop';
 import { getAssemblySymmetryConfig, tryCreateAssemblySymmetry } from '../../extensions/assembly-symmetry/behavior';
 import { Vec3 } from '../../mol-math/linear-algebra/3d/vec3';
-import type { Canvas3D } from '../../mol-canvas3d/canvas3d';
 import { setSubtreeVisibility } from '../../mol-plugin/behavior/static/state';
 import { Task } from '../../mol-task';
 import { PresetStructureRepresentations } from '../../mol-plugin-state/builder/structure/representation-preset';
@@ -37,6 +36,7 @@ import { RandomStructurePdbIds } from './random-structures';
 import { IcyTitleReader, SongChangeDetector, type SongChangeReason } from './song-change';
 import { BeatCycle } from './beat-cycle';
 import { BackgroundBaseColor, CpuChannels, type CpuChannelTarget } from './cpu-channels';
+import { createCanvas3DChannelTarget } from './canvas3d-channel-target';
 import { patchIfChanged } from './state-patch';
 import { AudioUrlPresets, DefaultAudioFallbackLabel, DefaultAudioFallbackUrl, DefaultAudioLabel, DefaultAudioUrl, DefaultEffectKnobs, DefaultPdbId, DefaultPresetName, FrameRadiusPadding, LargeStructureElementThreshold, LargeStructureLodLevels, MesoscaleExample, MesoscaleExamples, NearClipAfterCameraReset, RepresentationMode, getBlobSurfaceTypeParams, getDefaultMultiScaleOcclusionProps, getPetworldGroups, getSpacefillTypeParams } from './catalog';
 import { AxisCycleTarget, LoadedEntry, VirusOnTheRockState, createInitialState, getAssemblyOrderFromCycleTarget, getAxisAnimationPatch, getAxisOptions, getDefaultCycleTargets, getEnabledCycleOptions, getLocalAxisFromCycleTarget, getMotionTargetState, isLocalCycleTarget, sanitizeCycleTargets } from './state';
@@ -82,30 +82,6 @@ async function resolveAudioUrl(url: string) {
         if (entry) return entry;
     }
     throw new Error('Playlist did not contain a playable audio URL.');
-}
-
-/**
- * The Canvas3D adapter of the CPU channels' port, built by `VirusOnTheRockApp.create`. The camera patches are made once
- * and reused (the camera copies them; its stateChanged readers look only at radius and radiusMax)
- */
-function createCanvas3DChannelTarget(canvas3d: Canvas3D): CpuChannelTarget {
-    const fovPatch = { fov: 0 };
-    const positionPatch = { position: Vec3() };
-    return {
-        getCamera: () => canvas3d.camera.state,
-        setCameraFov(fov) {
-            fovPatch.fov = fov;
-            canvas3d.camera.setState(fovPatch);
-        },
-        setCameraPosition(position) {
-            Vec3.copy(positionPatch.position, position);
-            canvas3d.camera.setState(positionPatch);
-        },
-        setBackgroundColor(backgroundColor) {
-            canvas3d.setProps({ renderer: { ...canvas3d.props.renderer, backgroundColor } });
-        },
-        getRenderObjects: () => canvas3d.getRenderObjects(),
-    };
 }
 
 export class VirusOnTheRockApp {
