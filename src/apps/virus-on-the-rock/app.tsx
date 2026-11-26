@@ -8,7 +8,7 @@
 import * as React from 'react';
 import { createRoot, Root } from 'react-dom/client';
 import { BehaviorSubject, Subscription } from 'rxjs';
-import { AssemblySymmetryData, AssemblySymmetryDataProvider, AssemblySymmetryProvider, AssemblySymmetryValue } from '../../extensions/assembly-symmetry/prop';
+import { AssemblySymmetryData, AssemblySymmetryDataProvider, AssemblySymmetryProvider } from '../../extensions/assembly-symmetry/prop';
 import { getAssemblySymmetryConfig, tryCreateAssemblySymmetry } from '../../extensions/assembly-symmetry/behavior';
 import { Vec3 } from '../../mol-math/linear-algebra/3d/vec3';
 import type { Canvas3D } from '../../mol-canvas3d/canvas3d';
@@ -38,69 +38,14 @@ import { getMesoscaleGroup, MesoscaleBaseTag } from '../../mol-plugin-state/help
 import { StructureElement, StructureProperties } from '../../mol-model/structure';
 import { Color } from '../../mol-util/color';
 import { Viewer } from '../viewer/app';
-import { areAnimationPropsEqual, type AnimationProps, type ObjectTransformModeName, type TumbleAxisName, type TumbleAxisSourceName } from '../../mol-geo/geometry/animation';
+import { areAnimationPropsEqual, type AnimationProps, type ObjectTransformModeName, type TumbleAxisName } from '../../mol-geo/geometry/animation';
 import { RandomStructurePdbIds } from './random-structures';
 import { IcyTitleReader, SongChangeDetector, type SongChangeReason } from './song-change';
 import { BeatCycle } from './beat-cycle';
 import { BackgroundBaseColor, CpuChannels, type CpuChannelTarget } from './cpu-channels';
 import { patchIfChanged } from './state-patch';
-import { AudioUrlPresets, DefaultAudioFallbackLabel, DefaultAudioFallbackUrl, DefaultAudioLabel, DefaultAudioUrl, DefaultAudioUrlPreset, DefaultEffectKnobs, DefaultPdbId, DefaultPresetName, DefaultRepresentationMode, ExamplePdbIds, FeaturedPresetNames, FrameRadiusPadding, IsLocalHost, LargeStructureElementThreshold, LargeStructureLodLevels, MesoscaleExample, MesoscaleExamples, NearClipAfterCameraReset, RepresentationMode, getBlobSurfaceTypeParams, getDefaultMultiScaleOcclusionProps, getPetworldGroups, getSpacefillTypeParams } from './catalog';
-
-type AxisOption = {
-    value: AudioReactiveAssemblyAxisOrder,
-    label: string,
-};
-
-type AxisCycleTarget = `local:${TumbleAxisName}` | `assembly:${AudioReactiveAssemblyAxisOrder}`;
-
-type AxisCycleOption = {
-    value: AxisCycleTarget,
-    label: string,
-};
-
-type VirusOnTheRockState = {
-    activePreset: AudioReactivePresetName,
-    currentStructureLabel?: string,
-    currentAudioLabel?: string,
-    /** the loaded structures; a mesoscale example's parts share its group (the trajectory they hang from) */
-    loadedEntries: LoadedEntry[],
-    audioLoaded: boolean,
-    axisModeEnabled: boolean,
-    axisSource: TumbleAxisSourceName,
-    localAxis: TumbleAxisName,
-    axisOptions: AxisOption[],
-    selectedAxisOrder: AudioReactiveAssemblyAxisOrder,
-    wiggleEffectScale: number,
-    tumbleEffectScale: number,
-    objectTransformEffectScale: number,
-    assemblyAxisAmplitudeScale: number,
-    beatThreshold: number,
-    audioPlaying: boolean,
-    hasAssemblyAxes: boolean,
-    axisCycleEnabled: boolean,
-    axisCycleEvery: number,
-    cycleTargets: AxisCycleTarget[],
-    activeCycleTarget?: AxisCycleTarget,
-    atomWiggleEnabled: boolean,
-    instanceTumbleEnabled: boolean,
-    objectTransformEnabled: boolean,
-    objectTransformMode: ObjectTransformModeName,
-    lodScaleEnabled: boolean,
-    representationMode: RepresentationMode,
-    audioClipEnabled: boolean,
-    audioClipScale: number,
-    showSidebar: boolean,
-    showHistogramBars: boolean,
-    showSessionInfo: boolean,
-    showWaveformLine: boolean,
-    showRadialVisualizer: boolean,
-    /** a random model at each new song */
-    randomPerSong: boolean,
-    /** how the last song change was found, shown under the Random button */
-    songChangeNote?: string,
-    /** the model loading for a song change or an example, shown as busy */
-    loadingModel?: string,
-};
+import { AudioUrlPresets, DefaultAudioFallbackLabel, DefaultAudioFallbackUrl, DefaultAudioLabel, DefaultAudioUrl, DefaultAudioUrlPreset, DefaultEffectKnobs, DefaultPdbId, DefaultPresetName, ExamplePdbIds, FeaturedPresetNames, FrameRadiusPadding, IsLocalHost, LargeStructureElementThreshold, LargeStructureLodLevels, MesoscaleExample, MesoscaleExamples, NearClipAfterCameraReset, RepresentationMode, getBlobSurfaceTypeParams, getDefaultMultiScaleOcclusionProps, getPetworldGroups, getSpacefillTypeParams } from './catalog';
+import { AxisCycleTarget, LoadedEntry, LocalAxisOptions, VirusOnTheRockState, createInitialState, formatPresetLabel, getAssemblyOrderFromCycleTarget, getAxisAnimationPatch, getAxisCycleOptions, getAxisOptions, getAxisStatusLabel, getDefaultCycleTargets, getEnabledCycleOptions, getLocalAxisFromCycleTarget, getMotionTargetState, isLocalCycleTarget, sanitizeCycleTargets } from './state';
 
 const _sceneCenterScreen = Vec4();
 
@@ -109,131 +54,12 @@ function isAudioFile(file: File) {
         || /\.(mp3|wav|ogg|m4a|aac|flac)$/i.test(file.name);
 }
 
-type LoadedEntry = { ref: string, label: string, group?: { ref: string, label: string } }
-
 function getStructureLabel(structureRef: StructureRef | undefined) {
     const structure = structureRef?.cell.obj?.data;
     if (!structure) return void 0;
     const entryId = structure.models[0]?.entryId;
     const label = structureRef?.cell.obj?.label;
     return entryId ? `${entryId.toUpperCase()}${label ? ` | ${label}` : ''}` : label;
-}
-
-function getAxisOptions(symmetry: AssemblySymmetryValue | undefined): AxisOption[] {
-    if (!symmetry || !AssemblySymmetryData.isRotationAxes(symmetry.rotation_axes)) return [];
-
-    const orders = Array.from(new Set(symmetry.rotation_axes.map(axis => axis.order).filter((order): order is number => !!order && order > 1)))
-        .sort((a, b) => a - b);
-
-    if (orders.length === 0) return [];
-
-    return [
-        { value: 'highest', label: 'Auto' },
-        ...orders.map(order => ({ value: `${order}` as AudioReactiveAssemblyAxisOrder, label: `${order}-fold` }))
-    ];
-}
-
-function formatPresetLabel(name: AudioReactivePresetName) {
-    return AudioReactivePresetDefinitions.find(p => p.name === name)?.label ?? name;
-}
-
-function getCyclingAxisOptions(axisOptions: AxisOption[]) {
-    return axisOptions
-        .filter(option => option.value !== 'highest')
-        .sort((a, b) => parseInt(b.value, 10) - parseInt(a.value, 10));
-}
-
-const LocalAxisOptions = [
-    { value: 'x' as const, label: 'X' },
-    { value: 'y' as const, label: 'Y' },
-    { value: 'z' as const, label: 'Z' },
-] as const;
-
-const DefaultLocalCycleTargets = LocalAxisOptions.map(option => `local:${option.value}` as AxisCycleTarget);
-
-function getLocalCycleTarget(axis: TumbleAxisName): AxisCycleTarget {
-    return `local:${axis}`;
-}
-
-function getAssemblyCycleTarget(order: AudioReactiveAssemblyAxisOrder): AxisCycleTarget {
-    return `assembly:${order}`;
-}
-
-function getAxisCycleOptions(axisOptions: AxisOption[]): AxisCycleOption[] {
-    return [
-        ...LocalAxisOptions.map(option => ({ value: getLocalCycleTarget(option.value), label: option.label })),
-        ...getCyclingAxisOptions(axisOptions).map(option => ({ value: getAssemblyCycleTarget(option.value), label: option.label })),
-    ];
-}
-
-function getDefaultCycleTargets(axisOptions: AxisOption[]) {
-    // Local X/Y/Z are off by default; cycle uses assembly axes when available.
-    return getCyclingAxisOptions(axisOptions).map(option => getAssemblyCycleTarget(option.value));
-}
-
-function getEnabledCycleOptions(state: Pick<VirusOnTheRockState, 'axisOptions' | 'cycleTargets'>) {
-    const cycleTargets = new Set(state.cycleTargets);
-    return getAxisCycleOptions(state.axisOptions).filter(option => cycleTargets.has(option.value));
-}
-
-function isLocalCycleTarget(target: AxisCycleTarget): target is `local:${TumbleAxisName}` {
-    return target.startsWith('local:');
-}
-
-function getLocalAxisFromCycleTarget(target: AxisCycleTarget): TumbleAxisName {
-    return target.slice('local:'.length) as TumbleAxisName;
-}
-
-function getAssemblyOrderFromCycleTarget(target: AxisCycleTarget): AudioReactiveAssemblyAxisOrder {
-    return target.slice('assembly:'.length) as AudioReactiveAssemblyAxisOrder;
-}
-
-function getCycleTargetLabel(target: AxisCycleTarget, axisOptions: AxisOption[]) {
-    return getAxisCycleOptions(axisOptions).find(option => option.value === target)?.label ?? target;
-}
-
-function sanitizeCycleTargets(cycleTargets: readonly AxisCycleTarget[], axisOptions: AxisOption[]) {
-    const available = new Set(getAxisCycleOptions(axisOptions).map(option => option.value));
-    const filtered = cycleTargets.filter(target => available.has(target));
-    // Always guarantee >= 2 options so beat cycle works even without assembly symmetry.
-    return filtered.length >= 2 ? filtered : DefaultLocalCycleTargets;
-}
-
-function getAxisModeState(animation: AnimationProps) {
-    return {
-        axisModeEnabled: animation.tumbleTranslationMode === 'axis',
-        axisSource: animation.tumbleAxisSource,
-        localAxis: animation.tumbleAxis,
-    } as const;
-}
-
-function getAxisAnimationPatch(state: Pick<VirusOnTheRockState, 'axisModeEnabled' | 'axisSource' | 'localAxis'>): Pick<AnimationProps, 'tumbleTranslationMode' | 'tumbleAxisSource' | 'tumbleAxis'> {
-    return {
-        tumbleTranslationMode: state.axisModeEnabled ? 'axis' : 'noise',
-        tumbleAxisSource: state.axisSource,
-        tumbleAxis: state.localAxis,
-    };
-}
-
-function getMotionTargetState(animation: AnimationProps) {
-    return {
-        atomWiggleEnabled: animation.atomWiggleEnabled,
-        instanceTumbleEnabled: animation.instanceTumbleEnabled,
-        objectTransformEnabled: animation.objectTransformEnabled,
-        objectTransformMode: animation.objectTransformMode,
-    } as const;
-}
-
-function getAxisStatusLabel(state: VirusOnTheRockState) {
-    if (!state.axisModeEnabled) return 'Off';
-    if (state.axisCycleEnabled) {
-        const activeTarget = state.activeCycleTarget ?? getEnabledCycleOptions(state)[0]?.value;
-        return activeTarget ? `Beat Cycle · ${getCycleTargetLabel(activeTarget, state.axisOptions)}` : 'Beat Cycle';
-    }
-    if (state.axisSource === 'local') return `Local ${state.localAxis.toUpperCase()} / -${state.localAxis.toUpperCase()}`;
-    if (state.axisSource === 'global') return `Global ${state.localAxis.toUpperCase()} / -${state.localAxis.toUpperCase()}`;
-    if (!state.hasAssemblyAxes) return 'Assembly unavailable';
-    return `Manual · ${state.axisOptions.find(option => option.value === state.selectedAxisOrder)?.label ?? 'Auto'}`;
 }
 
 function isPlaylistAudioUrl(url: string) {
@@ -263,44 +89,6 @@ async function resolveAudioUrl(url: string) {
         if (entry) return entry;
     }
     throw new Error('Playlist did not contain a playable audio URL.');
-}
-
-function createInitialState(params: AudioReactiveAnimationManagerValues, animation: AnimationProps): VirusOnTheRockState {
-    const axisState = getAxisModeState(animation);
-    return {
-        activePreset: DefaultPresetName,
-        loadedEntries: [],
-        audioLoaded: false,
-        randomPerSong: false,
-        ...axisState,
-        // Override axis-mode defaults: axis mode on, assembly source, beat cycle on,
-        // local X/Y/Z deselected (cycle picks up assembly axes once available).
-        axisModeEnabled: true,
-        axisSource: 'assembly',
-        axisOptions: [],
-        selectedAxisOrder: params.assemblyAxisOrder,
-        wiggleEffectScale: params.wiggleEffectScale,
-        tumbleEffectScale: params.tumbleEffectScale,
-        objectTransformEffectScale: params.objectTransformEffectScale,
-        assemblyAxisAmplitudeScale: params.assemblyAxisAmplitudeScale,
-        beatThreshold: 0.05,
-        audioPlaying: false,
-        hasAssemblyAxes: false,
-        axisCycleEnabled: true,
-        axisCycleEvery: 1,
-        cycleTargets: [],
-        activeCycleTarget: void 0,
-        ...getMotionTargetState(animation),
-        lodScaleEnabled: params.lodScaleEnabled,
-        representationMode: DefaultRepresentationMode,
-        audioClipEnabled: false,
-        audioClipScale: 1,
-        showSidebar: true,
-        showHistogramBars: true,
-        showSessionInfo: true,
-        showWaveformLine: true,
-        showRadialVisualizer: true,
-    };
 }
 
 function clamp(value: number, min: number, max: number) {
