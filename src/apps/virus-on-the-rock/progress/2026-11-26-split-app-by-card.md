@@ -110,8 +110,7 @@ fixes' tests. What took the room: the characterization numbers and the rest/scal
 
 ## Check (port 1350, 2026-11-26)
 
-`lint` 0 errors (2 old unused-disable warnings), `tsc` clean, jest (app, mol-plugin-state, mol-repr/structure) 9 suites
-69 tests pass at 157014171 and the app's 6 suites / 44 tests at HEAD, `--prd` build done. clicksync, lane vs `e5e30d568`
+`lint` 0 errors (2 old unused-disable warnings), `tsc` clean, jest (app, mol-plugin-state, mol-repr/structure) 10 suites 73 tests pass at HEAD (69 tests before the review fixes), `--prd` build done. clicksync, lane vs `e5e30d568`
 (2 runs each), full preset x1: kick→peak lag median 41–47 ms vs 34–47; peak median 11.76–11.94 vs 11.95–12.15;
 rest/peak median 0.43–0.44 vs 0.41–0.42; gain x2 ratio 2.04/2.02 vs 2.00/1.94: same within run-to-run noise.
 keep.mjs: route kept, identical to baseline. sync.mjs: corr with drums 0.85 vs 0.82. Checklist 1–10 by hand: Ludo's.
