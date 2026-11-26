@@ -10,6 +10,7 @@ import { Vec3 } from '../../mol-math/linear-algebra';
 import { ValueCell } from '../../mol-util';
 import type { AnimationData } from '../../mol-geo/geometry/animation';
 import { PluginContext } from '../../mol-plugin/context';
+import { getMesoscaleGroup, getMesoscalePart, isMesoscaleSurfacePart } from './mesoscale-part';
 import { AssemblySymmetryData, AssemblySymmetryDataProvider, AssemblySymmetryProvider, AssemblySymmetryValue } from '../../extensions/assembly-symmetry/prop';
 
 export const AudioReactiveAssemblyAxisOrderOptions = [
@@ -138,11 +139,13 @@ export function syncStructureAssemblyAxes(plugin: PluginContext, order: AudioRea
     const structures = plugin.managers.structure.hierarchy.current.structures;
     // without symmetry axes (a mesoscale model, a file not from the PDB), the centre is world space: the middle of every
     // structure from the same trajectory, so the parts of one virion (one model each) burst out from its middle
+    // a mesoscale part has no model cell: its key is its example (the Petworld trajectory, the cellPACK assembly)
+    const groupKey = (s: typeof structures[number]): unknown => s.model ? (s.model.trajectory ?? s) : getMesoscaleGroup(plugin.state.data, s.cell).ref;
     const boxes = new Map<unknown, { min: Vec3, max: Vec3 }>();
     for (const s of structures) {
         const structure = s.cell.obj?.data;
         if (!structure) continue;
-        const key = s.model?.trajectory ?? s;
+        const key = groupKey(s);
         const box = structure.boundary.box;
         const acc = boxes.get(key);
         if (!acc) boxes.set(key, { min: Vec3.clone(box.min), max: Vec3.clone(box.max) });
@@ -156,12 +159,14 @@ export function syncStructureAssemblyAxes(plugin: PluginContext, order: AudioRea
         if (!structure) continue;
         let entry = getCachedStructureAxes(structure, order);
         if (entry.count === 0) {
-            const box = boxes.get(s.model?.trajectory ?? s);
+            const box = boxes.get(groupKey(s));
             if (box) {
                 const center = Vec3.scale(Vec3(), Vec3.add(Vec3(), box.min, box.max), 0.5);
                 entry = { ...entry, key: `${entry.key}:${center.map(v => v.toFixed(1)).join(',')}`, center };
             }
         }
+        const waveRadial = isMesoscaleSurfacePart(getMesoscalePart(structure)) ? 1 : 0;
+        const key = `${entry.key}:${waveRadial}`;
         for (const component of s.components) {
             for (const r of component.representations) {
                 const repr = r.cell.obj?.data.repr;
@@ -169,11 +174,12 @@ export function syncStructureAssemblyAxes(plugin: PluginContext, order: AudioRea
                 for (const ro of repr.renderObjects) {
                     const values = ro.values as Partial<AnimationData>;
                     if (!values.uAudioAssemblyAxes || !values.uAudioAssemblyAxisCount || !values.uAudioAssemblyAxisCenter) continue;
-                    if (appliedAxes.get(values.uAudioAssemblyAxes) === entry.key) continue;
+                    if (appliedAxes.get(values.uAudioAssemblyAxes) === key) continue;
+                    if (values.uAudioWaveRadial) ValueCell.updateIfChanged(values.uAudioWaveRadial, waveRadial);
                     ValueCell.update(values.uAudioAssemblyAxisCount, entry.count);
                     ValueCell.update(values.uAudioAssemblyAxisCenter, Vec3.clone(entry.center));
                     ValueCell.update(values.uAudioAssemblyAxes, entry.axes.slice());
-                    appliedAxes.set(values.uAudioAssemblyAxes, entry.key);
+                    appliedAxes.set(values.uAudioAssemblyAxes, key);
                 }
             }
         }

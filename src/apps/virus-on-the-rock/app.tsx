@@ -29,14 +29,22 @@ import { SpacefillRepresentationProvider } from '../../mol-repr/structure/repres
 import { DefaultAudioBandDefinitions } from '../../mol-plugin-state/manager/audio-reactor';
 import { AudioProminenceRadar } from '../../mol-plugin-ui/controls/audio-prominence-radar';
 import { AudioReactivePresetDefinitions, AudioReactivePresetName, getAudioReactivePreset, getPresetRoutes } from '../../mol-plugin-state/helpers/audio-reactive-presets';
-import { describeAudioAffect, listAudioAffectChoices } from '../../mol-plugin-state/helpers/audio-affect';
-import { AudioAffectLevels, AudioRouteSources, AudioRouteTargets, canonicalAudioAffect, createAudioRoute, draftsFromRoutes, getAudioRouteSourceLabel, maxScopeLevel, getAudioRouteTargetLabel, getDefaultAudioRoutes, loadStoredAudioRouting, parseAudioRouting, routesFromDrafts, storeAudioRouting, type AudioAffect, type AudioRoute, type AudioRoutingPreset } from '../../mol-plugin-state/manager/audio-routing';
+import { InspiredRoutings } from '../../mol-plugin-state/helpers/audio-routing-inspired';
+import { audioAffectForEntry, describeAudioAffect, getMesoscalePartLabel, listAudioAffectChoices } from '../../mol-plugin-state/helpers/audio-affect';
+import { AudioAffectLevels, AudioRouteCurves, AudioRouteSources, AudioRouteTargets, canonicalAudioAffect, createAudioRoute, draftsFromRoutes, getAudioRouteSourceLabel, maxScopeLevel, getAudioRouteTargetLabel, getDefaultAudioRoutes, loadStoredAudioRouting, parseAudioRouting, routesFromDrafts, storeAudioRouting, type AudioAffect, type AudioRoute, type AudioRouteDraft, type AudioRoutingPreset } from '../../mol-plugin-state/manager/audio-routing';
 import { AudioReactiveAnimationManagerValues, type AudioReactiveStatus, getStemDelaySeconds } from '../../mol-plugin-state/manager/audio-reactive-animation';
 import { StemModelIds, StemModels, type StemName, StemNames } from '../../mol-plugin-state/manager/audio-stems/stem-models';
 import { AudioReactiveAssemblyAxisOrder } from '../../mol-plugin-state/helpers/assembly-symmetry-axis';
 import { StructureRef } from '../../mol-plugin-state/manager/structure/hierarchy-state';
 import { PluginStateObject } from '../../mol-plugin-state/objects';
+import { StateObjectSelector, StateTransform } from '../../mol-state';
 import { StateTransforms } from '../../mol-plugin-state/transforms';
+import { StructureFromPetworld } from '../mesoscale-explorer/data/petworld/model';
+import { CellpackAssembly, CellpackStructure } from '../mesoscale-explorer/data/cellpack/model';
+import { getMesoscaleGroup, MesoscaleBaseTag } from '../../mol-plugin-state/helpers/mesoscale-part';
+import { MmcifFormat } from '../../mol-model-formats/structure/mmcif';
+import { StructureElement, StructureProperties, Trajectory } from '../../mol-model/structure';
+import { Color } from '../../mol-util/color';
 import { Viewer } from '../viewer/app';
 import { areAnimationPropsEqual, type AnimationProps, type ObjectTransformModeName, type TumbleAxisName, type TumbleAxisSourceName } from '../../mol-geo/geometry/animation';
 import { RandomStructurePdbIds } from './random-structures';
@@ -58,7 +66,8 @@ type VirusOnTheRockState = {
     activePreset: AudioReactivePresetName,
     currentStructureLabel?: string,
     currentAudioLabel?: string,
-    loadedEntries: { ref: string, label: string }[],
+    /** the loaded structures; a mesoscale example's parts share its group (the trajectory they hang from) */
+    loadedEntries: LoadedEntry[],
     audioLoaded: boolean,
     axisModeEnabled: boolean,
     axisSource: TumbleAxisSourceName,
@@ -119,19 +128,52 @@ const ExamplePdbIds = ['2tbv', '2plv'] as const;
  * Whole virions from the Mesoscale Explorer's examples (Petworld, one model per protein, each with its assembly). Read
  * from mesoscope.scripps.edu, which allows any origin; CloudFront's copies only allow molstar.org
  */
-const MesoscaleExamples = [
+/**
+ * The mesoscale models, Petworld's (one model per protein) and cellPACK's (one entity per protein), as the mesoscale
+ * explorer lists them (mesoscope.scripps.edu/explorer/examples/list.json). A `localOnly` file is served by the dev
+ * server from the repo (not committed), so it is left out of Random until it is published.
+ */
+type MesoscaleExample = {
+    id: string, label: string, url: string, isBinary: boolean, description: string,
+    /** served from this repo by the dev server, so shown only there */
+    localOnly?: boolean,
+    /** kept out of Random: the heavy ones (a JS heap of 0.7 to 1.1 GB, measured 2026-11-25) */
+    notRandom?: boolean,
+};
+const MesoscaleExamples: MesoscaleExample[] = [
     {
-        id: 'petworld-sarscov2', label: 'SARS-CoV-2',
+        id: 'petworld-sarscov2', label: 'SARS-CoV-2', isBinary: true,
         url: 'https://mesoscope.scripps.edu/explorer/examples/sarscov2_2-no_bonds.bcif',
-        description: 'Petworld SARS-CoV-2 virion (Ozvoldik and Krieger), 2.5 MB',
+        description: 'Petworld SARS-CoV-2 virion (Ozvoldik and Krieger), 2.5 MB, 13.5 M atoms',
     },
     {
-        id: 'petworld-hiv', label: 'HIV',
+        id: 'petworld-hiv', label: 'HIV', isBinary: true,
         url: 'https://mesoscope.scripps.edu/explorer/examples/hiv_2-no_bonds.bcif',
-        description: 'Petworld HIV virion with its capsid core (Ozvoldik, Krieger and the cellPACK team), 7.2 MB',
+        description: 'Petworld HIV virion with its capsid core (Ozvoldik, Krieger and the cellPACK team), 7.2 MB, 37.7 M atoms',
     },
-] as const;
-type MesoscaleExample = typeof MesoscaleExamples[number];
+    {
+        id: 'cellpack-hiv1', label: 'HIV (cellPACK)', isBinary: true,
+        url: 'https://mesoscope.scripps.edu/explorer/examples/hiv1_cellpack_atom_instances.bcif',
+        description: 'cellPACK HIV-1 mature virion, 4.2 MB, 21.8 M atoms', notRandom: true,
+    },
+    {
+        id: 'cellpack-exosome', label: 'Exosome', isBinary: true,
+        url: 'https://mesoscope.scripps.edu/explorer/examples/cellpack_apr2024_instances.bcif',
+        description: 'cellPACK exosome, 5 MB, 13.5 M atoms', notRandom: true,
+    },
+    {
+        id: 'machineryoflife', label: 'Machinery of Life', isBinary: true,
+        url: 'https://mesoscope.scripps.edu/explorer/examples/machineryoflife.bcif',
+        description: 'cellPACK Machinery of Life (after Goodsell), 19 MB, 4.5 M atoms, 106 proteins', notRandom: true,
+    },
+    {
+        id: 'cellpack-nipah', label: 'Nipah', isBinary: true, localOnly: true, notRandom: true,
+        url: '/data-local/nipah.bcif',
+        description: 'cellPACK Nipah virion, 6 MB, 80.7 M atoms (local file, not on mesoscope yet)',
+    },
+];
+/** the dev server: where the repo's own local files are served */
+const IsLocalHost = typeof location !== 'undefined' && /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
 const DefaultPresetName: AudioReactivePresetName = 'drums-bass-burst';
 /**
  * The beat cycle steps when the symmetry-axis drive rises past this share of its running peak, and re-arms once it falls
@@ -151,6 +193,25 @@ const CameraZoomMax = 0.3;
 const CameraSpinRadPerSecond = 0.5;
 const CameraRockRadians = 0.25;
 const CameraRockPeriodSeconds = 4;
+/**
+ * Camera step: a turn now and then, not every beat (cutting on every beat reads as predictable; phrases run 8, 16 or
+ * 32 bars). Its route's rises are counted like the beat cycle's; every CameraStepEvery-th one (four bars of a kick on
+ * each beat; no bar tracking yet) turns the camera
+ * CameraStepRadians about its up axis, eased over CameraStepSeconds
+ */
+const CameraStepEvery = 16;
+const CameraStepRadians = Math.PI / 4;
+const CameraStepSeconds = 1.6;
+/**
+ * The background flash: the share of the way to BackgroundFlashColor per unit of drive, at most BackgroundFlashMax.
+ * Photosensitivity: no more than three flashes a second (WCAG 2.3.1, "Three Flashes or Below Threshold"), so a new
+ * flash waits BackgroundFlashMinIntervalMs after the last one, and the flash stays well short of white
+ */
+const BackgroundBaseColor = Color(0x09111a);
+const BackgroundFlashColor = Color(0xe8eef4);
+const BackgroundFlashPerDrive = 0.3;
+const BackgroundFlashMax = 0.6;
+const BackgroundFlashMinIntervalMs = 400;
 /** opacity: fades this much per unit of drive, never below OpacityMin */
 const OpacityPerDrive = 0.4;
 const OpacityMin = 0.15;
@@ -198,6 +259,32 @@ function getBlobSurfaceTypeParams() {
             quality: 'lowest' as const, // avoid 'auto', triggers boundary calc
         },
     };
+}
+
+/**
+ * The Petworld structures of a file, as the mesoscale explorer builds them: per model, its membrane entities (asym ids
+ * starting with `MEM`) apart from its proteins, so a route can move the membrane alone. Empty for a file not Petworld's.
+ */
+async function getPetworldGroups(trajectory: Trajectory) {
+    const groups: { modelIndex: number, entityIds: string[] }[] = [];
+    if (!MmcifFormat.is(trajectory.representative.sourceData) || !trajectory.representative.sourceData.data.frame.categories.pdbx_model) return groups;
+    for (let i = 0; i < trajectory.frameCount; ++i) {
+        const model = await Task.resolveInContext(trajectory.getFrameAtIndex(i));
+        // not `structAsymMap`: Petworld models may give the same asym id to several entities
+        const { label_asym_id, label_entity_id, _rowCount } = model.atomicHierarchy.chains;
+        const membrane: string[] = [];
+        const other: string[] = [];
+        const seen = new Set<string>();
+        for (let j = 0; j < _rowCount; ++j) {
+            const entityId = label_entity_id.value(j);
+            if (seen.has(entityId)) continue;
+            seen.add(entityId);
+            (label_asym_id.value(j).startsWith('MEM') ? membrane : other).push(entityId);
+        }
+        if (membrane.length) groups.push({ modelIndex: i, entityIds: membrane });
+        if (other.length) groups.push({ modelIndex: i, entityIds: other });
+    }
+    return groups;
 }
 
 // Mirrors the mesoscale explorer "balanced" graphics mode.
@@ -260,6 +347,8 @@ function isAudioFile(file: File) {
     return file.type.startsWith('audio/')
         || /\.(mp3|wav|ogg|m4a|aac|flac)$/i.test(file.name);
 }
+
+type LoadedEntry = { ref: string, label: string, group?: { ref: string, label: string } }
 
 function getStructureLabel(structureRef: StructureRef | undefined) {
     const structure = structureRef?.cell.obj?.data;
@@ -544,6 +633,8 @@ export class VirusOnTheRockApp {
     private readonly styledStructureVersions = new Map<string, string>();
     private cycleTargetsCustomized = false;
     private syncToken = 0;
+    /** set while a batch of structures is built, which then syncs once at its end */
+    private syncSuspended = false;
     private beatTriggerActive = false;
     private beatCyclePeak = BeatCyclePeakFloor;
     private beatCycleAverage = 0;
@@ -584,7 +675,7 @@ export class VirusOnTheRockApp {
         });
 
         this.subscriptions.add(this.viewer.plugin.managers.structure.hierarchy.behaviors.selection.subscribe(() => {
-            void this.syncSelectedStructure();
+            if (!this.syncSuspended) void this.syncSelectedStructure();
         }));
         this.subscriptions.add(this.viewer.plugin.managers.audioReactive.state.status.subscribe(status => {
             void this.updateAxisCycle(status);
@@ -626,6 +717,7 @@ export class VirusOnTheRockApp {
                 this.updateAudioCameraZoom();
                 this.updateAudioCameraMotion();
                 this.updateAudioOpacity();
+                this.updateAudioBackground();
             })
         );
 
@@ -648,7 +740,7 @@ export class VirusOnTheRockApp {
             viewportShowTrajectoryControls: false,
             viewportShowExpand: false,
             illumination: false,
-            viewportBackgroundColor: '#09111a',
+            viewportBackgroundColor: Color.toHexStyle(BackgroundBaseColor),
         });
 
         viewer.plugin.canvas3d?.setProps({
@@ -660,13 +752,13 @@ export class VirusOnTheRockApp {
             PluginConfig.Structure.DefaultRepresentationPreset,
             PresetStructureRepresentations['mesoscale'].id);
 
-        const app = new VirusOnTheRockApp(viewer, uiTarget);
+        const app = new VirusOnTheRockApp(viewer, uiTarget); (window as any).__vorProbe = app; // TEMP probe
         await app.initializeDefaults();
         return app;
     }
 
     private get currentStructureRef() {
-        return this.viewer.plugin.managers.structure.hierarchy.selection.structures[0];
+        return this.viewer.plugin.managers.structure.hierarchy.selection.structures.find(s => !s.cell.transform.tags?.includes(MesoscaleBaseTag));
     }
 
     private isAxisCycleActive(state = this.state.value) {
@@ -1017,8 +1109,10 @@ export class VirusOnTheRockApp {
         return structureRef.transform?.cell.obj?.data ?? structureRef.cell.obj?.data;
     }
 
+    /** every drawn structure: a cellPACK file's whole assembly, which its parts are cut from, is never drawn */
     private getAllStructures() {
-        return this.viewer.plugin.managers.structure.hierarchy.current.structures;
+        return this.viewer.plugin.managers.structure.hierarchy.current.structures
+            .filter(s => !s.cell.transform.tags?.includes(MesoscaleBaseTag));
     }
 
     private async placeNewStructuresOnGrid(newStructures: StructureRef[]) {
@@ -1071,7 +1165,35 @@ export class VirusOnTheRockApp {
         await update.commit();
     }
 
-    private async syncSelectedStructure() {
+    private syncRunning: Promise<void> | undefined = void 0;
+    private syncAgain = false;
+
+    /**
+     * One sync at a time: a sync asked for while one runs (its own edits fire the hierarchy selection) runs once after
+     * it, rather than beside it, where two would restyle the same structure and update components the other removed
+     */
+    private syncSelectedStructure(): Promise<void> {
+        if (this.syncRunning) {
+            this.syncAgain = true;
+            return this.syncRunning;
+        }
+        const run = async () => {
+            try {
+                // its own edits ask again once; a bound so a sync that keeps editing cannot loop
+                for (let pass = 0; pass < 3; pass++) {
+                    this.syncAgain = false;
+                    await this.runSelectedStructureSync();
+                    if (!this.syncAgain) break;
+                }
+            } finally {
+                this.syncRunning = void 0;
+            }
+        };
+        this.syncRunning = run();
+        return this.syncRunning;
+    }
+
+    private async runSelectedStructureSync() {
         const token = ++this.syncToken;
         // structure presets always build spacefill, so re-assert the chosen representation
         await this.setRepresentationMode(this.state.value.representationMode);
@@ -1146,10 +1268,7 @@ export class VirusOnTheRockApp {
 
         this.patchState({
             currentStructureLabel: getStructureLabel(structureRef),
-            loadedEntries: allStructures.map(structure => ({
-                ref: structure.cell.transform.ref,
-                label: getStructureLabel(structure) ?? structure.cell.obj?.label ?? structure.cell.transform.ref
-            })),
+            loadedEntries: allStructures.map(structure => this.getLoadedEntry(structure)),
             axisOptions,
             hasAssemblyAxes,
             axisSource: nextAxisSource,
@@ -1201,7 +1320,7 @@ export class VirusOnTheRockApp {
 
     /** the PDB capsids and the mesoscale examples, never the one shown last twice in a row */
     private pickRandomModel() {
-        const ids: string[] = [...RandomStructurePdbIds.map(id => id.trim().toLowerCase()).filter(Boolean), ...MesoscaleExamples.map(e => e.id)];
+        const ids: string[] = [...RandomStructurePdbIds.map(id => id.trim().toLowerCase()).filter(Boolean), ...MesoscaleExamples.filter(e => !e.localOnly && !e.notRandom).map(e => e.id)];
         if (ids.length === 0) return;
         const candidates = ids.length > 1 && this.lastRandomPdbId
             ? ids.filter(id => id !== this.lastRandomPdbId)
@@ -1234,20 +1353,81 @@ export class VirusOnTheRockApp {
         const previousRefs = this.getAllStructures().map(structure => structure.cell.transform.ref);
         this.patchState({ loadingModel: example.label });
         try {
-            const data = await plugin.builders.data.download({ url: example.url, isBinary: true, label: example.label });
-            const trajectory = await plugin.builders.structure.parseTrajectory(data, 'mmcif');
-            const frameCount = trajectory.obj?.data.frameCount ?? 0;
-            for (let i = 0; i < frameCount; i++) {
-                const model = await plugin.builders.structure.createModel(trajectory, { modelIndex: i });
-                await plugin.builders.structure.createStructure(model, { name: 'assembly', params: {} });
+            // a whole virion is millions of atoms: spacefill with its LOD rather than the blob surface (one CPU mesh
+            // per unit, no LOD), the previous models and their files gone before the new one is even downloaded, one
+            // sync at the end
+            this.syncSuspended = true;
+            this.syncToken += 1; // cancels a sync in flight
+            if (previousRefs.length) {
+                await plugin.managers.structure.hierarchy.remove(previousRefs, false);
+                await this.pruneDataWithoutStructures();
             }
-            if (previousRefs.length) await plugin.managers.structure.hierarchy.remove(previousRefs, false);
+            const data = await plugin.builders.data.download({ url: example.url, isBinary: example.isBinary, label: example.label });
+            const trajectory = await plugin.builders.structure.parseTrajectory(data, 'mmcif');
+            const tr = trajectory.obj?.data;
+            if (this.modeBeforeMesoscale === void 0) this.modeBeforeMesoscale = this.state.value.representationMode;
+            this.patchState({ representationMode: 'spacefill' });
+            const petworld = tr ? await getPetworldGroups(tr) : [];
+            if (petworld.length) {
+                // Petworld's assembly places each model by its own operator group (`PDB_model_num`): the standard
+                // assembly ignores that and gave every model the whole virion's operators, each model a full virion
+                const update = plugin.state.data.build();
+                for (const group of petworld) {
+                    update.to(trajectory).apply(StructureFromPetworld, group);
+                }
+                await update.commit();
+            } else if (tr) {
+                await this.buildCellpackParts(trajectory);
+            }
+            this.syncSuspended = false;
             await this.syncSelectedStructure();
-            await this.applyAudioPreset(this.state.value.activePreset);
+            await this.applyAudioPreset(this.state.value.activePreset, 'keep');
             await this.resetCamera(true);
         } finally {
+            this.syncSuspended = false;
             this.patchState({ loadingModel: void 0 });
         }
+    }
+
+    /**
+     * A cellPACK file as the mesoscale explorer builds it: its whole assembly (tagged, never drawn) and one structure per
+     * entity cut from it, sharing its units, so the parts cost no copy of the atoms
+     */
+    private async buildCellpackParts(trajectory: StateObjectSelector<PluginStateObject.Molecule.Trajectory>) {
+        const plugin = this.viewer.plugin;
+        const model = await plugin.builders.structure.createModel(trajectory, { modelIndex: 0 });
+        const entities = model.data?.entities.data;
+        if (!entities) return;
+        const base = await plugin.state.data.build()
+            .to(model)
+            .apply(CellpackAssembly, { id: '' }, { tags: [MesoscaleBaseTag] })
+            .commit();
+        // only the entities the assembly places: one it does not would be an empty part, a dead row
+        const placed = new Set<string>();
+        const assembly = base.data;
+        if (assembly) {
+            const location = StructureElement.Location.create(assembly);
+            for (const group of assembly.unitSymmetryGroups) {
+                location.unit = group.units[0];
+                location.element = group.units[0].elements[0];
+                placed.add(StructureProperties.entity.id(location));
+            }
+        }
+        const update = plugin.state.data.build();
+        for (let i = 0; i < entities._rowCount; i++) {
+            const entityId = entities.id.value(i);
+            if (!placed.has(entityId)) continue;
+            update.toRoot().apply(CellpackStructure, { structureRef: base.ref, entityId }, { dependsOn: [base.ref] });
+        }
+        await update.commit();
+    }
+
+    /** the mode chosen before a mesoscale example switched to spacefill, given back at the next other load */
+    private modeBeforeMesoscale: RepresentationMode | undefined = void 0;
+    private restoreModeAfterMesoscale() {
+        if (this.modeBeforeMesoscale === void 0) return;
+        this.patchState({ representationMode: this.modeBeforeMesoscale });
+        this.modeBeforeMesoscale = void 0;
     }
 
     private readonly songDetector = new SongChangeDetector(reason => void this.onSongChange(reason));
@@ -1296,31 +1476,34 @@ export class VirusOnTheRockApp {
     async loadPdb(id: string, replaceCurrent = false) {
         const pdbId = id.trim();
         if (!pdbId) return;
+        this.restoreModeAfterMesoscale();
         const previousRefs = new Set(this.getAllStructures().map(structure => structure.cell.transform.ref));
         await this.viewer.loadPdb(pdbId);
         const newStructures = this.getAllStructures().filter(structure => !previousRefs.has(structure.cell.transform.ref));
         if (replaceCurrent && newStructures.length > 0 && previousRefs.size > 0) {
             await this.viewer.plugin.managers.structure.hierarchy.remove([...previousRefs], false);
+            await this.pruneDataWithoutStructures();
         }
         await this.placeNewStructuresOnGrid(newStructures);
         await this.syncSelectedStructure();
-        await this.applyAudioPreset(this.state.value.activePreset);
+        await this.applyAudioPreset(this.state.value.activePreset, 'keep');
         await this.resetCamera(replaceCurrent);
     }
 
     async loadStructureFiles(files: File[]) {
         if (files.length === 0) return;
+        this.restoreModeAfterMesoscale();
         const previousRefs = new Set(this.getAllStructures().map(structure => structure.cell.transform.ref));
         await this.viewer.loadFiles(files);
         const newStructures = this.getAllStructures().filter(structure => !previousRefs.has(structure.cell.transform.ref));
         await this.placeNewStructuresOnGrid(newStructures);
         await this.syncSelectedStructure();
-        await this.applyAudioPreset(this.state.value.activePreset);
+        await this.applyAudioPreset(this.state.value.activePreset, 'keep');
         await this.resetCamera();
     }
 
     async loadAudioFile(file: File) {
-        await this.applyAudioPreset(this.state.value.activePreset);
+        await this.applyAudioPreset(this.state.value.activePreset, 'keep');
         await this.viewer.plugin.managers.audioReactive.loadFile(file);
         await this.playAudio();
         await this.onNewAudioSource();
@@ -1339,7 +1522,7 @@ export class VirusOnTheRockApp {
         const preset = AudioUrlPresets.find(item => item.url === audioUrl);
         const audioLabel = label ?? preset?.label ?? audioUrl;
         const playableUrl = await resolveAudioUrl(audioUrl);
-        await this.applyAudioPreset(this.state.value.activePreset);
+        await this.applyAudioPreset(this.state.value.activePreset, 'keep');
         await this.viewer.plugin.managers.audioReactive.loadUrl(playableUrl, audioLabel);
         await this.playAudio();
         await this.onNewAudioSource();
@@ -1353,10 +1536,14 @@ export class VirusOnTheRockApp {
         this.viewer.plugin.managers.audioReactive.pause();
     }
 
-    async applyAudioPreset(name: AudioReactivePresetName) {
+    /**
+     * Applies a preset's analysis and motion shapes, and its routes when `routes` is 'replace' (the user picked the
+     * preset). Loading a model or a song passes 'keep': the routes are the user's (the route editor, the Saved list),
+     * and a load must never replace them.
+     */
+    async applyAudioPreset(name: AudioReactivePresetName, routes: 'replace' | 'keep' = 'replace') {
         const preset = getAudioReactivePreset(name);
-        // a preset is its routes too: which audio drives which channel
-        this.viewer.plugin.managers.audioReactive.setRoutes(getPresetRoutes(preset));
+        if (routes === 'replace') this.viewer.plugin.managers.audioReactive.setRoutes(getPresetRoutes(preset));
         const current = this.state.value;
         this.viewer.plugin.managers.audioReactive.setParams({
             ...preset.analysis,
@@ -1398,6 +1585,12 @@ export class VirusOnTheRockApp {
      * Swap every structure representation between the mesoscale spacefill preset and a coarse blob
      * surface. The previous `type` block is remembered per node so switching back is lossless.
      */
+    /** the user's pick: it stays over the next loads, no mode to give back after a mesoscale example */
+    async chooseRepresentationMode(mode: RepresentationMode) {
+        this.modeBeforeMesoscale = void 0;
+        await this.setRepresentationMode(mode);
+    }
+
     async setRepresentationMode(mode: RepresentationMode) {
         const plugin = this.viewer.plugin;
 
@@ -1594,12 +1787,73 @@ export class VirusOnTheRockApp {
             : 0;
         angle += rock - this.cameraRockAngle;
         this.cameraRockAngle = rock;
+        angle += this.updateCameraStep(drives.cameraStep, now, dt);
         if (Math.abs(angle) < 1e-6) return;
         const { position, target, up } = camera.state;
         const offset = Vec3.sub(Vec3(), position, target);
         const rotation = Mat4.fromRotation(Mat4(), angle, up);
         Vec3.transformMat4(offset, offset, rotation);
         camera.setState({ position: Vec3.add(Vec3(), target, offset) });
+    }
+
+    private cameraStepPeak = BeatCyclePeakFloor;
+    private cameraStepArmed = true;
+    private cameraStepCount = 0;
+    private cameraStepLastMs = 0;
+    /** the turn still to make and how long it has left */
+    private cameraStepLeft = 0;
+    private cameraStepTimeLeft = 0;
+
+    /** this frame's share of the phrase turn: counts the route's rises, turns on every CameraStepEvery-th (eased) */
+    private updateCameraStep(drive: number, now: number, dt: number) {
+        if (dt > 0) this.cameraStepPeak = Math.max(BeatCyclePeakFloor, drive, this.cameraStepPeak * Math.exp(-dt * 1000 / BeatCyclePeakDecayMs));
+        if (this.cameraStepArmed && drive > BeatCyclePeakFloor && drive >= this.cameraStepPeak * BeatCycleTriggerLevel && now - this.cameraStepLastMs >= BeatCycleMinIntervalMs) {
+            this.cameraStepArmed = false;
+            this.cameraStepLastMs = now;
+            this.cameraStepCount += 1;
+            if (this.cameraStepCount % CameraStepEvery === 0) {
+                this.cameraStepLeft += CameraStepRadians;
+                this.cameraStepTimeLeft = CameraStepSeconds;
+            }
+        } else if (!this.cameraStepArmed && drive <= this.cameraStepPeak * BeatCycleReleaseLevel) {
+            this.cameraStepArmed = true;
+        }
+        if (this.cameraStepLeft <= 1e-6 || dt <= 0) return 0;
+        // ease out: the turn left shrinks as fast as the time left
+        const share = this.cameraStepTimeLeft <= dt ? 1 : 1 - Math.pow(1 - dt / this.cameraStepTimeLeft, 2);
+        const angle = this.cameraStepLeft * share;
+        this.cameraStepLeft -= angle;
+        this.cameraStepTimeLeft = Math.max(0, this.cameraStepTimeLeft - dt);
+        return angle;
+    }
+
+    private backgroundShare = 0;
+    private backgroundFlashMs = 0;
+    private backgroundFalling = true;
+
+    /**
+     * The background-flash channel: the background toward white with its drive, back to the base color as it falls; a
+     * new rise within BackgroundFlashMinIntervalMs of the last flash is held back
+     */
+    private updateAudioBackground() {
+        const canvas3d = this.viewer.plugin.canvas3d;
+        if (!canvas3d) return;
+        const drive = this.viewer.plugin.managers.audioReactive.drives.background;
+        let share = Math.min(BackgroundFlashMax, BackgroundFlashPerDrive * drive);
+        const now = performance.now();
+        if (share > this.backgroundShare + 0.02) {
+            // a rise: a new flash only once the last one is old enough
+            if (this.backgroundFalling && now - this.backgroundFlashMs < BackgroundFlashMinIntervalMs) share = this.backgroundShare;
+            else if (this.backgroundFalling) {
+                this.backgroundFlashMs = now;
+                this.backgroundFalling = false;
+            }
+        } else if (share < this.backgroundShare) {
+            this.backgroundFalling = true;
+        }
+        if (Math.abs(share - this.backgroundShare) < 0.004) return;
+        this.backgroundShare = share;
+        canvas3d.setProps({ renderer: { ...canvas3d.props.renderer, backgroundColor: Color.interpolate(BackgroundBaseColor, BackgroundFlashColor, share) } });
     }
 
     /** the alpha factor the opacity channel last gave each object, to give 1 back when it stops */
@@ -1612,7 +1866,13 @@ export class VirusOnTheRockApp {
         const drive = this.viewer.plugin.managers.audioReactive.drives.opacity;
         const factor = drive > 1e-3 ? Math.max(OpacityMin, 1 - OpacityPerDrive * drive) : 1;
         if (factor === 1 && this.fadedObjects.size === 0) return;
-        for (const ro of canvas3d.getRenderObjects()) {
+        const objects = canvas3d.getRenderObjects();
+        // a removed model's objects: forgotten, not held (they would keep its whole geometry alive)
+        if (this.fadedObjects.size > 0) {
+            const present = new Set(objects);
+            for (const ro of this.fadedObjects) if (!present.has(ro)) this.fadedObjects.delete(ro);
+        }
+        for (const ro of objects) {
             if (factor === 1 && !this.fadedObjects.has(ro)) continue;
             ro.state.alphaFactor = factor;
             const alpha = (ro.values as { alpha?: { ref: { value: number } } }).alpha?.ref.value ?? 1;
@@ -1638,9 +1898,59 @@ export class VirusOnTheRockApp {
     }
 
     async removeStructure(ref: string) {
-        await this.viewer.plugin.managers.structure.hierarchy.remove([ref], false);
+        await this.removeStructures([ref]);
+    }
+
+    async removeStructures(refs: string[]) {
+        await this.viewer.plugin.managers.structure.hierarchy.remove(refs, false);
+        await this.pruneDataWithoutStructures();
         await this.syncSelectedStructure();
         await this.resetCamera();
+    }
+
+    /** the downloads left with no structure under them: their parsed file is the bulk of a mesoscale example */
+    private async pruneDataWithoutStructures() {
+        const state = this.viewer.plugin.state.data;
+        const update = state.build();
+        let any = false;
+        // the cellPACK parts left, by the whole assembly each is cut from
+        const usedBases = new Set<string>();
+        for (const cell of state.selectQ(q => q.ofTransformer(CellpackStructure))) {
+            usedBases.add((cell.transform.params as { structureRef: string }).structureRef);
+        }
+        for (const ref of state.tree.children.get(StateTransform.RootRef).toArray()) {
+            const hasTrajectory = state.selectQ(q => q.byRef(ref).subtree().ofType(PluginStateObject.Molecule.Trajectory)).length > 0;
+            if (!hasTrajectory) continue;
+            const structures = state.selectQ(q => q.byRef(ref).subtree().ofType(PluginStateObject.Molecule.Structure));
+            const kept = structures.some(cell => !cell.transform.tags?.includes(MesoscaleBaseTag) || usedBases.has(cell.transform.ref));
+            if (kept) continue;
+            update.delete(ref);
+            any = true;
+        }
+        if (any) await update.commit();
+    }
+
+    /** a structure's row: a mesoscale part is named for its protein (and membrane) under its example */
+    private getLoadedEntry(structure: StructureRef): LoadedEntry {
+        const ref = structure.cell.transform.ref;
+        const data = structure.cell.obj?.data;
+        const cellLabel = structure.cell.obj?.label ?? ref;
+        if (structure.model || !data) return { ref, label: getStructureLabel(structure) ?? cellLabel };
+        return { ref, label: getMesoscalePartLabel(data, cellLabel), group: getMesoscaleGroup(this.viewer.plugin.state.data, structure.cell) };
+    }
+
+    /** hides or shows these structures in the viewer */
+    setEntriesHidden(refs: string[], hidden: boolean) {
+        for (const ref of refs) setSubtreeVisibility(this.viewer.plugin.state.data, ref, hidden);
+    }
+
+    isEntryHidden(ref: string) {
+        return !!this.viewer.plugin.state.data.cells.get(ref)?.state.isHidden;
+    }
+
+    /** a model-level Who for one row: a structure's mesoscale part (else its model), or a group of parts */
+    getEntryAffect(ref: string): AudioAffect | undefined {
+        return audioAffectForEntry(this.viewer.plugin, ref);
     }
 
     dispose() {
@@ -1783,6 +2093,96 @@ function RouteAffectRow({ app, route }: { app: VirusOnTheRockApp, route: AudioRo
     </div>;
 }
 
+/** A route to give this row as its Who: the routes that can be narrowed */
+function EntryWhoPicker({ app, refOrGroup }: { app: VirusOnTheRockApp, refOrGroup: string }) {
+    const manager = app.viewer.plugin.managers.audioReactive;
+    const routes = useBehavior(manager.state.routes);
+    const narrowable = routes.filter(route => maxScopeLevel(route.target) !== 'all');
+    if (narrowable.length === 0) return null;
+    return <select
+        className='vor-select vor-entry-who'
+        value=''
+        title='Make this the Who of a route'
+        onChange={e => {
+            const affect = app.getEntryAffect(refOrGroup);
+            if (affect && e.target.value) manager.setRouteAffect(Number(e.target.value), affect);
+        }}
+    >
+        <option value=''>Who ▸</option>
+        {narrowable.map((route, i) => <option key={route.id} value={route.id}>{`${i + 1}. ${getAudioRouteTargetLabel(route.target)} · ${getAudioRouteSourceLabel(route.source)}`}</option>)}
+    </select>;
+}
+
+function EntryRow({ app, entry, hidden, child }: { app: VirusOnTheRockApp, entry: { ref: string, label: string }, hidden: boolean, child?: boolean }) {
+    return <div className={`vor-entry-row ${child ? 'vor-entry-child' : ''} ${hidden ? 'vor-entry-hidden' : ''}`}>
+        <button className='vor-chip vor-entry-eye' title={hidden ? 'Show' : 'Hide'} onClick={() => app.setEntriesHidden([entry.ref], !hidden)}>{hidden ? '○' : '●'}</button>
+        <span className='vor-entry-label'>{entry.label}</span>
+        <EntryWhoPicker app={app} refOrGroup={entry.ref} />
+        <button className='vor-chip' onClick={() => void app.removeStructure(entry.ref)}>Remove</button>
+    </div>;
+}
+
+/** The loaded structures as a tree: a mesoscale example over its parts, each part shown or hidden, removed, or made a Who */
+function EntriesTree({ app, entries }: { app: VirusOnTheRockApp, entries: LoadedEntry[] }) {
+    const [, redraw] = React.useReducer((n: number) => n + 1, 0);
+    React.useEffect(() => {
+        const sub = app.viewer.plugin.state.data.events.cell.stateUpdated.subscribe(() => redraw());
+        return () => sub.unsubscribe();
+    }, [app]);
+    const [open, setOpen] = React.useState<Record<string, boolean>>({});
+    if (entries.length === 0) return <p className='vor-help'>No structures loaded.</p>;
+
+    const rows: React.ReactNode[] = [];
+    const groups = new Map<string, { label: string, entries: LoadedEntry[] }>();
+    const order: (LoadedEntry | string)[] = [];
+    for (const entry of entries) {
+        if (!entry.group) {
+            order.push(entry);
+            continue;
+        }
+        let group = groups.get(entry.group.ref);
+        if (!group) {
+            group = { label: entry.group.label, entries: [] };
+            groups.set(entry.group.ref, group);
+            order.push(entry.group.ref);
+        }
+        group.entries.push(entry);
+    }
+    for (const item of order) {
+        if (typeof item !== 'string') {
+            rows.push(<EntryRow key={item.ref} app={app} entry={item} hidden={app.isEntryHidden(item.ref)} />);
+            continue;
+        }
+        const group = groups.get(item)!;
+        const refs = group.entries.map(e => e.ref);
+        const hidden = refs.every(ref => app.isEntryHidden(ref));
+        const expanded = open[item] ?? true;
+        rows.push(<div key={item} className={`vor-entry-row vor-entry-group ${hidden ? 'vor-entry-hidden' : ''}`}>
+            <button className='vor-chip vor-entry-eye' title={hidden ? 'Show all' : 'Hide all'} onClick={() => app.setEntriesHidden(refs, !hidden)}>{hidden ? '○' : '●'}</button>
+            <button className='vor-entry-toggle' onClick={() => setOpen({ ...open, [item]: !expanded })}>{expanded ? '▾' : '▸'} {group.label} <span className='vor-entry-count'>{group.entries.length}</span></button>
+            <EntryWhoPicker app={app} refOrGroup={item} />
+            <button className='vor-chip' onClick={() => void app.removeStructures(refs)}>Remove</button>
+        </div>);
+        if (!expanded) continue;
+        for (const entry of group.entries) {
+            rows.push(<EntryRow key={entry.ref} app={app} entry={entry} hidden={app.isEntryHidden(entry.ref)} child />);
+        }
+    }
+    return <div className='vor-stack vor-entries'>{rows}</div>;
+}
+
+/** the built-in route sets in the Saved list: their option values carry this prefix, so a saved routing of the same name stays apart */
+const InspiredPrefix = 'inspired:';
+
+/** a loaded routing moves nothing on a channel whose motion is off: turn on those its routes need */
+async function enableMotionsFor(app: VirusOnTheRockApp, routes: readonly AudioRouteDraft[]) {
+    const state = app.state.value;
+    const needs = (targets: readonly AudioRoute['target'][]) => routes.some(r => r.enabled && targets.includes(r.target));
+    if (!state.atomWiggleEnabled && needs(['wiggle'])) await app.setMotionTargetEnabled('atomWiggleEnabled', true);
+    if (!state.instanceTumbleEnabled && needs(['symAxis', 'instanceRandom', 'instanceAxis', 'instanceNormal'])) await app.setMotionTargetEnabled('instanceTumbleEnabled', true);
+    if (!state.objectTransformEnabled && needs(['object'])) await app.setMotionTargetEnabled('objectTransformEnabled', true);
+}
+
 function AudioRoutingLibrary({ app }: { app: VirusOnTheRockApp }) {
     const manager = app.viewer.plugin.managers.audioReactive;
     const [presets, setPresets] = React.useState<AudioRoutingPreset[]>(() => loadStoredAudioRouting());
@@ -1811,6 +2211,7 @@ function AudioRoutingLibrary({ app }: { app: VirusOnTheRockApp }) {
 
     const load = (presetName: string) => {
         setPicked(presetName);
+        if (presetName.startsWith(InspiredPrefix)) setName(presetName.slice(InspiredPrefix.length));
         loadFrom(presets, presetName);
     };
 
@@ -1846,9 +2247,12 @@ function AudioRoutingLibrary({ app }: { app: VirusOnTheRockApp }) {
         reader.readAsText(file);
     };
 
-    const loadFrom = (list: AudioRoutingPreset[], presetName: string) => {
-        const preset = list.find(item => item.name === presetName);
+    const loadFrom = (list: readonly AudioRoutingPreset[], presetName: string) => {
+        const preset = presetName.startsWith(InspiredPrefix)
+            ? InspiredRoutings.find(item => item.name === presetName.slice(InspiredPrefix.length))
+            : list.find(item => item.name === presetName);
         if (!preset) return;
+        void enableMotionsFor(app, preset.routes);
         // a saved affect names its model by entry id too: reattached to the models loaded now
         manager.setRoutes(routesFromDrafts(preset.routes));
         for (const route of manager.state.routes.value) manager.setRouteAffect(route.id, route.affect);
@@ -1859,9 +2263,14 @@ function AudioRoutingLibrary({ app }: { app: VirusOnTheRockApp }) {
         <button className='vor-chip' title='Keep these routes and who they affect in this browser' onClick={save}>Save</button>
         <select className='vor-select' value={picked} aria-label='Saved routing presets' onChange={e => load(e.target.value)}>
             <option value=''>Saved…</option>
-            {presets.map(preset => <option key={preset.name} value={preset.name}>{preset.name}</option>)}
+            {presets.length > 0 && <optgroup label='Saved in this browser'>
+                {presets.map(preset => <option key={preset.name} value={preset.name}>{preset.name}</option>)}
+            </optgroup>}
+            <optgroup label='Inspired by acclaimed audio-visual works'>
+                {InspiredRoutings.map(preset => <option key={preset.name} value={InspiredPrefix + preset.name} title={preset.description}>{preset.name}</option>)}
+            </optgroup>
         </select>
-        <button className='vor-chip' title='Remove the selected saved routing' disabled={!picked} onClick={() => {
+        <button className='vor-chip' title='Remove the selected saved routing' disabled={!picked || picked.startsWith(InspiredPrefix)} onClick={() => {
             remember(presets.filter(item => item.name !== picked));
             setPicked('');
         }}>Delete</button>
@@ -1907,6 +2316,9 @@ function AudioRoutingCard({ app }: { app: VirusOnTheRockApp }) {
                         manager.setRouteAffect(route.id, route.affect);
                     }}>
                         {AudioRouteTargets.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                    </select>
+                    <select className='vor-select vor-route-mode' value={route.curve} title='How the source is bent before the gain: Log lifts the quiet parts (soft, always moving), Exp keeps only the peaks (hard contrast)' onChange={e => manager.updateRoute(route.id, { curve: e.target.value as AudioRoute['curve'] })}>
+                        {AudioRouteCurves.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
                     </select>
                 </div>
                 <RouteAffectRow app={app} route={route} />
@@ -2306,7 +2718,7 @@ function VirusOnTheRockControls({ app }: { app: VirusOnTheRockApp }) {
                     </div>
                     <span className='vor-label'>Mesoscale</span>
                     <div className='vor-chip-row'>
-                        {MesoscaleExamples.map(example => <button
+                        {MesoscaleExamples.filter(example => !example.localOnly || IsLocalHost).map(example => <button
                             key={example.id}
                             className='vor-chip'
                             disabled={!!state.loadingModel}
@@ -2391,7 +2803,7 @@ function VirusOnTheRockControls({ app }: { app: VirusOnTheRockApp }) {
                     {(['spacefill', 'blob-surface'] as RepresentationMode[]).map(mode => <button
                         key={mode}
                         className={`vor-chip ${state.representationMode === mode ? 'vor-active' : ''}`}
-                        onClick={() => void app.setRepresentationMode(mode)}
+                        onClick={() => void app.chooseRepresentationMode(mode)}
                         title={mode === 'spacefill'
                             ? 'One impostor sphere per atom with level-of-detail strides.'
                             : 'A single coarse mesh per structure: much less to redraw each frame, but built once on the CPU and without level-of-detail.'}
@@ -2733,15 +3145,7 @@ function VirusOnTheRockControls({ app }: { app: VirusOnTheRockApp }) {
             <ControlCard title='Entries'>
                 <details className='vor-disclosure'>
                     <summary>Loaded Structures</summary>
-                    <div className='vor-stack'>
-                        {state.loadedEntries.length > 0
-                            ? state.loadedEntries.map(entry => <div key={entry.ref} className='vor-entry-row'>
-                                <span className='vor-entry-label'>{entry.label}</span>
-                                <button className='vor-chip' onClick={() => void app.removeStructure(entry.ref)}>Remove</button>
-                            </div>)
-                            : <p className='vor-help'>No structures loaded.</p>
-                        }
-                    </div>
+                    <EntriesTree app={app} entries={state.loadedEntries} />
                 </details>
             </ControlCard>
 

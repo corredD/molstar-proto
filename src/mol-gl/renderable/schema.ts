@@ -479,6 +479,7 @@ export const AnimationSchema = {
     uAudioAssemblyAxisCount: UniformSpec('i', 'material'),
     uAudioAssemblyAxisCenter: UniformSpec('v3', 'material'),
     uAudioAssemblyAxes: UniformSpec('v3[]', 'material'),
+    uAudioWaveRadial: UniformSpec('f', 'material'),
     /** audio-affect.ts: one vec4 per narrowed route. w < 0 means this object is outside that route. */
     uAudioAffectCount: UniformSpec('i', 'material'),
     uAudioAffectInstances: UniformSpec('i', 'material'),

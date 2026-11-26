@@ -19,6 +19,7 @@ import { getAudioAffectBinding } from '../../mol-repr/structure/audio-affect-bin
 import { ValueCell } from '../../mol-util';
 import { ModelRef } from '../manager/structure/hierarchy-state';
 import { AudioAffect, AudioAffectLevel, AudioScopeSlotCount, canonicalAudioAffect } from '../manager/audio-routing';
+import { getMesoscaleGroup, getMesoscalePart, MesoscaleBaseTag, MesoscalePart, MesoscalePartLabel } from './mesoscale-part';
 
 /** the shader's uAudioAffectRanges[8], one slot per narrowed route */
 export const AudioAffectRangeCount = 8;
@@ -45,28 +46,97 @@ function operatorKey(unit: Unit) {
     return unit.conformation.operator.name || `#${unit.id}`;
 }
 
-function hierarchyModels(plugin: PluginContext) {
-    return plugin.managers.structure.hierarchy.current.models;
+/**
+ * What a route can name at the model level: a hierarchy model, or, for the mesoscale parts that hang from the
+ * trajectory itself (no model cell), one part or a group of them (the whole example, its membrane, ...). A group has
+ * no `model`: it is picked whole, never down to an entity.
+ */
+type Owner = {
+    ref: string,
+    /** a part or group: what names it across loads (state refs are new each load), kept in the affect's entryId */
+    key?: string,
+    label: string,
+    model?: Model,
+    structures: Structure[],
+    /** a part: only these entities are in its structure */
+    part?: MesoscalePart,
 }
 
-function modelData(model: ModelRef) {
-    return model.cell.obj?.data;
+function partLabel(structure: Structure, fallback: string) {
+    const part = getMesoscalePart(structure);
+    return part === 'membrane' && !/membrane/i.test(fallback) ? `${fallback} membrane` : fallback;
 }
 
-function findModel(plugin: PluginContext, affect: AudioAffect): ModelRef | undefined {
-    const models = hierarchyModels(plugin);
+/** the row label of a mesoscale part, as the Who menu names it */
+export function getMesoscalePartLabel(structure: Structure, cellLabel: string) {
+    return partLabel(structure, cellLabel);
+}
+
+/** by hierarchy state (a new object on every change): the owners, listed once per change, not per frame */
+const ownersCache = new WeakMap<object, Owner[]>();
+const MesoscaleKeyPrefix = 'mesoscale:';
+
+function hierarchyOwners(plugin: PluginContext): Owner[] {
+    const hierarchy = plugin.managers.structure.hierarchy.current;
+    const cached = ownersCache.get(hierarchy);
+    if (cached) return cached;
+    const owners: Owner[] = [];
+    ownersCache.set(hierarchy, owners);
+    for (const m of hierarchy.models) {
+        const data = m.cell.obj?.data;
+        if (!data) continue;
+        // a cellPACK file's model only holds the whole assembly its parts are cut from: the parts name themselves
+        if (m.structures.length > 0 && m.structures.every(s => s.cell.transform.tags?.includes(MesoscaleBaseTag))) continue;
+        owners.push({ ref: m.cell.transform.ref, label: data.label || data.entryId || `model ${data.modelNum}`, model: data, structures: structuresOf(m) });
+    }
+    const groups = new Map<string, { label: string, all: Structure[], byPart: Map<MesoscalePart, Structure[]> }>();
+    for (const s of hierarchy.structures) {
+        const data = s.cell.obj?.data;
+        if (s.model || !data) continue;
+        const part = getMesoscalePart(data);
+        if (!part) continue;
+        const label = partLabel(data, s.cell.obj?.label ?? s.cell.transform.ref);
+        owners.push({ ref: s.cell.transform.ref, key: `${MesoscaleKeyPrefix}part:${label}`, label, model: data.models[0], structures: [data], part });
+        const { ref: parent, label: groupLabel } = getMesoscaleGroup(plugin.state.data, s.cell);
+        let group = groups.get(parent);
+        if (!group) {
+            group = { label: groupLabel, all: [], byPart: new Map() };
+            groups.set(parent, group);
+        }
+        group.all.push(data);
+        const list = group.byPart.get(part);
+        if (list) list.push(data);
+        else group.byPart.set(part, [data]);
+    }
+    for (const [parent, group] of groups) {
+        owners.push({ ref: parent, key: `${MesoscaleKeyPrefix}all`, label: `${group.label} (all)`, structures: group.all });
+        for (const part of ['membrane', 'surface', 'interior', 'other'] as const) {
+            const list = group.byPart.get(part);
+            if (list) owners.push({ ref: `${parent}:${part}`, key: `${MesoscaleKeyPrefix}${part}`, label: `${group.label} · ${MesoscalePartLabel[part]}`, structures: list });
+        }
+    }
+    return owners;
+}
+
+function findOwner(plugin: PluginContext, affect: AudioAffect): Owner | undefined {
+    const owners = hierarchyOwners(plugin);
+    // finer than a model needs one model: a group cannot be narrowed to an entity
+    const fine = LevelRank[affect.level] > LevelRank.model;
+    const usable = (o: Owner) => !fine || !!o.model;
     if (affect.modelRef) {
-        const byRef = models.find(m => m.cell.transform.ref === affect.modelRef && modelData(m));
+        const byRef = owners.find(o => o.ref === affect.modelRef && usable(o));
         if (byRef) return byRef;
     }
-    if (affect.entryId) {
-        const byEntry = models.find(m => {
-            const data = modelData(m);
-            return !!data && data.entryId === affect.entryId && (affect.modelNum === undefined || data.modelNum === affect.modelNum);
-        });
+    // a part or group of an earlier load: the same name in what is loaded now (the next example's membrane)
+    if (affect.entryId?.startsWith(MesoscaleKeyPrefix)) {
+        const byKey = owners.find(o => o.key === affect.entryId && usable(o));
+        if (byKey) return byKey;
+    }
+    if (affect.entryId && !affect.entryId.startsWith(MesoscaleKeyPrefix)) {
+        const byEntry = owners.find(o => !o.part && !!o.model && o.model.entryId === affect.entryId && (affect.modelNum === undefined || o.model.modelNum === affect.modelNum));
         if (byEntry) return byEntry;
     }
-    return models.find(m => modelData(m));
+    return owners.find(o => !!o.model);
 }
 
 function structuresOf(model: ModelRef): Structure[] {
@@ -82,16 +152,38 @@ function sameRoot(a: Structure, b: Structure) {
     return a === b || Structure.areRootsEquivalent(a, b) || Structure.areEquivalent(a, b);
 }
 
-function modelForStructure(plugin: PluginContext, structure: Structure) {
-    for (const model of hierarchyModels(plugin)) {
-        if (!modelData(model)) continue;
-        for (const s of model.structures) {
-            const data = s.cell.obj?.data;
-            if (data && sameRoot(data, structure)) return model;
+function ownsStructure(owner: Owner, structure: Structure) {
+    if (owner.structures.some(s => sameRoot(s, structure))) return true;
+    // a hierarchy model also owns any structure built from it
+    return !owner.part && !!owner.model && structure.models.some(m => m === owner.model || m.id === owner.model!.id);
+}
+
+/** the finest owner of a structure: its part, else its model */
+function ownerForStructure(plugin: PluginContext, structure: Structure) {
+    const owners = hierarchyOwners(plugin).filter(o => !!o.model && ownsStructure(o, structure));
+    return owners.find(o => o.part) ?? owners[0];
+}
+
+function ownerEntityIds(owner: Owner) {
+    const ids = entityIds(owner.model!);
+    if (!owner.part) return ids;
+    const present = new Set<string>();
+    for (const structure of owner.structures) {
+        for (const unit of structure.units) {
+            if (!Unit.isAtomic(unit) || unit.elements.length === 0) continue;
+            const h = unit.model.atomicHierarchy;
+            const first = h.chainAtomSegments.index[unit.elements[0]];
+            const last = h.chainAtomSegments.index[unit.elements[unit.elements.length - 1]];
+            for (let c = first; c <= last; c++) present.add(h.chains.label_entity_id.value(c));
         }
-        const data = modelData(model);
-        if (data && structure.models.some(m => m === data || m.id === data.id)) return model;
     }
+    return ids.filter(e => present.has(e.id));
+}
+
+function ownerAffect(owner: Owner, level: AudioAffectLevel): AudioAffect {
+    // a part or a group: its ref, and its name for the next load (every part of one file has the same entry id)
+    if (owner.key || !owner.model) return { level, modelRef: owner.ref, entryId: owner.key };
+    return { level, modelRef: owner.ref, entryId: owner.model.entryId, modelNum: owner.model.modelNum };
 }
 
 function entityIds(model: Model) {
@@ -105,8 +197,8 @@ function entityIds(model: Model) {
     return ids;
 }
 
-function firstEntityId(model: Model) {
-    const ids = entityIds(model);
+function firstEntityId(owner: Owner) {
+    const ids = ownerEntityIds(owner);
     return ids.find(e => e.label.startsWith('polymer '))?.id ?? ids[0]?.id;
 }
 
@@ -316,8 +408,8 @@ function packSlot(plugin: PluginContext, binding: ReturnType<typeof getAudioAffe
         slotPacked[offset + 3] = -1;
     };
     if (!binding) return miss();
-    const owner = modelForStructure(plugin, binding.structure);
-    if (!owner || owner.cell.transform.ref !== affect.modelRef) return miss();
+    const owner = hierarchyOwners(plugin).find(o => o.ref === affect.modelRef);
+    if (!owner || !ownsStructure(owner, binding.structure)) return miss();
     const ranges = binding.kind === 'units'
         ? rangesForUnits(binding.structure, binding.group, affect)
         : rangesForSerial(binding.structure, affect);
@@ -393,10 +485,10 @@ function clearFiner(affect: AudioAffect, level: AudioAffectLevel): AudioAffect {
     return next;
 }
 
-function operatorsOf(model: ModelRef, entityId: string | undefined) {
+function operatorsOf(owner: Owner, entityId: string | undefined) {
     const names: string[] = [];
     const seen = new Set<string>();
-    for (const structure of structuresOf(model)) {
+    for (const structure of owner.structures) {
         for (const unit of structure.units) {
             if (entityId && !unitContainsEntity(unit, entityId)) continue;
             const name = operatorKey(unit);
@@ -412,19 +504,20 @@ function operatorsOf(model: ModelRef, entityId: string | undefined) {
 export function specializeAudioAffect(plugin: PluginContext, current: AudioAffect, level: AudioAffectLevel): AudioAffect {
     if (level === 'all') return { level: 'all' };
     const affect = clearFiner(current, level);
-    const model = findModel(plugin, affect) ?? hierarchyModels(plugin).find(m => modelData(m));
-    const data = model ? modelData(model) : undefined;
-    if (!model || !data) return { level };
-    affect.modelRef = model.cell.transform.ref;
-    affect.entryId = data.entryId;
-    affect.modelNum = data.modelNum;
-    if (level === 'model') return canonicalAudioAffect(affect);
+    const owner = findOwner(plugin, affect);
+    if (!owner) return { level };
+    // a part or a group is named by its ref alone (ownerAffect): no entry id left over from a model picked before
+    affect.entryId = undefined;
+    affect.modelNum = undefined;
+    Object.assign(affect, ownerAffect(owner, level));
+    const data = owner.model;
+    if (level === 'model' || !data) return canonicalAudioAffect(affect);
 
-    const entities = entityIds(data);
-    if (!affect.entityId || !entities.some(e => e.id === affect.entityId)) affect.entityId = firstEntityId(data);
+    const entities = ownerEntityIds(owner);
+    if (!affect.entityId || !entities.some(e => e.id === affect.entityId)) affect.entityId = firstEntityId(owner);
     if (level === 'entity' || !affect.entityId) return canonicalAudioAffect(affect);
 
-    const operators = operatorsOf(model, affect.entityId);
+    const operators = operatorsOf(owner, affect.entityId);
     if (!affect.operatorName || !operators.includes(affect.operatorName)) affect.operatorName = operators[0];
     if (level === 'instance' || !affect.operatorName) return canonicalAudioAffect(affect);
 
@@ -450,27 +543,22 @@ export function specializeAudioAffect(plugin: PluginContext, current: AudioAffec
 /** Reattach a saved affect to the models now loaded. */
 export function resolveAudioAffect(plugin: PluginContext, affect: AudioAffect): AudioAffect {
     if (affect.level === 'all') return affect;
-    const model = findModel(plugin, affect);
-    const data = model ? modelData(model) : undefined;
-    if (!model || !data) return affect;
-    if (affect.modelRef === model.cell.transform.ref && affect.entryId === data.entryId && affect.modelNum === data.modelNum) return affect;
-    return canonicalAudioAffect({ ...affect, modelRef: model.cell.transform.ref, entryId: data.entryId, modelNum: data.modelNum });
+    const owner = findOwner(plugin, affect);
+    if (!owner || owner.ref === affect.modelRef) return affect;
+    return canonicalAudioAffect({ ...affect, ...ownerAffect(owner, affect.level) });
 }
 
+/** `level` 'model' on a mesoscale part names the part; finer levels go on inside it */
 export function audioAffectFromLoci(plugin: PluginContext, loci: StructureElement.Loci, level: AudioAffectLevel): AudioAffect | undefined {
     if (level === 'all') return { level: 'all' };
     const location = loci.elements[0];
     if (!location || OrderedSet.size(location.indices) === 0) return;
     const unit = location.unit;
     const element = unit.elements[OrderedSet.getAt(location.indices, 0)] as ElementIndex;
-    const model = modelForStructure(plugin, loci.structure);
-    const data = model ? modelData(model) : undefined;
-    const affect: AudioAffect = {
-        level,
-        modelRef: model?.cell.transform.ref,
-        entryId: data?.entryId ?? unit.model.entryId,
-        modelNum: data?.modelNum ?? unit.model.modelNum,
-    };
+    const owner = ownerForStructure(plugin, loci.structure);
+    const affect: AudioAffect = owner
+        ? ownerAffect(owner, level)
+        : { level, entryId: unit.model.entryId, modelNum: unit.model.modelNum };
     if (LevelRank[level] < LevelRank.entity || !Unit.isAtomic(unit)) return canonicalAudioAffect(affect);
     const h = unit.model.atomicHierarchy;
     const chain = h.chainAtomSegments.index[element];
@@ -492,6 +580,19 @@ export function audioAffectFromLoci(plugin: PluginContext, loci: StructureElemen
 }
 
 /**
+ * A model-level affect for a row of a list of structures: a mesoscale part or group by its ref (a group's ref is its
+ * trajectory's), else the model of the structure at `ref`
+ */
+export function audioAffectForEntry(plugin: PluginContext, ref: string): AudioAffect | undefined {
+    const owner = hierarchyOwners(plugin).find(o => o.ref === ref);
+    if (owner) return canonicalAudioAffect(ownerAffect(owner, 'model'));
+    const structure = plugin.state.data.cells.get(ref)?.obj?.data;
+    if (!(structure instanceof Structure)) return;
+    const model = ownerForStructure(plugin, structure);
+    return model ? canonicalAudioAffect(ownerAffect(model, 'model')) : undefined;
+}
+
+/**
  * All, then the loaded models down to `maxLevel`. Residue and atom rows appear only under the chain
  * already picked, so a capsid does not list every residue of every copy.
  */
@@ -504,18 +605,16 @@ export function listRouteScopeChoices(plugin: PluginContext, affect: AudioAffect
     push({ level: 'all' }, 'All');
     const max = LevelRank[maxLevel];
     const selected = canonicalAudioAffect(affect);
-    for (const model of hierarchyModels(plugin)) {
-        const data = modelData(model);
-        if (!data) continue;
-        const modelLabel = data.label || data.entryId || `model ${data.modelNum}`;
-        const modelAffect: AudioAffect = { level: 'model', modelRef: model.cell.transform.ref, entryId: data.entryId, modelNum: data.modelNum };
-        push(modelAffect, modelLabel);
-        if (max < LevelRank.entity) continue;
-        for (const entity of entityIds(data)) {
+    for (const owner of hierarchyOwners(plugin)) {
+        const modelAffect = ownerAffect(owner, 'model');
+        push(modelAffect, owner.label);
+        const data = owner.model;
+        if (max < LevelRank.entity || !data) continue;
+        for (const entity of ownerEntityIds(owner)) {
             const entityAffect: AudioAffect = { ...modelAffect, level: 'entity', entityId: entity.id };
             push(entityAffect, `· ${entity.label}`);
             if (max < LevelRank.instance) continue;
-            const operators = operatorsOf(model, entity.id);
+            const operators = operatorsOf(owner, entity.id);
             for (let i = 0; i < operators.length; i++) {
                 const name = operators[i];
                 const instanceAffect: AudioAffect = { ...entityAffect, level: 'instance', operatorName: name };
@@ -560,25 +659,21 @@ export function listAudioAffectChoices(plugin: PluginContext, affect: AudioAffec
         choices.push({ id: JSON.stringify(canonical), label, affect: canonical });
     };
     if (affect.level === 'model') {
-        for (const model of hierarchyModels(plugin)) {
-            const data = modelData(model);
-            if (!data) continue;
-            push({ level: 'model', modelRef: model.cell.transform.ref, entryId: data.entryId, modelNum: data.modelNum }, data.label || data.entryId || `model ${data.modelNum}`);
-        }
+        for (const owner of hierarchyOwners(plugin)) push(ownerAffect(owner, 'model'), owner.label);
         return choices;
     }
-    const model = findModel(plugin, affect);
-    const data = model ? modelData(model) : undefined;
-    if (!model || !data) return choices;
-    const base: AudioAffect = { level: affect.level, modelRef: model.cell.transform.ref, entryId: data.entryId, modelNum: data.modelNum };
+    const owner = findOwner(plugin, affect);
+    const data = owner?.model;
+    if (!owner || !data) return choices;
+    const base: AudioAffect = ownerAffect(owner, affect.level);
     if (affect.level === 'entity') {
-        for (const entity of entityIds(data)) push({ ...base, entityId: entity.id }, entity.label);
+        for (const entity of ownerEntityIds(owner)) push({ ...base, entityId: entity.id }, entity.label);
         return choices;
     }
     if (!affect.entityId) return choices;
     base.entityId = affect.entityId;
     if (affect.level === 'instance') {
-        operatorsOf(model, affect.entityId).forEach((name, i) => push({ ...base, operatorName: name }, `Instance ${i + 1} (${name})`));
+        operatorsOf(owner, affect.entityId).forEach((name, i) => push({ ...base, operatorName: name }, `Instance ${i + 1} (${name})`));
         return choices;
     }
     if (!affect.operatorName) return choices;
@@ -609,12 +704,11 @@ export function listAudioAffectChoices(plugin: PluginContext, affect: AudioAffec
 
 export function describeAudioAffect(plugin: PluginContext, affect: AudioAffect) {
     if (affect.level === 'all') return 'Every loaded model';
-    const model = findModel(plugin, affect);
-    const data = model ? modelData(model) : undefined;
+    const owner = findOwner(plugin, affect);
     const parts: string[] = [];
-    parts.push(data ? (data.label || data.entryId || `model ${data.modelNum}`) : (affect.entryId ? `${affect.entryId} is not loaded` : 'No model loaded'));
+    parts.push(owner ? owner.label : (affect.entryId ? `${affect.entryId} is not loaded` : 'No model loaded'));
     if (LevelRank[affect.level] >= LevelRank.entity && affect.entityId) {
-        const label = data ? entityIds(data).find(e => e.id === affect.entityId)?.label : undefined;
+        const label = owner?.model ? ownerEntityIds(owner).find(e => e.id === affect.entityId)?.label : undefined;
         parts.push(label ?? `entity ${affect.entityId}`);
     }
     if (LevelRank[affect.level] >= LevelRank.instance && affect.operatorName) parts.push(`instance ${affect.operatorName}`);

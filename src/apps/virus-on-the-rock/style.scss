@@ -417,6 +417,52 @@ html, body, #app {
     color: var(--vor-text-dim);
 }
 
+.vor-entries {
+    gap: 4px;
+}
+
+.vor-entry-row .vor-entry-label,
+.vor-entry-toggle {
+    flex: 1;
+}
+
+.vor-entry-child {
+    padding-left: 22px;
+}
+
+.vor-entry-hidden .vor-entry-label,
+.vor-entry-hidden .vor-entry-toggle {
+    opacity: 0.45;
+}
+
+.vor-entry-eye {
+    min-width: 28px;
+    padding: 2px 6px;
+}
+
+.vor-entry-toggle {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: left;
+    background: none;
+    border: 0;
+    padding: 0;
+    color: var(--vor-text);
+    font: inherit;
+    cursor: pointer;
+}
+
+.vor-entry-count {
+    color: var(--vor-text-dim);
+    font-size: 0.85em;
+}
+
+.vor-entry-who {
+    max-width: 80px;
+}
+
 @media (max-width: 980px) {
     .vor-overlay {
         grid-template-columns: 1fr;

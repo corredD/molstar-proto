@@ -1,0 +1,144 @@
+# Virus on the Rock architecture (2026-11-26)
+
+How VotR is built (read at `b1cdfbb72` plus the uncommitted work), the path of one frame, where it is weak, and the
+decisions to take. A change that moves one of these updates this page in the same commit.
+
+## 1. The layers
+
+```
+ app            src/apps/virus-on-the-rock     sidebar, overlays (SVG), catalog, Random + song change,
+                (~3.25k + 0.2k lines)          CPU channels (camera, opacity, clip, background), beat cycle
+   │ plugin.managers.audioReactive (params, routes, load/play), plugin state (structures, reprs)
+ manager        audio-reactive-animation.ts    audio element + graph, tick, params, status (≈30 Hz)
+   ├─ analysis  audio-reactor.ts, audio-prominence.ts      bands, beat, prominence (main thread, JS FFT)
+   ├─ stems     audio-stems/ (worker, onnxruntime-web)     separated levels on a context-time timeline
+   └─ routing   audio-routing.ts                           routes → drives (9 GPU kinds + CPU targets), 8 Who slots
+   │ drives, scopes
+ loop           mol-plugin/animation-loop.ts   per frame: tick, symmetry axes, Who ranges, setAudioFrame
+   │ global uniforms (≈35) + material uniforms (axes[32], ranges[8], …)
+ rendering      mol-gl shaders                 applyTumble / applyWiggle / applyObjectTransform, glow, hue
+```
+
+VotR keeps no store of its own for the scene: structures and representations are Mol\* state cells. Its own state
+(sidebar, axis mode, Random, visualizers) is React state, not persisted. The audio state is the manager's
+(`BehaviorSubject`s and a `PD` param object).
+
+## 2. The signal path
+
+The only one (rule 1 of the [routing spec](audio-routing-spec.md)):
+
+```
+<audio> ─► MediaElementSource ─┬─► Delay (stem latency, else 0) ─► Analyser ─► speakers
+                               └─► AudioWorklet tap ─► stem worker (44.1 kHz STFT, ONNX) ─► timeline
+analyser window ─► reactor (resample, Hann, FFT, 6 bands, flux beat, prominence)
+                       └─► stems: timeline at currentTime − delay, or band stand-ins
+                              └─► router: per route source → onset? → curve → floor + gain × v → release → duck
+                                     └─► drives[target] (cap 40) or Who slot (≤ 8)
+```
+
+## 3. One frame
+
+1. `PluginAnimationLoop.tick` (rAF; a frame's time capped at 33.3 ms).
+2. `audioReactive.tick(t)`: analyser read, silence probe, visualizer arrays, `reactor.analyze`, stems, `router.update`,
+   status (throttled 32 ms).
+3. `syncStructureAssemblyAxes`: per structure, its symmetry axes (≤ 32) and centre into its render objects' material
+   uniforms; cached by key. Mesoscale parts of one virion share one middle (wip).
+4. `syncAudioAffect`: each Who resolved to a vec4 per render object (`uAudioAffectRanges[8]`), written on change.
+5. `canvas3d.setAudioFrame`: bands, scales, stems, 7 motion drives, glow (× 0.35), hue (× 0.25), scope kinds and drives;
+   a redraw is forced while the wave or a scope is driven.
+6. `canvas3d.tick` → draw. The vertex shader moves instances and atoms; the fragment shader adds glow and hue.
+7. `didDraw` → the app: clips, zoom, spin / rock / step (`camera.setState`), opacity (walks render objects), background
+   (`setProps`).
+8. Status (≈30 Hz) → the app: beat cycle (axis order as a representation param update), song-change detector.
+
+## 4. The app
+
+- **Loading.** `loadPdb(id, replace)`, files, mesoscale examples. Add puts the new structure on a grid; replace (Random)
+  removes the old after the new is drawn, prunes data, eases the camera. Mesoscale loads remove first, then build parts
+  (wip). `syncSelectedStructure` runs one at a time, ≤ 3 re-passes (wip).
+- **Representation.** Blob surface (default) or Spacefill, by swapping the type block of every Representation3D cell
+  (the spacefill block cached per cell). Mesoscale forces Spacefill and remembers the previous mode.
+- **Presets.** `applyAudioPreset(name, 'replace' | 'keep')`: analysis + animation from the preset, the user's
+  sensitivities, threshold and axis order kept; routes only on `replace`.
+- **CPU channels and the beat cycle** live in the app's `didDraw` and status handlers, with their own constants
+  (A:179-217).
+- **Song change.** `IcyTitleReader` (a second fetch with `Icy-MetaData: 1`) or `SongChangeDetector` (gap, band-balance
+  shift); then `loadRandomModel`.
+
+## 5. Where it is weak
+
+- **Audio-off regressions in plain Mol\*.** The branch makes wiggle and tumble amplitude depend on a drive: without audio,
+  the `wiggleAmplitude` and `tumbleAmplitude` params no longer move anything, while `hasAnimation` still redraws every
+  frame. Every plugin builds the manager and runs the two syncs each tick ([core-changes.md](core-changes.md)).
+- **Drives after clear or pause.** Clear freezes the drives (no `router.update` without audio); pause leaves the floors.
+- **Who is per material, the ranges per visual.** See features §8: likely wrong ranges on all but the first visual of
+  a representation. One range per slot; 8 slots, the 9th silently global.
+- **Culling ignores the motion.** Frustum, LOD, hi-Z, fog and near/far use static bounding spheres; a burst at drive 13
+  with scale 15 moves a 30 Å unit ~65 Å, at drive 40 hundreds.
+- **CPU channels are the app's.** Camera, opacity, clip and background targets do nothing in other Mol\* apps; the
+  Mesoscale Explorer's preset buttons never set routes.
+- **Dead parameters still shown.** `audio*Source/Strength/Floor`, `tumbleTranslationMode`, `uAudioAffectCount/Instances`
+  and three GLSL functions: still in the param UI and uploaded, no effect.
+- **Per-frame cost scales with the scene.** The two syncs walk every render object each frame (allocations, a
+  `JSON.stringify` per scope); the vertex shader runs up to 6 fbm, 5 scope loops of 8 and a 32-axis loop per vertex;
+  illumination never converges while things move.
+- **Uniform budget.** ~56 vec4 slots of arrays + ~60 scalars in every vertex program: may exceed WebGL1's 128 on low-end
+  devices.
+- **Time.** Envelopes run on the loop's capped time (slow below 30 fps); camera channels on real time.
+- **Layering.** `mol-plugin-state/helpers/assembly-symmetry-axis.ts` imports `extensions/assembly-symmetry`;
+  `mol-plugin/animation-loop.ts` imports the audio managers; the renderer's interface carries `AudioReactiveFrame`.
+- **One 3.25k-line `app.tsx`.** UI, loading, catalog, CPU channels and the beat cycle in one file.
+- **Tests stop at the router.** No test for the manager's tick, stems sampling, presets, Who resolution and packing, the
+  app's channels, or pixels.
+
+## 6. What holds up
+
+- One signal path, routes per user, measured sync (35–39 ms kick → peak) and the keep-on-load rule.
+- The router: small, pure, tested, serializable; a route is one line of JSON.
+- GPU motion on instances: no geometry rebuild, no shader recompile on a param or axis change (uniforms only).
+- Per-virus symmetry from RCSB, mesoscale parts sharing one middle.
+- Stems off the main thread, with playback delayed so what is seen matches what is heard.
+- Photosensitivity guard on the background flash.
+
+## 7. Decisions (Ludo, 2026-11-26)
+
+Taken in an interview on the questions this spec raised. Each says what the code does today and what is to be built.
+Items 1–13 of the first draft's open list are all decided; none is built yet.
+
+1. **Load adds.** Load, the PDB chips and files keep adding beside what is there (a gallery); Random and the mesoscale
+   examples keep replacing. To build: the new structure comes into view (today it lands 2.75 radii away, off screen).
+2. **Pause and Clear rest.** Both bring every drive to 0 over its release; Clear resets the router. Today pause keeps
+   the floors and clear freezes the last drives.
+3. **The 9th narrowed route is refused.** Once 8 routes are narrowed, the Who select of the others is disabled with a
+   note. Today the 9th silently acts on the whole view.
+4. **Clip Reactivity gets a clip.** The card adds a sphere and a plane clip object; the clip position and size targets
+   then move and scale them.
+5. **Every hidden control gets UI.** Floor and release per route; the gain slider to 40 (the file limit); onset weight
+   and temperature under the Prominence radar; stem provider (WebGPU / WASM) and delay in the Stem Separation card.
+6. **Routings only persist.** Everything else starts fresh at each reload, as today.
+7. **No URL parameters** for now.
+8. **The dev server stays as is** (repo root, 0.0.0.0, no Range): LAN access is useful.
+9. **Startup keeps the stream**, and `angine.mp3` is copied into the build so the fallback works.
+10. **Whole Object is rigid**: one pivot, the structure's centre; today each instance turns about its own.
+11. **Several folds at once is not planned.** The beat cycle (one fold at a time) stays.
+12. **Nothing goes upstream; VotR is what matters.** The audio-off regressions of plain Mol\* apps on this branch
+    ([core-changes.md](core-changes.md#regressions-with-audio-off)) are left as they are. core-changes.md stays as the
+    record of what the branch touches, its upstream tags for information only.
+13. **Prominence becomes a route source**: each band's prominence (0–1, sums to 1) as a source next to the bands. This
+    replaces the 2026-08-13 "display only".
+14. **Labels follow the code.** Behaviour unchanged; the text is fixed: the Random note (a model now, then one per song),
+    "Cycle Every N Beats" (counts rises of the symmetry-axes drive), the Beat Threshold range and help (not used by the
+    cycle), Stem Drift's description (not auto-picked), "waveform line" (one line per route). The other mismatches of
+    [ui.md](ui.md) the same way.
+15. **`app.tsx` is split by card** (one file per sidebar card, a module for the CPU channels and the beat cycle),
+    behaviour unchanged, so lanes can work in parallel and the channels can be tested.
+16. **No microphone input.**
+17. **Record a dance as video, canvas only**: a Record button writes the Mol\* canvas to WebM (no SVG overlays).
+18. **Bursts are not culled on screen**: while audio drives, bounding spheres grow by the largest motion the drives can
+    give, so frustum, LOD, fog and near/far account for it.
+
+### Still open
+
+- The Who leak within one representation (features §8): fix once checklist step 11 shows it on screen.
+- The order of the work. A proposal: the split (15) first, then the broken items (2, 3, 9, the Who leak), then the new
+  UI (4, 5, 13, 14), then rigid object (10), culling (18), recording (17).

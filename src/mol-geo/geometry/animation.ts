@@ -38,6 +38,8 @@ export type AnimationData = {
     uAudioAssemblyAxisCount: ValueCell<number>,
     uAudioAssemblyAxisCenter: ValueCell<Vec3>,
     uAudioAssemblyAxes: ValueCell<number[]>,
+    /** 1: the instance wave moves along the normal out of uAudioAssemblyAxisCenter (a membrane, its proteins) */
+    uAudioWaveRadial: ValueCell<number>,
     /** how many uAudioAffectRanges entries apply; 0 means this object is outside the audio scope */
     uAudioAffectCount: ValueCell<number>,
     /** 0: this mesh bakes many instances, so instance motion stays off unless the scope covers all of it */
@@ -239,6 +241,7 @@ export function createAnimationValues(props: AnimationProps) {
         uAudioAssemblyAxisCount: ValueCell.create(0),
         uAudioAssemblyAxisCenter: ValueCell.create(Vec3.create(0, 0, 0)),
         uAudioAssemblyAxes: ValueCell.create(new Array<number>(AnimationAssemblyAxisMaxCount * 3).fill(0)),
+        uAudioWaveRadial: ValueCell.create(0),
         // everything, until syncAudioAffect narrows it (audio-affect.ts; the shader's uAudioAffectRanges[8])
         uAudioAffectCount: ValueCell.create(1),
         uAudioAffectInstances: ValueCell.create(1),

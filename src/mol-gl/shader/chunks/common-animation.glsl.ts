@@ -50,6 +50,7 @@ uniform float uAudioAssemblyAxisAmplitudeScale;
 uniform int uAudioAssemblyAxisCount;
 uniform vec3 uAudioAssemblyAxisCenter;
 uniform vec3 uAudioAssemblyAxes[32];
+uniform float uAudioWaveRadial;
 uniform float uAudioLodMotionScale;
 uniform float uAudioStemDrums;
 uniform float uAudioStemBass;
@@ -295,7 +296,15 @@ mat4 applyTumble(mat4 transform, float instanceIndex, float uObjectId) {
             float along = dot(instanceCenter, vec3(0.02, 0.0, 0.015));
             float phase = along + instanceIndex * 0.35 + uTime * 1.6;
             float waveAmp = max(uTumbleAmplitude, 4.0) * uAudioLodMotionScale * driveWave;
-            offset += vec3(sin(phase), sin(phase + 2.094395), sin(phase + 4.18879)) * (waveAmp * 0.5);
+            vec3 radial = instanceCenter - assemblyMiddle;
+            float radialLength = length(radial);
+            if (uAudioWaveRadial > 0.5 && radialLength > 0.00001) {
+                // a membrane and its proteins: in and out along the surface normal (radial from the middle, for a round
+                // virion), the wave running over the surface by position alone: instance indices restart in each part
+                offset += radial / radialLength * sin(along + uTime * 1.6) * (waveAmp * 0.6);
+            } else {
+                offset += vec3(sin(phase), sin(phase + 2.094395), sin(phase + 4.18879)) * (waveAmp * 0.5);
+            }
         }
 
         // === FINAL MATRIX ASSEMBLY ===

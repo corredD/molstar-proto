@@ -18,6 +18,7 @@ export const AudioRouteSources = [
     ['stemVocals', 'Vocals (stem)'],
     ['beat', 'Beat'],
     ['amplitude', 'Loudness'],
+    ['songLoudness', 'Loudness (vs. the song)'],
     ['subBass', 'Sub-bass'],
     ['bass', 'Bass band'],
     ['lowMids', 'Low-mids'],
@@ -44,9 +45,34 @@ export const AudioRouteTargets = [
     ['opacity', 'Opacity (fade)'],
     ['clipPosition', 'Clip object: position'],
     ['clipSize', 'Clip object: size'],
+    ['background', 'Background flash'],
+    ['cameraStep', 'Camera step (phrases)'],
+    ['duck', 'Duck the other routes'],
 ] as const;
 export type AudioRouteTarget = typeof AudioRouteTargets[number][0];
 export type AudioRouteDrives = Record<AudioRouteTarget, number>;
+
+export const AudioRouteCurves = [
+    ['linear', 'Linear'],
+    ['log', 'Log'],
+    ['exp', 'Exp'],
+] as const;
+export type AudioRouteCurve = typeof AudioRouteCurves[number][0];
+const AudioRouteCurveSet = new Set<string>(AudioRouteCurves.map(c => c[0]));
+
+/** how strongly log and exp bend: 0.1 reads 0.29 under log, 0.03 under exp; 0 and 1 stay put */
+const CurveBase = 10;
+const LogCurveNorm = 1 / Math.log(CurveBase);
+
+/** bends a source value in [0, 1] (and past it, for the bands that exceed 1) */
+export function applyAudioRouteCurve(curve: AudioRouteCurve, x: number) {
+    if (x <= 0) return 0;
+    switch (curve) {
+        case 'linear': return x;
+        case 'log': return Math.log1p((CurveBase - 1) * x) * LogCurveNorm;
+        case 'exp': return (Math.pow(CurveBase, x) - 1) / (CurveBase - 1);
+    }
+}
 
 export type AudioRoute = {
     id: number,
@@ -54,6 +80,8 @@ export type AudioRoute = {
     source: AudioRouteSource,
     /** the source's level, or its onsets (how much it just rose, normalized by its running peak) */
     mode: 'level' | 'onset',
+    /** how the source is bent before the gain: log lifts the quiet parts, exp keeps only the peaks */
+    curve: AudioRouteCurve,
     target: AudioRouteTarget,
     /** the route's value is floor + gain x source, before the release */
     gain: number,
@@ -76,13 +104,14 @@ export function createZeroDrives(): AudioRouteDrives {
     return {
         symAxis: 0, instanceRandom: 0, instanceAxis: 0, instanceNormal: 0, instanceWave: 0, wiggle: 0, object: 0,
         illumination: 0, cameraZoom: 0, cameraSpin: 0, cameraRock: 0, colorSpectrum: 0, opacity: 0, clipPosition: 0, clipSize: 0,
+        background: 0, cameraStep: 0, duck: 0,
     };
 }
 
 let nextRouteId = 1;
-export function createAudioRoute(route: Omit<AudioRoute, 'id' | 'affect'> & { affect?: AudioAffect }): AudioRoute {
-    const { affect, ...rest } = route;
-    return { id: nextRouteId++, ...rest, affect: affect ? canonicalAudioAffect(affect) : defaultAudioAffect() };
+export function createAudioRoute(route: Omit<AudioRoute, 'id' | 'affect' | 'curve'> & { affect?: AudioAffect, curve?: AudioRouteCurve }): AudioRoute {
+    const { affect, curve, ...rest } = route;
+    return { id: nextRouteId++, ...rest, curve: curve ?? 'linear', affect: affect ? canonicalAudioAffect(affect) : defaultAudioAffect() };
 }
 
 /** The starting routes: drums and bass explode the capsid along its symmetry axes, the rest of the band wiggles the atoms, the voice lights it */
@@ -98,9 +127,22 @@ export function getDefaultAudioRoutes(): AudioRoute[] {
 
 /** the most a channel's drive reaches, whatever the sum of its routes */
 const MaxDrive = 40;
+/**
+ * The duck channel, like a sidechain compressor keyed by the kick: every route not fed by a duck route's own source is
+ * scaled by 1 - duck, down to DuckFloor, so a drum hit leaves room for itself (Pack, Sonarworks 2020, sidechain compression: attack under 10 ms,
+ * release 20-75 ms or a beat; the duck routes give their own release)
+ */
+const DuckFloor = 0.1;
 /** onsets: the running peak they are normalized by falls back over this long */
 const OnsetPeakDecayMs = 3000;
 const OnsetPeakFloor = 0.02;
+/**
+ * 'songLoudness': the loudness read against its running average, as MilkDrop reads its bands (Geiss, preset authoring
+ * guide: 1.0 is the average, above 1.3 loud). The raw loudness sits near 0.05 on most tracks, too little for a level
+ * route to show; here the average reads 0.5 and twice the average or more reads 1.
+ */
+const SongAverageMs = 8000;
+const SongAverageFloor = 0.005;
 
 export function getAudioRouteSourceValue(source: AudioRouteSource, frame: AudioReactiveFrame<DefaultAudioBandKey>, stems: StemLevels) {
     const b = frame.frequencyBands;
@@ -110,7 +152,7 @@ export function getAudioRouteSourceValue(source: AudioRouteSource, frame: AudioR
         case 'stemOther': return stems.other;
         case 'stemVocals': return stems.vocals;
         case 'beat': return frame.beatIntensity;
-        case 'amplitude': return frame.amplitude;
+        case 'amplitude': case 'songLoudness': return frame.amplitude;
         case 'subBass': return b.subBass;
         case 'bass': return b.bass;
         case 'lowMids': return b.lowMids;
@@ -121,7 +163,7 @@ export function getAudioRouteSourceValue(source: AudioRouteSource, frame: AudioR
     }
 }
 
-type RouteState = { previous: number, peak: number, value: number };
+type RouteState = { previous: number, peak: number, songAverage: number, value: number };
 
 /** Evaluates the routes each frame: each route's value (for its meter) and each channel's drive */
 export class AudioRouter {
@@ -138,28 +180,46 @@ export class AudioRouter {
     update(routes: readonly AudioRoute[], frame: AudioReactiveFrame<DefaultAudioBandKey>, stems: StemLevels, dtMs: number) {
         for (const t of Object.keys(this.drives) as AudioRouteTarget[]) this.drives[t] = 0;
         this.scopes.length = 0;
+        // first every route's value, then the duck they add up to, then each route's share of its channel
+        let duckDrive = 0;
+        const duckSources = new Set<AudioRouteSource>();
         for (const route of routes) {
             let state = this.states.get(route.id);
-            if (!state) this.states.set(route.id, state = { previous: 0, peak: OnsetPeakFloor, value: 0 });
+            if (!state) this.states.set(route.id, state = { previous: 0, peak: OnsetPeakFloor, songAverage: 0, value: 0 });
             const raw = getAudioRouteSourceValue(route.source, frame, stems);
             let input = raw;
-            if (route.mode === 'onset') {
+            if (route.source === 'songLoudness' && route.mode === 'level') {
+                // the first frame starts the average; after that it follows over SongAverageMs
+                state.songAverage = state.songAverage <= 0 ? raw : state.songAverage + (raw - state.songAverage) * (1 - Math.exp(-dtMs / SongAverageMs));
+                input = Math.min(1, raw / (2 * Math.max(SongAverageFloor, state.songAverage)));
+            } else if (route.mode === 'onset') {
                 const rise = Math.max(0, raw - state.previous);
                 state.peak = Math.max(rise, OnsetPeakFloor, state.peak * Math.exp(-dtMs / OnsetPeakDecayMs));
                 input = Math.min(1, rise / state.peak);
             }
             state.previous = raw;
+            input = applyAudioRouteCurve(route.curve, input);
             const target = route.enabled ? Math.max(0, route.floor + route.gain * input) : 0;
             // immediate rise, exponential release
             state.value = target >= state.value || route.releaseMs <= 0 || dtMs <= 0
                 ? target
                 : state.value + (target - state.value) * (1 - Math.exp(-dtMs / route.releaseMs));
             this.values.set(route.id, state.value);
+            if (route.enabled && route.target === 'duck') {
+                duckDrive += state.value;
+                duckSources.add(route.source);
+            }
+        }
+        const duck = Math.max(DuckFloor, 1 - Math.min(1, duckDrive));
+        for (const route of routes) {
             if (!route.enabled) continue;
+            const value = this.values.get(route.id) ?? 0;
+            // the key itself is never ducked: a kick ducking the rest still hits at full strength
+            const scaled = route.target === 'duck' || route.target === 'cameraStep' || duckSources.has(route.source) ? value : value * duck;
             if (route.affect && route.affect.level !== 'all' && routeHasScope(route.target) && this.scopes.length < AudioScopeSlotCount) {
-                this.scopes.push({ kind: AudioScopeKinds[route.target], drive: Math.min(MaxDrive, state.value), affect: route.affect });
+                this.scopes.push({ kind: AudioScopeKinds[route.target], drive: Math.min(MaxDrive, scaled), affect: route.affect });
             } else {
-                this.drives[route.target] += state.value;
+                this.drives[route.target] += scaled;
             }
         }
         for (const t of Object.keys(this.drives) as AudioRouteTarget[]) this.drives[t] = Math.min(MaxDrive, this.drives[t]);
@@ -312,6 +372,7 @@ function draftFromUnknown(value: unknown, fallback?: AudioAffect): AudioRouteDra
         enabled: v.enabled !== false,
         source: v.source,
         mode: v.mode,
+        curve: typeof v.curve === 'string' && AudioRouteCurveSet.has(v.curve) ? v.curve as AudioRouteCurve : 'linear',
         target: v.target,
         gain: clampNumber(v.gain, 0, 40, 1),
         floor: clampNumber(v.floor, 0, 40, 0),
@@ -372,8 +433,8 @@ export function routesFromDrafts(routes: readonly AudioRouteDraft[]) {
 
 /** Drop the runtime id. Loading assigns a fresh one. */
 export function draftsFromRoutes(routes: readonly AudioRoute[]): AudioRouteDraft[] {
-    return routes.map(({ enabled, source, mode, target, gain, floor, releaseMs, affect }) => ({
-        enabled, source, mode, target, gain, floor, releaseMs, affect: canonicalAudioAffect(affect),
+    return routes.map(({ enabled, source, mode, curve, target, gain, floor, releaseMs, affect }) => ({
+        enabled, source, mode, curve, target, gain, floor, releaseMs, affect: canonicalAudioAffect(affect),
     }));
 }
 

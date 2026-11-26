@@ -7,7 +7,7 @@
 import { SortedArray } from '../../../mol-data/int';
 import { groupSpanInElements } from '../../helpers/audio-affect';
 import { createEmptyAudioReactiveFrame, DefaultAudioBandDefinitions } from '../audio-reactor';
-import { AudioRouter, AudioScopeKinds, createAudioRoute, draftsFromRoutes, maxScopeLevel, parseAudioRouting, sameAudioAffect, serializeAudioRouting } from '../audio-routing';
+import { applyAudioRouteCurve, AudioRouter, AudioScopeKinds, createAudioRoute, draftsFromRoutes, maxScopeLevel, parseAudioRouting, sameAudioAffect, serializeAudioRouting } from '../audio-routing';
 
 const EmptyFrame = createEmptyAudioReactiveFrame(DefaultAudioBandDefinitions);
 const Chain = { level: 'chain' as const, entryId: '6Q3Q', modelNum: 1, entityId: '1', operatorName: '1', asymId: 'A' };
@@ -22,6 +22,55 @@ describe('audio routing', () => {
         expect(router.drives.instanceWave).toBeCloseTo(1);
         expect(router.drives.symAxis).toBe(0);
         expect(router.scopeCount).toBe(0);
+    });
+
+    it('reads the song loudness against its running average, and the raw loudness as it is', () => {
+        const router = new AudioRouter();
+        const song = createAudioRoute({ enabled: true, source: 'songLoudness', mode: 'level', target: 'cameraZoom', gain: 1, floor: 0, releaseMs: 0 });
+        const raw = createAudioRoute({ enabled: true, source: 'amplitude', mode: 'level', target: 'cameraSpin', gain: 1, floor: 0, releaseMs: 0 });
+        const stems = { drums: 0, bass: 0, other: 0, vocals: 0 };
+        router.update([song, raw], { ...EmptyFrame, amplitude: 0.06 }, stems, 16);
+        // at its average: half
+        expect(router.drives.cameraZoom).toBeCloseTo(0.5);
+        expect(router.drives.cameraSpin).toBeCloseTo(0.06);
+        // twice the average: full; the average has barely moved in 16 ms
+        router.update([song, raw], { ...EmptyFrame, amplitude: 0.12 }, stems, 16);
+        expect(router.drives.cameraZoom).toBeCloseTo(1, 1);
+    });
+
+    it('bends a source by its curve: log lifts the quiet, exp keeps the peaks, both keep 0 and 1', () => {
+        for (const curve of ['linear', 'log', 'exp'] as const) {
+            expect(applyAudioRouteCurve(curve, 0)).toBe(0);
+            expect(applyAudioRouteCurve(curve, 1)).toBeCloseTo(1);
+        }
+        expect(applyAudioRouteCurve('log', 0.1)).toBeCloseTo(0.279, 2);
+        expect(applyAudioRouteCurve('exp', 0.1)).toBeCloseTo(0.0288, 3);
+        expect(applyAudioRouteCurve('linear', 0.1)).toBe(0.1);
+        const router = new AudioRouter();
+        const route = createAudioRoute({ enabled: true, source: 'stemBass', mode: 'level', curve: 'log', target: 'symAxis', gain: 2, floor: 0, releaseMs: 0 });
+        router.update([route], EmptyFrame, { drums: 0, bass: 0.1, other: 0, vocals: 0 }, 16);
+        expect(router.drives.symAxis).toBeCloseTo(0.558, 2);
+    });
+
+    it('reads a saved route without a curve as linear', () => {
+        const parsed = parseAudioRouting(JSON.stringify({ name: 'old', routes: [{ source: 'stemBass', mode: 'level', target: 'symAxis', gain: 1 }] }));
+        expect(parsed?.[0].routes[0].curve).toBe('linear');
+    });
+
+    it('ducks the routes of other sources, channel and narrowed slot alike, but never the routes of the duck\'s own source', () => {
+        const router = new AudioRouter();
+        const route = (source: 'stemDrums' | 'stemBass', target: 'symAxis' | 'duck', gain: number, affect?: typeof Chain) => createAudioRoute({
+            enabled: true, source, mode: 'level', target, gain, floor: 0, releaseMs: 0, affect,
+        });
+        const stems = { drums: 1, bass: 1, other: 0, vocals: 0 };
+        // the kick bursts the axes and ducks the bass: the kick's 2 stays whole, the bass's 2 and 4 drop to a quarter
+        router.update([route('stemDrums', 'symAxis', 2), route('stemBass', 'symAxis', 2), route('stemBass', 'symAxis', 4, Chain), route('stemDrums', 'duck', 0.75)], EmptyFrame, stems, 16);
+        expect(router.drives.symAxis).toBeCloseTo(2.5);
+        expect(router.scopeDrive[0]).toBeCloseTo(1);
+        expect(router.drives.duck).toBeCloseTo(0.75);
+        // a full duck still leaves the floor
+        router.update([route('stemBass', 'symAxis', 2), route('stemDrums', 'duck', 5)], EmptyFrame, stems, 16);
+        expect(router.drives.symAxis).toBeCloseTo(0.2);
     });
 
     it('gives a narrowed route its own shader slot, not the channel everyone shares', () => {
