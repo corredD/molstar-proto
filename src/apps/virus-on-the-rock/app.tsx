@@ -21,7 +21,7 @@ import { clearStructureWiggle } from '../../mol-plugin-state/helpers/structure-w
 import { DefaultAudioBandDefinitions } from '../../mol-plugin-state/manager/audio-reactor';
 import { AudioReactivePresetName, getAudioReactivePreset, getPresetRoutes } from '../../mol-plugin-state/helpers/audio-reactive-presets';
 import { audioAffectForEntry, getMesoscalePartLabel } from '../../mol-plugin-state/helpers/audio-affect';
-import { getAudioRouteSourceLabel, maxScopeLevel, getAudioRouteTargetLabel, type AudioAffect } from '../../mol-plugin-state/manager/audio-routing';
+import { type AudioAffect } from '../../mol-plugin-state/manager/audio-routing';
 import { AudioReactiveAnimationManagerValues } from '../../mol-plugin-state/manager/audio-reactive-animation';
 import { AudioReactiveAssemblyAxisOrder } from '../../mol-plugin-state/helpers/assembly-symmetry-axis';
 import { StructureRef } from '../../mol-plugin-state/manager/structure/hierarchy-state';
@@ -41,16 +41,18 @@ import { BeatCycle } from './beat-cycle';
 import { BackgroundBaseColor, CpuChannels, type CpuChannelTarget } from './cpu-channels';
 import { patchIfChanged } from './state-patch';
 import { AudioUrlPresets, DefaultAudioFallbackLabel, DefaultAudioFallbackUrl, DefaultAudioLabel, DefaultAudioUrl, DefaultAudioUrlPreset, DefaultEffectKnobs, DefaultPdbId, DefaultPresetName, FrameRadiusPadding, LargeStructureElementThreshold, LargeStructureLodLevels, MesoscaleExample, MesoscaleExamples, NearClipAfterCameraReset, RepresentationMode, getBlobSurfaceTypeParams, getDefaultMultiScaleOcclusionProps, getPetworldGroups, getSpacefillTypeParams } from './catalog';
-import { AxisCycleTarget, LoadedEntry, VirusOnTheRockState, createInitialState, formatPresetLabel, getAssemblyOrderFromCycleTarget, getAxisAnimationPatch, getAxisOptions, getAxisStatusLabel, getDefaultCycleTargets, getEnabledCycleOptions, getLocalAxisFromCycleTarget, getMotionTargetState, isLocalCycleTarget, sanitizeCycleTargets } from './state';
+import { AxisCycleTarget, LoadedEntry, VirusOnTheRockState, createInitialState, getAssemblyOrderFromCycleTarget, getAxisAnimationPatch, getAxisOptions, getDefaultCycleTargets, getEnabledCycleOptions, getLocalAxisFromCycleTarget, getMotionTargetState, isLocalCycleTarget, sanitizeCycleTargets } from './state';
 import { AudioCard } from './ui/cards/audio';
 import { AudioPresetsCard } from './ui/cards/audio-presets';
 import { AudioRoutingCard } from './ui/cards/audio-routing';
 import { AxisModeCard } from './ui/cards/axis-mode';
 import { ClipReactivityCard } from './ui/cards/clip-reactivity';
+import { EntriesCard } from './ui/cards/entries';
 import { LoadStructureCard } from './ui/cards/load-structure';
 import { MotionTargetsCard } from './ui/cards/motion-targets';
 import { ProminenceCard } from './ui/cards/prominence';
 import { RepresentationCard } from './ui/cards/representation';
+import { SessionCard } from './ui/cards/session';
 import { StemSeparationCard } from './ui/cards/stem-separation';
 import { VisualizersCard } from './ui/cards/visualizers';
 import { ControlCard } from './ui/control-card';
@@ -1199,84 +1201,6 @@ export class VirusOnTheRockApp {
     }
 }
 
-/** A route to give this row as its Who: the routes that can be narrowed */
-function EntryWhoPicker({ app, refOrGroup }: { app: VirusOnTheRockApp, refOrGroup: string }) {
-    const manager = app.viewer.plugin.managers.audioReactive;
-    const routes = useBehavior(manager.state.routes);
-    const narrowable = routes.filter(route => maxScopeLevel(route.target) !== 'all');
-    if (narrowable.length === 0) return null;
-    return <select
-        className='vor-select vor-entry-who'
-        value=''
-        title='Make this the Who of a route'
-        onChange={e => {
-            const affect = app.getEntryAffect(refOrGroup);
-            if (affect && e.target.value) manager.setRouteAffect(Number(e.target.value), affect);
-        }}
-    >
-        <option value=''>Who ▸</option>
-        {narrowable.map((route, i) => <option key={route.id} value={route.id}>{`${i + 1}. ${getAudioRouteTargetLabel(route.target)} · ${getAudioRouteSourceLabel(route.source)}`}</option>)}
-    </select>;
-}
-
-function EntryRow({ app, entry, hidden, child }: { app: VirusOnTheRockApp, entry: { ref: string, label: string }, hidden: boolean, child?: boolean }) {
-    return <div className={`vor-entry-row ${child ? 'vor-entry-child' : ''} ${hidden ? 'vor-entry-hidden' : ''}`}>
-        <button className='vor-chip vor-entry-eye' title={hidden ? 'Show' : 'Hide'} onClick={() => app.setEntriesHidden([entry.ref], !hidden)}>{hidden ? '○' : '●'}</button>
-        <span className='vor-entry-label'>{entry.label}</span>
-        <EntryWhoPicker app={app} refOrGroup={entry.ref} />
-        <button className='vor-chip' onClick={() => void app.removeStructure(entry.ref)}>Remove</button>
-    </div>;
-}
-
-/** The loaded structures as a tree: a mesoscale example over its parts, each part shown or hidden, removed, or made a Who */
-function EntriesTree({ app, entries }: { app: VirusOnTheRockApp, entries: LoadedEntry[] }) {
-    const [, redraw] = React.useReducer((n: number) => n + 1, 0);
-    React.useEffect(() => {
-        const sub = app.viewer.plugin.state.data.events.cell.stateUpdated.subscribe(() => redraw());
-        return () => sub.unsubscribe();
-    }, [app]);
-    const [open, setOpen] = React.useState<Record<string, boolean>>({});
-    if (entries.length === 0) return <p className='vor-help'>No structures loaded.</p>;
-
-    const rows: React.ReactNode[] = [];
-    const groups = new Map<string, { label: string, entries: LoadedEntry[] }>();
-    const order: (LoadedEntry | string)[] = [];
-    for (const entry of entries) {
-        if (!entry.group) {
-            order.push(entry);
-            continue;
-        }
-        let group = groups.get(entry.group.ref);
-        if (!group) {
-            group = { label: entry.group.label, entries: [] };
-            groups.set(entry.group.ref, group);
-            order.push(entry.group.ref);
-        }
-        group.entries.push(entry);
-    }
-    for (const item of order) {
-        if (typeof item !== 'string') {
-            rows.push(<EntryRow key={item.ref} app={app} entry={item} hidden={app.isEntryHidden(item.ref)} />);
-            continue;
-        }
-        const group = groups.get(item)!;
-        const refs = group.entries.map(e => e.ref);
-        const hidden = refs.every(ref => app.isEntryHidden(ref));
-        const expanded = open[item] ?? true;
-        rows.push(<div key={item} className={`vor-entry-row vor-entry-group ${hidden ? 'vor-entry-hidden' : ''}`}>
-            <button className='vor-chip vor-entry-eye' title={hidden ? 'Show all' : 'Hide all'} onClick={() => app.setEntriesHidden(refs, !hidden)}>{hidden ? '○' : '●'}</button>
-            <button className='vor-entry-toggle' onClick={() => setOpen({ ...open, [item]: !expanded })}>{expanded ? '▾' : '▸'} {group.label} <span className='vor-entry-count'>{group.entries.length}</span></button>
-            <EntryWhoPicker app={app} refOrGroup={item} />
-            <button className='vor-chip' onClick={() => void app.removeStructures(refs)}>Remove</button>
-        </div>);
-        if (!expanded) continue;
-        for (const entry of group.entries) {
-            rows.push(<EntryRow key={entry.ref} app={app} entry={entry} hidden={app.isEntryHidden(entry.ref)} child />);
-        }
-    }
-    return <div className='vor-stack vor-entries'>{rows}</div>;
-}
-
 function VirusOnTheRockControls({ app }: { app: VirusOnTheRockApp }) {
     const state = useBehavior(app.state)!;
     const [pdbId, setPdbId] = React.useState(DefaultPdbId);
@@ -1332,12 +1256,7 @@ function VirusOnTheRockControls({ app }: { app: VirusOnTheRockApp }) {
 
             <VisualizersCard app={app} />
 
-            <ControlCard title='Entries'>
-                <details className='vor-disclosure'>
-                    <summary>Loaded Structures</summary>
-                    <EntriesTree app={app} entries={state.loadedEntries} />
-                </details>
-            </ControlCard>
+            <EntriesCard app={app} />
 
         </div>}
 
@@ -1376,33 +1295,7 @@ function VirusOnTheRockControls({ app }: { app: VirusOnTheRockApp }) {
 
         {/* Session widget (when open) */}
         {state.showSessionInfo && <div className='vor-status'>
-            <ControlCard title='Session' style={{ position: 'relative' }}>
-                {/* Close button inside the widget */}
-                <button
-                    className="vor-chip vor-toggle-small"
-                    onClick={() => app.setSessionInfoVisible(false)}
-                    title="Hide Session Info"
-                    style={{
-                        position: 'absolute',
-                        top: '14px',
-                        right: '14px',
-                        minWidth: '28px',
-                        height: '28px',
-                        padding: 0,
-                        fontSize: '1.1rem'
-                    }}
-                >
-                    ✕
-                </button>
-
-                <p className='vor-status-text'>{state.currentStructureLabel ?? 'No structure loaded yet.'}</p>
-                <dl className='vor-status-grid'>
-                    <div><dt>Audio</dt><dd>{state.currentAudioLabel ?? 'No track loaded'}</dd></div>
-                    <div><dt>Playback</dt><dd>{state.audioPlaying ? 'Playing' : 'Stopped'}</dd></div>
-                    <div><dt>Preset</dt><dd>{formatPresetLabel(state.activePreset)}</dd></div>
-                    <div><dt>Axis Mode</dt><dd>{getAxisStatusLabel(state)}</dd></div>
-                </dl>
-            </ControlCard>
+            <SessionCard app={app} />
         </div>}
 
         {/* Floating "Show Session" button — appears only when closed, bottom-right */}

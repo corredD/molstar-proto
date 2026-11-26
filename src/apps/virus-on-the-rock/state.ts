@@ -175,7 +175,7 @@ export function getMotionTargetState(animation: AnimationProps) {
     } as const;
 }
 
-export function getAxisStatusLabel(state: VirusOnTheRockState) {
+export function getAxisStatusLabel(state: Pick<VirusOnTheRockState, 'axisModeEnabled' | 'axisCycleEnabled' | 'activeCycleTarget' | 'axisOptions' | 'cycleTargets' | 'axisSource' | 'localAxis' | 'hasAssemblyAxes' | 'selectedAxisOrder'>) {
     if (!state.axisModeEnabled) return 'Off';
     if (state.axisCycleEnabled) {
         const activeTarget = state.activeCycleTarget ?? getEnabledCycleOptions(state)[0]?.value;
