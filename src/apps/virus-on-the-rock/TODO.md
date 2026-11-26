@@ -43,3 +43,6 @@ itself is still open there: Ludo reorders this list).
     give (frustum, LOD, fog, near/far). Check: a full burst close up, nothing pops out at the screen edge.
 12. **Record a dance** (D17): a Record button writes the Mol\* canvas to WebM (no SVG overlays). Check: record 10 s,
     the file plays the dance.
+13. **The clip pass rests on a paused song** (architecture §4, still open in §7): the clip rest check is an exact 0,
+    which a released route's drive never reaches, so with a clip route on and the audio paused the clip pass runs every
+    frame. Ludo picks the cut-off below which a drive counts as 0. Check: clip route on, pause, the clip pass stops.

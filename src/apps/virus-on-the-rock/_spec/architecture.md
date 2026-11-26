@@ -57,8 +57,9 @@ Files (all under `src/apps/virus-on-the-rock/`; the split of D15 happened in the
 
 - `app.tsx`: `VirusOnTheRockApp`: the plugin, loading, Random and song change, presets, the sync of the selected
   structure, and the composition root `VirusOnTheRockApp.create`, which builds the app with the Canvas3D adapter of the
-  CPU channels' port (`createCanvas3DChannelTarget`) and sets the probe `window.__vorProbe`. The app is the one holder
-  of `state` (a `BehaviorSubject`); `patchState` goes through `state-patch.ts` and emits only when a field changed.
+  CPU channels' port (`canvas3d-channel-target.ts › createCanvas3DChannelTarget`) and sets the probe
+  `window.__vorProbe`. The app is the one holder of `state` (a `BehaviorSubject`); `patchState` goes through
+  `state-patch.ts` and emits only when a field changed.
 - `state.ts`: `VirusOnTheRockState`, `createInitialState` and the pure axis and cycle-target helpers.
 - `catalog.ts`: constants, the audio and mesoscale catalogs, the effect defaults, the representation params.
 - `state-patch.ts`: `patchIfChanged` (a new snapshot only when a field changed, by reference).
@@ -67,16 +68,26 @@ Files (all under `src/apps/virus-on-the-rock/`; the split of D15 happened in the
 - `cpu-channels.ts`: `CpuChannels` (clip, camera zoom, spin, rock and step, background flash, opacity) behind the
   `CpuChannelTarget` port (camera, background, render objects), so it runs in a test with no Canvas3D; the pure
   functions (`cameraZoomFov`, `opacityFactor`, ...) are exported.
+- `canvas3d-channel-target.ts`: `createCanvas3DChannelTarget`, the Canvas3D adapter of that port (its camera and
+  background patches made once and reused).
 - `ui/controls.tsx`: `VirusOnTheRockControls` composes the cards; `ui/cards/*.tsx`: one file per sidebar card (load
   structure, audio, audio presets, stem separation, audio routing, prominence, representation, motion targets, clip
   reactivity, axis mode, visualizers, entries, session), each reading its own slice of the state.
-- `ui/control-card.tsx` (the card frame), `ui/state-slice.ts` (`useStateSlice`: re-render only when the slice changed),
+- `ui/control-card.tsx` (the card frame), `ui/state-slice.ts` (`useStateSlice`: a card's slice subscription re-renders it
+  only when the slice changed; the cards are not memoized, so a re-render of the Controls (its own slice, or the PDB
+  id and audio URL inputs it holds) re-renders them all),
   `ui/visualizer-overlay.tsx` (histogram, wave lines, radial ring).
 - `song-change.ts`, `random-structures.ts`, `style.scss` as before.
 
-Behaviour of the CPU channels changed in this lane in two places: `patchState` emits only on change (fewer re-renders),
-and the clip pass at rest writes the base values back once, then does nothing until a drive moves again. Other
-behaviour is unchanged (characterization tests: `beat-cycle.spec.ts`, `cpu-channels.spec.ts`).
+Behaviour changed in this lane in three places: `patchState` emits only on change (fewer re-renders); the clip pass at
+rest writes the base values back once, then does nothing until a drive moves again; and that resting pass takes the
+hidden objects too, so an object hidden while moved shows at its base values. Other behaviour is unchanged
+(characterization tests: `beat-cycle.spec.ts`, `cpu-channels.spec.ts`).
+
+The clip rest check is exact (`=== 0` on both clip drives). A released route's drive decays toward 0 but does not
+reach it (it ends as a denormal, ~4e-323), so with a clip route enabled and the audio paused the clip pass still runs
+every frame, as before the lane. The cut-off below which a drive counts as 0 is left to Ludo (queued in
+[TODO.md](../TODO.md)).
 
 - **Loading.** `loadPdb(id, replace)`, files, mesoscale examples. Add puts the new structure on a grid; replace (Random)
   removes the old after the new is drawn, prunes data, eases the camera. Mesoscale loads remove first, then build parts
@@ -157,7 +168,9 @@ Items 1–13 of the first draft's open list are all decided; none is built yet.
     cycle), Stem Drift's description (not auto-picked), "waveform line" (one line per route). The other mismatches of
     [ui.md](ui.md) the same way.
 15. **`app.tsx` is split by card** (one file per sidebar card, a module for the CPU channels and the beat cycle),
-    behaviour unchanged, so lanes can work in parallel and the channels can be tested. **Built** in the lane `split-app-by-card`; PR pending.
+    behaviour unchanged, so lanes can work in parallel and the channels can be tested. **Built** in the lane
+    `split-app-by-card`; PR pending. Behaviour unchanged except the three changes listed under §4 (state emits only on
+    change, the clip pass rests, the resting pass restores hidden objects).
 16. **No microphone input.**
 17. **Record a dance as video, canvas only**: a Record button writes the Mol\* canvas to WebM (no SVG overlays).
 18. **Bursts are not culled on screen**: while audio drives, bounding spheres grow by the largest motion the drives can
@@ -166,5 +179,7 @@ Items 1–13 of the first draft's open list are all decided; none is built yet.
 ### Still open
 
 - The Who leak within one representation (features §8): fix once checklist step 11 shows it on screen.
+- **The clip rest cut-off.** The clip pass rests only on drives of exactly 0, which a released route never reaches
+  (§4); the number below which a drive counts as 0 is Ludo's to pick.
 - The order of the work. A proposal: the split (15) first, then the broken items (2, 3, 9, the Who leak), then the new
   UI (4, 5, 13, 14), then rigid object (10), culling (18), recording (17).

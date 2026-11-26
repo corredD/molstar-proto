@@ -31,7 +31,10 @@ export function createStateSlice<S, T>(source: StateSource<S>, select: (state: S
     return slice;
 }
 
-/** The slice of `app.state` a card reads: pass a selector defined once at module level, a card re-renders only when its slice changed */
+/**
+ * The slice of `app.state` a card reads: pass a selector defined once at module level. A card's slice subscription
+ * re-renders it only when the slice changed (the cards are not memoized: a re-render of the Controls re-renders them all)
+ */
 export function useStateSlice<T>(app: VirusOnTheRockApp, select: (state: VirusOnTheRockState) => T): T {
     const slice = React.useMemo(() => createStateSlice(app.state, select), [app, select]);
     return useBehavior(slice);
