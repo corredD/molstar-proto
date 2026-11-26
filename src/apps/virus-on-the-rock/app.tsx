@@ -19,7 +19,7 @@ import { PresetStructureRepresentations } from '../../mol-plugin-state/builder/s
 import { PluginConfig } from '../../mol-plugin/config';
 import { clearStructureWiggle } from '../../mol-plugin-state/helpers/structure-wiggle';
 import { DefaultAudioBandDefinitions } from '../../mol-plugin-state/manager/audio-reactor';
-import { AudioReactivePresetDefinitions, AudioReactivePresetName, getAudioReactivePreset, getPresetRoutes } from '../../mol-plugin-state/helpers/audio-reactive-presets';
+import { AudioReactivePresetName, getAudioReactivePreset, getPresetRoutes } from '../../mol-plugin-state/helpers/audio-reactive-presets';
 import { audioAffectForEntry, getMesoscalePartLabel } from '../../mol-plugin-state/helpers/audio-affect';
 import { getAudioRouteSourceLabel, maxScopeLevel, getAudioRouteTargetLabel, type AudioAffect } from '../../mol-plugin-state/manager/audio-routing';
 import { AudioReactiveAnimationManagerValues } from '../../mol-plugin-state/manager/audio-reactive-animation';
@@ -40,10 +40,14 @@ import { IcyTitleReader, SongChangeDetector, type SongChangeReason } from './son
 import { BeatCycle } from './beat-cycle';
 import { BackgroundBaseColor, CpuChannels, type CpuChannelTarget } from './cpu-channels';
 import { patchIfChanged } from './state-patch';
-import { AudioUrlPresets, DefaultAudioFallbackLabel, DefaultAudioFallbackUrl, DefaultAudioLabel, DefaultAudioUrl, DefaultAudioUrlPreset, DefaultEffectKnobs, DefaultPdbId, DefaultPresetName, ExamplePdbIds, FeaturedPresetNames, FrameRadiusPadding, IsLocalHost, LargeStructureElementThreshold, LargeStructureLodLevels, MesoscaleExample, MesoscaleExamples, NearClipAfterCameraReset, RepresentationMode, getBlobSurfaceTypeParams, getDefaultMultiScaleOcclusionProps, getPetworldGroups, getSpacefillTypeParams } from './catalog';
+import { AudioUrlPresets, DefaultAudioFallbackLabel, DefaultAudioFallbackUrl, DefaultAudioLabel, DefaultAudioUrl, DefaultAudioUrlPreset, DefaultEffectKnobs, DefaultPdbId, DefaultPresetName, FrameRadiusPadding, LargeStructureElementThreshold, LargeStructureLodLevels, MesoscaleExample, MesoscaleExamples, NearClipAfterCameraReset, RepresentationMode, getBlobSurfaceTypeParams, getDefaultMultiScaleOcclusionProps, getPetworldGroups, getSpacefillTypeParams } from './catalog';
 import { AxisCycleTarget, LoadedEntry, LocalAxisOptions, VirusOnTheRockState, createInitialState, formatPresetLabel, getAssemblyOrderFromCycleTarget, getAxisAnimationPatch, getAxisCycleOptions, getAxisOptions, getAxisStatusLabel, getDefaultCycleTargets, getEnabledCycleOptions, getLocalAxisFromCycleTarget, getMotionTargetState, isLocalCycleTarget, sanitizeCycleTargets } from './state';
-import { AudioAnalysisWarning, AudioRoutingCard } from './ui/cards/audio-routing';
+import { AudioCard } from './ui/cards/audio';
+import { AudioPresetsCard } from './ui/cards/audio-presets';
+import { AudioRoutingCard } from './ui/cards/audio-routing';
+import { LoadStructureCard } from './ui/cards/load-structure';
 import { ProminenceCard } from './ui/cards/prominence';
+import { RepresentationCard } from './ui/cards/representation';
 import { StemSeparationCard } from './ui/cards/stem-separation';
 import { ControlCard } from './ui/control-card';
 import { AudioVisualizerOverlay } from './ui/visualizer-overlay';
@@ -1273,20 +1277,6 @@ function VirusOnTheRockControls({ app }: { app: VirusOnTheRockApp }) {
     const state = useBehavior(app.state)!;
     const [pdbId, setPdbId] = React.useState(DefaultPdbId);
     const [audioUrl, setAudioUrl] = React.useState<string>(DefaultAudioUrlPreset.url);
-    const selectedAudioPreset = AudioUrlPresets.find(preset => preset.url === audioUrl);
-
-    const onStructureFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
-        const files = Array.from(event.target.files || []);
-        if (files.length > 0) await app.loadStructureFiles(files);
-        event.target.value = '';
-    };
-
-    const onAudioFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
-        const file = event.target.files?.[0];
-        if (file) await app.loadAudioFile(file);
-        event.target.value = '';
-    };
-
     return <div className='vor-overlay'>
         <AudioVisualizerOverlay
             app={app}
@@ -1312,104 +1302,9 @@ function VirusOnTheRockControls({ app }: { app: VirusOnTheRockApp }) {
                 <p>Minimal audio-reactive virus viewer. Drag a structure or audio file anywhere onto the viewport, or use the inputs below.</p>
             </ControlCard>
 
-            <ControlCard title='Load Structure'>
-                <div className='vor-stack'>
-                    <label className='vor-label' htmlFor='vor-pdb-id'>PDB ID</label>
-                    <div className='vor-row'>
-                        <input
-                            id='vor-pdb-id'
-                            className='vor-input'
-                            value={pdbId}
-                            onChange={e => setPdbId(e.target.value)}
-                            onKeyDown={e => { if (e.key === 'Enter') void app.loadPdb(pdbId); }}
-                            placeholder='2plv'
-                        />
-                        <button className='vor-button vor-primary' onClick={() => void app.loadPdb(pdbId)}>Load</button>
-                    </div>
-                    <div className='vor-chip-row'>
-                        {ExamplePdbIds.map(example => <button
-                            key={example}
-                            className={`vor-chip ${pdbId.toLowerCase() === example ? 'vor-active' : ''}`}
-                            onClick={() => {
-                                setPdbId(example);
-                                void app.loadPdb(example);
-                            }}
-                        >
-                            {example.toUpperCase()}
-                        </button>)}
-                        <button
-                            className={`vor-chip ${state.randomPerSong ? 'vor-active' : ''}`}
-                            onClick={() => void app.setRandomPerSong(!state.randomPerSong)}
-                            title={state.randomPerSong
-                                ? 'On: a random virus at each new song. Click to keep the current one.'
-                                : 'A random virus now, and a new one at each new song (a PDB capsid or a mesoscale virion).'}
-                        >
-                            Random
-                        </button>
-                    </div>
-                    <span className='vor-label'>Mesoscale</span>
-                    <div className='vor-chip-row'>
-                        {MesoscaleExamples.filter(example => !example.localOnly || IsLocalHost).map(example => <button
-                            key={example.id}
-                            className='vor-chip'
-                            disabled={!!state.loadingModel}
-                            title={example.description}
-                            onClick={() => void app.loadMesoscaleExample(example)}
-                        >
-                            {example.label}
-                        </button>)}
-                    </div>
-                    {(state.loadingModel || (state.randomPerSong && state.songChangeNote)) && <p className='vor-help'>
-                        {state.loadingModel ? `Loading ${state.loadingModel}…` : state.songChangeNote}
-                    </p>}
-                    <label className='vor-label' htmlFor='vor-structure-file'>Browser File</label>
-                    <input id='vor-structure-file' className='vor-file' type='file' multiple onChange={onStructureFileChange} />
-                </div>
-            </ControlCard>
+            <LoadStructureCard app={app} pdbId={pdbId} setPdbId={setPdbId} />
 
-            <ControlCard title='Audio'>
-                <div className='vor-stack'>
-                    <label className='vor-label' htmlFor='vor-audio-file'>Audio File</label>
-                    <input id='vor-audio-file' className='vor-file' type='file' accept='.mp3,audio/*' onChange={onAudioFileChange} />
-                    <label className='vor-label' htmlFor='vor-audio-url-preset'>Audio Source</label>
-                    <select
-                        id='vor-audio-url-preset'
-                        className='vor-select'
-                        value={selectedAudioPreset?.url ?? ''}
-                        onChange={e => {
-                            if (e.target.value) setAudioUrl(e.target.value);
-                        }}
-                    >
-                        {!selectedAudioPreset && <option value=''>Custom URL</option>}
-                        {AudioUrlPresets.map(preset => <option key={preset.url} value={preset.url}>{preset.label}</option>)}
-                    </select>
-                    <label className='vor-label' htmlFor='vor-audio-url'>Audio URL</label>
-                    <div className='vor-row'>
-                        <input
-                            id='vor-audio-url'
-                            className='vor-input'
-                            value={audioUrl}
-                            onChange={e => setAudioUrl(e.target.value)}
-                            onKeyDown={e => { if (e.key === 'Enter') void app.loadAudioUrl(audioUrl, selectedAudioPreset?.label); }}
-                            placeholder='https://example.org/audio.mp3'
-                        />
-                        <button className='vor-button vor-primary' onClick={() => void app.loadAudioUrl(audioUrl, selectedAudioPreset?.label)}>Load URL</button>
-                    </div>
-                    <div className='vor-button-row'>
-                        <button
-                            className='vor-button vor-primary'
-                            onClick={() => state.audioPlaying ? app.pauseAudio() : void app.playAudio()}
-                            disabled={!state.audioLoaded}
-                        >
-                            {state.audioPlaying ? 'Pause Current' : 'Play Current'}
-                        </button>
-                    </div>
-                    <AudioAnalysisWarning app={app} />
-                    <p className='vor-help'>
-                        Streams <b>{DefaultAudioLabel}</b> on start and falls back to <b>{DefaultAudioFallbackLabel}</b> if it cannot be reached. Autoplay may be blocked until you interact with the page — use Play Current then. Remote URLs must allow browser media playback with CORS; HTTPS pages can also block HTTP streams.
-                    </p>
-                </div>
-            </ControlCard>
+            <AudioCard app={app} audioUrl={audioUrl} setAudioUrl={setAudioUrl} />
 
             <ControlCard title='Stem Separation'>
                 <StemSeparationCard app={app} />
@@ -1421,33 +1316,9 @@ function VirusOnTheRockControls({ app }: { app: VirusOnTheRockApp }) {
 
             <ProminenceCard app={app} />
 
-            <ControlCard title='Representation'>
-                <div className='vor-chip-row'>
-                    {(['spacefill', 'blob-surface'] as RepresentationMode[]).map(mode => <button
-                        key={mode}
-                        className={`vor-chip ${state.representationMode === mode ? 'vor-active' : ''}`}
-                        onClick={() => void app.chooseRepresentationMode(mode)}
-                        title={mode === 'spacefill'
-                            ? 'One impostor sphere per atom with level-of-detail strides.'
-                            : 'A single coarse mesh per structure: much less to redraw each frame, but built once on the CPU and without level-of-detail.'}
-                    >
-                        {mode === 'spacefill' ? 'Spacefill' : 'Blob Surface'}
-                    </button>)}
-                </div>
-            </ControlCard>
+            <RepresentationCard app={app} />
 
-            <ControlCard title='Audio Presets'>
-                <div className='vor-chip-row'>
-                    {FeaturedPresetNames.map(name => <button
-                        key={name}
-                        className={`vor-chip ${state.activePreset === name ? 'vor-active' : ''}`}
-                        onClick={() => void app.applyAudioPreset(name)}
-                        title={AudioReactivePresetDefinitions.find(preset => preset.name === name)?.description}
-                    >
-                        {formatPresetLabel(name)}
-                    </button>)}
-                </div>
-            </ControlCard>
+            <AudioPresetsCard app={app} />
 
             <ControlCard title='Motion Targets'>
                 <div className='vor-chip-row'>
