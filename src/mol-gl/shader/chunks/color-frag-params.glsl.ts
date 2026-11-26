@@ -11,6 +11,12 @@ uniform float uEmissive;
 // Density value to estimate object thickness
 uniform float uDensity;
 
+#if defined(dRenderVariant_color) || defined(dRenderVariant_tracing)
+    // the narrowed audio illumination and hue (apply_light_color)
+    varying vec2 vAudioLight;
+    #define dAudioLightVarying
+#endif
+
 #if defined(dRenderVariant_color) || defined(dRenderVariant_tracing) || defined(dRenderVariant_emissive)
     #if defined(dColorType_uniform)
         uniform vec3 uColor;

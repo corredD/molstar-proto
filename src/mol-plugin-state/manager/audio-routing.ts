@@ -203,6 +203,8 @@ export const AudioScopeKinds = {
     instanceWave: 5,
     wiggle: 6,
     object: 7,
+    illumination: 8,
+    colorSpectrum: 9,
 } as const;
 export type AudioScopeTarget = keyof typeof AudioScopeKinds;
 export type AudioScopeSlot = { kind: number, drive: number, affect: AudioAffect };
@@ -213,7 +215,8 @@ export function routeHasScope(target: AudioRouteTarget): target is AudioScopeTar
 
 /** How far the route's menu goes. Atom wiggle can name one atom; the other structure channels stop at a chain. */
 export function maxScopeLevel(target: AudioRouteTarget): AudioAffectLevel {
-    if (target === 'wiggle') return 'atom';
+    // per vertex, so down to one atom: the wiggle, the glow, the hue
+    if (target === 'wiggle' || target === 'illumination' || target === 'colorSpectrum') return 'atom';
     if (routeHasScope(target)) return 'chain';
     return 'all';
 }

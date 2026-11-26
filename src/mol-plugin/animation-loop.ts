@@ -13,6 +13,7 @@ import { isTimingMode } from '../mol-util/debug';
 import { printTimerResults } from '../mol-gl/webgl/timer';
 import { Vec3 } from '../mol-math/linear-algebra';
 import { syncAudioAffect } from '../mol-plugin-state/helpers/audio-affect';
+import { AudioScopeKinds } from '../mol-plugin-state/manager/audio-routing';
 import { syncStructureAssemblyAxes } from '../mol-plugin-state/helpers/assembly-symmetry-axis';
 
 const MaxProperFrameDelta = 1000 / 30;
@@ -32,6 +33,21 @@ export class PluginAnimationLoop {
 
     private currentFrame: number | undefined = undefined;
     private _isAnimating = false;
+
+    private readonly scopeDrives = new Array<number>(8).fill(0);
+
+    /** the narrowed routes' drives, the illumination and hue ones scaled as their uniforms are */
+    private scaleScopeDrives() {
+        const audio = this.plugin.managers.audioReactive;
+        for (let i = 0; i < this.scopeDrives.length; i++) {
+            const drive = audio.scopeDrive[i] ?? 0;
+            const kind = audio.scopeKind[i] ?? 0;
+            this.scopeDrives[i] = kind === AudioScopeKinds.illumination ? drive * IlluminationGlow
+                : kind === AudioScopeKinds.colorSpectrum ? Math.min(1, drive * HueTurnPerDrive)
+                    : drive;
+        }
+        return this.scopeDrives;
+    }
 
     get isAnimating() {
         return this._isAnimating;
@@ -92,7 +108,7 @@ export class PluginAnimationLoop {
             hue: Math.min(1, drives.colorSpectrum * HueTurnPerDrive),
             scopeCount: this.plugin.managers.audioReactive.scopeCount,
             scopeKind: this.plugin.managers.audioReactive.scopeKind,
-            scopeDrive: this.plugin.managers.audioReactive.scopeDrive,
+            scopeDrive: this.scaleScopeDrives(),
         });
         this.plugin.canvas3d?.tick(t as now.Timestamp, options);
 

@@ -39,11 +39,13 @@ describe('audio routing', () => {
         expect(sameAudioAffect(router.scopes[0].affect, Chain)).toBe(true);
     });
 
-    it('narrows atom wiggle down to an atom, instance motion to a chain, and nothing else', () => {
+    it('narrows the wiggle, glow and hue down to an atom, instance motion to a chain, and not the camera', () => {
         expect(maxScopeLevel('wiggle')).toBe('atom');
         expect(maxScopeLevel('symAxis')).toBe('chain');
         expect(maxScopeLevel('instanceWave')).toBe('chain');
-        expect(maxScopeLevel('illumination')).toBe('all');
+        expect(maxScopeLevel('illumination')).toBe('atom');
+        expect(maxScopeLevel('colorSpectrum')).toBe('atom');
+        expect(maxScopeLevel('cameraSpin')).toBe('all');
     });
 
     it('round-trips a routing preset with each route\'s affect, and drops a route it does not know', () => {
@@ -75,7 +77,7 @@ describe('audio routing', () => {
             version: 1, name: 'Exported',
             routes: [
                 { enabled: true, source: 'stemVocals', mode: 'level', target: 'wiggle', gain: 80, floor: -1, releaseMs: 100 },
-                { enabled: true, source: 'stemVocals', mode: 'level', target: 'illumination', gain: 1, floor: 0, releaseMs: 100 },
+                { enabled: true, source: 'stemVocals', mode: 'level', target: 'cameraSpin', gain: 1, floor: 0, releaseMs: 100 },
             ],
             affect: { level: 'atom', entityId: '1', asymId: 'A', seqId: 12, atomId: 'CA' },
         }));

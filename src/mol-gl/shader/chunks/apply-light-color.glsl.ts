@@ -9,6 +9,14 @@
  */
 
 export const apply_light_color = `
+// the audio routes on All (uniforms) plus those narrowed onto this fragment (vAudioLight)
+float audioGlow = uAudioIllumination;
+float audioHue = uAudioHue;
+#ifdef dAudioLightVarying
+    audioGlow += vAudioLight.x;
+    audioHue = min(1.0, audioHue + vAudioLight.y);
+#endif
+
 #if defined(dIgnoreLight)
     #ifdef bumpEnabled
         if (uBumpFrequency > 0.0 && uBumpAmplitude > 0.0 && bumpiness > 0.0) {
@@ -18,7 +26,7 @@ export const apply_light_color = `
     #endif
 
     #if defined(dRenderVariant_color) || defined(dRenderVariant_tracing)
-        material.rgb += material.rgb * (emissive + uAudioIllumination);
+        material.rgb += material.rgb * (emissive + audioGlow);
     #endif
 
     gl_FragColor = material;
@@ -104,16 +112,16 @@ export const apply_light_color = `
     outgoingLight = clamp(outgoingLight, 0.01, 0.99); // prevents black artifacts on specular highlight with transparent background
 
     #if defined(dRenderVariant_color) || defined(dRenderVariant_tracing)
-        outgoingLight += color.rgb * (emissive + uAudioIllumination);
+        outgoingLight += color.rgb * (emissive + audioGlow);
     #endif
 
     gl_FragColor = vec4(outgoingLight, color.a);
 #endif
 
 // the colour-spectrum channel: hues rotate around the grey axis, each ~20 A cell by its own random share
-if (uAudioHue > 0.0) {
+if (audioHue > 0.0) {
     float cellRandom = fract(sin(dot(floor(vModelPosition * 0.05), vec3(12.9898, 78.233, 37.719))) * 43758.5453);
-    float hueAngle = uAudioHue * 6.2831853 * (0.25 + 0.75 * cellRandom);
+    float hueAngle = audioHue * 6.2831853 * (0.25 + 0.75 * cellRandom);
     float hc = cos(hueAngle), hs = sin(hueAngle);
     vec3 k = vec3(0.57735);
     gl_FragColor.rgb = gl_FragColor.rgb * hc + cross(k, gl_FragColor.rgb) * hs + k * dot(k, gl_FragColor.rgb) * (1.0 - hc);

@@ -155,7 +155,8 @@ bool hasResolvedAssemblyTumbleAxis() {
     return uTumbleAxisSource != 2 || uAudioAssemblyAxisCount > 0;
 }
 
-// kind: 1 symmetry, 2 instance random, 3 instance axis, 4 instance normal, 5 instance wave, 6 atom wiggle, 7 whole object
+// kind: 1 symmetry, 2 instance random, 3 instance axis, 4 instance normal, 5 instance wave, 6 atom wiggle, 7 whole object,
+// 8 illumination, 9 colour spectrum
 float scopedDrive(int kind, float instanceIndex, float groupId, bool instanceOnly) {
     float extra = 0.0;
     for (int i = 0; i < 8; ++i) {
@@ -356,6 +357,13 @@ mat4 applyObjectTransform(mat4 transform, float instanceIndex, float uObjectId) 
     result[3].xyz = transform[3].xyz + localCenter - rot * localCenter + offset;
 
     return result;
+}
+
+// the narrowed illumination and colour-spectrum routes on this vertex: (glow, hue turns), scaled on the CPU
+#define dAudioScopedLight
+vec2 audioScopedLight(float instanceIndex, float groupId) {
+    if (uAudioScopeCount == 0) return vec2(0.0);
+    return vec2(scopedDrive(8, instanceIndex, groupId, false), scopedDrive(9, instanceIndex, groupId, false));
 }
 
 mat4 applyTransformAnimation(mat4 transform, float instanceIndex, float uObjectId) {

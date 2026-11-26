@@ -138,4 +138,12 @@ export const assign_color_varying = `
     #endif
     vTransparency *= uTransparencyStrength;
 #endif
+
+#if defined(dRenderVariant_color) || defined(dRenderVariant_tracing)
+    #ifdef dAudioScopedLight
+        vAudioLight = audioScopedLight(aInstance, group);
+    #else
+        vAudioLight = vec2(0.0);
+    #endif
+#endif
 `;

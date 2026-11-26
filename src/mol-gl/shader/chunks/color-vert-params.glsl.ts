@@ -3,6 +3,11 @@ uniform float uMetalness;
 uniform float uRoughness;
 uniform float uBumpiness;
 
+#if defined(dRenderVariant_color) || defined(dRenderVariant_tracing)
+    // the narrowed audio illumination and hue on this vertex (assign_color_varying)
+    varying vec2 vAudioLight;
+#endif
+
 #if defined(dRenderVariant_color) || defined(dRenderVariant_tracing) || defined(dRenderVariant_emissive)
     #if defined(dColorType_uniform)
         uniform vec3 uColor;

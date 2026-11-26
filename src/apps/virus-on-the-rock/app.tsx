@@ -1637,7 +1637,7 @@ function RouteAffectRow({ app, route }: { app: VirusOnTheRockApp, route: AudioRo
             className='vor-select vor-route-level'
             value={affect.level}
             title={max === 'atom'
-                ? 'How much of the structure this route moves'
+                ? 'How much of the structure this route acts on'
                 : 'How much of the structure this route moves. A chain moves with its whole copy, so instance motion stops at the chain'}
             onChange={e => manager.pickRouteAffect(route.id, e.target.value as AudioAffect['level'])}
         >
@@ -1806,7 +1806,7 @@ function AudioRoutingCard({ app }: { app: VirusOnTheRockApp }) {
         </div>
         <AudioRoutingLibrary app={app} />
         <p className='vor-help'>
-            Each route sends an audio source to a visual channel; a channel sums its routes. Who narrows a route's motion to one model, entity, instance or chain (atom wiggle down to one residue or atom); ◎ takes what you clicked in the viewer. Camera, clipping, colour and light always act on the whole view. Up to 8 routes can be narrowed at once. The wave's height is its route's source. Save keeps the routes and who each moves.
+            Each route sends an audio source to a visual channel; a channel sums its routes. Who narrows a route to one model, entity, instance or chain (atom wiggle, illumination and colours down to one residue or atom); ◎ takes what you clicked in the viewer. Camera, clipping and opacity always act on the whole view. Up to 8 routes can be narrowed at once. The wave's height is its route's source. Save keeps the routes and who each moves.
         </p>
     </div>;
 }
