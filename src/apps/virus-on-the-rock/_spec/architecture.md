@@ -157,7 +157,7 @@ Items 1–13 of the first draft's open list are all decided; none is built yet.
     cycle), Stem Drift's description (not auto-picked), "waveform line" (one line per route). The other mismatches of
     [ui.md](ui.md) the same way.
 15. **`app.tsx` is split by card** (one file per sidebar card, a module for the CPU channels and the beat cycle),
-    behaviour unchanged, so lanes can work in parallel and the channels can be tested.
+    behaviour unchanged, so lanes can work in parallel and the channels can be tested. **Built** in the lane `split-app-by-card`; PR pending.
 16. **No microphone input.**
 17. **Record a dance as video, canvas only**: a Record button writes the Mol\* canvas to WebM (no SVG overlays).
 18. **Bursts are not culled on screen**: while audio drives, bounding spheres grow by the largest motion the drives can

@@ -190,7 +190,7 @@ or text). CPU channels run in the app after each draw, so they exist only in Vot
 
 ## 14. Known issues found on the way
 
-- `window.__vorProbe` (TEMP) is left in `app.tsx › VirusOnTheRockApp.create` (wip).
+- `window.__vorProbe` is kept, with the same global and shape (the app instance), set in `app.tsx › VirusOnTheRockApp.create`. It is read by `data-local/tests/clicksync.mjs`, `sync.mjs` and `keep.mjs`; no longer TEMP (Ludo, 2026-11-26).
 - `app.tsx`, `audio-affect.ts` and `assembly-symmetry-axis.ts` import the untracked `audio-routing-inspired.ts` and
   `mesoscale-part.ts`: committing only the modified files breaks the build.
 - Below 30 fps every envelope and release slows against real time (the loop caps a frame at 33.3 ms); the camera

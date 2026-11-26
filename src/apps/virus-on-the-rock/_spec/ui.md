@@ -92,4 +92,3 @@ Structure ("ENTRYID | label"), Audio, Playback (Playing / Stopped), Preset, Axis
 - `vor-wave-gradient` and `.vor-wave-line` (unused since wave lines are per route).
 - Two stacked JSDoc blocks above `MesoscaleExample`; misplaced ones above `chooseRepresentationMode` and
   `RepresentationMode`; `ensureSpacefillRepresentation` applies the mesoscale preset.
-- `window.__vorProbe` (TEMP).
