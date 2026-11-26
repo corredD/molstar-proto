@@ -77,6 +77,8 @@ Custom app for cellular-scale structure visualization. Handles large scenes (man
 
 Specialized viewer for viral structures with audio-reactive animation. Entry: `app.tsx`. Custom structure generation: `random-structures.ts`.
 
+VotR work runs as lanes: read `src/apps/virus-on-the-rock/AGENTS.md` (How we work), `progress/current.md` and `TODO.md` beside it first.
+
 ## Dev workflow
 
 1. `npm run dev:viewer` (or `dev:apps` for all apps) in one terminal — esbuild watches and rebuilds on file change
