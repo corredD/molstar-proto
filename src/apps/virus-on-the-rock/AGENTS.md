@@ -46,6 +46,13 @@ context compaction; written state and small PRs do not.
   with a quadratic control). The per-frame path (`AudioReactiveAnimationManager` tick → routing → Who →
   `canvas3d.setAudioFrame`, and the app's CPU channels) allocates nothing per frame and costs O(routes), not
   O(instances); no scaling guard exists yet, the first lane that loops over instances or mesoscale parts adds one.
+- **Mol\*'s architecture principles** (Ludo, 2026-11-26): code follows molstar's
+  `.scaffolds/principles/architecture/bootstrap-patterns/` `api-surfaces`, `hot-loop-allocations` and
+  `ports-and-adapters` (`typescript.md` and the README's invariants; read with `git show upstream/master:<path>`), in
+  Mol\*'s own terms (rxjs, `useBehavior`): app logic takes narrow ports as parameters and `VirusOnTheRockApp.create`
+  wires them, no module-level singleton; a steady frame allocates nothing and a frame at rest does nothing; state has
+  one write path that emits only on change, streams are returned observables, never callback parameters. The gate's
+  reviewer holds every diff to them.
 - **UI from the foundations**: views use Mol\*'s plugin UI controls (`mol-plugin-ui/controls/*`, `ParameterControls`),
   the app's [style.scss](style.scss), and the layout and labels of [_spec/ui.md](_spec/ui.md); labels say what the
   code does (D14). A principle of our own is written down with its story or example.
