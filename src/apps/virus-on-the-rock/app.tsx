@@ -49,6 +49,7 @@ import { RandomStructurePdbIds } from './random-structures';
 import { IcyTitleReader, SongChangeDetector, type SongChangeReason } from './song-change';
 import { BeatCycle } from './beat-cycle';
 import { BackgroundBaseColor, CpuChannels, type CpuChannelTarget } from './cpu-channels';
+import { patchIfChanged } from './state-patch';
 
 type AxisOption = {
     value: AudioReactiveAssemblyAxisOrder,
@@ -747,7 +748,9 @@ export class VirusOnTheRockApp {
     }
 
     private patchState(patch: Partial<VirusOnTheRockState>) {
-        this.state.next({ ...this.state.value, ...patch });
+        const current = this.state.value;
+        const next = patchIfChanged(current, patch);
+        if (next !== current) this.state.next(next);
     }
 
     private async applyManualAxisSelection(state = this.state.value) {
