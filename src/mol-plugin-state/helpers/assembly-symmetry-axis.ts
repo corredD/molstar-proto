@@ -135,10 +135,33 @@ function getCachedStructureAxes(structure: Structure, order: AudioReactiveAssemb
  * changed: one cache lookup per structure and one per object.
  */
 export function syncStructureAssemblyAxes(plugin: PluginContext, order: AudioReactiveAssemblyAxisOrder) {
-    for (const s of plugin.managers.structure.hierarchy.current.structures) {
+    const structures = plugin.managers.structure.hierarchy.current.structures;
+    // without symmetry axes (a mesoscale model, a file not from the PDB), the centre is world space: the middle of every
+    // structure from the same trajectory, so the parts of one virion (one model each) burst out from its middle
+    const boxes = new Map<unknown, { min: Vec3, max: Vec3 }>();
+    for (const s of structures) {
         const structure = s.cell.obj?.data;
         if (!structure) continue;
-        const entry = getCachedStructureAxes(structure, order);
+        const key = s.model?.trajectory ?? s;
+        const box = structure.boundary.box;
+        const acc = boxes.get(key);
+        if (!acc) boxes.set(key, { min: Vec3.clone(box.min), max: Vec3.clone(box.max) });
+        else {
+            Vec3.min(acc.min, acc.min, box.min);
+            Vec3.max(acc.max, acc.max, box.max);
+        }
+    }
+    for (const s of structures) {
+        const structure = s.cell.obj?.data;
+        if (!structure) continue;
+        let entry = getCachedStructureAxes(structure, order);
+        if (entry.count === 0) {
+            const box = boxes.get(s.model?.trajectory ?? s);
+            if (box) {
+                const center = Vec3.scale(Vec3(), Vec3.add(Vec3(), box.min, box.max), 0.5);
+                entry = { ...entry, key: `${entry.key}:${center.map(v => v.toFixed(1)).join(',')}`, center };
+            }
+        }
         for (const component of s.components) {
             for (const r of component.representations) {
                 const repr = r.cell.obj?.data.repr;

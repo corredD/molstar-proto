@@ -265,16 +265,28 @@ mat4 applyTumble(mat4 transform, float instanceIndex, float uObjectId) {
             vec3 axis = uTumbleAxisSource == 1 ? getGlobalTumbleAxisVector(uTumbleAxis, instanceCenter) : getTumbleAxisVector(transform, uTumbleAxis);
             offset += axis * tumbleAmplitude * driveAxis;
         }
-        // along the normal: straight out from the assembly's centre (the structure's origin without symmetry)
+        // the assembly's middle: through the instance's transform where the structure has symmetry axes, else world
+        // space (the middle of every structure of the same file, syncStructureAssemblyAxes)
+        vec3 assemblyMiddle = uAudioAssemblyAxisCount > 0
+            ? transform[3].xyz + mat3(transform) * uAudioAssemblyAxisCenter
+            : uAudioAssemblyAxisCenter;
+        // along the normal: straight out from the assembly's middle
         if (hasNoise && driveNormal > 0.0) {
-            vec3 center = transform[3].xyz + mat3(transform) * uAudioAssemblyAxisCenter;
-            vec3 radial = instanceCenter - (uAudioAssemblyAxisCount > 0 ? center : vec3(0.0));
+            vec3 radial = instanceCenter - assemblyMiddle;
             float radialLength = length(radial);
             if (radialLength > 0.00001) offset += radial / radialLength * tumbleAmplitude * driveNormal;
         }
-        // the symmetry axes: out along the nearest axis of the structure's symmetry, Stokes-Einstein scaled
-        if (hasNoise && driveSym > 0.0 && uAudioAssemblyAxisCount > 0) {
-            vec3 axis = getResolvedAssemblyTumbleAxisVector(transform, instanceCenter);
+        // the symmetry axes: out along the nearest axis of the structure's symmetry, Stokes-Einstein scaled. Without
+        // axes (mesoscale models), straight out from the middle, scaled alike, so the same routes burst them too
+        if (hasNoise && driveSym > 0.0) {
+            vec3 axis;
+            if (uAudioAssemblyAxisCount > 0) {
+                axis = getResolvedAssemblyTumbleAxisVector(transform, instanceCenter);
+            } else {
+                vec3 radial = instanceCenter - assemblyMiddle;
+                float radialLength = length(radial);
+                axis = radialLength > 0.00001 ? radial / radialLength : vec3(0.0);
+            }
             offset += axis * amplitude * driveSym * max(uAudioAssemblyAxisAmplitudeScale, 1.0);
         }
         // position wave: neighbours along the assembly rise in turn. The height is the channel's drive,

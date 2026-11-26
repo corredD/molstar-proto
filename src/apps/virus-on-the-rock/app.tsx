@@ -40,6 +40,7 @@ import { StateTransforms } from '../../mol-plugin-state/transforms';
 import { Viewer } from '../viewer/app';
 import { areAnimationPropsEqual, type AnimationProps, type ObjectTransformModeName, type TumbleAxisName, type TumbleAxisSourceName } from '../../mol-geo/geometry/animation';
 import { RandomStructurePdbIds } from './random-structures';
+import { IcyTitleReader, SongChangeDetector, type SongChangeReason } from './song-change';
 
 type AxisOption = {
     value: AudioReactiveAssemblyAxisOrder,
@@ -88,6 +89,12 @@ type VirusOnTheRockState = {
     showSessionInfo: boolean,
     showWaveformLine: boolean,
     showRadialVisualizer: boolean,
+    /** a random model at each new song */
+    randomPerSong: boolean,
+    /** how the last song change was found, shown under the Random button */
+    songChangeNote?: string,
+    /** the model loading for a song change or an example, shown as busy */
+    loadingModel?: string,
 };
 
 const DefaultPdbId = '2tbv';
@@ -108,6 +115,23 @@ const AudioUrlPresets = [
 ] as const;
 const DefaultAudioUrlPreset = AudioUrlPresets.find(p => p.url === DefaultAudioUrl) ?? AudioUrlPresets[0];
 const ExamplePdbIds = ['2tbv', '2plv'] as const;
+/**
+ * Whole virions from the Mesoscale Explorer's examples (Petworld, one model per protein, each with its assembly). Read
+ * from mesoscope.scripps.edu, which allows any origin; CloudFront's copies only allow molstar.org
+ */
+const MesoscaleExamples = [
+    {
+        id: 'petworld-sarscov2', label: 'SARS-CoV-2',
+        url: 'https://mesoscope.scripps.edu/explorer/examples/sarscov2_2-no_bonds.bcif',
+        description: 'Petworld SARS-CoV-2 virion (Ozvoldik and Krieger), 2.5 MB',
+    },
+    {
+        id: 'petworld-hiv', label: 'HIV',
+        url: 'https://mesoscope.scripps.edu/explorer/examples/hiv_2-no_bonds.bcif',
+        description: 'Petworld HIV virion with its capsid core (Ozvoldik, Krieger and the cellPACK team), 7.2 MB',
+    },
+] as const;
+type MesoscaleExample = typeof MesoscaleExamples[number];
 const DefaultPresetName: AudioReactivePresetName = 'drums-bass-burst';
 /**
  * The beat cycle steps when the symmetry-axis drive rises past this share of its running peak, and re-arms once it falls
@@ -397,6 +421,7 @@ function createInitialState(params: AudioReactiveAnimationManagerValues, animati
         activePreset: DefaultPresetName,
         loadedEntries: [],
         audioLoaded: false,
+        randomPerSong: false,
         ...axisState,
         // Override axis-mode defaults: axis mode on, assembly source, beat cycle on,
         // local X/Y/Z deselected (cycle picks up assembly axes once available).
@@ -527,6 +552,7 @@ export class VirusOnTheRockApp {
     private beatCycleCount = 0;
     private beatCycleIndex = 0;
     private lastRandomPdbId: string | undefined;
+    private songFeedMs = 0;
     // Per-render-object snapshot of clip position/scale at the moment the toggle was enabled,
     // plus reusable working buffers we mutate in place each frame to avoid GC churn.
     private clipBaseState = new WeakMap<object, {
@@ -562,6 +588,16 @@ export class VirusOnTheRockApp {
         }));
         this.subscriptions.add(this.viewer.plugin.managers.audioReactive.state.status.subscribe(status => {
             void this.updateAxisCycle(status);
+            // without the stream's titles, new songs are estimated from the sound
+            if (this.state.value.randomPerSong && !this.titleReaderActive && status.playing) {
+                const now = performance.now();
+                const dt = this.songFeedMs > 0 ? Math.min(200, now - this.songFeedMs) : 0;
+                this.songFeedMs = now;
+                const raw = status.frame.raw;
+                this.songDetector.feed(DefaultAudioBandDefinitions.map(b => raw.frequencyBands[b.key]), raw.amplitude, dt);
+            } else {
+                this.songFeedMs = 0;
+            }
             const current = this.state.value;
             if (current.currentAudioLabel !== status.sourceLabel
                 || current.audioLoaded !== status.loaded
@@ -1163,23 +1199,98 @@ export class VirusOnTheRockApp {
         return this.viewer.plugin.managers.structure.hierarchy.selection.structures.flatMap(structure => structure.components);
     }
 
-    private pickRandomPdbId() {
-        const ids = RandomStructurePdbIds.map(id => id.trim().toLowerCase()).filter(Boolean);
+    /** the PDB capsids and the mesoscale examples, never the one shown last twice in a row */
+    private pickRandomModel() {
+        const ids: string[] = [...RandomStructurePdbIds.map(id => id.trim().toLowerCase()).filter(Boolean), ...MesoscaleExamples.map(e => e.id)];
         if (ids.length === 0) return;
-
         const candidates = ids.length > 1 && this.lastRandomPdbId
             ? ids.filter(id => id !== this.lastRandomPdbId)
             : ids;
         return candidates[Math.floor(Math.random() * candidates.length)];
     }
 
-    async loadRandomPdb() {
-        const pdbId = this.pickRandomPdbId();
-        if (!pdbId) return;
+    /** A random model in place of the current ones; its PDB ID, or the example's label */
+    async loadRandomModel() {
+        const id = this.pickRandomModel();
+        if (!id) return;
+        this.lastRandomPdbId = id;
+        const example = MesoscaleExamples.find(e => e.id === id);
+        this.patchState({ loadingModel: example?.label ?? id.toUpperCase() });
+        try {
+            if (example) await this.loadMesoscaleExample(example);
+            else await this.loadPdb(id, true);
+        } finally {
+            this.patchState({ loadingModel: void 0 });
+        }
+        return example ? example.label : id;
+    }
 
-        this.lastRandomPdbId = pdbId;
-        await this.loadPdb(pdbId, true);
-        return pdbId;
+    /**
+     * A mesoscale example in place of the current models: every model of the file (one per protein in Petworld's) as
+     * its assembly, in place, all together making the virion
+     */
+    async loadMesoscaleExample(example: MesoscaleExample) {
+        const plugin = this.viewer.plugin;
+        const previousRefs = this.getAllStructures().map(structure => structure.cell.transform.ref);
+        this.patchState({ loadingModel: example.label });
+        try {
+            const data = await plugin.builders.data.download({ url: example.url, isBinary: true, label: example.label });
+            const trajectory = await plugin.builders.structure.parseTrajectory(data, 'mmcif');
+            const frameCount = trajectory.obj?.data.frameCount ?? 0;
+            for (let i = 0; i < frameCount; i++) {
+                const model = await plugin.builders.structure.createModel(trajectory, { modelIndex: i });
+                await plugin.builders.structure.createStructure(model, { name: 'assembly', params: {} });
+            }
+            if (previousRefs.length) await plugin.managers.structure.hierarchy.remove(previousRefs, false);
+            await this.syncSelectedStructure();
+            await this.applyAudioPreset(this.state.value.activePreset);
+            await this.resetCamera(true);
+        } finally {
+            this.patchState({ loadingModel: void 0 });
+        }
+    }
+
+    private readonly songDetector = new SongChangeDetector(reason => void this.onSongChange(reason));
+    private readonly titleReader = new IcyTitleReader();
+    private songChangeBusy = false;
+
+    /** Random at each new song: on loads one now, then a new one whenever a song starts */
+    async setRandomPerSong(on: boolean) {
+        this.patchState({ randomPerSong: on, songChangeNote: on ? 'Next model at the next song.' : void 0 });
+        this.songDetector.reset();
+        if (!on) {
+            this.titleReader.stop();
+            return;
+        }
+        await this.startTitleReader();
+        await this.loadRandomModel();
+    }
+
+    /** the stream's titles where the server allows reading them; the estimate from the sound otherwise */
+    private async startTitleReader() {
+        this.titleReader.stop();
+        const audio = this.viewer.plugin.managers.audioReactive.state.audioPlayer.value;
+        const src = audio?.src;
+        if (!src || !/^https?:/.test(src) || !this.state.value.randomPerSong) return;
+        const reading = await this.titleReader.start(src, title => void this.onSongChange('title', title));
+        this.titleReaderActive = reading;
+    }
+    private titleReaderActive = false;
+
+    private async onSongChange(reason: SongChangeReason, title?: string) {
+        if (!this.state.value.randomPerSong || this.songChangeBusy) return;
+        this.songChangeBusy = true;
+        this.songDetector.reset();
+        try {
+            const loaded = await this.loadRandomModel();
+            const how = reason === 'title' ? `new title${title ? `: ${title}` : ''}`
+                : reason === 'source' ? 'new audio source'
+                    : reason === 'gap' ? 'a gap in the sound (estimated)'
+                        : 'the sound changed (estimated)';
+            this.patchState({ songChangeNote: `${loaded ?? 'New model'}, on ${how}.` });
+        } finally {
+            this.songChangeBusy = false;
+        }
     }
 
     async loadPdb(id: string, replaceCurrent = false) {
@@ -1212,6 +1323,14 @@ export class VirusOnTheRockApp {
         await this.applyAudioPreset(this.state.value.activePreset);
         await this.viewer.plugin.managers.audioReactive.loadFile(file);
         await this.playAudio();
+        await this.onNewAudioSource();
+    }
+
+    /** a new song by definition: a new model where Random is on, and the titles of the new stream */
+    private async onNewAudioSource() {
+        if (!this.state.value.randomPerSong) return;
+        await this.startTitleReader();
+        await this.onSongChange('source');
     }
 
     async loadAudioUrl(url: string, label?: string) {
@@ -1223,6 +1342,7 @@ export class VirusOnTheRockApp {
         await this.applyAudioPreset(this.state.value.activePreset);
         await this.viewer.plugin.managers.audioReactive.loadUrl(playableUrl, audioLabel);
         await this.playAudio();
+        await this.onNewAudioSource();
     }
 
     async playAudio() {
@@ -2175,16 +2295,30 @@ function VirusOnTheRockControls({ app }: { app: VirusOnTheRockApp }) {
                             {example.toUpperCase()}
                         </button>)}
                         <button
-                            className='vor-chip'
-                            onClick={async () => {
-                                const randomPdbId = await app.loadRandomPdb();
-                                if (randomPdbId) setPdbId(randomPdbId);
-                            }}
-                            title='Load a random PDB ID from random-structures.ts and replace the current structure.'
+                            className={`vor-chip ${state.randomPerSong ? 'vor-active' : ''}`}
+                            onClick={() => void app.setRandomPerSong(!state.randomPerSong)}
+                            title={state.randomPerSong
+                                ? 'On: a random virus at each new song. Click to keep the current one.'
+                                : 'A random virus now, and a new one at each new song (a PDB capsid or a mesoscale virion).'}
                         >
                             Random
                         </button>
                     </div>
+                    <span className='vor-label'>Mesoscale</span>
+                    <div className='vor-chip-row'>
+                        {MesoscaleExamples.map(example => <button
+                            key={example.id}
+                            className='vor-chip'
+                            disabled={!!state.loadingModel}
+                            title={example.description}
+                            onClick={() => void app.loadMesoscaleExample(example)}
+                        >
+                            {example.label}
+                        </button>)}
+                    </div>
+                    {(state.loadingModel || (state.randomPerSong && state.songChangeNote)) && <p className='vor-help'>
+                        {state.loadingModel ? `Loading ${state.loadingModel}…` : state.songChangeNote}
+                    </p>}
                     <label className='vor-label' htmlFor='vor-structure-file'>Browser File</label>
                     <input id='vor-structure-file' className='vor-file' type='file' multiple onChange={onStructureFileChange} />
                 </div>
