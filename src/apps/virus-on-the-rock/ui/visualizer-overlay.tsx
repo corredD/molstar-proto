@@ -12,8 +12,6 @@ import { getAudioRouteSourceLabel, getAudioRouteTargetLabel, type AudioRoute } f
 import { type AudioReactiveStatus } from '../../../mol-plugin-state/manager/audio-reactive-animation';
 import type { VirusOnTheRockApp } from '../app';
 
-const _sceneCenterScreen = Vec4();
-
 function clamp(value: number, min: number, max: number) {
     return Math.min(max, Math.max(min, value));
 }
@@ -45,7 +43,8 @@ function useWindowSize() {
     return size;
 }
 
-function getSceneVisualizerFrame(app: VirusOnTheRockApp, width: number, height: number) {
+/** `sceneCenterScreen`: scratch for the projected scene centre, owned by the caller */
+function getSceneVisualizerFrame(app: VirusOnTheRockApp, width: number, height: number, sceneCenterScreen: Vec4) {
     const canvas3d = app.viewer.plugin.canvas3d;
     const camera = canvas3d?.camera;
     const sphere = canvas3d?.boundingSphereVisible;
@@ -58,11 +57,11 @@ function getSceneVisualizerFrame(app: VirusOnTheRockApp, width: number, height: 
     }
 
     const pixelRatio = canvas3d?.webgl.pixelRatio ?? 1;
-    camera.project(_sceneCenterScreen, sphere.center);
+    camera.project(sceneCenterScreen, sphere.center);
     const pixelSize = Math.max(camera.getPixelSize(sphere.center), 1e-4);
     return {
-        centerX: _sceneCenterScreen[0] / pixelRatio,
-        centerY: height - _sceneCenterScreen[1] / pixelRatio,
+        centerX: sceneCenterScreen[0] / pixelRatio,
+        centerY: height - sceneCenterScreen[1] / pixelRatio,
         sceneRadius: sphere.radius / (pixelSize * pixelRatio),
     };
 }
@@ -109,11 +108,12 @@ export function AudioVisualizerOverlay(props: {
     const routes = useBehavior(props.app.viewer.plugin.managers.audioReactive.state.routes);
     // each route's recent values, a ring per route, pushed once per status update (~30 Hz)
     const historyRef = React.useRef({ values: new Map<number, Float32Array>(), head: 0, lastStatus: undefined as AudioReactiveStatus | undefined });
+    const sceneCenterScreen = React.useMemo(() => Vec4(), []);
 
     if (!status || width <= 0 || height <= 0) return null;
 
     const { spectrum } = status.visualization;
-    const sceneFrame = getSceneVisualizerFrame(props.app, width, height);
+    const sceneFrame = getSceneVisualizerFrame(props.app, width, height, sceneCenterScreen);
     const overlayOpacity = status.playing ? 1 : status.loaded ? 0.58 : 0.22;
     const mix = status.frame.mix;
     const beat = status.frame.beatIntensity;
