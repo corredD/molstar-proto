@@ -193,7 +193,8 @@ export class CpuChannels {
 
         // one pass over the render objects; the base lookup is a WeakMap get, O(1)
         for (const ro of this.renderObjects()) {
-            if (!ro.state.visible) continue;
+            // the pass that writes the base values back takes the hidden objects too: it is the last one until a drive rises
+            if (!ro.state.visible && !atRest) continue;
             const v = ro.values as any;
             const count = v.dClipObjectCount?.ref?.value as number | undefined;
             if (!count || count === 0) continue;

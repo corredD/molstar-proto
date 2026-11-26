@@ -260,6 +260,21 @@ describe('cpu channels', () => {
             expect(target.calls).toEqual([]);
         });
 
+        it('puts back an object hidden while moved, so it shows at its base values at rest', () => {
+            const { target, drives, clip, frames } = setup();
+            const ro = clipObject();
+            target.objects = [ro];
+            clip.enabled = true;
+            drives.clipPosition = 1;
+            frames(1);
+            ro.state.visible = false;
+            drives.clipPosition = 0;
+            frames(1);
+            ro.state.visible = true;
+            frames(1);
+            expect(Array.from(ro.values.uClipObjectPosition.ref.value)).toEqual([1, 2, 3, 0, 0, 0]);
+        });
+
         it('gives the clip objects their first values back when turned off', () => {
             const { target, drives, clip, channels, frames } = setup();
             const ro = clipObject();
