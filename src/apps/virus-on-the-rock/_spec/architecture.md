@@ -47,7 +47,7 @@ analyser window ─► reactor (resample, Hann, FFT, 6 bands, flux beat, promine
 5. `canvas3d.setAudioFrame`: bands, scales, stems, 7 motion drives, glow (× 0.35), hue (× 0.25), scope kinds and drives;
    a redraw is forced while the wave or a scope is driven.
 6. `canvas3d.tick` → draw. The vertex shader moves instances and atoms; the fragment shader adds glow and hue.
-7. `didDraw` → the app: clips, zoom, spin / rock / step (`camera.setState`), opacity (walks render objects), background
+7. `didDraw` → the app's `CpuChannels.update`: clips, zoom, spin / rock / step (`camera.setState`), opacity (walks render objects), background
    (`setProps`).
 8. Status (≈30 Hz) → the app: beat cycle (axis order as a representation param update), song-change detector.
 
@@ -60,8 +60,8 @@ analyser window ─► reactor (resample, Hann, FFT, 6 bands, flux beat, promine
   (the spacefill block cached per cell). Mesoscale forces Spacefill and remembers the previous mode.
 - **Presets.** `applyAudioPreset(name, 'replace' | 'keep')`: analysis + animation from the preset, the user's
   sensitivities, threshold and axis order kept; routes only on `replace`.
-- **CPU channels and the beat cycle** live in the app's `didDraw` and status handlers, with their own constants
-  (A:179-217).
+- **CPU channels and the beat cycle** are `CpuChannels` (run from the app's `didDraw`) and `BeatCycle` (fed by the status
+  handler), with their own constants (`cpu-channels.ts › CpuChannels`, `beat-cycle.ts › BeatCycle`).
 - **Song change.** `IcyTitleReader` (a second fetch with `Icy-MetaData: 1`) or `SongChangeDetector` (gap, band-balance
   shift); then `loadRandomModel`.
 
