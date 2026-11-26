@@ -53,6 +53,31 @@ analyser window ─► reactor (resample, Hann, FFT, 6 bands, flux beat, promine
 
 ## 4. The app
 
+Files (all under `src/apps/virus-on-the-rock/`; the split of D15 happened in the lane `split-app-by-card`, PR pending):
+
+- `app.tsx`: `VirusOnTheRockApp`: the plugin, loading, Random and song change, presets, the sync of the selected
+  structure, and the composition root `VirusOnTheRockApp.create`, which builds the app with the Canvas3D adapter of the
+  CPU channels' port (`createCanvas3DChannelTarget`) and sets the probe `window.__vorProbe`. The app is the one holder
+  of `state` (a `BehaviorSubject`); `patchState` goes through `state-patch.ts` and emits only when a field changed.
+- `state.ts`: `VirusOnTheRockState`, `createInitialState` and the pure axis and cycle-target helpers.
+- `catalog.ts`: constants, the audio and mesoscale catalogs, the effect defaults, the representation params.
+- `state-patch.ts`: `patchIfChanged` (a new snapshot only when a field changed, by reference).
+- `beat-cycle.ts`: `BeatCycle`, the beat detector of the axis cycle (trigger 0.75, release 0.3, 400 ms), no viewer inside;
+  the app applies the target it steps to.
+- `cpu-channels.ts`: `CpuChannels` (clip, camera zoom, spin, rock and step, background flash, opacity) behind the
+  `CpuChannelTarget` port (camera, background, render objects), so it runs in a test with no Canvas3D; the pure
+  functions (`cameraZoomFov`, `opacityFactor`, ...) are exported.
+- `ui/controls.tsx`: `VirusOnTheRockControls` composes the cards; `ui/cards/*.tsx`: one file per sidebar card (load
+  structure, audio, audio presets, stem separation, audio routing, prominence, representation, motion targets, clip
+  reactivity, axis mode, visualizers, entries, session), each reading its own slice of the state.
+- `ui/control-card.tsx` (the card frame), `ui/state-slice.ts` (`useStateSlice`: re-render only when the slice changed),
+  `ui/visualizer-overlay.tsx` (histogram, wave lines, radial ring).
+- `song-change.ts`, `random-structures.ts`, `style.scss` as before.
+
+Behaviour of the CPU channels changed in this lane in two places: `patchState` emits only on change (fewer re-renders),
+and the clip pass at rest writes the base values back once, then does nothing until a drive moves again. Other
+behaviour is unchanged (characterization tests: `beat-cycle.spec.ts`, `cpu-channels.spec.ts`).
+
 - **Loading.** `loadPdb(id, replace)`, files, mesoscale examples. Add puts the new structure on a grid; replace (Random)
   removes the old after the new is drawn, prunes data, eases the camera. Mesoscale loads remove first, then build parts
   (wip). `syncSelectedStructure` runs one at a time, ≤ 3 re-passes (wip).
@@ -87,9 +112,10 @@ analyser window ─► reactor (resample, Hann, FFT, 6 bands, flux beat, promine
 - **Time.** Envelopes run on the loop's capped time (slow below 30 fps); camera channels on real time.
 - **Layering.** `mol-plugin-state/helpers/assembly-symmetry-axis.ts` imports `extensions/assembly-symmetry`;
   `mol-plugin/animation-loop.ts` imports the audio managers; the renderer's interface carries `AudioReactiveFrame`.
-- **One 3.25k-line `app.tsx`.** UI, loading, catalog, CPU channels and the beat cycle in one file.
+- **`app.tsx` is still large** (loading, Random, song change, presets, selected-structure sync); UI, catalog, CPU channels
+  and the beat cycle moved out (D15), and the channels and the beat cycle now have tests. The app's loading paths have none.
 - **Tests stop at the router.** No test for the manager's tick, stems sampling, presets, Who resolution and packing, the
-  app's channels, or pixels.
+  app's loading, or pixels.
 
 ## 6. What holds up
 
