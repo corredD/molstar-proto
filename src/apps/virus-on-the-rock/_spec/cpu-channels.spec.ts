@@ -320,7 +320,8 @@ describe('cpu channels', () => {
 
         /**
          * The clip and opacity passes at n and 4n render objects, counted in reads of a render object's `state` and
-         * `values` (not wall time): linear grows 4x; the quadratic control, over the same counter, grows 16x
+         * `values` and of the list's items (not wall time): linear grows 4x; the quadratic control, over the same
+         * counter, grows 16x
          */
         it('scans render objects once a frame: n to 4n grows linearly, with a quadratic control', () => {
             const counter = { reads: 0 };
@@ -333,7 +334,13 @@ describe('cpu channels', () => {
                         get values() { counter.reads += 1; return ro.values; },
                     });
                 }
-                return out;
+                // index reads of the list count too, so a lookup in it (includes, indexOf, find) inside the scan shows
+                return new Proxy(out, {
+                    get(list, key, receiver) {
+                        if (typeof key === 'string' && /^\d+$/.test(key)) counter.reads += 1;
+                        return Reflect.get(list, key, receiver);
+                    },
+                });
             };
             const readsPerFrame = (n: number) => {
                 const { target, drives, clip, frames } = setup();
