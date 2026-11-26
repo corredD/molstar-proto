@@ -157,12 +157,16 @@ export class CpuChannels {
 
     /** one frame of every channel; called after each draw */
     update() {
-        this.updateClips();
-        this.updateCameraZoom();
-        this.updateCameraMotion();
-        this.updateOpacity();
-        this.updateBackground();
-        this.frameObjects = undefined;
+        try {
+            this.updateClips();
+            this.updateCameraZoom();
+            this.updateCameraMotion();
+            this.updateOpacity();
+            this.updateBackground();
+        } finally {
+            // dropped even when a target call threw, so the next frame reads its own list
+            this.frameObjects = undefined;
+        }
     }
 
     /** off: the clip objects get their first values back; on: they are captured again on the next frame */
@@ -189,7 +193,6 @@ export class CpuChannels {
         // at rest: the last pass already wrote the base values back
         const atRest = positionDrive === 0 && scaledDrive === 0;
         if (atRest && this.clipAtRest) return;
-        this.clipAtRest = atRest;
 
         // one pass over the render objects; the base lookup is a WeakMap get, O(1)
         for (const ro of this.renderObjects()) {
@@ -261,6 +264,8 @@ export class CpuChannels {
             ValueCell.update(v.uClipObjectPosition, workPosition);
             ValueCell.update(v.uClipObjectScale, workScale);
         }
+        // only once the pass is through: a pass that threw is run again on the next frame
+        this.clipAtRest = atRest;
     }
 
     private restoreClipBaseStates() {
