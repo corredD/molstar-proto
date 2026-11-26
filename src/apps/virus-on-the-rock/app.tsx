@@ -11,10 +11,8 @@ import { BehaviorSubject, Subscription } from 'rxjs';
 import { AssemblySymmetryData, AssemblySymmetryDataProvider, AssemblySymmetryProvider, AssemblySymmetryValue } from '../../extensions/assembly-symmetry/prop';
 import { getAssemblySymmetryConfig, tryCreateAssemblySymmetry } from '../../extensions/assembly-symmetry/behavior';
 import { Vec3 } from '../../mol-math/linear-algebra/3d/vec3';
-import { Mat4 } from '../../mol-math/linear-algebra/3d/mat4';
-import type { GraphicsRenderObject } from '../../mol-gl/render-object';
+import type { Canvas3D } from '../../mol-canvas3d/canvas3d';
 import { Vec4 } from '../../mol-math/linear-algebra/3d/vec4';
-import { ValueCell } from '../../mol-util/value-cell';
 import { setSubtreeVisibility } from '../../mol-plugin/behavior/static/state';
 import { PostprocessingParams } from '../../mol-canvas3d/passes/postprocessing';
 import { SsaoParams } from '../../mol-canvas3d/passes/ssao';
@@ -49,6 +47,8 @@ import { Viewer } from '../viewer/app';
 import { areAnimationPropsEqual, type AnimationProps, type ObjectTransformModeName, type TumbleAxisName, type TumbleAxisSourceName } from '../../mol-geo/geometry/animation';
 import { RandomStructurePdbIds } from './random-structures';
 import { IcyTitleReader, SongChangeDetector, type SongChangeReason } from './song-change';
+import { BeatCycle } from './beat-cycle';
+import { BackgroundBaseColor, CpuChannels, type CpuChannelTarget } from './cpu-channels';
 
 type AxisOption = {
     value: AudioReactiveAssemblyAxisOrder,
@@ -175,46 +175,6 @@ const MesoscaleExamples: MesoscaleExample[] = [
 /** the dev server: where the repo's own local files are served */
 const IsLocalHost = typeof location !== 'undefined' && /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
 const DefaultPresetName: AudioReactivePresetName = 'drums-bass-burst';
-/**
- * The beat cycle steps when the symmetry-axis drive rises past this share of its running peak, and re-arms once it falls
- * under the release share: relative, so it follows whatever routes drive the axes, at any gain
- */
-const BeatCycleTriggerLevel = 0.75;
-const BeatCycleReleaseLevel = 0.3;
-const BeatCyclePeakDecayMs = 3000;
-const BeatCycleAverageMs = 400;
-/** no two steps closer than this, ms */
-const BeatCycleMinIntervalMs = 400;
-const BeatCyclePeakFloor = 0.05;
-/** the camera-zoom channel narrows the field of view by this much per unit of drive, at most CameraZoomMax */
-const CameraZoomPerDrive = 0.08;
-const CameraZoomMax = 0.3;
-/** camera spin: radians per second at a drive of 1; camera rock: the swing at a drive of 1 and its period */
-const CameraSpinRadPerSecond = 0.5;
-const CameraRockRadians = 0.25;
-const CameraRockPeriodSeconds = 4;
-/**
- * Camera step: a turn now and then, not every beat (cutting on every beat reads as predictable; phrases run 8, 16 or
- * 32 bars). Its route's rises are counted like the beat cycle's; every CameraStepEvery-th one (four bars of a kick on
- * each beat; no bar tracking yet) turns the camera
- * CameraStepRadians about its up axis, eased over CameraStepSeconds
- */
-const CameraStepEvery = 16;
-const CameraStepRadians = Math.PI / 4;
-const CameraStepSeconds = 1.6;
-/**
- * The background flash: the share of the way to BackgroundFlashColor per unit of drive, at most BackgroundFlashMax.
- * Photosensitivity: no more than three flashes a second (WCAG 2.3.1, "Three Flashes or Below Threshold"), so a new
- * flash waits BackgroundFlashMinIntervalMs after the last one, and the flash stays well short of white
- */
-const BackgroundBaseColor = Color(0x09111a);
-const BackgroundFlashColor = Color(0xe8eef4);
-const BackgroundFlashPerDrive = 0.3;
-const BackgroundFlashMax = 0.6;
-const BackgroundFlashMinIntervalMs = 400;
-/** opacity: fades this much per unit of drive, never below OpacityMin */
-const OpacityPerDrive = 0.4;
-const OpacityMin = 0.15;
 /** Starting values of the effect knobs: the beat threshold where the presets keep it (0.05 fired a beat every frame), a moderate axis travel */
 const DefaultEffectKnobs: Partial<AudioReactiveAnimationManagerValues> = {
     wiggleEffectScale: 1,
@@ -624,6 +584,30 @@ function getRadialColor(value: number, normalizedIndex: number, hueShift: number
     return `hsla(${hue.toFixed(1)}, ${saturation}%, ${lightness.toFixed(1)}%, ${0.36 + value * 0.58})`;
 }
 
+/**
+ * The Canvas3D adapter of the CPU channels' port, built by `VirusOnTheRockApp.create`. The camera patches are made once
+ * and reused (the camera copies them; its stateChanged readers look only at radius and radiusMax)
+ */
+function createCanvas3DChannelTarget(canvas3d: Canvas3D): CpuChannelTarget {
+    const fovPatch = { fov: 0 };
+    const positionPatch = { position: Vec3() };
+    return {
+        getCamera: () => canvas3d.camera.state,
+        setCameraFov(fov) {
+            fovPatch.fov = fov;
+            canvas3d.camera.setState(fovPatch);
+        },
+        setCameraPosition(position) {
+            Vec3.copy(positionPatch.position, position);
+            canvas3d.camera.setState(positionPatch);
+        },
+        setBackgroundColor(backgroundColor) {
+            canvas3d.setProps({ renderer: { ...canvas3d.props.renderer, backgroundColor } });
+        },
+        getRenderObjects: () => canvas3d.getRenderObjects(),
+    };
+}
+
 export class VirusOnTheRockApp {
     readonly state: BehaviorSubject<VirusOnTheRockState>;
 
@@ -635,30 +619,31 @@ export class VirusOnTheRockApp {
     private syncToken = 0;
     /** set while a batch of structures is built, which then syncs once at its end */
     private syncSuspended = false;
-    private beatTriggerActive = false;
-    private beatCyclePeak = BeatCyclePeakFloor;
-    private beatCycleAverage = 0;
-    private beatCycleLastStepMs = 0;
-    private beatCycleLastMs = 0;
-    private beatCycleCount = 0;
+    /** the beat detector of the axis cycle; the app applies the target it steps to */
+    private readonly beatCycle: BeatCycle;
     private beatCycleIndex = 0;
+    /** the channels run on the CPU after each draw */
+    private readonly channels: CpuChannels;
     private lastRandomPdbId: string | undefined;
     private songFeedMs = 0;
-    // Per-render-object snapshot of clip position/scale at the moment the toggle was enabled,
-    // plus reusable working buffers we mutate in place each frame to avoid GC churn.
-    private clipBaseState = new WeakMap<object, {
-        count: number,
-        basePosition: Float32Array,
-        baseScale: Float32Array,
-        workPosition: Float32Array,
-        workScale: Float32Array,
-    }>();
 
-    private constructor(readonly viewer: Viewer, uiTarget: HTMLElement) {
+    private constructor(readonly viewer: Viewer, uiTarget: HTMLElement, channelTarget: CpuChannelTarget) {
         const params = this.viewer.plugin.managers.audioReactive.state.params.value;
         const animation = this.viewer.plugin.managers.structure.component.state.options.animation;
         this.state = new BehaviorSubject(createInitialState(params, animation));
         this.uiRoot = createRoot(uiTarget);
+        this.beatCycle = new BeatCycle({
+            canStep: () => this.isAxisCycleActive(),
+            every: () => this.state.value.axisCycleEvery,
+        });
+        const audioReactive = this.viewer.plugin.managers.audioReactive;
+        this.channels = new CpuChannels({
+            drives: () => audioReactive.drives,
+            clipEnabled: () => this.state.value.audioClipEnabled,
+            clipScale: () => this.state.value.audioClipScale,
+            now: () => performance.now(),
+            target: channelTarget,
+        });
 
         this.viewer.plugin.managers.dragAndDrop.addHandler('virus-on-the-rock', async (files) => {
             const audioFiles = files.filter(isAudioFile);
@@ -712,13 +697,7 @@ export class VirusOnTheRockApp {
         }));
 
         this.subscriptions.add(
-            this.viewer.plugin.canvas3d!.didDraw.subscribe(() => {
-                this.updateAudioReactiveClips();
-                this.updateAudioCameraZoom();
-                this.updateAudioCameraMotion();
-                this.updateAudioOpacity();
-                this.updateAudioBackground();
-            })
+            this.viewer.plugin.canvas3d!.didDraw.subscribe(() => this.channels.update())
         );
 
         this.uiRoot.render(<VirusOnTheRockControls app={this} />);
@@ -752,7 +731,7 @@ export class VirusOnTheRockApp {
             PluginConfig.Structure.DefaultRepresentationPreset,
             PresetStructureRepresentations['mesoscale'].id);
 
-        const app = new VirusOnTheRockApp(viewer, uiTarget); (window as any).__vorProbe = app; // TEMP probe
+        const app = new VirusOnTheRockApp(viewer, uiTarget, createCanvas3DChannelTarget(viewer.plugin.canvas3d!)); (window as any).__vorProbe = app; // TEMP probe
         await app.initializeDefaults();
         return app;
     }
@@ -866,8 +845,7 @@ export class VirusOnTheRockApp {
     }
 
     private resetAxisCycleRuntime() {
-        this.beatTriggerActive = false;
-        this.beatCycleCount = 0;
+        this.beatCycle.reset();
         this.beatCycleIndex = 0;
     }
 
@@ -1006,34 +984,14 @@ export class VirusOnTheRockApp {
 
     private async updateAxisCycle(status: ReturnType<typeof this.viewer.plugin.managers.audioReactive.state.status.getValue>) {
         if (!status.playing) {
-            this.beatTriggerActive = false;
+            this.beatCycle.pause();
             return;
         }
 
-        // the symmetry-axis channel's drive (whatever routes feed it: drums, bass...), relative to its running peak. Not
-        // the beat detector's intensity against `beatThreshold` (the detector's flux multiplier, ~1.1-1.35): a 0-1
-        // intensity never reached it, so the cycle only ran while the start-up forced it to 0.05
-        const now = performance.now();
-        const dt = this.beatCycleLastMs > 0 ? now - this.beatCycleLastMs : 16;
-        this.beatCycleLastMs = now;
-        const raw = status.drives.symAxis;
-        // a hit is the drive rising above its short average (a sustained bass keeps the drive high, never a hit)
-        this.beatCycleAverage += (raw - this.beatCycleAverage) * (1 - Math.exp(-dt / BeatCycleAverageMs));
-        const excess = Math.max(0, raw - this.beatCycleAverage);
-        this.beatCyclePeak = Math.max(excess, BeatCyclePeakFloor, this.beatCyclePeak * Math.exp(-dt / BeatCyclePeakDecayMs));
-        const drive = excess / this.beatCyclePeak;
-        const beatActive = this.beatTriggerActive ? drive > BeatCycleReleaseLevel : drive >= BeatCycleTriggerLevel;
-        const shouldAdvance = this.isAxisCycleActive() && beatActive && !this.beatTriggerActive && now - this.beatCycleLastStepMs >= BeatCycleMinIntervalMs;
-        this.beatTriggerActive = beatActive;
-        if (shouldAdvance) this.beatCycleLastStepMs = now;
-
-        if (!shouldAdvance) return;
+        if (!this.beatCycle.feed(status.drives.symAxis, performance.now())) return;
 
         const cycleAxes = this.getCyclingAxes();
         if (cycleAxes.length <= 1) return;
-
-        this.beatCycleCount += 1;
-        if (this.beatCycleCount % this.state.value.axisCycleEvery !== 0) return;
 
         this.beatCycleIndex = (this.beatCycleIndex + 1) % cycleAxes.length;
         await this.applyCycleTarget(cycleAxes[this.beatCycleIndex].value);
@@ -1653,248 +1611,12 @@ export class VirusOnTheRockApp {
     }
 
     setAudioClipEnabled(enabled: boolean) {
-        if (!enabled) this.restoreClipBaseStates();
-        // Re-capture base state on next frame when enabling.
-        if (enabled) this.clipBaseState = new WeakMap();
+        this.channels.setClipEnabled(enabled);
         this.patchState({ audioClipEnabled: enabled });
     }
 
     setAudioClipScale(value: number) {
         this.patchState({ audioClipScale: value });
-    }
-
-    private updateAudioReactiveClips() {
-        if (!this.state.value.audioClipEnabled) return;
-        const canvas3d = this.viewer.plugin.canvas3d;
-        if (!canvas3d) return;
-
-        // the routed clip channels: a plane moves along its normal (position), the other shapes grow (size)
-        const drives = this.viewer.plugin.managers.audioReactive.drives;
-        const positionDrive = drives.clipPosition * this.state.value.audioClipScale;
-        const scaledDrive = drives.clipSize * this.state.value.audioClipScale;
-
-        for (const ro of canvas3d.getRenderObjects()) {
-            if (!ro.state.visible) continue;
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const v = ro.values as any;
-            const count = v.dClipObjectCount?.ref?.value as number | undefined;
-            if (!count || count === 0) continue;
-
-            // Capture base state the first frame the toggle is on.
-            let base = this.clipBaseState.get(ro);
-            if (!base) {
-                const pos = v.uClipObjectPosition?.ref?.value as Float32Array | undefined;
-                const scale = v.uClipObjectScale?.ref?.value as Float32Array | undefined;
-                if (!pos || !scale) continue;
-                base = {
-                    count,
-                    basePosition: new Float32Array(pos),
-                    baseScale: new Float32Array(scale),
-                    workPosition: new Float32Array(pos.length),
-                    workScale: new Float32Array(scale.length),
-                };
-                this.clipBaseState.set(ro, base);
-            }
-
-            const types = v.uClipObjectType?.ref?.value as Int32Array | undefined;
-            const rotations = v.uClipObjectRotation?.ref?.value as Float32Array | undefined;
-            if (!types) continue;
-
-            const { basePosition, baseScale, workPosition, workScale } = base;
-            workPosition.set(basePosition);
-            workScale.set(baseScale);
-
-            for (let i = 0; i < count; i++) {
-                const type = types[i];
-                if (type === 1 && rotations) {
-                    // Plane: translate along its normal.
-                    // Normal = rotate Y-axis (0,1,0) by the clip object's quaternion [x,y,z,w].
-                    const qx = rotations[i * 4], qy = rotations[i * 4 + 1];
-                    const qz = rotations[i * 4 + 2], qw = rotations[i * 4 + 3];
-                    const nx = 2 * (qx * qy + qz * qw);
-                    const ny = 1 - 2 * (qx * qx + qz * qz);
-                    const nz = 2 * (qy * qz - qx * qw);
-                    const offset = positionDrive * 50; // 50 Å at drive=1, scale=1
-                    workPosition[i * 3 + 0] = basePosition[i * 3 + 0] + nx * offset;
-                    workPosition[i * 3 + 1] = basePosition[i * 3 + 1] + ny * offset;
-                    workPosition[i * 3 + 2] = basePosition[i * 3 + 2] + nz * offset;
-                } else if (type === 2 || type === 3) {
-                    // Sphere / Cube: uniform scale.
-                    const s = 1 + scaledDrive;
-                    workScale[i * 3 + 0] = baseScale[i * 3 + 0] * s;
-                    workScale[i * 3 + 1] = baseScale[i * 3 + 1] * s;
-                    workScale[i * 3 + 2] = baseScale[i * 3 + 2] * s;
-                } else if (type === 4) {
-                    // Cylinder: widen radius (x, z), keep height (y) fixed.
-                    const s = 1 + scaledDrive;
-                    workScale[i * 3 + 0] = baseScale[i * 3 + 0] * s;
-                    workScale[i * 3 + 2] = baseScale[i * 3 + 2] * s;
-                } else if (type === 5) {
-                    // Cone: widen the cone angle (scale.xy stores sin/cos of half-angle).
-                    const s = 1 + scaledDrive * 0.5;
-                    workScale[i * 3 + 0] = baseScale[i * 3 + 0] * s;
-                    workScale[i * 3 + 1] = baseScale[i * 3 + 1] * s;
-                }
-            }
-
-            // Force a version bump even when the working buffer ref hasn't changed,
-            // so the renderer re-uploads the mutated contents.
-            ValueCell.update(v.uClipObjectPosition, workPosition);
-            ValueCell.update(v.uClipObjectScale, workScale);
-        }
-    }
-
-    /** the field of view when the camera-zoom channel started driving it, restored when it stops */
-    private cameraZoomBaseFov?: number;
-
-    /** the camera-zoom channel: a punch-in of the field of view, so the user's own orbit and zoom stay theirs */
-    private updateAudioCameraZoom() {
-        const camera = this.viewer.plugin.canvas3d?.camera;
-        if (!camera) return;
-        const drive = this.viewer.plugin.managers.audioReactive.drives.cameraZoom;
-        if (drive <= 1e-3) {
-            if (this.cameraZoomBaseFov !== undefined) {
-                camera.setState({ fov: this.cameraZoomBaseFov });
-                this.cameraZoomBaseFov = undefined;
-            }
-            return;
-        }
-        if (this.cameraZoomBaseFov === undefined) this.cameraZoomBaseFov = camera.state.fov;
-        const fov = this.cameraZoomBaseFov * (1 - Math.min(CameraZoomMax, CameraZoomPerDrive * drive));
-        if (Math.abs(camera.state.fov - fov) > 1e-4) camera.setState({ fov });
-    }
-
-    private cameraMotionLastMs = 0;
-    private cameraRockTime = 0;
-    private cameraRockAngle = 0;
-
-    /**
-     * The camera-spin and camera-rock channels: the camera turns around its target, about its up axis, by increments,
-     * so the user's own orbit stays theirs. Spin keeps turning at a speed set by its drive; rock swings back and forth,
-     * as wide as its drive
-     */
-    private updateAudioCameraMotion() {
-        const camera = this.viewer.plugin.canvas3d?.camera;
-        if (!camera) return;
-        const now = performance.now();
-        const dt = this.cameraMotionLastMs > 0 ? Math.min(100, now - this.cameraMotionLastMs) / 1000 : 0;
-        this.cameraMotionLastMs = now;
-        const drives = this.viewer.plugin.managers.audioReactive.drives;
-        let angle = drives.cameraSpin * CameraSpinRadPerSecond * dt;
-        this.cameraRockTime += dt;
-        const rock = drives.cameraRock > 1e-3
-            ? drives.cameraRock * CameraRockRadians * Math.sin(2 * Math.PI * this.cameraRockTime / CameraRockPeriodSeconds)
-            : 0;
-        angle += rock - this.cameraRockAngle;
-        this.cameraRockAngle = rock;
-        angle += this.updateCameraStep(drives.cameraStep, now, dt);
-        if (Math.abs(angle) < 1e-6) return;
-        const { position, target, up } = camera.state;
-        const offset = Vec3.sub(Vec3(), position, target);
-        const rotation = Mat4.fromRotation(Mat4(), angle, up);
-        Vec3.transformMat4(offset, offset, rotation);
-        camera.setState({ position: Vec3.add(Vec3(), target, offset) });
-    }
-
-    private cameraStepPeak = BeatCyclePeakFloor;
-    private cameraStepArmed = true;
-    private cameraStepCount = 0;
-    private cameraStepLastMs = 0;
-    /** the turn still to make and how long it has left */
-    private cameraStepLeft = 0;
-    private cameraStepTimeLeft = 0;
-
-    /** this frame's share of the phrase turn: counts the route's rises, turns on every CameraStepEvery-th (eased) */
-    private updateCameraStep(drive: number, now: number, dt: number) {
-        if (dt > 0) this.cameraStepPeak = Math.max(BeatCyclePeakFloor, drive, this.cameraStepPeak * Math.exp(-dt * 1000 / BeatCyclePeakDecayMs));
-        if (this.cameraStepArmed && drive > BeatCyclePeakFloor && drive >= this.cameraStepPeak * BeatCycleTriggerLevel && now - this.cameraStepLastMs >= BeatCycleMinIntervalMs) {
-            this.cameraStepArmed = false;
-            this.cameraStepLastMs = now;
-            this.cameraStepCount += 1;
-            if (this.cameraStepCount % CameraStepEvery === 0) {
-                this.cameraStepLeft += CameraStepRadians;
-                this.cameraStepTimeLeft = CameraStepSeconds;
-            }
-        } else if (!this.cameraStepArmed && drive <= this.cameraStepPeak * BeatCycleReleaseLevel) {
-            this.cameraStepArmed = true;
-        }
-        if (this.cameraStepLeft <= 1e-6 || dt <= 0) return 0;
-        // ease out: the turn left shrinks as fast as the time left
-        const share = this.cameraStepTimeLeft <= dt ? 1 : 1 - Math.pow(1 - dt / this.cameraStepTimeLeft, 2);
-        const angle = this.cameraStepLeft * share;
-        this.cameraStepLeft -= angle;
-        this.cameraStepTimeLeft = Math.max(0, this.cameraStepTimeLeft - dt);
-        return angle;
-    }
-
-    private backgroundShare = 0;
-    private backgroundFlashMs = 0;
-    private backgroundFalling = true;
-
-    /**
-     * The background-flash channel: the background toward white with its drive, back to the base color as it falls; a
-     * new rise within BackgroundFlashMinIntervalMs of the last flash is held back
-     */
-    private updateAudioBackground() {
-        const canvas3d = this.viewer.plugin.canvas3d;
-        if (!canvas3d) return;
-        const drive = this.viewer.plugin.managers.audioReactive.drives.background;
-        let share = Math.min(BackgroundFlashMax, BackgroundFlashPerDrive * drive);
-        const now = performance.now();
-        if (share > this.backgroundShare + 0.02) {
-            // a rise: a new flash only once the last one is old enough
-            if (this.backgroundFalling && now - this.backgroundFlashMs < BackgroundFlashMinIntervalMs) share = this.backgroundShare;
-            else if (this.backgroundFalling) {
-                this.backgroundFlashMs = now;
-                this.backgroundFalling = false;
-            }
-        } else if (share < this.backgroundShare) {
-            this.backgroundFalling = true;
-        }
-        if (Math.abs(share - this.backgroundShare) < 0.004) return;
-        this.backgroundShare = share;
-        canvas3d.setProps({ renderer: { ...canvas3d.props.renderer, backgroundColor: Color.interpolate(BackgroundBaseColor, BackgroundFlashColor, share) } });
-    }
-
-    /** the alpha factor the opacity channel last gave each object, to give 1 back when it stops */
-    private readonly fadedObjects = new Set<GraphicsRenderObject>();
-
-    /** the opacity channel: objects fade (down to OpacityMin) through their alpha factor, drawn transparent meanwhile */
-    private updateAudioOpacity() {
-        const canvas3d = this.viewer.plugin.canvas3d;
-        if (!canvas3d) return;
-        const drive = this.viewer.plugin.managers.audioReactive.drives.opacity;
-        const factor = drive > 1e-3 ? Math.max(OpacityMin, 1 - OpacityPerDrive * drive) : 1;
-        if (factor === 1 && this.fadedObjects.size === 0) return;
-        const objects = canvas3d.getRenderObjects();
-        // a removed model's objects: forgotten, not held (they would keep its whole geometry alive)
-        if (this.fadedObjects.size > 0) {
-            const present = new Set(objects);
-            for (const ro of this.fadedObjects) if (!present.has(ro)) this.fadedObjects.delete(ro);
-        }
-        for (const ro of objects) {
-            if (factor === 1 && !this.fadedObjects.has(ro)) continue;
-            ro.state.alphaFactor = factor;
-            const alpha = (ro.values as { alpha?: { ref: { value: number } } }).alpha?.ref.value ?? 1;
-            ro.state.opaque = alpha * factor >= 1;
-            ro.state.writeDepth = ro.state.opaque;
-            if (factor === 1) this.fadedObjects.delete(ro);
-            else this.fadedObjects.add(ro);
-        }
-    }
-
-    private restoreClipBaseStates() {
-        const canvas3d = this.viewer.plugin.canvas3d;
-        if (!canvas3d) return;
-        for (const ro of canvas3d.getRenderObjects()) {
-            const base = this.clipBaseState.get(ro);
-            if (!base) continue;
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const v = ro.values as any;
-            ValueCell.updateIfChanged(v.uClipObjectPosition, base.basePosition);
-            ValueCell.updateIfChanged(v.uClipObjectScale, base.baseScale);
-            this.clipBaseState.delete(ro);
-        }
     }
 
     async removeStructure(ref: string) {
