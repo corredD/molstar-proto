@@ -9,43 +9,37 @@ itself is still open there: Ludo reorders this list).
 
 <!-- - **Title** (Dn): what I want to see. Check: what I do in the app and what I expect. -->
 
-### First, alone
-
-1. **Split `app.tsx` by card** (D15): one file per sidebar card, a module for the CPU channels and the beat cycle,
-   behaviour unchanged, so lanes can work in parallel and the channels can be tested. Also drops the TEMP
-   `window.__vorProbe` (features §14). Check: checklist steps 1–10 of features §15 behave as before.
-
 ### Broken items
 
-2. **Pause and Clear rest** (D2): both bring every drive to 0 over its release; Clear resets the router. Check:
+1. **Pause and Clear rest** (D2): both bring every drive to 0 over its release; Clear resets the router. Check:
    Pause, the atoms stop wiggling (today the 0.2 floor keeps them moving); Clear, nothing stays frozen mid-burst.
-3. **The 9th narrowed route is refused** (D3): once 8 routes are narrowed, the Who select of the others is disabled
+2. **The 9th narrowed route is refused** (D3): once 8 routes are narrowed, the Who select of the others is disabled
    with a note. Check: narrow 8 routes, the 9th's Who is greyed with the note.
-4. **Startup fallback plays** (D9): startup keeps the stream; `angine.mp3` is copied into the build so the fallback
+3. **Startup fallback plays** (D9): startup keeps the stream; `angine.mp3` is copied into the build so the fallback
    works. Check: with the stream unreachable, startup plays angine.mp3.
-5. **The Who leak within one representation** (features §8, still open in §7): fix once checklist step 11 shows it.
+4. **The Who leak within one representation** (features §8, still open in §7): fix once checklist step 11 shows it.
    Check: step 11, only the narrowed chain's instances burst.
 
 ### New UI
 
-6. **Load adds, in view** (D1): Load, the PDB chips and files keep adding beside what is there; the new structure comes
+5. **Load adds, in view** (D1): Load, the PDB chips and files keep adding beside what is there; the new structure comes
    into view (today it lands 2.75 radii away, off screen). Check: checklist step 3, 2PLV is on screen beside 2TBV.
-7. **Labels follow the code** (D14): the Random note, "Cycle Every N Beats", the Beat Threshold range and help, Stem
+6. **Labels follow the code** (D14): the Random note, "Cycle Every N Beats", the Beat Threshold range and help, Stem
    Drift's description, "waveform line", and the other mismatches of [_spec/ui.md](_spec/ui.md). Behaviour unchanged.
    Check: each label and help reads as ui.md says.
-8. **Every hidden control gets UI** (D5): floor and release per route; gain slider to 40; onset weight and temperature
+7. **Every hidden control gets UI** (D5): floor and release per route; gain slider to 40; onset weight and temperature
    under the Prominence radar; stem provider (WebGPU / WASM) and delay in Stem Separation. Check: each control is
    there and moves what it names.
-9. **Prominence as a route source** (D13): each band's prominence (0–1, sums to 1) as a source next to the bands.
+8. **Prominence as a route source** (D13): each band's prominence (0–1, sums to 1) as a source next to the bands.
    Check: a route from a band's prominence drives its channel.
-10. **Clip Reactivity gets a clip** (D4): the card adds a sphere and a plane clip object; the clip position and size
-    targets move and scale them. Check: with the clip on, the routed drive moves and scales it on the beat.
+9. **Clip Reactivity gets a clip** (D4): the card adds a sphere and a plane clip object; the clip position and size
+   targets move and scale them. Check: with the clip on, the routed drive moves and scales it on the beat.
 
 ### Then
 
-11. **Whole Object is rigid** (D10): one pivot, the structure's centre. Check: a Whole Object rotation turns the capsid
+10. **Whole Object is rigid** (D10): one pivot, the structure's centre. Check: a Whole Object rotation turns the capsid
     as one body.
-12. **Bursts are not culled** (D18): while audio drives, bounding spheres grow by the largest motion the drives can
+11. **Bursts are not culled** (D18): while audio drives, bounding spheres grow by the largest motion the drives can
     give (frustum, LOD, fog, near/far). Check: a full burst close up, nothing pops out at the screen edge.
-13. **Record a dance** (D17): a Record button writes the Mol\* canvas to WebM (no SVG overlays). Check: record 10 s,
+12. **Record a dance** (D17): a Record button writes the Mol\* canvas to WebM (no SVG overlays). Check: record 10 s,
     the file plays the dance.
