@@ -4,7 +4,7 @@
  * audio file in git). Per animation frame it records the audio element's clock, the audio context's heard time, the
  * drums/bass stems and the symmetry-axes drive, then reports how long after each kick the drive peaks:
  *   media: against audio.currentTime (the element's clock)
- *   heard: against what leaves the speakers, heard = media - (ctx.currentTime - ctx.getOutputTimestamp().contextTime)
+ *   heard: against what leaves the speakers, heard = media - (ctx.currentTime - ts.contextTime - age), age = (performance.now() - ts.performanceTime) / 1000
  * Pass (spec _spec/audio-routing-spec.md): kick -> peak <= 50 ms + one frame, the drive under 10% of its peak before the
  * next kick (for the drums-only route), and gain x2 -> peak x2 (1.9-2.1).
  *
@@ -19,7 +19,11 @@ import { createRequire } from 'node:module';
 
 const argv = process.argv.slice(2);
 const arg = (name, def) => { const i = argv.indexOf(`--${name}`); return i >= 0 && argv[i + 1] && !argv[i + 1].startsWith('--') ? argv[i + 1] : def; };
-const port = +arg('port', 1338);
+const port = +arg('port', '');
+if (!Number.isInteger(port) || port <= 0) {
+    console.error('--port is required: the dev server of your lane (1350 and up, node ./scripts/build.mjs -a virus-on-the-rock -p <port>); 1338 is Ludo\'s and a rebuild there stops his song');
+    process.exit(2);
+}
 const preset = arg('preset', 'drums-bass-burst');
 const seconds = +arg('seconds', 8);
 const headed = argv.includes('--headed');
@@ -49,13 +53,15 @@ await page.waitForTimeout(12000);
 async function run(gainScale, routesSpec) {
     return page.evaluate(async ([gainScale, routesSpec, preset, seconds]) => {
         const app = window.__vorProbe; const m = app.viewer.plugin.managers.audioReactive;
-        // the click track: a 60 Hz sine with a 70 ms decay and a 2 ms noise click on the attack, every 0.5 s from 0.25 s
+        // the click track: a 60 Hz sine with a 70 ms decay and a 2 ms noise click on the attack (seeded, so the track is the same every run), every 0.5 s from 0.25 s
+        let seed = 12345; // an LCG: Math.random would change the click's noise from run to run
+        const rnd = () => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 4294967296; };
         const sr = 44100, n = Math.ceil((seconds + 2) * sr), pcm = new Int16Array(n);
         for (let k = 0.25; k < seconds + 2; k += 0.5) {
             const s0 = Math.round(k * sr);
             for (let i = 0; i < 0.3 * sr && s0 + i < n; i++) {
                 const t = i / sr;
-                const v = 0.8 * Math.sin(2 * Math.PI * 60 * t) * Math.exp(-t / 0.07) + (i < 0.002 * sr ? 0.3 * (Math.random() * 2 - 1) : 0);
+                const v = 0.8 * Math.sin(2 * Math.PI * 60 * t) * Math.exp(-t / 0.07) + (i < 0.002 * sr ? 0.3 * (rnd() * 2 - 1) : 0);
                 pcm[s0 + i] += Math.round(Math.max(-1, Math.min(1, v)) * 32767);
             }
         }
@@ -76,7 +82,9 @@ async function run(gainScale, routesSpec) {
             const f = () => {
                 const ts = ctx.getOutputTimestamp();
                 // the heard time: what the element's clock read when the sample now leaving the speakers entered the graph
-                const lag = ts.contextTime > 0 ? ctx.currentTime - ts.contextTime : NaN;
+                // ts is a pair (a context time, the performance time it leaves the speakers): age it to now
+                const age = (performance.now() - ts.performanceTime) / 1000;
+                const lag = ts.contextTime > 0 ? ctx.currentTime - ts.contextTime - age : NaN;
                 out.push([a.currentTime, a.currentTime - lag, m.stems.drums, m.stems.bass, m.drives.symAxis, lag]);
                 if (a.currentTime < seconds) requestAnimationFrame(f); else done();
             };
