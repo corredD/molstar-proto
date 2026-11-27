@@ -230,7 +230,13 @@ function steadyRun(n: number, stamp: (i: number) => number, latency: (i: number)
         }
         return { holds, skips, early, behindMax, aheadMax };
     };
-    return { stamps, rule, presented, stats };
+    /** over frames [from, to): the mean of rule - presented, in entries */
+    const meanLag = (from: number, to = n) => {
+        let sum = 0;
+        for (let i = from; i < to; i++) sum += rule[i] - presented[i];
+        return sum / (to - from);
+    };
+    return { stamps, rule, presented, stats, meanLag };
 }
 
 describe('AudioPresentedFrame steady steps (the read rule holds one entry per frame)', () => {
@@ -238,6 +244,47 @@ describe('AudioPresentedFrame steady steps (the read rule holds one entry per fr
         const rnd = random(1);
         const run = steadyRun(2000, i => (i * 1000 / 60 + (rnd() * 2 - 1) * 1.5) / 1000, () => 0.2);
         expect(run.stats(300)).toEqual({ holds: 0, skips: 0, early: 0, behindMax: 1, aheadMax: 0 });
+    });
+
+    it('120 Hz and 144 Hz, latency k frames exactly, ticks jittered +-1.5 ms: one entry per frame, never early, at most one behind', () => {
+        for (const fps of [120, 144]) {
+            for (const k of [2, 3, 4]) {
+                const rnd = random(3 + k);
+                const run = steadyRun(3000, i => (i * 1000 / fps + (rnd() * 2 - 1) * 1.5) / 1000, () => k / fps);
+                const s = run.stats(300);
+                expect([fps, k, s.holds, s.skips, s.early, s.aheadMax]).toEqual([fps, k, 0, 0, 0, 0]);
+                expect(s.behindMax).toBeLessThanOrEqual(1);
+            }
+        }
+    });
+
+    // The constants of the step tolerance, pinned from both sides. The read time sits `past` ms past the stamp of the
+    // newer entry once L steps from 3 frames to 2 at frame 300 (the rule moves two entries at once). Past the tolerance
+    // the picture is back on the rule (mean lag 0); inside it, it stays one behind (mean lag 1). One exit ends the band
+    // for good, so the ticks carry no random jitter here: `alternate` (+-1.5 ms, by parity) shortens every other
+    // interval to 3 ms less and keeps `past` exact for the same parity.
+    const bandLag = (fps: number, past: number, alternate = 0) => {
+        const r = steadyRun(1300, i => (i * 1000 / fps + (i % 2 ? alternate : -alternate)) / 1000, i => (i < 300 ? 3 : 2) / fps - past / 1000);
+        return r.meanLag(400, 1300);
+    };
+
+    it('the cap: 5.5 ms past a stamp is outside the band at 60 Hz and at 49 ms frames (a 6 ms cap keeps it one behind)', () => {
+        expect(bandLag(60, 5.5)).toBeLessThanOrEqual(0.1);
+        expect(bandLag(1000 / 49, 5.5)).toBeLessThanOrEqual(0.1);
+    });
+
+    it('the cap: 4.5 ms past a stamp is inside the band at 60 Hz and at 49 ms frames (a 4 ms cap lets it follow the rule)', () => {
+        expect(bandLag(60, 4.5)).toBeGreaterThanOrEqual(0.9);
+        expect(bandLag(1000 / 49, 4.5)).toBeGreaterThanOrEqual(0.9);
+    });
+
+    it('the floor: at 144 Hz, with ticks alternating +-1.5 ms (intervals of 3.9 and 9.9 ms), 2.6 ms past a stamp is inside the band (no floor: half of 3.9 ms is 2 ms)', () => {
+        expect(bandLag(144, 2.6, 1.5)).toBeGreaterThanOrEqual(0.9);
+    });
+
+    it('the half: at 144 Hz the band is half an interval (3.5 ms): 3.3 ms inside, 3.7 ms outside (a quarter would be the 3 ms floor, a whole one the 5 ms cap)', () => {
+        expect(bandLag(144, 3.3)).toBeGreaterThanOrEqual(0.9);
+        expect(bandLag(144, 3.7)).toBeLessThanOrEqual(0.1);
     });
 
     it('a clock in 5.3 ms quanta (256 samples at 48 kHz), 60 Hz, latency 200 ms: one entry per frame', () => {
@@ -261,6 +308,47 @@ describe('AudioPresentedFrame steady steps (the read rule holds one entry per fr
             expect([s.holds, s.skips, s.early, s.aheadMax]).toEqual([0, 0, 0, 0]);
             expect(s.behindMax).toBeLessThanOrEqual(1);
         }
+    });
+
+    // Ludo's Chrome: 49 ms frames, outputLatency 32 ms. The read time sits 17 ms past an entry's stamp (a third of a
+    // frame): the rule names that entry every frame. One tick 20 ms late (a missed vsync) makes the rule hold then
+    // move two; the picture must not stay one entry behind after it.
+    const frame49 = (late: (i: number) => boolean, seed: number) => {
+        const rnd = random(seed);
+        return (i: number) => (i * 49 + (rnd() * 2 - 1) * 1.5 + (late(i) ? 20 : 0)) / 1000;
+    };
+
+    it('49 ms frames, latency 32 ms, one late tick: back on the rule after it (mean lag <= 0.1 entry over 1000 frames)', () => {
+        const run = frame49(i => i === 100, 4);
+        const r = steadyRun(1200, run, () => 0.032);
+        expect(r.meanLag(200, 1200)).toBeLessThanOrEqual(0.1);
+        const s = r.stats(200, 1200);
+        expect([s.holds, s.skips, s.early, s.aheadMax]).toEqual([0, 0, 0, 0]);
+    });
+
+    it('49 ms frames, latency 32 ms, a late tick every 50 frames: on the rule between them, never early', () => {
+        const r = steadyRun(1200, frame49(i => i % 50 === 25, 5), () => 0.032);
+        expect(r.meanLag(200, 1200)).toBeLessThanOrEqual(0.1);
+        const s = r.stats(200, 1200);
+        expect([s.early, s.aheadMax]).toEqual([0, 0]);
+    });
+
+    it('49 ms frames, every latency from 33 to 42 ms (7 ms or more inside the interval), one late tick: back on the rule', () => {
+        for (let L = 33; L <= 42; L++) {
+            const r = steadyRun(1200, frame49(i => i === 100, 10 + L), () => L / 1000);
+            expect([L, r.meanLag(200, 1200) <= 0.1]).toEqual([L, true]);
+            expect(r.stats(200, 1200).early).toBe(0);
+        }
+    });
+
+    it('49 ms frames, a latency step from 60 to 42 ms (two entries at once, 7 ms inside the interval): on the rule after it', () => {
+        const r = steadyRun(1200, frame49(() => false, 7), i => i < 200 ? 0.06 : 0.042);
+        expect(r.meanLag(300, 1200)).toBeLessThanOrEqual(0.1);
+    });
+
+    it('a latency that drops from 32 ms to 0 (the context stops) presents the newest entry from that frame on', () => {
+        const r = steadyRun(600, frame49(() => false, 6), i => i < 300 ? 0.032 : 0);
+        for (let i = 300; i < 600; i++) expect(r.presented[i]).toBe(i);
     });
 
     it('latency 0: every frame presents the newest entry (the rule unchanged)', () => {

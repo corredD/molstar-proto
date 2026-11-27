@@ -68,6 +68,19 @@ const ScalarStride = RouteCountOffset + 1;
 
 const MinRouteStride = 16;
 
+/**
+ * How far past the newer entry's stamp the read time may be while the picture stays one entry behind the rule: half
+ * the interval before that entry, at least `MinStepTolerance`, at most `MaxStepTolerance`. The floor covers the tick
+ * jitter that shortens the interval itself (+-1.5 ms: two ticks 3 ms closer) at 120 and 144 Hz, where half an interval
+ * is 3.5-4 ms; the half is what scales with the frame; the cap keeps the band narrow at slow frames (5 ms of a 49 ms
+ * frame, not 24), since a read time in the band stays one entry behind for as long as it sits there.
+ */
+const StepTolerance = 0.5;
+/** s: one 128-frame audio clock step (2.7 ms at 48 kHz) plus a little tick jitter; the floor at fast frames */
+const MinStepTolerance = 0.003;
+/** s: +-1.5 ms of tick jitter (3 ms between two ticks) plus one 128-frame audio clock step (2.7 ms at 48 kHz) */
+const MaxStepTolerance = 0.005;
+
 function writeScalarSet(out: Float64Array, o: number, s: AudioReactiveScalarSet<DefaultAudioBandKey>) {
     out[o] = s.amplitude;
     out[o + 1] = s.peakAmplitude;
@@ -219,12 +232,15 @@ export class AudioPresentedFrame {
      * The rule: the newest entry stamped at or before `readTime`; with none, the oldest entry (start-up, a latency
      * longer than the ring). Never an entry older than the one presented now. Nothing pushed yet: nothing changes.
      *
-     * One-sided hysteresis: when the rule names the next entry or the one after it, the next entry is presented. With
-     * the read time a frame's multiple behind the stamps (L = 200 ms at 60 Hz), tick jitter or a clock in audio quanta
-     * makes the rule alone alternate hold and skip; this steps one entry per frame instead, at most one entry behind
-     * the rule and never ahead of it (never early). Any other jump follows the rule (a shorter latency, a stall), and
-     * the monotonic hold covers a longer one. A latency that shrinks by less than two frames can leave the picture one
-     * entry behind the rule until a larger jump re-syncs it.
+     * Hysteresis at the boundary: when the rule names the entry after the next one, and the read time is past that
+     * entry's stamp by less than the step tolerance (half the interval before it, from 3 to 5 ms), the next entry
+     * is presented instead. A read time that sits on a stamp boundary (L = 200 ms at 60 Hz, a clock in audio quanta)
+     * then steps one entry per frame, one behind the rule, instead of alternating hold and skip with the tick jitter;
+     * a read time further inside an interval follows the rule (32 ms at 49 ms frames: 17 ms past), so a late tick
+     * costs one hold and one skip, as the rule, and no lasting lag. The price is the band: a read time within the
+     * tolerance of a stamp stays one entry behind while it sits there. Never ahead of the rule (never early), at most
+     * one entry behind it; the newest entry is never held back (latency 0 follows the analyser). Any other jump
+     * follows the rule (a shorter latency, a stall), and the monotonic hold covers a longer one.
      */
     present(readTime: number) {
         if (this.pushed === this.first) return;
@@ -232,7 +248,10 @@ export class AudioPresentedFrame {
         let seq = this.pushed - 1;
         while (seq > this.first && s[(seq % cap) * ScalarStride + StampOffset] > readTime + 1e-9) seq--;
         const next = this.presentedSeq + 1;
-        if (this.presentedSeq >= 0 && next >= this.first && (seq === next || seq === next + 1)) seq = next;
+        if (this.presentedSeq >= 0 && next >= this.first && seq === next + 1 && seq < this.pushed - 1) {
+            const newer = s[(seq % cap) * ScalarStride + StampOffset], older = s[(next % cap) * ScalarStride + StampOffset];
+            if (readTime - newer < Math.min(MaxStepTolerance, Math.max(MinStepTolerance, StepTolerance * (newer - older))) - 1e-9) seq = next;
+        }
         if (seq <= this.presentedSeq) return;
         this.presentedSeq = seq;
 
