@@ -123,7 +123,8 @@ describe('stem separator', () => {
             const p2 = sep.setModel('htdemucs', 'wasm');
             await flush();
             expect(modules.length).toBe(2);
-            expect(statuses).toContain('loading');
+            // the old code left the status at error: the retry shows as loading
+            expect(sep.currentStatus.state).toBe('loading');
             modules[1].resolve();
             await p2;
             expect(types()).toEqual(['unload', 'load']);
@@ -138,6 +139,21 @@ describe('stem separator', () => {
             await p1;
             expect(sep.currentStatus.state).toBe('off');
             expect(statuses).not.toContain('error');
+        });
+
+        it('the same request, Off, the same request again during the tap load: one load after the last unload, the tap on once', async () => {
+            const { sep, modules } = make();
+            const p1 = sep.setModel('htdemucs', 'wasm');
+            await flush();
+            await sep.setModel(undefined, 'wasm');
+            const p2 = sep.setModel('htdemucs', 'wasm');
+            await flush();
+            modules[0].resolve();
+            await Promise.all([p1, p2]);
+            const t = types();
+            expect(t.filter(x => x === 'load').length).toBe(1);
+            expect(t.lastIndexOf('load')).toBeGreaterThan(t.lastIndexOf('unload'));
+            expect(taps[0].messages.filter(m => m.on === true).length).toBe(1);
         });
 
         it('null control: the success path calls addModule once', async () => {
