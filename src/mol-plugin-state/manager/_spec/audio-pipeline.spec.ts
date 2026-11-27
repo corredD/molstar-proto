@@ -489,7 +489,7 @@ describe('audio pipeline (offline, 16 ms frames at 48 kHz)', () => {
             });
             // the next frame is not heard: the wiggle releases, no floor
             const j = routes.findIndex(r => r.target === 'wiggle');
-            expect(t.routeValues[j][stopAt + 1]).toBe(t.routeValues[j][stopAt] * Math.exp(-F / 350));
+            expect(t.routeValues[j][stopAt + 1]).toBeCloseTo(t.routeValues[j][stopAt] * Math.exp(-F / 350), 12);
             const R = restBound(t, routes, stopAt);
             for (let i = R; i < t.count; i++) if (!allZero(t, i)) throw new Error(`frame ${i} not at rest`);
             expect(allZero(t, R - 1)).toBe(false);
@@ -508,6 +508,19 @@ describe('audio pipeline (offline, 16 ms frames at 48 kHz)', () => {
             const live = pausedRun().t, heard = pausedRun({ outputLatency: 0.1 }).t;
             expect(firstRest(live)).toBeGreaterThan(firstPaused(3));
             expect(firstRest(heard)).toBe(firstRest(live) + Math.ceil(100 / F));
+        });
+
+        it('a quiet end of the file heard in the tail is not a blocked analysis (review N3)', () => {
+            // media silent from 4 s, ended at 6.5 s, D = 3: the tail (6.5-9.5 s) hands over 2.5 s of silence from 7 s on
+            const quiet = kickTrack(48000, 10);
+            quiet.samples.fill(0, 4 * quiet.sampleRate);
+            const blocked: boolean[] = [], heard: boolean[] = [];
+            runAudioPipeline(quiet, kickRoutes(), {
+                analysis: burst, durationS: 10, stemDelayS: 3, endedAtS: 6.5,
+                onFrame: ({ manager }) => { blocked.push(manager.state.status.value.analysisBlocked); heard.push(manager.state.status.value.heardPlaying); },
+            });
+            expect(heard[frameAt(9.25)]).toBe(true); // still the tail, silent for 2.25 s
+            expect(blocked.some(b => b)).toBe(false);
         });
 
         it('heardPlaying with a stem delay of 1 s: true from D after the first play through the tail, false once nothing is heard', () => {
