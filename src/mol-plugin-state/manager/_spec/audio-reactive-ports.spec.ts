@@ -23,6 +23,7 @@ describe('AudioReactiveAnimationManager ports', () => {
             createAnalyser: () => analyser,
             createMediaElementSource: () => ({ connect() { }, disconnect() { } }),
             createDelay: () => ({ delayTime: { value: 0, setValueAtTime() { } }, connect() { }, disconnect() { } }),
+            createGain: () => ({ gain: { value: 1 }, connect() { }, disconnect() { } }),
             resume: async () => { }, close: async () => { },
         };
         const frameS = 0.016, k = 3;
@@ -57,7 +58,7 @@ describe('AudioReactiveAnimationManager ports', () => {
         expect(manager.state.status.value.heardPlaying).toBe(true);
         manager.dispose();
     });
-    it('stop, a new source and clear flush the delay line: the source -> delay link alone is cut, a new delay (same time) goes in its place', async () => {
+    it('stop, a new source and clear flush both delay lines (heard, analysed): the source -> delay links alone are cut, new delays (same times) go in their place', async () => {
         const log: string[] = [];
         type Node = { name: string, connect(n: Node): void, disconnect(n?: Node): void };
         const node = (name: string, extra: object = {}): Node => ({
@@ -80,6 +81,7 @@ describe('AudioReactiveAnimationManager ports', () => {
                 delayNodes.push(d);
                 return d;
             },
+            createGain: () => node('sink', { gain: { value: 1 } }),
             resume: async () => { }, close: async () => { },
         };
         const ports: AudioReactivePorts = { createContext: () => ctx as unknown as AudioContext, outputClock: () => ({ now: () => 0, latency: () => 0 }) };
@@ -90,13 +92,19 @@ describe('AudioReactiveAnimationManager ports', () => {
         const manager = new AudioReactiveAnimationManager({} as ConstructorParameters<typeof AudioReactiveAnimationManager>[0], ports);
         manager.state.audioPlayer.next(audio as unknown as HTMLAudioElement);
         await manager.play();
-        expect(log).toEqual(['source->delay1', 'delay1->analyser', 'analyser->destination']);
+        // what is heard: source -> delay -> speakers; what is analysed: source -> analysis delay -> analyser -> silent sink
+        expect(log).toEqual(['source->delay1', 'delay1->destination', 'source->delay2', 'delay2->analyser', 'analyser->sink', 'sink->destination']);
+        const flushed = (heard: number, analysed: number) => [
+            `source-x-delay${heard}`, `delay${heard}-x-all`, `source->delay${analysed + 1}`, `delay${analysed + 1}->destination`,
+            `source-x-delay${analysed}`, `delay${analysed}-x-all`, `source->delay${analysed + 2}`, `delay${analysed + 2}->analyser`,
+        ];
         delayNodes[0].delayTime.value = 6;
+        delayNodes[1].delayTime.value = 5.9;
 
         log.length = 0;
         manager.stop();
-        expect(log).toEqual(['source-x-delay1', 'delay1-x-all', 'source->delay2', 'delay2->analyser']);
-        expect(delayNodes[1].delayTime.value).toBe(6);
+        expect(log).toEqual(flushed(1, 2));
+        expect([delayNodes[2].delayTime.value, delayNodes[3].delayTime.value]).toEqual([6, 5.9]);
 
         log.length = 0;
         // a new source (loadUrl): the element already has its metadata
@@ -110,14 +118,15 @@ describe('AudioReactiveAnimationManager ports', () => {
         } finally {
             if (hadMediaElement) g.HTMLMediaElement = mediaElement; else delete g.HTMLMediaElement;
         }
-        // flushed first (the same time), then the stem params set the delay again (no model: 0)
-        expect(log.slice(0, 4)).toEqual(['source-x-delay2', 'delay2-x-all', 'source->delay3', 'delay3->analyser']);
-        delayNodes[2].delayTime.value = 6;
+        // flushed first (the same times), then the stem params set the delays again (no model, no lookahead: 0)
+        expect(log.slice(0, 8)).toEqual(flushed(3, 4));
+        delayNodes[4].delayTime.value = 6;
+        delayNodes[5].delayTime.value = 5.9;
 
         log.length = 0;
         manager.clear();
-        expect(log).toEqual(['source-x-delay3', 'delay3-x-all', 'source->delay4', 'delay4->analyser']);
-        expect(delayNodes[3].delayTime.value).toBe(6);
+        expect(log).toEqual(flushed(5, 6));
+        expect([delayNodes[6].delayTime.value, delayNodes[7].delayTime.value]).toEqual([6, 5.9]);
         manager.dispose();
     });
 });

@@ -763,6 +763,40 @@ describe('audio pipeline (offline, 16 ms frames at 48 kHz)', () => {
         }
     });
 
+    // lane lookahead-sync: the analysis reads the source through a delay of D - lead, so a kick drives its peak on the
+    // frame it is heard (routing spec row "kick -> peak with a delay"); with lookahead off nothing changes
+    describe('lookahead', () => {
+        const F = 16, D = 1;
+        const ambientRoutes = () => getPresetRoutes(getAudioReactivePreset('ambient-pulse'));
+        const heardKicks = (L: number) => KickTimes(10).map(k => k + D + L);
+        const lookaheadRun = (routes: () => AudioRoute[], analysis: typeof burst, lookahead: boolean, L = 0, opts: Parameters<typeof runAudioPipeline>[2] = {}) =>
+            runAudioPipeline(kickTrack(48000, 10), routes(), { analysis, durationS: 10 + D, stemDelayS: D, lookahead, outputLatency: L, ...opts });
+        const lagOf = (t: AudioPipelineTrace, L: number, target: AudioRouteTarget) => kickPeakStats(t, heardKicks(L), target, 2);
+
+        for (const L of [0, 0.032]) {
+            for (const [name, routes] of [['full preset', getDefaultAudioRoutes], ['bass only', bassOnly]] as const) {
+                it(`${name}, Drums & Bass Burst, D 1 s, latency ${L * 1000} ms: the heard kick -> symAxis peak within one frame`, () => {
+                    const s = lagOf(lookaheadRun(routes, burst, true, L), L, 'symAxis');
+                    process.stdout.write(`lookahead: ${name} L ${L * 1000} ms: heard kick -> peak ${s.lagMedian} frames (${s.lagMin}..${s.lagMax})\n`);
+                    expect(Math.abs(s.lagMedian)).toBeLessThanOrEqual(1);
+                });
+            }
+            it(`drums only (onset route), latency ${L * 1000} ms: median within one frame, never more than 2 frames early`, () => {
+                const s = lagOf(lookaheadRun(drumsOnly, burst, true, L), L, 'symAxis');
+                expect(Math.abs(s.lagMedian)).toBeLessThanOrEqual(1);
+                expect(s.lagMin).toBeGreaterThanOrEqual(-2);
+            });
+        }
+
+        for (const target of ['wiggle', 'object'] as const) {
+            it(`Ambient Pulse (${target}), D 1 s: the heard kick -> peak within one frame`, () => {
+                const s = lagOf(lookaheadRun(ambientRoutes, ambient, true), 0, target);
+                process.stdout.write(`lookahead: ambient ${target}: heard kick -> peak ${s.lagMedian} frames (${s.lagMin}..${s.lagMax})\n`);
+                expect(Math.abs(s.lagMedian)).toBeLessThanOrEqual(1);
+            });
+        }
+    });
+
     describe('a route on a motion that is off', () => {
         // the motion each target needs (copy of enableMotionsFor, apps/virus-on-the-rock/ui/cards/audio-routing.tsx)
         const flagOf = (t: AudioRouteTarget) => t === 'wiggle' ? 'atomWiggleEnabled'
