@@ -5,7 +5,7 @@
  */
 
 import { AudioOutputClock } from '../audio-presented-frame';
-import { AudioReactiveAnimationManager, AudioReactivePorts } from '../audio-reactive-animation';
+import { AudioReactiveAnimationManager, AudioReactivePorts, getAnalysisLeadSeconds } from '../audio-reactive-animation';
 
 /** the ports seam: the manager makes its context and reads its clock only through the ports it is given */
 describe('AudioReactiveAnimationManager ports', () => {
@@ -58,7 +58,7 @@ describe('AudioReactiveAnimationManager ports', () => {
         expect(manager.state.status.value.heardPlaying).toBe(true);
         manager.dispose();
     });
-    it('stop, a new source and clear flush both delay lines (heard, analysed): the source -> delay links alone are cut, new delays (same times) go in their place', async () => {
+    it('stop, a new source and clear flush both delay lines (heard, analysed): the source -> delay links alone are cut, new delays (the params\' times) go in their place', async () => {
         const log: string[] = [];
         type Node = { name: string, connect(n: Node): void, disconnect(n?: Node): void };
         const node = (name: string, extra: object = {}): Node => ({
@@ -77,7 +77,7 @@ describe('AudioReactiveAnimationManager ports', () => {
             createAnalyser: () => analyser,
             createMediaElementSource: () => node('source'),
             createDelay: () => {
-                const d = node(`delay${++delays}`, { delayTime: { value: 0, setValueAtTime(v: number) { this.value = v; } } }) as Node & { delayTime: { value: number } };
+                const d = node(`delay${++delays}`, { delayTime: { value: 0, setValueAtTime() { } } }) as Node & { delayTime: { value: number } };
                 delayNodes.push(d);
                 return d;
             },
@@ -100,13 +100,16 @@ describe('AudioReactiveAnimationManager ports', () => {
             `source-x-delay${heard}`, `delay${heard}-x-all`, `source->delay${analysed + 1}`, `delay${analysed + 1}->destination`,
             `source-x-delay${analysed}`, `delay${analysed}-x-all`, `source->delay${analysed + 2}`, `delay${analysed + 2}->analyser`,
         ];
-        delayNodes[0].delayTime.value = 6;
-        delayNodes[1].delayTime.value = 5.9;
+        // a delay of 6 s with lookahead; the fake's setValueAtTime leaves .value as it was (a browser shows it a render
+        // quantum later): the new nodes take the delays from the params, not the old nodes' value
+        manager.setParams({ lookahead: true, stemDelaySeconds: 6 });
+        const times = [6, 6 - getAnalysisLeadSeconds(manager.state.params.value, 48_000)];
+        expect([delayNodes[0].delayTime.value, delayNodes[1].delayTime.value]).toEqual([0, 0]);
 
         log.length = 0;
         manager.stop();
         expect(log).toEqual(flushed(1, 2));
-        expect([delayNodes[2].delayTime.value, delayNodes[3].delayTime.value]).toEqual([6, 5.9]);
+        expect([delayNodes[2].delayTime.value, delayNodes[3].delayTime.value]).toEqual(times);
 
         log.length = 0;
         // a new source (loadUrl): the element already has its metadata
@@ -120,15 +123,13 @@ describe('AudioReactiveAnimationManager ports', () => {
         } finally {
             if (hadMediaElement) g.HTMLMediaElement = mediaElement; else delete g.HTMLMediaElement;
         }
-        // flushed first (the same times), then the stem params set the delays again (no model, no lookahead: 0)
         expect(log.slice(0, 8)).toEqual(flushed(3, 4));
-        delayNodes[4].delayTime.value = 6;
-        delayNodes[5].delayTime.value = 5.9;
+        expect([delayNodes[4].delayTime.value, delayNodes[5].delayTime.value]).toEqual(times);
 
         log.length = 0;
         manager.clear();
         expect(log).toEqual(flushed(5, 6));
-        expect([delayNodes[6].delayTime.value, delayNodes[7].delayTime.value]).toEqual([6, 5.9]);
+        expect([delayNodes[6].delayTime.value, delayNodes[7].delayTime.value]).toEqual(times);
         manager.dispose();
     });
 });

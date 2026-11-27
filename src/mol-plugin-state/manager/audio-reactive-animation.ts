@@ -649,8 +649,9 @@ export class AudioReactiveAnimationManager {
     }
 
     /**
-     * Silences what the delay lines still hold (stop, a new source, clear): new delay nodes in place of the old, the
-     * same delays. Only the source -> delay links are cut: the stem separator taps the source too
+     * Silences what the delay lines still hold (stop, a new source, clear): new delay nodes in place of the old, at the
+     * params' delays (an old node's value lags a setValueAtTime by a render quantum). Only the source -> delay links are
+     * cut: the stem separator taps the source too
      */
     private flushDelayLine() {
         const ctx = this.audioContext, source = this.sourceNode, old = this.delayNode, oldAnalysis = this.analysisDelayNode, analyser = this.analyser;
@@ -659,13 +660,13 @@ export class AudioReactiveAnimationManager {
         source.disconnect(old);
         old.disconnect();
         const delay = this.delayNode = ctx.createDelay(30);
-        delay.delayTime.value = old.delayTime.value;
+        delay.delayTime.value = getAudioDelaySeconds(this.state.params.value);
         source.connect(delay);
         delay.connect(ctx.destination);
         source.disconnect(oldAnalysis);
         oldAnalysis.disconnect();
         const analysis = this.analysisDelayNode = ctx.createDelay(30);
-        analysis.delayTime.value = oldAnalysis.delayTime.value;
+        analysis.delayTime.value = this.getAnalysisDelaySeconds(ctx);
         source.connect(analysis);
         analysis.connect(analyser);
     }
