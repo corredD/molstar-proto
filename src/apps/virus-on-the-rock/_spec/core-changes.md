@@ -84,7 +84,8 @@ manager has no audio and no Who.
 - **`audio-reactive-animation.ts`**: the manager. *needs work*: `tick` skips `router.update` without audio (drives
   freeze); `stemModel` description says WebGPU only.
 - **`audio-routing.ts`** (tested; curve, duck, `songLoudness`, background, camera step wip). *votr only* as is (its CPU
-  targets exist only in the app); the router core is generic.
+  targets exist only in the app); the router core is generic. A non-finite source or `dtMs` reads as 0 in
+  `AudioRouter.update` (router-nan-guard, 2026-11-26; commit `audio routing: a non-finite source reads as 0…`).
 - **`audio-stems/`** (DSP tested): Spleeter, HTDemucs, SCNet runners, worker, separator. *votr only*; weights on
   Hugging Face `resolve/main` (not pinned).
 - **`assembly-symmetry-axis.ts`**: axes per structure from RCSB symmetry; mesoscale parts share a middle (wip).

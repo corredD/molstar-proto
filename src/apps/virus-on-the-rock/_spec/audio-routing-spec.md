@@ -46,7 +46,10 @@ audio element ─► analyser (band envelopes, beat) ─► stems ─► router 
 4. **A route set is routes only.** Loading one does not change the analysis or the motion shapes. It turns on a motion
    target that its routes need and that is off: Atom Wiggle for wiggle; Instance Beats for the symmetry axes and the
    random, axis and normal instance motions.
-5. **No change is shown to Ludo before it passes the expectations below.** Each source edit rebuilds and reloads the
+5. **A non-finite source reads as 0.** One NaN or infinite stem, band, amplitude or beat, or a non-finite `dtMs`, is read
+   as 0 where the router reads it, before the song average, onset and curve; the route recovers on the next finite
+   frame, as a fresh route would. Nothing else in the route math changes.
+6. **No change is shown to Ludo before it passes the expectations below.** Each source edit rebuilds and reloads the
    open page, which stops the song and resets the routes. Do not edit while Ludo is testing.
 
 ## Expectations (measured, `data-local/tests/clicksync.mjs`, click track `data-local/kick120.wav`)
