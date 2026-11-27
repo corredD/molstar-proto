@@ -15,7 +15,7 @@
 
 import { AudioReactivePresetDefinitions, getAudioReactivePreset, getPresetRoutes } from '../../helpers/audio-reactive-presets';
 import { AudioRoute, AudioRouteTarget, getDefaultAudioRoutes } from '../audio-routing';
-import { activeTargets, AudioSignal, bassTone, expectGoldenRows, formatGolden, kickPeakStats, kickTrack, runAudioPipeline, silence, songMix } from './audio-pipeline-helper';
+import { activeTargets, AudioSignal, bassTone, formatGolden, goldenDiffs, kickPeakStats, kickTrack, runAudioPipeline, silence, songMix } from './audio-pipeline-helper';
 
 const Regenerate = !!process.env.AUDIO_GOLDEN;
 const Every = 8;
@@ -343,12 +343,18 @@ describe('audio pipeline (offline, 16 ms frames at 48 kHz)', () => {
     for (const name of Object.keys(Runs)) {
         it(`${name}: the drives follow the golden trace`, () => {
             const { trace } = run(name);
-            expectGoldenRows(expect, trace, Runs[name].cols, GOLDEN[name], Every);
+            expect(goldenDiffs(trace, Runs[name].cols, GOLDEN[name], Every)).toEqual([]);
             // no other channel moves
             const active = activeTargets(trace).filter(t => !Runs[name].cols.includes(t));
             expect(active).toEqual([]);
         });
     }
+
+    it('the golden comparator is sensitive: an illumination release +10 ms makes a row differ', () => {
+        const routes = getDefaultAudioRoutes().map(r => r.target === 'illumination' ? { ...r, releaseMs: r.releaseMs + 10 } : r);
+        const { trace } = run('burst/kick', routes);
+        expect(goldenDiffs(trace, Runs['burst/kick'].cols, GOLDEN['burst/kick'], Every).length).toBeGreaterThan(0);
+    });
 
     for (const name of Object.keys(DERIVED)) {
         it(`${name}: kick -> symAxis peak lag, rest/peak`, () => {

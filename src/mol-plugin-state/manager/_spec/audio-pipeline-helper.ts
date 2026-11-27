@@ -202,13 +202,19 @@ export function activeTargets(trace: AudioPipelineTrace) {
     return (Object.keys(trace.drives) as AudioRouteTarget[]).filter(t => trace.drives[t].some(x => x !== 0));
 }
 
-/** compares a trace with its inline golden rows (same row picking as formatGolden) */
-export function expectGoldenRows(expectFn: (x: number) => { toBeCloseTo(v: number, d: number): void }, trace: AudioPipelineTrace, cols: readonly AudioRouteTarget[], golden: string, every = 4, seconds = 4, digits = 3) {
+/**
+ * compares a trace with its inline golden rows (same row picking as formatGolden): the cells off by more than
+ * max(1e-4, 1e-3 x |expected|), as text. Relative, so a small column (illumination, 0.001-0.008) is held as tightly as a
+ * large one (symAxis, up to 11); the 1e-4 floor covers the golden's 4-decimal rounding.
+ */
+export function goldenDiffs(trace: AudioPipelineTrace, cols: readonly AudioRouteTarget[], golden: string, every = 4, seconds = 4): string[] {
     const got = formatGolden(trace, cols, every, seconds).split('\n');
     const want = golden.trim().split('\n');
-    if (got.length !== want.length) throw new Error(`golden has ${want.length} rows, the trace ${got.length}`);
+    if (got.length !== want.length) return [`golden has ${want.length} rows, the trace ${got.length}`];
+    const diffs: string[] = [];
     got.forEach((row, r) => {
         const g = row.split(' ').map(Number), w = want[r].trim().split(/\s+/).map(Number);
-        w.forEach((x, c) => expectFn(g[c]).toBeCloseTo(x, digits));
+        w.forEach((x, c) => { if (!(Math.abs(g[c] - x) <= Math.max(1e-4, 1e-3 * Math.abs(x)))) diffs.push(`row ${r} col ${c}: ${g[c]} vs golden ${x}`); });
     });
+    return diffs;
 }
