@@ -89,9 +89,8 @@ manager has no audio and no Who.
 - **`audio-reactor.ts`**, **`audio-prominence.ts`** (tested): bands, flux beat, prominence. *candidate* as a small
   analysis module; the resampler needs an anti-alias filter, analysis reads the oldest part of the buffer.
 - **`audio-reactive-animation.ts`**: the manager. *needs work*: `tick` skips `router.update` without audio (drives
-  freeze); `stemModel` description says WebGPU only. read-only getters `stems` and `routeValues` (next to `frame` and `drives`) let the
-  offline pipeline spec (`manager/_spec/audio-pipeline.spec.ts`, which drives the real `tick`) read each frame's stems and
-  route values (measure, 2026-11-27; no behaviour change). The test fakes set two private fields (`audioContext`,
+  freeze); `stemModel` description says WebGPU only. a read-only `routeValues` getter (next to `frame`, `stems` and `drives`) lets the
+  offline pipeline spec (`manager/_spec/audio-pipeline.spec.ts`, which drives the real `tick`) read each frame's route values (measure, 2026-11-27; no behaviour change). The test fakes set two private fields (`audioContext`,
   `analyser`) through one documented cast in `_spec/audio-pipeline-helper.ts`.
 - **Measuring stick (measure, 2026-11-27; test and tooling only)**: `mol-plugin-state/manager/_spec/audio-pipeline-helper.ts` and
   `audio-pipeline.spec.ts` (offline pipeline, golden traces, drives the real `tick`), and `scripts/votr-sync/clicksync.mjs`
