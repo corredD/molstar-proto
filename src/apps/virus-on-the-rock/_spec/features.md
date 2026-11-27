@@ -52,8 +52,8 @@ References are `file › symbol`, the file relative to `src/apps/virus-on-the-ro
 | Audio file | Input or drop (`audio/*`, mp3, wav, ogg, m4a, aac, flac): load, play; routes kept | Built | `app.tsx › loadAudioFile` |
 | Audio URL | Load URL or Enter; `.pls`, `.m3u`, `.m3u8` resolved to their first entry; routes kept | Built | `app.tsx › isPlaylistAudioUrl`, `resolveAudioUrl`, `loadAudioUrl` |
 | Radio presets | Plus FM, Maple Leaf Rag, FIP, Le Son Parisien (Cloudflare proxy); picking one fills the URL, Load plays it | Built | `catalog.ts › AudioUrlPresets` |
-| Play / Pause | Pause brings every drive to rest over its release (D2) | Partial | paused, routes settle to their floors: the default wiggle floor 0.2 keeps atoms moving |
-| Clear / no audio | Every channel at rest; the router reset (D2) | **Broken** | `tick` returns before `router.update` (audio-reactive-animation.ts:612-619): drives freeze at their last value (a capsid left open, a camera left spinning) |
+| Play / Pause | Pause brings every drive to rest over its release (D2) | Tested | sound-stops: no floor once nothing is heard, exactly 0 below 1e-3 (≈ 2–2.7 s for Drums & Bass Burst); with stems on, the delay line's tail first (`audio-pipeline.spec.ts` › rest once the sound stops) |
+| Clear / no audio | Every channel at rest; the router reset (D2) | Tested | sound-stops: Clear resets the router and flushes the delay line, every drive 0 on the next frame. A source removed without Clear still freezes the drives |
 | CORS-blocked stream | Say so instead of a still virus | Built | `analysisBlocked` after 2 s of silence while playing, `ui/cards/audio-routing.tsx › AudioAnalysisWarning` |
 | Microphone / line in | Dance to a live room | Not planned (D16) | no `getUserMedia` |
 | Sync | Kick → symmetry burst peak ≤ 50 ms + a frame | Measured | 35–39 ms median, separation off (routing spec). Separation on: not measured |
@@ -217,7 +217,7 @@ edit the code while testing (each rebuild reloads).
 7. Audio Routing: + Instance wave; Curve Log on a route; Save as "test"; Defaults; Saved… › test brings it back; Export,
    Import the file. Saved… › Sidechain Pump: the other routes dip on each kick.
 8. Presets: Subtle Drift, then Drums & Bass Burst: the routes are replaced each time.
-9. Pause: the burst stops (the atoms still wiggle a little, floor 0.2). Play.
+9. Pause: the burst stops and the atoms come to rest within ~3 s (no floor). Play. Stop: no sound after it.
 10. Visualizers: each toggle; drag the ring and its handle.
 11. Who within one representation: on 2TBV alone, narrow the drums route to one chain (Who › Chain). Only that chain's
     instances should burst; if other chains move with it, the material-uniform leak (§8) is real.

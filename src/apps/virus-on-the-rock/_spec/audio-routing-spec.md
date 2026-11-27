@@ -25,8 +25,10 @@ audio element ─► analyser (band envelopes, beat) ─► stems ─► router 
   1. Raw source value.
   2. Onset mode only: how much it just rose, over that route's own running peak.
   3. Curve.
-  4. `floor + gain × value`.
-  5. Rise at once, fall over `releaseMs`.
+  4. `floor + gain × value` while sound is heard (playing, or the stem delay line still draining after a pause or the
+     end of the file); once nothing is heard (and before the first play), 0: no floor.
+  5. Rise at once, fall over `releaseMs`. Once nothing is heard, a value released below 1e-3 (`AudioRestCutoff`, Ludo
+     to confirm) is 0: it rests at exactly 0, never a denormal tail.
   6. Duck.
   7. Sum per channel, capped at 40.
 
@@ -67,7 +69,13 @@ capsid, the run is headless at about 30 fps.
 | routes survive a song load (`keep.mjs`) | same routes | same ✔ |
 | symmetry axes at rest, 0.4–0.5 s after a kick (Drums & Bass Burst, vitalic.mp3, `sync.mjs`) | p10 ≤ 0.1 | 0.08 ✔ |
 | kick → symmetry-axes peak, against what is **heard** (`scripts/votr-sync/clicksync.mjs`, generated click track: media time − (ctx.currentTime − getOutputTimestamp().contextTime − the timestamp's age)) | ≥ 0 and ≤ 50 ms + one frame | heard-frame, 2026-11-27 (after the gate's fix step), headless, outputLatency 32 ms: full preset 42 ms median (35..67), drums only 38 ms (20..49), bass only 54 ms (35..84), at ~38 ms per frame (limit 88 ms) ✔ (51 / 48 / 57 ms before the fix step). Before (staging): full preset 11 ms median (−8..30), drums only 4 ms (−9..24): the drive was read from the analyser, ahead of the speakers by the output latency (−156 ms on AirPlay, review issue 1). The visuals now read the presented frame, the analysis of `currentTime − outputLatency` (`audio-presented-frame.ts`); offline (no tick jitter), latency L shifts the drives by exactly ⌈L / frame⌉ frames (`audio-pipeline.spec.ts`); with tick jitter the presented entry steps one per frame, at most one entry behind that (`audio-presented-frame.spec.ts`) |
-| rest after a pause: every drive exactly 0 within the longest release (+1 frame: 400 + 16 ms), measured at latency 0 (offline, `audio-pipeline.spec.ts`); on screen it comes the output latency L later, as the pause is heard L later | 0 (not a tail, not a floor) | not 0 today: 1.5 s after a pause symAxis is 0.033 and the wiggle holds its 0.2 floor plus a tail (`it.failing` in `audio-pipeline.spec.ts`). **To be met by lane `sound-stops`** |
+| rest after a pause, no delay: every drive and route value exactly 0 (offline, `audio-pipeline.spec.ts` › rest once the sound stops, latency 0; on screen L later) | by frame p − 1 + ⌊max_j τ_j · ln(v_j / 1e-3) / 16⌋ + 1 (p the first paused frame, v_j each route's value on the last playing frame, τ_j its release), and 0 until play; not one frame earlier. Drums & Bass Burst ≤ 2.7 s (wiggle 2.2 at 350 ms) | sound-stops, 2026-11-27: kick track, pause at 3 s: exact 0 after 2064 ms, the formula's frame exactly ✔ (before: 1.5 s after a pause symAxis 0.033 and the wiggle at its 0.2 floor plus a tail) |
+| no floor once stopped | the wiggle follows v · e^(−16k/350) from its last playing value, no 0.2; 0 before the first play | sound-stops, 2026-11-27 ✔ (9 digits) |
+| pause or end of file with a stem delay D | the drives are those of an unpaused run (`toBe`) for D, then the rest row from the values at the last frame heard. Real use: D (6–11 s) + ≤ 2.7 s | sound-stops, 2026-11-27, D = 1 s offline (fake delay node, stub separator), pause and end of file ✔; the separator samples t − D through the tail, never after |
+| clear | every drive, route value and scope slot 0 on the next frame (the router is reset) | sound-stops, 2026-11-27 ✔ |
+| stop, a new source | as a pause with D = 0: the delay line is flushed, nothing heard after (browser: no audio after Stop, not checked by hand yet) | sound-stops, 2026-11-27, D = 1 s: releases from the stop frame, no separator sample after ✔; the flush's wiring (`audio-reactive-ports.spec.ts`) ✔ |
+| a released drive, once nothing is heard | each route value 0 or ≥ 1e-3, never a denormal | sound-stops, 2026-11-27 ✔ (while playing a value can still go denormal on an onset route: invisible, the frame redraws anyway) |
+| the clip pass on a paused song | the release passes, one pass that writes the base values back, then no call (`cpu-channels.spec.ts`) | sound-stops, 2026-11-27 ✔ (before: the drive 1.2e-8 at 8 s, a pass every frame) |
 | no route on a motion that is off (offline, `audio-pipeline.spec.ts`) | a preset that turns a motion off makes no route for it | met since lane `motions-follow-routes` (it made a route for `ambient-pulse`'s `amplitude → instanceRandom`; the other presets passed) ✔ |
 | axes between kicks at 120 BPM, as a share of the peak | for information | `data-local/tests/clicksync.mjs`, `kick120.wav`, 2026-11-26: drums only 24 %, bass only 52 %, full preset 41 %; `scripts/votr-sync/clicksync.mjs`, 2026-11-27: 27 %, 66 %, 47 % (a different click, a 60 Hz decay) |
 
