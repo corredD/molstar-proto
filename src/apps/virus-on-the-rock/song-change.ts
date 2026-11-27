@@ -9,6 +9,9 @@
  * - otherwise an estimate from the sound: a gap of near silence, or the spectrum's balance shifting for good.
  */
 
+import { type AudioReactiveStatus } from '../../mol-plugin-state/manager/audio-reactive-animation';
+import { DefaultAudioBandDefinitions } from '../../mol-plugin-state/manager/audio-reactor';
+
 /** the sound-based estimate's settings, tuned on a recording of the default stream against its real title changes */
 export const SongChangeParams = {
     /** one feature vector per bin of this many ms */
@@ -94,6 +97,22 @@ export class SongChangeDetector {
         this.reset();
         this.onChange(reason);
     }
+}
+
+/** what the song detection reads from the audio status */
+export type SongFeedStatus = Pick<AudioReactiveStatus, 'heardPlaying' | 'frame'>;
+
+/**
+ * One audio status emission into the detector: the raw bands and loudness while what is heard plays (`heardPlaying`,
+ * not the live `playing`: on a resume the silence still heard is not a gap between songs), with the time since the
+ * last feed (capped at 200 ms). Returns the time of this feed, or 0 when not fed (the next feed then counts no time).
+ */
+export function feedSongDetector(detector: SongChangeDetector, status: SongFeedStatus, nowMs: number, lastFeedMs: number) {
+    if (!status.heardPlaying) return 0;
+    const dt = lastFeedMs > 0 ? Math.min(200, nowMs - lastFeedMs) : 0;
+    const raw = status.frame.raw;
+    detector.feed(DefaultAudioBandDefinitions.map(b => raw.frequencyBands[b.key]), raw.amplitude, dt);
+    return nowMs;
 }
 
 /** normalized L1 between the mean of the recent bins and the mean of the bins before the gap */

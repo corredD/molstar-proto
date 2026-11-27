@@ -14,8 +14,9 @@
  */
 
 import { AudioReactivePresetDefinitions, getAudioReactivePreset, getPresetRoutes } from '../../helpers/audio-reactive-presets';
+import { AudioReactiveFrame, DefaultAudioBandDefinitions, DefaultAudioBandKey } from '../audio-reactor';
 import { AudioRoute, AudioRouteTarget, getDefaultAudioRoutes } from '../audio-routing';
-import { activeTargets, AudioSignal, bassTone, formatGolden, goldenDiffs, kickPeakStats, kickTrack, runAudioPipeline, silence, songMix } from './audio-pipeline-helper';
+import { activeTargets, AudioPipelineTrace, AudioSignal, bassTone, formatGolden, goldenDiffs, KickTimes, kickPeakStats, kickTrack, runAudioPipeline, silence, songMix } from './audio-pipeline-helper';
 
 const Regenerate = !!process.env.AUDIO_GOLDEN;
 const Every = 8;
@@ -254,69 +255,69 @@ const GOLDEN: Record<string, string> = {
     `,
     'ambient/kick': `
         0.1280 0.0000 0.0000 0.2200 0.0000 0.1800
-        0.2560 0.0000 0.0000 0.2200 0.0000 0.1800
-        0.3840 1.0000 0.4167 0.2616 0.0000 0.2185
-        0.5120 0.8238 0.3946 0.2656 0.0000 0.2222
-        0.6400 0.5202 0.2646 0.2590 0.0000 0.2161
-        0.7680 0.2863 0.1773 0.2506 0.0000 0.2083
-        0.8960 1.0000 0.4937 0.2664 0.0000 0.2230
-        1.0240 0.7948 0.3861 0.2660 0.0000 0.2226
-        1.1520 0.4934 0.2588 0.2589 0.0000 0.2160
-        1.2800 0.2690 0.1735 0.2503 0.0000 0.2080
-        1.4080 0.9934 0.5008 0.2675 0.0000 0.2240
-        1.5360 0.7595 0.3762 0.2653 0.0000 0.2220
-        1.6640 0.4627 0.2522 0.2579 0.0000 0.2151
-        1.7920 0.2495 0.1690 0.2494 0.0000 0.2072
-        1.9200 0.9792 0.5006 0.2678 0.0000 0.2243
-        2.0480 0.7203 0.3645 0.2650 0.0000 0.2217
-        2.1760 0.4304 0.2443 0.2573 0.0000 0.2145
-        2.3040 0.2294 0.1638 0.2488 0.0000 0.2066
-        2.4320 0.9706 0.4921 0.2679 0.0000 0.2243
-        2.5600 0.7025 0.3499 0.2645 0.0000 0.2212
-        2.6880 0.4164 0.2345 0.2566 0.0000 0.2139
-        2.8160 0.2208 0.1572 0.2481 0.0000 0.2060
-        2.9440 0.9572 0.4763 0.2677 0.0000 0.2242
-        3.0720 0.6783 0.3326 0.2638 0.0000 0.2205
-        3.2000 0.3976 0.2230 0.2557 0.0000 0.2130
-        3.3280 0.2095 0.1494 0.2472 0.0000 0.2052
-        3.4560 0.9335 0.4705 0.2674 0.0000 0.2239
-        3.5840 0.6428 0.3238 0.2629 0.0000 0.2197
-        3.7120 0.3711 0.2171 0.2547 0.0000 0.2121
-        3.8400 0.2003 0.1480 0.2464 0.0000 0.2044
-        3.9680 0.9034 0.4607 0.2675 0.0000 0.2240
+        0.2560 0.0285 0.0044 0.2205 0.0000 0.1805
+        0.3840 0.9309 0.4487 0.2666 0.0000 0.2232
+        0.5120 0.6391 0.3073 0.2620 0.0000 0.2188
+        0.6400 0.3684 0.2060 0.2538 0.0000 0.2113
+        0.7680 0.3330 0.1444 0.2458 0.0000 0.2039
+        0.8960 0.9027 0.4489 0.2672 0.0000 0.2237
+        1.0240 0.6034 0.3045 0.2619 0.0000 0.2188
+        1.1520 0.3429 0.2041 0.2535 0.0000 0.2110
+        1.2800 1.0000 0.2313 0.2463 0.0000 0.2043
+        1.4080 0.8705 0.4395 0.2671 0.0000 0.2236
+        1.5360 0.5672 0.2963 0.2613 0.0000 0.2182
+        1.6640 0.3178 0.1986 0.2528 0.0000 0.2104
+        1.7920 1.0000 0.3376 0.2564 0.0000 0.2137
+        1.9200 0.8446 0.4252 0.2670 0.0000 0.2235
+        2.0480 0.5406 0.2857 0.2607 0.0000 0.2177
+        2.1760 0.2999 0.1915 0.2521 0.0000 0.2097
+        2.3040 1.0000 0.4301 0.2636 0.0000 0.2203
+        2.4320 0.8297 0.4067 0.2666 0.0000 0.2232
+        2.5600 0.5257 0.2727 0.2599 0.0000 0.2169
+        2.6880 0.2900 0.1828 0.2513 0.0000 0.2090
+        2.8160 1.0000 0.4885 0.2661 0.0000 0.2226
+        2.9440 0.7967 0.3914 0.2660 0.0000 0.2226
+        3.0720 0.4952 0.2624 0.2589 0.0000 0.2160
+        3.2000 0.2701 0.1759 0.2504 0.0000 0.2081
+        3.3280 0.9934 0.5035 0.2675 0.0000 0.2240
+        3.4560 0.7594 0.3805 0.2656 0.0000 0.2222
+        3.5840 0.4626 0.2551 0.2582 0.0000 0.2154
+        3.7120 0.2494 0.1710 0.2496 0.0000 0.2074
+        3.8400 0.9834 0.5011 0.2679 0.0000 0.2243
+        3.9680 0.7309 0.3668 0.2652 0.0000 0.2219
     `,
     'ambient/song': `
-        0.1280 1.0000 0.3033 0.2609 0.0000 0.2178
-        0.2560 0.8361 0.6138 0.3095 0.0000 0.2628
-        0.3840 0.5403 0.6105 0.3158 0.0000 0.2687
-        0.5120 0.3890 0.6907 0.3245 0.0000 0.2767
-        0.6400 0.2300 0.6669 0.3299 0.0000 0.2818
-        0.7680 0.1218 0.6510 0.3283 0.0000 0.2802
-        0.8960 0.7720 0.6848 0.3304 0.0000 0.2822
-        1.0240 0.6170 0.6535 0.3280 0.0000 0.2800
-        1.1520 0.3840 0.6421 0.3283 0.0000 0.2803
-        1.2800 0.2096 0.6343 0.3266 0.0000 0.2787
-        1.4080 0.7616 0.6730 0.3299 0.0000 0.2818
-        1.5360 0.6069 0.6856 0.3290 0.0000 0.2809
-        1.6640 0.3773 0.6634 0.3306 0.0000 0.2824
-        1.7920 0.2058 0.6485 0.3283 0.0000 0.2803
-        1.9200 0.9924 0.6732 0.3304 0.0000 0.2823
-        2.0480 0.7551 0.6515 0.3277 0.0000 0.2797
-        2.1760 0.4589 0.5491 0.3255 0.0000 0.2777
-        2.3040 0.2471 0.4756 0.3192 0.0000 0.2719
-        2.4320 0.9610 0.4973 0.3122 0.0000 0.2654
-        2.5600 0.6851 0.4766 0.3074 0.0000 0.2609
-        2.6880 0.4029 0.4611 0.3043 0.0000 0.2581
-        2.8160 0.2127 0.4508 0.3004 0.0000 0.2544
-        2.9440 0.9345 0.4914 0.3053 0.0000 0.2589
-        3.0720 0.6443 0.4715 0.3031 0.0000 0.2570
-        3.2000 0.3722 0.4577 0.3021 0.0000 0.2560
-        3.3280 0.1944 0.4485 0.2984 0.0000 0.2526
-        3.4560 0.9309 0.4880 0.3051 0.0000 0.2588
-        3.5840 0.6391 0.4690 0.3026 0.0000 0.2565
-        3.7120 0.3684 0.4561 0.3030 0.0000 0.2568
-        3.8400 0.2089 0.4475 0.2991 0.0000 0.2532
-        3.9680 0.9042 0.4895 0.3056 0.0000 0.2592
+        0.1280 0.9352 0.5938 0.3063 0.0000 0.2599
+        0.2560 0.6453 0.6179 0.3101 0.0000 0.2634
+        0.3840 0.4649 0.6984 0.3247 0.0000 0.2770
+        0.5120 0.3005 0.6752 0.3231 0.0000 0.2754
+        0.6400 0.1720 0.6565 0.3301 0.0000 0.2819
+        0.7680 0.0925 0.6461 0.3269 0.0000 0.2790
+        0.8960 0.6563 0.6627 0.3294 0.0000 0.2813
+        1.0240 0.4393 0.6464 0.3260 0.0000 0.2782
+        1.1520 0.2498 0.6374 0.3278 0.0000 0.2798
+        1.2800 0.1376 0.6271 0.3249 0.0000 0.2771
+        1.4080 0.6935 0.6963 0.3301 0.0000 0.2820
+        1.5360 0.4638 0.6715 0.3276 0.0000 0.2796
+        1.6640 0.2636 0.6537 0.3296 0.0000 0.2814
+        1.7920 1.0000 0.6895 0.3284 0.0000 0.2804
+        1.9200 0.8691 0.6563 0.3292 0.0000 0.2811
+        2.0480 0.5657 0.6298 0.3261 0.0000 0.2782
+        2.1760 0.3167 0.4824 0.3223 0.0000 0.2747
+        2.3040 1.0000 0.4774 0.3144 0.0000 0.2674
+        2.4320 0.8010 0.4836 0.3095 0.0000 0.2629
+        2.5600 0.4991 0.4661 0.3048 0.0000 0.2585
+        2.6880 0.2726 0.4541 0.3020 0.0000 0.2559
+        2.8160 0.9986 0.4676 0.3002 0.0000 0.2542
+        2.9440 0.7835 0.4766 0.3045 0.0000 0.2583
+        3.0720 0.4834 0.4609 0.3027 0.0000 0.2566
+        3.2000 0.2625 0.4507 0.3003 0.0000 0.2543
+        3.3280 0.9932 0.4669 0.3000 0.0000 0.2541
+        3.4560 0.7587 0.4773 0.3042 0.0000 0.2580
+        3.5840 0.4620 0.4615 0.3039 0.0000 0.2577
+        3.7120 0.2490 0.4510 0.3009 0.0000 0.2549
+        3.8400 0.9795 0.4817 0.3032 0.0000 0.2570
+        3.9680 0.7211 0.4771 0.3043 0.0000 0.2580
     `,
 };
 const DERIVED: Record<string, { lag: number[], peak: number, rest: number[] }> = {
@@ -407,6 +408,143 @@ describe('audio pipeline (offline, 16 ms frames at 48 kHz)', () => {
             const t = paused();
             expect(t.drives.wiggle[at(t, 4)]).toBeCloseTo(0.205, 2);
         });
+    });
+
+    // the visuals show what is heard: the manager presents its live state outputLatency late (audio-presented-frame.ts)
+    describe('what is heard: the presented frame', () => {
+        type Live = {
+            currentFrame: AudioReactiveFrame<DefaultAudioBandKey>, currentStems: Record<string, number>, stemsSeparated: boolean,
+            router: { drives: Record<string, number>, values: Map<number, number> }, visualization: { waveform: Float32Array, spectrum: Float32Array },
+            presented: { stemsSeparated: boolean },
+        };
+        const targets = (t: AudioPipelineTrace) => Object.keys(t.drives) as AudioRouteTarget[];
+        const series = (t: AudioPipelineTrace) => [...targets(t).map(k => t.drives[k]), t.drums, t.bass, t.other, t.vocals, ...t.routeValues];
+        const latencyRun = (L: number, paused: readonly (readonly [number, number])[] = [[3, 5]]) => runAudioPipeline(kickTrack(), getDefaultAudioRoutes(), { analysis: burst, paused, outputLatency: L });
+
+        it('latency 0: every presented value is the live value of the same frame, and the presented objects keep their identity', () => {
+            let held: unknown[] | undefined;
+            let checked = 0;
+            const mismatches: string[] = [];
+            runAudioPipeline(songMix(), getDefaultAudioRoutes(), {
+                analysis: burst, paused: [[3, 4]],
+                onFrame: ({ index, manager: m }) => {
+                    const live = m as unknown as Live;
+                    for (const k of Object.keys(live.router.drives)) if (m.drives[k as AudioRouteTarget] !== live.router.drives[k]) mismatches.push(`${index} drive ${k}`);
+                    for (const k of Object.keys(live.currentStems)) if (m.stems[k as keyof typeof m.stems] !== live.currentStems[k]) mismatches.push(`${index} stem ${k}`);
+                    for (const [id, v] of live.router.values) if (m.routeValues.get(id) !== v) mismatches.push(`${index} route ${id}`);
+                    for (const k of ['amplitude', 'peakAmplitude', 'beatIntensity', 'dominantFrequency', 'dominantFrequencyNormalized', 'mix'] as const) {
+                        if (m.frame[k] !== live.currentFrame[k]) mismatches.push(`${index} frame ${k}`);
+                        if (m.frame.raw[k] !== live.currentFrame.raw[k]) mismatches.push(`${index} raw ${k}`);
+                    }
+                    for (const set of ['frequencyBands', 'bandOnsets', 'bandProminence'] as const) {
+                        for (const { key } of DefaultAudioBandDefinitions) {
+                            if (m.frame[set][key] !== live.currentFrame[set][key]) mismatches.push(`${index} frame ${set}.${key}`);
+                            if (m.frame.raw[set][key] !== live.currentFrame.raw[set][key]) mismatches.push(`${index} raw ${set}.${key}`);
+                        }
+                    }
+                    const status = m.state.status.value;
+                    if (live.presented.stemsSeparated !== live.stemsSeparated) mismatches.push(`${index} stemsSeparated`);
+                    for (const a of ['waveform', 'spectrum'] as const) {
+                        for (let i = 0; i < live.visualization[a].length; i++) if (status.visualization[a][i] !== live.visualization[a][i]) mismatches.push(`${index} ${a}[${i}]`);
+                    }
+                    const now = [m.frame, m.drives, m.stems, m.routeValues, m.scopes, m.scopeKind, m.scopeDrive, status.frame, status.drives, status.routeValues, status.visualization];
+                    if (held) now.forEach((o, i) => { if (o !== held![i]) mismatches.push(`${index} identity ${i}`); });
+                    else held = now;
+                    checked++;
+                },
+            });
+            expect(checked).toBeGreaterThan(500);
+            expect(mismatches.slice(0, 5)).toEqual([]);
+        });
+
+        it('the source removed (no-audio branch): the presented frame comes to rest k frames later and the status follows it, then stops', () => {
+            const amplitude: number[] = [], emitted: number[] = [];
+            let removedAt = -1, sub: { unsubscribe(): void } | undefined;
+            runAudioPipeline(songMix(), getDefaultAudioRoutes(), {
+                analysis: burst, durationS: 6, outputLatency: 0.1,
+                onFrame: ({ index, manager: m }) => {
+                    amplitude.push(m.frame.amplitude);
+                    if (index === 200) {
+                        (m.state.audioPlayer.value as unknown as { src: string }).src = '';
+                        removedAt = index;
+                        sub = m.state.status.subscribe(() => emitted.push(index));
+                    }
+                },
+            });
+            sub?.unsubscribe();
+            const k = Math.ceil(100 / 16);
+            expect(amplitude[removedAt + 1]).toBeGreaterThan(0); // still what is heard
+            expect(amplitude[removedAt + k + 1]).toBe(0);
+            // one emission at subscribe, then the throttled ones (32 ms) until the presented frame rests
+            expect(emitted.length).toBeGreaterThan(2);
+            expect(emitted[emitted.length - 1]).toBeLessThanOrEqual(removedAt + k + 3);
+        });
+
+        it('heardPlaying is playing as heard: the same at latency 0, k frames late at 100 ms through a pause; each emission carries it', () => {
+            const run = (L: number) => {
+                const live: boolean[] = [], heard: boolean[] = [], wrong: string[] = [];
+                let sub: { unsubscribe(): void } | undefined;
+                runAudioPipeline(songMix(), getDefaultAudioRoutes(), {
+                    analysis: burst, paused: [[3, 5]], durationS: 7, outputLatency: L,
+                    onFrame: ({ index, paused, manager: m }) => {
+                        const presented = (m as unknown as { presented: { playing: boolean } }).presented;
+                        if (index === 0) sub = m.state.status.subscribe(s => { if (s.heardPlaying !== presented.playing) wrong.push(`${index}`); });
+                        live.push(!paused);
+                        heard.push(presented.playing);
+                    },
+                });
+                sub?.unsubscribe();
+                return { live, heard, wrong };
+            };
+            const r0 = run(0);
+            expect(r0.heard).toEqual(r0.live);
+            expect(r0.wrong).toEqual([]);
+            const k = Math.ceil(100 / 16);
+            const r = run(0.1);
+            expect(r.heard.slice(k)).toEqual(r.live.slice(0, r.live.length - k));
+            expect(r.heard.some((h, i) => h !== r.live[i])).toBe(true);
+            expect(r.wrong).toEqual([]);
+        });
+
+        it('the source removed: the last status emitted says not heard playing', () => {
+            const statuses: boolean[] = [];
+            let sub: { unsubscribe(): void } | undefined;
+            runAudioPipeline(songMix(), getDefaultAudioRoutes(), {
+                analysis: burst, durationS: 6, outputLatency: 0.1,
+                onFrame: ({ index, manager: m }) => {
+                    if (index !== 200) return;
+                    (m.state.audioPlayer.value as unknown as { src: string }).src = '';
+                    sub = m.state.status.subscribe(s => statuses.push(s.heardPlaying));
+                },
+            });
+            sub?.unsubscribe();
+            expect(statuses[0]).toBe(true);
+            expect(statuses[statuses.length - 1]).toBe(false);
+        });
+
+        for (const L of [0.1, 0.2]) {
+            const k = Math.ceil(L * 1000 / 16);
+            it(`latency ${L * 1000} ms: the presented trace is the live one ${k} frames late, through a pause`, () => {
+                const live = series(latencyRun(0)), heard = series(latencyRun(L));
+                let differs = false;
+                live.forEach((s0, c) => {
+                    const sL = heard[c];
+                    for (let i = 0; i < s0.length; i++) {
+                        const want = s0[Math.max(0, i - k)];
+                        if (sL[i] !== want) throw new Error(`series ${c} frame ${i}: ${sL[i]} vs live ${want} at ${i - k}`);
+                        if (sL[i] !== s0[i]) differs = true;
+                    }
+                });
+                expect(differs).toBe(true);
+            });
+
+            it(`latency ${L * 1000} ms: kick -> peak lag grows by exactly ${k} frames`, () => {
+                // no pause: kickPeakStats places the kicks on the wall clock
+                const s0 = kickPeakStats(latencyRun(0, []), KickTimes(10), 'symAxis');
+                const sL = kickPeakStats(latencyRun(L, []), KickTimes(10), 'symAxis');
+                expect([sL.lagMedian, sL.lagMin, sL.lagMax]).toEqual([s0.lagMedian + k, s0.lagMin + k, s0.lagMax + k]);
+            });
+        }
     });
 
     describe('a route on a motion that is off', () => {

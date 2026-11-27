@@ -4,7 +4,9 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import { balanceShift, SongChangeDetector, SongChangeParams, SongChangeReason } from '../song-change';
+import { getDefaultAudioRoutes } from '../../../mol-plugin-state/manager/audio-routing';
+import { runAudioPipeline, songMix } from '../../../mol-plugin-state/manager/_spec/audio-pipeline-helper';
+import { balanceShift, feedSongDetector, SongChangeDetector, SongChangeParams, SongChangeReason } from '../song-change';
 
 const FrameMs = 33;
 
@@ -43,5 +45,34 @@ describe('song change', () => {
         const a = Float32Array.from([0.5, 0.5]), b = Float32Array.from([1, 0]);
         expect(balanceShift([a, a, b], 1, 1, 1)).toBeCloseTo(1);
         expect(balanceShift([a, a, a], 1, 1, 1)).toBe(0);
+    });
+});
+
+describe('song change fed from the audio status (the app\'s feed)', () => {
+    /** a song playing for 80 s, paused 3-5 s and resumed, heard `latency` late; the changes the status feed finds */
+    function resumeRun(latency: number) {
+        const found: SongChangeReason[] = [];
+        const detector = new SongChangeDetector(r => found.push(r));
+        (detector as unknown as { sinceChangeMs: number }).sinceChangeMs = 80000;
+        let sub: { unsubscribe(): void } | undefined, lastFeedMs = 0;
+        runAudioPipeline(songMix(), getDefaultAudioRoutes(), {
+            paused: [[3, 5]], outputLatency: latency, durationS: 8,
+            onFrame: ({ index, manager: m }) => {
+                if (index !== 0) return;
+                sub = m.state.status.subscribe(s => {
+                    lastFeedMs = feedSongDetector(detector, s, (m as unknown as { lastTickMs: number }).lastTickMs, lastFeedMs);
+                });
+            },
+        });
+        sub?.unsubscribe();
+        return found;
+    }
+
+    it('a resume heard 0.7 s late is not a gap between songs (the silence still heard is not fed as playing)', () => {
+        expect(resumeRun(0.7)).toEqual([]);
+    });
+
+    it('latency 0: a 2 s pause is not a gap either (unchanged)', () => {
+        expect(resumeRun(0)).toEqual([]);
     });
 });

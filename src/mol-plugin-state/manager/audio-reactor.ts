@@ -186,18 +186,18 @@ function applyAttackRelease(previous: number, target: number, dtMs: number, atta
     return previous + (target - previous) * alpha;
 }
 
-function computeRms(samples: Float32Array, count: number) {
+function computeRms(samples: Float32Array, offset: number, count: number) {
     let sum = 0;
-    for (let i = 0; i < count; ++i) {
+    for (let i = offset, il = offset + count; i < il; ++i) {
         const v = samples[i];
         sum += v * v;
     }
     return count > 0 ? Math.sqrt(sum / count) : 0;
 }
 
-function computePeak(samples: Float32Array, count: number) {
+function computePeak(samples: Float32Array, offset: number, count: number) {
     let peak = 0;
-    for (let i = 0; i < count; ++i) {
+    for (let i = offset, il = offset + count; i < il; ++i) {
         const value = Math.abs(samples[i]);
         if (value > peak) peak = value;
     }
@@ -319,18 +319,20 @@ export class AudioReactor<K extends string = DefaultAudioBandKey> {
             throw new Error(`Expected at least ${inputSampleCount} audio samples, got ${samples.length}.`);
         }
 
-        const rawAmplitude = normalize01(computeRms(samples, inputSampleCount));
-        const rawPeakAmplitude = normalize01(computePeak(samples, inputSampleCount));
+        // an analyser hands over its newest samples last: read the window that ends at the newest one
+        const offset = samples.length - inputSampleCount;
+        const rawAmplitude = normalize01(computeRms(samples, offset, inputSampleCount));
+        const rawPeakAmplitude = normalize01(computePeak(samples, offset, inputSampleCount));
 
         if (inputSampleCount === fftSize && effectiveSampleRate === inputSampleRate) {
             for (let i = 0; i < fftSize; ++i) {
-                this.analysisSamples[i] = samples[i];
+                this.analysisSamples[i] = samples[offset + i];
             }
         } else {
             const ratio = inputSampleRate / effectiveSampleRate;
-            const maxIndex = inputSampleCount - 1;
+            const maxIndex = offset + inputSampleCount - 1;
             for (let i = 0; i < fftSize; ++i) {
-                const sourceIndex = Math.min(i * ratio, maxIndex);
+                const sourceIndex = Math.min(offset + i * ratio, maxIndex);
                 const sourceFloor = Math.floor(sourceIndex);
                 const sourceCeil = Math.min(maxIndex, sourceFloor + 1);
                 const t = sourceIndex - sourceFloor;

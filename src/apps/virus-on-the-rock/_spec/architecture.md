@@ -34,13 +34,28 @@ analyser window ─► reactor (resample, Hann, FFT, 6 bands, flux beat, promine
                        └─► stems: timeline at currentTime − delay, or band stand-ins
                               └─► router: per route source → onset? → curve → floor + gain × v → release → duck
                                      └─► drives[target] (cap 40) or Who slot (≤ 8)
+                                            └─► presented frame: a ring of the last 256 ticks stamped with
+                                                ctx.currentTime, read at currentTime − outputLatency (what is heard)
 ```
+
+The analyser reads what the context renders now; the speakers play it `outputLatency` later (~10–30 ms built in,
+150–250 ms Bluetooth or AirPlay). So every consumer (the shader's audio frame, the CPU channels, Who, the overlay, the
+beat cycle, the status) reads the **presented frame** (`audio-presented-frame.ts`), never the live analysis: frame,
+raw, stems, drives, scope slots, route values and visualizer arrays as they were when what is heard now was analysed.
+The reactor, the stems timing and the router (releases, onsets) run in real time on the live state. The clock is a port
+(`AudioOutputClock`; `webAudioOutputClock` reads `currentTime` and `outputLatency` live, 0 while the context is not
+running or where the browser has no `outputLatency`, clamped to 2 s). The presented entry steps one per frame (at most
+one behind the read rule, never ahead of what is heard), so tick jitter does not alternate hold and skip. What reads
+the presented frame as sound (beat cycle, song detection) gates on the status's `heardPlaying`, not on the live
+`playing` (the transport). The presented objects keep their identity and nothing is allocated per frame. No flush on pause, stop or clear: the device still plays the last `outputLatency`.
 
 ## 3. One frame
 
 1. `PluginAnimationLoop.tick` (rAF; a frame's time capped at 33.3 ms).
 2. `audioReactive.tick(t)`: analyser read, silence probe, visualizer arrays, `reactor.analyze`, stems, `router.update`,
-   status (throttled 32 ms).
+   then the live state into the presented frame's ring and the entry of `currentTime − outputLatency` out of it (every
+   branch, the no-audio one too), status (throttled 32 ms) from the presented objects. Steps 3–8 read only the
+   presented frame.
 3. `syncStructureAssemblyAxes`: per structure, its symmetry axes (≤ 32) and centre into its render objects' material
    uniforms; cached by key. Mesoscale parts of one virion share one middle (wip).
 4. `syncAudioAffect`: each Who resolved to a vec4 per render object (`uAudioAffectRanges[8]`), written on change.

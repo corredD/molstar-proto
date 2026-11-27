@@ -23,6 +23,7 @@ import {
     getAudioReactorAnalyserFftSize,
 } from './audio-reactor';
 import { AudioReactiveAssemblyAxisOrder, AudioReactiveAssemblyAxisOrderOptions } from '../helpers/assembly-symmetry-axis';
+import { AudioOutputClock, AudioPresentedFrame, webAudioOutputClock } from './audio-presented-frame';
 
 const AudioReactorFftSizeOptions = [
     [256, '256'],
@@ -78,22 +79,38 @@ export type AudioReactiveVisualizationFrame = {
     spectrum: Float32Array<ArrayBuffer>,
 };
 
+/**
+ * The manager's status, emitted at most every 32 ms while audio plays (and at once on a user action).
+ * `frame`, `visualization`, `stems`, `drives` and `routeValues` are what is heard now (the presented frame): the SAME
+ * objects in every emission, rewritten in place each tick. Read them when the emission comes; do not keep them to
+ * compare with a later emission (they will have changed) and do not mutate them (every reader shares them). Copy what
+ * must outlive the emission.
+ */
 export type AudioReactiveStatus = {
     sourceLabel?: string,
     loaded: boolean,
+    /** whether the audio element plays now: for the transport (play / pause button) */
     playing: boolean,
+    /**
+     * whether the audio was playing when what is heard now was analysed (`playing`, output latency late, as `frame`):
+     * for what reads the presented frame as sound (beat cycle, song detection), so a resume does not read the
+     * silence still being heard as playing
+     */
+    heardPlaying: boolean,
     analysisBlocked: boolean,
     sampleRate?: number,
-    frame: AudioReactiveFrame<DefaultAudioBandKey>,
-    visualization: AudioReactiveVisualizationFrame,
-    /** each stem's level (0-1): from the separation model where it runs and keeps up, else from the bands */
-    stems: StemLevels,
+    /** the audio analysis as heard now; the same object every emission (see above) */
+    frame: Readonly<AudioReactiveFrame<DefaultAudioBandKey>>,
+    /** the visualizer's waveform and spectrum as heard now; the same object and arrays every emission */
+    visualization: Readonly<AudioReactiveVisualizationFrame>,
+    /** each stem's level (0-1): from the separation model where it runs and keeps up, else from the bands; the same object every emission */
+    stems: Readonly<StemLevels>,
     /** whether `stems` came from the separation model this frame */
     stemsSeparated: boolean,
     stemStatus: StemSeparatorStatus,
-    /** each visual channel's drive this frame (the sum of its routes) */
-    drives: AudioRouteDrives,
-    /** each route's value this frame, by route id */
+    /** each visual channel's drive as heard now (the sum of its routes); the same object every emission */
+    drives: Readonly<AudioRouteDrives>,
+    /** each route's value as heard now, by route id; the same Map every emission */
     routeValues: ReadonlyMap<number, number>,
     error?: string,
 };
@@ -134,6 +151,7 @@ const EmptyAudioReactiveVisualization = createAudioReactiveVisualizationFrame();
 const InitialAudioReactiveStatus: AudioReactiveStatus = {
     loaded: false,
     playing: false,
+    heardPlaying: false,
     analysisBlocked: false,
     frame: EmptyAudioReactiveFrame,
     visualization: EmptyAudioReactiveVisualization,
@@ -148,6 +166,23 @@ function getAudioContextCtor(): (new() => AudioContext) | undefined {
     const ctx = globalThis as typeof globalThis & { webkitAudioContext?: typeof AudioContext };
     return ctx.AudioContext ?? ctx.webkitAudioContext;
 }
+
+/** what the manager takes from the browser: the audio context and the clock of what is heard (tests inject fakes) */
+export type AudioReactivePorts = {
+    /** a new audio context, made on the first load or play */
+    createContext(): AudioContext,
+    /** the clock the presented frame is read with, for a context */
+    outputClock(ctx: AudioContext): AudioOutputClock,
+};
+
+export const DefaultAudioReactivePorts: AudioReactivePorts = {
+    createContext() {
+        const AudioContextCtor = getAudioContextCtor();
+        if (!AudioContextCtor) throw new Error('Web Audio API is not available in this browser.');
+        return new AudioContextCtor();
+    },
+    outputClock: webAudioOutputClock,
+};
 
 function areFramesClose(a: AudioReactiveFrame<DefaultAudioBandKey>, b: AudioReactiveFrame<DefaultAudioBandKey>, epsilon = 1e-3) {
     if (Math.abs(a.amplitude - b.amplitude) > epsilon) return false;
@@ -238,6 +273,8 @@ export class AudioReactiveAnimationManager {
     private readonly visualization = createAudioReactiveVisualizationFrame();
     private currentFrame = EmptyAudioReactiveFrame;
     private lastUiUpdateMs = 0;
+    /** heardPlaying of the last status emitted: a change is emitted at once, not throttled */
+    private emittedHeardPlaying = false;
     private lastTickMs = 0;
     private silenceWhilePlayingMs = 0;
     private reactor = new AudioReactor();
@@ -248,6 +285,14 @@ export class AudioReactiveAnimationManager {
     private currentStems: StemLevels = ZeroStems;
     private stemsSeparated = false;
     private bandDrumsPeak = BandDrumsPeakFloor;
+    /**
+     * What the visuals show: the live state above, read back at what is heard now (context time - output latency).
+     * Every getter and the status read it; the analysis, the stems and the router run on the live state.
+     */
+    private readonly presented = new AudioPresentedFrame(AudioReactiveWaveformSampleCount, AudioReactiveSpectrumSampleCount);
+    private outputClock?: AudioOutputClock;
+    /** the context `outputClock` reads; a new context gets a new clock */
+    private outputClockContext?: AudioContext;
 
     /** where the stem worker, the onnxruntime files and local weights are; next to the app page by default */
     stemSeparatorOptions: StemSeparatorOptions = {
@@ -260,43 +305,45 @@ export class AudioReactiveAnimationManager {
         ],
     };
 
-    constructor(readonly plugin: PluginContext) {
+    constructor(readonly plugin: PluginContext, private readonly ports: AudioReactivePorts = DefaultAudioReactivePorts) {
         this.syncReactorParams();
     }
 
-    get frame() {
-        return this.currentFrame;
+    /** the analysis of what is heard now (the same object every frame) */
+    get frame(): AudioReactiveFrame<DefaultAudioBandKey> {
+        return this.presented.frame;
     }
 
-    /** each route's value this frame, by route id (read-only; the offline pipeline spec reads them per frame) */
+    /** each route's value as heard now, by route id (read-only; the offline pipeline spec reads them per frame) */
     get routeValues(): ReadonlyMap<number, number> {
-        return this.router.values;
+        return this.presented.routeValues;
     }
 
-    /** each visual channel's drive this frame, from the routes on All */
+    /** each visual channel's drive as heard now, from the routes on All */
     get drives(): Readonly<AudioRouteDrives> {
-        return this.router.drives;
+        return this.presented.drives;
     }
 
-    /** the routes narrowed to one part of the structure this frame: one shader slot each */
+    /** the routes narrowed to one part of the structure as heard now: one shader slot each */
     get scopes(): readonly AudioScopeSlot[] {
-        return this.router.scopes;
+        return this.presented.scopes;
     }
 
     get scopeCount() {
-        return this.router.scopeCount;
+        return this.presented.scopeCount;
     }
 
     get scopeKind(): ArrayLike<number> {
-        return this.router.scopeKind;
+        return this.presented.scopeKind;
     }
 
     get scopeDrive(): ArrayLike<number> {
-        return this.router.scopeDrive;
+        return this.presented.scopeDrive;
     }
 
     /** Installs the routes, with at most 8 narrowed (D3): a narrowed route past the 8th is widened to All */
     setRoutes(routes: AudioRoute[]) {
+        this.presented.ensureRouteCapacity(routes.length);
         this.state.routes.next(limitNarrowedRoutes(routes) as AudioRoute[]);
         this.updateStatus(void 0, true);
     }
@@ -350,8 +397,9 @@ export class AudioReactiveAnimationManager {
         return audioAffectFromLoci(this.plugin, focus, level);
     }
 
-    get stems() {
-        return this.currentStems;
+    /** each stem's level as heard now */
+    get stems(): StemLevels {
+        return this.presented.stems;
     }
 
     private syncStems() {
@@ -427,22 +475,25 @@ export class AudioReactiveAnimationManager {
     }
 
     private updateStatus(error?: string, force = false, timeMs = 0) {
-        if (!force && timeMs - this.lastUiUpdateMs < 32) return;
+        if (!force && this.presented.playing === this.emittedHeardPlaying && timeMs - this.lastUiUpdateMs < 32) return;
         this.lastUiUpdateMs = timeMs;
+        this.emittedHeardPlaying = this.presented.playing;
         const audio = this.state.audioPlayer.value;
         this.state.status.next({
             sourceLabel: this.sourceLabel,
             loaded: !!audio?.src,
             playing: !!audio && !audio.paused && !audio.ended,
+            heardPlaying: this.presented.playing,
             analysisBlocked: this.silenceWhilePlayingMs > 2000,
             sampleRate: this.audioContext?.sampleRate,
-            frame: this.currentFrame,
-            visualization: this.visualization,
-            stems: this.currentStems,
-            stemsSeparated: this.stemsSeparated,
+            // what is heard now: the presented objects, the same every emission
+            frame: this.presented.frame,
+            visualization: this.presented.visualization,
+            stems: this.presented.stems,
+            stemsSeparated: this.presented.stemsSeparated,
             stemStatus: this.stemStatus,
-            drives: { ...this.router.drives },
-            routeValues: new Map(this.router.values),
+            drives: this.presented.drives,
+            routeValues: this.presented.routeValues,
             error,
         });
     }
@@ -476,9 +527,7 @@ export class AudioReactiveAnimationManager {
 
     private ensureAnalyser(audio: HTMLAudioElement) {
         if (!this.audioContext) {
-            const AudioContextCtor = getAudioContextCtor();
-            if (!AudioContextCtor) throw new Error('Web Audio API is not available in this browser.');
-            this.audioContext = new AudioContextCtor();
+            this.audioContext = this.ports.createContext();
         }
         if (!this.analyser) {
             this.analyser = this.audioContext.createAnalyser();
@@ -613,21 +662,51 @@ export class AudioReactiveAnimationManager {
         this.currentStems = getBandStems(this.currentFrame, drums * drums);
     }
 
+    /**
+     * This tick's live state into the ring, stamped with the context time, and the entry of what is heard now out of
+     * it (now - output latency). With no context yet there is no clock: the last stamp, latency 0. Never the tick's
+     * timeMs: the animation loop caps its step, so it runs slow under jank.
+     */
+    private presentFrame(playing: boolean) {
+        const ctx = this.audioContext;
+        let now: number, latency = 0;
+        if (ctx) {
+            let clock = this.outputClock;
+            if (!clock || this.outputClockContext !== ctx) {
+                clock = this.outputClock = this.ports.outputClock(ctx);
+                this.outputClockContext = ctx;
+            }
+            now = clock.now();
+            latency = clock.latency();
+        } else {
+            now = Math.max(0, this.presented.newestStamp);
+        }
+        const r = this.router;
+        this.presented.push(now, playing, this.currentFrame, this.currentStems, this.stemsSeparated, r.drives, r.scopeCount, r.scopeKind, r.scopeDrive, r.scopes,
+            this.state.routes.value, r.values, this.visualization);
+        this.presented.present(now - latency);
+    }
+
+    /** the frame as heard now (`frame`); the analysis runs on what the analyser hands over now */
     tick(timeMs: number): AudioReactiveFrame<DefaultAudioBandKey> {
         const audio = this.state.audioPlayer.value;
         const dtMs = this.lastTickMs > 0 ? Math.min(100, Math.max(0, timeMs - this.lastTickMs)) : 16;
         this.lastTickMs = timeMs;
 
         if (!audio || !audio.src || !this.audioContext || !this.analyser || !this.timeDomainData || !this.frequencyDomainData || !this.silenceData) {
-            if (!areFramesClose(this.currentFrame, EmptyAudioReactiveFrame)) {
+            const cleared = !areFramesClose(this.currentFrame, EmptyAudioReactiveFrame);
+            if (cleared) {
                 this.currentFrame = EmptyAudioReactiveFrame;
                 clearAudioReactiveVisualization(this.visualization);
-                this.updateStatus(void 0, false, timeMs);
             }
-            return this.currentFrame;
+            this.presentFrame(false);
+            // the status follows the presented frame until what is heard has come to rest too
+            if (cleared || this.presented.playing !== this.emittedHeardPlaying || !areFramesClose(this.presented.frame, EmptyAudioReactiveFrame)) this.updateStatus(void 0, false, timeMs);
+            return this.presented.frame;
         }
 
         const sampleRate = this.audioContext.sampleRate;
+        let error: string | undefined;
 
         try {
             if (audio.paused || audio.ended) {
@@ -650,12 +729,12 @@ export class AudioReactiveAnimationManager {
             }
             this.updateStems(dtMs, audio.paused || audio.ended);
             this.router.update(this.state.routes.value, this.currentFrame, this.currentStems, dtMs);
-            this.updateStatus(void 0, false, timeMs);
         } catch (e) {
-            this.updateStatus(`${e}`, true, timeMs);
+            error = `${e}`;
         }
-
-        return this.currentFrame;
+        this.presentFrame(!audio.paused && !audio.ended);
+        this.updateStatus(error, error !== void 0, timeMs);
+        return this.presented.frame;
     }
 
     dispose() {

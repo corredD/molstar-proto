@@ -15,7 +15,6 @@ import { Task } from '../../mol-task';
 import { PresetStructureRepresentations } from '../../mol-plugin-state/builder/structure/representation-preset';
 import { PluginConfig } from '../../mol-plugin/config';
 import { clearStructureWiggle } from '../../mol-plugin-state/helpers/structure-wiggle';
-import { DefaultAudioBandDefinitions } from '../../mol-plugin-state/manager/audio-reactor';
 import { AudioReactivePresetName, getAudioReactivePreset, getPresetRoutes } from '../../mol-plugin-state/helpers/audio-reactive-presets';
 import { audioAffectForEntry, getMesoscalePartLabel } from '../../mol-plugin-state/helpers/audio-affect';
 import { type AudioAffect } from '../../mol-plugin-state/manager/audio-routing';
@@ -33,7 +32,7 @@ import { Color } from '../../mol-util/color';
 import { Viewer } from '../viewer/app';
 import { areAnimationPropsEqual, type AnimationProps, type ObjectTransformModeName, type TumbleAxisName } from '../../mol-geo/geometry/animation';
 import { RandomStructurePdbIds } from './random-structures';
-import { IcyTitleReader, SongChangeDetector, type SongChangeReason } from './song-change';
+import { feedSongDetector, IcyTitleReader, SongChangeDetector, type SongChangeReason } from './song-change';
 import { BeatCycle } from './beat-cycle';
 import { BackgroundBaseColor, CpuChannels, type CpuChannelTarget } from './cpu-channels';
 import { createCanvas3DChannelTarget } from './canvas3d-channel-target';
@@ -142,15 +141,8 @@ export class VirusOnTheRockApp {
         this.subscriptions.add(this.viewer.plugin.managers.audioReactive.state.status.subscribe(status => {
             void this.updateAxisCycle(status);
             // without the stream's titles, new songs are estimated from the sound
-            if (this.state.value.randomPerSong && !this.titleReaderActive && status.playing) {
-                const now = performance.now();
-                const dt = this.songFeedMs > 0 ? Math.min(200, now - this.songFeedMs) : 0;
-                this.songFeedMs = now;
-                const raw = status.frame.raw;
-                this.songDetector.feed(DefaultAudioBandDefinitions.map(b => raw.frequencyBands[b.key]), raw.amplitude, dt);
-            } else {
-                this.songFeedMs = 0;
-            }
+            this.songFeedMs = this.state.value.randomPerSong && !this.titleReaderActive
+                ? feedSongDetector(this.songDetector, status, performance.now(), this.songFeedMs) : 0;
             const current = this.state.value;
             if (current.currentAudioLabel !== status.sourceLabel
                 || current.audioLoaded !== status.loaded
@@ -473,7 +465,8 @@ export class VirusOnTheRockApp {
     }
 
     private async updateAxisCycle(status: ReturnType<typeof this.viewer.plugin.managers.audioReactive.state.status.getValue>) {
-        if (!status.playing) {
+        // the presented drives sound as heard: gate on heardPlaying, not on the live playing
+        if (!status.heardPlaying) {
             this.beatCycle.pause();
             return;
         }
