@@ -220,8 +220,11 @@ export class AudioRouter {
             const value = this.values.get(route.id) ?? 0;
             // the key itself is never ducked: a kick ducking the rest still hits at full strength
             const scaled = route.target === 'duck' || route.target === 'cameraStep' || duckSources.has(route.source) ? value : value * duck;
-            if (route.affect && route.affect.level !== 'all' && routeHasScope(route.target) && this.scopes.length < AudioScopeSlotCount) {
-                this.scopes.push({ kind: AudioScopeKinds[route.target], drive: Math.min(MaxDrive, scaled), affect: route.affect });
+            if (route.affect && route.affect.level !== 'all' && routeHasScope(route.target)) {
+                // a narrowed route never falls into the global drive: with the slots full it adds nothing (D3)
+                if (this.scopes.length < AudioScopeSlotCount) {
+                    this.scopes.push({ kind: AudioScopeKinds[route.target], drive: Math.min(MaxDrive, scaled), affect: route.affect });
+                }
             } else {
                 this.drives[route.target] += scaled;
             }
@@ -272,6 +275,43 @@ export const AudioScopeKinds = {
 } as const;
 export type AudioScopeTarget = keyof typeof AudioScopeKinds;
 export type AudioScopeSlot = { kind: number, drive: number, affect: AudioAffect };
+
+/** How many routes are narrowed (enabled or not): the shader slots taken */
+export function narrowedRouteCount(routes: readonly AudioRoute[]): number {
+    let n = 0;
+    for (const r of routes) if (routeHasScope(r.target) && r.affect.level !== 'all') n++;
+    return n;
+}
+
+/** Whether a route may take a shader slot: it is narrowed already, or fewer than AudioScopeSlotCount routes are (D3) */
+export function canNarrowRoute(routes: readonly AudioRoute[], routeId: number): boolean {
+    let narrowed = 0;
+    for (const r of routes) {
+        if (!routeHasScope(r.target)) {
+            // a channel with no Who is never refused
+            if (r.id === routeId) return true;
+            continue;
+        }
+        if (r.affect.level === 'all') continue;
+        if (r.id === routeId) return true;
+        narrowed++;
+    }
+    return narrowed < AudioScopeSlotCount;
+}
+
+/**
+ * The routes with at most AudioScopeSlotCount narrowed (enabled or not, as canNarrowRoute counts): the narrowed routes
+ * past the 8th in array order are widened to All. The same array if none is
+ */
+export function limitNarrowedRoutes(routes: readonly AudioRoute[]): readonly AudioRoute[] {
+    let narrowed = 0, changed = false;
+    const out = routes.map(r => {
+        if (!routeHasScope(r.target) || r.affect.level === 'all' || ++narrowed <= AudioScopeSlotCount) return r;
+        changed = true;
+        return { ...r, affect: defaultAudioAffect() };
+    });
+    return changed ? out : routes;
+}
 
 export function routeHasScope(target: AudioRouteTarget): target is AudioScopeTarget {
     return Object.prototype.hasOwnProperty.call(AudioScopeKinds, target);

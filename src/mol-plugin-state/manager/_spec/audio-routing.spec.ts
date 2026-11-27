@@ -88,6 +88,25 @@ describe('audio routing', () => {
         expect(sameAudioAffect(router.scopes[0].affect, Chain)).toBe(true);
     });
 
+    it('keeps 8 narrowed routes in slots, and a 9th adds nothing (not the global drive)', () => {
+        const stems = { drums: 0.5, bass: 0, other: 0, vocals: 0 };
+        const narrowed = (n: number) => Array.from({ length: n }, (_, i) => createAudioRoute({
+            enabled: true, source: 'stemDrums', mode: 'level', target: 'wiggle', gain: 0, floor: 1, releaseMs: 0,
+            affect: { ...Chain, asymId: String.fromCharCode(65 + i) },
+        }));
+        const eight = new AudioRouter();
+        eight.update(narrowed(8), EmptyFrame, stems, 16);
+        expect(eight.scopeCount).toBe(8);
+        expect(eight.drives.wiggle).toBe(0);
+        const nine = new AudioRouter();
+        const routes = narrowed(9);
+        nine.update(routes, EmptyFrame, stems, 16);
+        expect(nine.scopeCount).toBe(8);
+        expect(nine.drives.wiggle).toBe(0);
+        // regression guard (passes on the old code too): the dropped route still shows its meter
+        expect(nine.values.get(routes[8].id)).toBeCloseTo(1);
+    });
+
     it('narrows the wiggle, glow and hue down to an atom, instance motion to a chain, and not the camera', () => {
         expect(maxScopeLevel('wiggle')).toBe('atom');
         expect(maxScopeLevel('symAxis')).toBe('chain');
