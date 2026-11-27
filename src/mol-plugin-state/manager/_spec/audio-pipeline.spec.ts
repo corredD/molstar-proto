@@ -391,7 +391,7 @@ describe('audio pipeline (offline, 16 ms frames at 48 kHz)', () => {
             const t = paused();
             const i = at(t, 4.5);
             expect(t.drives.symAxis[i]).toBeCloseTo(0.033, 2);
-            expect(t.drives.illumination[i]).toBeCloseTo(0, 1);
+            expect(t.drives.illumination[i]).toBeCloseTo(0.000225, 5);
         });
 
         // routing spec row: after a pause every drive is exactly 0 within the longest release (400 ms, the illumination
