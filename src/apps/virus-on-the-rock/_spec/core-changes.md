@@ -95,7 +95,8 @@ manager has no audio and no Who.
   entry per frame, one behind the read rule, elsewhere the rule (heard-phase, 2026-11-27: the hysteresis applies only
   when the read time is within a quarter interval (at most 6 ms) of the newer stamp, so a late tick no longer leaves a lasting
   frame of lag; never ahead of the rule, the newest entry never held back); each entry carries `playing`; the
-  `AudioOutputClock` port and its `webAudioOutputClock` adapter. *votr only*.
+  `AudioOutputClock` port and its `webAudioOutputClock` adapter; `atRest` (every presented drive and route value 0,
+  set in `present`; sound-stops gate fix step). *votr only*.
 - **`audio-reactive-animation.ts`**: the manager. `setRouteAffect` and `pickRouteAffect` return false when refused (a 9th
   narrowed route, D3). A read-only `routeValues` getter (next to `frame`, `stems` and `drives`) lets the offline pipeline
   spec (`manager/_spec/audio-pipeline.spec.ts`, which drives the real `tick`) read each frame's route values (measure,
@@ -104,16 +105,28 @@ manager has no audio and no Who.
   frame (what is heard; the same objects every frame, no spread or new Map per status emission); the constructor takes
   `AudioReactivePorts` (`createContext`, `outputClock`) with browser defaults; the status adds `heardPlaying` (playing as
   heard, for the beat cycle and the song detector; `playing` stays live for the transport) and documents its presented
-  objects as shared, `Readonly` (heard-frame, 2026-11-27). *needs work*: `tick` skips `router.update` without audio (drives
-  freeze); `stemModel` description says WebGPU only.
+  objects as shared, `Readonly` (heard-frame, 2026-11-27). When the sound stops (sound-stops, 2026-11-27, D2): a private
+  `heardUntil` (playing, or the stem delay line still draining after a pause or the end of the file); `tick` reads the
+  clock once at its top, reads the analyser and samples the stems while heard, else the silent analysis, and passes
+  `heard` to the router; `silenceWhilePlaying` counts only while playing; stop, a new source and `clear` flush the delay
+  line (a private `flushDelayLine`, the separator's tap kept); `clear` resets the router, stems and band drums peak; the
+  ring's `playing` is heard, so `heardPlaying` follows the tail too. Gate fix step: the tail is timed from the stop (`stoppedAt`, set by
+  the element's pause / ended listener or the first tick not playing) + the delay now; a (re)start with an empty line
+  is not heard for D (`primedUntil`); the status emits on the presented drives coming to rest (`emittedAtRest`). *needs work*: a source removed without `clear` still
+  skips `router.update` (drives freeze); `stemModel` description says WebGPU only.
 - **Measuring stick (measure, 2026-11-27; test and tooling only)**: `mol-plugin-state/manager/_spec/audio-pipeline-helper.ts` and
   `audio-pipeline.spec.ts` (offline pipeline, golden traces, drives the real `tick`), and `scripts/votr-sync/clicksync.mjs`
-  (browser sync test with a generated click track, `--port` required).
+  (browser sync test with a generated click track, `--port` required). sound-stops (2026-11-27): the fake analyser reads
+  what came into the graph in wall time, one stem delay back; options `stemDelayS` (a fake delay node and a stub
+  separator), `endedAtS` and `stalled` (ranges with no tick); the fake element's `pause()`, `removeAttribute()`,
+  `load()` work and it fires pause / ended to the manager's listeners (D = 0, no pause:
+  bit-identical traces).
 - **`audio-routing.ts`** (tested; curve, duck, `songLoudness`, background, camera step wip). *votr only* as is (its CPU
   targets exist only in the app); the router core is generic. A non-finite source or `dtMs` reads as 0 in
   `AudioRouter.update` (router-nan-guard, 2026-11-26; commit `audio routing: a non-finite source reads as 0…`). A
   narrowed route finds the 8 slots full and adds nothing, never the global drive; `canNarrowRoute(routes, id)` (narrowed-slots,
-  2026-11-27, D3).
+  2026-11-27, D3). `AudioRouter.update(…, heard = true)`: not heard, the target is 0 (no floor) and a released value below
+  `AudioRestCutoff` (1e-3, exported, Ludo to confirm) is 0 (sound-stops, 2026-11-27; the default keeps every caller).
 - **`audio-stems/`** (DSP tested): Spleeter, HTDemucs, SCNet runners, worker, separator. *votr only*; weights on
   Hugging Face `resolve/main` (not pinned). `StemSeparator.onWorkerMessage` stores a non-finite worker energy as 0 (a NaN
   in the model output stuck the running peaks and every stem level for good; router-nan-guard, 2026-11-26).

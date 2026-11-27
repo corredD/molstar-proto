@@ -148,6 +148,8 @@ export class AudioPresentedFrame {
     readonly scopes: AudioScopeSlot[] = [];
     readonly routeValues = new Map<number, number>();
     readonly visualization: AudioPresentedVisualization;
+    /** whether every presented drive and route value is 0 (nothing moves) */
+    atRest = true;
 
     constructor(waveformCount: number, spectrumCount: number, readonly capacity = AudioPresentedFrame.Capacity) {
         this.scalars = new Float64Array(capacity * ScalarStride);
@@ -256,7 +258,11 @@ export class AudioPresentedFrame {
         readScalarSet(s, o + RawOffset, this.frame.raw);
         for (let i = 0; i < StemNames.length; i++) this.stems[StemNames[i]] = s[o + StemsOffset + i];
         this.stemsSeparated = s[o + SeparatedOffset] !== 0;
-        for (let i = 0; i < AudioRouteTargets.length; i++) this.drives[AudioRouteTargets[i][0]] = s[o + DrivesOffset + i];
+        let atRest = true;
+        for (let i = 0; i < AudioRouteTargets.length; i++) {
+            const d = this.drives[AudioRouteTargets[i][0]] = s[o + DrivesOffset + i];
+            if (d !== 0) atRest = false;
+        }
         const scopeCount = s[o + ScopeCountOffset];
         this.scopeCount = scopeCount;
         for (let i = 0; i < AudioScopeSlotCount; i++) {
@@ -281,7 +287,12 @@ export class AudioPresentedFrame {
             for (let i = 0; i < routeCount; i++) this.presentedRouteIds[i] = this.routeIds[r + i];
             this.presentedRouteCount = routeCount;
         }
-        for (let i = 0; i < routeCount; i++) this.routeValues.set(this.routeIds[r + i], this.routeVals[r + i]);
+        for (let i = 0; i < routeCount; i++) {
+            const v = this.routeVals[r + i];
+            this.routeValues.set(this.routeIds[r + i], v);
+            if (v !== 0) atRest = false;
+        }
+        this.atRest = atRest;
 
         const v = e * this.vizStride, w = this.visualization.waveform, sp = this.visualization.spectrum;
         for (let i = 0; i < w.length; i++) w[i] = this.viz[v + i];
