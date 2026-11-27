@@ -168,6 +168,12 @@ describe('audio reactor', () => {
         const impulse = new Float32Array(2048);
         impulse[2047] = 0.8;
         expect(reactor.analyze(impulse, 48_000, 16).raw.peakAmplitude).toBeGreaterThan(0);
+
+        // the peak above is the peak's own window; the copy fed to the FFT: a bass tone in the newest 1024 samples only
+        const tone = new Float32Array(2048);
+        tone.set(createSineWave(1024, 48_000, 120, 0.75), 1024);
+        const copy = new AudioReactor({ fftSize: 1024, analysisSampleRate: 0, amplitudeAttackMs: 0, amplitudeReleaseMs: 0, bandAttackMs: 0, bandReleaseMs: 0 });
+        expect(copy.analyze(tone, 48_000, 16).raw.frequencyBands.bass).toBeGreaterThan(0.3);
     });
 
     it('expands analyser fft size when analysis sample rate is lowered', () => {
