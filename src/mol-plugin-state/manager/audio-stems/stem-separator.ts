@@ -212,7 +212,11 @@ export class StemSeparator {
         }
         for (let i = 0; i < msg.times.length; i++) {
             this.times.push(msg.times[i]);
-            for (const s of StemNames) this.energies[s].push(msg.energies[s][i]);
+            for (const s of StemNames) {
+                // a model can emit NaN or Infinity (fp16 on WebGPU): it would stay in the running peaks for good
+                const e = msg.energies[s][i];
+                this.energies[s].push(Number.isFinite(e) && e > 0 ? e : 0);
+            }
         }
         const oldest = (msg.times[msg.times.length - 1] ?? 0) - TimelineSeconds;
         let drop = 0;
