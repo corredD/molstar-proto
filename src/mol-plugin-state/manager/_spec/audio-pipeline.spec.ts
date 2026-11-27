@@ -380,6 +380,7 @@ describe('audio pipeline (offline, 16 ms frames at 48 kHz)', () => {
         };
         const at = (t: ReturnType<typeof paused>, sec: number) => Math.round(sec * 1000 / 16) - 1;
 
+        // pins today's behaviour; sound-stops deletes this test
         it('today the drives are still open 1.5 s after a pause: decaying tails, not 0', () => {
             const t = paused();
             const i = at(t, 4.5);
@@ -387,13 +388,15 @@ describe('audio pipeline (offline, 16 ms frames at 48 kHz)', () => {
             expect(t.drives.illumination[i]).toBeCloseTo(0, 1);
         });
 
-        // routing spec: after pause() every drive is exactly 0. Today the wiggle route's floor (0.2) holds it open, and
-        // the others only decay: lane `sound-stops` flips this to `it`.
-        it.failing('every drive is exactly 0 one second after a pause (to be met by lane sound-stops)', () => {
+        // routing spec row: after a pause every drive is exactly 0 within the longest release (400 ms, the illumination
+        // route) + one frame (16 ms). Today the wiggle route's floor (0.2) holds it open, and the others only decay: lane
+        // `sound-stops` flips this to `it`.
+        it.failing('every drive is exactly 0 416 ms (longest release + 1 frame) after a pause (to be met by lane sound-stops)', () => {
             const t = paused();
-            const i = at(t, 4);
+            const i = at(t, 3 + 0.416);
             for (const k of Object.keys(t.drives) as AudioRouteTarget[]) expect(t.drives[k][i]).toBe(0);
         });
+        // pins today's behaviour; sound-stops deletes this test
         it('today the wiggle holds its 0.2 floor plus a tail through a pause', () => {
             const t = paused();
             expect(t.drives.wiggle[at(t, 4)]).toBeCloseTo(0.205, 2);

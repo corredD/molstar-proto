@@ -57,19 +57,19 @@ audio element ─► analyser (band envelopes, beat) ─► stems ─► router 
 
 ## Expectations (measured by `scripts/votr-sync/clicksync.mjs`, its generated click track; the offline baseline is `src/mol-plugin-state/manager/_spec/audio-pipeline.spec.ts`)
 
-The click track has one kick every 0.5 s from 0.25 s (120 BPM), 20 s. Separation is off, the model is the startup
+The click track has one kick every 0.5 s from 0.25 s (120 BPM), `--seconds` + 2 s long (8 + 2 by default). Separation is off, the model is the startup
 capsid, the run is headless at about 30 fps.
 
 | Expectation | Pass | 2026-11-26 |
 |---|---|---|
-| kick → symmetry-axes peak | ≤ 50 ms + one frame | 35–39 ms median (13–65) ✔ |
-| gain × 2 → peak × 2 | 1.9–2.1 | 1.96 ✔ |
+| kick → symmetry-axes peak (`data-local/tests/clicksync.mjs`, `kick120.wav`) | ≤ 50 ms + one frame | 35–39 ms median (13–65) ✔ |
+| gain × 2 → peak × 2 (`data-local/tests/clicksync.mjs`, `kick120.wav`) | 1.9–2.1 | 1.96 ✔ |
 | routes survive a song load (`keep.mjs`) | same routes | same ✔ |
 | symmetry axes at rest, 0.4–0.5 s after a kick (Drums & Bass Burst, vitalic.mp3, `sync.mjs`) | p10 ≤ 0.1 | 0.08 ✔ |
-| kick → symmetry-axes peak, against what is **heard** (`scripts/votr-sync/clicksync.mjs`: media time − (ctx.currentTime − getOutputTimestamp().contextTime)) | median within one frame of 0 ms, no earlier than −1 frame | −1 ms median (−16..19), headless, 33 ms output delay: the drive is read from the analyser, ahead of the speakers by the output delay, so it passes only while that delay is under a frame or two; on Bluetooth or AirPlay (100–300 ms) it fails. **To be met by lane `heard-frame`** |
-| rest after a pause: every drive exactly 0 within the longest release (+1 frame) | 0 (not a tail, not a floor) | not 0 today: 1.5 s after a pause symAxis is 0.033 and the wiggle holds its 0.2 floor plus a tail (`it.failing` in `audio-pipeline.spec.ts`). **To be met by lane `sound-stops`** |
-| no route on a motion that is off | a preset that turns a motion off makes no route for it | fails for `ambient-pulse` (`amplitude → instanceRandom`; the other presets pass; `it.failing` in `audio-pipeline.spec.ts`). **To be met by lane `motions-follow-routes`** |
-| axes between kicks at 120 BPM, as a share of the peak | for information | drums only 24 %, bass only 52 %, full preset 41 % |
+| kick → symmetry-axes peak, against what is **heard** (`scripts/votr-sync/clicksync.mjs`, generated click track: media time − (ctx.currentTime − getOutputTimestamp().contextTime − the timestamp's age)) | median within one frame of 0 ms, no earlier than −1 frame | −1 ms median (−16..19; taken before the age term was added), headless, 33 ms output delay: the drive is read from the analyser, ahead of the speakers by the output delay, so it passes only while that delay is under a frame or two; on Bluetooth or AirPlay (100–300 ms) it fails. **To be met by lane `heard-frame`** |
+| rest after a pause: every drive exactly 0 within the longest release (+1 frame: 400 + 16 ms) (offline, `audio-pipeline.spec.ts`) | 0 (not a tail, not a floor) | not 0 today: 1.5 s after a pause symAxis is 0.033 and the wiggle holds its 0.2 floor plus a tail (`it.failing` in `audio-pipeline.spec.ts`). **To be met by lane `sound-stops`** |
+| no route on a motion that is off (offline, `audio-pipeline.spec.ts`) | a preset that turns a motion off makes no route for it | met since lane `motions-follow-routes` (it made a route for `ambient-pulse`'s `amplitude → instanceRandom`; the other presets passed) ✔ |
+| axes between kicks at 120 BPM, as a share of the peak | for information | `data-local/tests/clicksync.mjs`, `kick120.wav`, 2026-11-26: drums only 24 %, bass only 52 %, full preset 41 %; `scripts/votr-sync/clicksync.mjs`, 2026-11-27: 27 %, 66 %, 47 % (a different click, a 60 Hz decay) |
 
 The last row is the committed behaviour. The drums route has a release of 260 ms and the bass envelope 220 ms, so at
 120 BPM the axes are still 24–52 % open when the next kick comes. A shorter release on the route closes them more.
