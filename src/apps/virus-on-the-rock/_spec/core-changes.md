@@ -152,7 +152,16 @@ manager has no audio and no Who.
   in the model output stuck the running peaks and every stem level for good; router-nan-guard, 2026-11-26).
   `setModel` returns after the tap await when a newer request (a request counter) came meanwhile (Off during the load
   no longer posts `load` and turns the tap on), and a failed tap setup clears `tapLoading` so picking the model again
-  after Off retries (stem-separator-edges, 2026-11-27).
+  after Off retries (stem-separator-edges, 2026-11-27). Stem study (2026-11-27,
+  [progress](../progress/2026-11-27-stem-study.md)): the worker's logic is `stem-worker-core.ts` (`StemWorkerCore`, ports:
+  post, prepare, createRunner, now; spec `stem-worker-core.spec.ts`), `stem-worker.ts` only wires onnxruntime-web and the
+  messages; a model switch or Off waits for the run in flight before it disposes the old runner (releasing a running
+  model's sessions broke the wasm runtime: `RuntimeError: null function`, once `memory access out of bounds` until a
+  reload), and a run's error is posted under its own model only if no load or Off came since. HTDemucs' stem energy
+  (`demucsStemEnergies`) is the energy of the stem's audio: the frequency branch inverted as demucs' `_ispec`, plus the
+  time branch, Hann-4096 frames normalized by the window weight inside the segment (the newest frames are kept), hop
+  units (it summed the branches' energies: quiet passages read 15–17 dB loud; spec `demucs-energy.spec.ts`); `dsp.ts`
+  gains `fftOf` and `inverseRealFftInPlace`; ≈ 0.5 s of worker CPU per 5 s chunk.
 - **`assembly-symmetry-axis.ts`**: axes per structure from RCSB symmetry; mesoscale parts share a middle (wip). The
   per-structure cache stores the bare key (it stored `key:count` and compared the bare key, so it never hit: two
   provider reads per structure per sync, now one after the first; redraw-and-axes-cache, 2026-11-27, spec

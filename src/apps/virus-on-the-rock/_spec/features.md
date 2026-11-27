@@ -73,7 +73,7 @@ References are `file › symbol`, the file relative to `src/apps/virus-on-the-ro
 
 | Feature | Expected behaviour | Status | Where |
 | --- | --- | --- | --- |
-| Separation in the browser | Off, Spleeter 4-stem (4 × 19.7 MB, 6 s late), HTDemucs (126 MB, 10 s), SCNet (12.9 MB int8, 11 s); drums / bass / other / vocals | Built (DSP Tested) | stem-models.ts:36-67, stem-worker.ts |
+| Separation in the browser | Off, Spleeter 4-stem (4 × 19.7 MB, 6 s late), HTDemucs (126 MB, 10 s), SCNet (12.9 MB int8, 11 s); drums / bass / other / vocals; a model change during a run is safe; HTDemucs' energy is its stems' audio | Tested | stem-models.ts › StemModels, demucsStemEnergies; stem-worker-core.ts. Stem study 2026-11-27 ([progress](../progress/2026-11-27-stem-study.md)): all three on time (kicks within ±5 ms), levels follow the reference 0.94–0.999, live WebGPU matches the offline replay |
 | Heard in time with the stems | Playback is delayed by the model's latency, so the bands and stems match what is heard | Built | DelayNode, `ensureAnalyser` |
 | Lookahead | The analysis reads the audio ahead of what is heard by its own lag (½ window + band attack + trim), so a hit moves the visuals on the frame it is heard; 0.25 s delay with no model; on at VotR startup | Tested | lookahead-sync: `audio-pipeline.spec.ts` › lookahead (heard kick → peak 0 frames, was 2), clicksync `--lookahead` (heard 9 / 2 / 12 ms, was 51 / 32 / 39); Ludo's Chrome and HTDemucs not run yet |
 | Stand-ins without a model | drums = kick onset over its running peak, squared; bass = max(sub-bass, bass); other = mean(low-mids, high-mids, treble); vocals = mids | Built | audio-reactive-animation.ts:105-121. Raw and weak (0.01–0.1) |
