@@ -39,3 +39,19 @@ Core ~+25 lines, tests ~+75, UI ~+14, specs ~+10. Brief gave no number.
 
 lint 0 errors (2 existing warnings), tsc clean, jest 15 suites / 113 tests pass, prd build ok (build/ removed).
 Not tried in a browser.
+
+## Review
+
+Gate: reviewer + skeptic (Opus). Merged origin/votr/overnight first (clean). Fix commits below.
+
+| # | Finding | Verdict | Fix |
+| --- | --- | --- | --- |
+| 1 | A load can leave 9 narrowed routes (setRoutes installs them, the reattach loop cannot widen) | confirmed, must to should | `setRoutes` calls `limitNarrowedRoutes`: narrowed routes past the 8th in array order, disabled counted, widen to All. Test red first (9 narrowed, expected 8) |
+| 2 | Old-format file (top-level `affect`) with 9+ narrowable routes | should | same invariant; test via `parseAudioRouting` + load, red first (10 narrowed, expected 8). features.md says what the code does |
+| 3 | Disabled narrowed routes count toward the 8, unpinned and the note said "act on a part" | should to nit | test pins it (it passes on the code as it was: a guard); note is "8 routes are narrowed (on or off): widen one to All first" (UI, ui.md) |
+| 4 | `canNarrowRoute` per option/row | nit | `narrowedRouteCount` (core, tested) once per render in both UIs |
+| 5 | Meter assertion passes on old code | nit | annotated as a regression guard |
+| N1 | Same as 1 through other install paths | plausible should | all installs go through `setRoutes` (the only writer of `state.routes`); covered by 1 |
+| N2 | The full note repeated under every route on All | nit | shown once at the top of the card; the disabled select keeps its title |
+
+Checks after the fix: see the last commit message of this lane / the report.
