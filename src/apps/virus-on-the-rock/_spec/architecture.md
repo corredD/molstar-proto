@@ -88,8 +88,12 @@ Departures from the brief, for Ludo to confirm: (a) the stems at t − D + max(0
 (b) the lead from the analysis settings plus a trim, not one global number (35 ms would leave Ambient Pulse ~50 ms
 late); (c) a parallel analysis branch, not a split in series (a second 30 s buffer, ~11.5 MB); (d) lookahead on at VotR
 startup, off in core; (e) the ports spec's wiring expectations change (both delay lines); (f) `angine.mp3` (4.9 MB) in
-the prd build; (g) Mol\* `Slider` in the Stem Separation card (the other cards use native range inputs); (h) the
-expectation is |kick → peak| ≤ one frame or 17 ms, whichever is larger.
+the prd build; (g) dropped: the Mol\* `Slider` renders unstyled outside `.msp-plugin`, so the card uses the cards'
+native range rows, committed on release; (h) the expectation is |kick → peak| ≤ one frame or 17 ms, whichever is
+larger; (i) the stems do not line up with the bands to the frame: with the real `StemSeparator.sample` on a stub of
+the model's windows (4 ms frames) the separated drums (onset route) peak 8 ms ahead of the band stand-in and the bass
+(level route) 8 ms behind, so the stem path carries a route-dependent offset of its own, ±8 ms around
+`StemTimelineLeadS` = 30 ms (at 16 ms frames the drums fall one frame early).
 
 ## 3. One frame
 

@@ -110,14 +110,19 @@ Branch `votr/lookahead-sync` (from `votr/overnight`), commits one cause each:
 - `61acf70a4` tests 4–9, 11, 12 and 7 (14 red on the base manager, run by swapping the base file in; 4 guards green
   before too: drums only ×2, lookahead off explicit, trim to lead 0).
 - `6199cbaea` card: Lookahead chips, Audio Delay and Lead Trim (Mol\* `Slider`), the help line; the Off title fixed.
+  `684190cc6`: the Mol\* `Slider` rendered unstyled (its skin is scoped under `.msp-plugin`, the overlay is outside:
+  a 0 px rail and a bare text box in a headless screenshot), so native range rows committed on pointer up, key up or
+  blur; departure (g) dropped. Screenshot after the fix: both sliders drawn; two ArrowRight on Lead Trim commit
+  trim 2 ms, the analysis delay 0.25 − 0.0353 s (`AudioParam.value` shows it one render quantum later), heard 0.25 s.
 - `52a7f5ab5` `DefaultAudioSync = { lookahead: true }`, set in `initializeDefaults` before `loadDefaultAudio`.
 - `8ca4e58e1` the `getStemDelaySeconds` alias dropped (kept one commit so the core commit had no app hunk).
 - `2cc37dba1` `build.mjs` copies `examples/angine.mp3`; `curl` on 1351 served it from `/build/virus-on-the-rock/examples/`.
 - `357ae5f7e` clicksync `--delay`, `--lookahead [--trim]`, `--stems`; windows on the heard column.
+- a test with lookahead and no stem model (the startup configuration, D 0.25 s): red on the base manager.
 - specs: routing spec lookahead row, architecture §2 lookahead + departures (a)–(h) "Ludo to confirm", ui.md,
   features.md, core-changes.md, TODO items 3 and 7 annotated.
 
-Checks: `npm run lint` (0 errors, the 2 old app.tsx warnings), `tsc` clean, jest 221 passed (203 before, +18),
+Checks: `npm run lint` (0 errors, the 2 old app.tsx warnings), `tsc` clean, jest 222 passed (203 before, +19),
 `build.mjs -a virus-on-the-rock --prd` done.
 
 clicksync, headless Chromium on 1351, ~36–38 ms frames, outputLatency 24–32 ms, heard median (min..max):
@@ -127,6 +132,15 @@ clicksync, headless Chromium on 1351, ~36–38 ms frames, outputLatency 24–32 
 | `--delay 1 --lookahead` (D 1 s, lead 33 ms) | 9 (−8..30) | 2 (−14..15) | 12 (−2..30) | 19 (−10..31) | 1.95 |
 | `--delay 1` (no model, no lookahead: D 0) | 51 (26..64) | 32 (15..49) | 39 (34..64) | 46 (25..59) | 2.04 |
 
+Rest/peak (0.4–0.5 s after the heard kick) rises with lookahead: median 0.43 / 0.24 / 0.64 / 0.69, max 1.02 / 1.14 /
+1.01 / 1.54 (without: 0.47 / 0.24 / 0.61 / 0.46, max 0.62 / 0.28 / 0.69 / 0.52). Cause: the window ends on the next
+heard kick and the drive now rises the lead before it. Offline (kick track, D 1 s, 16 and 37 ms frames) the 0.4–0.5 s
+window reads max 1.04–1.25 with lookahead, 0.23–0.58 without; 0.35–0.45 s with lookahead reads what 0.4–0.5 s read
+without (drums only 0.24 vs 0.23, full 0.42 vs 0.40). The window is left as it is (clicksync prints it only).
+
+Startup checked headless on 1351: `lookahead` true after load, the card says "heard 0.25 s late; the analysis runs
+33 ms ahead".
+
 Not run: Ludo's Chrome (the coordinator's step 5), `--stems htdemucs` (headed Chrome with WebGPU: the open question
 of the real stem timeline's offset), the startup fallback with the stream unreachable.
 
@@ -134,7 +148,7 @@ of the real stem timeline's offset), the startup fallback with the stream unreac
 
 - The design as written, departures (a)–(h) proposed and flagged "Ludo to confirm" in architecture.md and the routing
   spec (builder, 2026-11-27).
-- Test 7 asserts in ms at 4 ms frames, not "the same frame at 16 ms": with the real `StemSeparator.sample` the
+- Departure (i), Ludo to confirm: test 7 asserts in ms at 4 ms frames, not "the same frame at 16 ms": with the real `StemSeparator.sample` the
   separated drums (onset route) peak 8 ms ahead of the band stand-in and the bass (level route) 8 ms behind, so 30 ms
   is the midpoint and at 16 ms frames the drums fall one frame early (−2 vs −1). Kept 30 ms (not tuned to 40); the
   test pins |stems − bands| ≤ 10 ms with the measured signs, and the uncorrected control further off (builder).
@@ -156,8 +170,8 @@ of the real stem timeline's offset), the startup fallback with the stream unreac
 
 ## Size
 
-~157 production lines against ~85: manager +102 / −28 (about a third doc comments: the lead, the delays, the branch),
-card +33, catalog 5, app 3, style 5, build 6, reactor 3; tooling clicksync +40 / −17. What took the room: the doc
+~165 production lines against ~85: manager +102 / −28 (about a third doc comments: the lead, the delays, the branch),
+card +45 (a commit-on-release range), catalog 5, app 3, build 6, reactor 3; tooling clicksync +40 / −17. What took the room: the doc
 comments and the card's help and titles.
 
 ## Review
