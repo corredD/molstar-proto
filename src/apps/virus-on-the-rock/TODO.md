@@ -31,7 +31,8 @@ Built on `votr/overnight` ([progress/2026-11-27-overnight.md](progress/2026-11-2
 2. **The 9th narrowed route is refused** (D3): once 8 routes are narrowed, the Who select of the others is disabled
    with a note. Check: narrow 8 routes, the 9th's Who is greyed with the note.
 3. **Startup fallback plays** (D9): startup keeps the stream; `angine.mp3` is copied into the build so the fallback
-   works. Check: with the stream unreachable, startup plays angine.mp3.
+   works. Check: with the stream unreachable, startup plays angine.mp3. Built in `lookahead-sync` (2026-11-27), for
+   Ludo to check.
 4. **The Who leak within one representation** (features §8, still open in §7): fix once checklist step 11 shows it.
    Check: step 11, only the narrowed chain's instances burst.
 
@@ -43,7 +44,8 @@ Built on `votr/overnight` ([progress/2026-11-27-overnight.md](progress/2026-11-2
    Drift's description, "waveform line", and the other mismatches of [_spec/ui.md](_spec/ui.md). Behaviour unchanged.
    Check: each label and help reads as ui.md says.
 7. **Every hidden control gets UI** (D5): floor and release per route; gain slider to 40; onset weight and temperature
-   under the Prominence radar; stem provider (WebGPU / WASM) and delay in Stem Separation. Check: each control is
+   under the Prominence radar; stem provider (WebGPU / WASM) and delay in Stem Separation (the delay is in, with
+   Lookahead and Lead Trim: `lookahead-sync`). Check: each control is
    there and moves what it names.
 8. **Prominence as a route source** (D13): each band's prominence (0–1, sums to 1) as a source next to the bands.
    Check: a route from a band's prominence drives its channel.
