@@ -792,6 +792,18 @@ describe('audio pipeline (offline, 16 ms frames at 48 kHz)', () => {
             });
         }
 
+        for (const frameMs of [16, 37]) {
+            it(`drums only, ${frameMs} ms frames: the rest window (shifted by the lead) reads with lookahead what it reads without`, () => {
+                // the window 0.4-0.5 s after the heard kick ends on the next kick, whose drive now rises the lead before it
+                const run = (on: boolean) => runAudioPipeline(kickTrack(48000, 10), drumsOnly(), { analysis: burst, durationS: 10 + D, stemDelayS: D, lookahead: on, frameMs });
+                const off = kickPeakStats(run(false), heardKicks(0), 'symAxis', 2);
+                const on = kickPeakStats(run(true), heardKicks(0), 'symAxis', 2, BurstLeadS);
+                process.stdout.write(`lookahead rest/peak, drums only, ${frameMs} ms frames: on ${on.restMedian.toFixed(2)} (max ${on.restMax.toFixed(2)}), off ${off.restMedian.toFixed(2)} (max ${off.restMax.toFixed(2)})\n`);
+                expect(Math.abs(on.restMedian - off.restMedian)).toBeLessThanOrEqual(0.05);
+                expect(Math.abs(on.restMax - off.restMax)).toBeLessThanOrEqual(0.05);
+            });
+        }
+
         it('no stem model (the startup configuration): the audio 0.25 s late, the heard kick -> symAxis peak within one frame', () => {
             let delay = NaN;
             const t = runAudioPipeline(kickTrack(48000, 10), getDefaultAudioRoutes(), {

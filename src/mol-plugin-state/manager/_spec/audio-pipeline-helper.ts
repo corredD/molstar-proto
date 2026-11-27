@@ -282,8 +282,11 @@ export function songMix(sr = 48000, seconds = 10): AudioSignal {
 
 const median = (a: number[]) => { const s = [...a].sort((x, y) => x - y); return s[Math.floor(s.length / 2)]; };
 
-/** kick -> peak lag in frames and rest/peak of one drive, with clicksync's windows (-50..400 ms for the peak, 400..500 ms for the rest) */
-export function kickPeakStats(trace: AudioPipelineTrace, kicksS: readonly number[], target: AudioRouteTarget, settleS = 1) {
+/**
+ * kick -> peak lag in frames and rest/peak of one drive, with clicksync's windows (-50..400 ms for the peak, 400..500 ms
+ * for the rest, less `leadS`: with lookahead the next kick's drive rises the lead before it is heard)
+ */
+export function kickPeakStats(trace: AudioPipelineTrace, kicksS: readonly number[], target: AudioRouteTarget, settleS = 1, leadS = 0) {
     const d = trace.drives[target];
     const lags: number[] = [], rests: number[] = [], peaks: number[] = [];
     const frameMs = trace.timeMs[1] - trace.timeMs[0];
@@ -296,7 +299,7 @@ export function kickPeakStats(trace: AudioPipelineTrace, kicksS: readonly number
             if (t >= k - 0.05 && t < k + 0.4 && d[i] > peak) { peak = d[i]; peakI = i; }
         }
         let rest = 0;
-        for (let i = 0; i < trace.count; i++) { const t = trace.timeMs[i] / 1000; if (t >= k + 0.4 && t < k + 0.5) rest = Math.max(rest, d[i]); }
+        for (let i = 0; i < trace.count; i++) { const t = trace.timeMs[i] / 1000; if (t >= k + 0.4 - leadS && t < k + 0.5 - leadS) rest = Math.max(rest, d[i]); }
         lags.push(peakI - kickI); peaks.push(peak); rests.push(rest / peak);
     }
     return {

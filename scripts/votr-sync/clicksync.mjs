@@ -126,7 +126,8 @@ function analyse(label, { out, routes, baseLatency, outputLatency, delayS, leadS
         if (!win.length) continue;
         const peak = win.reduce((b, r) => r[4] > b[4] ? r : b);
         lagM.push((peak[0] - delayS - k) * 1000); lagH.push((peak[1] - k) * 1000); peaks.push(peak[4]);
-        const rest = heardOut.filter(r => r[1] >= k + 0.4 && r[1] < k + 0.5).map(r => r[4]);
+        // less the lead: with lookahead the next kick's drive rises the lead before it is heard
+        const rest = heardOut.filter(r => r[1] >= k + 0.4 - leadS && r[1] < k + 0.5 - leadS).map(r => r[4]);
         if (rest.length) rests.push(Math.max(...rest) / peak[4]);
     }
     const dt = out.slice(1).map((r, i) => r[0] - out[i][0]).filter(x => x > 0);
