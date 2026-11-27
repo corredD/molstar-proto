@@ -295,6 +295,7 @@ rule); the rule elsewhere.
 
 ## Decided (by me, within the brief)
 
+- **Superseded by the gate (alt3: min(5 ms, max(3 ms, ½ interval)))**; the line below is the first decision, the quarter and the 6 ms cap.
 - **f6 over (a), (b) and the noise-adaptive d**: the tables above. The quarter because it covers ±1.5 ms of jitter at
   60 Hz (4.2 ms) and keeps every existing test exact; the 6 ms cap because a quarter of a slow frame (12 ms at 49 ms)
   is a band where nothing flips the rule yet the picture stays one behind.
@@ -303,12 +304,48 @@ rule); the rule elsewhere.
 - **The doc on `present`** now names the band ("a read time within the tolerance of a stamp stays one entry behind
   while it sits there") instead of "a latency that shrinks by less than two frames can leave the picture one behind".
 
+## Review (gate, fix step)
+
+Reviewer and skeptic (Opus); the coordinator's decision: replace the tolerance by alt3, `min(5 ms, max(3 ms, ½ · (stamp(seq) − stamp(next))))`.
+Skeptic's table (±1.5 ms jitter): holds and skips at the exact boundary 0 % at 60, 120 and 144 Hz (the quarter rule: 0 / 7.3 / 11.2 %);
+0.9 % with a noisy L at 60 Hz (5.7 %); at 49 ms frames the defect stays fixed (entry lag 0.03-0.08, old rule 0.42); early 0 everywhere.
+
+| # | Finding | Reviewer / skeptic | Grade | Fix |
+|---|---|---|---|---|
+| 1 | the quarter-interval tolerance holds and skips at the boundary at 120 and 144 Hz (L = k frames, ±1.5 ms) | confirmed / confirmed | must | red test `001430886` (120 and 144 Hz, 0 holds and skips), fix `7d89312d2` (alt3) |
+| 2 | `_spec/audio-routing-spec.md` heard row names the old rule and lacks the Chrome numbers | confirmed | should | the read rule as built, the 49 ms numbers (presented − live 50 / 51 / 53 ms, ≈ 95 ms before; heard median 47 / 66 / 58 ms) and the 60 Hz caveat; the spec commit below |
+| 3 | the constants are not pinned from above and below | confirmed | should | `0d0b9aa01`: cap, floor and half pinned (below); 7 mutants run |
+| 4 | `architecture.md` §2 does not say the newest entry is exempt | confirmed | nit | the spec commit below |
+| 5 | at 60 Hz with L ≈ 32 ms the lag win is small | confirmed (0.79 vs 0.84) | nit | one sentence under Open, in the routing spec |
+| 6 | a noisy `outputLatency` is not modelled | confirmed | nit | modelled now (0.9 %), under Open |
+| N1 | the `MaxStepTolerance` docstring budget | confirmed | nit | docstring rewritten for 3 / ½ / 5 ms (`7d89312d2`) |
+| N2 | not in the material handed to this step | (none) | | left to the coordinator |
+
+Mutants run on `audio-presented-frame.ts` (the spec file `audio-presented-frame.spec.ts`; 27 tests, all pass unmutated):
+
+| Mutant | Fails |
+|---|---|
+| cap 6 ms | the cap, 5.5 ms outside the band |
+| cap 4 ms | the cap, 4.5 ms inside the band |
+| no floor | the floor (144 Hz alternating ±1.5 ms); 120 and 144 Hz at L = k frames |
+| floor 2 ms | the same two |
+| floor 4 ms | the half (3.3 / 3.7 ms at 144 Hz) |
+| ½ → 0.25 | the half; the cap 4.5 ms |
+| ½ → 1 | the half |
+
+The pins use no random jitter: one exit from the band ends it for good (the picture is on the rule from then on), so
+the mean over 900 frames cannot tell 3.2 from 3.7 ms under ±0.3 ms jitter (measured: sharp edge at the floor, not at the half).
+
 ## Size
 
 6 production lines (the condition, two constants), ~20 doc lines; 5 tests, ~55 test lines. Brief: ~10 / ~60.
 
 ## Open
 
+- **At 60 Hz with L ≈ 32 ms the lag win is small** (review finding 5): mean lag 0.79 entry against 0.84 with the old
+  one-sided rule; the rule matters at slow frames (49 ms: 0.03-0.08 against 0.42) and at the boundary, not there.
+- **A noisy `outputLatency`** (finding 6) is modelled now: ±2 ms per read at 60 Hz, 0.9 % holds and skips (the quarter
+  rule: 5.7 %). Chrome's own reports are not measured.
 - **Chrome's `currentTime` step is not measured** (the heard-frame review lists it too). The 6 ms cap assumes a
   128-frame step; with 512 frames (10.7 ms) at 49 ms frames f6 keeps 4–11 % holds and skips each (see the tables).
   A one-line log of `currentTime` deltas in Ludo's Chrome would settle it.
