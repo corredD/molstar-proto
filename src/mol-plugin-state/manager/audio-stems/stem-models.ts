@@ -8,7 +8,7 @@
  */
 
 import type * as Ort from 'onnxruntime-web';
-import { padSignal, periodicHann, stft, StemFftSize, StemHop } from './dsp';
+import { fftOf, inverseRealFftInPlace, padSignal, periodicHann, stft, StemFftSize, StemHop } from './dsp';
 
 export const StemNames = ['drums', 'bass', 'other', 'vocals'] as const;
 export type StemName = typeof StemNames[number];
@@ -167,9 +167,113 @@ const DemucsCpuNodes = ['/ReduceMean', '/Sub', '/Pow', '/ReduceMean_1', '/Clip',
 
 type DemucsManifest = { pieces: { file: string, inputs: string[], outputs: string[] }[], outputs?: { freq?: string, time?: string } };
 
+const DemucsBins = 2048;
+
+/**
+ * demucs' _spec of one channel: reflect pad, torch.stft centred and normalized, the last bin dropped, frames 2 .. 2 + le;
+ * its real and imaginary parts written into planes `rePlane` and `imPlane` of `out` ([plane][bin][frame], le frames)
+ */
+export function demucsSpec(ch: Float32Array, length: number, out: Float32Array, rePlane: number, imPlane: number) {
+    const le = Math.ceil(length / StemHop);
+    const p1 = (StemHop / 2) * 3;
+    const a = padSignal(ch.subarray(0, length), p1, p1 + le * StemHop - length, 'reflect');
+    const { re, im } = stft(padSignal(a, StemFftSize / 2, StemFftSize / 2, 'reflect'), StemFftSize, StemHop, hann, 1 / Math.sqrt(StemFftSize), DemucsBins);
+    for (let t = 0; t < le; t++) {
+        for (let b = 0; b < DemucsBins; b++) {
+            out[(rePlane * DemucsBins + b) * le + t] = re[(t + 2) * DemucsBins + b];
+            out[(imPlane * DemucsBins + b) * le + t] = im[(t + 2) * DemucsBins + b];
+        }
+    }
+}
+
+const hannSquared = Float64Array.from(hann, w => w * w);
+/**
+ * torch.istft's window sum over _ispec's le frames and its 2 zero frames each side, by le. As demucs: the frequency
+ * branch fades over the segment's first and last 1536 samples and the model's time branch carries them (counting only
+ * the frames that exist read the newest frames higher against the reference, drums +0.7 dB against +0.3; stem study
+ * 2026-11-27)
+ */
+const demucsWindowSums = new Map<number, Float64Array>();
+
+function demucsWindowSum(le: number) {
+    let wsum = demucsWindowSums.get(le);
+    if (wsum) return wsum;
+    wsum = new Float64Array((le + 3) * StemHop + StemFftSize);
+    for (let k = 0; k < le + 4; k++) {
+        for (let n = 0; n < StemFftSize; n++) wsum[k * StemHop + n] += hannSquared[n];
+    }
+    demucsWindowSums.set(le, wsum);
+    return wsum;
+}
+
+/**
+ * demucs' _ispec of one channel of one stem: planes `rePlane` / `imPlane` of `x`, a zero bin on top and 2 zero frames
+ * each side, torch.istft centred and normalized (Hann), cropped by pad = 1536; added into `out` (length samples).
+ * `buf`, `re`, `im`: scratch of the window sum's length and the FFT size.
+ */
+function demucsISpecInto(x: Float32Array, rePlane: number, imPlane: number, le: number, length: number, out: Float32Array, buf: Float64Array, re: Float64Array, im: Float64Array) {
+    const N = StemFftSize, fft = fftOf(N), wsum = demucsWindowSum(le);
+    // torch.istft's normalized frames times sqrt(N), the inverse FFT's 1 / N
+    const scale = Math.sqrt(N) / N;
+    buf.fill(0);
+    for (let t = 0; t < le; t++) {
+        for (let b = 0; b < DemucsBins; b++) {
+            re[b] = x[(rePlane * DemucsBins + b) * le + t];
+            im[b] = x[(imPlane * DemucsBins + b) * le + t];
+        }
+        re[DemucsBins] = 0;
+        im[DemucsBins] = 0;
+        inverseRealFftInPlace(fft, re, im, N);
+        const start = (t + 2) * StemHop;
+        for (let n = 0; n < N; n++) buf[start + n] += re[n] * scale * hann[n];
+    }
+    const offset = N / 2 + (StemHop / 2) * 3;
+    for (let n = 0; n < length; n++) {
+        const w = wsum[n + offset];
+        if (w > 1e-11) out[n] += buf[n + offset] / w;
+    }
+}
+
+/**
+ * Each stem's energy per frame (centres t · hop + hop / 2) from HTDemucs' frequency branch `x` [4, 4, 2048, le] (per
+ * stem: L re, L im, R re, R im) and time branch `xt` [4, 2, length]: the energy of the stem's audio (the frequency
+ * branch inverted as demucs does, plus the time branch) in a Hann-4096 window, in hop units (a steady power P reads
+ * hop · P per channel). Not the sum of the two branches' energies: they partly cancel, and the frequency branch is no
+ * signal's spectrum, so its spectral energy overstates its audio (quiet passages read 15-17 dB loud; core-changes.md,
+ * audio-stems, stem study 2026-11-27).
+ */
+export function demucsStemEnergies(x: Float32Array, xt: Float32Array, length: number): StemEnergies {
+    const le = Math.ceil(length / StemHop);
+    const energies = emptyEnergies(le);
+    const audio = [new Float32Array(length), new Float32Array(length)];
+    const buf = new Float64Array(demucsWindowSum(le).length);
+    const re = new Float64Array(StemFftSize), im = new Float64Array(StemFftSize);
+    for (let s = 0; s < 4; s++) {
+        for (let c = 0; c < 2; c++) {
+            audio[c].set(xt.subarray((s * 2 + c) * length, (s * 2 + c + 1) * length));
+            demucsISpecInto(x, s * 4 + c * 2, s * 4 + c * 2 + 1, le, length, audio[c], buf, re, im);
+        }
+        const e = energies[StemNames[s]];
+        const [l, r] = audio;
+        for (let t = 0; t < le; t++) {
+            const from = t * StemHop + StemHop / 2 - StemFftSize / 2;
+            // a window that runs past the segment reads the power of its part inside: the newest frames are kept
+            let sum = 0, weight = 0;
+            for (let j = Math.max(0, -from), j1 = Math.min(StemFftSize, length - from); j < j1; j++) {
+                const i = from + j;
+                sum += hannSquared[j] * (l[i] * l[i] + r[i] * r[i]);
+                weight += hannSquared[j];
+            }
+            e[t] = weight > 0 ? sum * StemHop / weight : 0;
+        }
+    }
+    return energies;
+}
+
 /**
  * HTDemucs in 21 chained pieces: waveform and complex spectrogram in, a frequency branch [1, 4, 4, 2048, 336] and a
- * time branch [1, 4, 2, 343980] out (both denormalized in the graph). A stem's energy is the sum of both branches'.
+ * time branch [1, 4, 2, 343980] out (both denormalized in the graph). A stem's energy is that of its audio, both branches
+ * summed (demucsStemEnergies).
  */
 async function createHTDemucs(ctx: StemRunnerContext): Promise<StemRunner> {
     const { ort } = ctx;
@@ -186,24 +290,14 @@ async function createHTDemucs(ctx: StemRunnerContext): Promise<StemRunner> {
     const timeName = manifest.outputs?.time ?? 'xt';
     const L = 343980;
     const le = Math.ceil(L / StemHop); // 336 frames
-    const p1 = (StemHop / 2) * 3;
     return {
         async run(left, right) {
             const mix = new Float32Array(2 * L);
             mix.set(left.subarray(0, L), 0);
             mix.set(right.subarray(0, L), L);
-            // demucs' _spec: reflect pad, torch.stft centred and normalized, the last bin dropped, frames 2 .. 2 + le
-            const mag = new Float32Array(4 * 2048 * le);
-            [mix.subarray(0, L), mix.subarray(L)].forEach((ch, c) => {
-                const a = padSignal(ch, p1, p1 + le * StemHop - L, 'reflect');
-                const { re, im } = stft(padSignal(a, StemFftSize / 2, StemFftSize / 2, 'reflect'), StemFftSize, StemHop, hann, 1 / Math.sqrt(StemFftSize), 2048);
-                for (let t = 0; t < le; t++) {
-                    for (let b = 0; b < 2048; b++) {
-                        mag[((c * 2) * 2048 + b) * le + t] = re[(t + 2) * 2048 + b];
-                        mag[((c * 2 + 1) * 2048 + b) * le + t] = im[(t + 2) * 2048 + b];
-                    }
-                }
-            });
+            const mag = new Float32Array(4 * DemucsBins * le);
+            demucsSpec(mix.subarray(0, L), L, mag, 0, 1);
+            demucsSpec(mix.subarray(L), L, mag, 2, 3);
             const values = new Map<string, Ort.Tensor>([
                 ['mix', new ort.Tensor('float32', mix, [1, 2, L])],
                 ['mag', new ort.Tensor('float32', mag, [1, 4, 2048, le])],
@@ -222,21 +316,7 @@ async function createHTDemucs(ctx: StemRunnerContext): Promise<StemRunner> {
                 }
                 const x = await values.get(freqName)!.getData() as Float32Array;
                 const xt = await values.get(timeName)!.getData() as Float32Array;
-                const energies = emptyEnergies(le);
-                for (let s = 0; s < 4; s++) {
-                    const e = energies[StemNames[s]];
-                    // a normalized Hann STFT's one-sided energy is about 3/4 of the hop's sum of squares
-                    for (let cc = 0; cc < 4; cc++) {
-                        for (let b = 0; b < 2048; b++) {
-                            const base = ((s * 4 + cc) * 2048 + b) * le;
-                            for (let t = 0; t < le; t++) e[t] += x[base + t] ** 2 * (4 / 3);
-                        }
-                    }
-                    for (let c = 0; c < 2; c++) {
-                        const base = (s * 2 + c) * L;
-                        for (let i = 0; i < L; i++) e[(i / StemHop) | 0] += xt[base + i] ** 2;
-                    }
-                }
+                const energies = demucsStemEnergies(x, xt, L);
                 const centers = Float64Array.from({ length: le }, (_, t) => t * StemHop + StemHop / 2);
                 return { energies, centers };
             } finally {
