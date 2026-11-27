@@ -33,15 +33,53 @@
 
 ## Built
 
+- `AudioRouter.update` (audio-routing.ts): a non-finite source reads as 0 where `raw` is read (before song average,
+  onset, curve); a non-finite `dtMs` counts as 0. 5 production lines, no allocation.
+- Producer found (Opus subagent, read and run): `StemSeparator.onWorkerMessage` stored the worker's energies unchecked;
+  one NaN or Infinity from the model stuck `mixPeak`/`peaks` and so every stem level for good (Infinity froze the
+  other three stems at 0). Now a non-finite or non-positive energy is stored as 0 (-120 dB). 5 production lines.
+- Tests: 4 router cases (NaN stem, infinite stem, NaN band and amplitude, NaN dt; each recovers as a fresh route) and
+  3 separator cases (NaN, +/-Infinity); all 7 fail on origin/virus-on-the-rock.
+- Spec: routing rule 5 (non-finite reads 0), core-changes (router and separator), features §14.
+
 ## Decided
+
+- The guard reads at the source, not at the end, so the route math is untouched (routing rule 1).
+- Energy <= 0 also maps to 0: energies are sums of squares, never negative, so valid input is unchanged.
+- Left open (review nits 5, 6): `midsTreble` with an infinite band clamps at 2 instead of 0; the exp curve overflows
+  to Infinity at a band of 309+, which the normalized FFT bands cannot reach. Neither is seen in the app.
 
 ## Learned
 
+- Whether this separator NaN is the one seen on port 1350 is not shown: that run did not use SCNet by the brief. The
+  fp16-on-WebGPU cause is read in `stem-models.ts` (an existing comment), not reproduced. The router guard covers
+  any producer; the reactor (`AudioReactor.analyze`, prominence) also keeps a NaN dt or sample, but dt is clamped
+  upstream (`tick`) and no NaN source was shown there.
+- `Math.max(0, NaN)` and `target >= NaN` hide a NaN: a state that takes its max with its past never recovers.
+
 ## Size
 
-<measured> against ~5–15; what took the room.
+12 production lines against ~5-15 (router 5 + separator 5 + comment); 70 test lines against ~60. Within the brief.
+
+## Checks
+
+`tsc` clean; `npm run lint` 0 errors (4 warnings in files not touched); jest `src/apps/virus-on-the-rock
+src/mol-plugin-state src/mol-repr/structure` 39 passed before the last test line, `src/mol-plugin-state/manager` 36
+after; `build.mjs -a virus-on-the-rock --prd` done. Port 1351: the page loads, no NaN SVG attribute and no console
+message, but audio would not start in the automated browser (Playback stayed Stopped), so the wave lines were not
+seen under music: Ludo checks that. clicksync not run (`data-local/` is not in this worktree; the route math for
+finite input is unchanged).
 
 ## Review
 
 | Finding | Severity | Verdict | Commit / open |
 | ------- | -------- | ------- | ------------- |
+| 1 core-changes misses the separator | must-fix | confirmed (read) | fixed, spec commit |
+| 2 routing spec points at the wrong rule | should-fix | confirmed (read) | fixed, spec commit |
+| 3 progress file empty, checks missing | should-fix | confirmed | fixed, this file |
+| 4 dt comment wrong | nit | confirmed (probe) | fixed |
+| 5 midsTreble Infinity reads 2 | nit | confirmed (probe) | open, harmless |
+| 6 exp curve overflow at band 309+ | nit | confirmed (probe) | open, unreachable |
+| 7 no songLoudness in the test set | nit | confirmed | fixed |
+
+The skeptic pass was not run: the reviewer ran a probe for each finding, and 1, 2, 3 were re-read by the lane.
