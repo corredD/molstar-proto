@@ -118,6 +118,8 @@ full preset x2: MEDIA median 40 ms (18..57) | HEARD median 11 ms (-11..26) | pea
   new each tick), the 7- and 13-frame shifts at 100 and 200 ms, the lag +7 / +13. Green after: every golden unchanged
   at latency 0; presented[i] === live0[max(0, i − k)] (`toBe`) for 18 drives, 4 stems and every route value over a run
   with a 3–5 s pause; kick → peak lag median, min and max each + k exactly (2 → 9 at 100 ms, 2 → 15 at 200 ms).
+- 2a26bd45d widens the latency-0 test to every presented field (all scalars, 6 bands × 3 sets × frame/raw,
+  stemsSeparated, both visualizer arrays).
 - The no-audio branch (source removed at frame 200, 100 ms): the presented amplitude stays > 0 one frame after, is 0
   at 200 + k + 1, and the status keeps emitting (throttled) until then, then stops.
 
@@ -159,6 +161,13 @@ the medians are within 50 ms + one frame (88 ms). Ludo's Chrome on Bluetooth/Air
 - **The step-1 goldens are in the fix's commit**, so every commit is green.
 - **The lag test runs without a pause**: `kickPeakStats` places kicks on the wall clock, so a paused run gives
   meaningless lags; the shift test carries the pause.
+- **Deviation: `push` also calls `ensureRouteCapacity`** (a no-op when the routes fit), not only `setRoutes`: the app or
+  a test can set `state.routes` without `setRoutes`, and a ring too small would write past an entry's route block. A
+  steady frame never grows it.
+- **Consumers with retained references, read (after the gate-less self-check):** none. `animation-loop.ts` copies the
+  frame's and stems' numbers into a new `setAudioFrame` object; `audio-redraw.ts` and `renderer.ts` copy scope kinds and
+  drives into their own arrays field by field; `syncAudioAffect` keys on the affects' JSON, not on slot identity;
+  `CpuChannels` reads `drives()` fields per pass; the React readers read the status per emission.
 - `presented.routeValues` holds the current routes' values only (the router's Map can keep a removed route's value
   until its states shrink): same for every reader.
 
@@ -181,5 +190,5 @@ route block growth.
 - `npm run lint`: 0 errors (2 warnings, unused eslint-disable in `app.tsx` 541/547, not this lane's).
 - `npx tsc --noEmit -p tsconfig.json`: clean.
 - `npx jest src/apps/virus-on-the-rock src/mol-plugin-state src/mol-repr/structure src/mol-canvas3d`: 20 suites,
-  166 tests passed.
+  166 tests passed (before 2a26bd45d, which only widens one test; its spec re-run: 25 passed).
 - `node ./scripts/build.mjs -a virus-on-the-rock --prd`: built, then `build/` removed.
