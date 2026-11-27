@@ -165,6 +165,12 @@ export function getAudioRouteSourceValue(source: AudioRouteSource, frame: AudioR
 
 type RouteState = { previous: number, peak: number, songAverage: number, value: number };
 
+/**
+ * Once nothing is heard, a route's value released below this is 0 (Ludo to confirm, TODO 13): a quarter of one 8-bit
+ * colour step for illumination and hue, ~0.005 Å of motion. Only then: while sound plays a value is never snapped
+ */
+export const AudioRestCutoff = 1e-3;
+
 /** Evaluates the routes each frame: each route's value (for its meter) and each channel's drive */
 export class AudioRouter {
     private states = new Map<number, RouteState>();
@@ -177,7 +183,11 @@ export class AudioRouter {
     readonly scopeDrive = new Array<number>(AudioScopeSlotCount).fill(0);
     scopeCount = 0;
 
-    update(routes: readonly AudioRoute[], frame: AudioReactiveFrame<DefaultAudioBandKey>, stems: StemLevels, dtMs: number) {
+    /**
+     * One frame of every route. `heard`: whether sound is heard (playing, or the delay line still draining); when not,
+     * each route releases to 0 (no floor) with its own release and rests at exactly 0 below AudioRestCutoff
+     */
+    update(routes: readonly AudioRoute[], frame: AudioReactiveFrame<DefaultAudioBandKey>, stems: StemLevels, dtMs: number, heard = true) {
         // a non-finite dt counts as 0: the value follows its target at once, the song average does not step
         if (!Number.isFinite(dtMs)) dtMs = 0;
         for (const t of Object.keys(this.drives) as AudioRouteTarget[]) this.drives[t] = 0;
@@ -203,11 +213,13 @@ export class AudioRouter {
             }
             state.previous = raw;
             input = applyAudioRouteCurve(route.curve, input);
-            const target = route.enabled ? Math.max(0, route.floor + route.gain * input) : 0;
+            // the floor holds only while sound is heard
+            const target = route.enabled && heard ? Math.max(0, route.floor + route.gain * input) : 0;
             // immediate rise, exponential release
             state.value = target >= state.value || route.releaseMs <= 0 || dtMs <= 0
                 ? target
                 : state.value + (target - state.value) * (1 - Math.exp(-dtMs / route.releaseMs));
+            if (!heard && state.value < AudioRestCutoff) state.value = 0;
             this.values.set(route.id, state.value);
             if (route.enabled && route.target === 'duck') {
                 duckDrive += state.value;

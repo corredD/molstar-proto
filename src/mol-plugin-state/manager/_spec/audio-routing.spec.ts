@@ -7,7 +7,7 @@
 import { SortedArray } from '../../../mol-data/int';
 import { groupSpanInElements } from '../../helpers/audio-affect';
 import { createEmptyAudioReactiveFrame, DefaultAudioBandDefinitions } from '../audio-reactor';
-import { applyAudioRouteCurve, AudioRouter, AudioScopeKinds, createAudioRoute, draftsFromRoutes, maxScopeLevel, parseAudioRouting, sameAudioAffect, serializeAudioRouting } from '../audio-routing';
+import { applyAudioRouteCurve, AudioRestCutoff, AudioRouter, AudioScopeKinds, createAudioRoute, draftsFromRoutes, maxScopeLevel, parseAudioRouting, sameAudioAffect, serializeAudioRouting } from '../audio-routing';
 
 const EmptyFrame = createEmptyAudioReactiveFrame(DefaultAudioBandDefinitions);
 const Chain = { level: 'chain' as const, entryId: '6Q3Q', modelNum: 1, entityId: '1', operatorName: '1', asymId: 'A' };
@@ -156,6 +156,76 @@ describe('audio routing', () => {
         expect(old?.[0].routes[1].affect.level).toBe('all');
     });
 });
+
+describe('audio routing once the sound stops (heard = false)', () => {
+    const Other = (other: number) => ({ drums: 0, bass: 0, other, vocals: 0 });
+    // the default wiggle route: floor 0.2, gain 2, release 350 ms
+    const wiggle = () => createAudioRoute({ enabled: true, source: 'stemOther', mode: 'level', target: 'wiggle', gain: 2, floor: 0.2, releaseMs: 350 });
+
+    it('the cut-off is 1e-3', () => {
+        expect(AudioRestCutoff).toBe(1e-3);
+    });
+
+    it('targets 0, not the floor: the value releases from where it was with its own release', () => {
+        const route = wiggle();
+        const router = new AudioRouter();
+        router.update([route], EmptyFrame, Other(0.5), 16);
+        expect(router.values.get(route.id)).toBeCloseTo(1.2, 12);
+        let v = router.values.get(route.id)!;
+        for (let i = 0; i < 60; i++) {
+            router.update([route], EmptyFrame, Other(0.5), 16, false);
+            v = v + (0 - v) * (1 - Math.exp(-16 / 350));
+            if (v < AudioRestCutoff) v = 0;
+            expect(router.values.get(route.id)).toBe(v);
+            expect(router.drives.wiggle).toBe(v);
+        }
+        // below the floor: no 0.2 held
+        expect(v).toBeLessThan(0.2);
+    });
+
+    it('never rises to the floor when nothing was heard', () => {
+        const route = wiggle();
+        const router = new AudioRouter();
+        for (let i = 0; i < 10; i++) router.update([route], EmptyFrame, Other(0), 16, false);
+        expect(router.values.get(route.id)).toBe(0);
+        expect(router.drives.wiggle).toBe(0);
+    });
+
+    it('snaps a released value below 1e-3 to 0 only when not heard', () => {
+        const route = createAudioRoute({ enabled: true, source: 'stemBass', mode: 'level', target: 'symAxis', gain: 1, floor: 0, releaseMs: 100 });
+        const heard = new AudioRouter(), stopped = new AudioRouter();
+        for (const r of [heard, stopped]) r.update([route], EmptyFrame, { drums: 0, bass: 0.0011, other: 0, vocals: 0 }, 16);
+        heard.update([route], EmptyFrame, Silent, 16);
+        stopped.update([route], EmptyFrame, Silent, 16, false);
+        const released = 0.0011 * Math.exp(-16 / 100);
+        expect(released).toBeLessThan(AudioRestCutoff);
+        expect(heard.values.get(route.id)).toBeCloseTo(released, 15);
+        expect(heard.values.get(route.id)).toBeGreaterThan(0);
+        expect(stopped.values.get(route.id)).toBe(0);
+        expect(stopped.drives.symAxis).toBe(0);
+    });
+
+    it('a value released over 2000 frames is exactly 0 (today 2e-53, a denormal 4e-323 further on)', () => {
+        const route = createAudioRoute({ enabled: true, source: 'stemDrums', mode: 'onset', target: 'clipPosition', gain: 6.5, floor: 0, releaseMs: 260 });
+        const router = new AudioRouter();
+        router.update([route], EmptyFrame, { ...Silent, drums: 1 }, 16);
+        expect(router.values.get(route.id)).toBe(6.5);
+        for (let i = 0; i < 2000; i++) router.update([route], EmptyFrame, Silent, 16, false);
+        expect(router.values.get(route.id)).toBe(0);
+        expect(router.drives.clipPosition).toBe(0);
+    });
+
+    it('keeps the onset state while not heard: a resume reads the rise as a fresh route would', () => {
+        const route = createAudioRoute({ enabled: true, source: 'stemDrums', mode: 'onset', target: 'symAxis', gain: 6.5, floor: 0, releaseMs: 260 });
+        const paused = new AudioRouter(), fresh = new AudioRouter();
+        for (let i = 0; i < 20; i++) paused.update([route], EmptyFrame, Silent, 16, false);
+        paused.update([route], EmptyFrame, { ...Silent, drums: 0.5 }, 16);
+        fresh.update([route], EmptyFrame, { ...Silent, drums: 0.5 }, 16);
+        expect(paused.values.get(route.id)).toBe(fresh.values.get(route.id));
+    });
+});
+
+const Silent = { drums: 0, bass: 0, other: 0, vocals: 0 };
 
 describe('audio routing with a non-finite source', () => {
     const Stems = { drums: 0.2, bass: 0.4, other: 0, vocals: 0 };
