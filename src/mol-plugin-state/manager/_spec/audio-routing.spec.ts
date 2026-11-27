@@ -138,6 +138,43 @@ describe('audio routing', () => {
     });
 });
 
+describe('audio routing with a non-finite source', () => {
+    const Stems = { drums: 0.2, bass: 0.4, other: 0, vocals: 0 };
+    const Frames = [0.3, 0.6, 0.1].map(v => ({ ...EmptyFrame, amplitude: v }));
+    const routeSet = () => [
+        createAudioRoute({ enabled: true, source: 'stemBass', mode: 'level', target: 'symAxis', gain: 2, floor: 0, releaseMs: 200 }),
+        createAudioRoute({ enabled: true, source: 'stemDrums', mode: 'onset', target: 'instanceWave', gain: 3, floor: 0, releaseMs: 200 }),
+        createAudioRoute({ enabled: true, source: 'amplitude', mode: 'level', target: 'cameraZoom', gain: 1, floor: 0, releaseMs: 200 }),
+        createAudioRoute({ enabled: true, source: 'bass', mode: 'level', target: 'wiggle', gain: 1, floor: 0, releaseMs: 200 }),
+    ];
+    const bad = {
+        'a NaN stem': { frame: EmptyFrame, stems: { ...Stems, drums: NaN, bass: NaN }, dt: 16 },
+        'an infinite stem': { frame: EmptyFrame, stems: { ...Stems, drums: Infinity, bass: -Infinity }, dt: 16 },
+        'a NaN band and amplitude': { frame: { ...EmptyFrame, amplitude: NaN, frequencyBands: { ...EmptyFrame.frequencyBands, bass: NaN } }, stems: Stems, dt: 16 },
+        'a NaN dtMs': { frame: EmptyFrame, stems: Stems, dt: NaN },
+    };
+
+    for (const [name, { frame, stems, dt }] of Object.entries(bad)) {
+        it(`recovers on the next frame after ${name}, as a fresh route would`, () => {
+            const routes = routeSet();
+            const router = new AudioRouter();
+            const fresh = new AudioRouter();
+            router.update(routes, frame, stems, dt);
+            for (const t of Object.keys(router.drives) as (keyof typeof router.drives)[]) expect(Number.isFinite(router.drives[t])).toBe(true);
+            for (const r of routes) expect(Number.isFinite(router.values.get(r.id)!)).toBe(true);
+            for (const f of Frames) {
+                router.update(routes, f, Stems, 16);
+                fresh.update(routes, f, Stems, 16);
+                for (const r of routes) {
+                    expect(Number.isFinite(router.values.get(r.id)!)).toBe(true);
+                    expect(router.values.get(r.id)).toBeCloseTo(fresh.values.get(r.id)!, 6);
+                }
+                expect(router.drives).toEqual(fresh.drives);
+            }
+        });
+    }
+});
+
 describe('audio affect group span', () => {
     it('maps a model-element interval onto the unit element list', () => {
         const elements = SortedArray.ofSortedArray([0, 1, 2, 5, 6, 7, 10]);
