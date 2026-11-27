@@ -79,3 +79,24 @@ Fake clock: now = wall time (keeps running through paused ranges; not media time
 
 ## Log
 
+### Step 1: analyze reads the newest samples (bb2b5778e)
+
+- Red: `npx jest src/mol-plugin-state/manager/_spec/audio-reactive-animation.spec.ts`: 2 failed, 6 passed. Both new
+  tests (an impulse in the last sample of an 8192 buffer, fft 2048 at 22050 Hz from 48 kHz; and of a 2048 buffer, fft
+  1024 at the context rate): `raw.peakAmplitude` expected > 0, received 0.
+- After the fix, before regenerating: `audio-pipeline.spec.ts` 2 failed, 17 passed, and the two are exactly
+  `ambient/kick` and `ambient/song` (golden traces); DERIVED, the burst runs and the pause block unchanged.
+- Regenerated (`AUDIO_GOLDEN=1`), pasted only those two blocks: the ambient-pulse drives move ~78 ms earlier (the
+  kick at 0.25 s shows from row 0.256 now, from 0.384 before). Same commit as the fix, so every commit is green.
+
+### clicksync before (staging + step 1, which leaves drums-bass-burst unchanged; headless Chromium, port 1350)
+
+```
+full preset x1: output delay median 31 ms, baseLatency 5 ms, outputLatency 32 ms
+  kick->peak MEDIA median 40 ms (min 23, max 58) | HEARD median 11 ms (min -8, max 30) | peak 12.53 | rest/peak 0.50
+drums only x1:  MEDIA median 37 ms (19..53) | HEARD median 4 ms (-9..24) | peak 6.50 | rest/peak 0.28 max 0.32
+bass only x1:   MEDIA median 40 ms (20..65) | HEARD median 8 ms (-8..36) | peak 6.04 | rest/peak 0.69
+full preset x2: MEDIA median 40 ms (18..57) | HEARD median 11 ms (-11..26) | peak 24.92; gain x2 -> peak ratio 1.99
+```
+(media step ~40 ms per frame headless.)
+
