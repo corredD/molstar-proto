@@ -6,10 +6,9 @@ queue ([TODO.md](../TODO.md)).
 
 ## In flight
 
-- `router-nan-guard` (NaN on the overlay, found testing PR #65): `~/molstar-votr-lanes/router-nan-guard`, branch
-  `votr/router-nan-guard`, port 1351, Sonnet; started 2026-11-26; router only, off the app folder. Step: building.
-
 ## Waiting on Ludo
 
 - `split-app-by-card` (D15): PR #65, gate done (2 left open to the queue); Ludo: checklist 1–10 on port 1350,
   then merge. Branch `votr/split-app-by-card`, `~/molstar-votr-lanes/split-app-by-card`.
+- `router-nan-guard`: PR #66, router + stem separator guards; gate ran without the skeptic (to run or waive);
+  Ludo: §15 on port 1351 with SCNet on and off, console open. Branch `votr/router-nan-guard`.
