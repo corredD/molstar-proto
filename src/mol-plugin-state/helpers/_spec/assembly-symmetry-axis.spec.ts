@@ -47,7 +47,6 @@ describe('syncStructureAssemblyAxes cache', () => {
         current = symmetryB;
         syncStructureAssemblyAxes(plugin, 'highest');
         expect(values.uAudioAssemblyAxisCount.ref.value).toBe(2);
-        get.mockClear();
         syncStructureAssemblyAxes(plugin, '2');
         expect(values.uAudioAssemblyAxisCount.ref.value).toBe(0);
         get.mockRestore();
