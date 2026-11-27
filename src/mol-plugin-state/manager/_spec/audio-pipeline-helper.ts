@@ -121,7 +121,7 @@ function addKicks(out: Float32Array, sr: number, seconds: number) {
         const s0 = Math.round(k * sr);
         for (let i = 0; i < 0.12 * sr && s0 + i < out.length; i++) {
             const t = i / sr;
-            // a kick like data-local/kick120.wav: peak 0.7, ~40 ms decay, pitch falling 100 -> 50 Hz, gated at 120 ms
+            // a kick like the local data-local/kick120.wav (not scripts/votr-sync/clicksync.mjs's click, a 60 Hz decay): peak 0.7, ~40 ms decay, pitch falling 100 -> 50 Hz, gated at 120 ms
             out[s0 + i] += 0.7 * Math.exp(-t / 0.04) * Math.sin(2 * Math.PI * (50 * t + 50 * 0.03 * (1 - Math.exp(-t / 0.03))));
         }
     }

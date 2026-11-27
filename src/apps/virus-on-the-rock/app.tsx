@@ -219,7 +219,7 @@ export class VirusOnTheRockApp {
             PluginConfig.Structure.DefaultRepresentationPreset,
             PresetStructureRepresentations['mesoscale'].id);
 
-        const app = new VirusOnTheRockApp(viewer, uiTarget, createCanvas3DChannelTarget(viewer.plugin.canvas3d!)); (window as any).__vorProbe = app; // read by data-local/tests/clicksync.mjs, sync.mjs and keep.mjs
+        const app = new VirusOnTheRockApp(viewer, uiTarget, createCanvas3DChannelTarget(viewer.plugin.canvas3d!)); (window as any).__vorProbe = app; // read by scripts/votr-sync/clicksync.mjs and the local data-local/tests/sync.mjs and keep.mjs
         await app.initializeDefaults();
         return app;
     }
