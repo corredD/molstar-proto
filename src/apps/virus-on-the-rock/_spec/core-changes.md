@@ -92,7 +92,7 @@ manager has no audio and no Who.
 - **`assembly-symmetry-axis.ts`**: axes per structure from RCSB symmetry; mesoscale parts share a middle (wip).
   *needs work*: imports `extensions/assembly-symmetry` from `mol-plugin-state`; header `@author OpenAI`.
 - **`audio-affect.ts`**: Who resolution and packing; mesoscale owners (wip). *votr only*.
-- **`audio-reactive-presets.ts`**: ten presets. *votr only*.
+- **`audio-reactive-presets.ts`**: ten presets; `getPresetRoutes` makes no route on a motion the preset turns off, and `MotionFlagOfTarget` names the motion switch a route target needs. *votr only*.
 - **`audio-routing-inspired.ts`** (untracked, wip): six built-in route sets. *votr only*.
 - **`mesoscale-part.ts`** (untracked, wip): membrane / surface / interior / other, the `mesoscale-base` tag. Imported by
   `app.tsx`, `audio-affect.ts`, `assembly-symmetry-axis.ts`: **must be committed with them**.
