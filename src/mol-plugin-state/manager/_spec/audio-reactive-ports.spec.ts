@@ -57,4 +57,51 @@ describe('AudioReactiveAnimationManager ports', () => {
         expect(manager.state.status.value.heardPlaying).toBe(true);
         manager.dispose();
     });
+    it('stop and clear flush the delay line: the source -> delay link alone is cut, a new delay (same time) goes in its place', async () => {
+        const log: string[] = [];
+        type Node = { name: string, connect(n: Node): void, disconnect(n?: Node): void };
+        const node = (name: string, extra: object = {}): Node => ({
+            name, ...extra,
+            connect(n: Node) { log.push(`${name}->${n.name}`); },
+            disconnect(n?: Node) { log.push(n ? `${name}-x-${n.name}` : `${name}-x-all`); },
+        });
+        const analyser = node('analyser', {
+            fftSize: 2048, smoothingTimeConstant: 0, get frequencyBinCount() { return 1024; },
+            getFloatTimeDomainData() { }, getByteFrequencyData() { },
+        });
+        let delays = 0;
+        const delayNodes: (Node & { delayTime: { value: number } })[] = [];
+        const ctx = {
+            sampleRate: 48_000, currentTime: 0, state: 'running', destination: node('destination'),
+            createAnalyser: () => analyser,
+            createMediaElementSource: () => node('source'),
+            createDelay: () => {
+                const d = node(`delay${++delays}`, { delayTime: { value: 0, setValueAtTime(v: number) { this.value = v; } } }) as Node & { delayTime: { value: number } };
+                delayNodes.push(d);
+                return d;
+            },
+            resume: async () => { }, close: async () => { },
+        };
+        const ports: AudioReactivePorts = { createContext: () => ctx as unknown as AudioContext, outputClock: () => ({ now: () => 0, latency: () => 0 }) };
+        const audio = {
+            src: 'fake://song', paused: true, ended: false, currentTime: 0,
+            play: async () => { audio.paused = false; }, pause: () => { audio.paused = true; }, removeAttribute() { }, load() { },
+        };
+        const manager = new AudioReactiveAnimationManager({} as ConstructorParameters<typeof AudioReactiveAnimationManager>[0], ports);
+        manager.state.audioPlayer.next(audio as unknown as HTMLAudioElement);
+        await manager.play();
+        expect(log).toEqual(['source->delay1', 'delay1->analyser', 'analyser->destination']);
+        delayNodes[0].delayTime.value = 6;
+
+        log.length = 0;
+        manager.stop();
+        expect(log).toEqual(['source-x-delay1', 'delay1-x-all', 'source->delay2', 'delay2->analyser']);
+        expect(delayNodes[1].delayTime.value).toBe(6);
+
+        log.length = 0;
+        manager.clear();
+        expect(log).toEqual(['source-x-delay2', 'delay2-x-all', 'source->delay3', 'delay3->analyser']);
+        expect(delayNodes[2].delayTime.value).toBe(6);
+        manager.dispose();
+    });
 });

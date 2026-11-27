@@ -15,10 +15,11 @@
 
 import { AudioReactivePresetDefinitions, getAudioReactivePreset, getPresetRoutes } from '../../helpers/audio-reactive-presets';
 import { AudioReactiveFrame, DefaultAudioBandDefinitions, DefaultAudioBandKey } from '../audio-reactor';
-import { AudioRoute, AudioRouteTarget, getDefaultAudioRoutes } from '../audio-routing';
+import { AudioRestCutoff, AudioRoute, AudioRouteTarget, createAudioRoute, getDefaultAudioRoutes } from '../audio-routing';
 import { activeTargets, AudioPipelineTrace, AudioSignal, bassTone, formatGolden, goldenDiffs, KickTimes, kickPeakStats, kickTrack, runAudioPipeline, silence, songMix } from './audio-pipeline-helper';
 
 const Regenerate = !!process.env.AUDIO_GOLDEN;
+const Chain = { level: 'chain' as const, entryId: '6Q3Q', modelNum: 1, entityId: '1', operatorName: '1', asymId: 'A' };
 const Every = 8;
 
 const burst = getAudioReactivePreset('drums-bass-burst').analysis;
@@ -380,33 +381,143 @@ describe('audio pipeline (offline, 16 ms frames at 48 kHz)', () => {
         expect(p(x2) / p(x1)).toBeCloseTo(2, 6);
     });
 
-    describe('rest after a pause', () => {
-        const paused = () => {
-            const s = kickTrack();
-            return runAudioPipeline(s, getDefaultAudioRoutes(), { analysis: burst, paused: [[3, 5]] });
+    // routing spec rows "pause", "no floor once stopped", "pause or end of file with delay D", "clear", "stop", "released
+    // drive" (lane sound-stops): once nothing is heard every route releases to 0 with its own release and rests at
+    // exactly 0 below AudioRestCutoff; the bound is the formula, frame p - 1 + floor(max_j tau_j ln(v_j / 1e-3) / 16) + 1
+    describe('rest once the sound stops', () => {
+        const F = 16;
+        const kickRoutes = () => getDefaultAudioRoutes();
+        const frameAt = (sec: number) => Math.round(sec * 1000 / F) - 1;
+        /** the first frame the element is paused, for a pause at `sec` (timeMs / 1000 > sec) */
+        const firstPaused = (sec: number) => Math.floor(sec * 1000 / F);
+        /** the rest frame the formula gives, from the route values on frame `last` (the last frame heard) */
+        const restBound = (t: AudioPipelineTrace, routes: readonly AudioRoute[], last: number) => {
+            let m = 0;
+            routes.forEach((r, j) => {
+                const v = t.routeValues[j][last];
+                if (v > 0) m = Math.max(m, v < AudioRestCutoff ? 1 : Math.floor(r.releaseMs * Math.log(v / AudioRestCutoff) / F) + 1);
+            });
+            return last + m;
         };
-        const at = (t: ReturnType<typeof paused>, sec: number) => Math.round(sec * 1000 / 16) - 1;
+        const allZero = (t: AudioPipelineTrace, i: number) => (Object.keys(t.drives) as AudioRouteTarget[]).every(k => t.drives[k][i] === 0)
+            && t.routeValues.every(r => r[i] === 0);
+        const pausedRun = (opts: Parameters<typeof runAudioPipeline>[2] = {}) => {
+            const routes = kickRoutes();
+            return { routes, t: runAudioPipeline(kickTrack(), routes, { analysis: burst, paused: [[3, 6]], durationS: 7, ...opts }) };
+        };
+        /** what the lane reports: the time from the pause to exact 0, kick track, Drums & Bass Burst */
+        let measuredRestMs = 0;
 
-        // pins today's behaviour; sound-stops deletes this test
-        it('today the drives are still open 1.5 s after a pause: decaying tails, not 0', () => {
-            const t = paused();
-            const i = at(t, 4.5);
-            expect(t.drives.symAxis[i]).toBeCloseTo(0.033, 2);
-            expect(t.drives.illumination[i]).toBeCloseTo(0.000225, 5);
+        it('pause: every drive and route value is exactly 0 by the formula\'s frame, stays 0 until play, and not one frame earlier', () => {
+            const { routes, t } = pausedRun();
+            const p = firstPaused(3), R = restBound(t, routes, p - 1);
+            for (let i = R; i <= frameAt(6); i++) if (!allZero(t, i)) throw new Error(`frame ${i} not at rest`);
+            expect(allZero(t, R - 1)).toBe(false);
+            // the Drums & Bass Burst bound (wiggle 2.2 at 350 ms: 2.69 s)
+            measuredRestMs = (R - (p - 1)) * F;
+            expect(measuredRestMs).toBeLessThanOrEqual(2700);
+            process.stdout.write(`sound-stops: pause at 3 s, kick track, Drums & Bass Burst: exact 0 after ${measuredRestMs} ms (frame ${R}, last playing ${p - 1})\n`);
         });
 
-        // routing spec row: after a pause every drive is exactly 0 within the longest release (400 ms, the illumination
-        // route) + one frame (16 ms). Today the wiggle route's floor (0.2) holds it open, and the others only decay: lane
-        // `sound-stops` flips this to `it`.
-        it.failing('every drive is exactly 0 416 ms (longest release + 1 frame) after a pause (to be met by lane sound-stops)', () => {
-            const t = paused();
-            const i = at(t, 3 + 0.416);
-            for (const k of Object.keys(t.drives) as AudioRouteTarget[]) expect(t.drives[k][i]).toBe(0);
+        it('no floor once stopped: the wiggle follows its pure release from the last playing value; 0 before the first play', () => {
+            const { routes, t } = pausedRun();
+            const j = routes.findIndex(r => r.target === 'wiggle');
+            const p = firstPaused(3);
+            const v = t.routeValues[j][p - 1];
+            expect(v).toBeGreaterThan(0.2);
+            for (let k = 1; v * Math.exp(-F * k / 350) >= 2 * AudioRestCutoff; k++) {
+                expect(t.drives.wiggle[p - 1 + k]).toBeCloseTo(v * Math.exp(-F * k / 350), 9);
+            }
+            // never played: nothing heard, no floor
+            const early = runAudioPipeline(kickTrack(), kickRoutes(), { analysis: burst, paused: [[0, 1]], durationS: 2 });
+            for (let i = 0; i < frameAt(1); i++) expect(early.drives.wiggle[i]).toBe(0);
         });
-        // pins today's behaviour; sound-stops deletes this test
-        it('today the wiggle holds its 0.2 floor plus a tail through a pause', () => {
-            const t = paused();
-            expect(t.drives.wiggle[at(t, 4)]).toBeCloseTo(0.205, 2);
+
+        for (const how of ['pause', 'end of file'] as const) {
+            it(`${how} with a stem delay of 1 s: the drives follow the tail (as an unpaused run) for 1 s, then rest by the formula`, () => {
+                const routes = kickRoutes();
+                const stopOpts = how === 'pause' ? { paused: [[3, 10]] as [number, number][] } : { endedAtS: 3 };
+                const t = runAudioPipeline(kickTrack(), routes, { analysis: burst, durationS: 8, stemDelayS: 1, ...stopOpts });
+                const ref = runAudioPipeline(kickTrack(), kickRoutes(), { analysis: burst, durationS: 8, stemDelayS: 1 });
+                // heard until the first frame not playing + D: the frames at or before 3.008 + 1 s, t < heardUntil
+                const lastHeard = frameAt(4);
+                const series = (x: AudioPipelineTrace) => [...(Object.keys(x.drives) as AudioRouteTarget[]).map(k => x.drives[k]), x.drums, x.bass, x.other, x.vocals, ...x.routeValues];
+                const a = series(t), b = series(ref);
+                for (let c = 0; c < a.length; c++) for (let i = 0; i <= lastHeard; i++) if (a[c][i] !== b[c][i]) throw new Error(`series ${c} frame ${i}: ${a[c][i]} vs ${b[c][i]}`);
+                // the next frame is not heard: the wiggle's floor is gone
+                expect(t.drives.wiggle[lastHeard + 1]).toBeLessThan(ref.drives.wiggle[lastHeard + 1]);
+                const R = restBound(t, routes, lastHeard);
+                for (let i = R; i < t.count; i++) if (!allZero(t, i)) throw new Error(`frame ${i} not at rest`);
+                expect(allZero(t, R - 1)).toBe(false);
+            });
+        }
+
+        it('the separator samples t - D through the tail and never once nothing is heard', () => {
+            const t = runAudioPipeline(kickTrack(), kickRoutes(), { analysis: burst, durationS: 6, stemDelayS: 1, paused: [[3, 10]] });
+            const lastHeard = frameAt(4);
+            const byFrame = new Map(t.stemSamples.map(s => [s.index, s.time]));
+            for (let i = 0; i <= lastHeard; i++) expect(byFrame.get(i)).toBeCloseTo((i + 1) * F / 1000 - 1, 9);
+            expect(t.stemSamples.filter(s => s.index > lastHeard)).toEqual([]);
+        });
+
+        it('clear: every drive, route value and scope slot is 0 on the next frame', () => {
+            const routes = [...kickRoutes(), createAudioRoute({ enabled: true, source: 'stemDrums', mode: 'level', target: 'wiggle', gain: 1, floor: 0.3, releaseMs: 500, affect: Chain })];
+            let clearedAt = -1;
+            const scopeCount: number[] = [];
+            const t = runAudioPipeline(kickTrack(), routes, {
+                analysis: burst, durationS: 6,
+                onFrame: ({ index, manager }) => {
+                    scopeCount.push(manager.scopeCount);
+                    if (index === 300) { manager.clear(); clearedAt = index; }
+                },
+            });
+            expect(allZero(t, clearedAt)).toBe(false);
+            expect(scopeCount[clearedAt]).toBe(1);
+            for (let i = clearedAt + 1; i < t.count; i++) {
+                if (!allZero(t, i)) throw new Error(`frame ${i} not at rest`);
+                expect(scopeCount[i]).toBe(0);
+            }
+        });
+
+        it('stop with a stem delay of 1 s: no tail, the routes release from the stop frame and rest by the formula', () => {
+            const routes = kickRoutes();
+            const stopAt = firstPaused(3) - 1;
+            const t = runAudioPipeline(kickTrack(), routes, {
+                analysis: burst, durationS: 6, stemDelayS: 1,
+                onFrame: ({ index, manager }) => { if (index === stopAt) manager.stop(); },
+            });
+            // the next frame is not heard: the wiggle releases, no floor
+            const j = routes.findIndex(r => r.target === 'wiggle');
+            expect(t.routeValues[j][stopAt + 1]).toBe(t.routeValues[j][stopAt] * Math.exp(-F / 350));
+            const R = restBound(t, routes, stopAt);
+            for (let i = R; i < t.count; i++) if (!allZero(t, i)) throw new Error(`frame ${i} not at rest`);
+            expect(allZero(t, R - 1)).toBe(false);
+            expect(t.stemSamples.filter(s => s.index > stopAt)).toEqual([]);
+        });
+
+        it('no denormal: a route value on a frame not heard is 0 or at least 1e-3', () => {
+            const { t } = pausedRun();
+            for (let i = firstPaused(3); i <= frameAt(6); i++) {
+                for (const r of t.routeValues) if (!(r[i] === 0 || r[i] >= AudioRestCutoff)) throw new Error(`frame ${i}: ${r[i]}`);
+            }
+        });
+
+        it('latency 100 ms: the presented drives reach 0 exactly 7 frames after the live ones', () => {
+            const firstRest = (t: AudioPipelineTrace) => { let r = -1; for (let i = frameAt(6); i >= firstPaused(3) && allZero(t, i); i--) r = i; return r; };
+            const live = pausedRun().t, heard = pausedRun({ outputLatency: 0.1 }).t;
+            expect(firstRest(live)).toBeGreaterThan(firstPaused(3));
+            expect(firstRest(heard)).toBe(firstRest(live) + Math.ceil(100 / F));
+        });
+
+        it('heardPlaying with a stem delay of 1 s: true through the tail, false once nothing is heard', () => {
+            const heard: boolean[] = [];
+            runAudioPipeline(kickTrack(), kickRoutes(), {
+                analysis: burst, durationS: 6, stemDelayS: 1, paused: [[3, 10]],
+                onFrame: ({ manager }) => heard.push(manager.state.status.value.heardPlaying),
+            });
+            const lastHeard = frameAt(4);
+            expect(heard.slice(0, lastHeard + 1).every(h => h)).toBe(true);
+            expect(heard.slice(lastHeard + 1).every(h => !h)).toBe(true);
         });
     });
 
