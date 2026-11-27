@@ -6,9 +6,9 @@
 
 import { AudioRedrawTracker } from '../audio-redraw';
 
-const scopeKind = new Float32Array(8);
-const scopeDrive = new Float32Array(8);
 const frame = (o: { illumination?: number, hue?: number, wave?: number, scopeCount?: number, kind?: number, drive?: number } = {}) => {
+    const scopeKind = new Float32Array(8);
+    const scopeDrive = new Float32Array(8);
     scopeKind[0] = o.kind ?? 0;
     scopeDrive[0] = o.drive ?? 0;
     return {
