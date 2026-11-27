@@ -125,7 +125,7 @@ function getCachedStructureAxes(structure: Structure, order: AudioReactiveAssemb
     const axes = new Array<number>(AudioReactiveAssemblyAxisMaxCount * 3).fill(0);
     const center = Vec3();
     const count = getStructureAssemblyAxes(structure, order, axes, center);
-    const entry = { key: `${key}:${count}`, count, axes, center };
+    const entry = { key, count, axes, center };
     structureAxes.set(structure, entry);
     return entry;
 }
@@ -166,7 +166,7 @@ export function syncStructureAssemblyAxes(plugin: PluginContext, order: AudioRea
             }
         }
         const waveRadial = isMesoscaleSurfacePart(getMesoscalePart(structure)) ? 1 : 0;
-        const key = `${entry.key}:${waveRadial}`;
+        const key = `${entry.key}:${entry.count}:${waveRadial}`;
         for (const component of s.components) {
             for (const r of component.representations) {
                 const repr = r.cell.obj?.data.repr;

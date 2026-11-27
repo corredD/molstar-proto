@@ -53,6 +53,13 @@ manager has no audio and no Who.
   stems, 7 drives, glow, hue, scope count/kind/drive [8]. `updateIfChanged`, forced redraw while the wave or a scope is
   driven. *needs work*: replace `AudioReactiveFrame` in the renderer and Canvas3D interfaces by a generic "external
   drives" API; stem, mix and dominant-frequency uniforms are unused.
+- **Forced redraw of an audio frame** (`canvas3d.ts` `setAudioFrame`, new `audio-redraw.ts` `AudioRedrawTracker`,
+  spec `mol-canvas3d/_spec/audio-redraw.spec.ts`; redraw-and-axes-cache, 2026-11-27): the tracker keeps the previous
+  frame (preallocated, nothing allocated per frame). Illumination and hue (global, and narrowed kinds 8, 9) render on
+  change only, since their shader terms have no time term (a held value does not render); the instance wave and
+  narrowed motion kinds render while above 0 and once more on the drop to 0 (they use `uTime`). Before, illumination
+  and hue forced no render at all. VotR presets mask the difference through `hasAnimation`. Commits `canvas3d: ...`,
+  no app hunks. *votr only*.
 - **Material animation uniforms** (`AnimationSchema`): motion toggles, object transform, axis set (`uAudioAssemblyAxes`
   v3[32], count, centre), `uAudioWaveRadial` (wip), Who ranges v4[8]. *needs work*: the Who ranges differ per visual but
   are uploaded per material (render-item.ts:242-250; all visuals of a representation share one material id), so they
@@ -92,7 +99,10 @@ manager has no audio and no Who.
   `setModel` returns after the tap await when a newer request (a request counter) came meanwhile (Off during the load
   no longer posts `load` and turns the tap on), and a failed tap setup clears `tapLoading` so picking the model again
   after Off retries (stem-separator-edges, 2026-11-27).
-- **`assembly-symmetry-axis.ts`**: axes per structure from RCSB symmetry; mesoscale parts share a middle (wip).
+- **`assembly-symmetry-axis.ts`**: axes per structure from RCSB symmetry; mesoscale parts share a middle (wip). The
+  per-structure cache stores the bare key (it stored `key:count` and compared the bare key, so it never hit: two
+  provider reads per structure per sync, now one after the first; redraw-and-axes-cache, 2026-11-27, spec
+  `mol-plugin-state/helpers/_spec/assembly-symmetry-axis.spec.ts`; commit of its own, no app hunks).
   *needs work*: imports `extensions/assembly-symmetry` from `mol-plugin-state`; header `@author OpenAI`.
 - **`audio-affect.ts`**: Who resolution and packing; mesoscale owners (wip). *votr only*.
 - **`audio-reactive-presets.ts`**: ten presets; `getPresetRoutes` makes no route on a motion the preset turns off, and `MotionFlagOfTarget` names the motion switch a route target needs. *votr only*.
