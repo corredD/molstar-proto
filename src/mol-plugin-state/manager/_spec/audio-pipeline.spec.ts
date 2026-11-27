@@ -15,7 +15,7 @@
 
 import { AudioReactivePresetDefinitions, getAudioReactivePreset, getPresetRoutes } from '../../helpers/audio-reactive-presets';
 import { AudioRoute, AudioRouteTarget, getDefaultAudioRoutes } from '../audio-routing';
-import { activeTargets, AudioSignal, bassTone, formatGolden, goldenDiffs, kickPeakStats, kickTrack, runAudioPipeline, silence, songMix } from './audio-pipeline-helper';
+import { activeTargets, AudioPipelineTrace, AudioSignal, bassTone, formatGolden, goldenDiffs, KickTimes, kickPeakStats, kickTrack, runAudioPipeline, silence, songMix } from './audio-pipeline-helper';
 
 const Regenerate = !!process.env.AUDIO_GOLDEN;
 const Every = 8;
@@ -407,6 +407,87 @@ describe('audio pipeline (offline, 16 ms frames at 48 kHz)', () => {
             const t = paused();
             expect(t.drives.wiggle[at(t, 4)]).toBeCloseTo(0.205, 2);
         });
+    });
+
+    // the visuals show what is heard: the manager presents its live state outputLatency late (audio-presented-frame.ts)
+    describe('what is heard: the presented frame', () => {
+        type Live = { currentFrame: Record<string, unknown> & { raw: Record<string, unknown> }, currentStems: Record<string, number>, router: { drives: Record<string, number>, values: Map<number, number> } };
+        const targets = (t: AudioPipelineTrace) => Object.keys(t.drives) as AudioRouteTarget[];
+        const series = (t: AudioPipelineTrace) => [...targets(t).map(k => t.drives[k]), t.drums, t.bass, t.other, t.vocals, ...t.routeValues];
+        const latencyRun = (L: number, paused: readonly (readonly [number, number])[] = [[3, 5]]) => runAudioPipeline(kickTrack(), getDefaultAudioRoutes(), { analysis: burst, paused, outputLatency: L });
+
+        it('latency 0: every presented value is the live value of the same frame, and the presented objects keep their identity', () => {
+            let held: unknown[] | undefined;
+            let checked = 0;
+            const mismatches: string[] = [];
+            runAudioPipeline(songMix(), getDefaultAudioRoutes(), {
+                analysis: burst, paused: [[3, 4]],
+                onFrame: ({ index, manager: m }) => {
+                    const live = m as unknown as Live;
+                    for (const k of Object.keys(live.router.drives)) if (m.drives[k as AudioRouteTarget] !== live.router.drives[k]) mismatches.push(`${index} drive ${k}`);
+                    for (const k of Object.keys(live.currentStems)) if (m.stems[k as keyof typeof m.stems] !== live.currentStems[k]) mismatches.push(`${index} stem ${k}`);
+                    for (const [id, v] of live.router.values) if (m.routeValues.get(id) !== v) mismatches.push(`${index} route ${id}`);
+                    for (const k of ['amplitude', 'beatIntensity', 'mix'] as const) {
+                        if (m.frame[k] !== live.currentFrame[k]) mismatches.push(`${index} frame ${k}`);
+                        if (m.frame.raw[k] !== live.currentFrame.raw[k]) mismatches.push(`${index} raw ${k}`);
+                    }
+                    const status = m.state.status.value;
+                    const now = [m.frame, m.drives, m.stems, m.routeValues, m.scopes, m.scopeKind, m.scopeDrive, status.frame, status.drives, status.routeValues, status.visualization];
+                    if (held) now.forEach((o, i) => { if (o !== held![i]) mismatches.push(`${index} identity ${i}`); });
+                    else held = now;
+                    checked++;
+                },
+            });
+            expect(checked).toBeGreaterThan(500);
+            expect(mismatches.slice(0, 5)).toEqual([]);
+        });
+
+        it('the source removed (no-audio branch): the presented frame comes to rest k frames later and the status follows it, then stops', () => {
+            const amplitude: number[] = [], emitted: number[] = [];
+            let removedAt = -1, sub: { unsubscribe(): void } | undefined;
+            runAudioPipeline(songMix(), getDefaultAudioRoutes(), {
+                analysis: burst, durationS: 6, outputLatency: 0.1,
+                onFrame: ({ index, manager: m }) => {
+                    amplitude.push(m.frame.amplitude);
+                    if (index === 200) {
+                        (m.state.audioPlayer.value as unknown as { src: string }).src = '';
+                        removedAt = index;
+                        sub = m.state.status.subscribe(() => emitted.push(index));
+                    }
+                },
+            });
+            sub?.unsubscribe();
+            const k = Math.ceil(100 / 16);
+            expect(amplitude[removedAt + 1]).toBeGreaterThan(0); // still what is heard
+            expect(amplitude[removedAt + k + 1]).toBe(0);
+            // one emission at subscribe, then the throttled ones (32 ms) until the presented frame rests
+            expect(emitted.length).toBeGreaterThan(2);
+            expect(emitted[emitted.length - 1]).toBeLessThanOrEqual(removedAt + k + 3);
+        });
+
+        for (const L of [0.1, 0.2]) {
+            const k = Math.ceil(L * 1000 / 16);
+            it(`latency ${L * 1000} ms: the presented trace is the live one ${k} frames late, through a pause`, () => {
+                const live = series(latencyRun(0)), heard = series(latencyRun(L));
+                let differs = false;
+                live.forEach((s0, c) => {
+                    const sL = heard[c];
+                    for (let i = 0; i < s0.length; i++) {
+                        const want = s0[Math.max(0, i - k)];
+                        if (sL[i] !== want) throw new Error(`series ${c} frame ${i}: ${sL[i]} vs live ${want} at ${i - k}`);
+                        if (sL[i] !== s0[i]) differs = true;
+                    }
+                });
+                expect(differs).toBe(true);
+            });
+
+            it(`latency ${L * 1000} ms: kick -> peak lag grows by exactly ${k} frames`, () => {
+                // no pause: kickPeakStats places the kicks on the wall clock
+                const s0 = kickPeakStats(latencyRun(0, []), KickTimes(10), 'symAxis');
+                const sL = kickPeakStats(latencyRun(L, []), KickTimes(10), 'symAxis');
+                expect([sL.lagMedian, sL.lagMin, sL.lagMax]).toEqual([s0.lagMedian + k, s0.lagMin + k, s0.lagMax + k]);
+            });
+        }
     });
 
     describe('a route on a motion that is off', () => {
