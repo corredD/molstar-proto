@@ -196,6 +196,8 @@ or text). CPU channels run in the app after each draw, so they exist only in Vot
 - Below 30 fps every envelope and release slows against real time (the loop caps a frame at 33.3 ms); the camera
   channels use real time.
 - The dev server serves the whole repo on every interface, with no Range requests (seeking, Safari).
+- NaN on the overlay (`<text> y` / `<path> d` "NaN" from the route lines): a non-finite source stuck a route at NaN for
+  good. Fixed in `AudioRouter.update` (a non-finite source or `dtMs` reads as 0; Tested, audio-routing.spec.ts) and in `StemSeparator` (a non-finite model energy is stored as 0; Tested, stem-separator.spec.ts).
 - Plain Mol\* regressions with audio off: see [core-changes.md](core-changes.md#regressions-with-audio-off). Left as is (D12).
 
 ## 15. Testing it (for Ludo)
