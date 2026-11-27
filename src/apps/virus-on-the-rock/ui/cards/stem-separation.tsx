@@ -6,7 +6,8 @@
  */
 
 import { useBehavior } from '../../../../mol-plugin-ui/hooks/use-behavior';
-import { type AudioReactiveStatus, getStemDelaySeconds } from '../../../../mol-plugin-state/manager/audio-reactive-animation';
+import { Slider } from '../../../../mol-plugin-ui/controls/slider';
+import { type AudioReactiveStatus, getAnalysisLeadSeconds, getAudioDelaySeconds } from '../../../../mol-plugin-state/manager/audio-reactive-animation';
 import { StemModelIds, StemModels, type StemName, StemNames } from '../../../../mol-plugin-state/manager/audio-stems/stem-models';
 import type { VirusOnTheRockApp } from '../../app';
 
@@ -32,6 +33,8 @@ export function StemSeparationCard({ app }: { app: VirusOnTheRockApp }) {
     const params = useBehavior(manager.state.params);
     if (!status || !params) return null;
     const current = params.stemModel;
+    const delay = getAudioDelaySeconds(params);
+    const leadMs = getAnalysisLeadSeconds(params, status.sampleRate ?? 48_000) * 1000;
     return <div className='vor-stack'>
         <div className='vor-chip-row'>
             {(['off', ...StemModelIds] as const).map(id => <button
@@ -40,7 +43,7 @@ export function StemSeparationCard({ app }: { app: VirusOnTheRockApp }) {
                 onClick={() => {
                     manager.setParams({ stemModel: id });
                 }}
-                title={id === 'off' ? 'No separation: the stems come from the frequency bands, with no delay.' : StemModels[id].description}
+                title={id === 'off' ? 'No separation: the stems come from the frequency bands.' : StemModels[id].description}
             >
                 {id === 'off' ? 'Off' : StemModels[id].label}
             </button>)}
@@ -52,9 +55,34 @@ export function StemSeparationCard({ app }: { app: VirusOnTheRockApp }) {
             </div>)}
         </div>
         <p className='vor-help'>{describeStemStatus(status.stemStatus, status.stemsSeparated)}</p>
-        {current !== 'off' && <p className='vor-help'>
-            The audio is heard <b>{getStemDelaySeconds(params).toFixed(1)} s</b> late so the stems line up with it.
-            Use the <b>Stem</b> sources (or the Stem Drift preset) to drive the motion by stem.
+        <label className='vor-label'>Lookahead</label>
+        <div className='vor-chip-row'>
+            {([false, true] as const).map(on => <button
+                key={`${on}`}
+                className={`vor-chip ${params.lookahead === on ? 'vor-active' : ''}`}
+                onClick={() => manager.setParams({ lookahead: on })}
+                title={on
+                    ? 'The analysis reads the audio ahead of what is heard by its own lag, so a hit moves the visuals on the frame it is heard. The audio is delayed to make room.'
+                    : 'The analysis reads the audio as it is heard: the visuals follow a hit by the analysis\'s lag.'}
+            >
+                {on ? 'On' : 'Off'}
+            </button>)}
+        </div>
+        {(current !== 'off' || params.lookahead) && <div className='vor-slider-group'>
+            <div className='vor-slider-row' title='How late the audio is heard. 0 uses the default: the model&apos;s with separation on, else 0.25 s.'>
+                <label>Audio Delay</label>
+                <output>{params.stemDelaySeconds > 0 ? `${params.stemDelaySeconds.toFixed(1)} s` : `Default (${delay.toFixed(2)} s)`}</output>
+                <Slider min={0} max={25} step={0.5} value={params.stemDelaySeconds} hideInput onChange={v => manager.setParams({ stemDelaySeconds: v })} />
+            </div>
+            {params.lookahead && <div className='vor-slider-row' title='Milliseconds added to the lookahead: more moves the visuals earlier, less later.'>
+                <label>Lead Trim</label>
+                <output>{params.lookaheadTrimMs > 0 ? '+' : ''}{params.lookaheadTrimMs} ms</output>
+                <Slider min={-50} max={100} step={1} value={params.lookaheadTrimMs} hideInput onChange={v => manager.setParams({ lookaheadTrimMs: v })} />
+            </div>}
+        </div>}
+        {delay > 0 && <p className='vor-help'>
+            The audio is heard <b>{delay.toFixed(delay < 1 ? 2 : 1)} s</b> late{current !== 'off' ? ' so the stems line up with it' : ''}{params.lookahead ? <>; the analysis runs <b>{leadMs.toFixed(0)} ms</b> ahead of it</> : ''}.
+            {current !== 'off' && <> Use the <b>Stem</b> sources (or the Stem Drift preset) to drive the motion by stem.</>}
         </p>}
     </div>;
 }
