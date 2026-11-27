@@ -178,7 +178,7 @@ export class AudioRouter {
     scopeCount = 0;
 
     update(routes: readonly AudioRoute[], frame: AudioReactiveFrame<DefaultAudioBandKey>, stems: StemLevels, dtMs: number) {
-        // a non-finite dt counts as 0: no release, no average step
+        // a non-finite dt counts as 0: the value follows its target at once, the song average does not step
         if (!Number.isFinite(dtMs)) dtMs = 0;
         for (const t of Object.keys(this.drives) as AudioRouteTarget[]) this.drives[t] = 0;
         this.scopes.length = 0;
