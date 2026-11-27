@@ -5,7 +5,7 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import { useEffect, useState } from 'react';
+import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { useBehavior } from '../../../../mol-plugin-ui/hooks/use-behavior';
 import { type AudioReactiveStatus, getAnalysisLeadSeconds, getAudioDelaySeconds } from '../../../../mol-plugin-state/manager/audio-reactive-animation';
 import { StemModelIds, StemModels, type StemName, StemNames } from '../../../../mol-plugin-state/manager/audio-stems/stem-models';
@@ -28,15 +28,29 @@ export function describeStemStatus(s: AudioReactiveStatus['stemStatus'], separat
 }
 
 /**
- * A range input in a slider row that commits on release (pointer up, a key up, blur), not on every step: a new audio
- * delay resets the separator and moves what is heard
+ * A slider row's output and range input that commits on release (the native change event, pointer up, a key up, blur),
+ * not on every step: a new audio delay resets the separator and moves what is heard. The output shows the value being
+ * dragged
  */
-function CommitRange({ id, min, max, step, value, commit }: { id: string, min: number, max: number, step: number, value: number, commit: (v: number) => void }) {
+function CommitRange({ id, min, max, step, value, format, commit }: { id: string, min: number, max: number, step: number, value: number, format: (v: number) => ReactNode, commit: (v: number) => void }) {
     const [current, setCurrent] = useState(value);
     useEffect(() => setCurrent(value), [value]);
     const done = () => { if (current !== value) commit(current); };
-    return <input id={id} type='range' min={min} max={max} step={step} value={current}
-        onChange={e => setCurrent(parseFloat(e.target.value))} onPointerUp={done} onKeyUp={done} onBlur={done} />;
+    // React's onChange is the input event (every step); the native change event comes on release
+    const input = useRef<HTMLInputElement>(null), onRelease = useRef(done);
+    onRelease.current = done;
+    useEffect(() => {
+        const el = input.current;
+        if (!el) return;
+        const listener = () => onRelease.current();
+        el.addEventListener('change', listener);
+        return () => el.removeEventListener('change', listener);
+    }, []);
+    return <>
+        <output>{format(current)}</output>
+        <input ref={input} id={id} type='range' min={min} max={max} step={step} value={current}
+            onChange={e => setCurrent(parseFloat(e.target.value))} onPointerUp={done} onKeyUp={done} onBlur={done} />
+    </>;
 }
 
 export function StemSeparationCard({ app }: { app: VirusOnTheRockApp }) {
@@ -83,13 +97,14 @@ export function StemSeparationCard({ app }: { app: VirusOnTheRockApp }) {
         {(current !== 'off' || params.lookahead) && <div className='vor-slider-group'>
             <div className='vor-slider-row' title='How late the audio is heard. 0 uses the default: the model&apos;s with separation on, else 0.25 s.'>
                 <label htmlFor='vor-audio-delay'>Audio Delay</label>
-                <output>{params.stemDelaySeconds > 0 ? `${params.stemDelaySeconds.toFixed(1)} s` : `Default (${delay.toFixed(2)} s)`}</output>
-                <CommitRange id='vor-audio-delay' min={0} max={25} step={0.5} value={params.stemDelaySeconds} commit={v => manager.setParams({ stemDelaySeconds: v })} />
+                <CommitRange id='vor-audio-delay' min={0} max={25} step={0.5} value={params.stemDelaySeconds}
+                    format={v => v > 0 ? `${v.toFixed(1)} s` : `Default (${getAudioDelaySeconds({ ...params, stemDelaySeconds: 0 }).toFixed(2)} s)`}
+                    commit={v => manager.setParams({ stemDelaySeconds: v })} />
             </div>
             {params.lookahead && <div className='vor-slider-row' title='Milliseconds added to the lookahead: more moves the visuals earlier, less later.'>
                 <label htmlFor='vor-lead-trim'>Lead Trim</label>
-                <output>{params.lookaheadTrimMs > 0 ? '+' : ''}{params.lookaheadTrimMs} ms</output>
-                <CommitRange id='vor-lead-trim' min={-50} max={100} step={1} value={params.lookaheadTrimMs} commit={v => manager.setParams({ lookaheadTrimMs: v })} />
+                <CommitRange id='vor-lead-trim' min={-50} max={100} step={1} value={params.lookaheadTrimMs}
+                    format={v => `${v > 0 ? '+' : ''}${v} ms`} commit={v => manager.setParams({ lookaheadTrimMs: v })} />
             </div>}
         </div>}
         {delay > 0 && <p className='vor-help'>
