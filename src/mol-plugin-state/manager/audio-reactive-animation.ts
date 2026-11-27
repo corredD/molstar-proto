@@ -469,6 +469,9 @@ export class AudioReactiveAnimationManager {
             if (Math.abs(this.delayNode.delayTime.value - delay) > 1e-3) {
                 this.delayNode.delayTime.setValueAtTime(delay, this.audioContext.currentTime);
                 this.separator?.reset();
+                // while playing, what the lines hold was delayed by the old D (a jump back or a skip, a click): flushed,
+                // the next tick primes, so the new D is heard after its silence. In a pause's tail the tail moves instead
+                if (this.heardUntil === Infinity) this.flushDelayLine();
             }
             // a lead change (lookahead, trim, the reactor's window or attack) moves only the analysis branch: no click
             // in what is heard, no separator reset. Finer than the heard delay's guard (a trim step is 1 ms); NaN-safe

@@ -132,4 +132,66 @@ describe('AudioReactiveAnimationManager ports', () => {
         expect([delayNodes[6].delayTime.value, delayNodes[7].delayTime.value]).toEqual(times);
         manager.dispose();
     });
+    it('a heard delay changed while playing flushes both lines and primes (silence, then the new delay); a lead-only change flushes nothing', async () => {
+        const log: string[] = [];
+        type Node = { name: string, connect(n: Node): void, disconnect(n?: Node): void };
+        const node = (name: string, extra: object = {}): Node => ({
+            name, ...extra,
+            connect(n: Node) { log.push(`${name}->${n.name}`); },
+            disconnect(n?: Node) { log.push(n ? `${name}-x-${n.name}` : `${name}-x-all`); },
+        });
+        const analyser = node('analyser', {
+            fftSize: 2048, smoothingTimeConstant: 0, get frequencyBinCount() { return 1024; },
+            getFloatTimeDomainData(out: Float32Array) { for (let i = 0; i < out.length; i++) out[i] = i % 2 ? 0.1 : -0.1; },
+            getByteFrequencyData(out: Uint8Array) { out.fill(0); },
+        });
+        let delays = 0, now = 0;
+        const ctx = {
+            sampleRate: 48_000, currentTime: 0, state: 'running', destination: node('destination'),
+            createAnalyser: () => analyser,
+            createMediaElementSource: () => node('source'),
+            createDelay: () => node(`delay${++delays}`, { delayTime: { value: 0, setValueAtTime(v: number) { this.value = v; } } }),
+            createGain: () => node('sink', { gain: { value: 1 } }),
+            resume: async () => { }, close: async () => { },
+        };
+        const ports: AudioReactivePorts = { createContext: () => ctx as unknown as AudioContext, outputClock: () => ({ now: () => now, latency: () => 0 }) };
+        const audio = {
+            src: 'fake://song', paused: true, ended: false, currentTime: 0,
+            play: async () => { audio.paused = false; }, pause: () => { audio.paused = true; }, removeAttribute() { }, load() { },
+        };
+        const manager = new AudioReactiveAnimationManager({} as ConstructorParameters<typeof AudioReactiveAnimationManager>[0], ports);
+        manager.state.audioPlayer.next(audio as unknown as HTMLAudioElement);
+        manager.setParams({ lookahead: true }); // D 0.25 s
+        await manager.play();
+        const frameS = 0.016;
+        let frame = 0;
+        const heardUntil = (seconds: number) => {
+            const heard: [number, boolean][] = [];
+            for (const end = now + seconds; now < end - 1e-9;) {
+                now = ++frame * frameS;
+                ctx.currentTime = now;
+                manager.tick(now * 1000);
+                heard.push([now, manager.state.status.value.heardPlaying]);
+            }
+            return heard;
+        };
+        heardUntil(0.5);
+        expect(manager.state.status.value.heardPlaying).toBe(true);
+
+        // the lead alone (trim): the analysis delay moves, nothing is flushed, still heard
+        log.length = 0;
+        manager.setParams({ lookaheadTrimMs: 5 });
+        expect(log).toEqual([]);
+        expect(heardUntil(0.1).every(([, h]) => h)).toBe(true);
+
+        // the heard delay (0.25 -> 2 s): what the lines held was delayed by the old D, so both are flushed; the new D is
+        // heard after its silence, D from the change
+        log.length = 0;
+        const changedAt = now;
+        manager.setParams({ stemDelaySeconds: 2 });
+        expect(log).toEqual(['source-x-delay1', 'delay1-x-all', 'source->delay3', 'delay3->destination', 'source-x-delay2', 'delay2-x-all', 'source->delay4', 'delay4->analyser']);
+        const heard = heardUntil(2.2);
+        for (const [t, h] of heard) expect([t, h]).toEqual([t, t >= changedAt + frameS + 2 - 1e-9]);
+        manager.dispose();
+    });
 });
