@@ -230,7 +230,13 @@ function steadyRun(n: number, stamp: (i: number) => number, latency: (i: number)
         }
         return { holds, skips, early, behindMax, aheadMax };
     };
-    return { stamps, rule, presented, stats };
+    /** over frames [from, to): the mean of rule - presented, in entries */
+    const meanLag = (from: number, to = n) => {
+        let sum = 0;
+        for (let i = from; i < to; i++) sum += rule[i] - presented[i];
+        return sum / (to - from);
+    };
+    return { stamps, rule, presented, stats, meanLag };
 }
 
 describe('AudioPresentedFrame steady steps (the read rule holds one entry per frame)', () => {
@@ -261,6 +267,34 @@ describe('AudioPresentedFrame steady steps (the read rule holds one entry per fr
             expect([s.holds, s.skips, s.early, s.aheadMax]).toEqual([0, 0, 0, 0]);
             expect(s.behindMax).toBeLessThanOrEqual(1);
         }
+    });
+
+    // Ludo's Chrome: 49 ms frames, outputLatency 32 ms. The read time sits 17 ms past an entry's stamp (a third of a
+    // frame): the rule names that entry every frame. One tick 20 ms late (a missed vsync) makes the rule hold then
+    // move two; the picture must not stay one entry behind after it.
+    const frame49 = (late: (i: number) => boolean, seed: number) => {
+        const rnd = random(seed);
+        return (i: number) => (i * 49 + (rnd() * 2 - 1) * 1.5 + (late(i) ? 20 : 0)) / 1000;
+    };
+
+    it('49 ms frames, latency 32 ms, one late tick: back on the rule after it (mean lag <= 0.1 entry over 1000 frames)', () => {
+        const run = frame49(i => i === 100, 4);
+        const r = steadyRun(1200, run, () => 0.032);
+        expect(r.meanLag(200, 1200)).toBeLessThanOrEqual(0.1);
+        const s = r.stats(200, 1200);
+        expect([s.holds, s.skips, s.early, s.aheadMax]).toEqual([0, 0, 0, 0]);
+    });
+
+    it('49 ms frames, latency 32 ms, a late tick every 50 frames: on the rule between them, never early', () => {
+        const r = steadyRun(1200, frame49(i => i % 50 === 25, 5), () => 0.032);
+        expect(r.meanLag(200, 1200)).toBeLessThanOrEqual(0.1);
+        const s = r.stats(200, 1200);
+        expect([s.early, s.aheadMax]).toEqual([0, 0]);
+    });
+
+    it('a latency that drops from 32 ms to 0 (the context stops) presents the newest entry from that frame on', () => {
+        const r = steadyRun(600, frame49(() => false, 6), i => i < 300 ? 0.032 : 0);
+        for (let i = 300; i < 600; i++) expect(r.presented[i]).toBe(i);
     });
 
     it('latency 0: every frame presents the newest entry (the rule unchanged)', () => {
