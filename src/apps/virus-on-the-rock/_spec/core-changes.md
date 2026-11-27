@@ -89,6 +89,9 @@ manager has no audio and no Who.
 - **`audio-stems/`** (DSP tested): Spleeter, HTDemucs, SCNet runners, worker, separator. *votr only*; weights on
   Hugging Face `resolve/main` (not pinned). `StemSeparator.onWorkerMessage` stores a non-finite worker energy as 0 (a NaN
   in the model output stuck the running peaks and every stem level for good; router-nan-guard, 2026-11-26).
+  `setModel` returns after the tap await when the model or provider is no longer the requested one (Off during the load
+  no longer posts `load` and turns the tap on), and a failed tap setup clears `tapLoading` so picking the model again
+  after Off retries (stem-separator-edges, 2026-11-27).
 - **`assembly-symmetry-axis.ts`**: axes per structure from RCSB symmetry; mesoscale parts share a middle (wip).
   *needs work*: imports `extensions/assembly-symmetry` from `mol-plugin-state`; header `@author OpenAI`.
 - **`audio-affect.ts`**: Who resolution and packing; mesoscale owners (wip). *votr only*.
