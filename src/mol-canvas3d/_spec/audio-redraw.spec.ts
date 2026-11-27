@@ -4,37 +4,66 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import { audioFrameNeedsRender } from '../audio-redraw';
+import { AudioRedrawTracker } from '../audio-redraw';
 
+const scopeKind = new Float32Array(8);
 const scopeDrive = new Float32Array(8);
-const frame = (o: { illumination?: number, hue?: number, wave?: number, scopeCount?: number, scope0?: number } = {}) => {
-    scopeDrive[0] = o.scope0 ?? 0;
+const frame = (o: { illumination?: number, hue?: number, wave?: number, scopeCount?: number, kind?: number, drive?: number } = {}) => {
+    scopeKind[0] = o.kind ?? 0;
+    scopeDrive[0] = o.drive ?? 0;
     return {
         illumination: o.illumination ?? 0, hue: o.hue ?? 0, driveInstanceWave: o.wave ?? 0,
-        scopeCount: o.scopeCount ?? 0, scopeDrive,
+        scopeCount: o.scopeCount ?? 0, scopeKind, scopeDrive,
     };
 };
+const run = (t: AudioRedrawTracker, frames: ReturnType<typeof frame>[]) => frames.map(f => t.next(f));
 
-describe('audioFrameNeedsRender', () => {
-    it('renders while the illumination or the hue drive is above 0, or changed', () => {
-        expect(audioFrameNeedsRender(0, 0, frame({ illumination: 0.5 }))).toBe(true);
-        expect(audioFrameNeedsRender(0, 0, frame({ hue: 0.2 }))).toBe(true);
-        expect(audioFrameNeedsRender(0.5, 0.2, frame({ illumination: 0.5, hue: 0.2 }))).toBe(true);
+describe('AudioRedrawTracker', () => {
+    it('renders a held illumination or hue once, not every frame', () => {
+        const t = new AudioRedrawTracker();
+        const r = run(t, Array.from({ length: 100 }, () => frame({ illumination: 0.12 })));
+        expect(r.filter(Boolean).length).toBe(1);
+        expect(r[0]).toBe(true);
+        expect(t.next(frame())).toBe(true);
+        expect(t.next(frame())).toBe(false);
+        const h = new AudioRedrawTracker();
+        expect(run(h, Array.from({ length: 10 }, () => frame({ hue: 0.3 }))).filter(Boolean).length).toBe(1);
     });
 
-    it('renders once more when a drive returns to 0, then not', () => {
-        expect(audioFrameNeedsRender(0.5, 0, frame())).toBe(true);
-        expect(audioFrameNeedsRender(0, 0.3, frame())).toBe(true);
-        expect(audioFrameNeedsRender(0, 0, frame())).toBe(false);
+    it('illumination 0.5, 0, 0, then 0.5 renders, renders, none, renders', () => {
+        const t = new AudioRedrawTracker();
+        expect(run(t, [0.5, 0, 0, 0.5].map(illumination => frame({ illumination })))).toEqual([true, true, false, true]);
     });
 
-    it('does not render with every drive 0 and unchanged', () => {
-        expect(audioFrameNeedsRender(0, 0, frame({ scopeCount: 1 }))).toBe(false);
+    it('does nothing at rest', () => {
+        const t = new AudioRedrawTracker();
+        expect(run(t, [frame(), frame({ scopeCount: 1 }), frame()]).slice(2)).toEqual([false]);
+        expect(run(t, [frame(), frame()])).toEqual([false, false]);
     });
 
-    it('keeps the instance wave and the narrowed routes', () => {
-        expect(audioFrameNeedsRender(0, 0, frame({ wave: 0.1 }))).toBe(true);
-        expect(audioFrameNeedsRender(0, 0, frame({ scopeCount: 1, scope0: 0.1 }))).toBe(true);
-        expect(audioFrameNeedsRender(0, 0, frame({ scopeCount: 0, scope0: 0.1 }))).toBe(false);
+    it('a narrowed illumination route renders on change, and once when it is disabled', () => {
+        const t = new AudioRedrawTracker();
+        expect(run(t, [
+            frame({ scopeCount: 1, kind: 8, drive: 0.12 }),
+            frame({ scopeCount: 1, kind: 8, drive: 0.12 }),
+            frame({ scopeCount: 1, kind: 8, drive: 0.12 }),
+            frame({ scopeCount: 0, kind: 8, drive: 0.12 }),
+            frame({ scopeCount: 0, kind: 8, drive: 0.12 }),
+        ])).toEqual([true, false, false, true, false]);
+    });
+
+    it('a narrowed motion route renders while above 0 and once when it drops to 0', () => {
+        const t = new AudioRedrawTracker();
+        expect(run(t, [
+            frame({ scopeCount: 1, kind: 7, drive: 0.5 }),
+            frame({ scopeCount: 1, kind: 7, drive: 0.5 }),
+            frame({ scopeCount: 1, kind: 7, drive: 0 }),
+            frame({ scopeCount: 1, kind: 7, drive: 0 }),
+        ])).toEqual([true, true, true, false]);
+    });
+
+    it('the instance wave renders every frame while above 0, then once on the drop', () => {
+        const t = new AudioRedrawTracker();
+        expect(run(t, [0.5, 0.5, 0.5, 0, 0].map(wave => frame({ wave })))).toEqual([true, true, true, true, false]);
     });
 });

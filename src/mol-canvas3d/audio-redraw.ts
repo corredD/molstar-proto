@@ -10,20 +10,21 @@ export interface AudioRedrawFrame {
     readonly hue: number
     readonly driveInstanceWave: number
     readonly scopeCount: number
+    readonly scopeKind: ArrayLike<number>
     readonly scopeDrive: ArrayLike<number>
 }
 
-/**
- * Whether an audio frame needs a render even if nothing else changed: a narrowed route, or the position wave, moves
- * with tumble amplitude 0; illumination and hue repaint the same geometry, so they draw while above 0 and once more when they return to 0
- * (`prevIllumination` and `prevHue` are the last frame's values).
- */
-export function audioFrameNeedsRender(prevIllumination: number, prevHue: number, frame: AudioRedrawFrame): boolean {
-    if (frame.illumination > 0 || frame.hue > 0) return true;
-    if (frame.illumination !== prevIllumination || frame.hue !== prevHue) return true;
-    if (frame.driveInstanceWave > 0) return true;
-    for (let i = 0; i < frame.scopeCount; i++) {
-        if (frame.scopeDrive[i] > 0) return true;
+/** placeholder: the stateless decision of the first version */
+export class AudioRedrawTracker {
+    private prevIllumination = 0;
+    private prevHue = 0;
+
+    next(frame: AudioRedrawFrame): boolean {
+        const r = (frame.illumination > 0 || frame.hue > 0) ||
+            frame.illumination !== this.prevIllumination || frame.hue !== this.prevHue ||
+            frame.driveInstanceWave > 0 || (frame.scopeCount > 0 && frame.scopeDrive[0] > 0);
+        this.prevIllumination = frame.illumination;
+        this.prevHue = frame.hue;
+        return r;
     }
-    return false;
 }

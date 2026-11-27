@@ -9,7 +9,7 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import { audioFrameNeedsRender } from './audio-redraw';
+import { AudioRedrawTracker } from './audio-redraw';
 import { BehaviorSubject, Subject, Subscription, debounceTime, merge } from 'rxjs';
 import { now } from '../mol-util/now';
 import { Vec3, Vec2 } from '../mol-math/linear-algebra';
@@ -468,8 +468,7 @@ namespace Canvas3D {
         let height = 128;
 
         let forceNextRender = false;
-        let prevAudioIllumination = 0;
-        let prevAudioHue = 0;
+        const audioRedraw = new AudioRedrawTracker();
         let currentTime = 0;
 
         syncCanvasBackground(canvas!, p);
@@ -1270,9 +1269,7 @@ namespace Canvas3D {
             resetTime,
             setAudioFrame: frame => {
                 renderer.setAudioFrame(frame);
-                if (audioFrameNeedsRender(prevAudioIllumination, prevAudioHue, frame)) forceNextRender = true;
-                prevAudioIllumination = frame.illumination;
-                prevAudioHue = frame.hue;
+                if (audioRedraw.next(frame)) forceNextRender = true;
             },
             pause,
             resume,
