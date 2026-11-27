@@ -24,8 +24,8 @@ const preset = arg('preset', 'drums-bass-burst');
 const seconds = +arg('seconds', 8);
 const headed = argv.includes('--headed');
 
-async function loadPlaywright() {
-    try { return await import('playwright'); } catch { /* fall through to the npx cache */ }
+function loadPlaywright() {
+    try { return createRequire(join(process.cwd(), 'x.js'))('playwright'); } catch (e) { /* fall through to the npx cache */ }
     const root = join(homedir(), '.npm', '_npx');
     if (existsSync(root)) {
         for (const d of readdirSync(root)) {
@@ -35,7 +35,9 @@ async function loadPlaywright() {
     }
     throw new Error('playwright not found: run `npx playwright --version` once to fill the npx cache');
 }
-const { chromium } = await loadPlaywright();
+const { chromium } = loadPlaywright();
+
+async function main() {
 
 const browser = await chromium.launch({ headless: !headed, args: ['--use-angle=metal', '--autoplay-policy=no-user-gesture-required'] });
 const page = await browser.newPage();
@@ -69,7 +71,7 @@ async function run(gainScale, routesSpec) {
         if (routesSpec === 'bassOnly') m.setRoutes(m.state.routes.value.filter(r => r.source === 'stemBass' && r.target === 'symAxis'));
         for (const r of m.state.routes.value) m.updateRoute(r.id, { gain: r.gain * gainScale });
         await m.loadFile(file); await m.play();
-        const a = m.state.audioPlayer.value; const ctx = m.audioContext ?? m['audioContext']; const out = [];
+        const a = m.state.audioPlayer.value; const ctx = m['audioContext']; const out = [];
         await new Promise(done => {
             const f = () => {
                 const ts = ctx.getOutputTimestamp();
@@ -113,3 +115,6 @@ analyse('bass only x1', await run(1, 'bassOnly'));
 const p2 = analyse('full preset x2', await run(2, 'all'));
 console.log(`gain x2 -> peak ratio ${(p2 / p1).toFixed(2)} (expect 1.9-2.1)`);
 await browser.close();
+}
+
+main().catch(e => { console.error(e); process.exit(1); });
