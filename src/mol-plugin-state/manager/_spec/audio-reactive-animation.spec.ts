@@ -147,6 +147,29 @@ describe('audio reactor', () => {
         expect(playingTotal).toBeCloseTo(1, 6);
     });
 
+    // the analyser hands over its newest samples last: a buffer longer than the analysis window is read at its end
+    it('analyzes the newest samples of a buffer longer than its window (resampled: 2048 at 22050 Hz from 48 kHz)', () => {
+        const params = { fftSize: 2048, analysisSampleRate: 22_050, bandAttackMs: 0, bandReleaseMs: 0, amplitudeAttackMs: 0, amplitudeReleaseMs: 0 };
+        const reactor = new AudioReactor(params);
+        const n = getAudioReactorAnalyserFftSize({ ...DefaultAudioReactorParams, ...params, bands: DefaultAudioBandDefinitions }, 48_000);
+        expect(n).toBe(8192); // 4459 samples needed: the newest 3733 were skipped
+        const impulse = new Float32Array(n);
+        impulse[n - 1] = 0.8;
+        expect(reactor.analyze(impulse, 48_000, 16).raw.peakAmplitude).toBeGreaterThan(0);
+
+        // a bass tone in the newest 4459 samples only: its band is heard
+        const tone = new Float32Array(n);
+        tone.set(createSineWave(4459, 48_000, 120, 0.75), n - 4459);
+        expect(new AudioReactor(params).analyze(tone, 48_000, 16).raw.frequencyBands.bass).toBeGreaterThan(0.3);
+    });
+
+    it('analyzes the newest samples of a buffer longer than its window (plain copy: 1024 at the context rate)', () => {
+        const reactor = new AudioReactor({ fftSize: 1024, analysisSampleRate: 0, amplitudeAttackMs: 0, amplitudeReleaseMs: 0 });
+        const impulse = new Float32Array(2048);
+        impulse[2047] = 0.8;
+        expect(reactor.analyze(impulse, 48_000, 16).raw.peakAmplitude).toBeGreaterThan(0);
+    });
+
     it('expands analyser fft size when analysis sample rate is lowered', () => {
         const analyserSize = getAudioReactorAnalyserFftSize({
             ...DefaultAudioReactorParams,
