@@ -96,7 +96,7 @@ References are `file › symbol`, the file relative to `src/apps/virus-on-the-ro
 | Edit floor and release | in the route row (D5) | **Expected** | presets and files only |
 | Gain above 20 | the slider goes to 40 (D5) | Partial | slider 0–20, files clamp at 40: a gain of 30 shows pinned |
 | Save, load, delete, export, import | browser storage (`vor.audioRouting.v1`, 50 sets), `.json` files; import merges by name; loading reattaches each Who to the models loaded | Tested (parser) / Built (UI) | audio-routing.ts:329-464, `ui/cards/audio-routing.tsx › AudioRoutingLibrary` |
-| Built-in route sets (wip) | Datamatics, MilkDrop Breath, Emergence, Hollow Descent, Sidechain Pump, Watercolour; routes only; turn on the motion they need; not deletable | Partial | audio-routing-inspired.ts. Weak with separation off (routing spec: needs tuning, route by route) |
+| Built-in route sets (wip) | Datamatics, MilkDrop Breath, Emergence, Hollow Descent, Sidechain Pump, Watercolour; routes only; load turns on the motion they need (as any added, enabled or retargeted route does); not deletable | Partial | audio-routing-inspired.ts. Weak with separation off (routing spec: needs tuning, route by route) |
 
 ## 7. Visual channels (route targets)
 
@@ -144,7 +144,7 @@ or text). CPU channels run in the app after each draw, so they exist only in Vot
 | --- | --- | --- | --- |
 | Preset chips | Drums & Bass Burst (default), Subtle Drift, Stem Drift, Bass + Spectrum, Bass Groove Strong, Full Spectrum, Ambient Pulse: replace the routes, set the analysis and motion shapes, keep the user's sensitivities, threshold and axis order | Built | `catalog.ts › FeaturedPresetNames`, `app.tsx › applyAudioPreset` |
 | Stem Drift's description | says what it does: not auto-picked (D14) | **Broken** (text) | it claims to be picked when separation goes on; `ui/cards/stem-separation.tsx › StemSeparationCard` does not |
-| Ambient Pulse's instance route | moves the instances | **Broken** | its preset turns Instance Beats off, so its instanceRandom route does nothing |
+| A route never moves nothing because its motion is off | `getPresetRoutes` makes no route on a motion its preset turns off (Ambient Pulse has no instance route); a route added, enabled or retargeted to a motion that is off turns that motion on, once (a gain, floor or curve edit never does); instanceWave needs no motion; loading a model or a song (`applyAudioPreset(name, 'keep')`) keeps the motion flags as they are, only a preset chip or startup applies the preset's | Built | `route-motions.ts`, wired in `app.tsx`; tests `route-motions.spec.ts`, `audio-reactive-presets.spec.ts` |
 | Motion targets | Atom Wiggle, Instance Beats, Whole Object (Uniform / Spectral) | Built | `ui/cards/motion-targets.tsx › MotionTargetsCard` |
 | Sensitivities | Beat threshold 0–2 (1.1), wiggle 0–16 (1), instance 0–200 (1), object 0–32 (1), axis amplitude 0–200 (15), LOD scale off | Partial | manager's beat threshold range is 0.5–4; the beat cycle no longer reads the threshold |
 

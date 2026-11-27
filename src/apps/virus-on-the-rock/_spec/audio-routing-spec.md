@@ -43,9 +43,12 @@ audio element ─► analyser (band envelopes, beat) ─► stems ─► router 
    - startup.
 
    Loading a model or a song **keeps** them (`applyAudioPreset(name, 'keep')`).
-4. **A route set is routes only.** Loading one does not change the analysis or the motion shapes. It turns on a motion
-   target that its routes need and that is off: Atom Wiggle for wiggle; Instance Beats for the symmetry axes and the
-   random, axis and normal instance motions.
+4. **A route set is routes only.** Loading one does not change the analysis or the motion shapes. A route that is
+   added, enabled or retargeted (a new id, or a new target on another motion) onto a motion that is off turns that motion on, once: Atom
+   Wiggle for wiggle; Instance Beats for the symmetry axes and the random, axis and normal instance motions; Whole
+   Object for object. This holds for every way routes change (the route editor, a loaded set, a preset); a gain, floor
+   or curve edit never turns a motion the user turned off back on. instanceWave needs no motion. A preset makes no
+   route on a motion it turns off.
 5. **A non-finite source reads as 0.** One NaN or infinite stem, band, amplitude or beat, or a non-finite `dtMs`, is read
    as 0 where the router reads it, before the song average, onset and curve; the route recovers on the next finite
    frame, as a fresh route would. Nothing else in the route math changes.

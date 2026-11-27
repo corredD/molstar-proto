@@ -9,7 +9,7 @@ import * as React from 'react';
 import { useBehavior } from '../../../../mol-plugin-ui/hooks/use-behavior';
 import { InspiredRoutings } from '../../../../mol-plugin-state/helpers/audio-routing-inspired';
 import { describeAudioAffect, listAudioAffectChoices } from '../../../../mol-plugin-state/helpers/audio-affect';
-import { AudioAffectLevels, AudioRouteCurves, AudioRouteSources, AudioRouteTargets, canonicalAudioAffect, createAudioRoute, draftsFromRoutes, maxScopeLevel, getDefaultAudioRoutes, loadStoredAudioRouting, parseAudioRouting, routesFromDrafts, storeAudioRouting, type AudioAffect, type AudioRoute, type AudioRouteDraft, type AudioRoutingPreset } from '../../../../mol-plugin-state/manager/audio-routing';
+import { AudioAffectLevels, AudioRouteCurves, AudioRouteSources, AudioRouteTargets, canonicalAudioAffect, createAudioRoute, draftsFromRoutes, maxScopeLevel, getDefaultAudioRoutes, loadStoredAudioRouting, parseAudioRouting, routesFromDrafts, storeAudioRouting, type AudioAffect, type AudioRoute, type AudioRoutingPreset } from '../../../../mol-plugin-state/manager/audio-routing';
 import { type AudioReactiveStatus } from '../../../../mol-plugin-state/manager/audio-reactive-animation';
 import type { VirusOnTheRockApp } from '../../app';
 
@@ -74,15 +74,6 @@ export function RouteAffectRow({ app, route }: { app: VirusOnTheRockApp, route: 
 
 /** the built-in route sets in the Saved list: their option values carry this prefix, so a saved routing of the same name stays apart */
 export const InspiredPrefix = 'inspired:';
-
-/** a loaded routing moves nothing on a channel whose motion is off: turn on those its routes need */
-export async function enableMotionsFor(app: VirusOnTheRockApp, routes: readonly AudioRouteDraft[]) {
-    const state = app.state.value;
-    const needs = (targets: readonly AudioRoute['target'][]) => routes.some(r => r.enabled && targets.includes(r.target));
-    if (!state.atomWiggleEnabled && needs(['wiggle'])) await app.setMotionTargetEnabled('atomWiggleEnabled', true);
-    if (!state.instanceTumbleEnabled && needs(['symAxis', 'instanceRandom', 'instanceAxis', 'instanceNormal'])) await app.setMotionTargetEnabled('instanceTumbleEnabled', true);
-    if (!state.objectTransformEnabled && needs(['object'])) await app.setMotionTargetEnabled('objectTransformEnabled', true);
-}
 
 export function AudioRoutingLibrary({ app }: { app: VirusOnTheRockApp }) {
     const manager = app.viewer.plugin.managers.audioReactive;
@@ -153,7 +144,6 @@ export function AudioRoutingLibrary({ app }: { app: VirusOnTheRockApp }) {
             ? InspiredRoutings.find(item => item.name === presetName.slice(InspiredPrefix.length))
             : list.find(item => item.name === presetName);
         if (!preset) return;
-        void enableMotionsFor(app, preset.routes);
         // a saved affect names its model by entry id too: reattached to the models loaded now
         manager.setRoutes(routesFromDrafts(preset.routes));
         for (const route of manager.state.routes.value) manager.setRouteAffect(route.id, route.affect);
