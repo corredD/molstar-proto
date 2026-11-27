@@ -220,8 +220,11 @@ export class AudioRouter {
             const value = this.values.get(route.id) ?? 0;
             // the key itself is never ducked: a kick ducking the rest still hits at full strength
             const scaled = route.target === 'duck' || route.target === 'cameraStep' || duckSources.has(route.source) ? value : value * duck;
-            if (route.affect && route.affect.level !== 'all' && routeHasScope(route.target) && this.scopes.length < AudioScopeSlotCount) {
-                this.scopes.push({ kind: AudioScopeKinds[route.target], drive: Math.min(MaxDrive, scaled), affect: route.affect });
+            if (route.affect && route.affect.level !== 'all' && routeHasScope(route.target)) {
+                // a narrowed route never falls into the global drive: with the slots full it adds nothing (D3)
+                if (this.scopes.length < AudioScopeSlotCount) {
+                    this.scopes.push({ kind: AudioScopeKinds[route.target], drive: Math.min(MaxDrive, scaled), affect: route.affect });
+                }
             } else {
                 this.drives[route.target] += scaled;
             }
