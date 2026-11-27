@@ -129,6 +129,17 @@ describe('stem separator', () => {
             expect(types()).toEqual(['unload', 'load']);
         });
 
+        it('request, Off, then the tap fails: the final status is off and no error is emitted', async () => {
+            const { sep, modules, statuses } = make();
+            const p1 = sep.setModel('htdemucs', 'wasm');
+            await flush();
+            await sep.setModel(undefined, 'wasm');
+            modules[0].reject(new Error('no worklet'));
+            await p1;
+            expect(sep.currentStatus.state).toBe('off');
+            expect(statuses).not.toContain('error');
+        });
+
         it('null control: the success path calls addModule once', async () => {
             const { sep, modules } = make();
             const p = sep.setModel('htdemucs', 'wasm');
