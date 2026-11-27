@@ -93,7 +93,7 @@ manager has no audio and no Who.
 - **`audio-presented-frame.ts`** (new, heard-frame, 2026-11-27, tested): `AudioPresentedFrame`, a ring of the last 256
   ticks of audio state read at what is heard (`currentTime − outputLatency`), allocated once; at a stamp boundary one
   entry per frame, one behind the read rule, elsewhere the rule (heard-phase, 2026-11-27: the hysteresis applies only
-  when the read time is within a quarter interval of the newer stamp, so a late tick no longer leaves a lasting
+  when the read time is within a quarter interval (at most 6 ms) of the newer stamp, so a late tick no longer leaves a lasting
   frame of lag; never ahead of the rule, the newest entry never held back); each entry carries `playing`; the
   `AudioOutputClock` port and its `webAudioOutputClock` adapter. *votr only*.
 - **`audio-reactive-animation.ts`**: the manager. `setRouteAffect` and `pickRouteAffect` return false when refused (a 9th
