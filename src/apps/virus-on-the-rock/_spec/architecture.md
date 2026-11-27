@@ -50,12 +50,17 @@ the presented frame as sound (beat cycle, song detection) gates on the status's 
 `playing` (the transport). The presented objects keep their identity and nothing is allocated per frame. No flush on pause, stop or clear: the device still plays the last `outputLatency`.
 
 **When the sound stops** (sound-stops, 2026-11-27). Heard = playing, or after a pause or the end of the file until the
-stem delay line has drained (`heardUntil`: the first tick not playing + the delay node's time; set in `tick` only,
-since the element's own controls pause it). While heard, the analyser is read (the tail) and the stems are sampled at
+stem delay line has drained (`heardUntil`: the stop + the delay node's time now, each tick; the stop is the element's
+pause or ended event, or the first tick not playing as a fallback, so stalled ticks do not stretch the tail and a delay
+changed in the tail moves it). Not heard either while the line hands over the silence it held at a (re)start with an
+empty line (`primedUntil` = the start + D; the first play, after a flush, after a pause whose tail has drained): no
+blocked analysis counted, no `heardPlaying`, no floor, no stem sample. A resume inside the tail is heard at once (the
+silence of the pause, shorter than D, is read as heard: open, see the sound-stops progress). While heard, the analyser is read (the tail) and the stems are sampled at
 t − D; once not, the silent analysis, the band stand-ins and `router.update(…, heard = false)`: every route releases to
 0, no floor, with its own release, and rests at exactly 0 below `AudioRestCutoff` (1e-3). Stop, a new source and Clear
 flush the delay line (a new delay node; the separator's tap on the source stays) and hear nothing at once; Clear also
-resets the router. The ring carries heard, so `heardPlaying` is heard as heard (with no delay, `playing` as heard).
+resets the router. The status also emits when the presented drives and route values come to rest
+(`presented.atRest`), so the last emission after Clear carries zeros. The ring carries heard, so `heardPlaying` is heard as heard (with no delay, `playing` as heard).
 
 ## 3. One frame
 

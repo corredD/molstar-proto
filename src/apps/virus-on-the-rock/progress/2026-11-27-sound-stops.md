@@ -152,6 +152,54 @@ heard-frame's 42 ms run lacked). Open: heard-frame's 42 / 38 / 54 ms is not repr
 - No app code loads a next source on `ended` (the only `ended` listener is the manager's status update), so the
   end-of-file tail is not cut by the new-source flush.
 
+### Gate fix step (Opus, 2026-11-27)
+
+- 9b453af1a harness (test only): the fake element fires pause / ended on the frame that first sees them (the manager's
+  listeners bound through `bindAudioEvents`; a `pause()` inside onFrame fires next frame, after the flush, as a browser
+  queues it); `stalled` ranges where tick is not called. Full suite unchanged (183 pass).
+- 0a4af9b22 S2 (core): `stoppedAt` (pause / ended listener, first-wins and only from playing; the first tick not
+  playing as a fallback, for elements without the listeners, e.g. `markdown-extensions.ts:378`), read on the tick's
+  clock port; each tick `heardUntil = stoppedAt + delayTime.value`. Red: both tests failed (heardPlaying false at
+  4–6 s after D 1 → 3; heard after 12 s with ticks stalled).
+- 2936b38f3 S3 + outside item (core): `primedUntil`. **Rule:** on a tick playing whose previous state was not playing
+  (`heardUntil !== Infinity`) and `clockNow >= heardUntil` (never played, flushed, or the tail drained),
+  `primedUntil = clockNow + D`; `heard = (playing || draining) && clockNow >= primedUntil` (strict at the boundary, so
+  D = 0 is heard on the same tick). One notion of heard: while primed the silent branch runs (silence counter 0, ring
+  flag false → `heardPlaying` false, no floor, no stem sample); a pause inside the primed window drains only from
+  `primedUntil`. Red: D 6 s from 0 blocked; resume at 9.5 s after a pause from 2 s blocked; the control (silent file,
+  D 1 s, blocked from 3 s, not before) failed too (blocked from 2 s). Two D = 1 s tests changed in their first second
+  (separator samples, heardPlaying): they now start at D. Every D = 0 test and golden unchanged.
+- 8324c5596 S1 (core): `AudioPresentedFrame.atRest` (every presented drive and route value 0, computed in `present`,
+  no allocation); the manager emits on its edge (`emittedAtRest`, bypassing the 32 ms throttle) and the no-audio gate
+  also emits on it. Red: clear() mid-release while paused, L 0 and 100 ms: last emission carried 0.369.
+- 93c4271b1 N3 (test): quiet end of the file in the tail (media silent from 4 s, ended 6.5 s, D 3 s: 2.5 s of heard
+  silence) is not blocked; mutant (`playing &&` removed) fails it. The stop test's release to 12 digits.
+- 1b8f9bfa9 N4 (test): a non-zero onset `previous` held through frames not heard; mutant (`previous = heard ? raw : 0`)
+  fails it, the old guard passes the mutant.
+- Probes: resume inside the tail (pause 3–7 s, D 6 s) still raises `analysisBlocked` 11.4–12.9 s (the pause's silence
+  heard while playing): not covered by `primedUntil` as specified; candidate fix: the not-heard window on resume is
+  `[max(now, heardUntil), now + D)`. S2c (source removed while playing, then restored paused, D 1 s): `heardUntil`
+  stays Infinity, then a D-long "tail" is heard from the restore (4.8–5.8 s): not covered.
+
+## Review
+
+Gate: reviewer and skeptic (Opus). Grade: reviewer → skeptic.
+
+| # | Finding | Reviewer | Skeptic | Outcome |
+|---|---|---|---|---|
+| S1 | clear() mid-release: last status keeps non-zero drives | should | confirmed, nit (VotR never calls clear(); base worse) | fixed 8324c5596 |
+| S2a | a delay changed in the tail does not move heardUntil | should | confirmed, nit | fixed 0a4af9b22 |
+| S2b | ticks stalled across the stop stretch the tail (heard 12.0–17.8 s) | should | confirmed, nit | fixed 0a4af9b22 |
+| S2c | src removed / reset without loadSource keeps heardUntil Infinity | should | mechanism confirmed, refuted for VotR (no `audio.src` writes in the app), nit for the core | left open: not covered by 0a4af9b22 (probe above) |
+| S3 | a flush leaves D s of zeros while playing → false analysisBlocked (CORS warning), false song gap | (skeptic's) | should, lane-introduced | fixed 2936b38f3 |
+| outside | resume after a pause longer than D: blocked 11.5–15.9 s, base identical | – | outside the lane | fixed 2936b38f3 (resume after a drained tail: the same rule); a pause 2 s < P < D still trips it (left open) |
+| N1 | flushed delay copies old delayTime | nit | refuted (syncStems re-sets it) | no change |
+| N2 | the flush may click mid-waveform with D > 0 | nit | plausible, needs a listen | left open (Ludo checks) |
+| N3 | ended without paused untested; quiet outro; exact float equality | nit | confirmed | fixed 93c4271b1 |
+| N4 | the onset guard fed only silence | nit | confirmed | fixed 1b8f9bfa9 |
+| N5 | TODO 1 marked built, not removed | nit | confirmed, recorded deviation | left (Ludo's call) |
+| N6 | no test reaches the flush's audible effect (no sourceNode in the harness) | (skeptic's) | nit | left open |
+
 ## Built
 
 The design §1–5: `heard` (playing, or the delay line draining) as the one "sound stopped" state; the router releases
@@ -191,3 +239,7 @@ browser: no audio after Stop (the flush), the tail with a real stem model.
 Process deviations: the manager commit holds three causes (heard and the tail, the clear reset, the flush), since its
 tests depend on each other; the flush wiring tests came after the code, proven by mutants, not by a red run; TODO 1 is
 annotated as built, not removed (the numbers below it are referenced).
+
+Gate fix step checks: `npm run lint` 0 errors (the same 2 warnings); `tsc` clean; jest (same four folders) 21 suites,
+199 tests pass; `--prd` build done (build/ removed). clicksync not re-run: the playing path with D = 0 is unchanged
+(goldens), the changes act after a stop or with D > 0.

@@ -93,7 +93,8 @@ manager has no audio and no Who.
 - **`audio-presented-frame.ts`** (new, heard-frame, 2026-11-27, tested): `AudioPresentedFrame`, a ring of the last 256
   ticks of audio state read at what is heard (`currentTime − outputLatency`), allocated once; one entry per frame (a
   one-sided hysteresis: at most one entry behind the read rule, never ahead); each entry carries `playing`; the
-  `AudioOutputClock` port and its `webAudioOutputClock` adapter. *votr only*.
+  `AudioOutputClock` port and its `webAudioOutputClock` adapter; `atRest` (every presented drive and route value 0,
+  set in `present`; sound-stops gate fix step). *votr only*.
 - **`audio-reactive-animation.ts`**: the manager. `setRouteAffect` and `pickRouteAffect` return false when refused (a 9th
   narrowed route, D3). A read-only `routeValues` getter (next to `frame`, `stems` and `drives`) lets the offline pipeline
   spec (`manager/_spec/audio-pipeline.spec.ts`, which drives the real `tick`) read each frame's route values (measure,
@@ -107,13 +108,16 @@ manager has no audio and no Who.
   clock once at its top, reads the analyser and samples the stems while heard, else the silent analysis, and passes
   `heard` to the router; `silenceWhilePlaying` counts only while playing; stop, a new source and `clear` flush the delay
   line (a private `flushDelayLine`, the separator's tap kept); `clear` resets the router, stems and band drums peak; the
-  ring's `playing` is heard, so `heardPlaying` follows the tail too. *needs work*: a source removed without `clear` still
+  ring's `playing` is heard, so `heardPlaying` follows the tail too. Gate fix step: the tail is timed from the stop (`stoppedAt`, set by
+  the element's pause / ended listener or the first tick not playing) + the delay now; a (re)start with an empty line
+  is not heard for D (`primedUntil`); the status emits on the presented drives coming to rest (`emittedAtRest`). *needs work*: a source removed without `clear` still
   skips `router.update` (drives freeze); `stemModel` description says WebGPU only.
 - **Measuring stick (measure, 2026-11-27; test and tooling only)**: `mol-plugin-state/manager/_spec/audio-pipeline-helper.ts` and
   `audio-pipeline.spec.ts` (offline pipeline, golden traces, drives the real `tick`), and `scripts/votr-sync/clicksync.mjs`
   (browser sync test with a generated click track, `--port` required). sound-stops (2026-11-27): the fake analyser reads
   what came into the graph in wall time, one stem delay back; options `stemDelayS` (a fake delay node and a stub
-  separator) and `endedAtS`; the fake element's `pause()`, `removeAttribute()`, `load()` work (D = 0, no pause:
+  separator), `endedAtS` and `stalled` (ranges with no tick); the fake element's `pause()`, `removeAttribute()`,
+  `load()` work and it fires pause / ended to the manager's listeners (D = 0, no pause:
   bit-identical traces).
 - **`audio-routing.ts`** (tested; curve, duck, `songLoudness`, background, camera step wip). *votr only* as is (its CPU
   targets exist only in the app); the router core is generic. A non-finite source or `dtMs` reads as 0 in
