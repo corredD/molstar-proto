@@ -9,6 +9,13 @@ itself is still open there: Ludo reorders this list).
 
 <!-- - **Title** (Dn): what I want to see. Check: what I do in the app and what I expect. -->
 
+### Overnight 2026-11-27
+
+The review of 2026-11-26 ([progress/2026-11-26-audio-review.md](progress/2026-11-26-audio-review.md)) is being built
+on `votr/overnight` as seven lanes ([progress/2026-11-27-overnight.md](progress/2026-11-27-overnight.md)); items 1, 2
+and 13 below are in them. Left for later: review items 8 (`hasNoise` gate), 10 (hierarchy syncs per frame in every
+app, D12) and 12 (`packSlot` ranges).
+
 ### Broken items
 
 1. **Pause and Clear rest** (D2): both bring every drive to 0 over its release; Clear resets the router. Check:
