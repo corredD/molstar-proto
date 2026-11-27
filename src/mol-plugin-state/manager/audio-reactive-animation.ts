@@ -474,9 +474,9 @@ export class AudioReactiveAnimationManager {
                 if (this.heardUntil === Infinity) this.flushDelayLine();
             }
             // a lead change (lookahead, trim, the reactor's window or attack) moves only the analysis branch: no click
-            // in what is heard, no separator reset. Finer than the heard delay's guard (a trim step is 1 ms); NaN-safe
+            // in what is heard, no separator reset. Finer than the heard delay's guard (a trim step is 1 ms)
             const analysisDelay = this.getAnalysisDelaySeconds(this.audioContext);
-            if (this.analysisDelayNode && !(Math.abs(this.analysisDelayNode.delayTime.value - analysisDelay) < 1e-5)) {
+            if (this.analysisDelayNode && Math.abs(this.analysisDelayNode.delayTime.value - analysisDelay) > 1e-5) {
                 this.analysisDelayNode.delayTime.setValueAtTime(analysisDelay, this.audioContext.currentTime);
             }
         }

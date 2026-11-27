@@ -80,6 +80,14 @@ type ManagerFakes = { audioContext: unknown, analyser: unknown, bindAudioEvents(
 type ManagerStemFakes = { delayNode: unknown, analysisDelayNode: unknown, separator: unknown };
 type FakeDelayNode = { delayTime: { value: number, setValueAtTime(v: number): void } };
 const fakeDelayNode = (value: number): FakeDelayNode => ({ delayTime: { value, setValueAtTime(v: number) { this.value = v; } } });
+/**
+ * the analysis delay node: it reads the heard node's delay until the manager sets its own (a manager without the
+ * analysis branch never does, so its analyser reads the heard delay)
+ */
+const fakeAnalysisDelayNode = (heard: FakeDelayNode): FakeDelayNode => {
+    let own: number | undefined;
+    return { delayTime: { get value() { return own ?? heard.delayTime.value; }, set value(v: number) { own = v; }, setValueAtTime(v: number) { own = v; } } };
+};
 
 /**
  * The real `AudioReactiveAnimationManager.tick`, frame by frame, with fakes for what a browser gives it: an audio
@@ -100,12 +108,9 @@ export function runAudioPipeline(signal: AudioSignal, routes: readonly AudioRout
     let wall = new Float32Array(0);
     let wallEnd = 0;
     const delaySamples = Math.round((opts.stemDelayS ?? 0) * sr);
-    // the delay nodes, when installed: NaN until the manager sets the analysis delay (a manager without one reads the heard delay)
+    // the delay nodes, when installed (the analysis one reads the heard delay until the manager sets its own)
     let delayNode: FakeDelayNode | undefined, analysisDelayNode: FakeDelayNode | undefined;
-    const analysisDelaySamples = () => {
-        const a = analysisDelayNode?.delayTime.value ?? NaN;
-        return Math.round((Number.isNaN(a) ? delayNode?.delayTime.value ?? 0 : a) * sr);
-    };
+    const analysisDelaySamples = () => Math.round((analysisDelayNode?.delayTime.value ?? 0) * sr);
     let frameIndex = -1;
     const analysedFrames: number[] = [];
     const ctx = { currentTime: 0, sampleRate: sr, state: 'running', outputLatency: opts.outputLatency ?? 0 };
@@ -150,7 +155,7 @@ export function runAudioPipeline(signal: AudioSignal, routes: readonly AudioRout
     if (opts.stemDelayS !== void 0 || opts.lookahead !== void 0) {
         const stemFakes = manager as unknown as ManagerStemFakes;
         stemFakes.delayNode = delayNode = fakeDelayNode(0);
-        stemFakes.analysisDelayNode = analysisDelayNode = fakeDelayNode(NaN);
+        stemFakes.analysisDelayNode = analysisDelayNode = fakeAnalysisDelayNode(delayNode);
     }
     if (opts.lookahead !== void 0) stemParams = { lookahead: opts.lookahead, lookaheadTrimMs: opts.lookaheadTrimMs ?? 0 };
     if (opts.stemDelayS !== void 0) {
