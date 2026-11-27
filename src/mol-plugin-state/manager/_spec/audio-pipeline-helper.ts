@@ -8,17 +8,12 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import { AudioReactiveAnimationManagerValues, BandDrumsPeakDecayMs, BandDrumsPeakFloor, getBandDrumsOnset, getBandStems } from '../audio-reactive-animation';
-import { AudioReactiveFrame, AudioReactor, AudioReactorParams, DefaultAudioBandDefinitions, DefaultAudioBandKey, getAudioReactorAnalyserFftSize } from '../audio-reactor';
-import { AudioRoute, AudioRouteTarget, AudioRouter, createZeroDrives } from '../audio-routing';
-import { StemLevels } from '../audio-stems/stem-separator';
+import { AudioReactiveAnimationManager, AudioReactiveAnimationManagerValues } from '../audio-reactive-animation';
+import { AudioRoute, AudioRouteTarget, createZeroDrives } from '../audio-routing';
 
 export type AudioSignal = { name: string, sampleRate: number, samples: Float32Array, kicksS?: readonly number[] };
 
-export type AudioPipelineFrameInfo = {
-    index: number, timeMs: number, mediaS: number, paused: boolean, samples: Float32Array,
-    frame: AudioReactiveFrame<DefaultAudioBandKey>, stems: StemLevels, router: AudioRouter,
-};
+export type AudioPipelineFrameInfo = { index: number, timeMs: number, mediaS: number, paused: boolean, manager: AudioReactiveAnimationManager };
 
 export type AudioPipelineOptions = {
     /** a preset's `analysis`; only the reactor's keys are read, as the manager's getReactorParams does */
@@ -30,6 +25,8 @@ export type AudioPipelineOptions = {
     /** wall-clock ranges, seconds, where the audio element is paused (the media cursor freezes) */
     paused?: readonly (readonly [startS: number, endS: number])[],
     onFrame?: (f: AudioPipelineFrameInfo) => void,
+    /** what the fake AudioContext reports as outputLatency, seconds (0: none) */
+    outputLatency?: number,
 };
 
 export type AudioPipelineTrace = {
@@ -41,32 +38,44 @@ export type AudioPipelineTrace = {
     drives: Record<AudioRouteTarget, Float64Array>,
 };
 
-const ReactorKeys = [
-    'fftSize', 'analysisSampleRate', 'bandNormalizationGain', 'amplitudeAttackMs', 'amplitudeReleaseMs', 'bandAttackMs', 'bandReleaseMs',
-    'beatAttackMs', 'beatReleaseMs', 'dominantFrequencyAttackMs', 'dominantFrequencyReleaseMs', 'beatSensitivity', 'beatBaselineMs',
-    'onsetHalfLifeMs', 'onsetWeight', 'temperature', 'activityThreshold',
-] as const;
+/** the two private fields the fakes fill: the manager builds both from a real element and AudioContext in loadSource */
+type ManagerFakes = { audioContext: unknown, analyser: unknown };
 
-/** the reactor's parameters as the manager builds them from the plugin params (DefaultAudioReactorParams fill the rest) */
-export function getPipelineReactorParams(analysis: Partial<AudioReactiveAnimationManagerValues> | undefined, beatThreshold = 1.1) {
-    const params: Partial<AudioReactorParams<DefaultAudioBandKey>> = { bands: DefaultAudioBandDefinitions, beatThreshold };
-    const src = (analysis ?? {}) as Record<string, number>;
-    for (const k of ReactorKeys) if (src[k] !== undefined) (params as Record<string, number>)[k] = src[k];
-    return params;
-}
-
+/**
+ * The real `AudioReactiveAnimationManager.tick`, frame by frame, with fakes for what a browser gives it: an audio
+ * context whose clock advances one frame per tick (wall time, paused or not), an analyser that hands over the N samples
+ * ending at the media cursor, an audio element that is paused or not. Nothing of tick is re-implemented here.
+ */
 export function runAudioPipeline(signal: AudioSignal, routes: readonly AudioRoute[], opts: AudioPipelineOptions = {}): AudioPipelineTrace {
     const frameMs = opts.frameMs ?? 16;
     const sr = signal.sampleRate;
     const durationS = opts.durationS ?? signal.samples.length / sr;
     const count = Math.floor(durationS * 1000 / frameMs);
-    const reactor = new AudioReactor<DefaultAudioBandKey>(getPipelineReactorParams(opts.analysis, opts.beatThreshold));
-    const router = new AudioRouter();
-    // what the analyser hands over: its last fftSize samples, i.e. N samples ending at the media cursor
-    const n = getAudioReactorAnalyserFftSize(reactor.getParams(), sr);
-    const padded = new Float32Array(n + signal.samples.length + n);
+    let cursor = 0; // the media cursor, samples
+    let padded = new Float32Array(0);
+    const ctx = { currentTime: 0, sampleRate: sr, state: 'running', outputLatency: opts.outputLatency ?? 0 };
+    const analyser = {
+        fftSize: 2048, smoothingTimeConstant: 0,
+        get frequencyBinCount() { return this.fftSize / 2; },
+        // what the analyser hands over: its last fftSize samples, i.e. N samples ending at the media cursor
+        getFloatTimeDomainData(out: Float32Array) { out.set(padded.subarray(cursor, cursor + out.length)); },
+        // deterministic; the reactor does not read it (only the visualization does)
+        getByteFrequencyData(out: Uint8Array) { out.fill(0); },
+    };
+    const audio = { src: 'offline://' + signal.name, paused: false, ended: false, currentTime: 0 };
+
+    const manager = new AudioReactiveAnimationManager({} as ConstructorParameters<typeof AudioReactiveAnimationManager>[0]);
+    // the one place that sets the manager's private fields (a browser would: loadSource -> ensureAnalyser)
+    const fakes = manager as unknown as ManagerFakes;
+    fakes.audioContext = ctx; fakes.analyser = analyser;
+    manager.state.audioPlayer.next(audio as unknown as HTMLAudioElement);
+    manager.setRoutes([...routes]);
+    // setParams sizes the analyser (fftSize) and the manager's buffers from the reactor's parameters
+    manager.setParams({ ...opts.analysis, beatThreshold: opts.beatThreshold ?? 1.1 });
+    const n = analyser.fftSize;
+    padded = new Float32Array(n + signal.samples.length + n);
     padded.set(signal.samples, n);
-    const silence = new Float32Array(n);
+
     const trace: AudioPipelineTrace = {
         count,
         timeMs: new Float64Array(count), mediaS: new Float64Array(count), paused: new Uint8Array(count),
@@ -75,30 +84,20 @@ export function runAudioPipeline(signal: AudioSignal, routes: readonly AudioRout
         drives: {} as Record<AudioRouteTarget, Float64Array>,
     };
     for (const t of Object.keys(createZeroDrives()) as AudioRouteTarget[]) trace.drives[t] = new Float64Array(count);
-    let bandDrumsPeak = BandDrumsPeakFloor;
     let mediaFrames = 0;
     for (let i = 0; i < count; i++) {
         const timeMs = (i + 1) * frameMs;
         const paused = !!opts.paused?.some(([a, b]) => timeMs / 1000 > a && timeMs / 1000 <= b);
-        let samples: Float32Array;
-        if (paused) samples = silence;
-        else {
-            const end = Math.round(++mediaFrames * frameMs * sr / 1000); // integer arithmetic: no accumulated drift
-            samples = padded.subarray(end, end + n);
-        }
-        const dtMs = i === 0 ? 16 : frameMs; // tick() uses 16 on its first frame
-        const frame = reactor.analyze(samples, sr, dtMs);
-        // the fallback of updateStems
-        const onset = getBandDrumsOnset(frame);
-        bandDrumsPeak = Math.max(onset, BandDrumsPeakFloor, bandDrumsPeak * Math.exp(-dtMs / BandDrumsPeakDecayMs));
-        const d = Math.min(1, onset / bandDrumsPeak);
-        const stems = getBandStems(frame, d * d);
-        router.update(routes, frame, stems, dtMs);
+        audio.paused = paused;
+        if (!paused) cursor = Math.round(++mediaFrames * frameMs * sr / 1000); // integer arithmetic: no accumulated drift
+        ctx.currentTime = timeMs / 1000;
+        manager.tick(timeMs);
+        const stems = manager.stems;
         trace.timeMs[i] = timeMs; trace.mediaS[i] = mediaFrames * frameMs / 1000; trace.paused[i] = paused ? 1 : 0;
         trace.drums[i] = stems.drums; trace.bass[i] = stems.bass; trace.other[i] = stems.other; trace.vocals[i] = stems.vocals;
-        routes.forEach((r, j) => { trace.routeValues[j][i] = router.values.get(r.id) ?? 0; });
-        for (const t of Object.keys(trace.drives) as AudioRouteTarget[]) trace.drives[t][i] = router.drives[t];
-        opts.onFrame?.({ index: i, timeMs, mediaS: trace.mediaS[i], paused, samples, frame, stems, router });
+        routes.forEach((r, j) => { trace.routeValues[j][i] = manager.routeValues.get(r.id) ?? 0; });
+        for (const t of Object.keys(trace.drives) as AudioRouteTarget[]) trace.drives[t][i] = manager.drives[t];
+        opts.onFrame?.({ index: i, timeMs, mediaS: trace.mediaS[i], paused, manager });
     }
     return trace;
 }
