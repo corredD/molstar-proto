@@ -268,6 +268,11 @@ export class AudioReactiveAnimationManager {
         return this.currentFrame;
     }
 
+    /** each route's value this frame, by route id (read-only; the offline pipeline spec reads them per frame) */
+    get routeValues(): ReadonlyMap<number, number> {
+        return this.router.values;
+    }
+
     /** each visual channel's drive this frame, from the routes on All */
     get drives(): Readonly<AudioRouteDrives> {
         return this.router.drives;
