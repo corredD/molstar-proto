@@ -9,6 +9,7 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
+import { audioFrameNeedsRender } from './audio-redraw';
 import { BehaviorSubject, Subject, Subscription, debounceTime, merge } from 'rxjs';
 import { now } from '../mol-util/now';
 import { Vec3, Vec2 } from '../mol-math/linear-algebra';
@@ -467,6 +468,8 @@ namespace Canvas3D {
         let height = 128;
 
         let forceNextRender = false;
+        let prevAudioIllumination = 0;
+        let prevAudioHue = 0;
         let currentTime = 0;
 
         syncCanvasBackground(canvas!, p);
@@ -1267,14 +1270,9 @@ namespace Canvas3D {
             resetTime,
             setAudioFrame: frame => {
                 renderer.setAudioFrame(frame);
-                // a narrowed route, or the position wave, still moves when tumble amplitude is 0
-                let moving = frame.driveInstanceWave > 0;
-                if (!moving) {
-                    for (let i = 0; i < frame.scopeCount; i++) {
-                        if (frame.scopeDrive[i] > 0) { moving = true; break; }
-                    }
-                }
-                if (moving) forceNextRender = true;
+                if (audioFrameNeedsRender(prevAudioIllumination, prevAudioHue, frame)) forceNextRender = true;
+                prevAudioIllumination = frame.illumination;
+                prevAudioHue = frame.hue;
             },
             pause,
             resume,
