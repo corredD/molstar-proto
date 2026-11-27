@@ -31,6 +31,7 @@ export const AudioUrlPresets = [
     { label: 'Public Domain - Maple Leaf Rag', url: 'https://archive.org/download/MapleLeafRag/MapleLeafRag.mp3' },
     { label: 'FIP Hi-Fi AAC', url: 'https://radio-proxy.ludomolgraphlab.workers.dev/fip/' },
     { label: 'Le Son Parisien FLAC', url: 'https://radio-proxy.ludomolgraphlab.workers.dev/lesonparisien/' },
+    { label: 'Angine de Poitrine (example)', url: DefaultAudioFallbackUrl },
 ] as const;
 export const DefaultAudioUrlPreset = AudioUrlPresets.find(p => p.url === DefaultAudioUrl) ?? AudioUrlPresets[0];
 export const ExamplePdbIds = ['2tbv', '2plv'] as const;
