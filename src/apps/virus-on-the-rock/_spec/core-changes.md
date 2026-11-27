@@ -88,16 +88,20 @@ manager has no audio and no Who.
 
 - **`audio-reactor.ts`**, **`audio-prominence.ts`** (tested): bands, flux beat, prominence. *candidate* as a small
   analysis module; the resampler needs an anti-alias filter, analysis reads the oldest part of the buffer.
-- **`audio-reactive-animation.ts`**: the manager. *needs work*: `tick` skips `router.update` without audio (drives
-  freeze); `stemModel` description says WebGPU only. a read-only `routeValues` getter (next to `frame`, `stems` and `drives`) lets the
-  offline pipeline spec (`manager/_spec/audio-pipeline.spec.ts`, which drives the real `tick`) read each frame's route values (measure, 2026-11-27; no behaviour change). The test fakes set two private fields (`audioContext`,
-  `analyser`) through one documented cast in `_spec/audio-pipeline-helper.ts`.
+- **`audio-reactive-animation.ts`**: the manager. `setRouteAffect` and `pickRouteAffect` return false when refused (a 9th
+  narrowed route, D3). A read-only `routeValues` getter (next to `frame`, `stems` and `drives`) lets the offline pipeline
+  spec (`manager/_spec/audio-pipeline.spec.ts`, which drives the real `tick`) read each frame's route values (measure,
+  2026-11-27; no behaviour change). The test fakes set two private fields (`audioContext`, `analyser`) through one
+  documented cast in `_spec/audio-pipeline-helper.ts`. *needs work*: `tick` skips `router.update` without audio (drives
+  freeze); `stemModel` description says WebGPU only.
 - **Measuring stick (measure, 2026-11-27; test and tooling only)**: `mol-plugin-state/manager/_spec/audio-pipeline-helper.ts` and
   `audio-pipeline.spec.ts` (offline pipeline, golden traces, drives the real `tick`), and `scripts/votr-sync/clicksync.mjs`
   (browser sync test with a generated click track, `--port` required).
 - **`audio-routing.ts`** (tested; curve, duck, `songLoudness`, background, camera step wip). *votr only* as is (its CPU
   targets exist only in the app); the router core is generic. A non-finite source or `dtMs` reads as 0 in
-  `AudioRouter.update` (router-nan-guard, 2026-11-26; commit `audio routing: a non-finite source reads as 0…`).
+  `AudioRouter.update` (router-nan-guard, 2026-11-26; commit `audio routing: a non-finite source reads as 0…`). A
+  narrowed route finds the 8 slots full and adds nothing, never the global drive; `canNarrowRoute(routes, id)` (narrowed-slots,
+  2026-11-27, D3).
 - **`audio-stems/`** (DSP tested): Spleeter, HTDemucs, SCNet runners, worker, separator. *votr only*; weights on
   Hugging Face `resolve/main` (not pinned). `StemSeparator.onWorkerMessage` stores a non-finite worker energy as 0 (a NaN
   in the model output stuck the running peaks and every stem level for good; router-nan-guard, 2026-11-26).
