@@ -44,15 +44,20 @@
 
 ## Review (gate: reviewer + skeptic, Opus)
 
-| # | Finding | Verdict | Grade | Commit / outcome |
+| # | Finding | Reviewer | Skeptic | Commit / outcome |
 |---|---|---|---|---|
-| 1, 2, 3 | stateless decision, held glow/hue renders every frame, prev fields in `canvas3d` | confirmed | should-fix (one design) | `canvas3d: glow and hue render on change only...` (red: `canvas3d: an AudioRedrawTracker...`) |
-| 4 | clicksync not run | confirmed | nit | Testing line above |
-| 5 | dead `mockClear` in the axes spec | confirmed | nit | `assembly-symmetry-axis spec: drop the dead mockClear` |
-| 6 | progress-file wording on the red commits | confirmed | nit | Decided, above |
-| 7 | dropped | n/a | n/a | dropped |
-| 8 | dropped | n/a | n/a | dropped |
-| N1, N2 | core-changes "Forced redraw" entry wording | confirmed | nit | core-changes entry rewritten |
+| 1 | `> 0` redraws forever (released drive sticks at a denormal; a floor holds it) | must-fix | confirmed (37 500/37 500 frames rendered over 600 s), should-fix: brief-mandated, masked by `hasAnimation` in VotR | e64d9e2c6 (red 62380fb40): glow and hue render on change only |
+| 2 | prev-value wiring untested | should-fix | confirmed (a reorder passes lint and jest), should-fix (low) | e64d9e2c6: state moved into the tested `AudioRedrawTracker` |
+| 3 | narrowed glow/hue get no final render (count 1→0) | should-fix | confirmed (predates), should-fix (low) | e64d9e2c6 |
+| 4 | clicksync not re-run | should-fix | letter confirmed, substance refuted (it reads drives, unchanged): nit | Testing line |
+| 5 | dead `mockClear` | nit | confirmed | 5c3b67dc9 |
+| 6 | red-commit note wrong | nit | refuted (2 of 4 replayed red); wording nit | 1b49db34c |
+| 7 | redundant count in the applied key | nit | confirmed, brief-mandated | dropped |
+| 8 | NaN forces a render | nit | not reachable (router guard) | dropped |
+| N1 | `!==` clause and spec name overstate | — | skeptic, nit | gone with e64d9e2c6 |
+| N2 | core-changes entry omits the masking and issue 11 | — | skeptic, nit | 1b49db34c |
+
+Gate: reviewer and skeptic (Opus), fix step (Sonnet); verdicts as written by them (coordinator, from their reports).
 
 ## Learned
 
