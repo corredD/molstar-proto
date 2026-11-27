@@ -87,3 +87,94 @@ Open for Ludo: the 1e-3 cut-off; flushing the tail on Stop/new source (recommend
 
 ## Log
 
+### Step 1: the router (66ce6e05f, core)
+
+- Red: `audio-routing.spec.ts` › "audio routing once the sound stops (heard = false)": 5 failed, 16 passed (the cut-off
+  undefined; the floor held; never rises to the floor; no snap; 2000 frames of release end at 2.3e-53, not 0). The sixth
+  (onset state kept while not heard, a resume reads as a fresh route) passed before and after: a guard.
+- `AudioRouter.update(…, heard = true)`: not heard → target 0 and a released value < `AudioRestCutoff` (1e-3) is 0.
+  Every golden unchanged (the default keeps every caller).
+
+### Step 2: the harness (6b2c267a2, test only)
+
+- The fake analyser reads what came into the graph in wall time (the media while playing, silence while paused or
+  ended), N samples ending D back. `stemDelayS` (fake delay node + stub separator; the delay set through setParams),
+  `endedAtS`, `pause()` latches, `removeAttribute('src')`, `load()`.
+- Parity against the old harness (a throwaway spec, deleted): 7 runs (4 burst, 2 ambient, kick at L = 100 ms) and a kick
+  run paused 3–5 s: 0 differences in every drive, stem and route value. A song run paused 3–4 s differs after the
+  resume: the analyser now holds the silence of the pause, as a real one does. No golden pauses.
+
+### Step 3: the manager (3a5a8edef, core)
+
+- Red: the 10 tests of `audio-pipeline.spec.ts` › "rest once the sound stops" on the unchanged manager: 10 failed
+  (wiggle 0.2515 for 0.2415 of the pure release; frame 315 not at rest; the tail run 3.25 vs 9.93 at frame 203, the
+  analyser not read; no separator sample in the tail; clear leaves frame 301 open; the latency run never rests;
+  heardPlaying false in the tail).
+- Green: all; every golden and every heard-frame test unchanged. The two "today" tests are gone (test 1 replaces the
+  `it.failing`, test 2 the wiggle-floor one).
+- `audio-reactive-ports.spec.ts`: the flush's wiring (source → delay cut alone, old delay disconnected, a new delay with
+  the same time, reconnected to the analyser; on stop and on clear). Mutant (no flush in `stop()`): this test and the
+  pipeline's stop test fail.
+- **Measured: pause at 3 s, kick track, Drums & Bass Burst: exact 0 after 2064 ms** (frame 315, last playing 186),
+  exactly the formula's frame, one frame earlier not at rest. With L = 100 ms the presented drives rest exactly 7 frames
+  later.
+
+### Step 4: the clip pass rests (8a39e19e7, app)
+
+- `cpu-channels.spec.ts`: a stemDrums onset → clipPosition route through the real manager, paused at 3 s, into
+  CpuChannels: the release passes, one write-back, then no target call. Red against the pre-lane manager (6b2c267a2's
+  file put back, then restored): the drive is 1.18e-8 at 8 s, a pass every frame.
+
+### Step 5: spec pages (26974ce42, app)
+
+Routing spec steps 4–5 and seven rows; architecture §2 (when the sound stops), §4 clip rest, §5, §7 D2 built, "still
+open" cut-off → 1e-3 proposed; TODO 1 (marked built, kept for numbering) and 13; features Play / Pause and Clear →
+Tested, checklist step 9; core-changes (router, manager, harness).
+
+### clicksync (headless Chromium, port 1351, outputLatency 32 ms, ~37–40 ms per frame)
+
+```
+lane:           full 91 ms (68..108) | drums 76 (62..98) | bass 81 (68..116) | x2 93; gain x2 -> 2.00
+lane, rerun:    full 76 ms (35..128) | drums 77 (60..91) | bass 89 (73..106) | x2 90; gain x2 -> 2.03
+base (overnight's manager and router, same server, same hour):
+                full 92 ms (67..107) | drums 78 (58..117) | bass 87 (70..102) | x2 84; gain x2 -> 2.00
+```
+The machine was loaded (other lanes): the base is ~40 ms later than heard-frame's own run (42 / 38 / 54). Lane and base
+agree within the run-to-run noise: no change from this lane. The heard median sits at the window's edge (50 ms + one
+frame ≈ 88–90 ms) on this machine for both; heard-frame's quieter run is the reference.
+
+## Built
+
+The design §1–5: `heard` (playing, or the delay line draining) as the one "sound stopped" state; the router releases
+to exactly 0 with no floor once not heard; the tail of the stem delay is followed after a pause and the end of a file;
+Stop, a new source and Clear flush the line; Clear resets the router; the clip pass rests on a paused song.
+
+## Decided
+
+- Coordinator, overnight; Ludo to confirm: the 1e-3 cut-off; the exponential rest with the formula as the bound (not
+  `releaseMs` + 1 frame); Stop, a new source and Clear flush the delay tail; floors off before the first play.
+- Builder (deviations from the design, adapted to the merged heard-frame): the ring's `playing` flag carries `heard`, so
+  `heardPlaying` is heard as heard: with no delay identical to before (every heard-frame test unchanged); with a delay
+  the beat cycle and the song detector keep reading the tail, which is sound (one test). The clock is read once at the
+  top of tick into two fields (`readClock`), `presentFrame` and the stems sampling (t − D) use that read. The flush
+  lives in `flushDelayLine()`, which also sets `heardUntil = -Infinity`. The harness changes paused runs after a resume
+  (realistic, no golden pauses). Not in the design: the separator still samples by the param's delay (equal to the
+  node's).
+
+## Learned
+
+- 2000 frames of a 260 ms release end at 2.3e-53, not the review's 4e-323 (that is further on); either way never 0.
+- clicksync on a shared machine moves by a whole frame with load; a same-hour base run is needed to read a change.
+
+## Size
+
+Production: 86 + / 29 − lines in two core files (`audio-reactive-animation.ts` 99 lines changed, `audio-routing.ts`
+16), against the design's ≈ 35: the clock moved to the top of tick (`readClock`), the doc comments, `flushDelayLine`
+(13 lines). Tests: ~300 lines (routing 6, pipeline 10, ports 1, cpu-channels 1) and the harness options.
+
+## Checks
+
+`npm run lint` 0 errors (2 warnings in `app.tsx`, there before); `npx tsc --noEmit -p tsconfig.json` clean; `npx jest
+src/apps/virus-on-the-rock src/mol-plugin-state src/mol-repr/structure src/mol-canvas3d` 21 suites, 190 tests pass;
+`node ./scripts/build.mjs -a virus-on-the-rock --prd` done (build/ removed); clicksync above. Not checked by hand in a
+browser: no audio after Stop (the flush), the tail with a real stem model.
