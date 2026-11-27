@@ -150,6 +150,8 @@ export class StemSeparator {
                 this.tap = tap;
                 this.tapSink = sink;
             })();
+            // a failed setup must not stay: picking the model again after Off retries it
+            this.tapLoading.catch(() => { this.tapLoading = undefined; });
         }
         await this.tapLoading;
     }
