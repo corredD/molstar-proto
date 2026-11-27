@@ -792,6 +792,17 @@ describe('audio pipeline (offline, 16 ms frames at 48 kHz)', () => {
             });
         }
 
+        it('no stem model (the startup configuration): the audio 0.25 s late, the heard kick -> symAxis peak within one frame', () => {
+            let delay = NaN;
+            const t = runAudioPipeline(kickTrack(48000, 10), getDefaultAudioRoutes(), {
+                analysis: burst, durationS: 10, lookahead: true,
+                onFrame: ({ index, manager }) => { if (index === 0) delay = (manager as unknown as { delayNode: { delayTime: { value: number } } }).delayNode.delayTime.value; },
+            });
+            expect(delay).toBe(0.25);
+            const s = kickPeakStats(t, KickTimes(10).map(k => k + 0.25), 'symAxis', 2);
+            expect(Math.abs(s.lagMedian)).toBeLessThanOrEqual(1);
+        });
+
         for (const target of ['wiggle', 'object'] as const) {
             it(`Ambient Pulse (${target}), D 1 s: the heard kick -> peak within one frame`, () => {
                 const s = lagOf(lookaheadRun(ambientRoutes, ambient, true), 0, target);
