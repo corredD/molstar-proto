@@ -93,6 +93,11 @@ export const DefaultEffectKnobs: Partial<AudioReactiveAnimationManagerValues> = 
     assemblyAxisAmplitudeScale: 15,
     beatThreshold: 1.1,
 };
+/**
+ * The audio sync at startup: lookahead on, so a hit moves the visuals on the frame it is heard (the audio 0.25 s late
+ * with no stem model). Off in the core manager's defaults (lane lookahead-sync; Ludo to confirm)
+ */
+export const DefaultAudioSync: Partial<AudioReactiveAnimationManagerValues> = { lookahead: true };
 export const FeaturedPresetNames: readonly AudioReactivePresetName[] = [
     'drums-bass-burst',
     'subtle-drift',

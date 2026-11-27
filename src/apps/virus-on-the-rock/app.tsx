@@ -37,7 +37,7 @@ import { BeatCycle } from './beat-cycle';
 import { BackgroundBaseColor, CpuChannels, type CpuChannelTarget } from './cpu-channels';
 import { createCanvas3DChannelTarget } from './canvas3d-channel-target';
 import { patchIfChanged } from './state-patch';
-import { AudioUrlPresets, DefaultAudioFallbackLabel, DefaultAudioFallbackUrl, DefaultAudioLabel, DefaultAudioUrl, DefaultEffectKnobs, DefaultPdbId, DefaultPresetName, FrameRadiusPadding, LargeStructureElementThreshold, LargeStructureLodLevels, MesoscaleExample, MesoscaleExamples, NearClipAfterCameraReset, RepresentationMode, getBlobSurfaceTypeParams, getDefaultMultiScaleOcclusionProps, getPetworldGroups, getSpacefillTypeParams } from './catalog';
+import { AudioUrlPresets, DefaultAudioFallbackLabel, DefaultAudioFallbackUrl, DefaultAudioLabel, DefaultAudioSync, DefaultAudioUrl, DefaultEffectKnobs, DefaultPdbId, DefaultPresetName, FrameRadiusPadding, LargeStructureElementThreshold, LargeStructureLodLevels, MesoscaleExample, MesoscaleExamples, NearClipAfterCameraReset, RepresentationMode, getBlobSurfaceTypeParams, getDefaultMultiScaleOcclusionProps, getPetworldGroups, getSpacefillTypeParams } from './catalog';
 import { AxisCycleTarget, LoadedEntry, VirusOnTheRockState, createInitialState, getAssemblyOrderFromCycleTarget, getAxisAnimationPatch, getAxisOptions, getDefaultCycleTargets, getEnabledCycleOptions, getLocalAxisFromCycleTarget, getMotionTargetState, getPresetAnimationPatch, isLocalCycleTarget, sanitizeCycleTargets } from './state';
 import { createRouteMotionsFollower } from './route-motions';
 import { VirusOnTheRockControls } from './ui/controls';
@@ -278,6 +278,8 @@ export class VirusOnTheRockApp {
             this.viewer.plugin.log.error(`Failed to load default structure ${DefaultPdbId.toUpperCase()}: ${error}`);
         }
 
+        // before the first load: the delay lines are made with the lookahead's delay
+        this.viewer.plugin.managers.audioReactive.setParams(DefaultAudioSync);
         try {
             await this.loadDefaultAudio();
         } catch (error) {
