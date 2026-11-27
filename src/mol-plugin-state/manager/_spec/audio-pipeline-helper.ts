@@ -36,6 +36,11 @@ export type AudioPipelineOptions = {
     stemDelayS?: number,
     /** wall-clock second from which the element reports `ended` (the end of the file); the media cursor stops there */
     endedAtS?: number,
+    /**
+     * wall-clock ranges, seconds, where the animation loop does not tick (a hidden tab): the audio element plays on and
+     * still fires its pause and ended events, the manager's tick is not called
+     */
+    stalled?: readonly (readonly [startS: number, endS: number])[],
 };
 
 export type AudioPipelineTrace = {
@@ -49,8 +54,11 @@ export type AudioPipelineTrace = {
     stemSamples: { index: number, time: number }[],
 };
 
-/** the two private fields the fakes fill: the manager builds both from a real element and AudioContext in loadSource */
-type ManagerFakes = { audioContext: unknown, analyser: unknown };
+/**
+ * the two private fields the fakes fill (the manager builds both from a real element and AudioContext in loadSource),
+ * and the listeners it binds on an element it makes itself (resolveAudioPlayer)
+ */
+type ManagerFakes = { audioContext: unknown, analyser: unknown, bindAudioEvents(audio: unknown): void };
 
 /** with stemDelayS: the two more private fields the fakes fill (the browser's delay node, the stem separator) */
 type ManagerStemFakes = { delayNode: unknown, separator: unknown };
@@ -60,7 +68,8 @@ type ManagerStemFakes = { delayNode: unknown, separator: unknown };
  * context whose clock advances one frame per tick (wall time, paused or not), an analyser that hands over the N samples
  * ending D (the stem delay, 0 by default) before the end of what came into the graph (wall time: the media while
  * playing, silence while paused or ended), an audio element that is paused or not (its pause(), removeAttribute() and
- * load() work, so onFrame can call the manager's stop() and clear()). Nothing of tick is re-implemented here.
+ * load() work, so onFrame can call the manager's stop() and clear(); it fires pause and ended on the frame that first
+ * sees them, before the tick, as a browser queues them). Nothing of tick is re-implemented here.
  */
 export function runAudioPipeline(signal: AudioSignal, routes: readonly AudioRoute[], opts: AudioPipelineOptions = {}): AudioPipelineTrace {
     const frameMs = opts.frameMs ?? 16;
@@ -83,17 +92,21 @@ export function runAudioPipeline(signal: AudioSignal, routes: readonly AudioRout
     };
     // pause() latches: the manager's stop() and clear() pause the element for the rest of the run
     let pausedByManager = false;
+    const listeners: { type: string, listener: () => void }[] = [];
     const audio = {
         src: 'offline://' + signal.name, paused: false, ended: false, currentTime: 0,
         pause() { pausedByManager = true; audio.paused = true; },
         removeAttribute(name: string) { if (name === 'src') audio.src = ''; },
         load() { },
+        addEventListener(type: string, listener: () => void) { listeners.push({ type, listener }); },
     };
+    const fire = (type: string) => { for (const l of listeners) if (l.type === type) l.listener(); };
 
     const manager = new AudioReactiveAnimationManager({} as ConstructorParameters<typeof AudioReactiveAnimationManager>[0]);
     // the one place that sets the manager's private fields (a browser would: loadSource -> ensureAnalyser)
     const fakes = manager as unknown as ManagerFakes;
     fakes.audioContext = ctx; fakes.analyser = analyser;
+    fakes.bindAudioEvents(audio);
     manager.state.audioPlayer.next(audio as unknown as HTMLAudioElement);
     manager.setRoutes([...routes]);
     const stemSamples: { index: number, time: number }[] = [];
@@ -125,11 +138,15 @@ export function runAudioPipeline(signal: AudioSignal, routes: readonly AudioRout
     };
     for (const t of Object.keys(createZeroDrives()) as AudioRouteTarget[]) trace.drives[t] = new Float64Array(count);
     let mediaFrames = 0;
+    let firedPaused = false;
     for (let i = 0; i < count; i++) {
         frameIndex = i;
         const timeMs = (i + 1) * frameMs;
         const ended = opts.endedAtS !== void 0 && timeMs / 1000 > opts.endedAtS;
         const paused = pausedByManager || ended || !!opts.paused?.some(([a, b]) => timeMs / 1000 > a && timeMs / 1000 <= b);
+        // the element's state at the last frame: pause() inside onFrame (stop, clear) sets paused at once, its event comes next frame
+        const wasPaused = firedPaused, wasEnded = audio.ended;
+        firedPaused = paused;
         audio.paused = paused;
         audio.ended = ended;
         const from = cursor;
@@ -139,7 +156,9 @@ export function runAudioPipeline(signal: AudioSignal, routes: readonly AudioRout
         if (!paused) wall.set(signal.samples.subarray(from, cursor), wallEnd);
         wallEnd += len;
         ctx.currentTime = timeMs / 1000;
-        manager.tick(timeMs);
+        if (paused && !wasPaused) fire('pause');
+        if (ended && !wasEnded) fire('ended');
+        if (!opts.stalled?.some(([a, b]) => timeMs / 1000 > a && timeMs / 1000 <= b)) manager.tick(timeMs);
         const stems = manager.stems;
         trace.timeMs[i] = timeMs; trace.mediaS[i] = mediaFrames * frameMs / 1000; trace.paused[i] = paused ? 1 : 0;
         trace.drums[i] = stems.drums; trace.bass[i] = stems.bass; trace.other[i] = stems.other; trace.vocals[i] = stems.vocals;
