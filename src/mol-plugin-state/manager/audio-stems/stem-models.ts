@@ -26,6 +26,11 @@ export type StemModelInfo = {
     chunkSamples: number,
     /** how late the listener hears the audio by default: a chunk, the run and some margin, seconds */
     delaySeconds: number,
+    /**
+     * how far this model's stem timeline runs ahead of the band analysis, seconds: frames stamped at their window's
+     * centre, the bands read the end of theirs. Lookahead samples the stems this much less ahead
+     */
+    timelineLeadSeconds: number,
     /** the weights' files, relative to the model's base URL */
     files: string[],
     /** where the weights are served from when they are not next to the app (CORS-enabled), pinned to a commit */
@@ -40,6 +45,7 @@ export const StemModels: Record<StemModelId, StemModelInfo> = {
         windowSamples: 508 * StemHop, // one 512-frame split: ceil((508 + 4) hops of padded signal)
         chunkSamples: 2 * 44100,
         delaySeconds: 6,
+        timelineLeadSeconds: 0.030, // not measured: the framing stub's value (lane lookahead-sync)
         files: ['drums.fp16.onnx', 'bass.fp16.onnx', 'other.fp16.onnx', 'vocals.fp16.onnx'],
         remoteBaseUrl: 'https://huggingface.co/Best-Practice/spleeter-4stems-onnx/resolve/main/',
         description: 'Deezer Spleeter 4 stems (fp16 ONNX, 4 x 19.7 MB): fastest; magnitudes only, up to 11 kHz.',
@@ -50,6 +56,7 @@ export const StemModels: Record<StemModelId, StemModelInfo> = {
         windowSamples: 343980,
         chunkSamples: 5 * 44100,
         delaySeconds: 10,
+        timelineLeadSeconds: 0.030,
         files: [...Array.from({ length: 21 }, (_, i) => `htdemucs_p${`${i}`.padStart(2, '0')}.onnx`), 'htdemucs_split_manifest.json'],
         remoteBaseUrl: 'https://huggingface.co/monteslu/htdemucs-web-onnx/resolve/main/',
         description: 'Meta HTDemucs v4 (21 fp16 pieces, 126 MB): the best separation, paced between pieces.',
@@ -60,6 +67,7 @@ export const StemModels: Record<StemModelId, StemModelInfo> = {
         windowSamples: 485100,
         chunkSamples: 6 * 44100,
         delaySeconds: 11,
+        timelineLeadSeconds: 0.030, // not measured: the framing stub's value (lane lookahead-sync)
         files: ['scnet.int8.onnx'],
         remoteBaseUrl: 'https://huggingface.co/audiojs/scnet/resolve/main/',
         description: 'SCNet (int8 ONNX, 12.9 MB): the smallest download, the heaviest to run.',

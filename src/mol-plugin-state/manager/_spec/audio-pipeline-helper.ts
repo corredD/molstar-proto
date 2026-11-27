@@ -48,6 +48,8 @@ export type AudioPipelineOptions = {
      */
     lookahead?: boolean,
     lookaheadTrimMs?: number,
+    /** with stemDelayS: the stem model the params name (default: the first, spleeter); its timeline lead applies */
+    stemModel?: StemModelId,
     /** with stemDelayS: what the stub separator's sample returns (undefined, the default: it separates nothing) */
     stemSample?: (time: number, dtMs: number, attackMs: number, releaseMs: number) => StemLevels | undefined,
 };
@@ -167,7 +169,7 @@ export function runAudioPipeline(signal: AudioSignal, routes: readonly AudioRout
                 return opts.stemSample?.(time, dtMs, attackMs, releaseMs);
             },
         };
-        stemParams = { ...stemParams, stemModel: Object.keys(StemModels)[0] as StemModelId, stemDelaySeconds: opts.stemDelayS };
+        stemParams = { ...stemParams, stemModel: opts.stemModel ?? Object.keys(StemModels)[0] as StemModelId, stemDelaySeconds: opts.stemDelayS };
     }
     // setParams sizes the analyser (fftSize) and the manager's buffers from the reactor's parameters (and sets the delay)
     manager.setParams({ ...opts.analysis, beatThreshold: opts.beatThreshold ?? 1.1, ...stemParams });

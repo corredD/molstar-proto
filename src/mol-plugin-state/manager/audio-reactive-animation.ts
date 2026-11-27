@@ -73,6 +73,8 @@ export const AudioReactiveAnimationManagerParams = {
     stemDelaySeconds: PD.Numeric(0, { min: 0, max: 25, step: 0.5 }, { category: 'Sync', label: 'Audio Delay', hideIf: p => p.stemModel === 'off' && !p.lookahead, description: 'How late the audio is heard, seconds; 0 uses the default (the model\'s, else 0.25 s with lookahead). With a model it must cover the model\'s latency, or the stems fall back to the band analysis.' }),
     lookahead: PD.Boolean(false, { category: 'Sync', description: 'Analyse the audio ahead of what is heard by the analysis\'s own lag (half its window and the band attack), so a hit moves the visuals on the frame it is heard. The audio is delayed (Audio Delay) to make room.' }),
     lookaheadTrimMs: PD.Numeric(0, { min: -50, max: 100, step: 1 }, { category: 'Sync', label: 'Lead Trim', hideIf: p => !p.lookahead, description: 'Milliseconds added to the lookahead: more moves the visuals earlier, less later.' }),
+    /** a measuring override (clicksync --stem-lead): null, the stem model's timelineLeadSeconds */
+    stemTimelineLeadMs: PD.Value<number | null>(null, { isHidden: true, category: 'Sync', description: 'How far the stem timeline runs ahead of the bands, ms; null: the model\'s.' }),
 } as const;
 export type AudioReactiveAnimationManagerParams = typeof AudioReactiveAnimationManagerParams
 export type AudioReactiveAnimationManagerValues = PD.Values<AudioReactiveAnimationManagerParams>;
@@ -144,11 +146,13 @@ function getBandStems(frame: AudioReactiveFrame<DefaultAudioBandKey>, drums: num
 export const LookaheadDelaySeconds = 0.25;
 
 /**
- * How far the stem timeline runs ahead of the band analysis, seconds: its frames are stamped at the centre of their
- * window, the bands read the end of theirs. Lookahead samples the stems this much less ahead. Measured with a stub of
- * the model's windows (lane lookahead-sync); Ludo to confirm with HTDemucs in the browser
+ * How far the stem timeline runs ahead of the band analysis, seconds (lookahead samples the stems this much less
+ * ahead): the model's timelineLeadSeconds, or the hidden stemTimelineLeadMs override; 0 with no model
  */
-export const StemTimelineLeadS = 0.030;
+export function getStemTimelineLeadSeconds(params: AudioReactiveAnimationManagerValues) {
+    if (params.stemTimelineLeadMs !== null) return params.stemTimelineLeadMs / 1000;
+    return params.stemModel === 'off' ? 0 : StemModels[params.stemModel].timelineLeadSeconds;
+}
 
 /** how late the audio is heard, seconds: a stem model's delay (the slider, or the model's default), else with lookahead the slider or LookaheadDelaySeconds, else 0 */
 export function getAudioDelaySeconds(params: AudioReactiveAnimationManagerValues) {
@@ -864,8 +868,8 @@ export class AudioReactiveAnimationManager {
         const leadS = this.analysisDelayNode ? Math.max(0, delayS - this.analysisDelayNode.delayTime.value) : 0;
         const heard = this.heardAt(playing, 0);
         const analysed = leadS > 0 ? this.heardAt(playing, leadS) : heard;
-        // the stem timeline runs StemTimelineLeadS ahead of the bands already
-        const stemLeadS = Math.max(0, leadS - StemTimelineLeadS);
+        // the stem timeline runs the model's timeline lead ahead of the bands already
+        const stemLeadS = Math.max(0, leadS - getStemTimelineLeadSeconds(this.state.params.value));
 
         try {
             if (!analysed) {
