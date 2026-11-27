@@ -19,6 +19,8 @@ export interface AudioRedrawFrame {
  * (`prevIllumination` and `prevHue` are the last frame's values).
  */
 export function audioFrameNeedsRender(prevIllumination: number, prevHue: number, frame: AudioRedrawFrame): boolean {
+    if (frame.illumination > 0 || frame.hue > 0) return true;
+    if (frame.illumination !== prevIllumination || frame.hue !== prevHue) return true;
     if (frame.driveInstanceWave > 0) return true;
     for (let i = 0; i < frame.scopeCount; i++) {
         if (frame.scopeDrive[i] > 0) return true;
