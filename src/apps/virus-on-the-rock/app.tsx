@@ -40,6 +40,7 @@ import { createCanvas3DChannelTarget } from './canvas3d-channel-target';
 import { patchIfChanged } from './state-patch';
 import { AudioUrlPresets, DefaultAudioFallbackLabel, DefaultAudioFallbackUrl, DefaultAudioLabel, DefaultAudioUrl, DefaultEffectKnobs, DefaultPdbId, DefaultPresetName, FrameRadiusPadding, LargeStructureElementThreshold, LargeStructureLodLevels, MesoscaleExample, MesoscaleExamples, NearClipAfterCameraReset, RepresentationMode, getBlobSurfaceTypeParams, getDefaultMultiScaleOcclusionProps, getPetworldGroups, getSpacefillTypeParams } from './catalog';
 import { AxisCycleTarget, LoadedEntry, VirusOnTheRockState, createInitialState, getAssemblyOrderFromCycleTarget, getAxisAnimationPatch, getAxisOptions, getDefaultCycleTargets, getEnabledCycleOptions, getLocalAxisFromCycleTarget, getMotionTargetState, isLocalCycleTarget, sanitizeCycleTargets } from './state';
+import { createRouteMotionsFollower } from './route-motions';
 import { VirusOnTheRockControls } from './ui/controls';
 
 function isAudioFile(file: File) {
@@ -161,6 +162,13 @@ export class VirusOnTheRockApp {
                 });
             }
         }));
+        // a route that needs a motion that is off turns it on, when the route is added, enabled or retargeted
+        const routeAudio = this.viewer.plugin.managers.audioReactive;
+        const followRoutes = createRouteMotionsFollower(routeAudio.state.routes.value, {
+            isOn: flag => this.state.value[flag],
+            turnOn: flag => { void this.setMotionTargetEnabled(flag, true); },
+        });
+        this.subscriptions.add(routeAudio.state.routes.subscribe(routes => followRoutes(routes)));
         this.subscriptions.add(this.viewer.plugin.managers.audioReactive.state.params.subscribe(values => {
             this.patchState({
                 wiggleEffectScale: values.wiggleEffectScale,

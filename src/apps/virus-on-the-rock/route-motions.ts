@@ -10,8 +10,8 @@ import type { AudioRoute } from '../../mol-plugin-state/manager/audio-routing';
 export type MotionFlag = NonNullable<typeof MotionFlagOfTarget[keyof typeof MotionFlagOfTarget]>;
 
 /** the motion each enabled route needs on to move anything, by route id (instanceWave and the like need none) */
-export function motionsNeededBy(routes: readonly AudioRoute[]): ReadonlyMap<string, MotionFlag> {
-    const needed = new Map<string, MotionFlag>();
+export function motionsNeededBy(routes: readonly AudioRoute[]): ReadonlyMap<number, MotionFlag> {
+    const needed = new Map<number, MotionFlag>();
     for (const r of routes) {
         const flag = r.enabled ? MotionFlagOfTarget[r.target] : undefined;
         if (flag) needed.set(r.id, flag);
@@ -24,7 +24,7 @@ export function motionsNeededBy(routes: readonly AudioRoute[]): ReadonlyMap<stri
  * route enabled, or a route whose target moved to another motion. A gain, floor or curve edit changes none of these, so
  * a motion the user turned off stays off while its routes are edited.
  */
-export function grownMotions(before: ReadonlyMap<string, MotionFlag>, after: ReadonlyMap<string, MotionFlag>): MotionFlag[] {
+export function grownMotions(before: ReadonlyMap<number, MotionFlag>, after: ReadonlyMap<number, MotionFlag>): MotionFlag[] {
     const grown: MotionFlag[] = [];
     after.forEach((flag, id) => {
         if (before.get(id) !== flag && !grown.includes(flag)) grown.push(flag);
