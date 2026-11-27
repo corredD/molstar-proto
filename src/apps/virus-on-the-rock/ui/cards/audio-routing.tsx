@@ -14,7 +14,7 @@ import { type AudioReactiveStatus } from '../../../../mol-plugin-state/manager/a
 import type { VirusOnTheRockApp } from '../../app';
 
 /** why a Who select is disabled once 8 routes act on a part (D3) */
-export const NarrowedSlotsFullNote = '8 routes already act on a part: widen one to All first';
+export const NarrowedSlotsFullNote = '8 routes are narrowed (on or off): widen one to All first';
 
 export const AffectLevelRank: Record<AudioAffect['level'], number> = {
     all: 0, model: 1, entity: 2, instance: 3, chain: 4, residue: 5, atom: 6,

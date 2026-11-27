@@ -56,7 +56,7 @@ inputs below."
 - Library: Name ("My routing"), Save, Saved… (Saved in this browser; Inspired by acclaimed audio-visual works), Delete
   (not for built-in), Export, Import.
 - Once 8 routes are narrowed, the level select of every route still on All is disabled, with the note "8 routes
-  already act on a part: widen one to All first"; the Who ▸ picker in Loaded Structures disables those routes' options
+  are narrowed (on or off): widen one to All first"; the Who ▸ picker in Loaded Structures disables those routes' options
   (D3).
 - Help: "Up to 8 routes can be narrowed at once; then the Who of the others is disabled."
 

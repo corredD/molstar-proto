@@ -47,6 +47,11 @@ describe('narrowed route slots (D3)', () => {
         expect(manager.state.routes.value.find(r => r.id === ninth.id)!.affect.level).toBe('chain');
     });
 
+    it('disabled narrowed routes count toward the 8', () => {
+        const routes = makeRoutes(AudioScopeSlotCount, 1).map((r, i) => i < AudioScopeSlotCount ? { ...r, enabled: false } : r);
+        expect(canNarrowRoute(routes, routes[AudioScopeSlotCount].id)).toBe(false);
+    });
+
     it('setRoutes keeps at most 8 narrowed routes: the 9th is widened to All and the router uses 8 slots', () => {
         const manager = new AudioReactiveAnimationManager(plugin);
         const routes = makeRoutes(AudioScopeSlotCount + 1, 0);
