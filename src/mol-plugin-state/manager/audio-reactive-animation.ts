@@ -82,7 +82,14 @@ export type AudioReactiveVisualizationFrame = {
 export type AudioReactiveStatus = {
     sourceLabel?: string,
     loaded: boolean,
+    /** whether the audio element plays now: for the transport (play / pause button) */
     playing: boolean,
+    /**
+     * whether the audio was playing when what is heard now was analysed (`playing`, output latency late, as `frame`):
+     * for what reads the presented frame as sound (beat cycle, song detection), so a resume does not read the
+     * silence still being heard as playing
+     */
+    heardPlaying: boolean,
     analysisBlocked: boolean,
     sampleRate?: number,
     frame: AudioReactiveFrame<DefaultAudioBandKey>,
@@ -135,6 +142,7 @@ const EmptyAudioReactiveVisualization = createAudioReactiveVisualizationFrame();
 const InitialAudioReactiveStatus: AudioReactiveStatus = {
     loaded: false,
     playing: false,
+    heardPlaying: false,
     analysisBlocked: false,
     frame: EmptyAudioReactiveFrame,
     visualization: EmptyAudioReactiveVisualization,
@@ -256,6 +264,8 @@ export class AudioReactiveAnimationManager {
     private readonly visualization = createAudioReactiveVisualizationFrame();
     private currentFrame = EmptyAudioReactiveFrame;
     private lastUiUpdateMs = 0;
+    /** heardPlaying of the last status emitted: a change is emitted at once, not throttled */
+    private emittedHeardPlaying = false;
     private lastTickMs = 0;
     private silenceWhilePlayingMs = 0;
     private reactor = new AudioReactor();
@@ -456,13 +466,15 @@ export class AudioReactiveAnimationManager {
     }
 
     private updateStatus(error?: string, force = false, timeMs = 0) {
-        if (!force && timeMs - this.lastUiUpdateMs < 32) return;
+        if (!force && this.presented.playing === this.emittedHeardPlaying && timeMs - this.lastUiUpdateMs < 32) return;
         this.lastUiUpdateMs = timeMs;
+        this.emittedHeardPlaying = this.presented.playing;
         const audio = this.state.audioPlayer.value;
         this.state.status.next({
             sourceLabel: this.sourceLabel,
             loaded: !!audio?.src,
             playing: !!audio && !audio.paused && !audio.ended,
+            heardPlaying: this.presented.playing,
             analysisBlocked: this.silenceWhilePlayingMs > 2000,
             sampleRate: this.audioContext?.sampleRate,
             // what is heard now: the presented objects, the same every emission
@@ -646,7 +658,7 @@ export class AudioReactiveAnimationManager {
      * it (now - output latency). With no context yet there is no clock: the last stamp, latency 0. Never the tick's
      * timeMs: the animation loop caps its step, so it runs slow under jank.
      */
-    private presentFrame() {
+    private presentFrame(playing: boolean) {
         const ctx = this.audioContext;
         let now: number, latency = 0;
         if (ctx) {
@@ -661,7 +673,7 @@ export class AudioReactiveAnimationManager {
             now = Math.max(0, this.presented.newestStamp);
         }
         const r = this.router;
-        this.presented.push(now, this.currentFrame, this.currentStems, this.stemsSeparated, r.drives, r.scopeCount, r.scopeKind, r.scopeDrive, r.scopes,
+        this.presented.push(now, playing, this.currentFrame, this.currentStems, this.stemsSeparated, r.drives, r.scopeCount, r.scopeKind, r.scopeDrive, r.scopes,
             this.state.routes.value, r.values, this.visualization);
         this.presented.present(now - latency);
     }
@@ -678,9 +690,9 @@ export class AudioReactiveAnimationManager {
                 this.currentFrame = EmptyAudioReactiveFrame;
                 clearAudioReactiveVisualization(this.visualization);
             }
-            this.presentFrame();
+            this.presentFrame(false);
             // the status follows the presented frame until what is heard has come to rest too
-            if (cleared || !areFramesClose(this.presented.frame, EmptyAudioReactiveFrame)) this.updateStatus(void 0, false, timeMs);
+            if (cleared || this.presented.playing !== this.emittedHeardPlaying || !areFramesClose(this.presented.frame, EmptyAudioReactiveFrame)) this.updateStatus(void 0, false, timeMs);
             return this.presented.frame;
         }
 
@@ -711,7 +723,7 @@ export class AudioReactiveAnimationManager {
         } catch (e) {
             error = `${e}`;
         }
-        this.presentFrame();
+        this.presentFrame(!audio.paused && !audio.ended);
         this.updateStatus(error, error !== void 0, timeMs);
         return this.presented.frame;
     }

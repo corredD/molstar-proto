@@ -49,7 +49,8 @@ const BandCount = Bands.length;
 const ScalarSetSize = 6 + 3 * BandCount;
 // one ring entry's scalars, in this order
 const StampOffset = 0;
-const FrameOffset = 1;
+const PlayingOffset = 1;
+const FrameOffset = 2;
 const RawOffset = FrameOffset + ScalarSetSize;
 const StemsOffset = RawOffset + ScalarSetSize;
 const SeparatedOffset = StemsOffset + StemNames.length;
@@ -119,6 +120,8 @@ export class AudioPresentedFrame {
     private presentedRouteIds: Int32Array;
     private readonly slotPool: AudioScopeSlot[] = [];
 
+    /** whether the audio was playing (not paused, ended or without a source) when the presented entry was pushed */
+    playing = false;
     readonly frame: AudioReactiveFrame<DefaultAudioBandKey> = createEmptyAudioReactiveFrame(DefaultAudioBandDefinitions);
     readonly stems: StemLevels = { drums: 0, bass: 0, other: 0, vocals: 0 };
     stemsSeparated = false;
@@ -170,7 +173,7 @@ export class AudioPresentedFrame {
     }
 
     /** one tick's live state, stamped with the clock's now(); a stamp older than the newest entry flushes the ring first */
-    push(stamp: number, frame: AudioReactiveFrame<DefaultAudioBandKey>, stems: StemLevels, separated: boolean, drives: Readonly<AudioRouteDrives>,
+    push(stamp: number, playing: boolean, frame: AudioReactiveFrame<DefaultAudioBandKey>, stems: StemLevels, separated: boolean, drives: Readonly<AudioRouteDrives>,
         scopeCount: number, scopeKind: ArrayLike<number>, scopeDrive: ArrayLike<number>, scopes: readonly AudioScopeSlot[],
         routes: readonly AudioRoute[], values: ReadonlyMap<number, number>, visualization: AudioPresentedVisualization) {
         if (stamp < this.newestStamp) this.flush();
@@ -178,6 +181,7 @@ export class AudioPresentedFrame {
         const e = this.pushed % this.capacity;
         const s = this.scalars, o = e * ScalarStride;
         s[o + StampOffset] = stamp;
+        s[o + PlayingOffset] = playing ? 1 : 0;
         writeScalarSet(s, o + FrameOffset, frame);
         writeScalarSet(s, o + RawOffset, frame.raw);
         for (let i = 0; i < StemNames.length; i++) s[o + StemsOffset + i] = stems[StemNames[i]];
@@ -225,6 +229,7 @@ export class AudioPresentedFrame {
         this.presentedSeq = seq;
 
         const e = seq % cap, o = e * ScalarStride;
+        this.playing = s[o + PlayingOffset] !== 0;
         readScalarSet(s, o + FrameOffset, this.frame);
         readScalarSet(s, o + RawOffset, this.frame.raw);
         for (let i = 0; i < StemNames.length; i++) this.stems[StemNames[i]] = s[o + StemsOffset + i];

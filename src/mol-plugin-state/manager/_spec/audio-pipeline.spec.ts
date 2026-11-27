@@ -480,6 +480,48 @@ describe('audio pipeline (offline, 16 ms frames at 48 kHz)', () => {
             expect(emitted[emitted.length - 1]).toBeLessThanOrEqual(removedAt + k + 3);
         });
 
+        it('heardPlaying is playing as heard: the same at latency 0, k frames late at 100 ms through a pause; each emission carries it', () => {
+            const run = (L: number) => {
+                const live: boolean[] = [], heard: boolean[] = [], wrong: string[] = [];
+                let sub: { unsubscribe(): void } | undefined;
+                runAudioPipeline(songMix(), getDefaultAudioRoutes(), {
+                    analysis: burst, paused: [[3, 5]], durationS: 7, outputLatency: L,
+                    onFrame: ({ index, paused, manager: m }) => {
+                        const presented = (m as unknown as { presented: { playing: boolean } }).presented;
+                        if (index === 0) sub = m.state.status.subscribe(s => { if (s.heardPlaying !== presented.playing) wrong.push(`${index}`); });
+                        live.push(!paused);
+                        heard.push(presented.playing);
+                    },
+                });
+                sub?.unsubscribe();
+                return { live, heard, wrong };
+            };
+            const r0 = run(0);
+            expect(r0.heard).toEqual(r0.live);
+            expect(r0.wrong).toEqual([]);
+            const k = Math.ceil(100 / 16);
+            const r = run(0.1);
+            expect(r.heard.slice(k)).toEqual(r.live.slice(0, r.live.length - k));
+            expect(r.heard.some((h, i) => h !== r.live[i])).toBe(true);
+            expect(r.wrong).toEqual([]);
+        });
+
+        it('the source removed: the last status emitted says not heard playing', () => {
+            const statuses: boolean[] = [];
+            let sub: { unsubscribe(): void } | undefined;
+            runAudioPipeline(songMix(), getDefaultAudioRoutes(), {
+                analysis: burst, durationS: 6, outputLatency: 0.1,
+                onFrame: ({ index, manager: m }) => {
+                    if (index !== 200) return;
+                    (m.state.audioPlayer.value as unknown as { src: string }).src = '';
+                    sub = m.state.status.subscribe(s => statuses.push(s.heardPlaying));
+                },
+            });
+            sub?.unsubscribe();
+            expect(statuses[0]).toBe(true);
+            expect(statuses[statuses.length - 1]).toBe(false);
+        });
+
         for (const L of [0.1, 0.2]) {
             const k = Math.ceil(L * 1000 / 16);
             it(`latency ${L * 1000} ms: the presented trace is the live one ${k} frames late, through a pause`, () => {

@@ -17,7 +17,7 @@ function liveState(routes: AudioRoute[] = getDefaultAudioRoutes()) {
     const scopes: AudioScopeSlot[] = [];
     const values = new Map<number, number>();
     const viz = { waveform: new Float32Array(96), spectrum: new Float32Array(56) };
-    const live = { frame, stems, drives, scopeKind, scopeDrive, scopes, values, viz, routes, separated: false };
+    const live = { frame, stems, drives, scopeKind, scopeDrive, scopes, values, viz, routes, separated: false, playing: false };
     /** writes `x` (and values derived from it) everywhere */
     const set = (x: number) => {
         frame.amplitude = x; frame.raw.peakAmplitude = x + 1; frame.frequencyBands.bass = x + 2; frame.raw.bandProminence.treble = x + 3;
@@ -25,8 +25,9 @@ function liveState(routes: AudioRoute[] = getDefaultAudioRoutes()) {
         live.routes.forEach((r, i) => values.set(r.id, x + 10 + i));
         viz.waveform[95] = x; viz.spectrum[0] = x;
         live.separated = x % 2 === 1;
+        live.playing = x % 3 === 0;
     };
-    const push = (p: AudioPresentedFrame, stamp: number) => p.push(stamp, frame, stems, live.separated, drives, scopes.length, scopeKind, scopeDrive, scopes, live.routes, values, viz);
+    const push = (p: AudioPresentedFrame, stamp: number) => p.push(stamp, live.playing, frame, stems, live.separated, drives, scopes.length, scopeKind, scopeDrive, scopes, live.routes, values, viz);
     return { live, set, push };
 }
 
@@ -50,6 +51,7 @@ describe('AudioPresentedFrame', () => {
         expect(p.drives.symAxis).toBe(14);
         expect(p.drives.duck).toBe(15);
         expect(p.stemsSeparated).toBe(true);
+        expect(p.playing).toBe(true);
         expect(p.visualization.waveform[95]).toBe(9);
         expect(p.visualization.spectrum[0]).toBe(9);
         p.present(11 * 0.016); // exactly a stamp: that entry
