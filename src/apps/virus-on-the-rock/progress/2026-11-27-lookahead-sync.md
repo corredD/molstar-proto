@@ -99,11 +99,66 @@ larger" (one frame is impossible for mixed onset and level routes above ~60 Hz).
 
 ## Built
 
+Branch `votr/lookahead-sync` (from `votr/overnight`), commits one cause each:
+
+- `ae9e70a9e` helper: the fake analyser reads the analysis delay the manager set (the heard delay until set), options
+  `lookahead`, `lookaheadTrimMs`, `stemSample`; trace `analysed`, `stemResets`. Existing traces unchanged.
+- `5f2116624` reactor: the window helpers take a `Pick` of `fftSize`, `analysisSampleRate`.
+- `67ae6238f` manager: the design's 1–5 as written (parallel analysis branch, `heardAt`, lead, delays, stems at
+  t − D + max(0, lead − 30 ms)); tests 1–3 (red before: 2 / 2 / 5 frames) and test 10 (ports spec wiring log, both
+  delay lines flushed; an existing expectation changed on purpose).
+- `61acf70a4` tests 4–9, 11, 12 and 7 (14 red on the base manager, run by swapping the base file in; 4 guards green
+  before too: drums only ×2, lookahead off explicit, trim to lead 0).
+- `6199cbaea` card: Lookahead chips, Audio Delay and Lead Trim (Mol\* `Slider`), the help line; the Off title fixed.
+- `52a7f5ab5` `DefaultAudioSync = { lookahead: true }`, set in `initializeDefaults` before `loadDefaultAudio`.
+- `8ca4e58e1` the `getStemDelaySeconds` alias dropped (kept one commit so the core commit had no app hunk).
+- `2cc37dba1` `build.mjs` copies `examples/angine.mp3`; `curl` on 1351 served it from `/build/virus-on-the-rock/examples/`.
+- `357ae5f7e` clicksync `--delay`, `--lookahead [--trim]`, `--stems`; windows on the heard column.
+- specs: routing spec lookahead row, architecture §2 lookahead + departures (a)–(h) "Ludo to confirm", ui.md,
+  features.md, core-changes.md, TODO items 3 and 7 annotated.
+
+Checks: `npm run lint` (0 errors, the 2 old app.tsx warnings), `tsc` clean, jest 221 passed (203 before, +18),
+`build.mjs -a virus-on-the-rock --prd` done.
+
+clicksync, headless Chromium on 1351, ~36–38 ms frames, outputLatency 24–32 ms, heard median (min..max):
+
+| run | full | drums only | bass only | full × 2 | gain × 2 |
+| --- | --- | --- | --- | --- | --- |
+| `--delay 1 --lookahead` (D 1 s, lead 33 ms) | 9 (−8..30) | 2 (−14..15) | 12 (−2..30) | 19 (−10..31) | 1.95 |
+| `--delay 1` (no model, no lookahead: D 0) | 51 (26..64) | 32 (15..49) | 39 (34..64) | 46 (25..59) | 2.04 |
+
+Not run: Ludo's Chrome (the coordinator's step 5), `--stems htdemucs` (headed Chrome with WebGPU: the open question
+of the real stem timeline's offset), the startup fallback with the stream unreachable.
+
 ## Decided
+
+- The design as written, departures (a)–(h) proposed and flagged "Ludo to confirm" in architecture.md and the routing
+  spec (builder, 2026-11-27).
+- Test 7 asserts in ms at 4 ms frames, not "the same frame at 16 ms": with the real `StemSeparator.sample` the
+  separated drums (onset route) peak 8 ms ahead of the band stand-in and the bass (level route) 8 ms behind, so 30 ms
+  is the midpoint and at 16 ms frames the drums fall one frame early (−2 vs −1). Kept 30 ms (not tuned to 40); the
+  test pins |stems − bands| ≤ 10 ms with the measured signs, and the uncorrected control further off (builder).
+- The pause / end-of-file test (9) separates the media's stop (the last playing frame) from the stop event (the next
+  frame): the drives equal the unpaused run until the media's stop + D − lead; analysed until the event + D − lead;
+  heard until the event + D (builder; the helper's pause event comes a frame after the media stops, as in sound-stops).
+- `--delay` without `--stems` or `--lookahead` sets no delay (the slider is ignored with no model and no lookahead,
+  as `getAudioDelaySeconds` says); the clicksync header says so.
 
 ## Learned
 
+- The lead overshoots onset routes: drums only peaks 1 frame (16–28 ms) before the heard kick, since an onset needs
+  no band attack. Within the design's "never more than 2 frames early".
+- The stem path's offset against the bands depends on the route: a centred Hann-window energy starts rising ~46 ms
+  before its centre, so an onset route sees it early; a level route sees the peak late. Measured with the real
+  `sample()`: onset −8 ms, level +8 ms around `StemTimelineLeadS` = 30 ms (4 ms frames).
+- In the helper the pause event's clock is one frame after the media stopped entering the graph; mid-kick that
+  frame shows (the sound-stops tests pause between kicks, so they did not see it).
+
 ## Size
+
+~157 production lines against ~85: manager +102 / −28 (about a third doc comments: the lead, the delays, the branch),
+card +33, catalog 5, app 3, style 5, build 6, reactor 3; tooling clicksync +40 / −17. What took the room: the doc
+comments and the card's help and titles.
 
 ## Review
 
