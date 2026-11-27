@@ -122,7 +122,7 @@ const med = a => { if (!a.length) return NaN; const s = [...a].sort((x, y) => x 
 const f0 = x => Number.isFinite(x) ? x.toFixed(0) : 'n/a';
 function analyse(label, { out, routes, baseLatency, outputLatency, delayS, leadS, model, stemLeadMs }) {
     const kicks = []; for (let t = 1.25; t < seconds - 0.5; t += 0.5) kicks.push(t); // skip the first second: envelopes settle
-    const lagM = [], lagH = [], peaks = [], rests = [];
+    const lagM = [], lagH = [], peaks = [], rests = [], lagSep = [];
     // the windows on the heard column (r[1]); the media column less the delay
     const heardOut = out.filter(r => Number.isFinite(r[1]));
     for (const k of kicks) {
@@ -130,6 +130,8 @@ function analyse(label, { out, routes, baseLatency, outputLatency, delayS, leadS
         if (!win.length) continue;
         const peak = win.reduce((b, r) => r[4] > b[4] ? r : b);
         lagM.push((peak[0] - delayS - k) * 1000); lagH.push((peak[1] - k) * 1000); peaks.push(peak[4]);
+        // with a stem model: the kicks whose whole window was separated (the stems, not the bands' fallback)
+        if (win.every(r => r[6])) lagSep.push((peak[1] - k) * 1000);
         // less the lead: with lookahead the next kick's drive rises the lead before it is heard
         const rest = heardOut.filter(r => r[1] >= k + 0.4 - leadS && r[1] < k + 0.5 - leadS).map(r => r[4]);
         if (rest.length) rests.push(Math.max(...rest) / peak[4]);
@@ -141,6 +143,7 @@ function analyse(label, { out, routes, baseLatency, outputLatency, delayS, leadS
     console.log(`  delay ${delayS.toFixed(3)} s, lead ${f0(leadS * 1000)} ms, stem model ${model}${model !== 'off' ? `, stem timeline lead ${stemLeadMs === null ? 'the model\'s' : `${stemLeadMs} ms`}, stems separated ${separated.filter(r => r[6]).length}/${separated.length} frames` : ''}`);
     console.log(`  frames ${out.length}, media step ${f0(med(dt) * 1000)} ms | output delay (ctx.currentTime - outputTimestamp.contextTime) median ${f0(med(out2) * 1000)} ms, ctx.baseLatency ${f0(baseLatency * 1000)} ms, outputLatency ${f0(outputLatency * 1000)} ms`);
     console.log(`  kick->peak MEDIA-D median ${f0(med(lagM))} ms (min ${f0(Math.min(...lagM))}, max ${f0(Math.max(...lagM))}) | HEARD median ${f0(med(lagH))} ms (min ${f0(Math.min(...lagH))}, max ${f0(Math.max(...lagH))}) | peak median ${med(peaks).toFixed(2)} | rest/peak median ${med(rests).toFixed(2)} max ${Math.max(...rests).toFixed(2)}`);
+    if (model !== 'off') console.log(`  separated kicks only (the whole window separated): ${lagSep.length}/${lagH.length} kicks, HEARD median ${f0(med(lagSep))} ms (min ${f0(Math.min(...lagSep))}, max ${f0(Math.max(...lagSep))})`);
     return med(peaks);
 }
 

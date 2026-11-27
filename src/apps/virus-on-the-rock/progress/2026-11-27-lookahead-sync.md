@@ -178,3 +178,14 @@ comments and the card's help and titles.
 
 | Finding | Severity | Verdict | Commit / open |
 | ------- | -------- | ------- | ------------- |
+| S1 nothing asserts the analysis sink is silent (deleting its gain 0 left the suite green; a 33 ms pre-echo) | should-fix (test gap) | confirmed | `9ccf769e0` (red with the line deleted: gain 1) |
+| S2 the clicksync / `kickPeakStats` rest window [k + 0.4, k + 0.5) catches the next kick's rise with lookahead | nit | confirmed | `277afb6fb` (shifted back by the lead; offline drums only 16 / 37 ms frames: on 1.00 / 0.82 vs off 0.23 / 0.24 before, 0.23 / 0.24 both after) |
+| S3 the Lookahead chip or an Audio Delay commit changes the heard D mid-play: a 0.25 s replay or skip, a click, primedUntil not reset | should-fix | jump confirmed, click plausible | `b60352bc3` (flush both lines while playing, the next tick primes; lead-only change untouched; in a pause's tail the tail moves as before). Open: no gain ramp on the heard branch, the flush cuts as stop does |
+| N4 `flushDelayLine` copies the old nodes' stale `.value` | nit | confirmed | `800398ac3` (from the params; the flush test's poked 6 / 5.9 replaced by setParams, changed on purpose) |
+| N5 the NaN-safe analysis guard exists only for the helper's `fakeDelayNode(NaN)` | nit | confirmed | `a12f85b5c` (plain `> 1e-5`; the fake follows the heard delay until set; red: 15 / 138 with the old fake) |
+| N6 the sliders' `<output>` reads the params, not the dragged value; no native `change` commit | nit | confirmed | `d38f8ae61` (headless screenshot on 1351: 5.0 s while dragging with the param at 0, `change` commits 5) |
+| N7 `setParams(DefaultAudioSync)` after `await loadPdb` | nit | confirmed | `2af067ef1` (no unit test: `initializeDefaults` needs the whole app; startup probe: lookahead true) |
+| NF1 the stems-line-up stub weights x² by Hann, no model's framing | nit | confirmed | `3d4ff51c8` (HTDemucs framing; drums −8 → +4 ms, bass +8 ms vs the bands; sign assertion now both behind, ≤ 10 ms kept) |
+| NF2 `tick` takes D from the node, `updateStems` from the params | nit | confirmed | `f25c558d1` (the node in both; red before) |
+| NF3 routing spec row 70 names `sync.mjs`, not in the repo | info | confirmed | `5772a01be` (`data-local/tests/sync.mjs`, local only; clicksync's rest window) |
+| S4 with real HTDemucs the stem routes get ~no lookahead (stem lead max(0, 33 − 30) = 3 ms) | follow-up (coordinator) | measured, see Built › S4 | `8c8cba7f7` (per-model `timelineLeadSeconds`, hidden `stemTimelineLeadMs`), `72a2b9922` (clicksync `--stem-lead`); value: see below |

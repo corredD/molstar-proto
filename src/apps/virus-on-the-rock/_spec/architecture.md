@@ -75,12 +75,14 @@ model and lookahead on the slider, else 0.25 s; else 0. The analyser has a branc
 (departure c: parallel, not a split in series): `source → analysis delay (D − lead) → analyser → silent sink`, so the
 heard delay node keeps its meaning (heardUntil, primedUntil, the separator reset) and a lead change (lookahead, trim,
 a preset's window or attack) moves only the analysis branch, no click, no separator reset; a D change moves both and
-resets the separator. Stop, a new source and Clear flush both. `tick` decides heard at now (the router's floor, the
+resets the separator, and while playing flushes both lines (what they held was delayed by the old D: a jump back or a
+skip), so the new D is heard after its silence, as after stop (gate S3; in a pause's tail the tail moves instead). Stop, a new source and Clear flush both. `tick` decides heard at now (the router's floor, the
 ring) and analysed at now + lead (whether the analyser is read, the blocked count), so in the tail
 [stop + D − lead, stop + D) the analysis reads silence while the floor holds and the routes release, and at a
 (re)start the analysis warms from D − lead (a kick in the first lead of a song is partly lost). The stems are sampled
-at t − D + max(0, lead − 30 ms) (`StemTimelineLeadS`: the stem timeline runs ≈ 30 ms ahead of the bands already,
-departure a). The ring and the output latency are unchanged (the lead excludes L). Lookahead off, or D = 0: the lead is
+at t − D + max(0, lead − the model's timeline lead) (`StemModelInfo.timelineLeadSeconds`, read by
+`getStemTimelineLeadSeconds`; the hidden param `stemTimelineLeadMs` overrides it for measuring, clicksync
+`--stem-lead`: the stem timeline runs that far ahead of the bands already, departure a). The ring and the output latency are unchanged (the lead excludes L). Lookahead off, or D = 0: the lead is
 0 and every trace is bit for bit what it was. Off in the core manager, on at VotR startup (`DefaultAudioSync`,
 departure d: 0.25 s more latency, a 0.25 s tail on pause). Measured in the routing spec's lookahead row.
 

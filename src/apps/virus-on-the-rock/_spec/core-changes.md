@@ -119,7 +119,11 @@ manager has no audio and no Who.
   2026-11-27): params `lookahead` (off by default) and `lookaheadTrimMs` (category Sync, with `stemDelaySeconds`, which
   now shows with lookahead on too); `getAudioDelaySeconds` replaces `getStemDelaySeconds` (with no model and lookahead
   on: the slider or `LookaheadDelaySeconds` 0.25 s); `getAnalysisLeadSeconds` (½ the reactor's input window + band
-  attack + trim, within [0, D]); `StemTimelineLeadS` (30 ms, Ludo to confirm with HTDemucs). The graph gains a parallel
+  attack + trim, within [0, D]); `StemTimelineLeadS` (30 ms) became per model in the gate's fix step:
+  `StemModelInfo.timelineLeadSeconds` (`stem-models.ts`), `getStemTimelineLeadSeconds`, and a hidden param
+  `stemTimelineLeadMs` (`PD.Value<number | null>`, null: the model's) for clicksync `--stem-lead`. Gate fix step also:
+  a heard-delay change while playing flushes both lines (the next tick primes); a flush takes its delays from the params;
+  the stems are sampled one delay back by the node's delay; the analysis guard is a plain `> 1e-5`. The graph gains a parallel
   analysis branch (private `analysisDelayNode` at D − lead → analyser → `analysisSink`, a gain 0 to the destination);
   the heard delay goes straight to the destination; `flushDelayLine` replaces both delay nodes, `dispose` disconnects
   both and the sink. `tick`: a private `heardAt(playing, offsetS)`; heard at now (router, ring), analysed at now + lead
