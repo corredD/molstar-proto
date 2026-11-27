@@ -55,7 +55,10 @@ inputs below."
 - Buttons: + Add route (drums hits → symmetry axes, gain 1), + Instance wave (drums → wave, gain 6), Defaults.
 - Library: Name ("My routing"), Save, Saved… (Saved in this browser; Inspired by acclaimed audio-visual works), Delete
   (not for built-in), Export, Import.
-- Help: "Up to 8 routes can be narrowed at once." (the 9th is silently global).
+- Once 8 routes are narrowed, the level select of every route still on All is disabled, with the note "8 routes
+  already act on a part: widen one to All first"; the Who ▸ picker in Loaded Structures disables those routes' options
+  (D3).
+- Help: "Up to 8 routes can be narrowed at once; then the Who of the others is disabled."
 
 **Prominence.** Radar (190 px) and "band NN%". **Mismatch**: the help says to tune Onset Weight and Temperature; there
 are no such controls.

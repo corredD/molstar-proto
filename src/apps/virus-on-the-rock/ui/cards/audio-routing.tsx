@@ -9,9 +9,12 @@ import * as React from 'react';
 import { useBehavior } from '../../../../mol-plugin-ui/hooks/use-behavior';
 import { InspiredRoutings } from '../../../../mol-plugin-state/helpers/audio-routing-inspired';
 import { describeAudioAffect, listAudioAffectChoices } from '../../../../mol-plugin-state/helpers/audio-affect';
-import { AudioAffectLevels, AudioRouteCurves, AudioRouteSources, AudioRouteTargets, canonicalAudioAffect, createAudioRoute, draftsFromRoutes, maxScopeLevel, getDefaultAudioRoutes, loadStoredAudioRouting, parseAudioRouting, routesFromDrafts, storeAudioRouting, type AudioAffect, type AudioRoute, type AudioRoutingPreset } from '../../../../mol-plugin-state/manager/audio-routing';
+import { AudioAffectLevels, AudioRouteCurves, AudioRouteSources, AudioRouteTargets, canNarrowRoute, canonicalAudioAffect, createAudioRoute, draftsFromRoutes, maxScopeLevel, getDefaultAudioRoutes, loadStoredAudioRouting, parseAudioRouting, routesFromDrafts, storeAudioRouting, type AudioAffect, type AudioRoute, type AudioRoutingPreset } from '../../../../mol-plugin-state/manager/audio-routing';
 import { type AudioReactiveStatus } from '../../../../mol-plugin-state/manager/audio-reactive-animation';
 import type { VirusOnTheRockApp } from '../../app';
+
+/** why a Who select is disabled once 8 routes act on a part (D3) */
+export const NarrowedSlotsFullNote = '8 routes already act on a part: widen one to All first';
 
 export const AffectLevelRank: Record<AudioAffect['level'], number> = {
     all: 0, model: 1, entity: 2, instance: 3, chain: 4, residue: 5, atom: 6,
@@ -25,7 +28,9 @@ export const AffectLevelShort: Record<AudioAffect['level'], string> = {
 export function RouteAffectRow({ app, route }: { app: VirusOnTheRockApp, route: AudioRoute }) {
     const manager = app.viewer.plugin.managers.audioReactive;
     const hierarchy = useBehavior(manager.plugin.managers.structure.hierarchy.behaviors.selection);
+    const routes = useBehavior(manager.state.routes);
     const affect = route.affect;
+    const full = !canNarrowRoute(routes, route.id);
     const max = maxScopeLevel(route.target);
     const choices = React.useMemo(
         () => affect.level === 'all' ? [] : listAudioAffectChoices(manager.plugin, affect),
@@ -45,13 +50,15 @@ export function RouteAffectRow({ app, route }: { app: VirusOnTheRockApp, route: 
         <select
             className='vor-select vor-route-level'
             value={affect.level}
-            title={max === 'atom'
+            disabled={full}
+            title={full ? NarrowedSlotsFullNote : max === 'atom'
                 ? 'How much of the structure this route acts on'
                 : 'How much of the structure this route moves. A chain moves with its whole copy, so instance motion stops at the chain'}
             onChange={e => manager.pickRouteAffect(route.id, e.target.value as AudioAffect['level'])}
         >
             {levels.map(([level]) => <option key={level} value={level}>{AffectLevelShort[level]}</option>)}
         </select>
+        {full && <span className='vor-route-who-fixed'>{NarrowedSlotsFullNote}</span>}
         {affect.level !== 'all' && <select
             className='vor-select'
             value={known ? selected : ''}
@@ -229,7 +236,7 @@ export function AudioRoutingCard({ app }: { app: VirusOnTheRockApp }) {
         </div>
         <AudioRoutingLibrary app={app} />
         <p className='vor-help'>
-            Each route sends an audio source to a visual channel; a channel sums its routes. Who narrows a route to one model, entity, instance or chain (atom wiggle, illumination and colours down to one residue or atom); ◎ takes what you clicked in the viewer. Camera, clipping and opacity always act on the whole view. Up to 8 routes can be narrowed at once. The wave's height is its route's source. Save keeps the routes and who each moves.
+            Each route sends an audio source to a visual channel; a channel sums its routes. Who narrows a route to one model, entity, instance or chain (atom wiggle, illumination and colours down to one residue or atom); ◎ takes what you clicked in the viewer. Camera, clipping and opacity always act on the whole view. Up to 8 routes can be narrowed at once; then the Who of the others is disabled. The wave's height is its route's source. Save keeps the routes and who each moves.
         </p>
     </div>;
 }
