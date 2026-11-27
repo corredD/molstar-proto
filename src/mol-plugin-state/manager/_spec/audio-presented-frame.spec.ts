@@ -292,6 +292,19 @@ describe('AudioPresentedFrame steady steps (the read rule holds one entry per fr
         expect([s.early, s.aheadMax]).toEqual([0, 0]);
     });
 
+    it('49 ms frames, every latency from 33 to 42 ms (7 ms or more inside the interval), one late tick: back on the rule', () => {
+        for (let L = 33; L <= 42; L++) {
+            const r = steadyRun(1200, frame49(i => i === 100, 10 + L), () => L / 1000);
+            expect([L, r.meanLag(200, 1200) <= 0.1]).toEqual([L, true]);
+            expect(r.stats(200, 1200).early).toBe(0);
+        }
+    });
+
+    it('49 ms frames, a latency step from 60 to 42 ms (two entries at once, 7 ms inside the interval): on the rule after it', () => {
+        const r = steadyRun(1200, frame49(() => false, 7), i => i < 200 ? 0.06 : 0.042);
+        expect(r.meanLag(300, 1200)).toBeLessThanOrEqual(0.1);
+    });
+
     it('a latency that drops from 32 ms to 0 (the context stops) presents the newest entry from that frame on', () => {
         const r = steadyRun(600, frame49(() => false, 6), i => i < 300 ? 0.032 : 0);
         for (let i = 300; i < 600; i++) expect(r.presented[i]).toBe(i);
