@@ -49,7 +49,7 @@ comment: 0.7–1.1 GB of JS heap, measured 2026-11-25), and Nipah is local only.
 
 | Part | Where | What |
 | --- | --- | --- |
-| The app | `src/apps/virus-on-the-rock/` (`app.tsx` ~3.25k lines, `song-change.ts`, `random-structures.ts`, `style.scss`) | the page, its sidebar and overlays, the catalog, Random and song change, the CPU channels (camera, opacity, clip, background), the beat cycle |
+| The app | `src/apps/virus-on-the-rock/`: `app.tsx` (the app and the composition root `VirusOnTheRockApp.create`), `state.ts`, `catalog.ts`, `state-patch.ts`, `beat-cycle.ts`, `cpu-channels.ts` (with the `CpuChannelTarget` port), `ui/controls.tsx`, `ui/cards/*`, `ui/control-card.tsx`, `ui/state-slice.ts`, `ui/visualizer-overlay.tsx`, `song-change.ts`, `random-structures.ts`, `style.scss` | the page, its sidebar and overlays, the catalog, Random and song change, the CPU channels (camera, opacity, clip, background), the beat cycle |
 | Audio analysis | `mol-plugin-state/manager/audio-reactor.ts`, `audio-prominence.ts` | bands, beat, prominence from one mixed signal |
 | Stems | `mol-plugin-state/manager/audio-stems/` | Spleeter, HTDemucs, SCNet in a worker (onnxruntime-web), delayed playback |
 | Routing | `mol-plugin-state/manager/audio-routing.ts`, `helpers/audio-routing-inspired.ts` (untracked) | sources → channels, the route math, the 8 Who slots, save and load |
