@@ -19,7 +19,8 @@ app, D12) and 12 (`packSlot` ranges).
 ### Broken items
 
 1. **Pause and Clear rest** (D2): both bring every drive to 0 over its release; Clear resets the router. Check:
-   Pause, the atoms stop wiggling (today the 0.2 floor keeps them moving); Clear, nothing stays frozen mid-burst.
+   Pause, the atoms stop wiggling (within ~3 s, no 0.2 floor); Clear, nothing stays frozen mid-burst; Stop, no sound
+   after it. Built in `sound-stops` (2026-11-27), for Ludo to check (kept here so the numbers below hold).
 2. **The 9th narrowed route is refused** (D3): once 8 routes are narrowed, the Who select of the others is disabled
    with a note. Check: narrow 8 routes, the 9th's Who is greyed with the note.
 3. **Startup fallback plays** (D9): startup keeps the stream; `angine.mp3` is copied into the build so the fallback
@@ -51,5 +52,5 @@ app, D12) and 12 (`packSlot` ranges).
 12. **Record a dance** (D17): a Record button writes the Mol\* canvas to WebM (no SVG overlays). Check: record 10 s,
     the file plays the dance.
 13. **The clip pass rests on a paused song** (architecture §4, still open in §7): the clip rest check is an exact 0,
-    which a released route's drive never reaches, so with a clip route on and the audio paused the clip pass runs every
-    frame. Ludo picks the cut-off below which a drive counts as 0. Check: clip route on, pause, the clip pass stops.
+    which a released route's drive never reached. 1e-3 proposed and built in `sound-stops` (once nothing is heard a
+    route value below it is 0); Ludo confirms the number. Check: clip route on, pause, the clip pass stops.

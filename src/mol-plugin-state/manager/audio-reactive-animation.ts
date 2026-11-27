@@ -92,9 +92,9 @@ export type AudioReactiveStatus = {
     /** whether the audio element plays now: for the transport (play / pause button) */
     playing: boolean,
     /**
-     * whether the audio was playing when what is heard now was analysed (`playing`, output latency late, as `frame`):
-     * for what reads the presented frame as sound (beat cycle, song detection), so a resume does not read the
-     * silence still being heard as playing
+     * whether sound was heard when what is heard now was analysed (playing, or the stem delay line still draining after
+     * a pause or the end of the file; output latency late, as `frame`): for what reads the presented frame as sound (beat
+     * cycle, song detection), so a resume does not read the silence still being heard as playing
      */
     heardPlaying: boolean,
     analysisBlocked: boolean,
@@ -275,6 +275,8 @@ export class AudioReactiveAnimationManager {
     private lastUiUpdateMs = 0;
     /** heardPlaying of the last status emitted: a change is emitted at once, not throttled */
     private emittedHeardPlaying = false;
+    /** presented.atRest of the last status emitted: coming to rest is emitted at once (after clear, a release) */
+    private emittedAtRest = true;
     private lastTickMs = 0;
     private silenceWhilePlayingMs = 0;
     private reactor = new AudioReactor();
@@ -285,6 +287,29 @@ export class AudioReactiveAnimationManager {
     private currentStems: StemLevels = ZeroStems;
     private stemsSeparated = false;
     private bandDrumsPeak = BandDrumsPeakFloor;
+    /**
+     * Until when (context time, s) the speakers still play what the delay line holds: Infinity while playing; once
+     * stopped, stoppedAt + the delay now (each tick, so a delay changed in the tail moves it); -Infinity after stop, a
+     * new source or clear (the line is flushed) and before the first play. Set in tick: the element's own controls
+     * pause it without the manager.
+     */
+    private heardUntil = -Infinity;
+    /**
+     * When (context time, s) the element stopped playing: its pause or ended event, or the first tick not playing (an
+     * element without the manager's listeners, a tick missed); NaN while playing. Ticks stalled across the stop (a
+     * hidden tab) do not stretch the tail
+     */
+    private stoppedAt = NaN;
+    /**
+     * Until when (context time, s) the delay line hands over only the silence it held at a (re)start with an empty line:
+     * the first play, after a flush, after a pause whose tail has drained (heardUntil passed). Known empty, so not
+     * heard: no blocked analysis counted, no heardPlaying, no floor. A resume inside the tail leaves it: the line still
+     * holds sound
+     */
+    private primedUntil = -Infinity;
+    /** this tick's clock: read once at its top (`readClock`) */
+    private clockNow = 0;
+    private clockLatency = 0;
     /**
      * What the visuals show: the live state above, read back at what is heard now (context time - output latency).
      * Every getter and the status read it; the analysis, the stems and the router run on the live state.
@@ -478,6 +503,7 @@ export class AudioReactiveAnimationManager {
         if (!force && this.presented.playing === this.emittedHeardPlaying && timeMs - this.lastUiUpdateMs < 32) return;
         this.lastUiUpdateMs = timeMs;
         this.emittedHeardPlaying = this.presented.playing;
+        this.emittedAtRest = this.presented.atRest;
         const audio = this.state.audioPlayer.value;
         this.state.status.next({
             sourceLabel: this.sourceLabel,
@@ -507,8 +533,14 @@ export class AudioReactiveAnimationManager {
 
     private bindAudioEvents(audio: HTMLAudioElement) {
         audio.addEventListener('play', () => this.updateStatus(void 0, true));
-        audio.addEventListener('pause', () => this.updateStatus(void 0, true));
-        audio.addEventListener('ended', () => this.updateStatus(void 0, true));
+        audio.addEventListener('pause', () => this.onStopped());
+        audio.addEventListener('ended', () => this.onStopped());
+    }
+
+    /** the element's pause or ended event: the tail starts now. Only from playing (a flush comes before the queued event) */
+    private onStopped() {
+        if (this.heardUntil === Infinity && Number.isNaN(this.stoppedAt) && this.audioContext) this.stoppedAt = this.getOutputClock(this.audioContext).now();
+        this.updateStatus(void 0, true);
     }
 
     private resolveAudioPlayer() {
@@ -567,6 +599,22 @@ export class AudioReactiveAnimationManager {
         });
     }
 
+    /**
+     * Silences what the delay line still holds (stop, a new source, clear): a new delay node in place of the old, the
+     * same delay. Only the source -> delay link is cut: the stem separator taps the source too
+     */
+    private flushDelayLine() {
+        const ctx = this.audioContext, source = this.sourceNode, old = this.delayNode, analyser = this.analyser;
+        this.heardUntil = -Infinity;
+        if (!ctx || !source || !old || !analyser) return;
+        source.disconnect(old);
+        old.disconnect();
+        const delay = this.delayNode = ctx.createDelay(30);
+        delay.delayTime.value = old.delayTime.value;
+        source.connect(delay);
+        delay.connect(analyser);
+    }
+
     private async loadSource(src: string, label: string, ownsObjectUrl: boolean) {
         const audio = this.resolveAudioPlayer();
         this.releaseObjectUrl();
@@ -580,6 +628,7 @@ export class AudioReactiveAnimationManager {
         this.lastTickMs = 0;
         audio.pause();
         audio.currentTime = 0;
+        this.flushDelayLine();
         audio.src = src;
         audio.load();
         this.ensureAnalyser(audio);
@@ -615,6 +664,7 @@ export class AudioReactiveAnimationManager {
         if (!audio) return;
         audio.pause();
         audio.currentTime = 0;
+        this.flushDelayLine();
         this.reactor.reset();
         this.separator?.reset();
         this.currentFrame = EmptyAudioReactiveFrame;
@@ -634,8 +684,14 @@ export class AudioReactiveAnimationManager {
         }
         this.releaseObjectUrl();
         this.sourceLabel = void 0;
+        this.flushDelayLine();
         this.reactor.reset();
         this.separator?.reset();
+        // the drives rest at once (D2): tick takes the no-audio branch from now on, which never updates the router
+        this.router.reset();
+        this.currentStems = ZeroStems;
+        this.stemsSeparated = false;
+        this.bandDrumsPeak = BandDrumsPeakFloor;
         this.currentFrame = EmptyAudioReactiveFrame;
         clearAudioReactiveVisualization(this.visualization);
         this.lastTickMs = 0;
@@ -643,12 +699,13 @@ export class AudioReactiveAnimationManager {
         this.updateStatus(void 0, true);
     }
 
-    private updateStems(dtMs: number, paused: boolean) {
+    /** `silent`: nothing is heard (not playing, the delay line drained): the band stand-ins, from the silent analysis */
+    private updateStems(dtMs: number, silent: boolean) {
         const params = this.state.params.value;
         let separated: StemLevels | undefined;
-        if (!paused && this.separator && this.audioContext && params.stemModel !== 'off') {
+        if (!silent && this.separator && this.audioContext && params.stemModel !== 'off') {
             // the audio heard now entered the graph one delay ago
-            const heard = this.audioContext.currentTime - getStemDelaySeconds(params);
+            const heard = this.clockNow - getStemDelaySeconds(params);
             separated = this.separator.sample(heard, dtMs, params.bandAttackMs, params.bandReleaseMs);
         }
         this.stemsSeparated = !!separated;
@@ -667,24 +724,33 @@ export class AudioReactiveAnimationManager {
      * it (now - output latency). With no context yet there is no clock: the last stamp, latency 0. Never the tick's
      * timeMs: the animation loop caps its step, so it runs slow under jank.
      */
-    private presentFrame(playing: boolean) {
-        const ctx = this.audioContext;
-        let now: number, latency = 0;
-        if (ctx) {
-            let clock = this.outputClock;
-            if (!clock || this.outputClockContext !== ctx) {
-                clock = this.outputClock = this.ports.outputClock(ctx);
-                this.outputClockContext = ctx;
-            }
-            now = clock.now();
-            latency = clock.latency();
-        } else {
-            now = Math.max(0, this.presented.newestStamp);
-        }
+    private presentFrame(heard: boolean) {
         const r = this.router;
-        this.presented.push(now, playing, this.currentFrame, this.currentStems, this.stemsSeparated, r.drives, r.scopeCount, r.scopeKind, r.scopeDrive, r.scopes,
+        this.presented.push(this.clockNow, heard, this.currentFrame, this.currentStems, this.stemsSeparated, r.drives, r.scopeCount, r.scopeKind, r.scopeDrive, r.scopes,
             this.state.routes.value, r.values, this.visualization);
-        this.presented.present(now - latency);
+        this.presented.present(this.clockNow - this.clockLatency);
+    }
+
+    private getOutputClock(ctx: AudioContext) {
+        let clock = this.outputClock;
+        if (!clock || this.outputClockContext !== ctx) {
+            clock = this.outputClock = this.ports.outputClock(ctx);
+            this.outputClockContext = ctx;
+        }
+        return clock;
+    }
+
+    /** this tick's clock, read once: the context's, or with no context yet the last stamp and latency 0 */
+    private readClock() {
+        const ctx = this.audioContext;
+        if (!ctx) {
+            this.clockNow = Math.max(0, this.presented.newestStamp);
+            this.clockLatency = 0;
+            return;
+        }
+        const clock = this.getOutputClock(ctx);
+        this.clockNow = clock.now();
+        this.clockLatency = clock.latency();
     }
 
     /** the frame as heard now (`frame`); the analysis runs on what the analyser hands over now */
@@ -692,6 +758,7 @@ export class AudioReactiveAnimationManager {
         const audio = this.state.audioPlayer.value;
         const dtMs = this.lastTickMs > 0 ? Math.min(100, Math.max(0, timeMs - this.lastTickMs)) : 16;
         this.lastTickMs = timeMs;
+        this.readClock();
 
         if (!audio || !audio.src || !this.audioContext || !this.analyser || !this.timeDomainData || !this.frequencyDomainData || !this.silenceData) {
             const cleared = !areFramesClose(this.currentFrame, EmptyAudioReactiveFrame);
@@ -700,16 +767,31 @@ export class AudioReactiveAnimationManager {
                 clearAudioReactiveVisualization(this.visualization);
             }
             this.presentFrame(false);
-            // the status follows the presented frame until what is heard has come to rest too
-            if (cleared || this.presented.playing !== this.emittedHeardPlaying || !areFramesClose(this.presented.frame, EmptyAudioReactiveFrame)) this.updateStatus(void 0, false, timeMs);
+            // the status follows the presented frame until what is heard has come to rest too, the drives and route values too
+            if (cleared || this.presented.playing !== this.emittedHeardPlaying || this.presented.atRest !== this.emittedAtRest || !areFramesClose(this.presented.frame, EmptyAudioReactiveFrame)) {
+                this.updateStatus(void 0, false, timeMs);
+            }
             return this.presented.frame;
         }
 
         const sampleRate = this.audioContext.sampleRate;
         let error: string | undefined;
+        // heard: playing, or after a pause or the end of the file until the delay line has drained (D = 0: at once); not
+        // while the line hands over the silence it held at a (re)start (D = 0: never)
+        const playing = !audio.paused && !audio.ended;
+        const delayS = this.delayNode?.delayTime.value ?? 0;
+        if (playing) {
+            if (this.heardUntil !== Infinity && this.clockNow >= this.heardUntil) this.primedUntil = this.clockNow + delayS;
+            this.heardUntil = Infinity;
+            this.stoppedAt = NaN;
+        } else if (this.heardUntil !== -Infinity) {
+            if (Number.isNaN(this.stoppedAt)) this.stoppedAt = this.clockNow;
+            this.heardUntil = this.stoppedAt + delayS;
+        }
+        const heard = (playing || (this.audioContext.state === 'running' && this.clockNow < this.heardUntil)) && this.clockNow >= this.primedUntil;
 
         try {
-            if (audio.paused || audio.ended) {
+            if (!heard) {
                 this.silenceWhilePlayingMs = 0;
                 this.currentFrame = this.reactor.analyze(this.silenceData, sampleRate, dtMs);
                 clearAudioReactiveVisualization(this.visualization);
@@ -722,17 +804,18 @@ export class AudioReactiveAnimationManager {
                     Math.abs(this.timeDomainData[n >> 2]) < 1e-7 &&
                     Math.abs(this.timeDomainData[n >> 1]) < 1e-7 &&
                     Math.abs(this.timeDomainData[(n >> 1) + (n >> 2)]) < 1e-7;
-                this.silenceWhilePlayingMs = analysisSilent ? this.silenceWhilePlayingMs + dtMs : 0;
+                // only while playing: a quiet end of the file in the tail is not a blocked analysis
+                this.silenceWhilePlayingMs = playing && analysisSilent ? this.silenceWhilePlayingMs + dtMs : 0;
                 writeWaveformSamples(this.timeDomainData, this.visualization.waveform);
                 writeSpectrumSamples(this.frequencyDomainData, this.visualization.spectrum);
                 this.currentFrame = this.reactor.analyze(this.timeDomainData, sampleRate, dtMs);
             }
-            this.updateStems(dtMs, audio.paused || audio.ended);
-            this.router.update(this.state.routes.value, this.currentFrame, this.currentStems, dtMs);
+            this.updateStems(dtMs, !heard);
+            this.router.update(this.state.routes.value, this.currentFrame, this.currentStems, dtMs, heard);
         } catch (e) {
             error = `${e}`;
         }
-        this.presentFrame(!audio.paused && !audio.ended);
+        this.presentFrame(heard);
         this.updateStatus(error, error !== void 0, timeMs);
         return this.presented.frame;
     }

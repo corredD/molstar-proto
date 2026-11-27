@@ -10,6 +10,7 @@
 
 import { AudioReactiveAnimationManager, AudioReactiveAnimationManagerValues } from '../audio-reactive-animation';
 import { AudioRoute, AudioRouteTarget, createZeroDrives } from '../audio-routing';
+import { StemModelId, StemModels } from '../audio-stems/stem-models';
 
 export type AudioSignal = { name: string, sampleRate: number, samples: Float32Array, kicksS?: readonly number[] };
 
@@ -27,6 +28,19 @@ export type AudioPipelineOptions = {
     onFrame?: (f: AudioPipelineFrameInfo) => void,
     /** what the fake AudioContext reports as outputLatency, seconds (0: none) */
     outputLatency?: number,
+    /**
+     * the stem delay line, seconds: a fake delay node and a stub separator (sample calls in `stemSamples`; it separates
+     * nothing, so the stems come from the bands) are installed and the manager sets the delay through setParams, as the
+     * app's Stem Separation card does. The analyser then hands over what came in D earlier
+     */
+    stemDelayS?: number,
+    /** wall-clock second from which the element reports `ended` (the end of the file); the media cursor stops there */
+    endedAtS?: number,
+    /**
+     * wall-clock ranges, seconds, where the animation loop does not tick (a hidden tab): the audio element plays on and
+     * still fires its pause and ended events, the manager's tick is not called
+     */
+    stalled?: readonly (readonly [startS: number, endS: number])[],
 };
 
 export type AudioPipelineTrace = {
@@ -36,15 +50,26 @@ export type AudioPipelineTrace = {
     /** by route index (route ids come from a global counter and depend on test order) */
     routeValues: Float64Array[],
     drives: Record<AudioRouteTarget, Float64Array>,
+    /** with stemDelayS: each call of the stub separator's sample, (frame index, context time asked for) */
+    stemSamples: { index: number, time: number }[],
 };
 
-/** the two private fields the fakes fill: the manager builds both from a real element and AudioContext in loadSource */
-type ManagerFakes = { audioContext: unknown, analyser: unknown };
+/**
+ * the two private fields the fakes fill (the manager builds both from a real element and AudioContext in loadSource),
+ * and the listeners it binds on an element it makes itself (resolveAudioPlayer)
+ */
+type ManagerFakes = { audioContext: unknown, analyser: unknown, bindAudioEvents(audio: unknown): void };
+
+/** with stemDelayS: the two more private fields the fakes fill (the browser's delay node, the stem separator) */
+type ManagerStemFakes = { delayNode: unknown, separator: unknown };
 
 /**
  * The real `AudioReactiveAnimationManager.tick`, frame by frame, with fakes for what a browser gives it: an audio
  * context whose clock advances one frame per tick (wall time, paused or not), an analyser that hands over the N samples
- * ending at the media cursor, an audio element that is paused or not. Nothing of tick is re-implemented here.
+ * ending D (the stem delay, 0 by default) before the end of what came into the graph (wall time: the media while
+ * playing, silence while paused or ended), an audio element that is paused or not (its pause(), removeAttribute() and
+ * load() work, so onFrame can call the manager's stop() and clear(); it fires pause and ended on the frame that first
+ * sees them, before the tick, as a browser queues them). Nothing of tick is re-implemented here.
  */
 export function runAudioPipeline(signal: AudioSignal, routes: readonly AudioRoute[], opts: AudioPipelineOptions = {}): AudioPipelineTrace {
     const frameMs = opts.frameMs ?? 16;
@@ -52,29 +77,56 @@ export function runAudioPipeline(signal: AudioSignal, routes: readonly AudioRout
     const durationS = opts.durationS ?? signal.samples.length / sr;
     const count = Math.floor(durationS * 1000 / frameMs);
     let cursor = 0; // the media cursor, samples
-    let padded = new Float32Array(0);
+    // what came into the graph, in wall time: n + delay zeros, then per frame the media played or silence
+    let wall = new Float32Array(0);
+    let wallEnd = 0;
+    const delaySamples = Math.round((opts.stemDelayS ?? 0) * sr);
     const ctx = { currentTime: 0, sampleRate: sr, state: 'running', outputLatency: opts.outputLatency ?? 0 };
     const analyser = {
         fftSize: 2048, smoothingTimeConstant: 0,
         get frequencyBinCount() { return this.fftSize / 2; },
-        // what the analyser hands over: its last fftSize samples, i.e. N samples ending at the media cursor
-        getFloatTimeDomainData(out: Float32Array) { out.set(padded.subarray(cursor, cursor + out.length)); },
+        // what the analyser hands over: its last fftSize samples, i.e. N samples ending one delay before what came in
+        getFloatTimeDomainData(out: Float32Array) { out.set(wall.subarray(wallEnd - delaySamples - out.length, wallEnd - delaySamples)); },
         // deterministic; the reactor does not read it (only the visualization does)
         getByteFrequencyData(out: Uint8Array) { out.fill(0); },
     };
-    const audio = { src: 'offline://' + signal.name, paused: false, ended: false, currentTime: 0 };
+    // pause() latches: the manager's stop() and clear() pause the element for the rest of the run
+    let pausedByManager = false;
+    const listeners: { type: string, listener: () => void }[] = [];
+    const audio = {
+        src: 'offline://' + signal.name, paused: false, ended: false, currentTime: 0,
+        pause() { pausedByManager = true; audio.paused = true; },
+        removeAttribute(name: string) { if (name === 'src') audio.src = ''; },
+        load() { },
+        addEventListener(type: string, listener: () => void) { listeners.push({ type, listener }); },
+    };
+    const fire = (type: string) => { for (const l of listeners) if (l.type === type) l.listener(); };
 
     const manager = new AudioReactiveAnimationManager({} as ConstructorParameters<typeof AudioReactiveAnimationManager>[0]);
     // the one place that sets the manager's private fields (a browser would: loadSource -> ensureAnalyser)
     const fakes = manager as unknown as ManagerFakes;
     fakes.audioContext = ctx; fakes.analyser = analyser;
+    fakes.bindAudioEvents(audio);
     manager.state.audioPlayer.next(audio as unknown as HTMLAudioElement);
     manager.setRoutes([...routes]);
-    // setParams sizes the analyser (fftSize) and the manager's buffers from the reactor's parameters
-    manager.setParams({ ...opts.analysis, beatThreshold: opts.beatThreshold ?? 1.1 });
+    const stemSamples: { index: number, time: number }[] = [];
+    let frameIndex = -1;
+    let stemParams = {};
+    if (opts.stemDelayS !== void 0) {
+        const stemFakes = manager as unknown as ManagerStemFakes;
+        stemFakes.delayNode = { delayTime: { value: 0, setValueAtTime(v: number) { this.value = v; } } };
+        stemFakes.separator = {
+            async setModel() { }, reset() { }, dispose() { },
+            sample(time: number) { stemSamples.push({ index: frameIndex, time }); return undefined; },
+        };
+        stemParams = { stemModel: Object.keys(StemModels)[0] as StemModelId, stemDelaySeconds: opts.stemDelayS };
+    }
+    // setParams sizes the analyser (fftSize) and the manager's buffers from the reactor's parameters (and sets the delay)
+    manager.setParams({ ...opts.analysis, beatThreshold: opts.beatThreshold ?? 1.1, ...stemParams });
     const n = analyser.fftSize;
-    padded = new Float32Array(n + signal.samples.length + n);
-    padded.set(signal.samples, n);
+    const frameSamples = Math.ceil(frameMs * sr / 1000) + 1;
+    wall = new Float32Array(n + delaySamples + count * frameSamples);
+    wallEnd = n + delaySamples;
 
     const trace: AudioPipelineTrace = {
         count,
@@ -82,16 +134,31 @@ export function runAudioPipeline(signal: AudioSignal, routes: readonly AudioRout
         drums: new Float64Array(count), bass: new Float64Array(count), other: new Float64Array(count), vocals: new Float64Array(count),
         routeValues: routes.map(() => new Float64Array(count)),
         drives: {} as Record<AudioRouteTarget, Float64Array>,
+        stemSamples,
     };
     for (const t of Object.keys(createZeroDrives()) as AudioRouteTarget[]) trace.drives[t] = new Float64Array(count);
     let mediaFrames = 0;
+    let firedPaused = false;
     for (let i = 0; i < count; i++) {
+        frameIndex = i;
         const timeMs = (i + 1) * frameMs;
-        const paused = !!opts.paused?.some(([a, b]) => timeMs / 1000 > a && timeMs / 1000 <= b);
+        const ended = opts.endedAtS !== void 0 && timeMs / 1000 > opts.endedAtS;
+        const paused = pausedByManager || ended || !!opts.paused?.some(([a, b]) => timeMs / 1000 > a && timeMs / 1000 <= b);
+        // the element's state at the last frame: pause() inside onFrame (stop, clear) sets paused at once, its event comes next frame
+        const wasPaused = firedPaused, wasEnded = audio.ended;
+        firedPaused = paused;
         audio.paused = paused;
+        audio.ended = ended;
+        const from = cursor;
         if (!paused) cursor = Math.round(++mediaFrames * frameMs * sr / 1000); // integer arithmetic: no accumulated drift
+        // into the graph this frame: the media just played, or silence for as long
+        const len = paused ? Math.round((i + 1) * frameMs * sr / 1000) - Math.round(i * frameMs * sr / 1000) : cursor - from;
+        if (!paused) wall.set(signal.samples.subarray(from, cursor), wallEnd);
+        wallEnd += len;
         ctx.currentTime = timeMs / 1000;
-        manager.tick(timeMs);
+        if (paused && !wasPaused) fire('pause');
+        if (ended && !wasEnded) fire('ended');
+        if (!opts.stalled?.some(([a, b]) => timeMs / 1000 > a && timeMs / 1000 <= b)) manager.tick(timeMs);
         const stems = manager.stems;
         trace.timeMs[i] = timeMs; trace.mediaS[i] = mediaFrames * frameMs / 1000; trace.paused[i] = paused ? 1 : 0;
         trace.drums[i] = stems.drums; trace.bass[i] = stems.bass; trace.other[i] = stems.other; trace.vocals[i] = stems.vocals;

@@ -7,6 +7,9 @@
 import { Vec3 } from '../../../mol-math/linear-algebra/3d/vec3';
 import { Color } from '../../../mol-util/color';
 import { ValueCell } from '../../../mol-util/value-cell';
+import { getAudioReactivePreset } from '../../../mol-plugin-state/helpers/audio-reactive-presets';
+import { kickTrack, runAudioPipeline } from '../../../mol-plugin-state/manager/_spec/audio-pipeline-helper';
+import { createAudioRoute } from '../../../mol-plugin-state/manager/audio-routing';
 import { CpuChannelDrives, CpuChannelRenderObject, CpuChannels, CpuChannelTarget } from '../cpu-channels';
 
 /**
@@ -300,6 +303,29 @@ describe('cpu channels', () => {
             expect(() => channels.update()).toThrow('lost context');
             target.getRenderObjects = getRenderObjects;
             frames(1);
+            expect(Array.from(ro.values.uClipObjectPosition.ref.value)).toEqual([1, 2, 3, 0, 0, 0]);
+        });
+
+        it('rests on a paused song: a clip route releases to exactly 0, one pass writes the base values back, then no call (TODO 13)', () => {
+            const route = createAudioRoute({ enabled: true, source: 'stemDrums', mode: 'onset', target: 'clipPosition', gain: 6.5, floor: 0, releaseMs: 260 });
+            const trace = runAudioPipeline(kickTrack(), [route], { analysis: getAudioReactivePreset('drums-bass-burst').analysis, paused: [[3, 10]], durationS: 8 });
+            const { target, drives, clip, frames } = setup();
+            const ro = clipObject();
+            target.objects = [ro];
+            clip.enabled = true;
+            const pausedAt = trace.paused.indexOf(1);
+            const passes: number[] = [];
+            for (let i = 0; i < trace.count; i++) {
+                drives.clipPosition = trace.drives.clipPosition[i];
+                target.calls.length = 0;
+                frames(1, 16);
+                if (i >= pausedAt && target.calls.length) passes.push(i);
+            }
+            // the release passes, then the one that writes back, then nothing until the end of the run
+            const last = passes[passes.length - 1];
+            expect(trace.drives.clipPosition[last]).toBe(0);
+            expect(trace.drives.clipPosition[last - 1]).toBeGreaterThan(0);
+            expect(last).toBeLessThan(trace.count - 60);
             expect(Array.from(ro.values.uClipObjectPosition.ref.value)).toEqual([1, 2, 3, 0, 0, 0]);
         });
 

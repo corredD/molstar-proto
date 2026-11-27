@@ -49,6 +49,19 @@ one behind the read rule, never ahead of what is heard), so tick jitter does not
 the presented frame as sound (beat cycle, song detection) gates on the status's `heardPlaying`, not on the live
 `playing` (the transport). The presented objects keep their identity and nothing is allocated per frame. No flush on pause, stop or clear: the device still plays the last `outputLatency`.
 
+**When the sound stops** (sound-stops, 2026-11-27). Heard = playing, or after a pause or the end of the file until the
+stem delay line has drained (`heardUntil`: the stop + the delay node's time now, each tick; the stop is the element's
+pause or ended event, or the first tick not playing as a fallback, so stalled ticks do not stretch the tail and a delay
+changed in the tail moves it). Not heard either while the line hands over the silence it held at a (re)start with an
+empty line (`primedUntil` = the start + D; the first play, after a flush, after a pause whose tail has drained): no
+blocked analysis counted, no `heardPlaying`, no floor, no stem sample. A resume inside the tail is heard at once (the
+silence of the pause, shorter than D, is read as heard: open, see the sound-stops progress). While heard, the analyser is read (the tail) and the stems are sampled at
+t − D; once not, the silent analysis, the band stand-ins and `router.update(…, heard = false)`: every route releases to
+0, no floor, with its own release, and rests at exactly 0 below `AudioRestCutoff` (1e-3). Stop, a new source and Clear
+flush the delay line (a new delay node; the separator's tap on the source stays) and hear nothing at once; Clear also
+resets the router. The status also emits when the presented drives and route values come to rest
+(`presented.atRest`), so the last emission after Clear carries zeros. The ring carries heard, so `heardPlaying` is heard as heard (with no delay, `playing` as heard).
+
 ## 3. One frame
 
 1. `PluginAnimationLoop.tick` (rAF; a frame's time capped at 33.3 ms).
@@ -99,10 +112,9 @@ rest writes the base values back once, then does nothing until a drive moves aga
 hidden objects too, so an object hidden while moved shows at its base values. Other behaviour is unchanged
 (characterization tests: `beat-cycle.spec.ts`, `cpu-channels.spec.ts`).
 
-The clip rest check is exact (`=== 0` on both clip drives). A released route's drive decays toward 0 but does not
-reach it (it ends as a denormal, ~4e-323), so with a clip route enabled and the audio paused the clip pass still runs
-every frame, as before the lane. The cut-off below which a drive counts as 0 is left to Ludo (queued in
-[TODO.md](../TODO.md)).
+The clip rest check is exact (`=== 0` on both clip drives). Since sound-stops (2026-11-27) a released route rests at
+exactly 0 once nothing is heard (cut-off 1e-3, proposed, Ludo to confirm; [TODO.md](../TODO.md) 13), so on a paused
+song the clip pass writes the base values back once and rests (`cpu-channels.spec.ts`).
 
 - **Loading.** `loadPdb(id, replace)`, files, mesoscale examples. Add puts the new structure on a grid; replace (Random)
   removes the old after the new is drawn, prunes data, eases the camera. Mesoscale loads remove first, then build parts
@@ -121,7 +133,10 @@ every frame, as before the lane. The cut-off below which a drive counts as 0 is 
 - **Audio-off regressions in plain Mol\*.** The branch makes wiggle and tumble amplitude depend on a drive: without audio,
   the `wiggleAmplitude` and `tumbleAmplitude` params no longer move anything, while `hasAnimation` still redraws every
   frame. Every plugin builds the manager and runs the two syncs each tick ([core-changes.md](core-changes.md)).
-- **Drives after clear or pause.** Clear freezes the drives (no `router.update` without audio); pause leaves the floors.
+- **Drives after clear or pause.** Fixed by sound-stops (2026-11-27, D2): pause and the end of the file release every
+  route to exactly 0 (after the stem delay's tail), Clear resets the router. Left: the rest takes up to
+  `releaseMs · ln(v / 1e-3)` (≈ 2–2.7 s for Drums & Bass Burst), not `releaseMs`; a source removed without Clear still
+  freezes the drives (no `router.update` without audio).
 - **Who is per material, the ranges per visual.** See features §8: likely wrong ranges on all but the first visual of
   a representation. One range per slot; 8 slots, the 9th silently global.
 - **Culling ignores the motion.** Frustum, LOD, hi-Z, fog and near/far use static bounding spheres; a burst at drive 13
@@ -159,8 +174,11 @@ Items 1–13 of the first draft's open list are all decided; none is built yet.
 
 1. **Load adds.** Load, the PDB chips and files keep adding beside what is there (a gallery); Random and the mesoscale
    examples keep replacing. To build: the new structure comes into view (today it lands 2.75 radii away, off screen).
-2. **Pause and Clear rest.** Both bring every drive to 0 over its release; Clear resets the router. Today pause keeps
-   the floors and clear freezes the last drives.
+2. **Pause and Clear rest.** Both bring every drive to 0 over its release; Clear resets the router. **Built** in the
+   lane `sound-stops` (2026-11-27): no floor once nothing is heard, exactly 0 below 1e-3, the stem delay's tail
+   followed after a pause or the end of the file; Stop, a new source and Clear silence the tail. Coordinator's
+   choices, Ludo to confirm: the 1e-3 cut-off, the exponential rest (≈ 2–2.7 s, not `releaseMs`), the flush on Stop
+   and a new source, floors off before the first play.
 3. **The 9th narrowed route is refused.** Once 8 routes are narrowed, the Who select of the others is disabled with a
    note. Today the 9th silently acts on the whole view.
 4. **Clip Reactivity gets a clip.** The card adds a sphere and a plane clip object; the clip position and size targets
@@ -194,7 +212,7 @@ Items 1–13 of the first draft's open list are all decided; none is built yet.
 ### Still open
 
 - The Who leak within one representation (features §8): fix once checklist step 11 shows it on screen.
-- **The clip rest cut-off.** The clip pass rests only on drives of exactly 0, which a released route never reaches
-  (§4); the number below which a drive counts as 0 is Ludo's to pick.
+- **The clip rest cut-off.** 1e-3 proposed and built (`AudioRestCutoff`, sound-stops, 2026-11-27): a released route
+  rests at exactly 0 below it once nothing is heard, so the clip pass rests (§4). Ludo to confirm the number.
 - The order of the work. A proposal: the split (15) first, then the broken items (2, 3, 9, the Who leak), then the new
   UI (4, 5, 13, 14), then rigid object (10), culling (18), recording (17).
