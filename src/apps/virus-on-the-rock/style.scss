@@ -323,11 +323,6 @@ html, body, #app {
     color: var(--vor-text);
 }
 
-/* a Mol* Slider in a slider row spans the row, under the label and the value */
-.vor-slider-row .msp-slider {
-    grid-column: 1 / span 2;
-}
-
 .vor-slider-row input[type='range'] {
     grid-column: 1 / span 2;
     width: 100%;
