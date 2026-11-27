@@ -7,7 +7,7 @@
 import type { PluginContext } from '../../../mol-plugin/context';
 import { AudioReactiveAnimationManager } from '../audio-reactive-animation';
 import { createEmptyAudioReactiveFrame, DefaultAudioBandDefinitions } from '../audio-reactor';
-import { AudioRouter, AudioScopeSlotCount, canNarrowRoute, createAudioRoute, defaultAudioAffect, parseAudioRouting, routesFromDrafts } from '../audio-routing';
+import { narrowedRouteCount, AudioRouter, AudioScopeSlotCount, canNarrowRoute, createAudioRoute, defaultAudioAffect, parseAudioRouting, routesFromDrafts } from '../audio-routing';
 
 const Chain = (i: number) => ({ level: 'chain' as const, entryId: '6Q3Q', modelNum: 1, entityId: '1', operatorName: '1', asymId: String.fromCharCode(65 + i) });
 const plugin = { managers: { structure: { hierarchy: { current: { models: [], structures: [] } } } } } as unknown as PluginContext;
@@ -50,6 +50,12 @@ describe('narrowed route slots (D3)', () => {
     it('disabled narrowed routes count toward the 8', () => {
         const routes = makeRoutes(AudioScopeSlotCount, 1).map((r, i) => i < AudioScopeSlotCount ? { ...r, enabled: false } : r);
         expect(canNarrowRoute(routes, routes[AudioScopeSlotCount].id)).toBe(false);
+    });
+
+    it('narrowedRouteCount counts narrowed scope-capable routes, on or off', () => {
+        const routes = makeRoutes(3, 2).map((r, i) => i === 0 ? { ...r, enabled: false } : r);
+        const camera = createAudioRoute({ enabled: true, source: 'stemDrums', mode: 'level', target: 'cameraSpin', gain: 1, floor: 0, releaseMs: 0, affect: Chain(0) });
+        expect(narrowedRouteCount([...routes, camera])).toBe(3);
     });
 
     it('setRoutes keeps at most 8 narrowed routes: the 9th is widened to All and the router uses 8 slots', () => {
