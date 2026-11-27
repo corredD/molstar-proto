@@ -250,11 +250,13 @@ describe('AudioPresentedFrame steady steps (the read rule holds one entry per fr
 
     it('a step of +-40 ms in the latency re-syncs within 2 entries of the rule', () => {
         const rnd = random(2);
-        const L = (i: number) => (i >= 1000 && i < 2000 ? 0.24 : i >= 2000 && i < 3000 ? 0.16 : 0.2);
-        const run = steadyRun(4000, i => (i * 1000 / 60 + (rnd() * 2 - 1) * 1.5) / 1000, L);
-        for (let i = 300; i < 4000; i++) expect(Math.abs(run.presented[i] - run.rule[i])).toBeLessThanOrEqual(2);
+        // 0.2 -> 0.24 (+40 ms) -> 0.2 (-40) -> 0.16 (-40) -> 0.2 (+40), 1000 frames each
+        const steps = [0.2, 0.24, 0.2, 0.16, 0.2];
+        const L = (i: number) => steps[Math.floor(i / 1000)];
+        const run = steadyRun(5000, i => (i * 1000 / 60 + (rnd() * 2 - 1) * 1.5) / 1000, L);
+        for (let i = 300; i < 5000; i++) expect(Math.abs(run.presented[i] - run.rule[i])).toBeLessThanOrEqual(2);
         // a few frames after each step: steady again (one entry per frame, never early, at most one behind)
-        for (const [from, to] of [[1010, 2000], [2010, 3000], [3010, 4000]]) {
+        for (const [from, to] of [[1010, 2000], [2010, 3000], [3010, 4000], [4010, 5000]]) {
             const s = run.stats(from, to);
             expect([s.holds, s.skips, s.early, s.aheadMax]).toEqual([0, 0, 0, 0]);
             expect(s.behindMax).toBeLessThanOrEqual(1);
