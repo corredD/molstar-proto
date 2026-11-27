@@ -246,6 +246,18 @@ describe('AudioPresentedFrame steady steps (the read rule holds one entry per fr
         expect(run.stats(300)).toEqual({ holds: 0, skips: 0, early: 0, behindMax: 1, aheadMax: 0 });
     });
 
+    it('120 Hz and 144 Hz, latency k frames exactly, ticks jittered +-1.5 ms: one entry per frame, never early, at most one behind', () => {
+        for (const fps of [120, 144]) {
+            for (const k of [2, 3, 4]) {
+                const rnd = random(3 + k);
+                const run = steadyRun(3000, i => (i * 1000 / fps + (rnd() * 2 - 1) * 1.5) / 1000, () => k / fps);
+                const s = run.stats(300);
+                expect([fps, k, s.holds, s.skips, s.early, s.aheadMax]).toEqual([fps, k, 0, 0, 0, 0]);
+                expect(s.behindMax).toBeLessThanOrEqual(1);
+            }
+        }
+    });
+
     it('a clock in 5.3 ms quanta (256 samples at 48 kHz), 60 Hz, latency 200 ms: one entry per frame', () => {
         const quantum = 256 / 48000;
         const run = steadyRun(600, i => Math.floor(i / 60 / quantum) * quantum, () => 0.2);
