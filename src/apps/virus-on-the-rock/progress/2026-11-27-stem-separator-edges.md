@@ -14,3 +14,17 @@ Copied from `2026-11-27-overnight.md` (review issue 9, `2026-11-26-audio-review.
   `loading` (today: once, status stays error). Null control: the success path calls `addModule` once.
 - Fixes: re-check `this.model === id` (and the requested provider) after the await; clear `tapLoading` in a catch
   before rethrowing. Outside the app folder: entry in `_spec/core-changes.md`, its own commit.
+
+## Red run (specs on today's code; 3 failed, 5 passed incl. both null controls)
+
+```
+x Off while the tap loads: no load after the unload, the tap stays off
+    Expected ["unload"]  Received ["unload", "load"]
+x another provider while the tap loads: only the last request loads
+    Expected ["wasm"]    Received ["webgpu", "wasm"]
+x a failed tap setup retries when the model is picked again after Off
+    expect(modules.length).toBe(2)  Received: 1   (addModule called once, status stays error)
+ok null control: Off after the load completed still unloads and turns the tap off
+ok null control: the success path calls addModule once
+```
+(Added a third probe beyond the brief: the provider changed during the await, the "requested provider" half of the fix.)
