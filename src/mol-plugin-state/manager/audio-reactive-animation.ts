@@ -102,17 +102,15 @@ const ZeroStems: StemLevels = { drums: 0, bass: 0, other: 0, vocals: 0 };
 
 /** stand-ins for the stems from the band analysis, when no model separates them */
 /** the kick's onset (sub-bass, bass) or a detected beat: what stands in for the drums with no separation */
-/** exported for the offline audio-pipeline spec, which replays updateStems' fallback */
-export function getBandDrumsOnset(frame: AudioReactiveFrame<DefaultAudioBandKey>) {
+function getBandDrumsOnset(frame: AudioReactiveFrame<DefaultAudioBandKey>) {
     return Math.max(frame.bandOnsets.subBass, frame.bandOnsets.bass, frame.beatIntensity);
 }
 
 /** the band onsets span a few hundredths to a few tenths by track: normalized by their running peak */
-export const BandDrumsPeakDecayMs = 3000;
-export const BandDrumsPeakFloor = 0.05;
+const BandDrumsPeakDecayMs = 3000;
+const BandDrumsPeakFloor = 0.05;
 
-/** exported for the offline audio-pipeline spec */
-export function getBandStems(frame: AudioReactiveFrame<DefaultAudioBandKey>, drums: number): StemLevels {
+function getBandStems(frame: AudioReactiveFrame<DefaultAudioBandKey>, drums: number): StemLevels {
     const b = frame.frequencyBands;
     return {
         drums,
