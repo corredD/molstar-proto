@@ -90,6 +90,7 @@ export class StemSeparator {
     private tapSink?: GainNode;
     private tapLoading?: Promise<void>;
     private model?: StemModelId;
+    private request = 0;
     private requestedExecutionProvider?: 'webgpu' | 'wasm';
     private status: StemSeparatorStatus = { state: 'off' };
 
@@ -150,6 +151,8 @@ export class StemSeparator {
                 this.tap = tap;
                 this.tapSink = sink;
             })();
+            // a failed setup must not stay: picking the model again after Off retries it
+            this.tapLoading.catch(() => { this.tapLoading = undefined; });
         }
         await this.tapLoading;
     }
@@ -158,6 +161,7 @@ export class StemSeparator {
         // the same request again (any params change calls this): no reload, and no retry of a failed one either; picking
         // the model again after Off retries it
         if (id === this.model && executionProvider === this.requestedExecutionProvider) return;
+        const request = ++this.request;
         this.model = id;
         this.requestedExecutionProvider = executionProvider;
         this.clearTimeline();
@@ -172,9 +176,12 @@ export class StemSeparator {
             this.ensureWorker();
             await this.ensureTap();
         } catch (e) {
-            this.setStatus({ state: 'error', message: `${e}` });
+            // a newer request owns the status
+            if (request === this.request) this.setStatus({ state: 'error', message: `${e}` });
             return;
         }
+        // a newer request (Off, another model or provider, or this one again) came while the tap loaded: it owns the worker and the tap
+        if (request !== this.request) return;
         const baseUrls = [...this.options.localBaseUrls.map(u => `${u}${id}/`), StemModels[id].remoteBaseUrl];
         this.post({ type: 'load', model: id, baseUrls, executionProvider, wasmPath: this.options.wasmPath });
         this.tap?.port.postMessage({ on: true });
@@ -279,6 +286,7 @@ export class StemSeparator {
     }
 
     dispose() {
+        this.request++;
         this.tap?.port.postMessage({ on: false });
         this.tap?.disconnect();
         this.tapSink?.disconnect();
