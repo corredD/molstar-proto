@@ -44,8 +44,10 @@ beat cycle, the status) reads the **presented frame** (`audio-presented-frame.ts
 raw, stems, drives, scope slots, route values and visualizer arrays as they were when what is heard now was analysed.
 The reactor, the stems timing and the router (releases, onsets) run in real time on the live state. The clock is a port
 (`AudioOutputClock`; `webAudioOutputClock` reads `currentTime` and `outputLatency` live, 0 while the context is not
-running or where the browser has no `outputLatency`, clamped to 2 s). The presented objects keep their identity and
-nothing is allocated per frame. No flush on pause, stop or clear: the device still plays the last `outputLatency`.
+running or where the browser has no `outputLatency`, clamped to 2 s). The presented entry steps one per frame (at most
+one behind the read rule, never ahead of what is heard), so tick jitter does not alternate hold and skip. What reads
+the presented frame as sound (beat cycle, song detection) gates on the status's `heardPlaying`, not on the live
+`playing` (the transport). The presented objects keep their identity and nothing is allocated per frame. No flush on pause, stop or clear: the device still plays the last `outputLatency`.
 
 ## 3. One frame
 

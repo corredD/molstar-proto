@@ -91,15 +91,18 @@ manager has no audio and no Who.
   the analyser buffer (heard-frame, 2026-11-27; it read the oldest, ~78 ms late for ambient-pulse at 48 kHz; the two
   ambient-pulse goldens moved, on purpose).
 - **`audio-presented-frame.ts`** (new, heard-frame, 2026-11-27, tested): `AudioPresentedFrame`, a ring of the last 256
-  ticks of audio state read at what is heard (`currentTime − outputLatency`), allocated once; the `AudioOutputClock`
-  port and its `webAudioOutputClock` adapter. *votr only*.
+  ticks of audio state read at what is heard (`currentTime − outputLatency`), allocated once; one entry per frame (a
+  one-sided hysteresis: at most one entry behind the read rule, never ahead); each entry carries `playing`; the
+  `AudioOutputClock` port and its `webAudioOutputClock` adapter. *votr only*.
 - **`audio-reactive-animation.ts`**: the manager. `setRouteAffect` and `pickRouteAffect` return false when refused (a 9th
   narrowed route, D3). A read-only `routeValues` getter (next to `frame`, `stems` and `drives`) lets the offline pipeline
   spec (`manager/_spec/audio-pipeline.spec.ts`, which drives the real `tick`) read each frame's route values (measure,
   2026-11-27; no behaviour change). The test fakes set two private fields (`audioContext`, `analyser`) through one
   documented cast in `_spec/audio-pipeline-helper.ts`. The getters, `tick`'s return and the status read the presented
   frame (what is heard; the same objects every frame, no spread or new Map per status emission); the constructor takes
-  `AudioReactivePorts` (`createContext`, `outputClock`) with browser defaults (heard-frame, 2026-11-27). *needs work*: `tick` skips `router.update` without audio (drives
+  `AudioReactivePorts` (`createContext`, `outputClock`) with browser defaults; the status adds `heardPlaying` (playing as
+  heard, for the beat cycle and the song detector; `playing` stays live for the transport) and documents its presented
+  objects as shared, `Readonly` (heard-frame, 2026-11-27). *needs work*: `tick` skips `router.update` without audio (drives
   freeze); `stemModel` description says WebGPU only.
 - **Measuring stick (measure, 2026-11-27; test and tooling only)**: `mol-plugin-state/manager/_spec/audio-pipeline-helper.ts` and
   `audio-pipeline.spec.ts` (offline pipeline, golden traces, drives the real `tick`), and `scripts/votr-sync/clicksync.mjs`
