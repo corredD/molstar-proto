@@ -178,6 +178,8 @@ export class AudioRouter {
     scopeCount = 0;
 
     update(routes: readonly AudioRoute[], frame: AudioReactiveFrame<DefaultAudioBandKey>, stems: StemLevels, dtMs: number) {
+        // a non-finite dt counts as 0: no release, no average step
+        if (!Number.isFinite(dtMs)) dtMs = 0;
         for (const t of Object.keys(this.drives) as AudioRouteTarget[]) this.drives[t] = 0;
         this.scopes.length = 0;
         // first every route's value, then the duck they add up to, then each route's share of its channel
@@ -186,7 +188,9 @@ export class AudioRouter {
         for (const route of routes) {
             let state = this.states.get(route.id);
             if (!state) this.states.set(route.id, state = { previous: 0, peak: OnsetPeakFloor, songAverage: 0, value: 0 });
-            const raw = getAudioRouteSourceValue(route.source, frame, stems);
+            // a non-finite source reads as 0: one NaN frame must not stay in the route's state for good
+            const read = getAudioRouteSourceValue(route.source, frame, stems);
+            const raw = Number.isFinite(read) ? read : 0;
             let input = raw;
             if (route.source === 'songLoudness' && route.mode === 'level') {
                 // the first frame starts the average; after that it follows over SongAverageMs
