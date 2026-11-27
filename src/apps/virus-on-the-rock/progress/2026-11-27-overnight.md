@@ -105,3 +105,49 @@ Not tonight (comments, left in the queue): 8 (`hasNoise` gate), 10 (per-frame hi
   `router.reset()`; with a delay, the paused branch keeps reading the analyser until the delay has drained.
 - **Tests:** pause → every drive 0 within the longest release (+1 frame); a released drive is exactly 0 (not 4e-323);
   Clear → drives 0 at once; with delay D, drives follow the tail for D after pause.
+
+## Built
+
+Eight lanes, each with a brief, failing tests first, a reviewer and a skeptic (Opus), a fix step, then a PR into
+`votr/overnight` merged by the coordinator. Staging at `12ddd185a`: lint 0 errors, tsc clean, jest 21 suites / 210
+tests (126 before the night), `--prd` build done.
+
+| PR | Lane | What it changed | How it was proven |
+| --- | --- | --- | --- |
+| #71 | `measure` | offline harness driving the real manager, golden traces, per-cell comparator; `scripts/votr-sync/clicksync.mjs --port` with a heard column | parity 0 against the old copy over 9 runs; gain × 2 → 2.00 |
+| #68 | `motions-follow-routes` | no route on a motion that is off; a route edit turns its motion on; song/model loads keep the user's motion choices | 10-preset probe; browser 5/5 |
+| #69 | `redraw-and-axes-cache` | glow/hue redraw on change only; symmetry-axes cache hits | provider reads 2,1,1,1 (was 2,2,2,2) |
+| #67 | `stem-separator-edges` | a stale model request no longer loads; a failed tap setup can be retried | fakes, red first |
+| #70 | `narrowed-slots` (D3) | at most 8 narrowed routes on every path (load, import, old files); the 9th never moves the whole view | browser: 9 → 8 narrowed, note once |
+| #72 | `heard-frame` (review 1) | every consumer reads one presented frame delayed by the output latency; analysis reads the newest samples | exact k-frame shift at L = 100/200 ms; no false song change on resume |
+| #74 | `heard-phase` | the read rule no longer locks a frame behind; no judder at 60/120/144 Hz | Chrome: presented − live ≈ 95 → ≈ 50 ms (one 50 ms frame) |
+| #73 | `sound-stops` (D2) | floors only while heard; every drive exactly 0 after the sound stops; the stem delay's tail is followed; Clear resets | Chrome: all drives exactly 0 ≈ 3.05–3.26 s after Pause (was: wiggle held 0.2 forever) |
+
+### Before / after (Ludo's Chrome, Drums & Bass Burst, click track)
+
+| | Before the night | After |
+| --- | --- | --- |
+| kick → peak against what is heard, 192 ms output (Bluetooth/AirPlay) | −156 ms (burst before the kick) | not measurable at the end of the night (the device was not connected); offline: the picture shifts by exactly ⌈L/frame⌉ |
+| kick → peak against what is heard, 32 ms output, 50 ms frames | ≈ +14 ms live, no compensation | +51 / +58 / +65 ms (one frame of quantisation + analysis) |
+| presented − live drive | — | ≈ 50 ms at 50 ms frames (≈ 95 ms before heard-phase) |
+| drives after Pause | wiggle 0.2 forever, symAxis 1.9 at +416 ms, denormal tails | exactly 0 after ≈ 2.1 s (kick, 60 fps offline) / ≈ 3.3 s (20 fps in a background tab) |
+| Ambient Pulse | one route moved nothing | every route moves |
+| 9th narrowed route | moved the whole capsid | refused (widened to All) |
+
+### Decided overnight — Ludo to confirm
+
+1. The rest cut-off `AudioRestCutoff = 1e-3` (TODO 13).
+2. Exponential rest with the formula bound (`releaseMs · ln(v / 1e-3)`, ≤ 2.7 s for Drums & Bass Burst), not "release
+   + 1 frame" (impossible with an exponential release).
+3. Stop, a new source and Clear cut the stem delay's tail (listen for a click with stems on).
+4. Floors off before the first play and whenever nothing is heard; `heardPlaying` means heard.
+5. A route edit (new, enabled, retargeted onto another motion) turns its motion on; gain/floor/curve edits never do;
+   a song or model load keeps the motion flags.
+
+### Ludo checks by ear (each needs a real device)
+
+- On the Bluetooth/AirPlay output (192 ms last night): the capsid bursts **with** the kick, not before.
+- Stems on (SCNet): a new song shows no "analysis blocked" warning; Pause lets the delayed tail play and the capsid
+  follows it, then rests; Stop is silent at once, with no click.
+- A 120 Hz display: no judder in the burst.
+- Pause on a song at 60 fps: the capsid comes to a full stop in ≈ 2–3 s (no wiggle left).

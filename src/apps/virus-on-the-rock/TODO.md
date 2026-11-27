@@ -11,10 +11,17 @@ itself is still open there: Ludo reorders this list).
 
 ### Overnight 2026-11-27
 
-The review of 2026-11-26 ([progress/2026-11-26-audio-review.md](progress/2026-11-26-audio-review.md)) is being built
-on `votr/overnight` as seven lanes ([progress/2026-11-27-overnight.md](progress/2026-11-27-overnight.md)); items 1, 2
-and 13 below are in them. Left for later: review items 8 (`hasNoise` gate), 10 (hierarchy syncs per frame in every
-app, D12) and 12 (`packSlot` ranges).
+Built on `votr/overnight` ([progress/2026-11-27-overnight.md](progress/2026-11-27-overnight.md#built)): items 1 (D2),
+2 (D3) and 13 below, and review items 1, 2, 4, 5, 7, 9, 11 of
+[progress/2026-11-26-audio-review.md](progress/2026-11-26-audio-review.md). Left from the night, in order:
+
+- **A pause shorter than the stem delay** then resume still raises "analysis blocked" for a moment (sound-stops,
+  measured 11.4–12.9 s in a probe with a 6 s delay).
+- **Releases slow below 30 fps** (the loop caps a frame at 33 ms): at 20 fps every drive rests ≈ 3.26 s after Pause
+  instead of ≤ 2.7 s; the shader motion and the rest bound assume real time.
+- **Per-frame allocations left**: `AudioReactor.analyze` and `AudioRouter.update` allocate every frame; the status
+  object per emission (≤ 30 Hz); the hierarchy syncs in every app (review item 10, D12).
+- Review items 8 (`hasNoise` gate) and 12 (`packSlot` ranges); Safari has no `outputLatency` (latency 0 there).
 
 ### Broken items
 
