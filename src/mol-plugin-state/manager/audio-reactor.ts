@@ -133,12 +133,13 @@ export function createEmptyAudioReactiveFrame<K extends string>(bands: readonly 
     };
 }
 
-export function getEffectiveAudioReactorSampleRate<K extends string>(params: AudioReactorParams<K>, inputSampleRate: number) {
+export function getEffectiveAudioReactorSampleRate(params: Pick<AudioReactorParams, 'analysisSampleRate'>, inputSampleRate: number) {
     if (params.analysisSampleRate <= 0) return inputSampleRate;
     return Math.min(params.analysisSampleRate, inputSampleRate);
 }
 
-export function getAudioReactorInputSampleCount<K extends string>(params: AudioReactorParams<K>, inputSampleRate: number) {
+/** the samples one analysis reads (its window), at the input rate */
+export function getAudioReactorInputSampleCount(params: Pick<AudioReactorParams, 'fftSize' | 'analysisSampleRate'>, inputSampleRate: number) {
     const effectiveSampleRate = getEffectiveAudioReactorSampleRate(params, inputSampleRate);
     return Math.max(params.fftSize, Math.ceil(params.fftSize * inputSampleRate / effectiveSampleRate));
 }
