@@ -760,14 +760,15 @@ export class AudioReactiveAnimationManager {
 
     /**
      * `silent`: nothing is heard `leadS` from now (not playing, the delay line drained): the band stand-ins, from the
-     * silent analysis. `leadS`: how far ahead of what is heard the stems are sampled (0 without lookahead)
+     * silent analysis. `delayS`: the heard delay, the delay node's (as tick's). `leadS`: how far ahead of what is heard
+     * the stems are sampled (0 without lookahead)
      */
-    private updateStems(dtMs: number, silent: boolean, leadS: number) {
+    private updateStems(dtMs: number, silent: boolean, delayS: number, leadS: number) {
         const params = this.state.params.value;
         let separated: StemLevels | undefined;
         if (!silent && this.separator && this.audioContext && params.stemModel !== 'off') {
             // the audio heard leadS from now entered the graph one delay ago, plus leadS
-            const at = this.clockNow - getAudioDelaySeconds(params) + leadS;
+            const at = this.clockNow - delayS + leadS;
             separated = this.separator.sample(at, dtMs, params.bandAttackMs, params.bandReleaseMs);
         }
         this.stemsSeparated = !!separated;
@@ -886,7 +887,7 @@ export class AudioReactiveAnimationManager {
                 writeSpectrumSamples(this.frequencyDomainData, this.visualization.spectrum);
                 this.currentFrame = this.reactor.analyze(this.timeDomainData, sampleRate, dtMs);
             }
-            this.updateStems(dtMs, !(stemLeadS > 0 ? this.heardAt(playing, stemLeadS) : heard), stemLeadS);
+            this.updateStems(dtMs, !(stemLeadS > 0 ? this.heardAt(playing, stemLeadS) : heard), delayS, stemLeadS);
             this.router.update(this.state.routes.value, this.currentFrame, this.currentStems, dtMs, heard);
         } catch (e) {
             error = `${e}`;

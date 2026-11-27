@@ -875,6 +875,23 @@ describe('audio pipeline (offline, 16 ms frames at 48 kHz)', () => {
             }
         });
 
+        it('the stems are sampled one heard delay back, the delay node\'s (as heardUntil and the lead), not the params\'', () => {
+            // the node reads 1.2 s from frame 100 while the params say 1 s (a browser shows a setValueAtTime a render quantum later)
+            type Nodes = { delayNode: { delayTime: { value: number } }, analysisDelayNode: { delayTime: { value: number } } };
+            const t = lookaheadRun(getDefaultAudioRoutes, burst, true, 0, {
+                durationS: 3,
+                onFrame: ({ index, manager }) => {
+                    if (index !== 99) return;
+                    const n = manager as unknown as Nodes;
+                    n.delayNode.delayTime.value = 1.2; n.analysisDelayNode.delayTime.value = 1.2 - BurstLeadS;
+                },
+            });
+            const stemLead = BurstLeadS - 0.030;
+            const after = t.stemSamples.filter(x => x.index >= 100);
+            expect(after.length).toBeGreaterThan(50);
+            for (const x of after) expect([x.index, x.time]).toEqual([x.index, expect.closeTo((x.index + 1) * F / 1000 - 1.2 + stemLead, 9)]);
+        });
+
         for (const how of ['pause', 'end of file'] as const) {
             it(`${how} mid-kick, D 1 s: the drives are the unpaused run's until stop + D - lead, heard playing until stop + D`, () => {
                 const at = 3.27; // the kick at 3.25 s rings until 3.37 s
