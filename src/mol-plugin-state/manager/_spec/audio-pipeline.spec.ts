@@ -686,6 +686,25 @@ describe('audio pipeline (offline, 16 ms frames at 48 kHz)', () => {
             expect(r.wrong).toEqual([]);
         });
 
+        for (const L of [0, 0.1]) {
+            it(`clear mid-release while paused, latency ${L * 1000} ms: the last status emitted carries zero drives and route values (review S1)`, () => {
+                const atEmission: number[] = [];
+                let sub: { unsubscribe(): void } | undefined;
+                runAudioPipeline(kickTrack(), getDefaultAudioRoutes(), {
+                    analysis: burst, durationS: 6, paused: [[3, 10]], outputLatency: L,
+                    onFrame: ({ index, manager: m }) => {
+                        if (index !== 230) return;
+                        // the values as emitted, not read back through the presented objects later
+                        sub = m.state.status.subscribe(st => atEmission.push(Math.max(...Object.values(st.drives), ...st.routeValues.values())));
+                        expect(atEmission[0]).toBeGreaterThan(0); // releasing still
+                        m.clear();
+                    },
+                });
+                sub?.unsubscribe();
+                expect(atEmission[atEmission.length - 1]).toBe(0);
+            });
+        }
+
         it('the source removed: the last status emitted says not heard playing', () => {
             const statuses: boolean[] = [];
             let sub: { unsubscribe(): void } | undefined;

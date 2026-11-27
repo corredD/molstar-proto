@@ -275,6 +275,8 @@ export class AudioReactiveAnimationManager {
     private lastUiUpdateMs = 0;
     /** heardPlaying of the last status emitted: a change is emitted at once, not throttled */
     private emittedHeardPlaying = false;
+    /** presented.atRest of the last status emitted: coming to rest is emitted at once (after clear, a release) */
+    private emittedAtRest = true;
     private lastTickMs = 0;
     private silenceWhilePlayingMs = 0;
     private reactor = new AudioReactor();
@@ -498,9 +500,10 @@ export class AudioReactiveAnimationManager {
     }
 
     private updateStatus(error?: string, force = false, timeMs = 0) {
-        if (!force && this.presented.playing === this.emittedHeardPlaying && timeMs - this.lastUiUpdateMs < 32) return;
+        if (!force && this.presented.playing === this.emittedHeardPlaying && this.presented.atRest === this.emittedAtRest && timeMs - this.lastUiUpdateMs < 32) return;
         this.lastUiUpdateMs = timeMs;
         this.emittedHeardPlaying = this.presented.playing;
+        this.emittedAtRest = this.presented.atRest;
         const audio = this.state.audioPlayer.value;
         this.state.status.next({
             sourceLabel: this.sourceLabel,
@@ -764,8 +767,10 @@ export class AudioReactiveAnimationManager {
                 clearAudioReactiveVisualization(this.visualization);
             }
             this.presentFrame(false);
-            // the status follows the presented frame until what is heard has come to rest too
-            if (cleared || this.presented.playing !== this.emittedHeardPlaying || !areFramesClose(this.presented.frame, EmptyAudioReactiveFrame)) this.updateStatus(void 0, false, timeMs);
+            // the status follows the presented frame until what is heard has come to rest too, the drives and route values too
+            if (cleared || this.presented.playing !== this.emittedHeardPlaying || this.presented.atRest !== this.emittedAtRest || !areFramesClose(this.presented.frame, EmptyAudioReactiveFrame)) {
+                this.updateStatus(void 0, false, timeMs);
+            }
             return this.presented.frame;
         }
 
