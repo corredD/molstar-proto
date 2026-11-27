@@ -147,11 +147,13 @@ describe('audio routing with a non-finite source', () => {
         createAudioRoute({ enabled: true, source: 'amplitude', mode: 'level', target: 'cameraZoom', gain: 1, floor: 0, releaseMs: 200 }),
         createAudioRoute({ enabled: true, source: 'bass', mode: 'level', target: 'wiggle', gain: 1, floor: 0, releaseMs: 200 }),
     ];
+    // the bad frame is silent apart from its non-finite value, so a route that reads it as 0 equals a fresh one
+    const Silent = { drums: 0, bass: 0, other: 0, vocals: 0 };
     const bad = {
-        'a NaN stem': { frame: EmptyFrame, stems: { ...Stems, drums: NaN, bass: NaN }, dt: 16 },
-        'an infinite stem': { frame: EmptyFrame, stems: { ...Stems, drums: Infinity, bass: -Infinity }, dt: 16 },
-        'a NaN band and amplitude': { frame: { ...EmptyFrame, amplitude: NaN, frequencyBands: { ...EmptyFrame.frequencyBands, bass: NaN } }, stems: Stems, dt: 16 },
-        'a NaN dtMs': { frame: EmptyFrame, stems: Stems, dt: NaN },
+        'a NaN stem': { frame: EmptyFrame, stems: { ...Silent, drums: NaN, bass: NaN }, dt: 16 },
+        'an infinite stem': { frame: EmptyFrame, stems: { ...Silent, drums: Infinity, bass: -Infinity }, dt: 16 },
+        'a NaN band and amplitude': { frame: { ...EmptyFrame, amplitude: NaN, frequencyBands: { ...EmptyFrame.frequencyBands, bass: NaN } }, stems: Silent, dt: 16 },
+        'a NaN dtMs': { frame: EmptyFrame, stems: Silent, dt: NaN },
     };
 
     for (const [name, { frame, stems, dt }] of Object.entries(bad)) {
