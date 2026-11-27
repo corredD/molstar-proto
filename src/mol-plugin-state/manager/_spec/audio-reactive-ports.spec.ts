@@ -70,7 +70,7 @@ describe('AudioReactiveAnimationManager ports', () => {
             fftSize: 2048, smoothingTimeConstant: 0, get frequencyBinCount() { return 1024; },
             getFloatTimeDomainData() { }, getByteFrequencyData() { },
         });
-        let delays = 0;
+        let delays = 0, sink: (Node & { gain: { value: number } }) | undefined;
         const delayNodes: (Node & { delayTime: { value: number } })[] = [];
         const ctx = {
             sampleRate: 48_000, currentTime: 0, state: 'running', destination: node('destination'),
@@ -81,7 +81,7 @@ describe('AudioReactiveAnimationManager ports', () => {
                 delayNodes.push(d);
                 return d;
             },
-            createGain: () => node('sink', { gain: { value: 1 } }),
+            createGain: () => (sink = node('sink', { gain: { value: 1 } }) as Node & { gain: { value: number } }),
             resume: async () => { }, close: async () => { },
         };
         const ports: AudioReactivePorts = { createContext: () => ctx as unknown as AudioContext, outputClock: () => ({ now: () => 0, latency: () => 0 }) };
@@ -94,6 +94,8 @@ describe('AudioReactiveAnimationManager ports', () => {
         await manager.play();
         // what is heard: source -> delay -> speakers; what is analysed: source -> analysis delay -> analyser -> silent sink
         expect(log).toEqual(['source->delay1', 'delay1->destination', 'source->delay2', 'delay2->analyser', 'analyser->sink', 'sink->destination']);
+        // the analysis branch reaches the speakers only through a silent sink: else it is heard the lead ahead (a pre-echo)
+        expect(sink!.gain.value).toBe(0);
         const flushed = (heard: number, analysed: number) => [
             `source-x-delay${heard}`, `delay${heard}-x-all`, `source->delay${analysed + 1}`, `delay${analysed + 1}->destination`,
             `source-x-delay${analysed}`, `delay${analysed}-x-all`, `source->delay${analysed + 2}`, `delay${analysed + 2}->analyser`,
