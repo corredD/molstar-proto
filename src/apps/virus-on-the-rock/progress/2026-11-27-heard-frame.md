@@ -192,21 +192,19 @@ frame jitter makes run-to-run differences of ~10 ms; the one-behind lock did not
 
 | # | Finding | Reviewer | Skeptic | Grade | Outcome |
 |---|---|---|---|---|---|
-| 1 | Song detector and beat cycle gate on the live `playing` while reading the presented frame: a resume heard L late is fed as playing (L = 0.7 → 'gap') | found (j/song, j/resume probes) | confirmed (per the fix brief) | should | fixed: 13c2f8708 (core, `heardPlaying`), aa6ed01f1 (app) |
-| 2 | The read rule alternates hold and skip when L is near a frame multiple, with tick jitter | found (j/jit probe) | confirmed (sk/rule.mjs; per the fix brief) | should | fixed: ebfe3538b |
+| 1 | Song detector and beat cycle gate on the live `playing` while reading the presented frame: a resume heard L late is fed as playing (L = 0.7 → 'gap') | should (j/song, j/resume probes) | confirmed for the gap (L 0 [], 0.2 [], 0.7 ["gap"]); beat-cycle part plausible by reading; low reach (needs L ≥ 0.6 s) | should | fixed: 13c2f8708 (core, `heardPlaying`), aa6ed01f1 (app) |
+| 2 | The read rule alternates hold and skip when L is near a frame multiple, with tick jitter | should (j/jit: 440/818/441 at 60 Hz, L 200 ms) | confirmed for the rule (≈4–44 % hold or skip by clock step, sk/fix.mjs); browser clock step unmeasured; the reviewer's fix drifts (variant a loses the compensation, b runs up to a frame early) | should | fixed: ebfe3538b |
 | N1 | Same with an audio clock in quanta (j/quant); the fix must not present early | — (j/quant is the reviewer's probe) | new (sk/fix.mjs, fix-steady.mjs: variants pm1, asym) | should | fixed with the skeptic's one-sided variant (c): ebfe3538b |
-| 3 | (content not in the fix brief) | found | no defect (per the fix brief) | nit | left as is |
-| 4 | The plain-copy offset test passes with the copy offset reverted (peak is computePeak's) | found (m/probe.ts) | not given to the fix step; the skeptic planted the mutant in `audio-reactor.ts` and restored it (backup sk/audio-reactor.ts.bak identical to HEAD, git status clean) | nit | fixed: 4c790bab8 |
-| 5 | not handed to the fix step | — | — | — | coordinator: verdict from the gate |
-| 6 | not handed to the fix step | — | — | — | coordinator: verdict from the gate |
-| 7 | The 2 s latency clamp exceeds the ring span (1.07 s at 240 Hz) | found | not given to the fix step | nit | documented, ring kept at 256: f58b34853 |
-| 8 | The status's presented objects are shared across emissions, undocumented | found | not given to the fix step | nit | documented + Readonly: 58f619c49 |
-| 9 | No spec injects the ports through the constructor | found | not given to the fix step | nit | `audio-reactive-ports.spec.ts`: 09274e90f |
-| 10 | Routing spec rest row: at which latency | found | not given to the fix step | nit | 664d90d8f |
+| 3 | The no-audio branch pushes and presents every frame | should ("a frame at rest does nothing") | refuted as a defect: the quote is not in the brief; the rule is "nothing allocated per frame at rest", met; the design requires the push | nit | left as is |
+| 4 | The plain-copy offset test passes with the copy offset reverted (peak is computePeak's) | nit (m/probe.ts) | confirmed by a mutant; the path is unreachable in production (offset 0 there); the skeptic planted the mutant in `audio-reactor.ts` and restored it (backup sk/audio-reactor.ts.bak identical to HEAD, git status clean) | nit | fixed: 4c790bab8 |
+| 5 | The allocation guard cannot see literals, closures, spread or subarray | nit | confirmed by reading; none in push/present today | nit | left as is (test strength) |
+| 6 | `scopes.length = scopeCount` may reallocate | nit | refuted: the count changes only on a route edit, slots pooled | — | dropped |
+| 7 | The 2 s latency clamp exceeds the ring span (1.07 s at 240 Hz) | nit | confirmed | nit | documented, ring kept at 256: f58b34853 |
+| 8 | The status's presented objects are shared across emissions, undocumented | nit | confirmed | nit | documented + Readonly: 58f619c49 |
+| 9 | No spec injects the ports through the constructor | nit | confirmed | nit | `audio-reactive-ports.spec.ts`: 09274e90f |
+| 10 | Routing spec rest row: at which latency | nit | confirmed | nit | 664d90d8f |
 
-Verdict cells: the fix brief gave the grades, N1's origin and "3: no defect"; the skeptic's verdict per finding
-otherwise was not handed to the fix step ("not given"); 5 and 6 were not in the fix brief at all. The coordinator fills
-them from the gate's text before the PR body.
+Verdicts from the reviewer's and skeptic's reports (coordinator).
 
 ## Built
 
