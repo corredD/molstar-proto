@@ -79,6 +79,13 @@ export type AudioReactiveVisualizationFrame = {
     spectrum: Float32Array<ArrayBuffer>,
 };
 
+/**
+ * The manager's status, emitted at most every 32 ms while audio plays (and at once on a user action).
+ * `frame`, `visualization`, `stems`, `drives` and `routeValues` are what is heard now (the presented frame): the SAME
+ * objects in every emission, rewritten in place each tick. Read them when the emission comes; do not keep them to
+ * compare with a later emission (they will have changed) and do not mutate them (every reader shares them). Copy what
+ * must outlive the emission.
+ */
 export type AudioReactiveStatus = {
     sourceLabel?: string,
     loaded: boolean,
@@ -92,16 +99,18 @@ export type AudioReactiveStatus = {
     heardPlaying: boolean,
     analysisBlocked: boolean,
     sampleRate?: number,
-    frame: AudioReactiveFrame<DefaultAudioBandKey>,
-    visualization: AudioReactiveVisualizationFrame,
-    /** each stem's level (0-1): from the separation model where it runs and keeps up, else from the bands */
-    stems: StemLevels,
+    /** the audio analysis as heard now; the same object every emission (see above) */
+    frame: Readonly<AudioReactiveFrame<DefaultAudioBandKey>>,
+    /** the visualizer's waveform and spectrum as heard now; the same object and arrays every emission */
+    visualization: Readonly<AudioReactiveVisualizationFrame>,
+    /** each stem's level (0-1): from the separation model where it runs and keeps up, else from the bands; the same object every emission */
+    stems: Readonly<StemLevels>,
     /** whether `stems` came from the separation model this frame */
     stemsSeparated: boolean,
     stemStatus: StemSeparatorStatus,
-    /** each visual channel's drive this frame (the sum of its routes) */
-    drives: AudioRouteDrives,
-    /** each route's value this frame, by route id */
+    /** each visual channel's drive as heard now (the sum of its routes); the same object every emission */
+    drives: Readonly<AudioRouteDrives>,
+    /** each route's value as heard now, by route id; the same Map every emission */
     routeValues: ReadonlyMap<number, number>,
     error?: string,
 };
