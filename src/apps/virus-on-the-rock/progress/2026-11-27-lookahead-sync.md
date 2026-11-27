@@ -189,3 +189,22 @@ comments and the card's help and titles.
 | NF2 `tick` takes D from the node, `updateStems` from the params | nit | confirmed | `f25c558d1` (the node in both; red before) |
 | NF3 routing spec row 70 names `sync.mjs`, not in the repo | info | confirmed | `5772a01be` (`data-local/tests/sync.mjs`, local only; clicksync's rest window) |
 | S4 with real HTDemucs the stem routes get ~no lookahead (stem lead max(0, 33 − 30) = 3 ms) | follow-up (coordinator) | measured, see Built › S4 | `8c8cba7f7` (per-model `timelineLeadSeconds`, hidden `stemTimelineLeadMs`), `72a2b9922` (clicksync `--stem-lead`); value: see below |
+
+## Stopped here (coordinator, 2026-11-27, Ludo: "stop, commit and push, I will continue on my workstation")
+
+The fix step was stopped during the S4 measurement; every gate fix above is committed and pushed. Left to do:
+
+1. **S4, choose HTDemucs' `timelineLeadSeconds`** (all three models still 0.030, the stub's value,
+   `stem-models.ts:48/59/70`). The fix step's runs were not recorded. Measure headed, each candidate:
+   `node scripts/votr-sync/clicksync.mjs --port <port> --stems htdemucs --delay 20 --lookahead --headed --seconds 30 --stem-lead <0|15|30>`
+   (≈ 4–5 min a run). Pick the value that centres drums-only and bass-only heard medians nearest 0; record the table
+   under Built; if the candidates cannot be told apart, keep 30 ms and say so. Coordinator's earlier 10 s runs (stem
+   lead 3 ms, ~60 ms frames): no lookahead full/drums/bass 40/40/31 ms, lookahead 47/52/24 ms. Note: HTDemucs drags
+   the render to ~16 fps in a Playwright window; check the frame rate in a normal Chrome window too.
+2. **Checks after the fixes** were not run as a set: `npm run lint`, `npx tsc --noEmit -p tsconfig.json`,
+   `npx jest src/apps/virus-on-the-rock src/mol-plugin-state src/mol-repr/structure`,
+   `node ./scripts/build.mjs -a virus-on-the-rock --prd`.
+3. **Browser check (brief):** `examples/angine.mp3` (Audio URL), HTDemucs, Audio Delay 20 s: the burst on the kick and
+   the bass; with lookahead and no model, D 0.25 s; the startup fallback with the stream unreachable.
+4. **PR** `gh pr create -R corredD/molstar-proto --base votr/overnight --head votr/lookahead-sync`, Review section from
+   the table above; open items: S3 (no gain ramp, the flush cuts as Stop does), S4 value, departures (a)–(i) for Ludo.
