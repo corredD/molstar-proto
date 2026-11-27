@@ -166,6 +166,21 @@ export function getAxisAnimationPatch(state: Pick<VirusOnTheRockState, 'axisMode
     };
 }
 
+/**
+ * The animation fields a preset sets over the current ones. 'replace' (a preset chip, startup) applies the preset
+ * whole, its motion flags too. 'keep' (a load of a model or a song) leaves the three motion flags as they are now: the
+ * user's, or a route's turning on, must not be undone by the load.
+ */
+export function getPresetAnimationPatch(current: AnimationProps, preset: Partial<AnimationProps>, mode: 'replace' | 'keep'): Partial<AnimationProps> {
+    if (mode === 'replace') return { ...preset };
+    return {
+        ...preset,
+        atomWiggleEnabled: current.atomWiggleEnabled,
+        instanceTumbleEnabled: current.instanceTumbleEnabled,
+        objectTransformEnabled: current.objectTransformEnabled,
+    };
+}
+
 export function getMotionTargetState(animation: AnimationProps) {
     return {
         atomWiggleEnabled: animation.atomWiggleEnabled,
