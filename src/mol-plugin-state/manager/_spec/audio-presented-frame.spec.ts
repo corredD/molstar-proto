@@ -71,8 +71,10 @@ describe('AudioPresentedFrame', () => {
         expect(p.frame.amplitude).toBe(14);
         p.present(10 * 0.016);
         expect(p.frame.amplitude).toBe(14);
-        p.present(17 * 0.016);
-        expect(p.frame.amplitude).toBe(16);
+        p.present(17 * 0.016); // the rule names 16, two past 14: the next entry, 15 (one per frame)
+        expect(p.frame.amplitude).toBe(15);
+        p.present(19 * 0.016); // three past: the rule, 18
+        expect(p.frame.amplitude).toBe(18);
     });
 
     it('equal stamps (a frozen clock) keep the ring; the newest of them is presented', () => {
@@ -149,7 +151,7 @@ describe('AudioPresentedFrame', () => {
         const p = new AudioPresentedFrame(96, 56);
         const l = liveState();
         l.live.scopes.push({ kind: 2, drive: 0.5, affect: { level: 'all' } }, { kind: 6, drive: 0.1, affect: { level: 'all' } });
-        for (let x = 0; x < 10; x++) { l.set(x); l.push(p, (x + 1) * 0.016); p.present(x * 0.016 - 0.1); }
+        for (let x = 0; x < 10; x++) { l.set(x); l.push(p, (x + 1) * 0.016); p.present((x + 1) * 0.016 - 0.1); }
         const held = [p.frame, p.frame.frequencyBands, p.frame.bandOnsets, p.frame.bandProminence, p.frame.raw, p.frame.raw.frequencyBands,
             p.drives, p.stems, p.routeValues, p.scopes, p.scopes[0], p.scopes[1], p.scopeKind, p.scopeDrive, p.visualization,
             p.visualization.waveform, p.visualization.spectrum];
@@ -184,6 +186,83 @@ describe('AudioPresentedFrame', () => {
             new (g.Map)();
         } finally { g.Map = saved; }
         expect(constructed).toBe(1);
+    });
+});
+
+/** a seeded generator, one per run */
+function random(seed: number) {
+    return () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+}
+
+/**
+ * Pushes `n` ticks at `fps` with stamps from `stamp(i)` and presents each at stamp - `latency(i)`. Entry i carries
+ * amplitude i, so the presented amplitude is the presented entry. `rule` is the entry the read rule names alone (the
+ * newest stamped at or before the read time, else the oldest): the reference the presented entry is held to.
+ */
+function steadyRun(n: number, stamp: (i: number) => number, latency: (i: number) => number) {
+    const p = new AudioPresentedFrame(96, 56);
+    const l = liveState();
+    const stamps: number[] = [], read: number[] = [], rule: number[] = [], presented: number[] = [];
+    for (let i = 0; i < n; i++) {
+        l.live.frame.amplitude = i;
+        const t = stamp(i);
+        stamps.push(t);
+        l.push(p, t);
+        const r = t - latency(i);
+        read.push(r);
+        p.present(r);
+        let seq = i;
+        while (seq > Math.max(0, i + 1 - p.capacity) && stamps[seq] > r + 1e-9) seq--;
+        rule.push(seq);
+        presented.push(p.frame.amplitude);
+    }
+    /** over frames [from, to): holds (the same entry again), skips (2 or more entries), never early, at most one behind */
+    const stats = (from: number, to = n) => {
+        let holds = 0, skips = 0, early = 0, behindMax = 0, aheadMax = 0;
+        for (let i = from; i < to; i++) {
+            const step = presented[i] - presented[i - 1];
+            if (step === 0) holds++; else if (step >= 2) skips++;
+            if (stamps[presented[i]] > read[i] + 1e-9) early++;
+            behindMax = Math.max(behindMax, rule[i] - presented[i]);
+            aheadMax = Math.max(aheadMax, presented[i] - rule[i]);
+        }
+        return { holds, skips, early, behindMax, aheadMax };
+    };
+    return { stamps, rule, presented, stats };
+}
+
+describe('AudioPresentedFrame steady steps (the read rule holds one entry per frame)', () => {
+    it('60 Hz, latency 200 ms (12 frames exactly), ticks jittered +-1.5 ms: one entry per frame, never early, at most one behind', () => {
+        const rnd = random(1);
+        const run = steadyRun(2000, i => (i * 1000 / 60 + (rnd() * 2 - 1) * 1.5) / 1000, () => 0.2);
+        expect(run.stats(300)).toEqual({ holds: 0, skips: 0, early: 0, behindMax: 1, aheadMax: 0 });
+    });
+
+    it('a clock in 5.3 ms quanta (256 samples at 48 kHz), 60 Hz, latency 200 ms: one entry per frame', () => {
+        const quantum = 256 / 48000;
+        const run = steadyRun(600, i => Math.floor(i / 60 / quantum) * quantum, () => 0.2);
+        const s = run.stats(100);
+        expect([s.holds, s.skips, s.early, s.aheadMax]).toEqual([0, 0, 0, 0]);
+        expect(s.behindMax).toBeLessThanOrEqual(1);
+    });
+
+    it('a step of +-40 ms in the latency re-syncs within 2 entries of the rule', () => {
+        const rnd = random(2);
+        const L = (i: number) => (i >= 1000 && i < 2000 ? 0.24 : i >= 2000 && i < 3000 ? 0.16 : 0.2);
+        const run = steadyRun(4000, i => (i * 1000 / 60 + (rnd() * 2 - 1) * 1.5) / 1000, L);
+        for (let i = 300; i < 4000; i++) expect(Math.abs(run.presented[i] - run.rule[i])).toBeLessThanOrEqual(2);
+        // a few frames after each step: steady again (one entry per frame, never early, at most one behind)
+        for (const [from, to] of [[1010, 2000], [2010, 3000], [3010, 4000]]) {
+            const s = run.stats(from, to);
+            expect([s.holds, s.skips, s.early, s.aheadMax]).toEqual([0, 0, 0, 0]);
+            expect(s.behindMax).toBeLessThanOrEqual(1);
+        }
+    });
+
+    it('latency 0: every frame presents the newest entry (the rule unchanged)', () => {
+        const rnd = random(3);
+        const run = steadyRun(1000, i => (i * 1000 / 60 + (rnd() * 2 - 1) * 1.5) / 1000, () => 0);
+        run.presented.forEach((e, i) => expect(e).toBe(i));
     });
 });
 

@@ -204,14 +204,23 @@ export class AudioPresentedFrame {
     }
 
     /**
-     * Presents the newest entry stamped at or before `readTime`; with none, the oldest entry (start-up, a latency
+     * The rule: the newest entry stamped at or before `readTime`; with none, the oldest entry (start-up, a latency
      * longer than the ring). Never an entry older than the one presented now. Nothing pushed yet: nothing changes.
+     *
+     * One-sided hysteresis: when the rule names the next entry or the one after it, the next entry is presented. With
+     * the read time a frame's multiple behind the stamps (L = 200 ms at 60 Hz), tick jitter or a clock in audio quanta
+     * makes the rule alone alternate hold and skip; this steps one entry per frame instead, at most one entry behind
+     * the rule and never ahead of it (never early). Any other jump follows the rule (a shorter latency, a stall), and
+     * the monotonic hold covers a longer one. A latency that shrinks by less than two frames can leave the picture one
+     * entry behind the rule until a larger jump re-syncs it.
      */
     present(readTime: number) {
         if (this.pushed === this.first) return;
         const cap = this.capacity, s = this.scalars;
         let seq = this.pushed - 1;
         while (seq > this.first && s[(seq % cap) * ScalarStride + StampOffset] > readTime + 1e-9) seq--;
+        const next = this.presentedSeq + 1;
+        if (this.presentedSeq >= 0 && next >= this.first && (seq === next || seq === next + 1)) seq = next;
         if (seq <= this.presentedSeq) return;
         this.presentedSeq = seq;
 
