@@ -312,14 +312,14 @@ Skeptic's table (±1.5 ms jitter): holds and skips at the exact boundary 0 % at 
 
 | # | Finding | Reviewer / skeptic | Grade | Fix |
 |---|---|---|---|---|
-| 1 | the quarter-interval tolerance holds and skips at the boundary at 120 and 144 Hz (L = k frames, ±1.5 ms) | confirmed / confirmed | must | red test `001430886` (120 and 144 Hz, 0 holds and skips), fix `7d89312d2` (alt3) |
-| 2 | `_spec/audio-routing-spec.md` heard row names the old rule and lacks the Chrome numbers | confirmed | should | the read rule as built, the 49 ms numbers (presented − live 50 / 51 / 53 ms, ≈ 95 ms before; heard median 47 / 66 / 58 ms) and the 60 Hz caveat; the spec commit below |
-| 3 | the constants are not pinned from above and below | confirmed | should | `0d0b9aa01`: cap, floor and half pinned (below); 7 mutants run |
+| 1 | the quarter-interval tolerance holds and skips at the boundary at 120 and 144 Hz (L = k frames, ±1.5 ms: 7.3 / 11.2 %, old rule 0 %) | should (production-code probe) / confirmed in the model, jitter premise plausible | should | red test `001430886` (120 and 144 Hz, 0 holds and skips), fix `7d89312d2` (alt3) |
+| 2 | `_spec/audio-routing-spec.md` heard row names the old rule and lacks the Chrome numbers | should / confirmed | should | the read rule as built, the 49 ms numbers (presented − live 50 / 51 / 53 ms, ≈ 95 ms before; heard median 47 / 66 / 58 ms) and the 60 Hz caveat; the spec commit below |
+| 3 | the constants are not pinned from above and below | should / confirmed by mutants (0.3–1 and 3–9 ms passed 22/22) | should | `0d0b9aa01`: cap, floor and half pinned (below); 7 mutants run |
 | 4 | `architecture.md` §2 does not say the newest entry is exempt | confirmed | nit | the spec commit below |
 | 5 | at 60 Hz with L ≈ 32 ms the lag win is small | confirmed (0.79 vs 0.84) | nit | one sentence under Open, in the routing spec |
 | 6 | a noisy `outputLatency` is not modelled | confirmed | nit | modelled now (0.9 %), under Open |
 | N1 | the `MaxStepTolerance` docstring budget | confirmed | nit | docstring rewritten for 3 / ½ / 5 ms (`7d89312d2`) |
-| N2 | not in the material handed to this step | (none) | | left to the coordinator |
+| N2 | the tolerance is taken from the jittered stamp interval, not the frame period (≈ 1 ms at 144 Hz with ±1.5 ms), so a pure fraction fails at the boundary | — / skeptic, confirmed (bound2 144 Hz: ½ alone 0.9 %, with the 3 ms floor 0 %) | nit | fixed by the 3 ms floor, 7d89312d2 |
 
 Mutants run on `audio-presented-frame.ts` (the spec file `audio-presented-frame.spec.ts`; 27 tests, all pass unmutated):
 
