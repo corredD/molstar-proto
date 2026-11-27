@@ -170,10 +170,13 @@ heard-frame's 42 ms run lacked). Open: heard-frame's 42 / 38 / 54 ms is not repr
   D 1 s, blocked from 3 s, not before) failed too (blocked from 2 s). Two D = 1 s tests changed in their first second
   (separator samples, heardPlaying): they now start at D. Every D = 0 test and golden unchanged.
 - 8324c5596 S1 (core): `AudioPresentedFrame.atRest` (every presented drive and route value 0, computed in `present`,
-  no allocation); the manager emits on its edge (`emittedAtRest`, bypassing the 32 ms throttle) and the no-audio gate
-  also emits on it. Red: clear() mid-release while paused, L 0 and 100 ms: last emission carried 0.369.
+  no allocation); the no-audio gate also emits on its edge (`emittedAtRest`). The throttle bypass added with it was
+  unproven (a mutant without it passed: clear()'s forced emission resets the throttle) and would emit more while
+  playing: removed in 950d4ce25. Red: clear() mid-release while paused, L 0 and 100 ms: last emission carried 0.369.
 - 93c4271b1 N3 (test): quiet end of the file in the tail (media silent from 4 s, ended 6.5 s, D 3 s: 2.5 s of heard
   silence) is not blocked; mutant (`playing &&` removed) fails it. The stop test's release to 12 digits.
+- Follow-up guard (test): a resume inside the tail (D 1 s, paused 3–3.5 s) is heard straight through; mutant (always
+  prime on resume) fails it.
 - 1b8f9bfa9 N4 (test): a non-zero onset `previous` held through frames not heard; mutant (`previous = heard ? raw : 0`)
   fails it, the old guard passes the mutant.
 - Probes: resume inside the tail (pause 3–7 s, D 6 s) still raises `analysisBlocked` 11.4–12.9 s (the pause's silence
@@ -218,6 +221,11 @@ Stop, a new source and Clear flush the line; Clear resets the router; the clip p
   (realistic, no golden pauses). Not in the design: the separator still samples by the param's delay (equal to the
   node's).
 
+- Gate fix step (builder, Ludo to confirm): while the empty line plays there is no floor and no stem sample (one
+  notion of heard); a pause of 2 s < P < D is still heard as heard after the resume (the coordinator's rule, the
+  interval rule is the candidate); the stop listener reads the tick's clock port, not `ctx.currentTime` (one time
+  base); `atRest` lives in `audio-presented-frame.ts` (core, own commit).
+
 ## Learned
 
 - 2000 frames of a 260 ms release end at 2.3e-53, not the review's 4e-323 (that is further on); either way never 0.
@@ -228,6 +236,10 @@ Stop, a new source and Clear flush the line; Clear resets the router; the clip p
 Production: 86 + / 29 − lines in two core files (`audio-reactive-animation.ts` 99 lines changed, `audio-routing.ts`
 16), against the design's ≈ 35: the clock moved to the top of tick (`readClock`), the doc comments, `flushDelayLine`
 (13 lines). Tests: ~300 lines (routing 6, pipeline 10, ports 1, cpu-channels 1) and the harness options.
+
+Gate fix step: the two core files now 67 + / 18 − (manager 70 lines changed, presented frame 15) since d9a2c77bf:
+`stoppedAt` and its listener, `primedUntil`, `getOutputClock` split out of `readClock`, `atRest`, and their doc
+comments. Tests: ~150 lines (pipeline 9, routing 1, harness options).
 
 ## Checks
 
@@ -241,5 +253,5 @@ tests depend on each other; the flush wiring tests came after the code, proven b
 annotated as built, not removed (the numbers below it are referenced).
 
 Gate fix step checks: `npm run lint` 0 errors (the same 2 warnings); `tsc` clean; jest (same four folders) 21 suites,
-199 tests pass; `--prd` build done (build/ removed). clicksync not re-run: the playing path with D = 0 is unchanged
+200 tests pass after the follow-ups; `--prd` build done (build/ removed). clicksync not re-run: the playing path with D = 0 is unchanged
 (goldens), the changes act after a stop or with D > 0.
