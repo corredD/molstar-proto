@@ -272,14 +272,15 @@ export class VirusOnTheRockApp {
     }
 
     private async initializeDefaults() {
+        // first, before any await: the delay lines are made with the lookahead's delay, and a song loaded or played while
+        // the structure loads finds lookahead on
+        this.viewer.plugin.managers.audioReactive.setParams(DefaultAudioSync);
         try {
             await this.loadPdb(DefaultPdbId);
         } catch (error) {
             this.viewer.plugin.log.error(`Failed to load default structure ${DefaultPdbId.toUpperCase()}: ${error}`);
         }
 
-        // before the first load: the delay lines are made with the lookahead's delay
-        this.viewer.plugin.managers.audioReactive.setParams(DefaultAudioSync);
         try {
             await this.loadDefaultAudio();
         } catch (error) {
