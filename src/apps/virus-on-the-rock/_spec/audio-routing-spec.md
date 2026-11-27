@@ -75,7 +75,7 @@ The last row is the committed behaviour. The drums route has a release of 260 ms
    reverted, and `audio-reactive-animation.ts` is identical to HEAD.
 2. **Song and model loads replaced the routes.** This broke rule 3. It was already in the committed code. Since the
    route sets moved to the Saved list, a load wiped a set or a single route that Ludo had built. It is fixed.
-3. **Many rebuilds while Ludo was testing.** This broke rule 5.
+3. **Many rebuilds while Ludo was testing.** This broke rule 6.
 
 ## Not measured yet
 

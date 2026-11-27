@@ -87,7 +87,8 @@ manager has no audio and no Who.
   targets exist only in the app); the router core is generic. A non-finite source or `dtMs` reads as 0 in
   `AudioRouter.update` (router-nan-guard, 2026-11-26; commit `audio routing: a non-finite source reads as 0…`).
 - **`audio-stems/`** (DSP tested): Spleeter, HTDemucs, SCNet runners, worker, separator. *votr only*; weights on
-  Hugging Face `resolve/main` (not pinned).
+  Hugging Face `resolve/main` (not pinned). `StemSeparator.onWorkerMessage` stores a non-finite worker energy as 0 (a NaN
+  in the model output stuck the running peaks and every stem level for good; router-nan-guard, 2026-11-26).
 - **`assembly-symmetry-axis.ts`**: axes per structure from RCSB symmetry; mesoscale parts share a middle (wip).
   *needs work*: imports `extensions/assembly-symmetry` from `mol-plugin-state`; header `@author OpenAI`.
 - **`audio-affect.ts`**: Who resolution and packing; mesoscale owners (wip). *votr only*.
