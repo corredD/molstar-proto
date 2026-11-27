@@ -91,8 +91,10 @@ manager has no audio and no Who.
   the analyser buffer (heard-frame, 2026-11-27; it read the oldest, ~78 ms late for ambient-pulse at 48 kHz; the two
   ambient-pulse goldens moved, on purpose).
 - **`audio-presented-frame.ts`** (new, heard-frame, 2026-11-27, tested): `AudioPresentedFrame`, a ring of the last 256
-  ticks of audio state read at what is heard (`currentTime − outputLatency`), allocated once; one entry per frame (a
-  one-sided hysteresis: at most one entry behind the read rule, never ahead); each entry carries `playing`; the
+  ticks of audio state read at what is heard (`currentTime − outputLatency`), allocated once; at a stamp boundary one
+  entry per frame, one behind the read rule, elsewhere the rule (heard-phase, 2026-11-27: the hysteresis applies only
+  when the read time is within a quarter interval of the newer stamp, so a late tick no longer leaves a lasting
+  frame of lag; never ahead of the rule, the newest entry never held back); each entry carries `playing`; the
   `AudioOutputClock` port and its `webAudioOutputClock` adapter. *votr only*.
 - **`audio-reactive-animation.ts`**: the manager. `setRouteAffect` and `pickRouteAffect` return false when refused (a 9th
   narrowed route, D3). A read-only `routeValues` getter (next to `frame`, `stems` and `drives`) lets the offline pipeline
