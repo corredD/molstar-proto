@@ -100,3 +100,86 @@ full preset x2: MEDIA median 40 ms (18..57) | HEARD median 11 ms (-11..26) | pea
 ```
 (media step ~40 ms per frame headless.)
 
+### Step 2: AudioPresentedFrame and the output clock (2af6f6dce)
+
+- Red: `audio-presented-frame.spec.ts` without the module: cannot find module (0 tests). Then 2 failures that were
+  the spec's own (its live fake wrote route values for the original route list), fixed in the spec.
+- The allocation guard is proven to bite: a `new Float64Array(1)` injected in `present` makes it count 1000 (reverted).
+- 13 tests: the read rule, exact stamps, the oldest before the first stamp, the clamp past the ring (300 pushes, cap
+  256 → entry 44), the monotonic cursor, equal stamps (frozen clock) keep the ring, a backward clock flushes, nothing
+  pushed changes nothing, a route edit (each entry its own ids and affects, Map and scopes keep their identity), the
+  route block growing (16 → 20 routes, older entries kept), the guard (1000 push + present: 17 handed-out objects keep
+  identity, 0 constructions of Map, Set, Array, Float32Array, Float64Array, Int32Array, Object), the spy's own control;
+  `webAudioOutputClock`: live reads, undefined / NaN / Infinity → 0, suspended / closed → 0, clamp [0, 2].
+
+### Step 3: the manager reads the presented frame (5af12fc3f)
+
+- Red (the 6 tests run on the unwired manager): 5 failed: latency 0 identity (status.drives was a spread, the frame
+  new each tick), the 7- and 13-frame shifts at 100 and 200 ms, the lag +7 / +13. Green after: every golden unchanged
+  at latency 0; presented[i] === live0[max(0, i − k)] (`toBe`) for 18 drives, 4 stems and every route value over a run
+  with a 3–5 s pause; kick → peak lag median, min and max each + k exactly (2 → 9 at 100 ms, 2 → 15 at 200 ms).
+- The no-audio branch (source removed at frame 200, 100 ms): the presented amplitude stays > 0 one frame after, is 0
+  at 200 + k + 1, and the status keeps emitting (throttled) until then, then stops.
+
+### clicksync after (headless Chromium, port 1350, outputLatency 32 ms, ~38 ms per frame)
+
+```
+full preset x1: MEDIA median 81 ms (65..98) | HEARD median 51 ms (33..68) | peak 12.45 | rest/peak 0.52
+drums only x1:  MEDIA median 78 ms (56..106) | HEARD median 48 ms (27..74) | peak 6.50 | rest/peak 0.32
+bass only x1:   MEDIA median 85 ms (64..98) | HEARD median 57 ms (32..68) | peak 6.09 | rest/peak 0.67
+full preset x2: MEDIA median 77 ms (60..100) | HEARD median 47 ms (29..71) | peak 25.07; gain x2 -> peak ratio 2.01
+```
+Heard moved +40 ms (11 → 51), not the +32 of the latency: at ~38 ms per frame headless, 32 ms of latency is one whole
+frame back (the newest entry at or before now − L). At 60 fps it is 2 frames, 33 ms. Every heard kick is ≥ 0 (min 27),
+the medians are within 50 ms + one frame (88 ms). Ludo's Chrome on Bluetooth/AirPlay is the check still to do
+(expected ≈ +36 ms median from the review's −156 ms).
+
+## Built
+
+- `audio-reactor.ts`: analyze reads the newest samples of a longer analyser buffer (ambient-pulse was ~78 ms late at
+  48 kHz).
+- `audio-presented-frame.ts` (new): `AudioPresentedFrame` (ring of 256 ticks, struct of arrays, presented objects
+  allocated once), `AudioOutputClock`, `webAudioOutputClock`.
+- `audio-reactive-animation.ts`: `AudioReactivePorts` (createContext, outputClock) with browser defaults; push +
+  present at the end of every tick branch; getters, `tick`'s return and the status read the presented objects;
+  `setRoutes` sizes the route block.
+- Spec pages: routing spec (heard row is the expectation, media for information), architecture §2/§3, core-changes.
+
+## Decided (by me, within the design)
+
+- **The clock is resolved per context in `tick`** (cached by context identity), not where the context is made: the
+  offline harness sets the private `audioContext` directly, so this is what makes it run the real `webAudioOutputClock`
+  on its fake context (the helper needed no change; `ports.createContext` is still the port `ensureAnalyser` uses).
+- **Deviation: the no-audio branch keeps emitting the status** (throttled) while the presented frame is not at rest.
+  Before, it emitted once when the live frame cleared; with the frame presented L late that one emission would show
+  the last heard values and freeze the overlay on them.
+- **Deviation: forced status emissions (setRoutes, setParams, stop, clear, play/pause events) show the last presented
+  values** until the next tick, where they showed the live router values (a new Map) before. No reader depends on it
+  (grepped: overlay, cards, beat cycle, song detector, core panel read status per emission).
+- **The step-1 goldens are in the fix's commit**, so every commit is green.
+- **The lag test runs without a pause**: `kickPeakStats` places kicks on the wall clock, so a paused run gives
+  meaningless lags; the shift test carries the pause.
+- `presented.routeValues` holds the current routes' values only (the router's Map can keep a removed route's value
+  until its states shrink): same for every reader.
+
+## Learned
+
+- The headless frame (~38 ms) quantizes the latency: the presented shift is ⌈L / frame⌉ frames, so 32 ms costs a
+  whole 38 ms frame headless and 33 ms at 60 fps.
+- Not fixed, listed: `reactor.analyze` and `router.update` allocate per frame (new frame object, new scope slots,
+  spread band records); the status object is still one allocation per emission (≤ 30 Hz). Safari has no
+  `outputLatency`: latency 0 there, as before (a fallback sampling `getOutputTimestamp` ~1/s is not built).
+
+## Size
+
+Brief ~200 production lines. Actual: `audio-presented-frame.ts` 254 (with docs), `audio-reactive-animation.ts`
++88 −30, `audio-reactor.ts` +11 −9: ~290. What took the room: the struct-of-arrays read/write per scalar set and the
+route block growth.
+
+## Checks
+
+- `npm run lint`: 0 errors (2 warnings, unused eslint-disable in `app.tsx` 541/547, not this lane's).
+- `npx tsc --noEmit -p tsconfig.json`: clean.
+- `npx jest src/apps/virus-on-the-rock src/mol-plugin-state src/mol-repr/structure src/mol-canvas3d`: 20 suites,
+  166 tests passed.
+- `node ./scripts/build.mjs -a virus-on-the-rock --prd`: built, then `build/` removed.
