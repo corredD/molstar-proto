@@ -500,7 +500,7 @@ export class AudioReactiveAnimationManager {
     }
 
     private updateStatus(error?: string, force = false, timeMs = 0) {
-        if (!force && this.presented.playing === this.emittedHeardPlaying && this.presented.atRest === this.emittedAtRest && timeMs - this.lastUiUpdateMs < 32) return;
+        if (!force && this.presented.playing === this.emittedHeardPlaying && timeMs - this.lastUiUpdateMs < 32) return;
         this.lastUiUpdateMs = timeMs;
         this.emittedHeardPlaying = this.presented.playing;
         this.emittedAtRest = this.presented.atRest;
