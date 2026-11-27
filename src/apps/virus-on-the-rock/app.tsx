@@ -39,7 +39,8 @@ import { BackgroundBaseColor, CpuChannels, type CpuChannelTarget } from './cpu-c
 import { createCanvas3DChannelTarget } from './canvas3d-channel-target';
 import { patchIfChanged } from './state-patch';
 import { AudioUrlPresets, DefaultAudioFallbackLabel, DefaultAudioFallbackUrl, DefaultAudioLabel, DefaultAudioUrl, DefaultEffectKnobs, DefaultPdbId, DefaultPresetName, FrameRadiusPadding, LargeStructureElementThreshold, LargeStructureLodLevels, MesoscaleExample, MesoscaleExamples, NearClipAfterCameraReset, RepresentationMode, getBlobSurfaceTypeParams, getDefaultMultiScaleOcclusionProps, getPetworldGroups, getSpacefillTypeParams } from './catalog';
-import { AxisCycleTarget, LoadedEntry, VirusOnTheRockState, createInitialState, getAssemblyOrderFromCycleTarget, getAxisAnimationPatch, getAxisOptions, getDefaultCycleTargets, getEnabledCycleOptions, getLocalAxisFromCycleTarget, getMotionTargetState, isLocalCycleTarget, sanitizeCycleTargets } from './state';
+import { AxisCycleTarget, LoadedEntry, VirusOnTheRockState, createInitialState, getAssemblyOrderFromCycleTarget, getAxisAnimationPatch, getAxisOptions, getDefaultCycleTargets, getEnabledCycleOptions, getLocalAxisFromCycleTarget, getMotionTargetState, getPresetAnimationPatch, isLocalCycleTarget, sanitizeCycleTargets } from './state';
+import { createRouteMotionsFollower } from './route-motions';
 import { VirusOnTheRockControls } from './ui/controls';
 
 function isAudioFile(file: File) {
@@ -161,6 +162,17 @@ export class VirusOnTheRockApp {
                 });
             }
         }));
+        // a route that needs a motion that is off turns it on, when the route is added, enabled or retargeted
+        const routeAudio = this.viewer.plugin.managers.audioReactive;
+        const followRoutes = createRouteMotionsFollower(routeAudio.state.routes.value, {
+            isOn: flag => this.state.value[flag],
+            turnOn: flag => {
+                this.setMotionTargetEnabled(flag, true).catch(error => {
+                    this.viewer.plugin.log.error(`Failed to turn on ${flag} for a route: ${error}`);
+                });
+            },
+        });
+        this.subscriptions.add(routeAudio.state.routes.subscribe(routes => followRoutes(routes)));
         this.subscriptions.add(this.viewer.plugin.managers.audioReactive.state.params.subscribe(values => {
             this.patchState({
                 wiggleEffectScale: values.wiggleEffectScale,
@@ -992,23 +1004,17 @@ export class VirusOnTheRockApp {
         });
 
         const options = this.viewer.plugin.managers.structure.component.state.options;
-        await this.viewer.plugin.managers.structure.component.setOptions({
-            ...options,
-            animation: {
-                ...options.animation,
-                ...preset.animation,
-                ...getAxisAnimationPatch(current),
-            }
-        });
+        const animation = {
+            ...options.animation,
+            ...getPresetAnimationPatch(options.animation, preset.animation, routes),
+            ...getAxisAnimationPatch(current),
+        };
+        await this.viewer.plugin.managers.structure.component.setOptions({ ...options, animation });
         await clearStructureWiggle(this.viewer.plugin, this.currentComponents);
         await this.applyCurrentAnimationToScene();
         this.patchState({
             activePreset: name,
-            ...getMotionTargetState({
-                ...options.animation,
-                ...preset.animation,
-                ...getAxisAnimationPatch(current),
-            })
+            ...getMotionTargetState(animation)
         });
     }
 

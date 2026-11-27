@@ -489,14 +489,27 @@ function toRouteSource(source: AudioReactiveSourceName): AudioRouteSource | unde
     }
 }
 
+/** the motion switch (an AnimationProps flag) a route target needs on to move anything; instanceWave and the rest need none */
+export const MotionFlagOfTarget: Partial<Record<AudioRouteTarget, 'atomWiggleEnabled' | 'instanceTumbleEnabled' | 'objectTransformEnabled'>> = {
+    wiggle: 'atomWiggleEnabled',
+    symAxis: 'instanceTumbleEnabled',
+    instanceRandom: 'instanceTumbleEnabled',
+    instanceAxis: 'instanceTumbleEnabled',
+    instanceNormal: 'instanceTumbleEnabled',
+    object: 'objectTransformEnabled',
+};
+
 /**
  * A preset's routes: its own, or made from its animation's audio sources (the presets from before the routing): the
  * wiggle source to the wiggle, the tumble source to the symmetry axes, an axis or random by its translation mode, the
  * object source to the whole object
  */
 export function getPresetRoutes(preset: AudioReactivePresetDefinition): AudioRoute[] {
-    if (preset.routes) return preset.routes();
+    // no route on a motion the preset turns off: it would move nothing (the defaults: wiggle and tumble on, object off)
     const a = preset.animation;
+    const on = { atomWiggleEnabled: a.atomWiggleEnabled !== false, instanceTumbleEnabled: a.instanceTumbleEnabled !== false, objectTransformEnabled: a.objectTransformEnabled === true };
+    const moves = (r: AudioRoute) => { const flag = MotionFlagOfTarget[r.target]; return !flag || on[flag]; };
+    if (preset.routes) return preset.routes().filter(moves);
     const routes: AudioRoute[] = [];
     const add = (source: AudioReactiveSourceName | undefined, target: AudioRouteTarget, gain = 1, floor = 0, mode: 'level' | 'onset' = 'level') => {
         const s = source && toRouteSource(source);
@@ -514,8 +527,8 @@ export function getPresetRoutes(preset: AudioReactivePresetDefinition): AudioRou
     } else {
         add(a.audioTumbleSource, tumbleTarget, a.audioTumbleStrength, a.audioTumbleFloor);
     }
-    if (a.objectTransformEnabled) add(a.objectTransformSource, 'object', a.objectTransformStrength, a.objectTransformFloor);
-    return routes;
+    add(a.objectTransformSource, 'object', a.objectTransformStrength, a.objectTransformFloor);
+    return routes.filter(moves);
 }
 
 export function getAudioReactivePreset(name: AudioReactivePresetName) {
