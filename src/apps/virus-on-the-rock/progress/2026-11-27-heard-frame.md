@@ -136,6 +136,69 @@ frame back (the newest entry at or before now − L). At 60 fps it is 2 frames, 
 the medians are within 50 ms + one frame (88 ms). Ludo's Chrome on Bluetooth/AirPlay is the check still to do
 (expected ≈ +36 ms median from the review's −156 ms).
 
+### Fix step (after the gate)
+
+- **2 + N1, one entry per frame (ebfe3538b, core).** Red, the reviewer's jit/quant probes and an L step ported into
+  `audio-presented-frame.spec.ts`: 60 Hz, L = 200 ms (12 frames exactly), ticks ±1.5 ms: 418 holds and 417 skips in
+  1700 frames; a 5.3 ms quantized clock (256 samples at 48 kHz), L = 0.2: 63 holds, 62 skips in 500; ±40 ms steps in L:
+  254 holds, 253 skips in 990. Fix: the skeptic's one-sided variant (c): the rule's own target `seq` (before the
+  monotonic hold); `seq` = last + 1 or last + 2 → last + 1; otherwise the rule (monotonic hold, re-sync). Green: 0 holds,
+  0 skips, 0 early, at most 1 behind the rule, never ahead; through the ±40 ms steps |presented − rule| ≤ 2 at every
+  frame and steady again 10 frames after each step; L = 0 presents the newest entry every frame, and every L = 0 golden
+  and the k-frame shift and lag tests are unchanged (the tripwire). Two older expectations moved on purpose: "never
+  goes back" (the rule names 16 two past 14 → 15, then 18 three past), and the allocation guard's warm-up now reads at
+  the same offset as its steady loop (a one-frame latency shrink would otherwise lock it one behind: documented on
+  `present`, "a latency that shrinks by less than two frames can leave the picture one entry behind").
+- **1, heardPlaying (13c2f8708 core, aa6ed01f1 app).** Core red: `heardPlaying` undefined (2 failed). Each ring entry
+  carries `playing` (no source → 0); the status adds `heardPlaying` (documented: playing as heard, for what reads the
+  presented frame as sound; `playing` stays live, for the transport). A change of `heardPlaying` is emitted at once (not
+  throttled): mutant run without it, the last status after the source is removed said `heardPlaying: true` (the beat
+  cycle would never get `pause()`). Tests: L = 0 heardPlaying === playing every frame; at 100 ms it is playing 7 frames
+  late through a pause; every emission carries the presented value; the last emission after removal is false.
+  App: the status → song detector feed moved to `song-change.ts` (`feedSongDetector`, gates on `heardPlaying`) so the
+  spec runs the app's own feed; the beat cycle gate (`updateAxisCycle`) reads `heardPlaying`. Red (the feed extracted
+  as it was, on `playing`): L = 0.7 → `["gap"]`; green `[]`; L = 0 `[]` both. The beat-cycle gate has no test of its own
+  (a private method of the app; same one-line gate).
+- **4 (4c790bab8).** The plain-copy test adds a bass tone in the newest 1024 of 2048 samples: mutant (copy offset
+  reverted, `audio-reactor.ts` restored after): bass 0; fixed > 0.3.
+- **7 (f58b34853).** Chosen: document, ring kept at 256. The 2 s clamp guards the clock, not the ring; the ring spans
+  4.3 s at 60 Hz, 1.07 s at 240 Hz; past it the oldest entry stands in (at most the span late). Real outputs ≤ ~0.3 s.
+- **8 (58f619c49).** `AudioReactiveStatus` documents frame, visualization, stems, drives and routeValues as the same
+  objects every emission (read on emission, do not keep or mutate); `Readonly<>` on frame, visualization, stems, drives
+  (shallow; no reader needed a change, tsc clean).
+- **9 (09274e90f).** `audio-reactive-ports.spec.ts`: the manager built with fake ports; `play()` makes the context
+  through `createContext`, `tick` resolves `outputClock` once for that context and presents (k + 0.5) frames late as
+  k + 1 entries. Mutant (the port bypassed with `webAudioOutputClock`): fails.
+- **10 (664d90d8f).** Routing spec rest row: measured at latency 0, on screen L later.
+- Spec pages (4680f5e7c): core-changes and architecture record one entry per frame and `heardPlaying`.
+
+### clicksync after the fix (headless Chromium, port 1350, outputLatency 32 ms, ~38 ms per frame)
+
+```
+full preset x1: MEDIA median 73 ms (65..96) | HEARD median 42 ms (35..67) | peak 12.57 | rest/peak 0.50
+drums only x1:  MEDIA median 71 ms (50..82) | HEARD median 38 ms (20..49) | peak 6.50 | rest/peak 0.32
+bass only x1:   MEDIA median 84 ms (65..116) | HEARD median 54 ms (35..84) | peak 6.03 | rest/peak 0.66
+full preset x2: MEDIA median 77 ms (66..100) | HEARD median 47 ms (34..69) | peak 25.10; gain x2 -> peak ratio 2.00
+```
+Heard 42 ms median (51 before the fix step), every heard kick ≥ 0 (min 20), max 84 ≤ 88 (50 ms + one frame). Headless
+frame jitter makes run-to-run differences of ~10 ms; the one-behind lock did not push the median later here.
+
+## Review (gate: reviewer + skeptic, Opus)
+
+| # | Finding | Reviewer | Skeptic | Grade | Outcome |
+|---|---|---|---|---|---|
+| 1 | Song detector and beat cycle gate on the live `playing` while reading the presented frame: a resume heard L late is fed as playing (L = 0.7 → 'gap') | found (j/song, j/resume probes) | confirmed | should | fixed: 13c2f8708 (core, `heardPlaying`), aa6ed01f1 (app) |
+| 2 | The read rule alternates hold and skip when L is near a frame multiple, with tick jitter | found (j/jit probe) | confirmed (sk/rule.mjs) | should | fixed: ebfe3538b |
+| N1 | Same with an audio clock in quanta (j/quant); the fix must not present early | — | new (sk/fix.mjs, fix-steady.mjs: variants pm1, asym) | should | fixed with the skeptic's one-sided variant (c): ebfe3538b |
+| 3 | (nit) | found | no defect | nit | left as is |
+| 4 | The plain-copy offset test passes with the copy offset reverted (peak is computePeak's) | found (m/probe.ts) | confirmed: the skeptic planted the mutant in `audio-reactor.ts` and restored it (backup sk/audio-reactor.ts.bak identical to HEAD, git status clean) | nit | fixed: 4c790bab8 |
+| 5 | not handed to the fix step | — | — | — | coordinator: verdict from the gate |
+| 6 | not handed to the fix step | — | — | — | coordinator: verdict from the gate |
+| 7 | The 2 s latency clamp exceeds the ring span (1.07 s at 240 Hz) | found | confirmed | nit | documented, ring kept at 256: f58b34853 |
+| 8 | The status's presented objects are shared across emissions, undocumented | found | confirmed | nit | documented + Readonly: 58f619c49 |
+| 9 | No spec injects the ports through the constructor | found | confirmed | nit | `audio-reactive-ports.spec.ts`: 09274e90f |
+| 10 | Routing spec rest row: at which latency | found | confirmed | nit | 664d90d8f |
+
 ## Built
 
 - `audio-reactor.ts`: analyze reads the newest samples of a longer analyser buffer (ambient-pulse was ~78 ms late at
@@ -187,6 +250,15 @@ route block growth.
 
 ## Checks
 
+After the fix step (HEAD 4680f5e7c + this file):
+- `npm run lint`: 0 errors (2 warnings, unused eslint-disable in `app.tsx` 534/540, not this lane's).
+- `npx tsc --noEmit -p tsconfig.json`: clean.
+- `npx jest src/apps/virus-on-the-rock src/mol-plugin-state src/mol-repr/structure src/mol-canvas3d`: 21 suites,
+  175 tests passed.
+- `node ./scripts/build.mjs -a virus-on-the-rock --prd`: built, then `build/` removed.
+- clicksync on 1350: above (server stopped, port free).
+
+Before the fix step:
 - `npm run lint`: 0 errors (2 warnings, unused eslint-disable in `app.tsx` 541/547, not this lane's).
 - `npx tsc --noEmit -p tsconfig.json`: clean.
 - `npx jest src/apps/virus-on-the-rock src/mol-plugin-state src/mol-repr/structure src/mol-canvas3d`: 20 suites,
