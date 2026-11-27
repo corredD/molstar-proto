@@ -14,6 +14,7 @@
  */
 
 import { AudioReactivePresetDefinitions, getAudioReactivePreset, getPresetRoutes } from '../../helpers/audio-reactive-presets';
+import { AudioReactiveFrame, DefaultAudioBandDefinitions, DefaultAudioBandKey } from '../audio-reactor';
 import { AudioRoute, AudioRouteTarget, getDefaultAudioRoutes } from '../audio-routing';
 import { activeTargets, AudioPipelineTrace, AudioSignal, bassTone, formatGolden, goldenDiffs, KickTimes, kickPeakStats, kickTrack, runAudioPipeline, silence, songMix } from './audio-pipeline-helper';
 
@@ -411,7 +412,11 @@ describe('audio pipeline (offline, 16 ms frames at 48 kHz)', () => {
 
     // the visuals show what is heard: the manager presents its live state outputLatency late (audio-presented-frame.ts)
     describe('what is heard: the presented frame', () => {
-        type Live = { currentFrame: Record<string, unknown> & { raw: Record<string, unknown> }, currentStems: Record<string, number>, router: { drives: Record<string, number>, values: Map<number, number> } };
+        type Live = {
+            currentFrame: AudioReactiveFrame<DefaultAudioBandKey>, currentStems: Record<string, number>, stemsSeparated: boolean,
+            router: { drives: Record<string, number>, values: Map<number, number> }, visualization: { waveform: Float32Array, spectrum: Float32Array },
+            presented: { stemsSeparated: boolean },
+        };
         const targets = (t: AudioPipelineTrace) => Object.keys(t.drives) as AudioRouteTarget[];
         const series = (t: AudioPipelineTrace) => [...targets(t).map(k => t.drives[k]), t.drums, t.bass, t.other, t.vocals, ...t.routeValues];
         const latencyRun = (L: number, paused: readonly (readonly [number, number])[] = [[3, 5]]) => runAudioPipeline(kickTrack(), getDefaultAudioRoutes(), { analysis: burst, paused, outputLatency: L });
@@ -427,11 +432,21 @@ describe('audio pipeline (offline, 16 ms frames at 48 kHz)', () => {
                     for (const k of Object.keys(live.router.drives)) if (m.drives[k as AudioRouteTarget] !== live.router.drives[k]) mismatches.push(`${index} drive ${k}`);
                     for (const k of Object.keys(live.currentStems)) if (m.stems[k as keyof typeof m.stems] !== live.currentStems[k]) mismatches.push(`${index} stem ${k}`);
                     for (const [id, v] of live.router.values) if (m.routeValues.get(id) !== v) mismatches.push(`${index} route ${id}`);
-                    for (const k of ['amplitude', 'beatIntensity', 'mix'] as const) {
+                    for (const k of ['amplitude', 'peakAmplitude', 'beatIntensity', 'dominantFrequency', 'dominantFrequencyNormalized', 'mix'] as const) {
                         if (m.frame[k] !== live.currentFrame[k]) mismatches.push(`${index} frame ${k}`);
                         if (m.frame.raw[k] !== live.currentFrame.raw[k]) mismatches.push(`${index} raw ${k}`);
                     }
+                    for (const set of ['frequencyBands', 'bandOnsets', 'bandProminence'] as const) {
+                        for (const { key } of DefaultAudioBandDefinitions) {
+                            if (m.frame[set][key] !== live.currentFrame[set][key]) mismatches.push(`${index} frame ${set}.${key}`);
+                            if (m.frame.raw[set][key] !== live.currentFrame.raw[set][key]) mismatches.push(`${index} raw ${set}.${key}`);
+                        }
+                    }
                     const status = m.state.status.value;
+                    if (live.presented.stemsSeparated !== live.stemsSeparated) mismatches.push(`${index} stemsSeparated`);
+                    for (const a of ['waveform', 'spectrum'] as const) {
+                        for (let i = 0; i < live.visualization[a].length; i++) if (status.visualization[a][i] !== live.visualization[a][i]) mismatches.push(`${index} ${a}[${i}]`);
+                    }
                     const now = [m.frame, m.drives, m.stems, m.routeValues, m.scopes, m.scopeKind, m.scopeDrive, status.frame, status.drives, status.routeValues, status.visualization];
                     if (held) now.forEach((o, i) => { if (o !== held![i]) mismatches.push(`${index} identity ${i}`); });
                     else held = now;
