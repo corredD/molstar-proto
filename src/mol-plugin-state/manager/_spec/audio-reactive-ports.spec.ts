@@ -57,7 +57,7 @@ describe('AudioReactiveAnimationManager ports', () => {
         expect(manager.state.status.value.heardPlaying).toBe(true);
         manager.dispose();
     });
-    it('stop and clear flush the delay line: the source -> delay link alone is cut, a new delay (same time) goes in its place', async () => {
+    it('stop, a new source and clear flush the delay line: the source -> delay link alone is cut, a new delay (same time) goes in its place', async () => {
         const log: string[] = [];
         type Node = { name: string, connect(n: Node): void, disconnect(n?: Node): void };
         const node = (name: string, extra: object = {}): Node => ({
@@ -99,9 +99,25 @@ describe('AudioReactiveAnimationManager ports', () => {
         expect(delayNodes[1].delayTime.value).toBe(6);
 
         log.length = 0;
+        // a new source (loadUrl): the element already has its metadata
+        const g = globalThis as unknown as { HTMLMediaElement?: unknown };
+        const hadMediaElement = 'HTMLMediaElement' in g, mediaElement = g.HTMLMediaElement;
+        g.HTMLMediaElement = { HAVE_METADATA: 1 };
+        (audio as unknown as { readyState: number }).readyState = 4;
+        (audio as unknown as { addEventListener(): void }).addEventListener = () => { };
+        try {
+            await manager.loadUrl('fake://next');
+        } finally {
+            if (hadMediaElement) g.HTMLMediaElement = mediaElement; else delete g.HTMLMediaElement;
+        }
+        // flushed first (the same time), then the stem params set the delay again (no model: 0)
+        expect(log.slice(0, 4)).toEqual(['source-x-delay2', 'delay2-x-all', 'source->delay3', 'delay3->analyser']);
+        delayNodes[2].delayTime.value = 6;
+
+        log.length = 0;
         manager.clear();
-        expect(log).toEqual(['source-x-delay2', 'delay2-x-all', 'source->delay3', 'delay3->analyser']);
-        expect(delayNodes[2].delayTime.value).toBe(6);
+        expect(log).toEqual(['source-x-delay3', 'delay3-x-all', 'source->delay4', 'delay4->analyser']);
+        expect(delayNodes[3].delayTime.value).toBe(6);
         manager.dispose();
     });
 });
