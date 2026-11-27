@@ -972,16 +972,22 @@ describe('audio pipeline (offline, 16 ms frames at 48 kHz)', () => {
         });
 
         describe('the stems line up with the bands', () => {
-            // a stub of the model's timeline: each frame the energy of a Hann window of 4096 samples at 44.1 kHz around its
-            // centre, every 1024 (stem-worker.ts stamps a frame at its window's centre, context time); drums and bass are the kick
+            // a stub of HTDemucs' timeline (stem-models.ts createHTDemucs, 44.1 kHz): frame t is stamped at t 1024 + 512 (the
+            // worker stamps it in context time) and its energy is the frequency branch's, a centred Hann STFT of 4096 (its
+            // energy weights x^2 by Hann^2), plus the time branch's, the x^2 of the 1024 samples [t 1024, (t + 1) 1024); each
+            // scaled to one hop of a steady signal (50/50). Drums and bass are the kick
             const sig = kickTrack(48000, 10);
-            const half = Math.round(2048 / 44100 * 48000), hop = 1024 / 44100;
+            const at = (s44: number) => s44 / 44100 * 48000; // a 44.1 kHz sample position in the 48 kHz track
+            const half = Math.round(at(2048)), hopSamples = at(1024);
+            let hann2 = 0;
+            for (let j = -half; j < half; j++) hann2 += (0.5 - 0.5 * Math.cos(Math.PI * (j + half) / half)) ** 2;
             const times: number[] = [], kick: number[] = [];
-            for (let c = 0; c * 48000 < sig.samples.length; c += hop) {
-                const ci = Math.round(c * 48000);
-                let e = 0;
-                for (let j = -half; j <= half; j++) { const x = sig.samples[ci + j] ?? 0; e += (0.5 - 0.5 * Math.cos(Math.PI * (j + half) / half)) * x * x; }
-                times.push(c); kick.push(e);
+            for (let t = 0; at(t * 1024) < sig.samples.length; t++) {
+                const ci = Math.round(at(t * 1024 + 512));
+                let freq = 0, time = 0;
+                for (let j = -half; j < half; j++) { const x = sig.samples[ci + j] ?? 0; freq += (0.5 - 0.5 * Math.cos(Math.PI * (j + half) / half)) ** 2 * x * x; }
+                for (let i = Math.round(at(t * 1024)); i < Math.round(at((t + 1) * 1024)); i++) { const x = sig.samples[i] ?? 0; time += x * x; }
+                times.push((t * 1024 + 512) / 44100); kick.push(freq * hopSamples / hann2 + time);
             }
             const separator = () => {
                 const sep = new StemSeparator({} as AudioContext, {} as AudioNode, { workerUrl: '', wasmPath: '', localBaseUrls: [] }, () => { });
@@ -997,9 +1003,10 @@ describe('audio pipeline (offline, 16 ms frames at 48 kHz)', () => {
                 return runAudioPipeline(sig, routes(), { analysis: burst, durationS: 10 + D, stemDelayS: D, lookahead: true, stemSample, frameMs });
             };
             // 4 ms frames: the timing in ms, not in 16 ms steps. The drums (onset route) and the bass (level route) of the
-            // stub carry the kick; the band stand-ins are the reference
+            // stub carry the kick; the band stand-ins are the reference. With this framing both stems peak a little behind
+            // the bands (drums 4 ms, bass 8 ms)
             const lagMs = (t: AudioPipelineTrace) => lagOf(t, 0, 'symAxis').lagMedian * 4;
-            for (const [name, routes, sign] of [['drums only (onset route)', drumsOnly, -1], ['bass only (level route)', bassOnly, 1]] as const) {
+            for (const [name, routes, sign] of [['drums only (onset route)', drumsOnly, 1], ['bass only (level route)', bassOnly, 1]] as const) {
                 it(`${name}: the separated stem peaks within 10 ms of the band stand-in, ${sign < 0 ? 'ahead' : 'behind'}; sampled at t - D + lead (control) it peaks earlier, further off`, () => {
                     const bands = lagMs(stemRun(undefined, 4, routes)), stems = lagMs(stemRun(0, 4, routes)), control = lagMs(stemRun(StemTimelineLeadS, 4, routes));
                     process.stdout.write(`lookahead stems, ${name}, 4 ms frames: kick -> peak bands ${bands} ms, separated ${stems} ms, control ${control} ms\n`);
