@@ -6,6 +6,9 @@ queue ([TODO.md](../TODO.md)).
 
 ## In flight
 
+- `lookahead-sync` ([brief](2026-11-27-lookahead-sync.md)): the analysis reads the delay line Δ ahead of what is
+  heard, so the burst lands on the kick; worktree `~/molstar-votr-lanes/lookahead-sync`, base `votr/overnight`. Design.
+
 ## Waiting on Ludo
 
 - The overnight of 2026-11-27: eight lanes merged on `votr/overnight` (#67–#74), one PR into `virus-on-the-rock`
