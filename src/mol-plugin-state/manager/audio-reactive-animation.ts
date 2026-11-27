@@ -298,6 +298,13 @@ export class AudioReactiveAnimationManager {
      * hidden tab) do not stretch the tail
      */
     private stoppedAt = NaN;
+    /**
+     * Until when (context time, s) the delay line hands over only the silence it held at a (re)start with an empty line:
+     * the first play, after a flush, after a pause whose tail has drained (heardUntil passed). Known empty, so not
+     * heard: no blocked analysis counted, no heardPlaying, no floor. A resume inside the tail leaves it: the line still
+     * holds sound
+     */
+    private primedUntil = -Infinity;
     /** this tick's clock: read once at its top (`readClock`) */
     private clockNow = 0;
     private clockLatency = 0;
@@ -764,16 +771,19 @@ export class AudioReactiveAnimationManager {
 
         const sampleRate = this.audioContext.sampleRate;
         let error: string | undefined;
-        // heard: playing, or after a pause or the end of the file until the delay line has drained (D = 0: at once)
+        // heard: playing, or after a pause or the end of the file until the delay line has drained (D = 0: at once); not
+        // while the line hands over the silence it held at a (re)start (D = 0: never)
         const playing = !audio.paused && !audio.ended;
+        const delayS = this.delayNode?.delayTime.value ?? 0;
         if (playing) {
+            if (this.heardUntil !== Infinity && this.clockNow >= this.heardUntil) this.primedUntil = this.clockNow + delayS;
             this.heardUntil = Infinity;
             this.stoppedAt = NaN;
         } else if (this.heardUntil !== -Infinity) {
             if (Number.isNaN(this.stoppedAt)) this.stoppedAt = this.clockNow;
-            this.heardUntil = this.stoppedAt + (this.delayNode?.delayTime.value ?? 0);
+            this.heardUntil = this.stoppedAt + delayS;
         }
-        const heard = playing || (this.audioContext.state === 'running' && this.clockNow < this.heardUntil);
+        const heard = (playing || (this.audioContext.state === 'running' && this.clockNow < this.heardUntil)) && this.clockNow >= this.primedUntil;
 
         try {
             if (!heard) {

@@ -454,10 +454,11 @@ describe('audio pipeline (offline, 16 ms frames at 48 kHz)', () => {
 
         it('the separator samples t - D through the tail and never once nothing is heard', () => {
             const t = runAudioPipeline(kickTrack(), kickRoutes(), { analysis: burst, durationS: 6, stemDelayS: 1, paused: [[3, 10]] });
-            const lastHeard = frameAt(4);
+            // heard from the first play (0.016 s) + D: the line is empty before
+            const firstHeard = frameAt(1) + 1, lastHeard = frameAt(4);
             const byFrame = new Map(t.stemSamples.map(s => [s.index, s.time]));
-            for (let i = 0; i <= lastHeard; i++) expect(byFrame.get(i)).toBeCloseTo((i + 1) * F / 1000 - 1, 9);
-            expect(t.stemSamples.filter(s => s.index > lastHeard)).toEqual([]);
+            for (let i = firstHeard; i <= lastHeard; i++) expect(byFrame.get(i)).toBeCloseTo((i + 1) * F / 1000 - 1, 9);
+            expect(t.stemSamples.filter(s => s.index < firstHeard || s.index > lastHeard)).toEqual([]);
         });
 
         it('clear: every drive, route value and scope slot is 0 on the next frame', () => {
@@ -509,14 +510,16 @@ describe('audio pipeline (offline, 16 ms frames at 48 kHz)', () => {
             expect(firstRest(heard)).toBe(firstRest(live) + Math.ceil(100 / F));
         });
 
-        it('heardPlaying with a stem delay of 1 s: true through the tail, false once nothing is heard', () => {
+        it('heardPlaying with a stem delay of 1 s: true from D after the first play through the tail, false once nothing is heard', () => {
             const heard: boolean[] = [];
             runAudioPipeline(kickTrack(), kickRoutes(), {
                 analysis: burst, durationS: 6, stemDelayS: 1, paused: [[3, 10]],
                 onFrame: ({ manager }) => heard.push(manager.state.status.value.heardPlaying),
             });
-            const lastHeard = frameAt(4);
-            expect(heard.slice(0, lastHeard + 1).every(h => h)).toBe(true);
+            // the line is empty for D after the first play (0.016 s)
+            const firstHeard = frameAt(1) + 1, lastHeard = frameAt(4);
+            expect(heard.slice(0, firstHeard).some(h => h)).toBe(false);
+            expect(heard.slice(firstHeard, lastHeard + 1).every(h => h)).toBe(true);
             expect(heard.slice(lastHeard + 1).every(h => !h)).toBe(true);
         });
     });
@@ -548,6 +551,42 @@ describe('audio pipeline (offline, 16 ms frames at 48 kHz)', () => {
             // the tail ended at 9.008 s, while no tick ran
             expect(heard.slice(frameAt(12) + 1).every(h => !h)).toBe(true);
             expect(t.stemSamples.filter(s => s.index > frameAt(12))).toEqual([]);
+        });
+    });
+
+    // a (re)start with an empty delay line (the first play, after a flush, after a pause whose tail has drained): for D
+    // seconds the analyser hands over the silence the line holds, known-empty, so not heard: no blocked analysis
+    // counted, no heardPlaying, no floor (review S3 and the outside item)
+    describe('an empty delay line is not heard', () => {
+        const F = 16;
+        const frameAt = (sec: number) => Math.round(sec * 1000 / F) - 1;
+        const statusRun = (signal: AudioSignal, opts: Parameters<typeof runAudioPipeline>[2]) => {
+            const blocked: boolean[] = [], heard: boolean[] = [];
+            runAudioPipeline(signal, getDefaultAudioRoutes(), {
+                analysis: burst, ...opts,
+                onFrame: ({ manager }) => { blocked.push(manager.state.status.value.analysisBlocked); heard.push(manager.state.status.value.heardPlaying); },
+            });
+            return { blocked, heard };
+        };
+        it('delay 6 s, played from 0: no blocked analysis, not heard until 6 s, heard after', () => {
+            const { blocked, heard } = statusRun(kickTrack(), { durationS: 8, stemDelayS: 6 });
+            expect(blocked.some(b => b)).toBe(false);
+            expect(heard.slice(0, frameAt(6)).some(h => h)).toBe(false);
+            expect(heard.slice(frameAt(6) + 1).every(h => h)).toBe(true);
+        });
+        it('delay 6 s, resumed at 9.5 s after a pause from 2 s (the tail drained at 8 s): no blocked analysis, not heard for 6 s', () => {
+            const { blocked, heard } = statusRun(kickTrack(48000, 20), { durationS: 18, stemDelayS: 6, paused: [[2, 9.5]] });
+            expect(blocked.some(b => b)).toBe(false);
+            // the first play's empty line until 6 s, then the tail of 0-2 s until 8 s
+            expect(heard.slice(0, frameAt(6)).some(h => h)).toBe(false);
+            expect(heard.slice(frameAt(6) + 1, frameAt(8)).every(h => h)).toBe(true);
+            expect(heard.slice(frameAt(8) + 2, frameAt(15.5)).some(h => h)).toBe(false);
+            expect(heard.slice(frameAt(15.5) + 2).every(h => h)).toBe(true);
+        });
+        it('control: a silent file with a delay of 1 s is blocked 2 s after the line has filled, not before', () => {
+            const { blocked } = statusRun(silence(48000, 5), { durationS: 5, stemDelayS: 1 });
+            expect(blocked.slice(0, frameAt(3)).some(b => b)).toBe(false);
+            expect(blocked.slice(frameAt(3) + 2).every(b => b)).toBe(true);
         });
     });
 
