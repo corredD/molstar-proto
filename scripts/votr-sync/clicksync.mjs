@@ -12,9 +12,10 @@
  * gain x2 -> peak x2 (1.9-2.1).
  *
  * node scripts/votr-sync/clicksync.mjs --port 1350 [--preset drums-bass-burst] [--seconds 8] [--headed]
- *     [--delay <s>] [--lookahead [--trim <ms>]] [--stems <spleeter|htdemucs|scnet>]
+ *     [--delay <s>] [--lookahead [--trim <ms>]] [--stems <spleeter|htdemucs|scnet> [--stem-lead <ms>]]
  * Without --lookahead the lookahead is set off (the app turns it on at startup). --delay 0 (the default) is the default
- * delay: the model's with --stems, 0.25 s with --lookahead, else none.
+ * delay: the model's with --stems, 0.25 s with --lookahead, else none. --stem-lead overrides how far the model's stem
+ * timeline runs ahead of the bands (the hidden param stemTimelineLeadMs; default the model's timelineLeadSeconds).
  * Playwright is not a dependency: it is taken from `playwright` if resolvable, else from the npx cache.
  * @author Ludovic Autin <autin@scripps.edu>
  */
@@ -37,6 +38,8 @@ const delay = +arg('delay', 0);
 const lookahead = argv.includes('--lookahead');
 const trim = +arg('trim', 0);
 const stems = arg('stems', 'off');
+const stemLeadArg = arg('stem-lead', '');
+const stemLead = stemLeadArg === '' ? null : +stemLeadArg;
 
 function loadPlaywright() {
     try { return createRequire(join(process.cwd(), 'x.js'))('playwright'); } catch (e) { /* fall through to the npx cache */ }
@@ -93,6 +96,7 @@ async function run(gainScale, routesSpec) {
         const a = m.state.audioPlayer.value; const ctx = m['audioContext']; const out = [];
         // the delays the manager set: what is heard, what is analysed
         const delayS = m['delayNode'].delayTime.value, leadS = delayS - m['analysisDelayNode'].delayTime.value;
+        const stemLeadMs = m.state.params.value.stemTimelineLeadMs;
         await new Promise(done => {
             const f = () => {
                 const ts = ctx.getOutputTimestamp();
@@ -109,14 +113,14 @@ async function run(gainScale, routesSpec) {
         m.stop();
         return {
             out, routes: m.state.routes.value.map(r => `${r.source}/${r.mode}->${r.target} g${r.gain.toFixed(2)}`), baseLatency: ctx.baseLatency, outputLatency: ctx.outputLatency,
-            delayS, leadS, model: m.state.params.value.stemModel,
+            delayS, leadS, model: m.state.params.value.stemModel, stemLeadMs,
         };
-    }, [gainScale, routesSpec, preset, seconds, { lookahead, lookaheadTrimMs: trim, stemModel: stems, stemDelaySeconds: delay }]);
+    }, [gainScale, routesSpec, preset, seconds, { lookahead, lookaheadTrimMs: trim, stemModel: stems, stemDelaySeconds: delay, stemTimelineLeadMs: stemLead }]);
 }
 
 const med = a => { if (!a.length) return NaN; const s = [...a].sort((x, y) => x - y); return s[Math.floor(s.length / 2)]; };
 const f0 = x => Number.isFinite(x) ? x.toFixed(0) : 'n/a';
-function analyse(label, { out, routes, baseLatency, outputLatency, delayS, leadS, model }) {
+function analyse(label, { out, routes, baseLatency, outputLatency, delayS, leadS, model, stemLeadMs }) {
     const kicks = []; for (let t = 1.25; t < seconds - 0.5; t += 0.5) kicks.push(t); // skip the first second: envelopes settle
     const lagM = [], lagH = [], peaks = [], rests = [];
     // the windows on the heard column (r[1]); the media column less the delay
@@ -134,13 +138,13 @@ function analyse(label, { out, routes, baseLatency, outputLatency, delayS, leadS
     const out2 = out.map(r => r[5]).filter(Number.isFinite);
     const separated = out.filter(r => r[1] >= 1.25 && r[1] < seconds);
     console.log(`${label} | ${routes.join(', ')}`);
-    console.log(`  delay ${delayS.toFixed(3)} s, lead ${f0(leadS * 1000)} ms, stem model ${model}${model !== 'off' ? `, stems separated ${separated.filter(r => r[6]).length}/${separated.length} frames` : ''}`);
+    console.log(`  delay ${delayS.toFixed(3)} s, lead ${f0(leadS * 1000)} ms, stem model ${model}${model !== 'off' ? `, stem timeline lead ${stemLeadMs === null ? 'the model\'s' : `${stemLeadMs} ms`}, stems separated ${separated.filter(r => r[6]).length}/${separated.length} frames` : ''}`);
     console.log(`  frames ${out.length}, media step ${f0(med(dt) * 1000)} ms | output delay (ctx.currentTime - outputTimestamp.contextTime) median ${f0(med(out2) * 1000)} ms, ctx.baseLatency ${f0(baseLatency * 1000)} ms, outputLatency ${f0(outputLatency * 1000)} ms`);
     console.log(`  kick->peak MEDIA-D median ${f0(med(lagM))} ms (min ${f0(Math.min(...lagM))}, max ${f0(Math.max(...lagM))}) | HEARD median ${f0(med(lagH))} ms (min ${f0(Math.min(...lagH))}, max ${f0(Math.max(...lagH))}) | peak median ${med(peaks).toFixed(2)} | rest/peak median ${med(rests).toFixed(2)} max ${Math.max(...rests).toFixed(2)}`);
     return med(peaks);
 }
 
-console.log(`click track 120 BPM, kicks from 0.25 s, preset ${preset}, ${seconds} s, port ${port}, delay asked ${delay > 0 ? `${delay} s` : 'default'} (none without --stems or --lookahead), lookahead ${lookahead ? `on, trim ${trim} ms` : 'off'}, stems ${stems}`);
+console.log(`click track 120 BPM, kicks from 0.25 s, preset ${preset}, ${seconds} s, port ${port}, delay asked ${delay > 0 ? `${delay} s` : 'default'} (none without --stems or --lookahead), lookahead ${lookahead ? `on, trim ${trim} ms` : 'off'}, stems ${stems}${stemLead !== null ? `, stem timeline lead ${stemLead} ms` : ''}`);
 const p1 = analyse('full preset x1', await run(1, 'all'));
 analyse('drums only x1', await run(1, 'drumsOnly'));
 analyse('bass only x1', await run(1, 'bassOnly'));
