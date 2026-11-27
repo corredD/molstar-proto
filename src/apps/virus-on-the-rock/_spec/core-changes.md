@@ -53,11 +53,13 @@ manager has no audio and no Who.
   stems, 7 drives, glow, hue, scope count/kind/drive [8]. `updateIfChanged`, forced redraw while the wave or a scope is
   driven. *needs work*: replace `AudioReactiveFrame` in the renderer and Canvas3D interfaces by a generic "external
   drives" API; stem, mix and dominant-frequency uniforms are unused.
-- **Forced redraw of an audio frame** (`canvas3d.ts` `setAudioFrame`, new `audio-redraw.ts` `audioFrameNeedsRender`,
-  spec `mol-canvas3d/_spec/audio-redraw.spec.ts`; redraw-and-axes-cache, 2026-11-27): a frame renders while the
-  illumination or hue drive is above 0 and once more when it returns to 0, besides the wave and the narrowed routes
-  (it ignored illumination and hue); two preallocated number fields, nothing allocated per frame. Commits
-  `canvas3d: ...`, no app hunks. *votr only*.
+- **Forced redraw of an audio frame** (`canvas3d.ts` `setAudioFrame`, new `audio-redraw.ts` `AudioRedrawTracker`,
+  spec `mol-canvas3d/_spec/audio-redraw.spec.ts`; redraw-and-axes-cache, 2026-11-27): the tracker keeps the previous
+  frame (preallocated, nothing allocated per frame). Illumination and hue (global, and narrowed kinds 8, 9) render on
+  change only, since their shader terms have no time term (a held value does not render); the instance wave and
+  narrowed motion kinds render while above 0 and once more on the drop to 0 (they use `uTime`). Before, illumination
+  and hue forced no render at all. VotR presets mask the difference through `hasAnimation`. Commits `canvas3d: ...`,
+  no app hunks. *votr only*.
 - **Material animation uniforms** (`AnimationSchema`): motion toggles, object transform, axis set (`uAudioAssemblyAxes`
   v3[32], count, centre), `uAudioWaveRadial` (wip), Who ranges v4[8]. *needs work*: the Who ranges differ per visual but
   are uploaded per material (render-item.ts:242-250; all visuals of a representation share one material id), so they
