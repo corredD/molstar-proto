@@ -521,6 +521,36 @@ describe('audio pipeline (offline, 16 ms frames at 48 kHz)', () => {
         });
     });
 
+    // the tail is timed from the stop (the element's pause / ended event, the first tick not playing as a fallback) and
+    // the delay now: heardUntil = stoppedAt + D on every tick (review S2)
+    describe('the tail is timed from the stop', () => {
+        const F = 16;
+        const frameAt = (sec: number) => Math.round(sec * 1000 / F) - 1;
+        it('the delay raised from 1 to 3 s at 3.5 s, inside the tail of a pause at 3 s: heard until 3 s after the stop', () => {
+            const heard: boolean[] = [];
+            runAudioPipeline(kickTrack(), getDefaultAudioRoutes(), {
+                analysis: burst, durationS: 8, stemDelayS: 1, paused: [[3, 10]],
+                onFrame: ({ index, manager }) => {
+                    if (index === frameAt(3.5)) manager.setParams({ stemDelaySeconds: 3 });
+                    heard.push(manager.state.status.value.heardPlaying);
+                },
+            });
+            // stopped on the frame at 3.008 s (the pause event): heard while t < 6.008
+            expect(heard.slice(frameAt(3.5), frameAt(6) + 1).every(h => h)).toBe(true);
+            expect(heard.slice(frameAt(6) + 2).every(h => !h)).toBe(true);
+        });
+        it('ticks stalled 2.5-12 s (a hidden tab), paused at 3 s, delay 6 s: nothing is heard once the ticks come back', () => {
+            const heard: boolean[] = [];
+            const t = runAudioPipeline(kickTrack(48000, 20), getDefaultAudioRoutes(), {
+                analysis: burst, durationS: 20, stemDelayS: 6, paused: [[3, 30]], stalled: [[2.5, 12]],
+                onFrame: ({ manager }) => heard.push(manager.state.status.value.heardPlaying),
+            });
+            // the tail ended at 9.008 s, while no tick ran
+            expect(heard.slice(frameAt(12) + 1).every(h => !h)).toBe(true);
+            expect(t.stemSamples.filter(s => s.index > frameAt(12))).toEqual([]);
+        });
+    });
+
     // the visuals show what is heard: the manager presents its live state outputLatency late (audio-presented-frame.ts)
     describe('what is heard: the presented frame', () => {
         type Live = {

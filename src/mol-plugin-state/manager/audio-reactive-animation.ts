@@ -286,11 +286,18 @@ export class AudioReactiveAnimationManager {
     private stemsSeparated = false;
     private bandDrumsPeak = BandDrumsPeakFloor;
     /**
-     * Until when (context time, s) the speakers still play what the delay line holds: Infinity while playing; on the
-     * first tick not playing, now + the delay; -Infinity after stop, a new source or clear (the line is flushed) and
-     * before the first play. Set only in tick: the element's own controls pause it without the manager.
+     * Until when (context time, s) the speakers still play what the delay line holds: Infinity while playing; once
+     * stopped, stoppedAt + the delay now (each tick, so a delay changed in the tail moves it); -Infinity after stop, a
+     * new source or clear (the line is flushed) and before the first play. Set in tick: the element's own controls
+     * pause it without the manager.
      */
     private heardUntil = -Infinity;
+    /**
+     * When (context time, s) the element stopped playing: its pause or ended event, or the first tick not playing (an
+     * element without the manager's listeners, a tick missed); NaN while playing. Ticks stalled across the stop (a
+     * hidden tab) do not stretch the tail
+     */
+    private stoppedAt = NaN;
     /** this tick's clock: read once at its top (`readClock`) */
     private clockNow = 0;
     private clockLatency = 0;
@@ -516,8 +523,14 @@ export class AudioReactiveAnimationManager {
 
     private bindAudioEvents(audio: HTMLAudioElement) {
         audio.addEventListener('play', () => this.updateStatus(void 0, true));
-        audio.addEventListener('pause', () => this.updateStatus(void 0, true));
-        audio.addEventListener('ended', () => this.updateStatus(void 0, true));
+        audio.addEventListener('pause', () => this.onStopped());
+        audio.addEventListener('ended', () => this.onStopped());
+    }
+
+    /** the element's pause or ended event: the tail starts now. Only from playing (a flush comes before the queued event) */
+    private onStopped() {
+        if (this.heardUntil === Infinity && Number.isNaN(this.stoppedAt) && this.audioContext) this.stoppedAt = this.getOutputClock(this.audioContext).now();
+        this.updateStatus(void 0, true);
     }
 
     private resolveAudioPlayer() {
@@ -708,6 +721,15 @@ export class AudioReactiveAnimationManager {
         this.presented.present(this.clockNow - this.clockLatency);
     }
 
+    private getOutputClock(ctx: AudioContext) {
+        let clock = this.outputClock;
+        if (!clock || this.outputClockContext !== ctx) {
+            clock = this.outputClock = this.ports.outputClock(ctx);
+            this.outputClockContext = ctx;
+        }
+        return clock;
+    }
+
     /** this tick's clock, read once: the context's, or with no context yet the last stamp and latency 0 */
     private readClock() {
         const ctx = this.audioContext;
@@ -716,11 +738,7 @@ export class AudioReactiveAnimationManager {
             this.clockLatency = 0;
             return;
         }
-        let clock = this.outputClock;
-        if (!clock || this.outputClockContext !== ctx) {
-            clock = this.outputClock = this.ports.outputClock(ctx);
-            this.outputClockContext = ctx;
-        }
+        const clock = this.getOutputClock(ctx);
         this.clockNow = clock.now();
         this.clockLatency = clock.latency();
     }
@@ -748,8 +766,13 @@ export class AudioReactiveAnimationManager {
         let error: string | undefined;
         // heard: playing, or after a pause or the end of the file until the delay line has drained (D = 0: at once)
         const playing = !audio.paused && !audio.ended;
-        if (playing) this.heardUntil = Infinity;
-        else if (this.heardUntil === Infinity) this.heardUntil = this.clockNow + (this.delayNode?.delayTime.value ?? 0);
+        if (playing) {
+            this.heardUntil = Infinity;
+            this.stoppedAt = NaN;
+        } else if (this.heardUntil !== -Infinity) {
+            if (Number.isNaN(this.stoppedAt)) this.stoppedAt = this.clockNow;
+            this.heardUntil = this.stoppedAt + (this.delayNode?.delayTime.value ?? 0);
+        }
         const heard = playing || (this.audioContext.state === 'running' && this.clockNow < this.heardUntil);
 
         try {
