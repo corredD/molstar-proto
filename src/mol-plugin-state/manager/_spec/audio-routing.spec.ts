@@ -223,6 +223,18 @@ describe('audio routing once the sound stops (heard = false)', () => {
         fresh.update([route], EmptyFrame, { ...Silent, drums: 0.5 }, 16);
         expect(paused.values.get(route.id)).toBe(fresh.values.get(route.id));
     });
+
+    it('keeps a non-zero onset state through frames not heard: a resume reads the rise from the level held at the pause (review N4)', () => {
+        const route = createAudioRoute({ enabled: true, source: 'stemDrums', mode: 'onset', target: 'symAxis', gain: 6.5, floor: 0, releaseMs: 260 });
+        const paused = new AudioRouter(), heard = new AudioRouter(), fresh = new AudioRouter();
+        for (let i = 0; i < 5; i++) { paused.update([route], EmptyFrame, { ...Silent, drums: 0.5 }, 16); heard.update([route], EmptyFrame, { ...Silent, drums: 0.5 }, 16); }
+        for (let i = 0; i < 20; i++) { paused.update([route], EmptyFrame, { ...Silent, drums: 0.5 }, 16, false); heard.update([route], EmptyFrame, { ...Silent, drums: 0.5 }, 16); }
+        for (const r of [paused, heard, fresh]) r.update([route], EmptyFrame, { ...Silent, drums: 0.8 }, 16);
+        // the rise 0.3 against the peak held, as a run heard throughout; a fresh route reads 0.8
+        expect(paused.values.get(route.id)).toBeGreaterThan(0);
+        expect(paused.values.get(route.id)).toBe(heard.values.get(route.id));
+        expect(paused.values.get(route.id)).not.toBe(fresh.values.get(route.id));
+    });
 });
 
 const Silent = { drums: 0, bass: 0, other: 0, vocals: 0 };
