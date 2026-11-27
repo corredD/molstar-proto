@@ -172,9 +172,12 @@ export class StemSeparator {
             this.ensureWorker();
             await this.ensureTap();
         } catch (e) {
-            this.setStatus({ state: 'error', message: `${e}` });
+            // a newer request owns the status
+            if (this.model === id && this.requestedExecutionProvider === executionProvider) this.setStatus({ state: 'error', message: `${e}` });
             return;
         }
+        // Off, another model or another provider came while the tap loaded: that request owns the worker and the tap
+        if (this.model !== id || this.requestedExecutionProvider !== executionProvider) return;
         const baseUrls = [...this.options.localBaseUrls.map(u => `${u}${id}/`), StemModels[id].remoteBaseUrl];
         this.post({ type: 'load', model: id, baseUrls, executionProvider, wasmPath: this.options.wasmPath });
         this.tap?.port.postMessage({ on: true });
