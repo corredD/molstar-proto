@@ -68,4 +68,25 @@ describe('motions follow routes', () => {
         feed([route('instanceWave')]);
         expect(turned).toEqual([]);
     });
+
+    it('retargeting a route within one motion turns nothing on (the user turned that motion off on purpose)', () => {
+        const r = route('symAxis');
+        const { feed, turned } = setup([r], { atomWiggleEnabled: true, instanceTumbleEnabled: false, objectTransformEnabled: false });
+        feed([{ ...r, target: 'instanceRandom' }]);
+        expect(turned).toEqual([]);
+    });
+
+    it('a replaced set turns on what its new ids need, and only that', () => {
+        const old = [route('wiggle'), route('symAxis')];
+        const { feed, turned } = setup(old, { atomWiggleEnabled: false, instanceTumbleEnabled: true, objectTransformEnabled: false });
+        feed([route('wiggle'), route('object')]);
+        expect(turned).toEqual(['atomWiggleEnabled', 'objectTransformEnabled']);
+    });
+
+    it('removing a route turns nothing on', () => {
+        const a = route('wiggle'), b = route('object');
+        const { feed, turned } = setup([a, b], { atomWiggleEnabled: false, instanceTumbleEnabled: false, objectTransformEnabled: false });
+        feed([a]);
+        expect(turned).toEqual([]);
+    });
 });

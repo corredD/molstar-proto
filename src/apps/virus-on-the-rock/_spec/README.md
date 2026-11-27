@@ -31,7 +31,8 @@ From Ludo, as written in the routing spec, the commits and the project notes. Wh
 2. **Routes belong to the user** (2026-11-26): only a preset chip, the Saved… list, the route editor and startup replace
    the routes. Loading a model or a song keeps them.
 3. **A route set is routes only** (2026-11-26): it does not change the analysis or the motion shapes; it turns on a
-   motion target its routes need.
+   motion target its routes need. So does any route edit that adds a route, enables one, or retargets one onto another
+   motion; a load of a model or a song never changes the motion flags.
 4. **No change shown before it passes the expectations** of the routing spec, and no edit while Ludo is testing (each
    rebuild reloads the page, which stops the song and resets the routes).
 5. **Drums & Bass Burst is the reference effect** (routing spec, "What it is for"): drum hits and the bass burst the
