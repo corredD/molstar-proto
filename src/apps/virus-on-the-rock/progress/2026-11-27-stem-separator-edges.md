@@ -28,3 +28,31 @@ ok null control: Off after the load completed still unloads and turns the tap of
 ok null control: the success path calls addModule once
 ```
 (Added a third probe beyond the brief: the provider changed during the await, the "requested provider" half of the fix.)
+
+## Built
+
+- `setModel`: after `await ensureTap()`, returns unless `this.model === id` and the requested provider is unchanged;
+  the catch sets the error status only for the current request (a stale failure must not overwrite a newer one).
+- `ensureTap`: a rejected `tapLoading` is cleared (side `.catch`, the awaiting caller still sees the rejection), so
+  picking the model again after Off calls `addModule` again.
+- Specs: 5 (3 red on today's code, 2 null controls), fakes for Worker, AudioWorkletNode, Blob/URL, a controllable
+  `addModule`. `core-changes.md` entry as its own commit.
+
+## Decided
+
+- Third probe (provider changed during the await) added: it is the "requested provider" half of the brief's fix.
+- The catch's status guard is not in the brief; without it a stale failure would show as error over a newer load.
+- Retry via a side `.catch` rather than try/catch around the IIFE: same effect, no rethrow needed.
+
+## Learned
+
+- The tap node stays created when the request was superseded; that is intended (the next request reuses it).
+
+## Size
+
+~7 production lines (brief: small), ~110 spec lines.
+
+## Checks
+
+`npm run lint`: 0 errors (2 pre-existing warnings); `tsc --noEmit`: clean; jest virus-on-the-rock, mol-plugin-state,
+mol-repr/structure: 11 suites, 85 tests pass. `build.mjs --prd` not run (not asked).
