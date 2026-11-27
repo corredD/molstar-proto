@@ -276,6 +276,22 @@ export const AudioScopeKinds = {
 export type AudioScopeTarget = keyof typeof AudioScopeKinds;
 export type AudioScopeSlot = { kind: number, drive: number, affect: AudioAffect };
 
+/** Whether a route may take a shader slot: it is narrowed already, or fewer than AudioScopeSlotCount routes are (D3) */
+export function canNarrowRoute(routes: readonly AudioRoute[], routeId: number): boolean {
+    let narrowed = 0;
+    for (const r of routes) {
+        if (!routeHasScope(r.target)) {
+            // a channel with no Who is never refused
+            if (r.id === routeId) return true;
+            continue;
+        }
+        if (r.affect.level === 'all') continue;
+        if (r.id === routeId) return true;
+        narrowed++;
+    }
+    return narrowed < AudioScopeSlotCount;
+}
+
 export function routeHasScope(target: AudioRouteTarget): target is AudioScopeTarget {
     return Object.prototype.hasOwnProperty.call(AudioScopeKinds, target);
 }

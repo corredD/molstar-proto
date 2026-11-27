@@ -7,7 +7,7 @@
 
 import { BehaviorSubject } from 'rxjs';
 import { StemModelId, StemModels, StemName } from './audio-stems/stem-models';
-import { AudioAffect, AudioAffectLevel, AudioRoute, AudioRouteDrives, AudioRouter, AudioScopeSlot, canonicalAudioAffect, createZeroDrives, defaultAudioAffect, getDefaultAudioRoutes, maxScopeLevel, sameAudioAffect } from './audio-routing';
+import { AudioAffect, AudioAffectLevel, AudioRoute, AudioRouteDrives, AudioRouter, AudioScopeSlot, canNarrowRoute, canonicalAudioAffect, createZeroDrives, defaultAudioAffect, getDefaultAudioRoutes, maxScopeLevel, sameAudioAffect } from './audio-routing';
 import { audioAffectFromLoci, clampAffectToLevel, resolveAudioAffect, specializeAudioAffect } from '../helpers/audio-affect';
 import { StructureElement } from '../../mol-model/structure';
 import { StemLevels, StemSeparator, StemSeparatorOptions, StemSeparatorStatus } from './audio-stems/stem-separator';
@@ -303,28 +303,31 @@ export class AudioReactiveAnimationManager {
         this.setRoutes(this.state.routes.value.filter(r => r.id !== id));
     }
 
-    /** Who one route moves, kept no finer than its channel allows (maxScopeLevel) */
-    setRouteAffect(id: number, affect: AudioAffect) {
-        const route = this.state.routes.value.find(r => r.id === id);
-        if (!route) return;
+    /** Who one route moves, kept no finer than its channel allows (maxScopeLevel). False if refused: 8 other routes are narrowed already */
+    setRouteAffect(id: number, affect: AudioAffect): boolean {
+        const routes = this.state.routes.value;
+        const route = routes.find(r => r.id === id);
+        if (!route) return false;
         const max = maxScopeLevel(route.target);
         const next = max === 'all' || affect.level === 'all'
             ? defaultAudioAffect()
             : canonicalAudioAffect(clampAffectToLevel(resolveAudioAffect(this.plugin, affect), max));
-        if (sameAudioAffect(next, route.affect)) return;
+        // the 9th narrowed route is refused (D3): it stays as it was
+        if (next.level !== 'all' && !canNarrowRoute(routes, id)) return false;
+        if (sameAudioAffect(next, route.affect)) return true;
         this.updateRoute(id, { affect: next });
+        return true;
     }
 
     /**
      * Narrow a route to what is selected or focused in the viewer (a click), at `level`; with nothing picked, the first
-     * loaded part at that level. False where the route's channel cannot be narrowed
+     * loaded part at that level. False where the route's channel cannot be narrowed, or the 8 slots are taken (D3)
      */
     pickRouteAffect(id: number, level: AudioAffectLevel) {
         const route = this.state.routes.value.find(r => r.id === id);
         if (!route || maxScopeLevel(route.target) === 'all') return false;
         const picked = level === 'all' ? defaultAudioAffect() : this.affectFromSelection(level);
-        this.setRouteAffect(id, picked ?? specializeAudioAffect(this.plugin, route.affect, level));
-        return true;
+        return this.setRouteAffect(id, picked ?? specializeAudioAffect(this.plugin, route.affect, level));
     }
 
     private affectFromSelection(level: AudioAffectLevel): AudioAffect | undefined {
