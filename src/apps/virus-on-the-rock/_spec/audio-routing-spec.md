@@ -52,7 +52,7 @@ audio element ─► analyser (band envelopes, beat) ─► stems ─► router 
 6. **No change is shown to Ludo before it passes the expectations below.** Each source edit rebuilds and reloads the
    open page, which stops the song and resets the routes. Do not edit while Ludo is testing.
 
-## Expectations (measured, `data-local/tests/clicksync.mjs`, click track `data-local/kick120.wav`)
+## Expectations (measured by `scripts/votr-sync/clicksync.mjs`, its generated click track; the offline baseline is `src/mol-plugin-state/manager/_spec/audio-pipeline.spec.ts`)
 
 The click track has one kick every 0.5 s from 0.25 s (120 BPM), 20 s. Separation is off, the model is the startup
 capsid, the run is headless at about 30 fps.
@@ -63,6 +63,9 @@ capsid, the run is headless at about 30 fps.
 | gain × 2 → peak × 2 | 1.9–2.1 | 1.96 ✔ |
 | routes survive a song load (`keep.mjs`) | same routes | same ✔ |
 | symmetry axes at rest, 0.4–0.5 s after a kick (Drums & Bass Burst, vitalic.mp3, `sync.mjs`) | p10 ≤ 0.1 | 0.08 ✔ |
+| kick → symmetry-axes peak, against what is **heard** (`scripts/votr-sync/clicksync.mjs`: media time − (ctx.currentTime − getOutputTimestamp().contextTime)) | median within one frame of 0 ms, no earlier than −1 frame | −1 ms median (−16..19), headless, 33 ms output delay: the drive is read from the analyser, ahead of the speakers by the output delay, so it passes only while that delay is under a frame or two; on Bluetooth or AirPlay (100–300 ms) it fails. **To be met by lane `heard-frame`** |
+| rest after a pause: every drive exactly 0 within the longest release (+1 frame) | 0 (not a tail, not a floor) | not 0 today: 1.5 s after a pause symAxis is 0.033 and the wiggle holds its 0.2 floor plus a tail (`it.failing` in `audio-pipeline.spec.ts`). **To be met by lane `sound-stops`** |
+| no route on a motion that is off | a preset that turns a motion off makes no route for it | fails for `ambient-pulse` (`amplitude → instanceRandom`; the other presets pass; `it.failing` in `audio-pipeline.spec.ts`). **To be met by lane `motions-follow-routes`** |
 | axes between kicks at 120 BPM, as a share of the peak | for information | drums only 24 %, bass only 52 %, full preset 41 % |
 
 The last row is the committed behaviour. The drums route has a release of 260 ms and the bass envelope 220 ms, so at

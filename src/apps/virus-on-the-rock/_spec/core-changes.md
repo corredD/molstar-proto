@@ -82,7 +82,9 @@ manager has no audio and no Who.
 - **`audio-reactor.ts`**, **`audio-prominence.ts`** (tested): bands, flux beat, prominence. *candidate* as a small
   analysis module; the resampler needs an anti-alias filter, analysis reads the oldest part of the buffer.
 - **`audio-reactive-animation.ts`**: the manager. *needs work*: `tick` skips `router.update` without audio (drives
-  freeze); `stemModel` description says WebGPU only.
+  freeze); `stemModel` description says WebGPU only. `getBandStems`, `getBandDrumsOnset`, `BandDrumsPeakDecayMs` and
+  `BandDrumsPeakFloor` are exported so the offline pipeline spec (`manager/_spec/audio-pipeline.spec.ts`) can replay
+  the band-stems fallback (measure, 2026-11-27; no behaviour change).
 - **`audio-routing.ts`** (tested; curve, duck, `songLoudness`, background, camera step wip). *votr only* as is (its CPU
   targets exist only in the app); the router core is generic. A non-finite source or `dtMs` reads as 0 in
   `AudioRouter.update` (router-nan-guard, 2026-11-26; commit `audio routing: a non-finite source reads as 0…`).
