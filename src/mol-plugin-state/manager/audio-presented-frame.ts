@@ -22,7 +22,12 @@ export interface AudioOutputClock {
     latency(): number
 }
 
-/** an output latency above this is taken as a wrong report, s */
+/**
+ * An output latency above this is taken as a wrong report, s. It guards the clock, not the ring: the ring spans
+ * `AudioPresentedFrame.Capacity` ticks (4.3 s at 60 Hz, 2.1 s at 120 Hz, 1.07 s at 240 Hz), and a latency past its
+ * span presents the oldest entry, i.e. the picture is at most the ring's span late. Real outputs report up to
+ * ~0.3 s (Bluetooth, AirPlay), within the span at every refresh rate up to 240 Hz.
+ */
 export const MaxAudioOutputLatency = 2;
 
 /**
@@ -100,6 +105,7 @@ function readScalarSet(src: Float64Array, o: number, s: AudioReactiveScalarSet<D
  * the route block once (a user action, never a steady frame).
  */
 export class AudioPresentedFrame {
+    /** ticks kept: covers the real output latencies (<= ~0.3 s) up to 240 Hz; see MaxAudioOutputLatency for the rest */
     static readonly Capacity = 256;
 
     private readonly scalars: Float64Array;
