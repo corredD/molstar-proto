@@ -157,9 +157,6 @@ export function getAudioDelaySeconds(params: AudioReactiveAnimationManagerValues
     return 0;
 }
 
-/** @deprecated getAudioDelaySeconds (lookahead delays the audio with no model too) */
-export const getStemDelaySeconds = getAudioDelaySeconds;
-
 /**
  * How far the analysis runs ahead of what is heard, seconds (lookahead on; else 0): the reactor's lag behind a hit,
  * half its input window and the band attack, plus the trim; within [0, the audio delay]
