@@ -146,6 +146,8 @@ describe('audio routing with a non-finite source', () => {
         createAudioRoute({ enabled: true, source: 'stemDrums', mode: 'onset', target: 'instanceWave', gain: 3, floor: 0, releaseMs: 200 }),
         createAudioRoute({ enabled: true, source: 'amplitude', mode: 'level', target: 'cameraZoom', gain: 1, floor: 0, releaseMs: 200 }),
         createAudioRoute({ enabled: true, source: 'bass', mode: 'level', target: 'wiggle', gain: 1, floor: 0, releaseMs: 200 }),
+        // the guard sits before the song average: a NaN must not reach it either
+        createAudioRoute({ enabled: true, source: 'songLoudness', mode: 'level', target: 'cameraSpin', gain: 1, floor: 0, releaseMs: 200 }),
     ];
     // the bad frame is silent apart from its non-finite value, so a route that reads it as 0 equals a fresh one
     const Silent = { drums: 0, bass: 0, other: 0, vocals: 0 };
