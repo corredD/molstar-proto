@@ -103,7 +103,7 @@ describe('audio routing', () => {
         nine.update(routes, EmptyFrame, stems, 16);
         expect(nine.scopeCount).toBe(8);
         expect(nine.drives.wiggle).toBe(0);
-        // the dropped route still shows its meter
+        // regression guard (passes on the old code too): the dropped route still shows its meter
         expect(nine.values.get(routes[8].id)).toBeCloseTo(1);
     });
 

@@ -6,7 +6,8 @@
 
 import type { PluginContext } from '../../../mol-plugin/context';
 import { AudioReactiveAnimationManager } from '../audio-reactive-animation';
-import { AudioScopeSlotCount, canNarrowRoute, createAudioRoute, defaultAudioAffect } from '../audio-routing';
+import { createEmptyAudioReactiveFrame, DefaultAudioBandDefinitions } from '../audio-reactor';
+import { AudioRouter, AudioScopeSlotCount, canNarrowRoute, createAudioRoute, defaultAudioAffect, parseAudioRouting, routesFromDrafts } from '../audio-routing';
 
 const Chain = (i: number) => ({ level: 'chain' as const, entryId: '6Q3Q', modelNum: 1, entityId: '1', operatorName: '1', asymId: String.fromCharCode(65 + i) });
 const plugin = { managers: { structure: { hierarchy: { current: { models: [], structures: [] } } } } } as unknown as PluginContext;
@@ -44,5 +45,40 @@ describe('narrowed route slots (D3)', () => {
         expect(manager.setRouteAffect(routes[1].id, defaultAudioAffect())).toBe(true);
         expect(manager.setRouteAffect(ninth.id, Chain(8))).toBe(true);
         expect(manager.state.routes.value.find(r => r.id === ninth.id)!.affect.level).toBe('chain');
+    });
+
+    it('setRoutes keeps at most 8 narrowed routes: the 9th is widened to All and the router uses 8 slots', () => {
+        const manager = new AudioReactiveAnimationManager(plugin);
+        const routes = makeRoutes(AudioScopeSlotCount + 1, 0);
+        manager.setRoutes(routes);
+        const after = manager.state.routes.value;
+        expect(after.filter(r => r.affect.level !== 'all').length).toBe(AudioScopeSlotCount);
+        expect(after[AudioScopeSlotCount].affect.level).toBe('all');
+        // the 9th cannot slip back in through the re-attach loop a load runs
+        for (const r of after) manager.setRouteAffect(r.id, r.affect);
+        expect(manager.state.routes.value.filter(r => r.affect.level !== 'all').length).toBe(AudioScopeSlotCount);
+        const router = new AudioRouter();
+        router.update(manager.state.routes.value, createEmptyAudioReactiveFrame(DefaultAudioBandDefinitions), { drums: 1, bass: 0, other: 0, vocals: 0 }, 16);
+        expect(router.scopeCount).toBe(AudioScopeSlotCount);
+        expect(router.drives.wiggle).toBe(1);
+    });
+
+    it('setRoutes counts disabled narrowed routes too, in array order', () => {
+        const manager = new AudioReactiveAnimationManager(plugin);
+        const routes = makeRoutes(AudioScopeSlotCount + 1, 0).map((r, i) => i === 0 ? { ...r, enabled: false } : r);
+        manager.setRoutes(routes);
+        const after = manager.state.routes.value;
+        expect(after[0].affect.level).toBe('chain');
+        expect(after[AudioScopeSlotCount].affect.level).toBe('all');
+    });
+
+    it('an old-format file (top-level affect) with 9+ narrowable routes ends with at most 8 narrowed after load', () => {
+        const route = { enabled: true, source: 'stemDrums', mode: 'level', target: 'wiggle', gain: 1 };
+        const text = JSON.stringify({ name: 'old', affect: Chain(0), routes: Array.from({ length: 10 }, () => route) });
+        const preset = parseAudioRouting(text)![0];
+        const manager = new AudioReactiveAnimationManager(plugin);
+        manager.setRoutes(routesFromDrafts(preset.routes));
+        for (const r of manager.state.routes.value) manager.setRouteAffect(r.id, r.affect);
+        expect(manager.state.routes.value.filter(r => r.affect.level !== 'all').length).toBe(AudioScopeSlotCount);
     });
 });

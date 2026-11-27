@@ -7,7 +7,7 @@
 
 import { BehaviorSubject } from 'rxjs';
 import { StemModelId, StemModels, StemName } from './audio-stems/stem-models';
-import { AudioAffect, AudioAffectLevel, AudioRoute, AudioRouteDrives, AudioRouter, AudioScopeSlot, canNarrowRoute, canonicalAudioAffect, createZeroDrives, defaultAudioAffect, getDefaultAudioRoutes, maxScopeLevel, sameAudioAffect } from './audio-routing';
+import { AudioAffect, AudioAffectLevel, AudioRoute, AudioRouteDrives, AudioRouter, AudioScopeSlot, canNarrowRoute, canonicalAudioAffect, createZeroDrives, defaultAudioAffect, getDefaultAudioRoutes, limitNarrowedRoutes, maxScopeLevel, sameAudioAffect } from './audio-routing';
 import { audioAffectFromLoci, clampAffectToLevel, resolveAudioAffect, specializeAudioAffect } from '../helpers/audio-affect';
 import { StructureElement } from '../../mol-model/structure';
 import { StemLevels, StemSeparator, StemSeparatorOptions, StemSeparatorStatus } from './audio-stems/stem-separator';
@@ -290,8 +290,9 @@ export class AudioReactiveAnimationManager {
         return this.router.scopeDrive;
     }
 
+    /** Installs the routes, with at most 8 narrowed (D3): a narrowed route past the 8th is widened to All */
     setRoutes(routes: AudioRoute[]) {
-        this.state.routes.next(routes);
+        this.state.routes.next(limitNarrowedRoutes(routes) as AudioRoute[]);
         this.updateStatus(void 0, true);
     }
 

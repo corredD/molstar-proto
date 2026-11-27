@@ -292,6 +292,20 @@ export function canNarrowRoute(routes: readonly AudioRoute[], routeId: number): 
     return narrowed < AudioScopeSlotCount;
 }
 
+/**
+ * The routes with at most AudioScopeSlotCount narrowed (enabled or not, as canNarrowRoute counts): the narrowed routes
+ * past the 8th in array order are widened to All. The same array if none is
+ */
+export function limitNarrowedRoutes(routes: readonly AudioRoute[]): readonly AudioRoute[] {
+    let narrowed = 0, changed = false;
+    const out = routes.map(r => {
+        if (!routeHasScope(r.target) || r.affect.level === 'all' || ++narrowed <= AudioScopeSlotCount) return r;
+        changed = true;
+        return { ...r, affect: defaultAudioAffect() };
+    });
+    return changed ? out : routes;
+}
+
 export function routeHasScope(target: AudioRouteTarget): target is AudioScopeTarget {
     return Object.prototype.hasOwnProperty.call(AudioScopeKinds, target);
 }
