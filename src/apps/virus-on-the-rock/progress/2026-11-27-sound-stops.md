@@ -139,9 +139,18 @@ lane, rerun:    full 76 ms (35..128) | drums 77 (60..91) | bass 89 (73..106) | x
 base (overnight's manager and router, same server, same hour):
                 full 92 ms (67..107) | drums 78 (58..117) | bass 87 (70..102) | x2 84; gain x2 -> 2.00
 ```
-The machine was loaded (other lanes): the base is ~40 ms later than heard-frame's own run (42 / 38 / 54). Lane and base
-agree within the run-to-run noise: no change from this lane. The heard median sits at the window's edge (50 ms + one
-frame ≈ 88–90 ms) on this machine for both; heard-frame's quieter run is the reference.
+Lane and base agree within the run-to-run noise, and the playing path is unchanged offline (goldens and lag tests
+untouched): no change from this lane. But both sit at or over the window (50 ms + one frame ≈ 87–90 ms): the lane's
+first run full 91 (limit 90) and x2 93 (limit 89), the base full 92. Cause not identified: the frame step (37–40 ms) is
+the same as heard-frame's run, and `git log e6a2beef2^2..e6a2beef2^1 -- src scripts` is empty (staging has nothing
+heard-frame's 42 ms run lacked). Open: heard-frame's 42 / 38 / 54 ms is not reproduced here today.
+
+### After the advisor's check
+
+- 8dafffd26 `audio-reactive-ports.spec.ts` covers the flush on a new source (`loadUrl`) too; mutant (no flush in
+  `loadSource`) fails.
+- No app code loads a next source on `ended` (the only `ended` listener is the manager's status update), so the
+  end-of-file tail is not cut by the new-source flush.
 
 ## Built
 
@@ -178,3 +187,7 @@ Production: 86 + / 29 − lines in two core files (`audio-reactive-animation.ts`
 src/apps/virus-on-the-rock src/mol-plugin-state src/mol-repr/structure src/mol-canvas3d` 21 suites, 190 tests pass;
 `node ./scripts/build.mjs -a virus-on-the-rock --prd` done (build/ removed); clicksync above. Not checked by hand in a
 browser: no audio after Stop (the flush), the tail with a real stem model.
+
+Process deviations: the manager commit holds three causes (heard and the tail, the clear reset, the flush), since its
+tests depend on each other; the flush wiring tests came after the code, proven by mutants, not by a red run; TODO 1 is
+annotated as built, not removed (the numbers below it are referenced).
