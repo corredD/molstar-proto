@@ -93,6 +93,9 @@ manager has no audio and no Who.
   offline pipeline spec (`manager/_spec/audio-pipeline.spec.ts`, which drives the real `tick`) read each frame's stems and
   route values (measure, 2026-11-27; no behaviour change). The test fakes set two private fields (`audioContext`,
   `analyser`) through one documented cast in `_spec/audio-pipeline-helper.ts`.
+- **Measuring stick (measure, 2026-11-27; test and tooling only)**: `mol-plugin-state/manager/_spec/audio-pipeline-helper.ts` and
+  `audio-pipeline.spec.ts` (offline pipeline, golden traces, drives the real `tick`), and `scripts/votr-sync/clicksync.mjs`
+  (browser sync test with a generated click track, `--port` required).
 - **`audio-routing.ts`** (tested; curve, duck, `songLoudness`, background, camera step wip). *votr only* as is (its CPU
   targets exist only in the app); the router core is generic. A non-finite source or `dtMs` reads as 0 in
   `AudioRouter.update` (router-nan-guard, 2026-11-26; commit `audio routing: a non-finite source reads as 0…`).
