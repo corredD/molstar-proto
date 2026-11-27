@@ -53,6 +53,11 @@ manager has no audio and no Who.
   stems, 7 drives, glow, hue, scope count/kind/drive [8]. `updateIfChanged`, forced redraw while the wave or a scope is
   driven. *needs work*: replace `AudioReactiveFrame` in the renderer and Canvas3D interfaces by a generic "external
   drives" API; stem, mix and dominant-frequency uniforms are unused.
+- **Forced redraw of an audio frame** (`canvas3d.ts` `setAudioFrame`, new `audio-redraw.ts` `audioFrameNeedsRender`,
+  spec `mol-canvas3d/_spec/audio-redraw.spec.ts`; redraw-and-axes-cache, 2026-11-27): a frame renders while the
+  illumination or hue drive is above 0 and once more when it returns to 0, besides the wave and the narrowed routes
+  (it ignored illumination and hue); two preallocated number fields, nothing allocated per frame. Commits
+  `canvas3d: ...`, no app hunks. *votr only*.
 - **Material animation uniforms** (`AnimationSchema`): motion toggles, object transform, axis set (`uAudioAssemblyAxes`
   v3[32], count, centre), `uAudioWaveRadial` (wip), Who ranges v4[8]. *needs work*: the Who ranges differ per visual but
   are uploaded per material (render-item.ts:242-250; all visuals of a representation share one material id), so they
@@ -89,7 +94,10 @@ manager has no audio and no Who.
 - **`audio-stems/`** (DSP tested): Spleeter, HTDemucs, SCNet runners, worker, separator. *votr only*; weights on
   Hugging Face `resolve/main` (not pinned). `StemSeparator.onWorkerMessage` stores a non-finite worker energy as 0 (a NaN
   in the model output stuck the running peaks and every stem level for good; router-nan-guard, 2026-11-26).
-- **`assembly-symmetry-axis.ts`**: axes per structure from RCSB symmetry; mesoscale parts share a middle (wip).
+- **`assembly-symmetry-axis.ts`**: axes per structure from RCSB symmetry; mesoscale parts share a middle (wip). The
+  per-structure cache stores the bare key (it stored `key:count` and compared the bare key, so it never hit: two
+  provider reads per structure per sync, now one after the first; redraw-and-axes-cache, 2026-11-27, spec
+  `mol-plugin-state/helpers/_spec/assembly-symmetry-axis.spec.ts`; commit of its own, no app hunks).
   *needs work*: imports `extensions/assembly-symmetry` from `mol-plugin-state`; header `@author OpenAI`.
 - **`audio-affect.ts`**: Who resolution and packing; mesoscale owners (wip). *votr only*.
 - **`audio-reactive-presets.ts`**: ten presets. *votr only*.
