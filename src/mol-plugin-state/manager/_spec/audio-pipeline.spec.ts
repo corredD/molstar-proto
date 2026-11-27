@@ -596,6 +596,10 @@ describe('audio pipeline (offline, 16 ms frames at 48 kHz)', () => {
             expect(heard.slice(frameAt(8) + 2, frameAt(15.5)).some(h => h)).toBe(false);
             expect(heard.slice(frameAt(15.5) + 2).every(h => h)).toBe(true);
         });
+        it('a resume inside the tail (delay 1 s, paused 3-3.5 s): heard straight through, the line still holds sound', () => {
+            const { heard } = statusRun(kickTrack(), { durationS: 6, stemDelayS: 1, paused: [[3, 3.5]] });
+            expect(heard.slice(frameAt(1) + 1).every(h => h)).toBe(true);
+        });
         it('control: a silent file with a delay of 1 s is blocked 2 s after the line has filled, not before', () => {
             const { blocked } = statusRun(silence(48000, 5), { durationS: 5, stemDelayS: 1 });
             expect(blocked.slice(0, frameAt(3)).some(b => b)).toBe(false);
