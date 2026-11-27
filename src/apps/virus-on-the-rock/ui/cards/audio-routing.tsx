@@ -9,7 +9,7 @@ import * as React from 'react';
 import { useBehavior } from '../../../../mol-plugin-ui/hooks/use-behavior';
 import { InspiredRoutings } from '../../../../mol-plugin-state/helpers/audio-routing-inspired';
 import { describeAudioAffect, listAudioAffectChoices } from '../../../../mol-plugin-state/helpers/audio-affect';
-import { AudioAffectLevels, AudioRouteCurves, AudioRouteSources, AudioRouteTargets, canNarrowRoute, canonicalAudioAffect, createAudioRoute, draftsFromRoutes, maxScopeLevel, getDefaultAudioRoutes, loadStoredAudioRouting, parseAudioRouting, routesFromDrafts, storeAudioRouting, type AudioAffect, type AudioRoute, type AudioRoutingPreset } from '../../../../mol-plugin-state/manager/audio-routing';
+import { AudioAffectLevels, AudioRouteCurves, AudioRouteSources, AudioRouteTargets, AudioScopeSlotCount, canonicalAudioAffect, createAudioRoute, draftsFromRoutes, maxScopeLevel, narrowedRouteCount, getDefaultAudioRoutes, loadStoredAudioRouting, parseAudioRouting, routesFromDrafts, storeAudioRouting, type AudioAffect, type AudioRoute, type AudioRoutingPreset } from '../../../../mol-plugin-state/manager/audio-routing';
 import { type AudioReactiveStatus } from '../../../../mol-plugin-state/manager/audio-reactive-animation';
 import type { VirusOnTheRockApp } from '../../app';
 
@@ -25,13 +25,13 @@ export const AffectLevelShort: Record<AudioAffect['level'], string> = {
 };
 
 /** One route's Who row: how fine (level), which one, and a pick from what is clicked in the viewer */
-export function RouteAffectRow({ app, route }: { app: VirusOnTheRockApp, route: AudioRoute }) {
+/** `slotsFull`: the 8 slots are taken, counted once per render by the card */
+export function RouteAffectRow({ app, route, slotsFull }: { app: VirusOnTheRockApp, route: AudioRoute, slotsFull: boolean }) {
     const manager = app.viewer.plugin.managers.audioReactive;
     const hierarchy = useBehavior(manager.plugin.managers.structure.hierarchy.behaviors.selection);
-    const routes = useBehavior(manager.state.routes);
     const affect = route.affect;
-    const full = !canNarrowRoute(routes, route.id);
     const max = maxScopeLevel(route.target);
+    const full = slotsFull && max !== 'all' && affect.level === 'all';
     const choices = React.useMemo(
         () => affect.level === 'all' ? [] : listAudioAffectChoices(manager.plugin, affect),
         [manager, affect, hierarchy],
@@ -58,7 +58,6 @@ export function RouteAffectRow({ app, route }: { app: VirusOnTheRockApp, route: 
         >
             {levels.map(([level]) => <option key={level} value={level}>{AffectLevelShort[level]}</option>)}
         </select>
-        {full && <span className='vor-route-who-fixed'>{NarrowedSlotsFullNote}</span>}
         {affect.level !== 'all' && <select
             className='vor-select'
             value={known ? selected : ''}
@@ -186,7 +185,9 @@ export function AudioRoutingCard({ app }: { app: VirusOnTheRockApp }) {
     const routes = useBehavior(manager.state.routes);
     const status = useBehavior(manager.state.status) as AudioReactiveStatus | undefined;
     if (!routes) return null;
+    const slotsFull = narrowedRouteCount(routes) >= AudioScopeSlotCount;
     return <div className='vor-stack'>
+        {slotsFull && <p className='vor-help'>{NarrowedSlotsFullNote}</p>}
         {routes.map(route => {
             const value = status?.routeValues.get(route.id) ?? 0;
             return <div key={route.id} className={`vor-route ${route.enabled ? '' : 'vor-route-off'}`}>
@@ -219,7 +220,7 @@ export function AudioRoutingCard({ app }: { app: VirusOnTheRockApp }) {
                         {AudioRouteCurves.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
                     </select>
                 </div>
-                <RouteAffectRow app={app} route={route} />
+                <RouteAffectRow app={app} route={route} slotsFull={slotsFull} />
                 <div className='vor-route-row'>
                     <label className='vor-route-gain' title='Sensitivity: how much the source moves the channel'>
                         Gain {route.gain.toFixed(2)}
