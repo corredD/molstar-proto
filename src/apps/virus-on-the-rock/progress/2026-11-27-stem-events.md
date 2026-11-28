@@ -49,6 +49,38 @@
 - **Base:** `votr/lookahead-sync` (its PR into `votr/overnight` is open); this PR goes into `votr/lookahead-sync` and is
   retargeted to `votr/overnight` once that merges.
 
+## Design (Opus architect, 2026-11-27; waits on Ludo's points below)
+
+- **Measured first** (Python, reference HTDemucs stems): the streaming detector, run by run (7.8 s window, 5 s chunk,
+  0.35 s hold-back, p95 over the run's window, a −40 dBFS gate) against the whole-song reference: kicks 100 % hit /
+  0.5 % extra, snare/hat 97.6 / 2.4 %, bass notes 99.5 / 0.65 %, offset 0. Without the gate: 2–6 % extra, all in the
+  first 6 s at about −118 dB.
+- **symAxis drive at 60 fps** (the study's matcher): today 59 % kicks / 3.5 % false / valley/peak 0.73 / ρ 0.12;
+  kick 6.5/120 + bassNote 3/120: 77.6 % / 4.4 % / 0.25 / 0.41. Ideal impulses score 76.5 %: the matcher's ceiling
+  (a missed kick has a stronger kick within 250 ms after it), so the brief's 90 % cannot be met.
+- **Detector:** new pure `audio-stems/stem-events.ts`, an exact port of `metrics.py` `band_flux` + `pick` (frames on
+  the absolute hop grid, running median, monotonic-deque loud level, −6 dB dating, strength in dBFS re a unit sine).
+  HTDemucs only (it alone has separated samples): `demucsStemEnergies` also writes mono drums and bass; the worker
+  core runs the detector after each run, posts events in [end − consumed − 0.35 s, end − 0.35 s).
+- **Protocol / separator:** `'stems'` gains optional `events {from, until, times, dbfs, kinds}`; per-kind rings in
+  `stem-separator.ts`, value = clamp((dBFS − loud + 18)/18, 0, 1) with a slow loud level; `sampleEvents(at)` fires each
+  event once, on the first frame that reaches it; cleared on reset, seek, model change, Off.
+- **Router:** sources `stemKick`, `stemSnare`, `stemBassNote`; route fields `threshold` (Hit threshold, 0–0.95) and
+  `standIn` (acts only while no events arrive); event sources skip onset normalization (that erased strength).
+- **Drums & Bass Burst:** today's stemDrums and stemBass routes become `standIn`; new stemKick Level 6.5/120 and
+  stemBassNote Level 3/120 → symAxis. No model, Spleeter, SCNet: today's drives exactly, goldens unchanged.
+- **Tests:** a committed Python-generated fixture (synthetic kicks 1/0.5, bass, hats) the TS detector must equal
+  within one hop and 0.1 dB; chunk seams exact; separator fire-once/seek/clear; router threshold and stand-in; pipeline
+  frame-accurate hit and 2:1 order. Angine acceptance: events ≥ 95 % / ≤ 5 % false; drive ≥ 72 % kicks, ≤ 5 % false,
+  valley/peak ≤ 0.30, ρ ≥ 0.35.
+- **Worker CPU:** +0.35–0.45 s per 5 s chunk (load factor +0.07–0.09).
+- **Size:** ~385 production lines (brief: 200); the detector port takes the room.
+- **For Ludo:** (1) the worker looks 0.35 s ahead inside the delay (rule-1 bend); (2) events sampled at t − D, not
+  t − D + the stem lead (an onset-dated event has no window lag to compensate); (3) the `standIn` route field and the
+  new Drums & Bass Burst defaults (alternative: a separate "Drums & Bass Burst (stems)" preset); (4) events with
+  HTDemucs only; (5) the acceptance numbers above replace the brief's 90 %; (6) snare a source only, not in the
+  preset; (7) ~385 lines.
+
 ## Built
 
 ## Decided
