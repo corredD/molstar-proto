@@ -281,6 +281,19 @@ function writeSpectrumSamples(source: Uint8Array, target: Float32Array) {
     }
 }
 
+/**
+ * How far ahead of what is heard now (t - D) a tick reads the stem events, so each shows on the frame heard nearest to
+ * it. A tick's router state is shown once now - `latencyS` reaches its stamp: ceil(L / frame) frames later, heard
+ * ceil(L / frame) frame - L after the tick's own time; the tick then takes the events within half a frame either side
+ * of that. Not a lead (the events are dated at their onset): the frame quantization of the presented ring. Without it
+ * a kick showed up to two frames late (headed clicksync, HTDemucs on the GPU at ~64 ms frames: 77 ms)
+ */
+export function getEventDisplayShiftSeconds(frameS: number, latencyS: number) {
+    if (!(frameS > 0)) return 0;
+    const shown = latencyS > 0 ? Math.ceil(latencyS / frameS - 1e-9) * frameS - latencyS : 0;
+    return shown + frameS / 2;
+}
+
 export class AudioReactiveAnimationManager {
     readonly state = {
         audioPlayer: new BehaviorSubject<HTMLAudioElement | null>(null),
@@ -781,7 +794,7 @@ export class AudioReactiveAnimationManager {
     private updateStems(dtMs: number, silent: boolean, delayS: number, leadS: number, heard: boolean) {
         const params = this.state.params.value;
         if (heard && this.separator && this.audioContext && params.stemModel !== 'off') {
-            this.separator.sampleEvents(this.clockNow - delayS, dtMs, this.stemEvents);
+            this.separator.sampleEvents(this.clockNow - delayS + getEventDisplayShiftSeconds(dtMs / 1000, this.clockLatency), dtMs, this.stemEvents);
         } else {
             this.separator?.skipEvents();
             this.clearStemEvents();

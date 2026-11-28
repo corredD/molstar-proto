@@ -1086,6 +1086,23 @@ describe('audio pipeline (offline, 16 ms frames at 48 kHz)', () => {
             }
         }
 
+        // the frame shown when a kick is heard: the router's entry of a tick is shown once now - L reaches its stamp, so a
+        // kick read at t - D fires late by up to a frame and is shown later still (headed clicksync, HTDemucs on the GPU,
+        // ~64 ms frames: 77 ms late). The kick must show on the frame heard nearest to it
+        for (const [frameMs, L] of [[16, 0], [16, 0.032], [64, 0], [64, 0.032], [37, 0.032], [50, 0.1]] as const) {
+            it(`a kick event shows on the frame heard nearest to it, within half a frame (${frameMs} ms frames, latency ${L * 1000} ms)`, () => {
+                const at = Array.from({ length: 8 }, (_, k) => 2.5 + k * 0.531);
+                const t = runAudioPipeline(silence(48000, 8), kickRoute(), { durationS: 8, stemDelayS: D, stemModel: 'htdemucs', frameMs, outputLatency: L, stemEvents: kicks(at) });
+                const shown: number[] = [];
+                for (let i = 1; i < t.count; i++) if (t.drives.symAxis[i] > 0 && t.drives.symAxis[i - 1] === 0) shown.push(i);
+                expect(shown.length).toBe(at.length);
+                expect(t.drives.symAxis.filter(x => x > 0).length).toBe(at.length);
+                // frame i is heard at its clock less the latency
+                const lagsMs = shown.map((i, k) => ((i + 1) * frameMs / 1000 - L - D - at[k]) * 1000);
+                for (const lag of lagsMs) expect(Math.abs(lag)).toBeLessThanOrEqual(frameMs / 2 + 1);
+            });
+        }
+
         it('alternating 1 / 0.5 kicks keep the burst order: each 6 dB softer kick bursts 1 - 6 / 18 of the loud one', () => {
             const times = [2, 2.5, 3, 3.5, 4, 4.5, 5, 5.5];
             const t = runAudioPipeline(silence(48000, 8), kickRoute(), { durationS: 8, stemDelayS: D, stemModel: 'htdemucs', stemEvents: kicks(times, i => i % 2 ? -12 : -6) });
@@ -1121,7 +1138,8 @@ describe('audio pipeline (offline, 16 ms frames at 48 kHz)', () => {
             const ev = { from: 0, until: 30, times: Float64Array.from([2.5, 3.4, 3.5]), dbfs: Float32Array.from([-6, -6, -15]), kinds: Uint8Array.from([0, 2, 2]) };
             const hit = runAudioPipeline(silence(48000, 6), getDefaultAudioRoutes(), { analysis: burst, durationS: 6, stemDelayS: D, stemModel: 'htdemucs', stemEvents: ev });
             expect(Math.max(...hit.drives.symAxis)).toBeCloseTo(6.5, 5);
-            expect(hit.drives.symAxis[frameAt(3.5 + D)]).toBeGreaterThan(3 * (-15 + 6.06 + 18) / 18 - 1e-3);
+            const i = frameAt(3.5 + D);
+            expect(Math.max(...hit.drives.symAxis.slice(i - 1, i + 2))).toBeGreaterThan(3 * (-15 + 6.06 + 18) / 18 - 1e-3);
         });
 
         it('before the events\' coverage starts (a model switched mid-play, the delay kept): the stand-ins drive symAxis', () => {
