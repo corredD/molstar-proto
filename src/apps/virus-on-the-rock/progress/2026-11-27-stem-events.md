@@ -250,3 +250,44 @@ stems, not Spleeter's or SCNet's own separation (the browser check, step 5).
 - **Steps:** 1. holes (Opus, test first) 2. pause (Opus, test first) 3. measure (Sonnet runs the headed harness) then
   cut (Opus) 4. checks (Sonnet) 5. gate on the round's commits (reviewer + skeptic, Opus) 6. PR #77's body: a Round 2
   section and the numbers.
+
+### Built (round 2, 2026-11-28)
+
+Two of the three fixes; the third is parked (see Learned). Test first each.
+
+1. **Holes** (bd0f11b3e): the worker counts the samples that arrived since its last run uncapped and posts `lostMs` =
+   what the window could not hold past the run's region (none before a first run); the separator keeps the stretches
+   between runs as holes (a run starting more than 1 ms after the last one's end; 64 kept, none allocated per frame):
+   `sampleEvents` is not live inside one and the grace never carries across it; the status line says "(behind: x s lost
+   per run)" (`ui/cards/stem-status.ts`, `describeStemStatus` moved out of the tsx so jest can reach it; same name).
+2. **Pause** (2f7d3d947): the element's pause event, when playing and not the end of the file (`ended` is already true
+   when the file's pause event fires), suspends the AudioContext; the play event (the native controls) and `play()`
+   resume it. `frozen`: no tail deadline and no priming from the pause's length. The pipeline helper's fake context
+   freezes clock, line and media while suspended. Tail tests now use the end of the file; the pause rows of the routing
+   spec and architecture §2 are rewritten.
+3. **HTDemucs speed**: measured once (below), no cut built.
+
+### Learned (round 2)
+
+- Headed measurement, HTDemucs on WebGPU, this machine at a load average of ~40 (other lanes running), so absolute
+  numbers are about twice Ludo's: a run takes 11.6 s for 5 s of audio (232 %); per run: `demucsSpec` 0.09 s, the 21
+  pieces' `session.run` 4.95 s (0.235 s each, piece 0 0.275 s), `onSubmittedWorkDone` 5.4 s (0.255 s each), the 12 ms
+  sleeps 0.30 s, the two `getData` reads 0.58 s, `demucsStemEnergies` 0.31 s; frames 62 ms median (p95 69 ms) while it
+  runs. So the sleeps are not the cost (0.3 s of 11.6); the cost is that each piece waits for the GPU to drain before
+  the next one is encoded: the GPU idles while the CPU encodes (about 0.24 s a piece) and the CPU idles while the GPU
+  works (about 0.25 s). Hypothesis, not measured: yielding every 2-3 pieces overlaps the two and could take a run to about
+  half, at the price of fewer gaps for the renderer. The comparison (every 1 / 3 / 21 pieces, runs and frames) was
+  started and stopped on the coordinator's word (Ludo on a call, no audio runs). Parked: needs a quiet machine and a
+  headed Chrome, ~4 minutes. Also seen: headed Chrome's renderer died at random 1 to 80 s after load on this loaded
+  machine ("Render process gone"), three runs in four; not the app.
+- Before this round the status said "behind" only by its percentage; with `lostMs` the cause of the 14 s cycle shows.
+- Open: `sample()` interpolates the stem levels across a hole (the stand-ins read them). The end of the file's tail
+  drained, then a play (the priming path) has no offline test since the helper's ended state does not resume.
+
+### Size (round 2)
+
+See the PR body (production lines of the two fixes).
+
+### Review (round 2)
+
+Filled after the gate.
