@@ -6,10 +6,11 @@
  */
 
 import { BehaviorSubject } from 'rxjs';
-import { StemModelId, StemModels, StemName } from './audio-stems/stem-models';
+import { StemModelId, StemModels, StemName, StemNames } from './audio-stems/stem-models';
 import { AudioAffect, AudioAffectLevel, AudioRoute, AudioRouteDrives, AudioRouter, AudioScopeSlot, canNarrowRoute, canonicalAudioAffect, clampAudioRouteThreshold, createZeroDrives, defaultAudioAffect, getDefaultAudioRoutes, limitNarrowedRoutes, maxScopeLevel, sameAudioAffect, StemEventValues } from './audio-routing';
 import { audioAffectFromLoci, clampAffectToLevel, resolveAudioAffect, specializeAudioAffect } from '../helpers/audio-affect';
 import { StructureElement } from '../../mol-model/structure';
+import { StemPlayer } from './audio-stems/stem-player';
 import { StemLevels, StemSeparator, StemSeparatorOptions, StemSeparatorStatus } from './audio-stems/stem-separator';
 import { ParamDefinition as PD } from '../../mol-util/param-definition';
 import { PluginContext } from '../../mol-plugin/context';
@@ -308,6 +309,8 @@ export class AudioReactiveAnimationManager {
         params: new BehaviorSubject<AudioReactiveAnimationManagerValues>(PD.getDefaultValues(AudioReactiveAnimationManagerParams)),
         /** which audio source drives which visual channel, and who each route moves (audio-routing.ts) */
         routes: new BehaviorSubject<AudioRoute[]>(getDefaultAudioRoutes()),
+        /** the stems heard on their own, instead of the mix (not saved; all off while no model separates): setStemListen */
+        stemListen: new BehaviorSubject<Readonly<Record<StemName, boolean>>>({ drums: false, bass: false, other: false, vocals: false }),
     };
 
     private router = new AudioRouter();
@@ -336,6 +339,9 @@ export class AudioReactiveAnimationManager {
     private analysisDelayNode?: DelayNode;
     private analysisSink?: GainNode;
     private separator?: StemSeparator;
+    /** the mix is heard through this (delay -> mix gain -> speakers): 0 while a stem plays instead */
+    private mixGain?: GainNode;
+    private stemPlayer?: StemPlayer;
     private stemStatus: StemSeparatorStatus = { state: 'off' };
     private currentStems: StemLevels = ZeroStems;
     private stemsSeparated = false;
@@ -495,8 +501,19 @@ export class AudioReactiveAnimationManager {
         return Math.max(0, getAudioDelaySeconds(params) - getAnalysisLeadSeconds(params, ctx.sampleRate));
     }
 
+    /** Hears a stem on its own, or not: while any is on the mix is muted (from the first stem chunk that plays). Off while no model separates */
+    setStemListen(stem: StemName, on: boolean) {
+        const current = this.state.stemListen.value;
+        if (current[stem] === on || (on && this.state.params.value.stemModel === 'off')) return;
+        const next = { ...current, [stem]: on };
+        this.state.stemListen.next(next);
+        this.stemPlayer?.setStem(stem, on);
+        this.separator?.setListening(StemNames.some(s => next[s]));
+    }
+
     private syncStems() {
         const params = this.state.params.value;
+        if (params.stemModel === 'off') for (const s of StemNames) this.setStemListen(s, false);
         if (this.delayNode && this.audioContext) {
             const delay = getAudioDelaySeconds(params);
             if (Math.abs(this.delayNode.delayTime.value - delay) > 1e-3) {
@@ -519,7 +536,8 @@ export class AudioReactiveAnimationManager {
             this.separator = new StemSeparator(this.audioContext, this.sourceNode, this.stemSeparatorOptions, status => {
                 this.stemStatus = status;
                 this.updateStatus(void 0, true);
-            });
+            }, this.stemPlayer);
+            this.separator.setListening(StemNames.some(s => this.state.stemListen.value[s]));
         }
         void this.separator.setModel(params.stemModel === 'off' ? undefined : params.stemModel, params.stemExecutionProvider);
     }
@@ -649,7 +667,11 @@ export class AudioReactiveAnimationManager {
             this.delayNode = ctx.createDelay(30);
             this.delayNode.delayTime.value = getAudioDelaySeconds(this.state.params.value);
             source.connect(this.delayNode);
-            this.delayNode.connect(ctx.destination);
+            this.mixGain = ctx.createGain();
+            this.delayNode.connect(this.mixGain);
+            this.mixGain.connect(ctx.destination);
+            this.stemPlayer = new StemPlayer(ctx, ctx.destination, this.mixGain.gain, () => getAudioDelaySeconds(this.state.params.value));
+            for (const s of StemNames) this.stemPlayer.setStem(s, this.state.stemListen.value[s]);
             this.analysisDelayNode = ctx.createDelay(30);
             this.analysisDelayNode.delayTime.value = this.getAnalysisDelaySeconds(ctx);
             this.analysisSink = ctx.createGain();
@@ -698,7 +720,7 @@ export class AudioReactiveAnimationManager {
         const delay = this.delayNode = ctx.createDelay(30);
         delay.delayTime.value = getAudioDelaySeconds(this.state.params.value);
         source.connect(delay);
-        delay.connect(ctx.destination);
+        delay.connect(this.mixGain ?? ctx.destination);
         source.disconnect(oldAnalysis);
         oldAnalysis.disconnect();
         const analysis = this.analysisDelayNode = ctx.createDelay(30);
@@ -965,6 +987,8 @@ export class AudioReactiveAnimationManager {
         this.clear();
         this.sourceNode?.disconnect();
         this.separator?.dispose();
+        this.stemPlayer?.dispose();
+        this.mixGain?.disconnect();
         this.delayNode?.disconnect();
         this.analysisDelayNode?.disconnect();
         this.analyser?.disconnect();
@@ -973,6 +997,7 @@ export class AudioReactiveAnimationManager {
         this.state.audioPlayer.complete();
         this.state.status.complete();
         this.state.routes.complete();
+        this.state.stemListen.complete();
         this.state.params.complete();
     }
 }
