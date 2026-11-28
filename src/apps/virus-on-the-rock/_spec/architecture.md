@@ -55,7 +55,17 @@ entry behind for good after a single late tick, ≈ 95 ms instead of ≈ 49 ms a
 the presented frame as sound (beat cycle, song detection) gates on the status's `heardPlaying`, not on the live
 `playing` (the transport). The presented objects keep their identity and nothing is allocated per frame. No flush on pause, stop or clear: the device still plays the last `outputLatency`.
 
-**When the sound stops** (sound-stops, 2026-11-27). Heard = playing, or after a pause or the end of the file until the
+**Pause freezes the line** (stem-events round 2, Ludo 2026-11-28). The element's pause event, from playing and not the
+end of the file (`audio.ended` is already set when the file's pause event fires), suspends the AudioContext: the delay
+line, the analysis branch and the stem tap freeze with the clock, so what is heard stops at once and a play (the manager's
+or the element's own controls: the play event resumes the context) goes on where it stopped, with nothing lost, nothing
+replayed and no priming (`frozen`: no deadline `heardUntil`, no `primedUntil` from the pause's length; the tap's blocks keep
+their context time, so the worker's gap rule does not reset). Not heard while the context is not running (`heardAt`), and
+the output clock's latency is 0 then, so what is presented stops on the pause's frame and holds its last entry the output
+latency after a play. Stop, a new source and Clear flush the line as before; a change of the delay during a pause flushes it
+(its content was delayed by the old D, the next play primes). The rest of this section is the tail of the end of the file.
+
+**When the sound stops** (sound-stops, 2026-11-27). Heard = after the end of the file (a pause, until round 2) until the
 stem delay line has drained (`heardUntil`: the stop + the delay node's time now, each tick; the stop is the element's
 pause or ended event, or the first tick not playing as a fallback, so stalled ticks do not stretch the tail and a delay
 changed in the tail moves it). Not heard either while the line hands over the silence it held at a (re)start with an

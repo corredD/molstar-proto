@@ -16,7 +16,7 @@ import type { StemWorkerEvents } from '../audio-stems/stem-worker-protocol';
 
 export type AudioSignal = { name: string, sampleRate: number, samples: Float32Array, kicksS?: readonly number[] };
 
-export type AudioPipelineFrameInfo = { index: number, timeMs: number, mediaS: number, paused: boolean, manager: AudioReactiveAnimationManager };
+export type AudioPipelineFrameInfo = { index: number, timeMs: number, mediaS: number, paused: boolean, manager: AudioReactiveAnimationManager, contextState: 'running' | 'suspended' };
 
 export type AudioPipelineOptions = {
     /** a preset's `analysis`; only the reactor's keys are read, as the manager's getReactorParams does */
@@ -135,7 +135,13 @@ export function runAudioPipeline(signal: AudioSignal, routes: readonly AudioRout
     const analysisDelaySamples = () => Math.round((analysisDelayNode?.delayTime.value ?? 0) * sr);
     let frameIndex = -1;
     const analysedFrames: number[] = [];
-    const ctx = { currentTime: 0, sampleRate: sr, state: 'running', outputLatency: opts.outputLatency ?? 0 };
+    // a suspended context freezes the whole graph (its clock, the delay lines, the media element's output): the loop
+    // below adds nothing to `wall` and does not advance the clock or the media cursor while it is suspended
+    const ctx = {
+        currentTime: 0, sampleRate: sr, state: 'running' as 'running' | 'suspended', outputLatency: opts.outputLatency ?? 0,
+        async suspend() { ctx.state = 'suspended'; },
+        async resume() { ctx.state = 'running'; },
+    };
     const analyser = {
         fftSize: 2048, smoothingTimeConstant: 0,
         get frequencyBinCount() { return this.fftSize / 2; },
@@ -223,6 +229,8 @@ export function runAudioPipeline(signal: AudioSignal, routes: readonly AudioRout
     let mediaFrames = 0;
     let firedPaused = false;
     let tickTimeMs = 0;
+    // wall time spent with the context suspended: the context's clock stood still for it
+    let frozenMs = 0;
     const jitterRnd = mulberry32(77);
     for (let i = 0; i < count; i++) {
         frameIndex = i;
@@ -234,26 +242,29 @@ export function runAudioPipeline(signal: AudioSignal, routes: readonly AudioRout
         firedPaused = paused;
         audio.paused = paused;
         audio.ended = ended;
+        if (wasPaused && !paused) fire('play');
+        const frozen = ctx.state === 'suspended';
+        if (frozen) frozenMs += frameMs;
         const from = cursor;
-        if (!paused) cursor = Math.round(++mediaFrames * frameMs * sr / 1000); // integer arithmetic: no accumulated drift
+        if (!paused && !frozen) cursor = Math.round(++mediaFrames * frameMs * sr / 1000); // integer arithmetic: no accumulated drift
         // into the graph this frame: the media just played, or silence for as long
-        const len = paused ? Math.round((i + 1) * frameMs * sr / 1000) - Math.round(i * frameMs * sr / 1000) : cursor - from;
-        if (!paused) wall.set(signal.samples.subarray(from, cursor), wallEnd);
+        const len = frozen ? 0 : paused ? Math.round((i + 1) * frameMs * sr / 1000) - Math.round(i * frameMs * sr / 1000) : cursor - from;
+        if (!paused && !frozen) wall.set(signal.samples.subarray(from, cursor), wallEnd);
         wallEnd += len;
         const jitter = opts.frameJitterMs ? (jitterRnd() * 2 - 1) * opts.frameJitterMs : 0;
-        const clockMs = timeMs + jitter;
+        const wallMs = timeMs + jitter, clockMs = wallMs - frozenMs;
         ctx.currentTime = opts.clockQuantumS ? Math.floor(clockMs / 1000 / opts.clockQuantumS) * opts.clockQuantumS : clockMs / 1000;
         trace.clockS[i] = ctx.currentTime;
         if (paused && !wasPaused) fire('pause');
         if (ended && !wasEnded) fire('ended');
         tickTimeMs += Math.min(frameMs, opts.tickStepCapMs ?? Infinity);
-        if (!opts.stalled?.some(([a, b]) => timeMs / 1000 > a && timeMs / 1000 <= b)) manager.tick(opts.tickStepCapMs === undefined ? clockMs : tickTimeMs);
+        if (!opts.stalled?.some(([a, b]) => timeMs / 1000 > a && timeMs / 1000 <= b)) manager.tick(opts.tickStepCapMs === undefined ? wallMs : tickTimeMs);
         const stems = manager.stems;
         trace.timeMs[i] = timeMs; trace.mediaS[i] = mediaFrames * frameMs / 1000; trace.paused[i] = paused ? 1 : 0;
         trace.drums[i] = stems.drums; trace.bass[i] = stems.bass; trace.other[i] = stems.other; trace.vocals[i] = stems.vocals;
         routes.forEach((r, j) => { trace.routeValues[j][i] = manager.routeValues.get(r.id) ?? 0; });
         for (const t of Object.keys(trace.drives) as AudioRouteTarget[]) trace.drives[t][i] = manager.drives[t];
-        opts.onFrame?.({ index: i, timeMs, mediaS: trace.mediaS[i], paused, manager });
+        opts.onFrame?.({ index: i, timeMs, mediaS: trace.mediaS[i], paused, manager, contextState: ctx.state });
     }
     for (const i of analysedFrames) if (i >= 0) trace.analysed[i] = 1;
     return trace;

@@ -368,6 +368,13 @@ export class AudioReactiveAnimationManager {
      * holds sound
      */
     private primedUntil = -Infinity;
+    /**
+     * Whether the context is suspended by a pause (lane stem-events round 2): the clock stands and the delay line, the
+     * analysis branch and the stem tap freeze with it, so nothing drains and nothing is heard. heardUntil stays Infinity
+     * (no deadline, no tail): the next play resumes the context and the line goes on where it stopped, with no priming.
+     * Not the end of the file (its tail still plays out), stop, a new source or clear (they flush the line)
+     */
+    private frozen = false;
     /** this tick's clock: read once at its top (`readClock`) */
     private clockNow = 0;
     private clockLatency = 0;
@@ -609,14 +616,31 @@ export class AudioReactiveAnimationManager {
     }
 
     private bindAudioEvents(audio: HTMLAudioElement) {
-        audio.addEventListener('play', () => this.updateStatus(void 0, true));
+        audio.addEventListener('play', () => this.onPlay());
         audio.addEventListener('pause', () => this.onStopped());
         audio.addEventListener('ended', () => this.onStopped());
     }
 
-    /** the element's pause or ended event: the tail starts now. Only from playing (a flush comes before the queued event) */
+    /**
+     * the element's pause or ended event, only from playing (a flush comes before the queued event). A pause suspends the
+     * context: what is heard stops at once. The end of the file fires pause with `ended` already set: its tail starts now
+     */
     private onStopped() {
-        if (this.heardUntil === Infinity && Number.isNaN(this.stoppedAt) && this.audioContext) this.stoppedAt = this.getOutputClock(this.audioContext).now();
+        const ctx = this.audioContext;
+        if (this.heardUntil === Infinity && Number.isNaN(this.stoppedAt) && ctx) {
+            if (!this.state.audioPlayer.value?.ended && !this.frozen && ctx.state === 'running') {
+                this.frozen = true;
+                void ctx.suspend();
+            } else if (!this.frozen) {
+                this.stoppedAt = this.getOutputClock(ctx).now();
+            }
+        }
+        this.updateStatus(void 0, true);
+    }
+
+    /** the element's play event (a play of its own controls too): the context goes on, the line where it froze */
+    private onPlay() {
+        if (this.audioContext?.state === 'suspended') void this.audioContext.resume();
         this.updateStatus(void 0, true);
     }
 
@@ -692,6 +716,7 @@ export class AudioReactiveAnimationManager {
     private flushDelayLine() {
         const ctx = this.audioContext, source = this.sourceNode, old = this.delayNode, oldAnalysis = this.analysisDelayNode, analyser = this.analyser;
         this.heardUntil = -Infinity;
+        this.frozen = false;
         if (!ctx || !source || !old || !oldAnalysis || !analyser) return;
         source.disconnect(old);
         old.disconnect();
@@ -917,9 +942,13 @@ export class AudioReactiveAnimationManager {
         const playing = !audio.paused && !audio.ended;
         const delayS = this.delayNode?.delayTime.value ?? 0;
         if (playing) {
-            if (this.heardUntil !== Infinity && this.clockNow >= this.heardUntil) this.primedUntil = this.clockNow + delayS;
+            // a frozen line has no deadline: it holds sound however long the pause lasted
+            if (!this.frozen && this.heardUntil !== Infinity && this.clockNow >= this.heardUntil) this.primedUntil = this.clockNow + delayS;
             this.heardUntil = Infinity;
             this.stoppedAt = NaN;
+            this.frozen = false;
+        } else if (this.frozen) {
+            // paused with the context suspended: the line is frozen, not draining (heardAt: a suspended context hears nothing)
         } else if (this.heardUntil !== -Infinity) {
             if (Number.isNaN(this.stoppedAt)) this.stoppedAt = this.clockNow;
             this.heardUntil = this.stoppedAt + delayS;
