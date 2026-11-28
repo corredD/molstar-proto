@@ -1102,6 +1102,25 @@ describe('audio pipeline (offline, 16 ms frames at 48 kHz)', () => {
             expect(noModel.drives.symAxis.every(x => x === 0)).toBe(true);
         });
 
+        it('Drums & Bass Burst with live events: the kick and bass-note routes drive symAxis, the stand-ins rest', () => {
+            const routes = getDefaultAudioRoutes();
+            const sources = routes.map(r => `${r.source}${r.standIn ? ' (stand-in)' : ''}->${r.target} ${r.mode} ${r.gain}/${r.releaseMs}`);
+            expect(sources).toEqual([
+                'stemDrums (stand-in)->symAxis onset 6.5/260', 'stemBass (stand-in)->symAxis level 6.5/220',
+                'stemOther->wiggle level 2/350', 'stemVocals->illumination level 0.6/400',
+                'stemKick->symAxis level 6.5/120', 'stemBassNote->symAxis level 3/120',
+            ]);
+            // the kick track's band stems would drive symAxis; with events live and none in it, nothing does
+            const quiet = runAudioPipeline(kickTrack(48000, 6), getDefaultAudioRoutes(), { analysis: burst, durationS: 6, stemDelayS: D, stemModel: 'htdemucs', stemEvents: kicks([]) });
+            expect(quiet.drives.symAxis.every(x => x === 0)).toBe(true);
+            expect(quiet.drives.wiggle.some(x => x > 0)).toBe(true);
+            // a kick, the loudest: 6.5; a bass note 9 dB under the one before it: 3 x 0.5 (its loud level fell 0.06 dB since)
+            const ev = { from: 0, until: 30, times: Float64Array.from([2.5, 3.4, 3.5]), dbfs: Float32Array.from([-6, -6, -15]), kinds: Uint8Array.from([0, 2, 2]) };
+            const hit = runAudioPipeline(silence(48000, 6), getDefaultAudioRoutes(), { analysis: burst, durationS: 6, stemDelayS: D, stemModel: 'htdemucs', stemEvents: ev });
+            expect(Math.max(...hit.drives.symAxis)).toBeCloseTo(6.5, 5);
+            expect(hit.drives.symAxis[frameAt(3.5 + D)]).toBeGreaterThan(3 * (-15 + 6.06 + 18) / 18 - 1e-3);
+        });
+
         it('a pause: the kicks in what is not heard never fire, nor after the resume', () => {
             const t = runAudioPipeline(silence(48000, 10), kickRoute(), { durationS: 10, stemDelayS: D, stemModel: 'htdemucs', stemEvents: kicks([2.5, 4.5, 7.5]), paused: [[3, 5]] });
             // 2.5 is heard at 3.5, in the tail of the pause at 3; 4.5 would be at 5.5, not heard (the line refills until

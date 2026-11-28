@@ -134,14 +134,22 @@ export function createAudioRoute(route: Omit<AudioRoute, 'id' | 'affect' | 'curv
     };
 }
 
-/** The starting routes: drums and bass explode the capsid along its symmetry axes, the rest of the band wiggles the atoms, the voice lights it */
+/**
+ * The starting routes: drums and bass explode the capsid along its symmetry axes, the rest of the band wiggles the
+ * atoms, the voice lights it. With stem events (a model that keeps up) the kicks and bass notes hit the axes and the
+ * drums and bass levels stand in only without them (lane stem-events: on angine.mp3 the axes rest between kicks, 0.25 of
+ * the peak against 0.73)
+ */
 export function getDefaultAudioRoutes(): AudioRoute[] {
     return [
         // the symmetry axes at 6.5 (Ludo's pick, 2026-11-25)
-        createAudioRoute({ enabled: true, source: 'stemDrums', mode: 'onset', target: 'symAxis', gain: 6.5, floor: 0, releaseMs: 260 }),
-        createAudioRoute({ enabled: true, source: 'stemBass', mode: 'level', target: 'symAxis', gain: 6.5, floor: 0, releaseMs: 220 }),
+        createAudioRoute({ enabled: true, source: 'stemDrums', mode: 'onset', target: 'symAxis', gain: 6.5, floor: 0, releaseMs: 260, standIn: true }),
+        createAudioRoute({ enabled: true, source: 'stemBass', mode: 'level', target: 'symAxis', gain: 6.5, floor: 0, releaseMs: 220, standIn: true }),
         createAudioRoute({ enabled: true, source: 'stemOther', mode: 'level', target: 'wiggle', gain: 2, floor: 0.2, releaseMs: 350 }),
         createAudioRoute({ enabled: true, source: 'stemVocals', mode: 'level', target: 'illumination', gain: 0.6, floor: 0, releaseMs: 400 }),
+        // the bass notes at 3: at 6.5 they double the hits that miss a kick (9.3 % against 4.4 %, stem-events design)
+        createAudioRoute({ enabled: true, source: 'stemKick', mode: 'level', target: 'symAxis', gain: 6.5, floor: 0, releaseMs: 120 }),
+        createAudioRoute({ enabled: true, source: 'stemBassNote', mode: 'level', target: 'symAxis', gain: 3, floor: 0, releaseMs: 120 }),
     ];
 }
 
