@@ -83,6 +83,53 @@
 
 ## Built
 
+Branch `votr/stem-events` (pushed, no PR), on `votr/lookahead-sync`. Eleven commits, test first each:
+
+1. `dsp.ts` `OverlapAddInverse`: overlap-add inverse STFT, each sample divided by the squared windows over it (round
+   trips: Hann 1/N and unwindowed 1/√N give the signal back, edges included).
+2. `audio-stems/stem-events.ts` (new): the detector, a port of `metrics.py` `band_flux` + `pick`; frames on the
+   absolute hop grid; kick + drum hits share one 1024/128 pass, bass 4096/256; snare = hits farther than 30 ms from a
+   kick (the last 4 posted kicks carried, plus a non-committing pick 130 ms past the region); −40 dBFS gate. Held to the
+   Python reference on a committed fixture (`_spec/stem-events-fixture.py` writes `.json`): same events per kind,
+   |Δt| ≤ one hop, |ΔdB| ≤ 0.1.
+3. HTDemucs: `demucsStemEnergies(…, mono)` writes the drums and bass as mono audio; `StemRunResult.audio`.
+4. Spleeter and SCNet return audio too (Ludo): `spleeterStemAudio` (each stem's soft mask on the mix's complex STFT,
+   Hann OLA, bins ≥ 1024 zero), `scnetStemAudio` (its complex output, rectangular OLA, ×√N), only the frames from
+   `audioFrom` on (`run(left, right, audioFrom?)`). Round trips: mask 1 / identity output give the mix back.
+5. Worker core: sample counter, a detector per model window, region [W − consumed − 0.35 s, W − 0.35 s), context
+   ≤ 2.45 s before it; `events` in the `'stems'` message. Seams: 24 s run by run equals the whole signal exactly, for
+   each model's W and chunk; a pile-up run repeats and loses nothing; reset; a result without audio posts none.
+6. Separator: per-kind rings (2048), value = (dBFS − loud + 18) / 18, `sampleEvents` (fire once, no backlog after a
+   resume, a jump or a stall; live while t ≤ eventsUntil), `skipEvents`, cleared with the timeline.
+7. Router: sources `stemKick`, `stemSnare`, `stemBassNote`; Hits reads events as Level; `threshold`, `standIn`.
+8. Manager: events read at t − D while heard, passed to `router.update`; the pipeline helper's stub separator reads
+   events through a real `StemSeparator`.
+9. Drums & Bass Burst: stemDrums and stemBass become stand-ins; stemKick Level 6.5/120 and stemBassNote Level 3/120
+   on symAxis.
+10. Routing card: Hit threshold slider, Stand-in checkbox.
+11. Spec pages: routing spec (signal path, router steps, rule 2, three expectation rows), architecture §2 (the worker's
+    look-ahead), core-changes, features, ui.
+
+**Checks**: `npm run lint` 0 errors (2 warnings, app.tsx:537/543, not this lane's); `tsc` clean; jest
+`src/apps/virus-on-the-rock src/mol-plugin-state src/mol-repr/structure` 23 suites, 269 tests pass; `build.mjs -a
+virus-on-the-rock --prd` done.
+
+**Offline acceptance** (`angine.mp3`, the study's HTDemucs stems through `StemWorkerCore` with an identity runner at
+each model's window and chunk, then the real separator and router at 60 fps; scripts in the session scratchpad
+`se2/accept.ts`, `score.py`). Events against `ref.json`, ± one hop (hit / extra):
+
+| config | kicks | snare/hats | bass notes | drive: kicks hit / false / valley/peak / ρ |
+|---|---|---|---|---|
+| HTDemucs (7.8 s / 5 s) | 100 / 0.5 % | 96.8 / 2.4 % | 99.4 / 0.9 % | 77.5 % / 4.9 % / 0.25 / 0.41 ✔ |
+| Spleeter's window (11.8 s / 2 s) | 99.9 / 0.3 % | 98.3 / 3.0 % | 99.6 / 1.7 % | 77.5 % / **5.4 %** / 0.25 / 0.41 |
+| SCNet's window (11 s / 6 s) | 99.8 / 0.5 % | 97.2 / 2.6 % | 99.5 / 1.0 % | 77.6 % / 4.7 % / 0.25 / 0.41 ✔ |
+
+Before: 59 % / 3.5 % / 0.73 / 0.12. These measure the detector, the region math and the route math on the reference
+stems, not Spleeter's or SCNet's own separation (the browser check, step 5).
+
+**Worker CPU per run** (node, M-series): detector ~200 ms per HTDemucs run (5 s audio, +0.04 load factor); Spleeter
+~125 ms detector + ~50 ms inverse per 2 s run (+0.09); SCNet ~225 ms + ~85 ms per 6 s run (+0.05).
+
 ## Decided
 
 - Ludo, 2026-11-27 ("ok go"): the design's seven points as proposed (0.35 s worker look-ahead; events at t − D; the
@@ -90,10 +137,38 @@
   ~385 lines), plus **Spleeter and SCNet give events too**: each runner inverts its drums and bass to audio (Spleeter:
   the stem's mask on the mix's complex STFT, the mix's phase; SCNet: its complex output), overlap-add at 4096/1024,
   then the same detector. ~435 production lines.
+- Ludo, 2026-11-27: checked the proposed routes (stemKick Level 6.5/120 + stemBassNote Level 3/120 on symAxis) on the
+  study page's preview in the viewer: "working nicely". Kept exactly as the Drums & Bass Burst defaults.
 
 ## Learned
 
+- The context before a run's region matters little: on the study's stems, Spleeter's and SCNet's runs read as well with
+  2.45 s of context (HTDemucs' whole window) as with their whole 11–11.8 s window, slightly better on snare/hats
+  (97.8 vs 96.5 %, Python, `stream_sim` with each model's W and chunk). So `EventContextS` bounds the inverse STFT and
+  the detector for the long windows.
+- The streaming p95 is the only loss: a run's own window reads marginal events (a cut note's click) otherwise than the
+  song's. The seam tests use faded notes for that reason.
+- A pure sine's float noise after its onset makes peaks of its own in the reference detector too (p95 of a steady
+  tone is noise); an abrupt start reads as a kick in the drums' 40–150 Hz band, so a hit at the same time is the kick's.
+- Spleeter's audio at the window's last frame is not the mix even with mask 1: the cut to the padding is broadband and
+  the bins over 11 kHz are dropped. Harmless: events stop 0.35 s before the end.
+- SCNet's synthesis window is rectangular (its forward has none; torch.istft with window=None): it can leave steps at
+  each 1024-sample frame edge, possibly visible in the 150 Hz–16 kHz hit band. Not measurable without the model.
+- The separator's normalization (loud floor −30 dBFS) makes the drive's extra rate 4.9 % against the design's
+  simulated 4.4 % (its floor was −80 dB raw): little margin under 5 %; with Spleeter's 2 s chunks 5.4 %.
+- Departures from the design: (a) the snare exclusion carries the last 4 posted kicks and a non-committing kick pick
+  130 ms past the region, not a pick over [from − 30 ms, to + 30 ms); (b) a run's frames start at most 2.45 s before
+  its region (not the whole window: identical for HTDemucs); (c) the loud level, median and ahead are computed per
+  candidate (only local maxima above the flux threshold), not as running filters: the same values, less work;
+  (d) `sampleEvents` after a jump back reads nothing until it passes the last read; (e) a run that straddles a window
+  reset posts no events (a window epoch); (f) the test "a model without audio" became "a runner result without audio"
+  (all three models give events).
+
 ## Size
+
+~617 production lines of code (823 added with comments, 62 removed) against the brief's 200 and the decided ~435;
+762 test lines. The room: the detector port (~390 with comments), Spleeter's and SCNet's inversion and their layouts
+(~110), the separator's rings (~120).
 
 ## Review
 
