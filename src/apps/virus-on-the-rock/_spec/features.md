@@ -52,8 +52,8 @@ References are `file › symbol`, the file relative to `src/apps/virus-on-the-ro
 | Audio file | Input or drop (`audio/*`, mp3, wav, ogg, m4a, aac, flac): load, play; routes kept | Built | `app.tsx › loadAudioFile` |
 | Audio URL | Load URL or Enter; `.pls`, `.m3u`, `.m3u8` resolved to their first entry; routes kept | Built | `app.tsx › isPlaylistAudioUrl`, `resolveAudioUrl`, `loadAudioUrl` |
 | Radio presets | Plus FM, Maple Leaf Rag, FIP, Le Son Parisien (Cloudflare proxy); picking one fills the URL, Load plays it | Built | `catalog.ts › AudioUrlPresets` |
-| Play / Pause | Pause brings every drive to rest over its release (D2) | Partial | paused, routes settle to their floors: the default wiggle floor 0.2 keeps atoms moving |
-| Clear / no audio | Every channel at rest; the router reset (D2) | **Broken** | `tick` returns before `router.update` (audio-reactive-animation.ts:612-619): drives freeze at their last value (a capsid left open, a camera left spinning) |
+| Play / Pause | Pause brings every drive to rest over its release (D2) | Tested | sound-stops: no floor once nothing is heard, exactly 0 below 1e-3 (≈ 2–2.7 s for Drums & Bass Burst); with stems on, the delay line's tail first (`audio-pipeline.spec.ts` › rest once the sound stops) |
+| Clear / no audio | Every channel at rest; the router reset (D2) | Tested | sound-stops: Clear resets the router and flushes the delay line, every drive 0 on the next frame. A source removed without Clear still freezes the drives |
 | CORS-blocked stream | Say so instead of a still virus | Built | `analysisBlocked` after 2 s of silence while playing, `ui/cards/audio-routing.tsx › AudioAnalysisWarning` |
 | Microphone / line in | Dance to a live room | Not planned (D16) | no `getUserMedia` |
 | Sync | Kick → symmetry burst peak ≤ 50 ms + a frame | Measured | 35–39 ms median, separation off (routing spec). Separation on: not measured |
@@ -96,7 +96,7 @@ References are `file › symbol`, the file relative to `src/apps/virus-on-the-ro
 | Edit floor and release | in the route row (D5) | **Expected** | presets and files only |
 | Gain above 20 | the slider goes to 40 (D5) | Partial | slider 0–20, files clamp at 40: a gain of 30 shows pinned |
 | Save, load, delete, export, import | browser storage (`vor.audioRouting.v1`, 50 sets), `.json` files; import merges by name; loading reattaches each Who to the models loaded | Tested (parser) / Built (UI) | audio-routing.ts:329-464, `ui/cards/audio-routing.tsx › AudioRoutingLibrary` |
-| Built-in route sets (wip) | Datamatics, MilkDrop Breath, Emergence, Hollow Descent, Sidechain Pump, Watercolour; routes only; turn on the motion they need; not deletable | Partial | audio-routing-inspired.ts. Weak with separation off (routing spec: needs tuning, route by route) |
+| Built-in route sets (wip) | Datamatics, MilkDrop Breath, Emergence, Hollow Descent, Sidechain Pump, Watercolour; routes only; load turns on the motion they need (as any added, enabled or retargeted route does); not deletable | Partial | audio-routing-inspired.ts. Weak with separation off (routing spec: needs tuning, route by route) |
 
 ## 7. Visual channels (route targets)
 
@@ -133,7 +133,7 @@ or text). CPU channels run in the app after each draw, so they exist only in Vot
 | Mesoscale parts (wip) | membrane / surface / interior / other groups and single parts; a group only whole | Built | audio-affect.ts, mesoscale-part.ts |
 | Who per entry (wip) | From the Loaded Structures tree, give a route to that model or group | Built | `ui/cards/entries.tsx › EntryWhoPicker` |
 | Narrowed routes are correct per visual | Each visual draws with its own ranges | Partial (read in code, not run) | `uAudioAffectRanges` is a `'material'` uniform (schema.ts:486); all visuals of one representation share one material id and material uniforms are re-sent only on a material switch (render-item.ts:242-250). Routes on a model or a mesoscale part (their own representations) are safe; an entity, chain or residue inside one representation can draw with the previous visual's ranges. Settled by checklist step 11 |
-| More than 8 narrowed routes | Refused: the Who select disabled with a note (D3) | **Broken** | the 9th silently acts on the whole view (audio-routing.ts:219-222); only the help text warns |
+| More than 8 narrowed routes | Refused: the Who select disabled with a note (D3) | Tested (router, manager) / Built (UI) | `canNarrowRoute`, `setRouteAffect` returns false, `AudioRouter.update` drops a narrowed route with the slots full (never the global drive); `ui/cards/audio-routing.tsx › RouteAffectRow`, `entries.tsx › EntryWhoPicker`. `setRoutes` (every install: load, preset, Defaults, Add) widens narrowed routes past the 8th, in array order and counting disabled ones, to All, so a saved set or an old file with 9+ narrowed routes loads with 8; the router still drops a 9th if one is ever set around it |
 | A non-contiguous selection | All its spans | Partial | one range per slot: the first span only |
 | A chain or residue on an instance channel | That part moves | Partial | the whole instance moves |
 | Who whose target is gone | Said, or dropped | Partial | falls back to the first loaded model (intended for the built-in sets) |
@@ -144,7 +144,7 @@ or text). CPU channels run in the app after each draw, so they exist only in Vot
 | --- | --- | --- | --- |
 | Preset chips | Drums & Bass Burst (default), Subtle Drift, Stem Drift, Bass + Spectrum, Bass Groove Strong, Full Spectrum, Ambient Pulse: replace the routes, set the analysis and motion shapes, keep the user's sensitivities, threshold and axis order | Built | `catalog.ts › FeaturedPresetNames`, `app.tsx › applyAudioPreset` |
 | Stem Drift's description | says what it does: not auto-picked (D14) | **Broken** (text) | it claims to be picked when separation goes on; `ui/cards/stem-separation.tsx › StemSeparationCard` does not |
-| Ambient Pulse's instance route | moves the instances | **Broken** | its preset turns Instance Beats off, so its instanceRandom route does nothing |
+| A route never moves nothing because its motion is off | `getPresetRoutes` makes no route on a motion its preset turns off (Ambient Pulse has no instance route); a route added, enabled or retargeted to a motion that is off turns that motion on, once (a gain, floor or curve edit never does); instanceWave needs no motion; loading a model or a song (`applyAudioPreset(name, 'keep')`) keeps the motion flags as they are, only a preset chip or startup applies the preset's | Built | `route-motions.ts`, wired in `app.tsx`; tests `route-motions.spec.ts`, `audio-reactive-presets.spec.ts` |
 | Motion targets | Atom Wiggle, Instance Beats, Whole Object (Uniform / Spectral) | Built | `ui/cards/motion-targets.tsx › MotionTargetsCard` |
 | Sensitivities | Beat threshold 0–2 (1.1), wiggle 0–16 (1), instance 0–200 (1), object 0–32 (1), axis amplitude 0–200 (15), LOD scale off | Partial | manager's beat threshold range is 0.5–4; the beat cycle no longer reads the threshold |
 
@@ -190,7 +190,7 @@ or text). CPU channels run in the app after each draw, so they exist only in Vot
 
 ## 14. Known issues found on the way
 
-- `window.__vorProbe` is kept, with the same global and shape (the app instance), set in `app.tsx › VirusOnTheRockApp.create`. It is read by `data-local/tests/clicksync.mjs`, `sync.mjs` and `keep.mjs`; no longer TEMP (Ludo, 2026-11-26).
+- `window.__vorProbe` is kept, with the same global and shape (the app instance), set in `app.tsx › VirusOnTheRockApp.create`. It is read by `scripts/votr-sync/clicksync.mjs` and the local `data-local/tests/sync.mjs` and `keep.mjs`; no longer TEMP (Ludo, 2026-11-26).
 - `app.tsx`, `audio-affect.ts` and `assembly-symmetry-axis.ts` import the untracked `audio-routing-inspired.ts` and
   `mesoscale-part.ts`: committing only the modified files breaks the build.
 - Below 30 fps every envelope and release slows against real time (the loop caps a frame at 33.3 ms); the camera
@@ -217,7 +217,7 @@ edit the code while testing (each rebuild reloads).
 7. Audio Routing: + Instance wave; Curve Log on a route; Save as "test"; Defaults; Saved… › test brings it back; Export,
    Import the file. Saved… › Sidechain Pump: the other routes dip on each kick.
 8. Presets: Subtle Drift, then Drums & Bass Burst: the routes are replaced each time.
-9. Pause: the burst stops (the atoms still wiggle a little, floor 0.2). Play.
+9. Pause: the burst stops and the atoms come to rest within ~3 s (no floor). Play. Stop: no sound after it.
 10. Visualizers: each toggle; drag the ring and its handle.
 11. Who within one representation: on 2TBV alone, narrow the drums route to one chain (Who › Chain). Only that chain's
     instances should burst; if other chains move with it, the material-uniform leak (§8) is real.

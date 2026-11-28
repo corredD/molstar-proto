@@ -15,7 +15,6 @@ import { Task } from '../../mol-task';
 import { PresetStructureRepresentations } from '../../mol-plugin-state/builder/structure/representation-preset';
 import { PluginConfig } from '../../mol-plugin/config';
 import { clearStructureWiggle } from '../../mol-plugin-state/helpers/structure-wiggle';
-import { DefaultAudioBandDefinitions } from '../../mol-plugin-state/manager/audio-reactor';
 import { AudioReactivePresetName, getAudioReactivePreset, getPresetRoutes } from '../../mol-plugin-state/helpers/audio-reactive-presets';
 import { audioAffectForEntry, getMesoscalePartLabel } from '../../mol-plugin-state/helpers/audio-affect';
 import { type AudioAffect } from '../../mol-plugin-state/manager/audio-routing';
@@ -33,13 +32,14 @@ import { Color } from '../../mol-util/color';
 import { Viewer } from '../viewer/app';
 import { areAnimationPropsEqual, type AnimationProps, type ObjectTransformModeName, type TumbleAxisName } from '../../mol-geo/geometry/animation';
 import { RandomStructurePdbIds } from './random-structures';
-import { IcyTitleReader, SongChangeDetector, type SongChangeReason } from './song-change';
+import { feedSongDetector, IcyTitleReader, SongChangeDetector, type SongChangeReason } from './song-change';
 import { BeatCycle } from './beat-cycle';
 import { BackgroundBaseColor, CpuChannels, type CpuChannelTarget } from './cpu-channels';
 import { createCanvas3DChannelTarget } from './canvas3d-channel-target';
 import { patchIfChanged } from './state-patch';
 import { AudioUrlPresets, DefaultAudioFallbackLabel, DefaultAudioFallbackUrl, DefaultAudioLabel, DefaultAudioUrl, DefaultEffectKnobs, DefaultPdbId, DefaultPresetName, FrameRadiusPadding, LargeStructureElementThreshold, LargeStructureLodLevels, MesoscaleExample, MesoscaleExamples, NearClipAfterCameraReset, RepresentationMode, getBlobSurfaceTypeParams, getDefaultMultiScaleOcclusionProps, getPetworldGroups, getSpacefillTypeParams } from './catalog';
-import { AxisCycleTarget, LoadedEntry, VirusOnTheRockState, createInitialState, getAssemblyOrderFromCycleTarget, getAxisAnimationPatch, getAxisOptions, getDefaultCycleTargets, getEnabledCycleOptions, getLocalAxisFromCycleTarget, getMotionTargetState, isLocalCycleTarget, sanitizeCycleTargets } from './state';
+import { AxisCycleTarget, LoadedEntry, VirusOnTheRockState, createInitialState, getAssemblyOrderFromCycleTarget, getAxisAnimationPatch, getAxisOptions, getDefaultCycleTargets, getEnabledCycleOptions, getLocalAxisFromCycleTarget, getMotionTargetState, getPresetAnimationPatch, isLocalCycleTarget, sanitizeCycleTargets } from './state';
+import { createRouteMotionsFollower } from './route-motions';
 import { VirusOnTheRockControls } from './ui/controls';
 
 function isAudioFile(file: File) {
@@ -141,15 +141,8 @@ export class VirusOnTheRockApp {
         this.subscriptions.add(this.viewer.plugin.managers.audioReactive.state.status.subscribe(status => {
             void this.updateAxisCycle(status);
             // without the stream's titles, new songs are estimated from the sound
-            if (this.state.value.randomPerSong && !this.titleReaderActive && status.playing) {
-                const now = performance.now();
-                const dt = this.songFeedMs > 0 ? Math.min(200, now - this.songFeedMs) : 0;
-                this.songFeedMs = now;
-                const raw = status.frame.raw;
-                this.songDetector.feed(DefaultAudioBandDefinitions.map(b => raw.frequencyBands[b.key]), raw.amplitude, dt);
-            } else {
-                this.songFeedMs = 0;
-            }
+            this.songFeedMs = this.state.value.randomPerSong && !this.titleReaderActive
+                ? feedSongDetector(this.songDetector, status, performance.now(), this.songFeedMs) : 0;
             const current = this.state.value;
             if (current.currentAudioLabel !== status.sourceLabel
                 || current.audioLoaded !== status.loaded
@@ -161,6 +154,17 @@ export class VirusOnTheRockApp {
                 });
             }
         }));
+        // a route that needs a motion that is off turns it on, when the route is added, enabled or retargeted
+        const routeAudio = this.viewer.plugin.managers.audioReactive;
+        const followRoutes = createRouteMotionsFollower(routeAudio.state.routes.value, {
+            isOn: flag => this.state.value[flag],
+            turnOn: flag => {
+                this.setMotionTargetEnabled(flag, true).catch(error => {
+                    this.viewer.plugin.log.error(`Failed to turn on ${flag} for a route: ${error}`);
+                });
+            },
+        });
+        this.subscriptions.add(routeAudio.state.routes.subscribe(routes => followRoutes(routes)));
         this.subscriptions.add(this.viewer.plugin.managers.audioReactive.state.params.subscribe(values => {
             this.patchState({
                 wiggleEffectScale: values.wiggleEffectScale,
@@ -207,7 +211,7 @@ export class VirusOnTheRockApp {
             PluginConfig.Structure.DefaultRepresentationPreset,
             PresetStructureRepresentations['mesoscale'].id);
 
-        const app = new VirusOnTheRockApp(viewer, uiTarget, createCanvas3DChannelTarget(viewer.plugin.canvas3d!)); (window as any).__vorProbe = app; // read by data-local/tests/clicksync.mjs, sync.mjs and keep.mjs
+        const app = new VirusOnTheRockApp(viewer, uiTarget, createCanvas3DChannelTarget(viewer.plugin.canvas3d!)); (window as any).__vorProbe = app; // read by scripts/votr-sync/clicksync.mjs and the local data-local/tests/sync.mjs and keep.mjs
         await app.initializeDefaults();
         return app;
     }
@@ -461,7 +465,8 @@ export class VirusOnTheRockApp {
     }
 
     private async updateAxisCycle(status: ReturnType<typeof this.viewer.plugin.managers.audioReactive.state.status.getValue>) {
-        if (!status.playing) {
+        // the presented drives sound as heard: gate on heardPlaying, not on the live playing
+        if (!status.heardPlaying) {
             this.beatCycle.pause();
             return;
         }
@@ -992,23 +997,17 @@ export class VirusOnTheRockApp {
         });
 
         const options = this.viewer.plugin.managers.structure.component.state.options;
-        await this.viewer.plugin.managers.structure.component.setOptions({
-            ...options,
-            animation: {
-                ...options.animation,
-                ...preset.animation,
-                ...getAxisAnimationPatch(current),
-            }
-        });
+        const animation = {
+            ...options.animation,
+            ...getPresetAnimationPatch(options.animation, preset.animation, routes),
+            ...getAxisAnimationPatch(current),
+        };
+        await this.viewer.plugin.managers.structure.component.setOptions({ ...options, animation });
         await clearStructureWiggle(this.viewer.plugin, this.currentComponents);
         await this.applyCurrentAnimationToScene();
         this.patchState({
             activePreset: name,
-            ...getMotionTargetState({
-                ...options.animation,
-                ...preset.animation,
-                ...getAxisAnimationPatch(current),
-            })
+            ...getMotionTargetState(animation)
         });
     }
 

@@ -53,6 +53,13 @@ manager has no audio and no Who.
   stems, 7 drives, glow, hue, scope count/kind/drive [8]. `updateIfChanged`, forced redraw while the wave or a scope is
   driven. *needs work*: replace `AudioReactiveFrame` in the renderer and Canvas3D interfaces by a generic "external
   drives" API; stem, mix and dominant-frequency uniforms are unused.
+- **Forced redraw of an audio frame** (`canvas3d.ts` `setAudioFrame`, new `audio-redraw.ts` `AudioRedrawTracker`,
+  spec `mol-canvas3d/_spec/audio-redraw.spec.ts`; redraw-and-axes-cache, 2026-11-27): the tracker keeps the previous
+  frame (preallocated, nothing allocated per frame). Illumination and hue (global, and narrowed kinds 8, 9) render on
+  change only, since their shader terms have no time term (a held value does not render); the instance wave and
+  narrowed motion kinds render while above 0 and once more on the drop to 0 (they use `uTime`). Before, illumination
+  and hue forced no render at all. VotR presets mask the difference through `hasAnimation`. Commits `canvas3d: ...`,
+  no app hunks. *votr only*.
 - **Material animation uniforms** (`AnimationSchema`): motion toggles, object transform, axis set (`uAudioAssemblyAxes`
   v3[32], count, centre), `uAudioWaveRadial` (wip), Who ranges v4[8]. *needs work*: the Who ranges differ per visual but
   are uploaded per material (render-item.ts:242-250; all visuals of a representation share one material id), so they
@@ -80,19 +87,59 @@ manager has no audio and no Who.
 ## plugin-state
 
 - **`audio-reactor.ts`**, **`audio-prominence.ts`** (tested): bands, flux beat, prominence. *candidate* as a small
-  analysis module; the resampler needs an anti-alias filter, analysis reads the oldest part of the buffer.
-- **`audio-reactive-animation.ts`**: the manager. *needs work*: `tick` skips `router.update` without audio (drives
-  freeze); `stemModel` description says WebGPU only.
+  analysis module; the resampler needs an anti-alias filter. Analysis reads the newest `inputSampleCount` samples of
+  the analyser buffer (heard-frame, 2026-11-27; it read the oldest, ~78 ms late for ambient-pulse at 48 kHz; the two
+  ambient-pulse goldens moved, on purpose).
+- **`audio-presented-frame.ts`** (new, heard-frame, 2026-11-27, tested): `AudioPresentedFrame`, a ring of the last 256
+  ticks of audio state read at what is heard (`currentTime − outputLatency`), allocated once; at a stamp boundary one
+  entry per frame, one behind the read rule, elsewhere the rule (heard-phase, 2026-11-27: the hysteresis applies only
+  when the read time is within min(5 ms, max(3 ms, half an interval)) of the newer stamp, so a late tick no longer leaves a lasting
+  frame of lag; never ahead of the rule, the newest entry never held back); each entry carries `playing`; the
+  `AudioOutputClock` port and its `webAudioOutputClock` adapter; `atRest` (every presented drive and route value 0,
+  set in `present`; sound-stops gate fix step). *votr only*.
+- **`audio-reactive-animation.ts`**: the manager. `setRouteAffect` and `pickRouteAffect` return false when refused (a 9th
+  narrowed route, D3). A read-only `routeValues` getter (next to `frame`, `stems` and `drives`) lets the offline pipeline
+  spec (`manager/_spec/audio-pipeline.spec.ts`, which drives the real `tick`) read each frame's route values (measure,
+  2026-11-27; no behaviour change). The test fakes set two private fields (`audioContext`, `analyser`) through one
+  documented cast in `_spec/audio-pipeline-helper.ts`. The getters, `tick`'s return and the status read the presented
+  frame (what is heard; the same objects every frame, no spread or new Map per status emission); the constructor takes
+  `AudioReactivePorts` (`createContext`, `outputClock`) with browser defaults; the status adds `heardPlaying` (playing as
+  heard, for the beat cycle and the song detector; `playing` stays live for the transport) and documents its presented
+  objects as shared, `Readonly` (heard-frame, 2026-11-27). When the sound stops (sound-stops, 2026-11-27, D2): a private
+  `heardUntil` (playing, or the stem delay line still draining after a pause or the end of the file); `tick` reads the
+  clock once at its top, reads the analyser and samples the stems while heard, else the silent analysis, and passes
+  `heard` to the router; `silenceWhilePlaying` counts only while playing; stop, a new source and `clear` flush the delay
+  line (a private `flushDelayLine`, the separator's tap kept); `clear` resets the router, stems and band drums peak; the
+  ring's `playing` is heard, so `heardPlaying` follows the tail too. Gate fix step: the tail is timed from the stop (`stoppedAt`, set by
+  the element's pause / ended listener or the first tick not playing) + the delay now; a (re)start with an empty line
+  is not heard for D (`primedUntil`); the status emits on the presented drives coming to rest (`emittedAtRest`). *needs work*: a source removed without `clear` still
+  skips `router.update` (drives freeze); `stemModel` description says WebGPU only.
+- **Measuring stick (measure, 2026-11-27; test and tooling only)**: `mol-plugin-state/manager/_spec/audio-pipeline-helper.ts` and
+  `audio-pipeline.spec.ts` (offline pipeline, golden traces, drives the real `tick`), and `scripts/votr-sync/clicksync.mjs`
+  (browser sync test with a generated click track, `--port` required). sound-stops (2026-11-27): the fake analyser reads
+  what came into the graph in wall time, one stem delay back; options `stemDelayS` (a fake delay node and a stub
+  separator), `endedAtS` and `stalled` (ranges with no tick); the fake element's `pause()`, `removeAttribute()`,
+  `load()` work and it fires pause / ended to the manager's listeners (D = 0, no pause:
+  bit-identical traces).
 - **`audio-routing.ts`** (tested; curve, duck, `songLoudness`, background, camera step wip). *votr only* as is (its CPU
   targets exist only in the app); the router core is generic. A non-finite source or `dtMs` reads as 0 in
-  `AudioRouter.update` (router-nan-guard, 2026-11-26; commit `audio routing: a non-finite source reads as 0…`).
+  `AudioRouter.update` (router-nan-guard, 2026-11-26; commit `audio routing: a non-finite source reads as 0…`). A
+  narrowed route finds the 8 slots full and adds nothing, never the global drive; `canNarrowRoute(routes, id)` (narrowed-slots,
+  2026-11-27, D3). `AudioRouter.update(…, heard = true)`: not heard, the target is 0 (no floor) and a released value below
+  `AudioRestCutoff` (1e-3, exported, Ludo to confirm) is 0 (sound-stops, 2026-11-27; the default keeps every caller).
 - **`audio-stems/`** (DSP tested): Spleeter, HTDemucs, SCNet runners, worker, separator. *votr only*; weights on
   Hugging Face `resolve/main` (not pinned). `StemSeparator.onWorkerMessage` stores a non-finite worker energy as 0 (a NaN
   in the model output stuck the running peaks and every stem level for good; router-nan-guard, 2026-11-26).
-- **`assembly-symmetry-axis.ts`**: axes per structure from RCSB symmetry; mesoscale parts share a middle (wip).
+  `setModel` returns after the tap await when a newer request (a request counter) came meanwhile (Off during the load
+  no longer posts `load` and turns the tap on), and a failed tap setup clears `tapLoading` so picking the model again
+  after Off retries (stem-separator-edges, 2026-11-27).
+- **`assembly-symmetry-axis.ts`**: axes per structure from RCSB symmetry; mesoscale parts share a middle (wip). The
+  per-structure cache stores the bare key (it stored `key:count` and compared the bare key, so it never hit: two
+  provider reads per structure per sync, now one after the first; redraw-and-axes-cache, 2026-11-27, spec
+  `mol-plugin-state/helpers/_spec/assembly-symmetry-axis.spec.ts`; commit of its own, no app hunks).
   *needs work*: imports `extensions/assembly-symmetry` from `mol-plugin-state`; header `@author OpenAI`.
 - **`audio-affect.ts`**: Who resolution and packing; mesoscale owners (wip). *votr only*.
-- **`audio-reactive-presets.ts`**: ten presets. *votr only*.
+- **`audio-reactive-presets.ts`**: ten presets; `getPresetRoutes` makes no route on a motion the preset turns off, and `MotionFlagOfTarget` names the motion switch a route target needs. *votr only*.
 - **`audio-routing-inspired.ts`** (untracked, wip): six built-in route sets. *votr only*.
 - **`mesoscale-part.ts`** (untracked, wip): membrane / surface / interior / other, the `mesoscale-base` tag. Imported by
   `app.tsx`, `audio-affect.ts`, `assembly-symmetry-axis.ts`: **must be committed with them**.

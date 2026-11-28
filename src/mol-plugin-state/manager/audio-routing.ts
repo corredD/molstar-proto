@@ -165,6 +165,12 @@ export function getAudioRouteSourceValue(source: AudioRouteSource, frame: AudioR
 
 type RouteState = { previous: number, peak: number, songAverage: number, value: number };
 
+/**
+ * Once nothing is heard, a route's value released below this is 0 (Ludo to confirm, TODO 13): a quarter of one 8-bit
+ * colour step for illumination and hue, ~0.005 Å of motion. Only then: while sound plays a value is never snapped
+ */
+export const AudioRestCutoff = 1e-3;
+
 /** Evaluates the routes each frame: each route's value (for its meter) and each channel's drive */
 export class AudioRouter {
     private states = new Map<number, RouteState>();
@@ -177,7 +183,11 @@ export class AudioRouter {
     readonly scopeDrive = new Array<number>(AudioScopeSlotCount).fill(0);
     scopeCount = 0;
 
-    update(routes: readonly AudioRoute[], frame: AudioReactiveFrame<DefaultAudioBandKey>, stems: StemLevels, dtMs: number) {
+    /**
+     * One frame of every route. `heard`: whether sound is heard (playing, or the delay line still draining); when not,
+     * each route releases to 0 (no floor) with its own release and rests at exactly 0 below AudioRestCutoff
+     */
+    update(routes: readonly AudioRoute[], frame: AudioReactiveFrame<DefaultAudioBandKey>, stems: StemLevels, dtMs: number, heard = true) {
         // a non-finite dt counts as 0: the value follows its target at once, the song average does not step
         if (!Number.isFinite(dtMs)) dtMs = 0;
         for (const t of Object.keys(this.drives) as AudioRouteTarget[]) this.drives[t] = 0;
@@ -203,11 +213,13 @@ export class AudioRouter {
             }
             state.previous = raw;
             input = applyAudioRouteCurve(route.curve, input);
-            const target = route.enabled ? Math.max(0, route.floor + route.gain * input) : 0;
+            // the floor holds only while sound is heard
+            const target = route.enabled && heard ? Math.max(0, route.floor + route.gain * input) : 0;
             // immediate rise, exponential release
             state.value = target >= state.value || route.releaseMs <= 0 || dtMs <= 0
                 ? target
                 : state.value + (target - state.value) * (1 - Math.exp(-dtMs / route.releaseMs));
+            if (!heard && state.value < AudioRestCutoff) state.value = 0;
             this.values.set(route.id, state.value);
             if (route.enabled && route.target === 'duck') {
                 duckDrive += state.value;
@@ -220,8 +232,11 @@ export class AudioRouter {
             const value = this.values.get(route.id) ?? 0;
             // the key itself is never ducked: a kick ducking the rest still hits at full strength
             const scaled = route.target === 'duck' || route.target === 'cameraStep' || duckSources.has(route.source) ? value : value * duck;
-            if (route.affect && route.affect.level !== 'all' && routeHasScope(route.target) && this.scopes.length < AudioScopeSlotCount) {
-                this.scopes.push({ kind: AudioScopeKinds[route.target], drive: Math.min(MaxDrive, scaled), affect: route.affect });
+            if (route.affect && route.affect.level !== 'all' && routeHasScope(route.target)) {
+                // a narrowed route never falls into the global drive: with the slots full it adds nothing (D3)
+                if (this.scopes.length < AudioScopeSlotCount) {
+                    this.scopes.push({ kind: AudioScopeKinds[route.target], drive: Math.min(MaxDrive, scaled), affect: route.affect });
+                }
             } else {
                 this.drives[route.target] += scaled;
             }
@@ -272,6 +287,43 @@ export const AudioScopeKinds = {
 } as const;
 export type AudioScopeTarget = keyof typeof AudioScopeKinds;
 export type AudioScopeSlot = { kind: number, drive: number, affect: AudioAffect };
+
+/** How many routes are narrowed (enabled or not): the shader slots taken */
+export function narrowedRouteCount(routes: readonly AudioRoute[]): number {
+    let n = 0;
+    for (const r of routes) if (routeHasScope(r.target) && r.affect.level !== 'all') n++;
+    return n;
+}
+
+/** Whether a route may take a shader slot: it is narrowed already, or fewer than AudioScopeSlotCount routes are (D3) */
+export function canNarrowRoute(routes: readonly AudioRoute[], routeId: number): boolean {
+    let narrowed = 0;
+    for (const r of routes) {
+        if (!routeHasScope(r.target)) {
+            // a channel with no Who is never refused
+            if (r.id === routeId) return true;
+            continue;
+        }
+        if (r.affect.level === 'all') continue;
+        if (r.id === routeId) return true;
+        narrowed++;
+    }
+    return narrowed < AudioScopeSlotCount;
+}
+
+/**
+ * The routes with at most AudioScopeSlotCount narrowed (enabled or not, as canNarrowRoute counts): the narrowed routes
+ * past the 8th in array order are widened to All. The same array if none is
+ */
+export function limitNarrowedRoutes(routes: readonly AudioRoute[]): readonly AudioRoute[] {
+    let narrowed = 0, changed = false;
+    const out = routes.map(r => {
+        if (!routeHasScope(r.target) || r.affect.level === 'all' || ++narrowed <= AudioScopeSlotCount) return r;
+        changed = true;
+        return { ...r, affect: defaultAudioAffect() };
+    });
+    return changed ? out : routes;
+}
 
 export function routeHasScope(target: AudioRouteTarget): target is AudioScopeTarget {
     return Object.prototype.hasOwnProperty.call(AudioScopeKinds, target);

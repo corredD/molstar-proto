@@ -7,9 +7,10 @@
 
 import * as React from 'react';
 import { useBehavior } from '../../../../mol-plugin-ui/hooks/use-behavior';
-import { getAudioRouteSourceLabel, maxScopeLevel, getAudioRouteTargetLabel } from '../../../../mol-plugin-state/manager/audio-routing';
+import { AudioScopeSlotCount, getAudioRouteSourceLabel, narrowedRouteCount, maxScopeLevel, getAudioRouteTargetLabel } from '../../../../mol-plugin-state/manager/audio-routing';
 import type { VirusOnTheRockApp } from '../../app';
 import { LoadedEntry, VirusOnTheRockState } from '../../state';
+import { NarrowedSlotsFullNote } from './audio-routing';
 import { ControlCard } from '../control-card';
 import { useStateSlice } from '../state-slice';
 
@@ -19,17 +20,18 @@ export function EntryWhoPicker({ app, refOrGroup }: { app: VirusOnTheRockApp, re
     const routes = useBehavior(manager.state.routes);
     const narrowable = routes.filter(route => maxScopeLevel(route.target) !== 'all');
     if (narrowable.length === 0) return null;
+    const slotsFull = narrowedRouteCount(routes) >= AudioScopeSlotCount;
     return <select
         className='vor-select vor-entry-who'
         value=''
-        title='Make this the Who of a route'
+        title={slotsFull ? `Make this the Who of a route. ${NarrowedSlotsFullNote}` : 'Make this the Who of a route'}
         onChange={e => {
             const affect = app.getEntryAffect(refOrGroup);
             if (affect && e.target.value) manager.setRouteAffect(Number(e.target.value), affect);
         }}
     >
         <option value=''>Who ▸</option>
-        {narrowable.map((route, i) => <option key={route.id} value={route.id}>{`${i + 1}. ${getAudioRouteTargetLabel(route.target)} · ${getAudioRouteSourceLabel(route.source)}`}</option>)}
+        {narrowable.map((route, i) => <option key={route.id} value={route.id} disabled={slotsFull && route.affect.level === 'all'}>{`${i + 1}. ${getAudioRouteTargetLabel(route.target)} · ${getAudioRouteSourceLabel(route.source)}`}</option>)}
     </select>;
 }
 

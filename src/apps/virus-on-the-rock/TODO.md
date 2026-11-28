@@ -11,15 +11,23 @@ itself is still open there: Ludo reorders this list).
 
 ### Overnight 2026-11-27
 
-The review of 2026-11-26 ([progress/2026-11-26-audio-review.md](progress/2026-11-26-audio-review.md)) is being built
-on `votr/overnight` as seven lanes ([progress/2026-11-27-overnight.md](progress/2026-11-27-overnight.md)); items 1, 2
-and 13 below are in them. Left for later: review items 8 (`hasNoise` gate), 10 (hierarchy syncs per frame in every
-app, D12) and 12 (`packSlot` ranges).
+Built on `votr/overnight` ([progress/2026-11-27-overnight.md](progress/2026-11-27-overnight.md#built)): items 1 (D2),
+2 (D3) and 13 below, and review items 1, 2, 4, 5, 7, 9, 11 of
+[progress/2026-11-26-audio-review.md](progress/2026-11-26-audio-review.md). Left from the night, in order:
+
+- **A pause shorter than the stem delay** then resume still raises "analysis blocked" for a moment (sound-stops,
+  measured 11.4–12.9 s in a probe with a 6 s delay).
+- **Releases slow below 30 fps** (the loop caps a frame at 33 ms): at 20 fps every drive rests ≈ 3.26 s after Pause
+  instead of ≤ 2.7 s; the shader motion and the rest bound assume real time.
+- **Per-frame allocations left**: `AudioReactor.analyze` and `AudioRouter.update` allocate every frame; the status
+  object per emission (≤ 30 Hz); the hierarchy syncs in every app (review item 10, D12).
+- Review items 8 (`hasNoise` gate) and 12 (`packSlot` ranges); Safari has no `outputLatency` (latency 0 there).
 
 ### Broken items
 
 1. **Pause and Clear rest** (D2): both bring every drive to 0 over its release; Clear resets the router. Check:
-   Pause, the atoms stop wiggling (today the 0.2 floor keeps them moving); Clear, nothing stays frozen mid-burst.
+   Pause, the atoms stop wiggling (within ~3 s, no 0.2 floor); Clear, nothing stays frozen mid-burst; Stop, no sound
+   after it. Built in `sound-stops` (2026-11-27), for Ludo to check (kept here so the numbers below hold).
 2. **The 9th narrowed route is refused** (D3): once 8 routes are narrowed, the Who select of the others is disabled
    with a note. Check: narrow 8 routes, the 9th's Who is greyed with the note.
 3. **Startup fallback plays** (D9): startup keeps the stream; `angine.mp3` is copied into the build so the fallback
@@ -51,5 +59,5 @@ app, D12) and 12 (`packSlot` ranges).
 12. **Record a dance** (D17): a Record button writes the Mol\* canvas to WebM (no SVG overlays). Check: record 10 s,
     the file plays the dance.
 13. **The clip pass rests on a paused song** (architecture §4, still open in §7): the clip rest check is an exact 0,
-    which a released route's drive never reaches, so with a clip route on and the audio paused the clip pass runs every
-    frame. Ludo picks the cut-off below which a drive counts as 0. Check: clip route on, pause, the clip pass stops.
+    which a released route's drive never reached. 1e-3 proposed and built in `sound-stops` (once nothing is heard a
+    route value below it is 0); Ludo confirms the number. Check: clip route on, pause, the clip pass stops.

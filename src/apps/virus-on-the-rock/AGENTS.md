@@ -39,7 +39,7 @@ context compaction; written state and small PRs do not.
   [_spec/core-changes.md](_spec/core-changes.md), as commits of its own with no app hunks.
 - **The routing contract holds**: [_spec/audio-routing-spec.md](_spec/audio-routing-spec.md) wins on routing. A lane
   that touches the signal path, the route math or the frame loop re-runs its measured expectations
-  (`data-local/tests/clicksync.mjs` on `data-local/kick120.wav`, local only) and reports the numbers in the PR.
+  (`node scripts/votr-sync/clicksync.mjs --port <lane port>`, its click track is generated; the offline baseline is `src/mol-plugin-state/manager/_spec/audio-pipeline.spec.ts`) and reports the numbers in the PR.
   Drums & Bass Burst stays possible (spec README, decision 5).
 - **No accidental quadratic, few allocations**: over many items, index once and never scan or rebuild per item; one
   commit per operation; nothing allocated per pointer event or frame. A bulk path lands with a scaling guard (n and 4n,

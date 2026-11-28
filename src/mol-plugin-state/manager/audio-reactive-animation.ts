@@ -7,7 +7,7 @@
 
 import { BehaviorSubject } from 'rxjs';
 import { StemModelId, StemModels, StemName } from './audio-stems/stem-models';
-import { AudioAffect, AudioAffectLevel, AudioRoute, AudioRouteDrives, AudioRouter, AudioScopeSlot, canonicalAudioAffect, createZeroDrives, defaultAudioAffect, getDefaultAudioRoutes, maxScopeLevel, sameAudioAffect } from './audio-routing';
+import { AudioAffect, AudioAffectLevel, AudioRoute, AudioRouteDrives, AudioRouter, AudioScopeSlot, canNarrowRoute, canonicalAudioAffect, createZeroDrives, defaultAudioAffect, getDefaultAudioRoutes, limitNarrowedRoutes, maxScopeLevel, sameAudioAffect } from './audio-routing';
 import { audioAffectFromLoci, clampAffectToLevel, resolveAudioAffect, specializeAudioAffect } from '../helpers/audio-affect';
 import { StructureElement } from '../../mol-model/structure';
 import { StemLevels, StemSeparator, StemSeparatorOptions, StemSeparatorStatus } from './audio-stems/stem-separator';
@@ -23,6 +23,7 @@ import {
     getAudioReactorAnalyserFftSize,
 } from './audio-reactor';
 import { AudioReactiveAssemblyAxisOrder, AudioReactiveAssemblyAxisOrderOptions } from '../helpers/assembly-symmetry-axis';
+import { AudioOutputClock, AudioPresentedFrame, webAudioOutputClock } from './audio-presented-frame';
 
 const AudioReactorFftSizeOptions = [
     [256, '256'],
@@ -78,22 +79,38 @@ export type AudioReactiveVisualizationFrame = {
     spectrum: Float32Array<ArrayBuffer>,
 };
 
+/**
+ * The manager's status, emitted at most every 32 ms while audio plays (and at once on a user action).
+ * `frame`, `visualization`, `stems`, `drives` and `routeValues` are what is heard now (the presented frame): the SAME
+ * objects in every emission, rewritten in place each tick. Read them when the emission comes; do not keep them to
+ * compare with a later emission (they will have changed) and do not mutate them (every reader shares them). Copy what
+ * must outlive the emission.
+ */
 export type AudioReactiveStatus = {
     sourceLabel?: string,
     loaded: boolean,
+    /** whether the audio element plays now: for the transport (play / pause button) */
     playing: boolean,
+    /**
+     * whether sound was heard when what is heard now was analysed (playing, or the stem delay line still draining after
+     * a pause or the end of the file; output latency late, as `frame`): for what reads the presented frame as sound (beat
+     * cycle, song detection), so a resume does not read the silence still being heard as playing
+     */
+    heardPlaying: boolean,
     analysisBlocked: boolean,
     sampleRate?: number,
-    frame: AudioReactiveFrame<DefaultAudioBandKey>,
-    visualization: AudioReactiveVisualizationFrame,
-    /** each stem's level (0-1): from the separation model where it runs and keeps up, else from the bands */
-    stems: StemLevels,
+    /** the audio analysis as heard now; the same object every emission (see above) */
+    frame: Readonly<AudioReactiveFrame<DefaultAudioBandKey>>,
+    /** the visualizer's waveform and spectrum as heard now; the same object and arrays every emission */
+    visualization: Readonly<AudioReactiveVisualizationFrame>,
+    /** each stem's level (0-1): from the separation model where it runs and keeps up, else from the bands; the same object every emission */
+    stems: Readonly<StemLevels>,
     /** whether `stems` came from the separation model this frame */
     stemsSeparated: boolean,
     stemStatus: StemSeparatorStatus,
-    /** each visual channel's drive this frame (the sum of its routes) */
-    drives: AudioRouteDrives,
-    /** each route's value this frame, by route id */
+    /** each visual channel's drive as heard now (the sum of its routes); the same object every emission */
+    drives: Readonly<AudioRouteDrives>,
+    /** each route's value as heard now, by route id; the same Map every emission */
     routeValues: ReadonlyMap<number, number>,
     error?: string,
 };
@@ -134,6 +151,7 @@ const EmptyAudioReactiveVisualization = createAudioReactiveVisualizationFrame();
 const InitialAudioReactiveStatus: AudioReactiveStatus = {
     loaded: false,
     playing: false,
+    heardPlaying: false,
     analysisBlocked: false,
     frame: EmptyAudioReactiveFrame,
     visualization: EmptyAudioReactiveVisualization,
@@ -148,6 +166,23 @@ function getAudioContextCtor(): (new() => AudioContext) | undefined {
     const ctx = globalThis as typeof globalThis & { webkitAudioContext?: typeof AudioContext };
     return ctx.AudioContext ?? ctx.webkitAudioContext;
 }
+
+/** what the manager takes from the browser: the audio context and the clock of what is heard (tests inject fakes) */
+export type AudioReactivePorts = {
+    /** a new audio context, made on the first load or play */
+    createContext(): AudioContext,
+    /** the clock the presented frame is read with, for a context */
+    outputClock(ctx: AudioContext): AudioOutputClock,
+};
+
+export const DefaultAudioReactivePorts: AudioReactivePorts = {
+    createContext() {
+        const AudioContextCtor = getAudioContextCtor();
+        if (!AudioContextCtor) throw new Error('Web Audio API is not available in this browser.');
+        return new AudioContextCtor();
+    },
+    outputClock: webAudioOutputClock,
+};
 
 function areFramesClose(a: AudioReactiveFrame<DefaultAudioBandKey>, b: AudioReactiveFrame<DefaultAudioBandKey>, epsilon = 1e-3) {
     if (Math.abs(a.amplitude - b.amplitude) > epsilon) return false;
@@ -238,6 +273,10 @@ export class AudioReactiveAnimationManager {
     private readonly visualization = createAudioReactiveVisualizationFrame();
     private currentFrame = EmptyAudioReactiveFrame;
     private lastUiUpdateMs = 0;
+    /** heardPlaying of the last status emitted: a change is emitted at once, not throttled */
+    private emittedHeardPlaying = false;
+    /** presented.atRest of the last status emitted: coming to rest is emitted at once (after clear, a release) */
+    private emittedAtRest = true;
     private lastTickMs = 0;
     private silenceWhilePlayingMs = 0;
     private reactor = new AudioReactor();
@@ -248,6 +287,37 @@ export class AudioReactiveAnimationManager {
     private currentStems: StemLevels = ZeroStems;
     private stemsSeparated = false;
     private bandDrumsPeak = BandDrumsPeakFloor;
+    /**
+     * Until when (context time, s) the speakers still play what the delay line holds: Infinity while playing; once
+     * stopped, stoppedAt + the delay now (each tick, so a delay changed in the tail moves it); -Infinity after stop, a
+     * new source or clear (the line is flushed) and before the first play. Set in tick: the element's own controls
+     * pause it without the manager.
+     */
+    private heardUntil = -Infinity;
+    /**
+     * When (context time, s) the element stopped playing: its pause or ended event, or the first tick not playing (an
+     * element without the manager's listeners, a tick missed); NaN while playing. Ticks stalled across the stop (a
+     * hidden tab) do not stretch the tail
+     */
+    private stoppedAt = NaN;
+    /**
+     * Until when (context time, s) the delay line hands over only the silence it held at a (re)start with an empty line:
+     * the first play, after a flush, after a pause whose tail has drained (heardUntil passed). Known empty, so not
+     * heard: no blocked analysis counted, no heardPlaying, no floor. A resume inside the tail leaves it: the line still
+     * holds sound
+     */
+    private primedUntil = -Infinity;
+    /** this tick's clock: read once at its top (`readClock`) */
+    private clockNow = 0;
+    private clockLatency = 0;
+    /**
+     * What the visuals show: the live state above, read back at what is heard now (context time - output latency).
+     * Every getter and the status read it; the analysis, the stems and the router run on the live state.
+     */
+    private readonly presented = new AudioPresentedFrame(AudioReactiveWaveformSampleCount, AudioReactiveSpectrumSampleCount);
+    private outputClock?: AudioOutputClock;
+    /** the context `outputClock` reads; a new context gets a new clock */
+    private outputClockContext?: AudioContext;
 
     /** where the stem worker, the onnxruntime files and local weights are; next to the app page by default */
     stemSeparatorOptions: StemSeparatorOptions = {
@@ -260,38 +330,46 @@ export class AudioReactiveAnimationManager {
         ],
     };
 
-    constructor(readonly plugin: PluginContext) {
+    constructor(readonly plugin: PluginContext, private readonly ports: AudioReactivePorts = DefaultAudioReactivePorts) {
         this.syncReactorParams();
     }
 
-    get frame() {
-        return this.currentFrame;
+    /** the analysis of what is heard now (the same object every frame) */
+    get frame(): AudioReactiveFrame<DefaultAudioBandKey> {
+        return this.presented.frame;
     }
 
-    /** each visual channel's drive this frame, from the routes on All */
+    /** each route's value as heard now, by route id (read-only; the offline pipeline spec reads them per frame) */
+    get routeValues(): ReadonlyMap<number, number> {
+        return this.presented.routeValues;
+    }
+
+    /** each visual channel's drive as heard now, from the routes on All */
     get drives(): Readonly<AudioRouteDrives> {
-        return this.router.drives;
+        return this.presented.drives;
     }
 
-    /** the routes narrowed to one part of the structure this frame: one shader slot each */
+    /** the routes narrowed to one part of the structure as heard now: one shader slot each */
     get scopes(): readonly AudioScopeSlot[] {
-        return this.router.scopes;
+        return this.presented.scopes;
     }
 
     get scopeCount() {
-        return this.router.scopeCount;
+        return this.presented.scopeCount;
     }
 
     get scopeKind(): ArrayLike<number> {
-        return this.router.scopeKind;
+        return this.presented.scopeKind;
     }
 
     get scopeDrive(): ArrayLike<number> {
-        return this.router.scopeDrive;
+        return this.presented.scopeDrive;
     }
 
+    /** Installs the routes, with at most 8 narrowed (D3): a narrowed route past the 8th is widened to All */
     setRoutes(routes: AudioRoute[]) {
-        this.state.routes.next(routes);
+        this.presented.ensureRouteCapacity(routes.length);
+        this.state.routes.next(limitNarrowedRoutes(routes) as AudioRoute[]);
         this.updateStatus(void 0, true);
     }
 
@@ -303,28 +381,31 @@ export class AudioReactiveAnimationManager {
         this.setRoutes(this.state.routes.value.filter(r => r.id !== id));
     }
 
-    /** Who one route moves, kept no finer than its channel allows (maxScopeLevel) */
-    setRouteAffect(id: number, affect: AudioAffect) {
-        const route = this.state.routes.value.find(r => r.id === id);
-        if (!route) return;
+    /** Who one route moves, kept no finer than its channel allows (maxScopeLevel). False if refused: 8 other routes are narrowed already */
+    setRouteAffect(id: number, affect: AudioAffect): boolean {
+        const routes = this.state.routes.value;
+        const route = routes.find(r => r.id === id);
+        if (!route) return false;
         const max = maxScopeLevel(route.target);
         const next = max === 'all' || affect.level === 'all'
             ? defaultAudioAffect()
             : canonicalAudioAffect(clampAffectToLevel(resolveAudioAffect(this.plugin, affect), max));
-        if (sameAudioAffect(next, route.affect)) return;
+        // the 9th narrowed route is refused (D3): it stays as it was
+        if (next.level !== 'all' && !canNarrowRoute(routes, id)) return false;
+        if (sameAudioAffect(next, route.affect)) return true;
         this.updateRoute(id, { affect: next });
+        return true;
     }
 
     /**
      * Narrow a route to what is selected or focused in the viewer (a click), at `level`; with nothing picked, the first
-     * loaded part at that level. False where the route's channel cannot be narrowed
+     * loaded part at that level. False where the route's channel cannot be narrowed, or the 8 slots are taken (D3)
      */
     pickRouteAffect(id: number, level: AudioAffectLevel) {
         const route = this.state.routes.value.find(r => r.id === id);
         if (!route || maxScopeLevel(route.target) === 'all') return false;
         const picked = level === 'all' ? defaultAudioAffect() : this.affectFromSelection(level);
-        this.setRouteAffect(id, picked ?? specializeAudioAffect(this.plugin, route.affect, level));
-        return true;
+        return this.setRouteAffect(id, picked ?? specializeAudioAffect(this.plugin, route.affect, level));
     }
 
     private affectFromSelection(level: AudioAffectLevel): AudioAffect | undefined {
@@ -341,8 +422,9 @@ export class AudioReactiveAnimationManager {
         return audioAffectFromLoci(this.plugin, focus, level);
     }
 
-    get stems() {
-        return this.currentStems;
+    /** each stem's level as heard now */
+    get stems(): StemLevels {
+        return this.presented.stems;
     }
 
     private syncStems() {
@@ -418,22 +500,26 @@ export class AudioReactiveAnimationManager {
     }
 
     private updateStatus(error?: string, force = false, timeMs = 0) {
-        if (!force && timeMs - this.lastUiUpdateMs < 32) return;
+        if (!force && this.presented.playing === this.emittedHeardPlaying && timeMs - this.lastUiUpdateMs < 32) return;
         this.lastUiUpdateMs = timeMs;
+        this.emittedHeardPlaying = this.presented.playing;
+        this.emittedAtRest = this.presented.atRest;
         const audio = this.state.audioPlayer.value;
         this.state.status.next({
             sourceLabel: this.sourceLabel,
             loaded: !!audio?.src,
             playing: !!audio && !audio.paused && !audio.ended,
+            heardPlaying: this.presented.playing,
             analysisBlocked: this.silenceWhilePlayingMs > 2000,
             sampleRate: this.audioContext?.sampleRate,
-            frame: this.currentFrame,
-            visualization: this.visualization,
-            stems: this.currentStems,
-            stemsSeparated: this.stemsSeparated,
+            // what is heard now: the presented objects, the same every emission
+            frame: this.presented.frame,
+            visualization: this.presented.visualization,
+            stems: this.presented.stems,
+            stemsSeparated: this.presented.stemsSeparated,
             stemStatus: this.stemStatus,
-            drives: { ...this.router.drives },
-            routeValues: new Map(this.router.values),
+            drives: this.presented.drives,
+            routeValues: this.presented.routeValues,
             error,
         });
     }
@@ -447,8 +533,14 @@ export class AudioReactiveAnimationManager {
 
     private bindAudioEvents(audio: HTMLAudioElement) {
         audio.addEventListener('play', () => this.updateStatus(void 0, true));
-        audio.addEventListener('pause', () => this.updateStatus(void 0, true));
-        audio.addEventListener('ended', () => this.updateStatus(void 0, true));
+        audio.addEventListener('pause', () => this.onStopped());
+        audio.addEventListener('ended', () => this.onStopped());
+    }
+
+    /** the element's pause or ended event: the tail starts now. Only from playing (a flush comes before the queued event) */
+    private onStopped() {
+        if (this.heardUntil === Infinity && Number.isNaN(this.stoppedAt) && this.audioContext) this.stoppedAt = this.getOutputClock(this.audioContext).now();
+        this.updateStatus(void 0, true);
     }
 
     private resolveAudioPlayer() {
@@ -467,9 +559,7 @@ export class AudioReactiveAnimationManager {
 
     private ensureAnalyser(audio: HTMLAudioElement) {
         if (!this.audioContext) {
-            const AudioContextCtor = getAudioContextCtor();
-            if (!AudioContextCtor) throw new Error('Web Audio API is not available in this browser.');
-            this.audioContext = new AudioContextCtor();
+            this.audioContext = this.ports.createContext();
         }
         if (!this.analyser) {
             this.analyser = this.audioContext.createAnalyser();
@@ -509,6 +599,22 @@ export class AudioReactiveAnimationManager {
         });
     }
 
+    /**
+     * Silences what the delay line still holds (stop, a new source, clear): a new delay node in place of the old, the
+     * same delay. Only the source -> delay link is cut: the stem separator taps the source too
+     */
+    private flushDelayLine() {
+        const ctx = this.audioContext, source = this.sourceNode, old = this.delayNode, analyser = this.analyser;
+        this.heardUntil = -Infinity;
+        if (!ctx || !source || !old || !analyser) return;
+        source.disconnect(old);
+        old.disconnect();
+        const delay = this.delayNode = ctx.createDelay(30);
+        delay.delayTime.value = old.delayTime.value;
+        source.connect(delay);
+        delay.connect(analyser);
+    }
+
     private async loadSource(src: string, label: string, ownsObjectUrl: boolean) {
         const audio = this.resolveAudioPlayer();
         this.releaseObjectUrl();
@@ -522,6 +628,7 @@ export class AudioReactiveAnimationManager {
         this.lastTickMs = 0;
         audio.pause();
         audio.currentTime = 0;
+        this.flushDelayLine();
         audio.src = src;
         audio.load();
         this.ensureAnalyser(audio);
@@ -557,6 +664,7 @@ export class AudioReactiveAnimationManager {
         if (!audio) return;
         audio.pause();
         audio.currentTime = 0;
+        this.flushDelayLine();
         this.reactor.reset();
         this.separator?.reset();
         this.currentFrame = EmptyAudioReactiveFrame;
@@ -576,8 +684,14 @@ export class AudioReactiveAnimationManager {
         }
         this.releaseObjectUrl();
         this.sourceLabel = void 0;
+        this.flushDelayLine();
         this.reactor.reset();
         this.separator?.reset();
+        // the drives rest at once (D2): tick takes the no-audio branch from now on, which never updates the router
+        this.router.reset();
+        this.currentStems = ZeroStems;
+        this.stemsSeparated = false;
+        this.bandDrumsPeak = BandDrumsPeakFloor;
         this.currentFrame = EmptyAudioReactiveFrame;
         clearAudioReactiveVisualization(this.visualization);
         this.lastTickMs = 0;
@@ -585,12 +699,13 @@ export class AudioReactiveAnimationManager {
         this.updateStatus(void 0, true);
     }
 
-    private updateStems(dtMs: number, paused: boolean) {
+    /** `silent`: nothing is heard (not playing, the delay line drained): the band stand-ins, from the silent analysis */
+    private updateStems(dtMs: number, silent: boolean) {
         const params = this.state.params.value;
         let separated: StemLevels | undefined;
-        if (!paused && this.separator && this.audioContext && params.stemModel !== 'off') {
+        if (!silent && this.separator && this.audioContext && params.stemModel !== 'off') {
             // the audio heard now entered the graph one delay ago
-            const heard = this.audioContext.currentTime - getStemDelaySeconds(params);
+            const heard = this.clockNow - getStemDelaySeconds(params);
             separated = this.separator.sample(heard, dtMs, params.bandAttackMs, params.bandReleaseMs);
         }
         this.stemsSeparated = !!separated;
@@ -604,24 +719,79 @@ export class AudioReactiveAnimationManager {
         this.currentStems = getBandStems(this.currentFrame, drums * drums);
     }
 
+    /**
+     * This tick's live state into the ring, stamped with the context time, and the entry of what is heard now out of
+     * it (now - output latency). With no context yet there is no clock: the last stamp, latency 0. Never the tick's
+     * timeMs: the animation loop caps its step, so it runs slow under jank.
+     */
+    private presentFrame(heard: boolean) {
+        const r = this.router;
+        this.presented.push(this.clockNow, heard, this.currentFrame, this.currentStems, this.stemsSeparated, r.drives, r.scopeCount, r.scopeKind, r.scopeDrive, r.scopes,
+            this.state.routes.value, r.values, this.visualization);
+        this.presented.present(this.clockNow - this.clockLatency);
+    }
+
+    private getOutputClock(ctx: AudioContext) {
+        let clock = this.outputClock;
+        if (!clock || this.outputClockContext !== ctx) {
+            clock = this.outputClock = this.ports.outputClock(ctx);
+            this.outputClockContext = ctx;
+        }
+        return clock;
+    }
+
+    /** this tick's clock, read once: the context's, or with no context yet the last stamp and latency 0 */
+    private readClock() {
+        const ctx = this.audioContext;
+        if (!ctx) {
+            this.clockNow = Math.max(0, this.presented.newestStamp);
+            this.clockLatency = 0;
+            return;
+        }
+        const clock = this.getOutputClock(ctx);
+        this.clockNow = clock.now();
+        this.clockLatency = clock.latency();
+    }
+
+    /** the frame as heard now (`frame`); the analysis runs on what the analyser hands over now */
     tick(timeMs: number): AudioReactiveFrame<DefaultAudioBandKey> {
         const audio = this.state.audioPlayer.value;
         const dtMs = this.lastTickMs > 0 ? Math.min(100, Math.max(0, timeMs - this.lastTickMs)) : 16;
         this.lastTickMs = timeMs;
+        this.readClock();
 
         if (!audio || !audio.src || !this.audioContext || !this.analyser || !this.timeDomainData || !this.frequencyDomainData || !this.silenceData) {
-            if (!areFramesClose(this.currentFrame, EmptyAudioReactiveFrame)) {
+            const cleared = !areFramesClose(this.currentFrame, EmptyAudioReactiveFrame);
+            if (cleared) {
                 this.currentFrame = EmptyAudioReactiveFrame;
                 clearAudioReactiveVisualization(this.visualization);
+            }
+            this.presentFrame(false);
+            // the status follows the presented frame until what is heard has come to rest too, the drives and route values too
+            if (cleared || this.presented.playing !== this.emittedHeardPlaying || this.presented.atRest !== this.emittedAtRest || !areFramesClose(this.presented.frame, EmptyAudioReactiveFrame)) {
                 this.updateStatus(void 0, false, timeMs);
             }
-            return this.currentFrame;
+            return this.presented.frame;
         }
 
         const sampleRate = this.audioContext.sampleRate;
+        let error: string | undefined;
+        // heard: playing, or after a pause or the end of the file until the delay line has drained (D = 0: at once); not
+        // while the line hands over the silence it held at a (re)start (D = 0: never)
+        const playing = !audio.paused && !audio.ended;
+        const delayS = this.delayNode?.delayTime.value ?? 0;
+        if (playing) {
+            if (this.heardUntil !== Infinity && this.clockNow >= this.heardUntil) this.primedUntil = this.clockNow + delayS;
+            this.heardUntil = Infinity;
+            this.stoppedAt = NaN;
+        } else if (this.heardUntil !== -Infinity) {
+            if (Number.isNaN(this.stoppedAt)) this.stoppedAt = this.clockNow;
+            this.heardUntil = this.stoppedAt + delayS;
+        }
+        const heard = (playing || (this.audioContext.state === 'running' && this.clockNow < this.heardUntil)) && this.clockNow >= this.primedUntil;
 
         try {
-            if (audio.paused || audio.ended) {
+            if (!heard) {
                 this.silenceWhilePlayingMs = 0;
                 this.currentFrame = this.reactor.analyze(this.silenceData, sampleRate, dtMs);
                 clearAudioReactiveVisualization(this.visualization);
@@ -634,19 +804,20 @@ export class AudioReactiveAnimationManager {
                     Math.abs(this.timeDomainData[n >> 2]) < 1e-7 &&
                     Math.abs(this.timeDomainData[n >> 1]) < 1e-7 &&
                     Math.abs(this.timeDomainData[(n >> 1) + (n >> 2)]) < 1e-7;
-                this.silenceWhilePlayingMs = analysisSilent ? this.silenceWhilePlayingMs + dtMs : 0;
+                // only while playing: a quiet end of the file in the tail is not a blocked analysis
+                this.silenceWhilePlayingMs = playing && analysisSilent ? this.silenceWhilePlayingMs + dtMs : 0;
                 writeWaveformSamples(this.timeDomainData, this.visualization.waveform);
                 writeSpectrumSamples(this.frequencyDomainData, this.visualization.spectrum);
                 this.currentFrame = this.reactor.analyze(this.timeDomainData, sampleRate, dtMs);
             }
-            this.updateStems(dtMs, audio.paused || audio.ended);
-            this.router.update(this.state.routes.value, this.currentFrame, this.currentStems, dtMs);
-            this.updateStatus(void 0, false, timeMs);
+            this.updateStems(dtMs, !heard);
+            this.router.update(this.state.routes.value, this.currentFrame, this.currentStems, dtMs, heard);
         } catch (e) {
-            this.updateStatus(`${e}`, true, timeMs);
+            error = `${e}`;
         }
-
-        return this.currentFrame;
+        this.presentFrame(heard);
+        this.updateStatus(error, error !== void 0, timeMs);
+        return this.presented.frame;
     }
 
     dispose() {

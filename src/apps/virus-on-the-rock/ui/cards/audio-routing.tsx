@@ -9,9 +9,12 @@ import * as React from 'react';
 import { useBehavior } from '../../../../mol-plugin-ui/hooks/use-behavior';
 import { InspiredRoutings } from '../../../../mol-plugin-state/helpers/audio-routing-inspired';
 import { describeAudioAffect, listAudioAffectChoices } from '../../../../mol-plugin-state/helpers/audio-affect';
-import { AudioAffectLevels, AudioRouteCurves, AudioRouteSources, AudioRouteTargets, canonicalAudioAffect, createAudioRoute, draftsFromRoutes, maxScopeLevel, getDefaultAudioRoutes, loadStoredAudioRouting, parseAudioRouting, routesFromDrafts, storeAudioRouting, type AudioAffect, type AudioRoute, type AudioRouteDraft, type AudioRoutingPreset } from '../../../../mol-plugin-state/manager/audio-routing';
+import { AudioAffectLevels, AudioRouteCurves, AudioRouteSources, AudioRouteTargets, AudioScopeSlotCount, canonicalAudioAffect, createAudioRoute, draftsFromRoutes, maxScopeLevel, narrowedRouteCount, getDefaultAudioRoutes, loadStoredAudioRouting, parseAudioRouting, routesFromDrafts, storeAudioRouting, type AudioAffect, type AudioRoute, type AudioRoutingPreset } from '../../../../mol-plugin-state/manager/audio-routing';
 import { type AudioReactiveStatus } from '../../../../mol-plugin-state/manager/audio-reactive-animation';
 import type { VirusOnTheRockApp } from '../../app';
+
+/** why a Who select is disabled once 8 routes act on a part (D3) */
+export const NarrowedSlotsFullNote = '8 routes are narrowed (on or off): widen one to All first';
 
 export const AffectLevelRank: Record<AudioAffect['level'], number> = {
     all: 0, model: 1, entity: 2, instance: 3, chain: 4, residue: 5, atom: 6,
@@ -22,11 +25,13 @@ export const AffectLevelShort: Record<AudioAffect['level'], string> = {
 };
 
 /** One route's Who row: how fine (level), which one, and a pick from what is clicked in the viewer */
-export function RouteAffectRow({ app, route }: { app: VirusOnTheRockApp, route: AudioRoute }) {
+/** `slotsFull`: the 8 slots are taken, counted once per render by the card */
+export function RouteAffectRow({ app, route, slotsFull }: { app: VirusOnTheRockApp, route: AudioRoute, slotsFull: boolean }) {
     const manager = app.viewer.plugin.managers.audioReactive;
     const hierarchy = useBehavior(manager.plugin.managers.structure.hierarchy.behaviors.selection);
     const affect = route.affect;
     const max = maxScopeLevel(route.target);
+    const full = slotsFull && max !== 'all' && affect.level === 'all';
     const choices = React.useMemo(
         () => affect.level === 'all' ? [] : listAudioAffectChoices(manager.plugin, affect),
         [manager, affect, hierarchy],
@@ -45,7 +50,8 @@ export function RouteAffectRow({ app, route }: { app: VirusOnTheRockApp, route: 
         <select
             className='vor-select vor-route-level'
             value={affect.level}
-            title={max === 'atom'
+            disabled={full}
+            title={full ? NarrowedSlotsFullNote : max === 'atom'
                 ? 'How much of the structure this route acts on'
                 : 'How much of the structure this route moves. A chain moves with its whole copy, so instance motion stops at the chain'}
             onChange={e => manager.pickRouteAffect(route.id, e.target.value as AudioAffect['level'])}
@@ -74,15 +80,6 @@ export function RouteAffectRow({ app, route }: { app: VirusOnTheRockApp, route: 
 
 /** the built-in route sets in the Saved list: their option values carry this prefix, so a saved routing of the same name stays apart */
 export const InspiredPrefix = 'inspired:';
-
-/** a loaded routing moves nothing on a channel whose motion is off: turn on those its routes need */
-export async function enableMotionsFor(app: VirusOnTheRockApp, routes: readonly AudioRouteDraft[]) {
-    const state = app.state.value;
-    const needs = (targets: readonly AudioRoute['target'][]) => routes.some(r => r.enabled && targets.includes(r.target));
-    if (!state.atomWiggleEnabled && needs(['wiggle'])) await app.setMotionTargetEnabled('atomWiggleEnabled', true);
-    if (!state.instanceTumbleEnabled && needs(['symAxis', 'instanceRandom', 'instanceAxis', 'instanceNormal'])) await app.setMotionTargetEnabled('instanceTumbleEnabled', true);
-    if (!state.objectTransformEnabled && needs(['object'])) await app.setMotionTargetEnabled('objectTransformEnabled', true);
-}
 
 export function AudioRoutingLibrary({ app }: { app: VirusOnTheRockApp }) {
     const manager = app.viewer.plugin.managers.audioReactive;
@@ -153,7 +150,6 @@ export function AudioRoutingLibrary({ app }: { app: VirusOnTheRockApp }) {
             ? InspiredRoutings.find(item => item.name === presetName.slice(InspiredPrefix.length))
             : list.find(item => item.name === presetName);
         if (!preset) return;
-        void enableMotionsFor(app, preset.routes);
         // a saved affect names its model by entry id too: reattached to the models loaded now
         manager.setRoutes(routesFromDrafts(preset.routes));
         for (const route of manager.state.routes.value) manager.setRouteAffect(route.id, route.affect);
@@ -189,7 +185,9 @@ export function AudioRoutingCard({ app }: { app: VirusOnTheRockApp }) {
     const routes = useBehavior(manager.state.routes);
     const status = useBehavior(manager.state.status) as AudioReactiveStatus | undefined;
     if (!routes) return null;
+    const slotsFull = narrowedRouteCount(routes) >= AudioScopeSlotCount;
     return <div className='vor-stack'>
+        {slotsFull && <p className='vor-help'>{NarrowedSlotsFullNote}</p>}
         {routes.map(route => {
             const value = status?.routeValues.get(route.id) ?? 0;
             return <div key={route.id} className={`vor-route ${route.enabled ? '' : 'vor-route-off'}`}>
@@ -222,7 +220,7 @@ export function AudioRoutingCard({ app }: { app: VirusOnTheRockApp }) {
                         {AudioRouteCurves.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
                     </select>
                 </div>
-                <RouteAffectRow app={app} route={route} />
+                <RouteAffectRow app={app} route={route} slotsFull={slotsFull} />
                 <div className='vor-route-row'>
                     <label className='vor-route-gain' title='Sensitivity: how much the source moves the channel'>
                         Gain {route.gain.toFixed(2)}
@@ -239,7 +237,7 @@ export function AudioRoutingCard({ app }: { app: VirusOnTheRockApp }) {
         </div>
         <AudioRoutingLibrary app={app} />
         <p className='vor-help'>
-            Each route sends an audio source to a visual channel; a channel sums its routes. Who narrows a route to one model, entity, instance or chain (atom wiggle, illumination and colours down to one residue or atom); ◎ takes what you clicked in the viewer. Camera, clipping and opacity always act on the whole view. Up to 8 routes can be narrowed at once. The wave's height is its route's source. Save keeps the routes and who each moves.
+            Each route sends an audio source to a visual channel; a channel sums its routes. Who narrows a route to one model, entity, instance or chain (atom wiggle, illumination and colours down to one residue or atom); ◎ takes what you clicked in the viewer. Camera, clipping and opacity always act on the whole view. Up to 8 routes can be narrowed at once; then the Who of the others is disabled. The wave's height is its route's source. Save keeps the routes and who each moves.
         </p>
     </div>;
 }
