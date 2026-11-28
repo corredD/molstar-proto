@@ -110,7 +110,7 @@ async function run(gainScale, routesSpec) {
                 const lag = ts.contextTime > 0 ? ctx.currentTime - ts.contextTime - age : NaN;
                 const heard = a.currentTime - delayS - lag;
                 // the stem events' live flag: the manager's own (private) state, as the delay nodes above
-                out.push([a.currentTime, heard, m.stems.drums, m.stems.bass, m.drives.symAxis, lag, m.state.status.value.stemsSeparated ? 1 : 0, m['stemEvents'] && m['stemEvents'].live ? 1 : 0]);
+                out.push([a.currentTime, heard, m.stems.drums, m.stems.bass, m.drives.symAxis, lag, m.state.status.value.stemsSeparated ? 1 : 0, m['stemEvents'] && m['stemEvents'].live ? 1 : 0, ctx.currentTime]);
                 if (!(heard >= seconds) && a.currentTime < seconds + delayS + 1) requestAnimationFrame(f); else done();
             };
             requestAnimationFrame(f);
@@ -125,11 +125,22 @@ async function run(gainScale, routesSpec) {
 
 const med = a => { if (!a.length) return NaN; const s = [...a].sort((x, y) => x - y); return s[Math.floor(s.length / 2)]; };
 const f0 = x => Number.isFinite(x) ? x.toFixed(0) : 'n/a';
+const f2 = x => Number.isFinite(x) ? x.toFixed(2) : 'n/a';
+/** median (min, max) in ms, or n/a for none */
+const lags = a => a.length ? `${f0(med(a))} ms (min ${f0(Math.min(...a))}, max ${f0(Math.max(...a))})` : 'n/a (none)';
 function analyse(label, { out, routes, baseLatency, outputLatency, delayS, leadS, model, stemLeadMs }) {
     const kicks = []; for (let t = 1.25; t < seconds - 0.5; t += 0.5) kicks.push(t); // skip the first second: envelopes settle
     const lagM = [], lagH = [], peaks = [], rests = [], lagSep = [], lagLive = [], peaksLive = [];
     // the windows on the heard column (r[1]); the media column less the delay
     const heardOut = out.filter(r => Number.isFinite(r[1]));
+    // the events' live flag is the tick's; what is drawn (the drive) is the tick one output latency back: classify each
+    // row by the live flag of that tick
+    const shownLive = out.map((r, i) => {
+        let j = i;
+        while (j > 0 && out[j][8] > r[8] - outputLatency) j--;
+        return out[j][7];
+    });
+    const liveOf = new Map(out.map((r, i) => [r, shownLive[i]]));
     for (const k of kicks) {
         const win = heardOut.filter(r => r[1] >= k - 0.05 && r[1] < k + 0.4);
         if (!win.length) continue;
@@ -138,7 +149,7 @@ function analyse(label, { out, routes, baseLatency, outputLatency, delayS, leadS
         // with a stem model: the kicks whose whole window was separated (the stems, not the bands' fallback)
         if (win.every(r => r[6])) lagSep.push((peak[1] - k) * 1000);
         // the kicks whose whole window had the stem events live (the event routes, not the stand-ins)
-        if (win.every(r => r[7])) { lagLive.push((peak[1] - k) * 1000); peaksLive.push(peak[4]); }
+        if (win.every(r => liveOf.get(r))) { lagLive.push((peak[1] - k) * 1000); peaksLive.push(peak[4]); }
         // less the lead: with lookahead the next kick's drive rises the lead before it is heard
         const rest = heardOut.filter(r => r[1] >= k + 0.4 - leadS && r[1] < k + 0.5 - leadS).map(r => r[4]);
         if (rest.length) rests.push(Math.max(...rest) / peak[4]);
@@ -151,11 +162,10 @@ function analyse(label, { out, routes, baseLatency, outputLatency, delayS, leadS
     console.log(`  frames ${out.length}, media step ${f0(med(dt) * 1000)} ms | output delay (ctx.currentTime - outputTimestamp.contextTime) median ${f0(med(out2) * 1000)} ms, ctx.baseLatency ${f0(baseLatency * 1000)} ms, outputLatency ${f0(outputLatency * 1000)} ms`);
     console.log(`  kick->peak MEDIA-D median ${f0(med(lagM))} ms (min ${f0(Math.min(...lagM))}, max ${f0(Math.max(...lagM))}) | HEARD median ${f0(med(lagH))} ms (min ${f0(Math.min(...lagH))}, max ${f0(Math.max(...lagH))}) | peak median ${med(peaks).toFixed(2)} | rest/peak median ${med(rests).toFixed(2)} max ${Math.max(...rests).toFixed(2)}`);
     if (model !== 'off') {
-        console.log(`  separated kicks only (the whole window separated): ${lagSep.length}/${lagH.length} kicks, HEARD median ${f0(med(lagSep))} ms (min ${f0(Math.min(...lagSep))}, max ${f0(Math.max(...lagSep))})`);
-        console.log(`  stem-event kicks only (events live over the whole window): ${lagLive.length}/${lagH.length} kicks, HEARD median ${f0(med(lagLive))} ms (min ${f0(Math.min(...lagLive))}, max ${f0(Math.max(...lagLive))}), peak median ${med(peaksLive).toFixed(2)}`);
-        return med(peaksLive);
+        console.log(`  separated kicks only (the whole window separated): ${lagSep.length}/${lagH.length} kicks, HEARD median ${lags(lagSep)}`);
+        console.log(`  stem-event kicks only (events live over the whole window, as drawn): ${lagLive.length}/${lagH.length} kicks, HEARD median ${lags(lagLive)}, peak median ${f2(med(peaksLive))}`);
     }
-    return med(peaks);
+    return { all: med(peaks), live: med(peaksLive) };
 }
 
 console.log(`click track 120 BPM, kicks from 0.25 s, preset ${preset}, ${seconds} s, port ${port}, delay asked ${delay > 0 ? `${delay} s` : 'default'} (none without --stems or --lookahead), lookahead ${lookahead ? `on, trim ${trim} ms` : 'off'}, stems ${stems}${stemLead !== null ? `, stem timeline lead ${stemLead} ms` : ''}`);
@@ -167,9 +177,9 @@ const p2 = analyse('full preset x2', await run(2, 'all'));
 if (withStems) {
     const e1 = analyse('kick events only x1', await run(1, 'kickEvents'));
     const e2 = analyse('kick events only x2', await run(2, 'kickEvents'));
-    console.log(`gain x2 -> peak ratio, kick events only (kicks with events live) ${(e2 / e1).toFixed(2)} (expect 1.9-2.1); full preset ${(p2 / p1).toFixed(2)} (for information: its live routes differ between runs when the model falls behind)`);
+    console.log(`gain x2 -> peak ratio, kick events only (kicks with events live) ${f2(e2.live / e1.live)} (expect 1.9-2.1); full preset, every kick ${f2(p2.all / p1.all)} (for information: its live routes differ between runs when the model falls behind)`);
 } else {
-    console.log(`gain x2 -> peak ratio ${(p2 / p1).toFixed(2)} (expect 1.9-2.1)`);
+    console.log(`gain x2 -> peak ratio ${f2(p2.all / p1.all)} (expect 1.9-2.1)`);
 }
 await browser.close();
 }
