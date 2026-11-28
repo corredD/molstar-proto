@@ -228,12 +228,21 @@ export function AudioRoutingCard({ app }: { app: VirusOnTheRockApp }) {
                     </label>
                     <div className='vor-route-meter' title='What this route sends now'><i style={{ width: `${Math.min(100, value * 12.5)}%` }} /></div>
                 </div>
+                <div className='vor-route-row'>
+                    <label className='vor-route-gain' title='Hit threshold: the source at or under it sends nothing; above it, the rest is spread over the full range'>
+                        Hit threshold {route.threshold.toFixed(2)}
+                        <input type='range' min='0' max='0.95' step='0.05' value={route.threshold} onChange={e => manager.updateRoute(route.id, { threshold: parseFloat(e.target.value) })} />
+                    </label>
+                    <label title='Only while no stem events arrive (no model, or a model without events)'>
+                        <input type='checkbox' checked={route.standIn} onChange={e => manager.updateRoute(route.id, { standIn: e.target.checked })} /> Stand-in
+                    </label>
+                </div>
             </div>;
         })}
         <div className='vor-chip-row'>
             <button className='vor-chip' onClick={() => manager.setRoutes([...routes, createAudioRoute({ enabled: true, source: 'stemDrums', mode: 'onset', target: 'symAxis', gain: 1, floor: 0, releaseMs: 250 })])}>+ Add route</button>
             <button className='vor-chip' title='A traveling wave on instance positions. Its height is this route’s source — pick the stem on the new row. It moves even when Instance Beats is off.' onClick={() => manager.setRoutes([...routes, createAudioRoute({ enabled: true, source: 'stemDrums', mode: 'level', target: 'instanceWave', gain: 6, floor: 0, releaseMs: 280 })])}>+ Instance wave</button>
-            <button className='vor-chip' title='Drums and bass to the symmetry axes, other to the atoms, vocals to the illumination' onClick={() => manager.setRoutes(getDefaultAudioRoutes())}>Defaults</button>
+            <button className='vor-chip' title='Kicks and bass notes (stem events) to the symmetry axes, the drums and bass levels standing in without them; other to the atoms, vocals to the illumination' onClick={() => manager.setRoutes(getDefaultAudioRoutes())}>Defaults</button>
         </div>
         <AudioRoutingLibrary app={app} />
         <p className='vor-help'>
