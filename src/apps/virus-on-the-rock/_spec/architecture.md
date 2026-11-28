@@ -81,7 +81,12 @@ of the samples written since the window started), so the runs' regions join exac
 dropped (near-silence). The separator keeps them per kind, a value 0–1 = the event's dBFS within 18 dB under its kind's
 loud level, and `sampleEvents(t − D)` fires each once on the first frame that reaches it (no lead: an event is dated at
 its onset, Ludo); a frame not heard skips them and a resume reads no backlog. Events are live while `t − D` is within
-what the runs covered; stand-in routes act only while they are not. Cost per run, node on the M-series: the detector
+what the runs covered (from the first run's `from` after a clear: a model switched with the delay kept has no events
+for the audio still in the line) and, once live, 0.5 s (`EventHoldBackS` + 0.15 s) past its end, so a model that only
+just keeps up does not flip the stand-ins each run; stand-in routes act only while events are not live. The rings keep
+time order across runs (a run's last event can be dated after the next run's first) and nothing is dropped at a seam.
+The separator bumps an epoch at each clear and sends it with load and reset; the worker echoes the one a run started
+under, and a run posted before the clear (in transit) is dropped. Cost per run, node on the M-series: the detector
 ~200 ms per HTDemucs run (5 s), ~125 ms per Spleeter run (2 s) + ~50 ms for its inverse, ~225 ms per SCNet run (6 s) +
 ~85 ms for its inverse.
 

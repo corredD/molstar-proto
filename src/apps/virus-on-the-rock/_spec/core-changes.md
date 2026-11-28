@@ -173,7 +173,9 @@ manager has no audio and no Who.
   `StemRunResult.audio` (`run(left, right, audioFrom?)`; HTDemucs from `demucsStemEnergies(…, mono)`, Spleeter
   `spleeterStemAudio`, SCNet `scnetStemAudio`, both through `dsp.ts`'s new `OverlapAddInverse`; spec
   `stem-audio.spec.ts`); the worker core keeps a sample counter, runs the detector after each run and posts `events`
-  (`StemWorkerEvents` in the protocol); `StemSeparator` keeps per-kind rings, `sampleEvents` / `skipEvents`. Worker
+  (`StemWorkerEvents` in the protocol); `StemSeparator` keeps per-kind rings in time order, `sampleEvents` / `skipEvents`, live from the coverage's start to 0.5 s
+past its end once live; an epoch sent with load and reset and echoed on `'stems'` drops a run posted before a clear
+(gate fixes, stem-events). Worker
   CPU added per run: ~0.2 s (HTDemucs, 5 s), ~0.18 s (Spleeter, 2 s), ~0.31 s (SCNet, 6 s).
 - **`assembly-symmetry-axis.ts`**: axes per structure from RCSB symmetry; mesoscale parts share a middle (wip). The
   per-structure cache stores the bare key (it stored `key:count` and compared the bare key, so it never hit: two
