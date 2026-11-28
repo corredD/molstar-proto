@@ -112,6 +112,21 @@ describe('stem separator', () => {
             expect(taps[0].messages).toEqual([{ on: true }, { on: false }]);
         });
 
+        it('listening: the flag follows each load, and goes to the worker as it changes', async () => {
+            const { sep, modules } = make();
+            sep.setListening(true);
+            const p = sep.setModel('htdemucs', 'wasm');
+            await flush();
+            modules[0].resolve();
+            await p;
+            expect(types()).toEqual(['load', 'listen']);
+            expect(workers[0].messages[1].on).toBe(true);
+            sep.setListening(true);
+            sep.setListening(false);
+            expect(types()).toEqual(['load', 'listen', 'listen']);
+            expect(workers[0].messages[2].on).toBe(false);
+        });
+
         it('a failed tap setup retries when the model is picked again after Off', async () => {
             const { sep, modules, statuses } = make();
             const p1 = sep.setModel('htdemucs', 'wasm');
@@ -332,5 +347,37 @@ describe('stem separator: stem events', () => {
         expect(sep.sampleEvents(-0.1, 16, out)).toBe(false);
         (sep as any).model = undefined;
         expect(sep.sampleEvents(1.5, 16, out)).toBe(false);
+    });
+});
+
+describe('stem separator: listening chunks', () => {
+    function make() {
+        const player = { chunks: [] as any[], resets: 0, schedule(c: any) { this.chunks.push(c); }, reset() { this.resets++; } };
+        const sep: any = new StemSeparator({} as any, {} as any, {} as any, () => { }, player as any);
+        sep.model = 'htdemucs';
+        const post = (epoch: number, listen?: any) => sep.onWorkerMessage({
+            type: 'stems', model: 'htdemucs', times: new Float64Array(0), computeMs: 1, audioMs: 1, epoch, listen,
+            energies: Object.fromEntries(Names.map(s => [s, new Float32Array(0)])),
+        });
+        return { sep, player, post };
+    }
+
+    it('hands a chunk of the current epoch to the player, and drops one posted before a reset', () => {
+        const { sep, player, post } = make();
+        const chunk = { time: 1, samples: {} };
+        post(sep.epoch, chunk);
+        expect(player.chunks).toEqual([chunk]);
+        const old = sep.epoch;
+        sep.reset();
+        post(old, chunk);
+        expect(player.chunks.length).toBe(1);
+    });
+
+    it('a reset or a model change stops what the player scheduled', async () => {
+        const { sep, player } = make();
+        sep.reset();
+        expect(player.resets).toBe(1);
+        await sep.setModel(undefined, 'wasm');
+        expect(player.resets).toBe(2);
     });
 });

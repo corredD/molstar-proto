@@ -12,6 +12,7 @@
 import type { StemEventValues } from '../audio-routing';
 import { EventHoldBackS, StemEventKinds } from './stem-events';
 import { StemModelId, StemModels, StemName, StemNames } from './stem-models';
+import type { StemPlayer } from './stem-player';
 import type { StemWorkerRequest, StemWorkerResponse } from './stem-worker-protocol';
 
 export type StemLevels = Record<StemName, number>;
@@ -202,7 +203,11 @@ export class StemSeparator {
     /** bumped at each clear (a reset, a model change, Off) and sent with load and reset: a run posted before is dropped */
     private epoch = 0;
 
-    constructor(private context: AudioContext, private source: AudioNode, private options: StemSeparatorOptions, private onStatus: (s: StemSeparatorStatus) => void) { }
+    /** whether any stem is listened to: the worker returns the stems' audio (sent again after each load) */
+    private listening = false;
+
+    /** `player`: plays the stems the worker returns while listening; reset with the timeline */
+    constructor(private context: AudioContext, private source: AudioNode, private options: StemSeparatorOptions, private onStatus: (s: StemSeparatorStatus) => void, private player?: StemPlayer) { }
 
     get currentStatus() {
         return this.status;
@@ -283,7 +288,15 @@ export class StemSeparator {
         if (request !== this.request) return;
         const baseUrls = [...this.options.localBaseUrls.map(u => `${u}${id}/`), StemModels[id].remoteBaseUrl];
         this.post({ type: 'load', model: id, baseUrls, executionProvider, wasmPath: this.options.wasmPath, epoch: this.epoch });
+        if (this.listening) this.post({ type: 'listen', on: true });
         this.tap?.port.postMessage({ on: true });
+    }
+
+    /** whether any stem is listened to: the worker returns the four stems' audio with each run (nothing extra while off) */
+    setListening(on: boolean) {
+        if (on === this.listening) return;
+        this.listening = on;
+        this.post({ type: 'listen', on });
     }
 
     /** forget the separated audio (a new source, a seek) */
@@ -307,6 +320,7 @@ export class StemSeparator {
         this.eventsReadUntil = NaN;
         this.eventsReadAt = NaN;
         this.eventsLive = false;
+        this.player?.reset();
         this.epoch++;
     }
 
@@ -319,6 +333,7 @@ export class StemSeparator {
         }
         // a run posted before the last reset or model change (in transit when it came): its audio was flushed
         if (msg.epoch !== this.epoch) return;
+        if (msg.listen) this.player?.schedule(msg.listen);
         // frames may overlap the timeline's end when a run covered more than one chunk: keep the newer
         const first = msg.times.length ? msg.times[0] : Infinity;
         while (this.times.length && this.times[this.times.length - 1] >= first) {
