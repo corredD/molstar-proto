@@ -209,3 +209,44 @@ stems, not Spleeter's or SCNet's own separation (the browser check, step 5).
 | shift review 5: 128-sample clock steps at 60 Hz make the frame noisy | nit | confirmed | 576acd449 (the running estimate; test 16.7 ± 3.3 ms in quanta) |
 | shift review 6, 7: clicksync's live flag on the tick not the drawn frame; full-preset ratio no longer the old metric; empty lists | nit | confirmed | 673a57e09. Headed re-run (59–64 ms frames): kick events only 10 / 1 ms median (x1 / x2), gain × 2 2.00 |
 | new (re-run): at a 48 kHz context snare/hats fall to ~85 % within one hop (90.7 % within 30 ms): the worker's linear resampler dulls 150 Hz–16 kHz | — | measured | open (the resampler predates the lane; kicks, bass notes and the drive are unchanged) |
+
+## Round 2 (Ludo's try, 2026-11-28)
+
+### Brief
+
+- **Asked** (Ludo, on the 1353 build: HTDemucs, Audio Delay 25 s, the kick-events route): "every 14s its like the
+  route doesnt receive any signal or the process stop and come back"; "when I click pause, it doesnt pause right away".
+  Status line: "on webgpu, 100–127% of real time, 7–14 s ahead". Ludo: go on the three fixes below.
+- **Cause (coordinator, from the code):** `StemWorkerCore.append` caps `pending` at the window (HTDemucs 343980
+  samples, 7.8 s). A run longer than about W − hold-back (7.4 s) drops the audio past the cap: the next run's events
+  start at window sample 0 and the stretch between the last run's `until` and it has no events. `sampleEvents` keeps
+  `live` true across it (one `eventsFrom`, one `eventsUntil`), so stand-ins stay off and the kick route reads nothing.
+  Pause: by design the delay line plays its D-second tail after the element pauses.
+- **Fixes:**
+  1. **Holes:** coverage is a set of intervals (the runs' [from, until)), not one span; `at` inside a hole is not live
+     (stand-ins carry it, the 0.5 s grace applies only past the last run's end, not across a hole). The worker reports
+     the samples it lost (`lostMs` on the `'stems'` message, from the `pending` cap); the status line says "behind:
+     x s lost per run" while it loses audio. Test first: a fake run sequence with a dropped stretch, `sampleEvents`
+     inside it returns live false (fails today).
+  2. **Instant pause:** pause suspends the AudioContext (the delay line, the analysis branch and the tap freeze), play
+     resumes it; the heard-tail rules (heardUntil, stoppedAt, primedUntil) for pause become: the line is frozen, not
+     drained, so a resume continues where it stopped with nothing lost or replayed. The element's own controls
+     (native pause) take the same path. Stop, seek, a new source keep flushing. Ended keeps its tail (the song's last D
+     seconds still play out). Test first: pause then play, the heard stream continues at the sample it froze on (the
+     audio fakes); the sound-stops rules updated in their spec, every other golden unchanged.
+  3. **HTDemucs speed on WebGPU:** measure where a run's time goes (the 21 pieces, the 12 ms `yieldToRenderer` after
+     each, the CPU-pinned normalization piece, `demucsSpec`, the GPU→CPU reads), headed in Chrome with WebGPU (the
+     coordinator's Chrome or the clicksync harness, headed), then cut what is safe (e.g. one yield every few pieces,
+     or yield only when a frame is due). Target under ~7.4 s per run at Ludo's 100–127 %; report the before/after
+     per piece. Do not change the model's numerics (the study's agreement tests stay green).
+- **Spec:** `_spec/audio-routing-spec.md` (event coverage), `_spec/architecture.md` §2 (the pause rule, the worker's
+  cap), the sound-stops spec.
+- **Touches:** `stem-worker-core.ts`, `stem-worker-protocol.ts`, `stem-separator.ts`, `stem-worker.ts`,
+  `stem-models.ts` (HTDemucs runner only), `audio-reactive-animation.ts` (pause/play), `ui/cards/stem-separation.tsx`
+  (status line). **Stays off:** lane `stem-listen` adds stem audio playback on top of this branch (it merges this
+  branch before its gate): do not restructure `StemRunResult.audio` or the card's layout.
+- **Size:** ~150 production lines.
+- **Lane model:** Opus (worker scheduling, the audio clock and the pause rules are hot-path timing).
+- **Steps:** 1. holes (Opus, test first) 2. pause (Opus, test first) 3. measure (Sonnet runs the headed harness) then
+  cut (Opus) 4. checks (Sonnet) 5. gate on the round's commits (reviewer + skeptic, Opus) 6. PR #77's body: a Round 2
+  section and the numbers.
