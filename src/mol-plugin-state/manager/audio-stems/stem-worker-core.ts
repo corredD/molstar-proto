@@ -12,8 +12,8 @@
 
 import { LinearResampler, StemSampleRate } from './dsp';
 import { EventContextS, EventHoldBackS, StemEventDetector } from './stem-events';
-import { StemModelId, StemModels, StemNames, StemRunner } from './stem-models';
-import type { StemWorkerEvents, StemWorkerRequest, StemWorkerResponse } from './stem-worker-protocol';
+import { StemModelId, StemModels, StemNames, StemRunner, StemRunResult } from './stem-models';
+import type { StemWorkerEvents, StemWorkerListen, StemWorkerRequest, StemWorkerResponse } from './stem-worker-protocol';
 
 export type StemExecutionProvider = 'webgpu' | 'wasm';
 
@@ -54,6 +54,8 @@ export class StemWorkerCore {
     private events?: StemEventDetector;
     /** the separator's epoch, from the last load or reset: each run posts the one it started under */
     private requestEpoch = 0;
+    /** whether any stem is listened to: the runs return the four stems' audio */
+    private listening = false;
 
     // loads run one after another (onnxruntime's WebGPU backend creates one session at a time); a queued load that a
     // newer request replaced is skipped
@@ -87,6 +89,9 @@ export class StemWorkerCore {
             case 'reset':
                 this.requestEpoch = msg.epoch ?? 0;
                 this.resetWindow();
+                break;
+            case 'listen':
+                this.listening = msg.on;
                 break;
             case 'audio': {
                 if (!this.model) return;
@@ -161,6 +166,12 @@ export class StemWorkerCore {
         if (gen === this.generation) this.ports.post({ type: 'status', state: 'error', model: id, message: `${lastError}` });
     }
 
+    /** the four stems' audio over [from, to) of the window, copied (the runner's buffers are reused), or nothing if the runner gave less */
+    private listenChunk(audio: StemRunResult['audio'], from: number, to: number, time: number): StemWorkerListen | undefined {
+        if (!audio?.drums || !audio.bass || !audio.other || !audio.vocals || to <= from) return undefined;
+        return { time, samples: { drums: audio.drums.slice(from, to), bass: audio.bass.slice(from, to), other: audio.other.slice(from, to), vocals: audio.vocals.slice(from, to) } };
+    }
+
     private async maybeRun() {
         if (this.busy || !this.runner || !this.model) return;
         const info = StemModels[this.model];
@@ -178,9 +189,10 @@ export class StemWorkerCore {
         const eventsFrom = Math.max(0, W - consumed - holdBack), eventsTo = W - holdBack;
         const audioFrom = Math.max(0, eventsFrom - Math.round(EventContextS * StemSampleRate));
         const l = this.left.slice(), r = this.right.slice();
+        const listening = this.listening;
         const t0 = this.ports.now();
         try {
-            const run = this.runner.run(l, r, audioFrom);
+            const run = this.runner.run(l, r, audioFrom, listening);
             this.inflight = run.then(() => { }, () => { });
             const result = await run;
             if (gen !== this.generation) return;
@@ -197,6 +209,7 @@ export class StemWorkerCore {
                     times, dbfs: batch.dbfs.slice(0, batch.count), kinds: batch.kinds.slice(0, batch.count),
                 };
             }
+            const listen = listening && epoch === this.windowEpoch ? this.listenChunk(audio, eventsFrom, eventsTo, endTime - (W - eventsFrom) / StemSampleRate) : undefined;
             const from = W - consumed;
             const keep: number[] = [];
             for (let i = 0; i < result.centers.length; i++) {
@@ -213,7 +226,8 @@ export class StemWorkerCore {
             const computeMs = this.ports.now() - t0;
             const transfer: Transferable[] = [times.buffer, ...StemNames.map(s => energies[s].buffer)];
             if (events) transfer.push(events.times.buffer, events.dbfs.buffer, events.kinds.buffer);
-            this.ports.post({ type: 'stems', model, times, energies, computeMs, audioMs: consumed / StemSampleRate * 1000, epoch: requestEpoch, events }, transfer);
+            if (listen) transfer.push(...StemNames.map(s => listen.samples[s].buffer));
+            this.ports.post({ type: 'stems', model, times, energies, computeMs, audioMs: consumed / StemSampleRate * 1000, epoch: requestEpoch, events, listen }, transfer);
         } catch (e) {
             // a run cancelled by a newer load or Off says nothing; an error is its own model's, never the next one's
             if (gen === this.generation) this.ports.post({ type: 'status', state: 'error', model, message: `${e}` });
