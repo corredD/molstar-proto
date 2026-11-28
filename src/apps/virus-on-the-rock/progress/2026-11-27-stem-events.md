@@ -127,6 +127,11 @@ coordinator may copy them). Events against `ref.json`, ± one hop (hit / extra):
 | Spleeter's window (11.8 s / 2 s) | 99.9 / 0.3 % | 98.3 / 3.0 % | 99.6 / 1.7 % | 77.5 % / **5.2 %** / 0.25 / 0.41 |
 | SCNet's window (11 s / 6 s) | 99.8 / 0.5 % | 97.2 / 2.6 % | 99.5 / 1.0 % | 77.5 % / 4.6 % / 0.25 / 0.41 ✔ |
 
+At a 48 kHz context (the stems resampled to 48 kHz with scipy, the worker's linear resampler back; after the gate
+fixes): kicks 99.8–99.9 / 0.6 %, bass notes 99.4–99.6 / 1.0–1.8 %, snare/hats 84.8–85.9 / 9.0–9.8 % (open, see Review);
+drive 77.4 % hit, false 4.8 (HTDemucs) / 5.1 (Spleeter's) / 4.7 % (SCNet's), valley/peak 0.25, ρ 0.41. The 44.1 kHz
+numbers above are unchanged after the gate fixes.
+
 Before: 59 % / 3.5 % / 0.73 / 0.12. These measure the detector, the region math and the route math on the reference
 stems, not Spleeter's or SCNet's own separation (the browser check, step 5).
 
@@ -179,3 +184,21 @@ stems, not Spleeter's or SCNet's own separation (the browser check, step 5).
 
 | Finding | Severity | Verdict | Commit / open |
 | ------- | -------- | ------- | ------------- |
+| stems 1 / router 11, N1: at a 48 kHz context a seam's `from` lands µs before the last `until`; the seam drop lost events dated past it. The worker never posts a real overlap | must-fix | confirmed | 4d36072ca (drop and its test removed; 5 µs-early test; 48 kHz worker seam test; architecture wording) |
+| router 1: events live before their coverage starts (a model switched with the Audio Delay kept): stand-ins muted, symAxis dead ~9 s | must-fix | confirmed | 6cdb5923a |
+| router 2: a frame past `eventsUntil` used up covered events | should-fix | confirmed | 213ecd8b3, superseded by 658d267b2 (a frame in the grace reads the ring) |
+| stems 2: events of two runs whose dates cross were out of order in the ring, both lost | should-fix | plausible (not seen on signals) | 1b2d182ec (sorted insert; the loud decay never runs backwards) |
+| router 3: stand-ins flap once per run near load factor 1 | should-fix (low) | confirmed mechanism | 658d267b2 (live holds EventHoldBackS + 0.15 s past the coverage; headroom reads the events' end) |
+| router 4: the pipeline test did not assert "once" nor tell t − D from t − D + lead | nit | confirmed (test gap) | 316dec568 (count = KickAt.length; lookaheadTrimMs 100) |
+| router 5: no clicksync numbers | gate item | refuted as a lane defect (coordinator's step 5) | open (coordinator) |
+| router 6: Stand-in title | nit | confirmed | 7a902d4ba (card, ui.md) |
+| router 7: Mode title wrong for event sources | nit | confirmed | 7a902d4ba |
+| router 8: a muted stand-in decays into denormals | nit | confirmed | 288539e33 (AudioRestCutoff when the route is not active) |
+| router 9: features Hits row | nit | refuted as stated, wording kept as nit | 7a902d4ba |
+| router 10, N2: threshold clamped only in drafts; threshold 1 on Mids/Treble latches NaN | nit | confirmed | f401f0bba |
+| router 12: hand-made range/checkbox controls | nit | confirmed (consistent with the card) | open |
+| stems 3: CPU figure not reproduced | nit | refuted (201–211 ms on re-run); double p95 sort confirmed | b01804309 (p95 once per run) |
+| stems 4: fixture tolerance one hop / 0.1 dB | nit | confirmed | 2543f4adf (10 µs, 0.01 dB) |
+| stems 5: the overlap test guards a dead path | nit | confirmed | 4d36072ca (removed) |
+| stems 6: a message in transit at a reset refills the rings | nit | confirmed | 430598f63 (epoch sent with load/reset, echoed by the worker) |
+| new (re-run): at a 48 kHz context snare/hats fall to ~85 % within one hop (90.7 % within 30 ms): the worker's linear resampler dulls 150 Hz–16 kHz | — | measured | open (the resampler predates the lane; kicks, bass notes and the drive are unchanged) |
