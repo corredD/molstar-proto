@@ -1008,10 +1008,10 @@ describe('audio pipeline (offline, 16 ms frames at 48 kHz)', () => {
             }
             const separator = () => {
                 const sep = new StemSeparator({} as AudioContext, {} as AudioNode, { workerUrl: '', wasmPath: '', localBaseUrls: [] }, () => { });
-                const s = sep as unknown as { model: string, onWorkerMessage(msg: unknown): void };
+                const s = sep as unknown as { model: string, epoch: number, onWorkerMessage(msg: unknown): void };
                 s.model = 'htdemucs';
                 const energies = Object.fromEntries(StemNames.map(n => [n, Float32Array.from(n === 'drums' || n === 'bass' ? kick : kick.map(() => 1e-9))]));
-                s.onWorkerMessage({ type: 'stems', model: 'htdemucs', times: Float64Array.from(times), energies, computeMs: 0, audioMs: 1 });
+                s.onWorkerMessage({ type: 'stems', model: 'htdemucs', times: Float64Array.from(times), energies, computeMs: 0, audioMs: 1, epoch: s.epoch });
                 return sep;
             };
             const stemRun = (shiftS: number | undefined, frameMs: number, routes: () => AudioRoute[]) => {

@@ -16,7 +16,7 @@ describe('stem separator', () => {
             const sep: any = new StemSeparator({} as any, {} as any, {} as any, () => { });
             sep.model = 'htdemucs';
             const post = (times: number[], e: (s: string, i: number) => number) => sep.onWorkerMessage({
-                type: 'stems', model: 'htdemucs', times: Float64Array.from(times), computeMs: 1, audioMs: 1,
+                type: 'stems', model: 'htdemucs', times: Float64Array.from(times), computeMs: 1, audioMs: 1, epoch: sep.epoch,
                 energies: Object.fromEntries(Names.map(s => [s, Float32Array.from(times.map((_, i) => e(s, i)))])),
             });
             post([0, 0.1, 0.2], (s, i) => s === 'bass' && i === 1 ? bad : 0.01);
@@ -177,8 +177,8 @@ describe('stem separator: stem events', () => {
     function make() {
         const sep: any = new StemSeparator({} as any, {} as any, {} as any, () => { });
         sep.model = 'htdemucs';
-        const post = (from: number, until: number, events: [time: number, dbfs: number, kind: number][]) => sep.onWorkerMessage({
-            type: 'stems', model: 'htdemucs', times: new Float64Array(0), computeMs: 1, audioMs: 1,
+        const post = (from: number, until: number, events: [time: number, dbfs: number, kind: number][], epoch: number = sep.epoch) => sep.onWorkerMessage({
+            type: 'stems', model: 'htdemucs', times: new Float64Array(0), computeMs: 1, audioMs: 1, epoch,
             energies: Object.fromEntries(Names.map(s => [s, new Float32Array(0)])),
             events: {
                 from, until,
@@ -239,6 +239,21 @@ describe('stem separator: stem events', () => {
             expect(sep.sampleEvents(1.21, 16, out)).toBe(false);
             expect(out.kick).toBe(0);
         }
+    });
+
+    it('a run posted before a reset (in transit when it came) is dropped: its events and its coverage', () => {
+        const { sep, post, out } = make();
+        const before = (sep as any).epoch;
+        sep.reset();
+        post(0, 5, [[4, -10, 0]], before);
+        sep.sampleEvents(3.99, 10, out);
+        expect(sep.sampleEvents(4.005, 10, out)).toBe(false);
+        expect(out.kick).toBe(0);
+        // the reset's own epoch goes to the worker, which echoes it on the runs after it
+        post(0, 5, [[4.5, -10, 0]]);
+        sep.sampleEvents(4.49, 10, out);
+        sep.sampleEvents(4.505, 10, out);
+        expect(out.kick).toBeGreaterThan(0);
     });
 
     it('an event dated past its run\'s end (its peak inside it) stays when the next run starts there', () => {

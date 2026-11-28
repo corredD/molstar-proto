@@ -197,6 +197,8 @@ export class StemSeparator {
     private eventsReadUntil = NaN;
     /** whether events were live on the last read (live holds through EventLiveGraceS past the coverage) */
     private eventsLive = false;
+    /** bumped at each clear (a reset, a model change, Off) and sent with load and reset: a run posted before is dropped */
+    private epoch = 0;
 
     constructor(private context: AudioContext, private source: AudioNode, private options: StemSeparatorOptions, private onStatus: (s: StemSeparatorStatus) => void) { }
 
@@ -278,14 +280,14 @@ export class StemSeparator {
         // a newer request (Off, another model or provider, or this one again) came while the tap loaded: it owns the worker and the tap
         if (request !== this.request) return;
         const baseUrls = [...this.options.localBaseUrls.map(u => `${u}${id}/`), StemModels[id].remoteBaseUrl];
-        this.post({ type: 'load', model: id, baseUrls, executionProvider, wasmPath: this.options.wasmPath });
+        this.post({ type: 'load', model: id, baseUrls, executionProvider, wasmPath: this.options.wasmPath, epoch: this.epoch });
         this.tap?.port.postMessage({ on: true });
     }
 
     /** forget the separated audio (a new source, a seek) */
     reset() {
         this.clearTimeline();
-        this.post({ type: 'reset' });
+        this.post({ type: 'reset', epoch: this.epoch });
     }
 
     private clearTimeline() {
@@ -302,6 +304,7 @@ export class StemSeparator {
         this.eventsUntil = -Infinity;
         this.eventsReadUntil = NaN;
         this.eventsLive = false;
+        this.epoch++;
     }
 
     private onWorkerMessage(msg: StemWorkerResponse) {
@@ -311,6 +314,8 @@ export class StemSeparator {
             else this.setStatus({ state: msg.state, message: msg.message });
             return;
         }
+        // a run posted before the last reset or model change (in transit when it came): its audio was flushed
+        if (msg.epoch !== this.epoch) return;
         // frames may overlap the timeline's end when a run covered more than one chunk: keep the newer
         const first = msg.times.length ? msg.times[0] : Infinity;
         while (this.times.length && this.times[this.times.length - 1] >= first) {

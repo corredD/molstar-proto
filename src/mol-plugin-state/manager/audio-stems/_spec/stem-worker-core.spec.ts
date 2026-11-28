@@ -320,6 +320,22 @@ describe('stem worker core: stem events', () => {
         expect(a.events().out).toEqual(b.events().out);
     });
 
+    it('echoes the epoch of the last load or reset; a run started before a reset carries the epoch it started under', async () => {
+        const { core, posted, runners, feedChunk } = setup();
+        core.handle({ type: 'load', model: 'htdemucs', baseUrls: ['local/'], executionProvider: 'wasm', wasmPath: '', epoch: 3 });
+        await flush();
+        feedChunk('htdemucs');
+        await flush();
+        core.handle({ type: 'reset', epoch: 4 });
+        runners.get('htdemucs')!.runs[0].resolve(result('htdemucs'));
+        await flush();
+        feedChunk('htdemucs');
+        await flush();
+        runners.get('htdemucs')!.runs[1].resolve(result('htdemucs'));
+        await flush();
+        expect(posted.filter(m => m.type === 'stems').map(m => m.type === 'stems' && m.epoch)).toEqual([3, 4]);
+    });
+
     it('a runner result without audio posts no events', async () => {
         const { core, posted, runners, load, feedChunk } = setup();
         core.handle(load('htdemucs'));

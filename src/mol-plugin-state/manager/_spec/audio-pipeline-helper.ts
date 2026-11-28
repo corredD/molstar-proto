@@ -173,7 +173,7 @@ export function runAudioPipeline(signal: AudioSignal, routes: readonly AudioRout
         if (opts.stemEvents) {
             const fake = events as unknown as { model: StemModelId, onWorkerMessage(m: unknown): void };
             fake.model = model;
-            fake.onWorkerMessage({ type: 'stems', model, times: new Float64Array(0), computeMs: 0, audioMs: 1, events: opts.stemEvents,
+            fake.onWorkerMessage({ type: 'stems', model, times: new Float64Array(0), computeMs: 0, audioMs: 1, epoch: (events as unknown as { epoch: number }).epoch, events: opts.stemEvents,
                 energies: { drums: new Float32Array(0), bass: new Float32Array(0), other: new Float32Array(0), vocals: new Float32Array(0) } });
         }
         (manager as unknown as ManagerStemFakes).separator = {
