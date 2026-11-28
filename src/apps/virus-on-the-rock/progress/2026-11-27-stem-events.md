@@ -83,7 +83,8 @@
 
 ## Built
 
-Branch `votr/stem-events` (pushed, no PR), on `votr/lookahead-sync`. Eleven commits, test first each:
+Branch `votr/stem-events` (pushed, no PR), on `votr/lookahead-sync`. Thirteen commits (the last two: the progress
+file, and a fix: an event dated past its run's end was dropped at the seam), test first each:
 
 1. `dsp.ts` `OverlapAddInverse`: overlap-add inverse STFT, each sample divided by the squared windows over it (round
    trips: Hann 1/N and unwindowed 1/√N give the signal back, edges included).
@@ -115,14 +116,16 @@ Branch `votr/stem-events` (pushed, no PR), on `votr/lookahead-sync`. Eleven comm
 virus-on-the-rock --prd` done.
 
 **Offline acceptance** (`angine.mp3`, the study's HTDemucs stems through `StemWorkerCore` with an identity runner at
-each model's window and chunk, then the real separator and router at 60 fps; scripts in the session scratchpad
-`se2/accept.ts`, `score.py`). Events against `ref.json`, ± one hop (hit / extra):
+each model's window and chunk, then the real separator and router at 60 fps, the stems' levels 0, scored over the
+live span; scripts `accept.ts`, `score.py`, `bench.ts`, `region.py` in the builder session's scratchpad `se2/` (not
+durable: copying them beside `stem-study/stem-events-design/drive_sim.py` was refused by the session's permissions; the
+coordinator may copy them). Events against `ref.json`, ± one hop (hit / extra):
 
 | config | kicks | snare/hats | bass notes | drive: kicks hit / false / valley/peak / ρ |
 |---|---|---|---|---|
-| HTDemucs (7.8 s / 5 s) | 100 / 0.5 % | 96.8 / 2.4 % | 99.4 / 0.9 % | 77.5 % / 4.9 % / 0.25 / 0.41 ✔ |
-| Spleeter's window (11.8 s / 2 s) | 99.9 / 0.3 % | 98.3 / 3.0 % | 99.6 / 1.7 % | 77.5 % / **5.4 %** / 0.25 / 0.41 |
-| SCNet's window (11 s / 6 s) | 99.8 / 0.5 % | 97.2 / 2.6 % | 99.5 / 1.0 % | 77.6 % / 4.7 % / 0.25 / 0.41 ✔ |
+| HTDemucs (7.8 s / 5 s) | 100 / 0.5 % | 96.8 / 2.4 % | 99.4 / 0.9 % | 77.5 % / 4.8 % / 0.25 / 0.41 ✔ |
+| Spleeter's window (11.8 s / 2 s) | 99.9 / 0.3 % | 98.3 / 3.0 % | 99.6 / 1.7 % | 77.5 % / **5.2 %** / 0.25 / 0.41 |
+| SCNet's window (11 s / 6 s) | 99.8 / 0.5 % | 97.2 / 2.6 % | 99.5 / 1.0 % | 77.5 % / 4.6 % / 0.25 / 0.41 ✔ |
 
 Before: 59 % / 3.5 % / 0.73 / 0.12. These measure the detector, the region math and the route math on the reference
 stems, not Spleeter's or SCNet's own separation (the browser check, step 5).
@@ -154,8 +157,10 @@ stems, not Spleeter's or SCNet's own separation (the browser check, step 5).
   the bins over 11 kHz are dropped. Harmless: events stop 0.35 s before the end.
 - SCNet's synthesis window is rectangular (its forward has none; torch.istft with window=None): it can leave steps at
   each 1024-sample frame edge, possibly visible in the 150 Hz–16 kHz hit band. Not measurable without the model.
-- The separator's normalization (loud floor −30 dBFS) makes the drive's extra rate 4.9 % against the design's
-  simulated 4.4 % (its floor was −80 dB raw): little margin under 5 %; with Spleeter's 2 s chunks 5.4 %.
+- The separator's normalization (loud floor −30 dBFS) makes the drive's extra rate 4.8 % against the design's
+  simulated 4.4 % (its floor was −80 dB raw): little margin under 5 %; with Spleeter's 2 s chunks 5.2 %.
+- An event is dated up to 60 ms after its flux peak, so a run can post one past its `until`; the separator dropped
+  it when the next run started there (1 on angine with Spleeter's and SCNet's chunks). Fixed: only a real overlap drops.
 - Departures from the design: (a) the snare exclusion carries the last 4 posted kicks and a non-committing kick pick
   130 ms past the region, not a pick over [from − 30 ms, to + 30 ms); (b) a run's frames start at most 2.45 s before
   its region (not the whole window: identical for HTDemucs); (c) the loud level, median and ahead are computed per
