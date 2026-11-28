@@ -5,9 +5,12 @@
  *
  * Splits the playing audio into stems (drums, bass, other, vocals) with a separation model in a worker, for the
  * visuals only. The audio is tapped before the delay the listener hears it through; a stem's level at the time being
- * heard is read from the timeline the worker fills, ahead by at least the model's latency.
+ * heard is read from the timeline the worker fills, ahead by at least the model's latency. The stem events (kicks,
+ * snare/hats, bass notes) the worker finds are kept per kind and fire once, on the first frame that reaches them.
  */
 
+import type { StemEventValues } from '../audio-routing';
+import { EventHoldBackS, StemEventKinds } from './stem-events';
 import { StemModelId, StemModels, StemName, StemNames } from './stem-models';
 import type { StemWorkerRequest, StemWorkerResponse } from './stem-worker-protocol';
 
@@ -22,6 +25,8 @@ export type StemSeparatorStatus = {
     loadFactor?: number,
     /** seconds of audio separated ahead of what is heard (negative: behind) */
     headroom?: number,
+    /** seconds of audio the last run left without events (the model fell behind the window): 0 when it kept up */
+    lostMs?: number,
 };
 
 export type StemSeparatorOptions = {
@@ -77,6 +82,93 @@ const ReferenceBelowMixDb = 15;
 /** the drums keep their hits: instant attack, a short release, whatever the band smoothing */
 const DrumsReleaseMs = 160;
 
+/** each kind's events kept: 90 s at the kicks' minimum gap is 1000 */
+const EventCapacity = 2048;
+/**
+ * An event's value: its dBFS within EventRangeDb under its kind's loud level (the strongest lately, falling
+ * PeakDecayDbPerSecond, never under EventLoudFloorDbfs), so the song's hardest kicks read 1 and 9 dB softer 0.5
+ */
+const EventRangeDb = 18;
+const EventLoudFloorDbfs = -30;
+/** frames further apart than this (a stall, a jump) fire only the last frame's span: no backlog */
+const EventMaxSpanS = 0.25;
+/**
+ * events stay live this long past their coverage's end: a run a little late (a model that only just keeps up) does not
+ * flip the stand-in routes on for a moment each run. The hold-back (events stop that much before the levels) and some
+ * slack: the stand-ins come in about when the levels fall behind too
+ */
+const EventLiveGraceS = EventHoldBackS + 0.15;
+
+/** runs further apart than this leave a hole (seams of a 48 kHz context cross by microseconds) */
+const EventHoleEpsS = 1e-3;
+/** the holes kept, the oldest dropped: a model that always falls behind makes one per run */
+const EventHoleCapacity = 64;
+
+/** one kind's events, a ring in time order */
+class EventRing {
+    readonly times = new Float64Array(EventCapacity);
+    readonly values = new Float32Array(EventCapacity);
+    head = 0;
+    count = 0;
+    loud = EventLoudFloorDbfs;
+    lastTime = NaN;
+
+    private index(k: number) {
+        return (this.head + k) % EventCapacity;
+    }
+
+    timeAt(k: number) {
+        return this.times[this.index(k)];
+    }
+
+    clear() {
+        this.head = this.count = 0;
+        this.loud = EventLoudFloorDbfs;
+        this.lastTime = NaN;
+    }
+
+    /**
+     * in time order: the last run's last event can be dated after the next run's first (dated up to 60 ms after its
+     * peak, the next up to 40 ms before), so it shifts back past the later ones
+     */
+    push(time: number, dbfs: number) {
+        const dt = Number.isFinite(this.lastTime) ? Math.max(0, time - this.lastTime) : 0;
+        this.lastTime = Number.isFinite(this.lastTime) ? Math.max(this.lastTime, time) : time;
+        this.loud = Math.max(dbfs, this.loud - PeakDecayDbPerSecond * dt, EventLoudFloorDbfs);
+        const value = Math.min(1, Math.max(0, (dbfs - this.loud + EventRangeDb) / EventRangeDb));
+        if (this.count === EventCapacity) {
+            this.head = this.index(1);
+            this.count--;
+        }
+        let k = this.count++;
+        while (k > 0 && this.timeAt(k - 1) > time) {
+            const a = this.index(k), b = this.index(k - 1);
+            this.times[a] = this.times[b];
+            this.values[a] = this.values[b];
+            k--;
+        }
+        const i = this.index(k);
+        this.times[i] = time;
+        this.values[i] = value;
+    }
+
+    /** the strongest value of the events in (from, to] */
+    max(from: number, to: number) {
+        let lo = 0, hi = this.count;
+        while (lo < hi) {
+            const mid = (lo + hi) >> 1;
+            if (this.timeAt(mid) <= from) lo = mid + 1; else hi = mid;
+        }
+        let v = 0;
+        for (let k = lo; k < this.count; k++) {
+            const i = this.index(k);
+            if (this.times[i] > to) break;
+            if (this.values[i] > v) v = this.values[i];
+        }
+        return v;
+    }
+}
+
 function applyAttackRelease(previous: number, target: number, dtMs: number, attackMs: number, releaseMs: number) {
     if (dtMs <= 0) return target;
     const tc = target >= previous ? attackMs : releaseMs;
@@ -102,6 +194,24 @@ export class StemSeparator {
     private mixPeak = -120;
     private levels: StemLevels = { drums: 0, bass: 0, other: 0, vocals: 0 };
     private lastSampleTime = -1;
+
+    /** the stem events, by StemEventKinds */
+    private eventRings = StemEventKinds.map(() => new EventRing());
+    /** the time the worker's events cover from (the first run's from since the last clear; NaN: none yet) and up to */
+    private eventsFrom = NaN;
+    private eventsUntil = -Infinity;
+    /** the stretches no run covered (the worker lost the audio), [from, to) in time order */
+    private readonly holeFrom = new Float64Array(EventHoleCapacity);
+    private readonly holeTo = new Float64Array(EventHoleCapacity);
+    private holeCount = 0;
+    /** the time the events were last read up to (NaN: start again from the next frame's span) */
+    private eventsReadUntil = NaN;
+    /** the clock time of the last read, before its shift (NaN: none) */
+    private eventsReadAt = NaN;
+    /** whether events were live on the last read (live holds through EventLiveGraceS past the coverage) */
+    private eventsLive = false;
+    /** bumped at each clear (a reset, a model change, Off) and sent with load and reset: a run posted before is dropped */
+    private epoch = 0;
 
     constructor(private context: AudioContext, private source: AudioNode, private options: StemSeparatorOptions, private onStatus: (s: StemSeparatorStatus) => void) { }
 
@@ -183,14 +293,14 @@ export class StemSeparator {
         // a newer request (Off, another model or provider, or this one again) came while the tap loaded: it owns the worker and the tap
         if (request !== this.request) return;
         const baseUrls = [...this.options.localBaseUrls.map(u => `${u}${id}/`), StemModels[id].remoteBaseUrl];
-        this.post({ type: 'load', model: id, baseUrls, executionProvider, wasmPath: this.options.wasmPath });
+        this.post({ type: 'load', model: id, baseUrls, executionProvider, wasmPath: this.options.wasmPath, epoch: this.epoch });
         this.tap?.port.postMessage({ on: true });
     }
 
     /** forget the separated audio (a new source, a seek) */
     reset() {
         this.clearTimeline();
-        this.post({ type: 'reset' });
+        this.post({ type: 'reset', epoch: this.epoch });
     }
 
     private clearTimeline() {
@@ -202,6 +312,14 @@ export class StemSeparator {
             this.levels[s] = 0;
         }
         this.mixPeak = -120;
+        for (const ring of this.eventRings) ring.clear();
+        this.eventsFrom = NaN;
+        this.eventsUntil = -Infinity;
+        this.holeCount = 0;
+        this.eventsReadUntil = NaN;
+        this.eventsReadAt = NaN;
+        this.eventsLive = false;
+        this.epoch++;
     }
 
     private onWorkerMessage(msg: StemWorkerResponse) {
@@ -211,6 +329,8 @@ export class StemSeparator {
             else this.setStatus({ state: msg.state, message: msg.message });
             return;
         }
+        // a run posted before the last reset or model change (in transit when it came): its audio was flushed
+        if (msg.epoch !== this.epoch) return;
         // frames may overlap the timeline's end when a run covered more than one chunk: keep the newer
         const first = msg.times.length ? msg.times[0] : Infinity;
         while (this.times.length && this.times[this.times.length - 1] >= first) {
@@ -232,10 +352,42 @@ export class StemSeparator {
             this.times.splice(0, drop);
             for (const s of StemNames) this.energies[s].splice(0, drop);
         }
+        const events = msg.events;
+        if (events) {
+            // nothing is dropped: the runs' regions tile (in samples; their context times may cross by a resampled
+            // sample at 48 kHz), and an event of the last run may be dated past its until (up to 60 ms after its peak)
+            for (let i = 0; i < events.times.length; i++) {
+                const ring = this.eventRings[events.kinds[i]];
+                const t = events.times[i], db = events.dbfs[i];
+                if (ring && Number.isFinite(t) && Number.isFinite(db)) ring.push(t, db);
+            }
+            if (Number.isNaN(this.eventsFrom)) this.eventsFrom = events.from;
+            else if (events.from > this.eventsUntil + EventHoleEpsS) this.addHole(this.eventsUntil, events.from);
+            this.eventsUntil = events.until;
+        }
         this.setStatus({
             state: 'running',
+            lostMs: msg.lostMs ?? 0,
             loadFactor: msg.audioMs > 0 ? msg.computeMs / msg.audioMs : undefined,
         });
+    }
+
+    private addHole(from: number, to: number) {
+        if (this.holeCount === EventHoleCapacity) {
+            this.holeFrom.copyWithin(0, 1);
+            this.holeTo.copyWithin(0, 1);
+            this.holeCount--;
+        }
+        this.holeFrom[this.holeCount] = from;
+        this.holeTo[this.holeCount++] = to;
+    }
+
+    private inHole(at: number) {
+        for (let k = this.holeCount - 1; k >= 0; k--) {
+            if (at >= this.holeTo[k]) return false;
+            if (at >= this.holeFrom[k]) return true;
+        }
+        return false;
     }
 
     /** the latest time the timeline reaches */
@@ -253,7 +405,8 @@ export class StemSeparator {
             if (this.model && n > 0) this.status.headroom = this.times[n - 1] - time;
             return undefined;
         }
-        this.status.headroom = this.times[n - 1] - time;
+        // the events stop EventHoldBackS before the levels: the earlier of the two
+        this.status.headroom = Math.min(this.times[n - 1], Number.isFinite(this.eventsUntil) ? this.eventsUntil : Infinity) - time;
         // binary search for the frame at or before `time`
         let lo = 0, hi = n - 1;
         while (hi - lo > 1) {
@@ -283,6 +436,45 @@ export class StemSeparator {
                 : applyAttackRelease(this.levels[s], target, dtMs, attackMs, releaseMs);
         }
         return { ...this.levels };
+    }
+
+    /**
+     * The events heard over the span from the last call to `at` (audio-context time), into `out`: each kind's strongest
+     * (0-1), 0 for a kind with none. The span starts again (the last `dtMs`) after `skipEvents`, a jump back or a gap
+     * over EventMaxSpanS, so a late frame fires nothing it skipped. Returns whether events are live: a model, and `at`
+     * within what its runs covered (EventLiveGraceS past its end once live, never across a hole the worker lost audio
+     * in). Allocates nothing
+     */
+    sampleEvents(at: number, dtMs: number, out: StemEventValues, shiftS = 0) {
+        const last = this.eventsReadUntil;
+        // the gap is the clock's, not the read point's: a change of the shift alone never starts the span again
+        const restart = !Number.isFinite(last) || !(at - this.eventsReadAt <= EventMaxSpanS);
+        this.eventsReadAt = at;
+        at += shiftS;
+        const from = restart ? at - dtMs / 1000 : Math.min(last, at);
+        this.eventsReadUntil = Number.isFinite(last) ? Math.max(last, at) : at;
+        // within what the runs covered: before the first run's from (a model switched with the delay kept) the audio
+        // being heard has no events, and the stand-ins carry it. Past its end, live a grace longer: a frame there
+        // still reads the events in the ring (those the last run dated up to its until and past it), and those of a
+        // late run that were due before it arrived are lost (a late run loses its events)
+        const covered = !!this.model && at >= this.eventsFrom;
+        const live = this.eventsLive = covered && !this.inHole(at) && (at <= this.eventsUntil || (this.eventsLive && at <= this.eventsUntil + EventLiveGraceS));
+        out.live = live;
+        if (!live) {
+            out.kick = out.snare = out.bassNote = 0;
+            return false;
+        }
+        const r = this.eventRings;
+        out.kick = r[0].max(from, at);
+        out.snare = r[1].max(from, at);
+        out.bassNote = r[2].max(from, at);
+        return true;
+    }
+
+    /** a frame that does not read the events: the next one starts its span again */
+    skipEvents() {
+        this.eventsReadUntil = NaN;
+        this.eventsReadAt = NaN;
     }
 
     dispose() {

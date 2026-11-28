@@ -5,12 +5,15 @@
  *
  * The stem worker's logic, apart from its runtime: buffers the captured audio (resampled to 44.1 kHz) in a window of the
  * model's context, runs the model every chunk of new audio, and posts the stem energies of that chunk's frames with the
- * audio-context time of each. `stem-worker.ts` wires it to onnxruntime-web and the worker's messages.
+ * audio-context time of each, and the stem events found in the separated drums and bass (EventHoldBackS behind the
+ * window's end: their detector looks that far ahead). `stem-worker.ts` wires it to onnxruntime-web and the worker's
+ * messages.
  */
 
 import { LinearResampler, StemSampleRate } from './dsp';
+import { EventContextS, EventHoldBackS, StemEventDetector } from './stem-events';
 import { StemModelId, StemModels, StemNames, StemRunner } from './stem-models';
-import type { StemWorkerRequest, StemWorkerResponse } from './stem-worker-protocol';
+import type { StemWorkerEvents, StemWorkerRequest, StemWorkerResponse } from './stem-worker-protocol';
 
 export type StemExecutionProvider = 'webgpu' | 'wasm';
 
@@ -39,11 +42,22 @@ export class StemWorkerCore {
     private right = new Float32Array(0);
     /** samples written since the last run */
     private pending = 0;
+    /** samples written since the last run, uncapped by the window: what `pending` lost past it */
+    private pendingTotal = 0;
+    /** whether a run has started since the window began: before one there is no region to have left a hole after */
+    private ranSinceReset = false;
     /** audio-context time just after the window's last sample */
     private windowEndTime = 0;
     private expectedInputTime = -1;
     private resamplers?: [LinearResampler, LinearResampler];
     private inputSampleRate = 0;
+    /** samples written since the window started (its absolute clock: the stem events' frames sit on its hop grid) */
+    private totalSamples = 0;
+    /** bumped when the window starts again: a run that straddles it posts no events */
+    private windowEpoch = 0;
+    private events?: StemEventDetector;
+    /** the separator's epoch, from the last load or reset: each run posts the one it started under */
+    private requestEpoch = 0;
 
     // loads run one after another (onnxruntime's WebGPU backend creates one session at a time); a queued load that a
     // newer request replaced is skipped
@@ -55,6 +69,7 @@ export class StemWorkerCore {
     handle(msg: StemWorkerRequest) {
         switch (msg.type) {
             case 'load': {
+                this.requestEpoch = msg.epoch ?? 0;
                 const request = ++this.latestRequest;
                 this.loading = this.loading.then(() => request === this.latestRequest
                     ? this.load(msg.model, msg.baseUrls, msg.executionProvider, msg.wasmPath)
@@ -65,6 +80,7 @@ export class StemWorkerCore {
                 this.latestRequest++;
                 this.generation++;
                 this.model = undefined;
+                this.events = undefined;
                 this.resetWindow();
                 if (this.runner) {
                     const old = this.runner;
@@ -73,6 +89,7 @@ export class StemWorkerCore {
                 }
                 break;
             case 'reset':
+                this.requestEpoch = msg.epoch ?? 0;
                 this.resetWindow();
                 break;
             case 'audio': {
@@ -98,8 +115,13 @@ export class StemWorkerCore {
         this.left = new Float32Array(n);
         this.right = new Float32Array(n);
         this.pending = 0;
+        this.pendingTotal = 0;
+        this.ranSinceReset = false;
         this.expectedInputTime = -1;
         this.resamplers?.forEach(r => r.reset());
+        this.totalSamples = 0;
+        this.windowEpoch++;
+        this.events?.reset();
     }
 
     private append(l: Float32Array, r: Float32Array) {
@@ -111,6 +133,8 @@ export class StemWorkerCore {
         this.left.set(l.subarray(l.length - k), n - k);
         this.right.set(r.subarray(r.length - k), n - k);
         this.pending = Math.min(n, this.pending + l.length);
+        this.pendingTotal += l.length;
+        this.totalSamples += l.length;
     }
 
     private async load(id: StemModelId, baseUrls: string[], executionProvider: StemExecutionProvider, wasmPath: string) {
@@ -122,6 +146,7 @@ export class StemWorkerCore {
             await old.dispose();
         }
         this.model = id;
+        if (this.events?.windowSamples !== StemModels[id].windowSamples) this.events = new StemEventDetector(StemModels[id].windowSamples);
         this.resetWindow();
         const ep = this.ports.prepare(wasmPath, executionProvider);
         let lastError: unknown;
@@ -150,17 +175,39 @@ export class StemWorkerCore {
         this.busy = true;
         const gen = this.generation;
         const model = this.model;
-        const consumed = this.pending;
-        this.pending = 0;
+        const consumed = this.pending, arrived = this.pendingTotal;
+        this.pending = this.pendingTotal = 0;
         const endTime = this.windowEndTime;
+        const total = this.totalSamples, epoch = this.windowEpoch, requestEpoch = this.requestEpoch;
+        const W = info.windowSamples;
+        // the events of the peaks in [W - consumed, W) less the hold-back, from frames of the context before them on
+        const holdBack = Math.round(EventHoldBackS * StemSampleRate);
+        const eventsFrom = Math.max(0, W - consumed - holdBack), eventsTo = W - holdBack;
+        // the audio between the last run's region and this one's that the window no longer holds (a run longer than the
+        // window less the hold-back: more arrived than it keeps): no events there
+        const lostMs = this.ranSinceReset ? Math.max(0, arrived - eventsTo) / StemSampleRate * 1000 : 0;
+        this.ranSinceReset = true;
+        const audioFrom = Math.max(0, eventsFrom - Math.round(EventContextS * StemSampleRate));
         const l = this.left.slice(), r = this.right.slice();
         const t0 = this.ports.now();
         try {
-            const run = this.runner.run(l, r);
+            const run = this.runner.run(l, r, audioFrom);
             this.inflight = run.then(() => { }, () => { });
             const result = await run;
             if (gen !== this.generation) return;
-            const W = info.windowSamples;
+            let events: StemWorkerEvents | undefined;
+            const audio = result.audio;
+            if (audio?.drums && audio.bass && this.events && epoch === this.windowEpoch) {
+                const absStart = total - W;
+                const batch = this.events.run(audio.drums, audio.bass, absStart, eventsFrom, eventsTo, audioFrom);
+                const times = new Float64Array(batch.count);
+                for (let i = 0; i < batch.count; i++) times[i] = endTime - (W - (batch.at[i] - absStart)) / StemSampleRate;
+                events = {
+                    from: endTime - (W - eventsFrom) / StemSampleRate,
+                    until: endTime - (W - eventsTo) / StemSampleRate,
+                    times, dbfs: batch.dbfs.slice(0, batch.count), kinds: batch.kinds.slice(0, batch.count),
+                };
+            }
             const from = W - consumed;
             const keep: number[] = [];
             for (let i = 0; i < result.centers.length; i++) {
@@ -175,8 +222,9 @@ export class StemWorkerCore {
                 for (const s of StemNames) energies[s][j] = result.energies[s][i];
             });
             const computeMs = this.ports.now() - t0;
-            this.ports.post({ type: 'stems', model, times, energies, computeMs, audioMs: consumed / StemSampleRate * 1000 },
-                [times.buffer, ...StemNames.map(s => energies[s].buffer)]);
+            const transfer: Transferable[] = [times.buffer, ...StemNames.map(s => energies[s].buffer)];
+            if (events) transfer.push(events.times.buffer, events.dbfs.buffer, events.kinds.buffer);
+            this.ports.post({ type: 'stems', model, times, energies, computeMs, audioMs: consumed / StemSampleRate * 1000, epoch: requestEpoch, events, lostMs }, transfer);
         } catch (e) {
             // a run cancelled by a newer load or Off says nothing; an error is its own model's, never the next one's
             if (gen === this.generation) this.ports.post({ type: 'status', state: 'error', model, message: `${e}` });

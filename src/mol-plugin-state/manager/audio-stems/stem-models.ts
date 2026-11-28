@@ -4,11 +4,12 @@
  * @author Ludovic Autin <autin@scripps.edu>
  *
  * Music source-separation models run with onnxruntime-web, each reduced to what the visuals need: the energy of each
- * stem per STFT hop (no inverse STFT, no audio out). Inputs and layouts follow each model's card.
+ * stem per STFT hop, and the drums and bass as mono audio for the stem events. Inputs and layouts follow each model's
+ * card.
  */
 
 import type * as Ort from 'onnxruntime-web';
-import { fftOf, inverseRealFftInPlace, padSignal, periodicHann, stft, StemFftSize, StemHop } from './dsp';
+import { fftOf, inverseRealFftInPlace, OverlapAddInverse, padSignal, periodicHann, Spectrogram, stft, StemFftSize, StemHop } from './dsp';
 
 export const StemNames = ['drums', 'bass', 'other', 'vocals'] as const;
 export type StemName = typeof StemNames[number];
@@ -78,10 +79,16 @@ export type StemRunResult = {
     energies: StemEnergies,
     /** window-local sample position of each frame's centre */
     centers: Float64Array,
+    /**
+     * the drums and bass as audio, mono, window-local (the window's length), for the stem events. The runner's own
+     * buffers, overwritten by its next run: the worker reads them before it starts one
+     */
+    audio?: Partial<Record<StemName, Float32Array>>,
 };
 
 export type StemRunner = {
-    run(left: Float32Array, right: Float32Array): Promise<StemRunResult>,
+    /** `audioFrom`: the window-local sample from which the stem audio is needed (the stem events' context); 0 by default */
+    run(left: Float32Array, right: Float32Array, audioFrom?: number): Promise<StemRunResult>,
     dispose(): Promise<void>,
 };
 
@@ -106,6 +113,51 @@ function sessionOptions(ctx: StemRunnerContext, extra: object = {}): Ort.Inferen
 
 const hann = periodicHann(StemFftSize);
 
+/** Spleeter's model: 512 frames of 1024 bins (up to 11 kHz) per run */
+export const SpleeterLayout = { T: 512, B: 1024 } as const;
+
+/**
+ * Spleeter's input, one channel: tf.signal.stft (Hann, unscaled) after one frame of leading zeros, pad_end; the first
+ * B bins of each of the window's 512 frames. Frame f covers window-local samples [f * hop - nfft, f * hop)
+ */
+export function spleeterSpec(ch: Float32Array): Spectrogram {
+    const n = ch.length + StemFftSize;
+    const frames = Math.min(SpleeterLayout.T, Math.ceil(n / StemHop));
+    const padRight = (frames - 1) * StemHop + StemFftSize - n;
+    return stft(padSignal(ch, StemFftSize, Math.max(0, padRight), 'zero'), StemFftSize, StemHop, hann, 1, SpleeterLayout.B);
+}
+
+/**
+ * Spleeter's stem `stem` as mono audio into `out`: its soft mask (its estimate squared over the four's, as its energy)
+ * on each channel's complex STFT of the mix, so the mix's phase; the two channels averaged; the bins from B up zero
+ * (Spleeter's mask extension); overlap-added as tf.signal.inverse_stft with its Hann window_fn (window-sum normalized).
+ * Only the frames that reach window-local sample `from` and later: the samples before it are not filled
+ */
+export function spleeterStemAudio(spec: readonly [Spectrogram, Spectrogram], estimates: readonly Float32Array[], stem: number, from: number, inv: OverlapAddInverse, out: Float32Array) {
+    const { T, B } = SpleeterLayout;
+    const frames = spec[0].frames;
+    const { re, im } = inv;
+    const scale = 1 / StemFftSize;
+    for (let f = Math.max(0, Math.floor(from / StemHop) + 1); f < frames; f++) {
+        for (let b = 0; b < B; b++) {
+            let yr = 0, yi = 0;
+            for (let c = 0; c < 2; c++) {
+                const i = (c * T + f) * B + b;
+                let total = 1e-10;
+                for (let s = 0; s < 4; s++) total += estimates[s][i] ** 2;
+                const m = estimates[stem][i] ** 2 / total;
+                yr += m * spec[c].re[f * B + b];
+                yi += m * spec[c].im[f * B + b];
+            }
+            re[b] = yr / 2;
+            im[b] = yi / 2;
+        }
+        for (let b = B; b <= StemFftSize / 2; b++) re[b] = im[b] = 0;
+        inv.addFrame(f * StemHop - StemFftSize, hann, scale);
+    }
+    inv.finish(out);
+}
+
 /** Spleeter: magnitudes [2, splits, 512, 1024] in, each stem's magnitude estimate out; a soft ratio mask over the four */
 async function createSpleeter(ctx: StemRunnerContext): Promise<StemRunner> {
     const { ort } = ctx;
@@ -113,17 +165,17 @@ async function createSpleeter(ctx: StemRunnerContext): Promise<StemRunner> {
     for (const stem of StemNames) {
         sessions.push(await ort.InferenceSession.create(`${ctx.baseUrl}${stem}.fp16.onnx`, sessionOptions(ctx)));
     }
-    const T = 512, B = 1024;
+    const { T, B } = SpleeterLayout;
+    let inv: OverlapAddInverse | undefined;
+    let audio: { drums: Float32Array, bass: Float32Array } | undefined;
     return {
-        async run(left, right) {
-            // tf.signal.stft after one frame of leading zeros, pad_end: 512 frames for the window
-            const n = left.length + StemFftSize;
-            const frames = Math.min(T, Math.ceil(n / StemHop));
-            const padRight = (frames - 1) * StemHop + StemFftSize - n;
+        async run(left, right, audioFrom = 0) {
+            // 512 frames for the window
+            const spec = [spleeterSpec(left), spleeterSpec(right)] as const;
+            const frames = spec[0].frames;
             const x = new Float32Array(2 * T * B);
             const power = new Float32Array(2 * frames * B);
-            [left, right].forEach((ch, c) => {
-                const { re, im } = stft(padSignal(ch, StemFftSize, Math.max(0, padRight), 'zero'), StemFftSize, StemHop, hann, 1, B);
+            spec.forEach(({ re, im }, c) => {
                 for (let f = 0; f < frames; f++) {
                     for (let b = 0; b < B; b++) {
                         const p = re[f * B + b] ** 2 + im[f * B + b] ** 2;
@@ -152,9 +204,15 @@ async function createSpleeter(ctx: StemRunnerContext): Promise<StemRunner> {
                     }
                 }
             }
+            if (!inv || inv.length !== left.length) {
+                inv = new OverlapAddInverse(StemFftSize, left.length);
+                audio = { drums: new Float32Array(left.length), bass: new Float32Array(left.length) };
+            }
+            spleeterStemAudio(spec, estimates, 0, audioFrom, inv, audio!.drums);
+            spleeterStemAudio(spec, estimates, 1, audioFrom, inv, audio!.bass);
             // frame f covers padded samples [f * hop, f * hop + nfft), the padding one nfft of zeros
             const centers = Float64Array.from({ length: frames }, (_, f) => f * StemHop + StemFftSize / 2 - StemFftSize);
-            return { energies, centers };
+            return { energies, centers, audio };
         },
         async dispose() {
             for (const s of sessions) await s.release();
@@ -240,9 +298,9 @@ function demucsISpecInto(x: Float32Array, rePlane: number, imPlane: number, le: 
  * branch inverted as demucs does, plus the time branch) in a Hann-4096 window, in hop units (a steady power P reads
  * hop · P per channel). Not the sum of the two branches' energies: they partly cancel, and the frequency branch is no
  * signal's spectrum, so its spectral energy overstates its audio (quiet passages read 15-17 dB loud; core-changes.md,
- * audio-stems, stem study 2026-11-27).
+ * audio-stems, stem study 2026-11-27). Each stem in `mono` gets its audio, (left + right) / 2, for the stem events.
  */
-export function demucsStemEnergies(x: Float32Array, xt: Float32Array, length: number): StemEnergies {
+export function demucsStemEnergies(x: Float32Array, xt: Float32Array, length: number, mono?: Partial<Record<StemName, Float32Array>>): StemEnergies {
     const le = Math.ceil(length / StemHop);
     const energies = emptyEnergies(le);
     const audio = [new Float32Array(length), new Float32Array(length)];
@@ -255,6 +313,8 @@ export function demucsStemEnergies(x: Float32Array, xt: Float32Array, length: nu
         }
         const e = energies[StemNames[s]];
         const [l, r] = audio;
+        const m = mono?.[StemNames[s]];
+        if (m) for (let i = 0; i < length; i++) m[i] = (l[i] + r[i]) / 2;
         for (let t = 0; t < le; t++) {
             const from = t * StemHop + StemHop / 2 - StemFftSize / 2;
             // a window that runs past the segment reads the power of its part inside: the newest frames are kept
@@ -290,6 +350,7 @@ async function createHTDemucs(ctx: StemRunnerContext): Promise<StemRunner> {
     const timeName = manifest.outputs?.time ?? 'xt';
     const L = 343980;
     const le = Math.ceil(L / StemHop); // 336 frames
+    const audio = { drums: new Float32Array(L), bass: new Float32Array(L) };
     return {
         async run(left, right) {
             const mix = new Float32Array(2 * L);
@@ -316,9 +377,9 @@ async function createHTDemucs(ctx: StemRunnerContext): Promise<StemRunner> {
                 }
                 const x = await values.get(freqName)!.getData() as Float32Array;
                 const xt = await values.get(timeName)!.getData() as Float32Array;
-                const energies = demucsStemEnergies(x, xt, L);
+                const energies = demucsStemEnergies(x, xt, L, audio);
                 const centers = Float64Array.from({ length: le }, (_, t) => t * StemHop + StemHop / 2);
-                return { energies, centers };
+                return { energies, centers, audio };
             } finally {
                 for (const t of produced) t.dispose();
             }
@@ -329,24 +390,60 @@ async function createHTDemucs(ctx: StemRunnerContext): Promise<StemRunner> {
     };
 }
 
+/** SCNet's model: an 11 s segment, 476 frames of 2049 bins (474 of them the segment's, zeros after) */
+export const ScnetLayout = { L: 485100, F: 476, B: 2049, frames: Math.floor(485100 / StemHop) + 1 } as const;
+
+/**
+ * SCNet's input [1, 4, 2049, 476] (L re, L im, R re, R im): torch.stft centred (reflect), no window, normalized
+ * (1 / sqrt(nfft)). Frame t is centred on window-local sample t * hop
+ */
+export function scnetSpec(left: Float32Array, right: Float32Array) {
+    const { L, F, B, frames } = ScnetLayout;
+    const spec = new Float32Array(4 * B * F);
+    [left, right].forEach((ch, c) => {
+        const { re, im } = stft(padSignal(ch.subarray(0, L), StemFftSize / 2, StemFftSize / 2, 'reflect'), StemFftSize, StemHop, undefined, 1 / Math.sqrt(StemFftSize), B);
+        for (let t = 0; t < frames; t++) {
+            for (let b = 0; b < B; b++) {
+                spec[((c * 2) * B + b) * F + t] = re[t * B + b];
+                spec[((c * 2 + 1) * B + b) * F + t] = im[t * B + b];
+            }
+        }
+    });
+    return spec;
+}
+
+/**
+ * SCNet's stem `stem` as mono audio into `out`: its complex output [stem][L re, L im, R re, R im][bin][frame], the two
+ * channels averaged, inverted as torch.istft does the forward's (no window: a rectangular one, the count of frames over
+ * each sample; normalized: times sqrt(nfft)). Only the frames that reach window-local sample `from` and later
+ */
+export function scnetStemAudio(y: Float32Array, stem: number, from: number, inv: OverlapAddInverse, out: Float32Array) {
+    const { F, B, frames } = ScnetLayout;
+    const { re, im } = inv;
+    const scale = Math.sqrt(StemFftSize) / StemFftSize;
+    const base = (cc: number) => (stem * 4 + cc) * B * F;
+    const lr = base(0), li = base(1), rr = base(2), ri = base(3);
+    for (let t = Math.max(0, Math.floor((from - StemFftSize / 2) / StemHop) + 1); t < frames; t++) {
+        for (let b = 0; b < B; b++) {
+            const o = b * F + t;
+            re[b] = (y[lr + o] + y[rr + o]) / 2;
+            im[b] = (y[li + o] + y[ri + o]) / 2;
+        }
+        inv.addFrame(t * StemHop - StemFftSize / 2, undefined, scale);
+    }
+    inv.finish(out);
+}
+
 /** SCNet: complex spectrogram [1, 4, 2049, 476] of an 11 s segment in (no window), each stem's [L, R] x [re, im] out */
 async function createSCNet(ctx: StemRunnerContext): Promise<StemRunner> {
     const { ort } = ctx;
     const session = await ort.InferenceSession.create(`${ctx.baseUrl}scnet.int8.onnx`, sessionOptions(ctx));
-    const L = 485100, F = 476, B = 2049;
-    const frames = Math.floor(L / StemHop) + 1; // 474, zero frames after
+    const { L, F, B, frames } = ScnetLayout;
+    const inv = new OverlapAddInverse(StemFftSize, L);
+    const audio = { drums: new Float32Array(L), bass: new Float32Array(L) };
     return {
-        async run(left, right) {
-            const spec = new Float32Array(4 * B * F);
-            [left, right].forEach((ch, c) => {
-                const { re, im } = stft(padSignal(ch.subarray(0, L), StemFftSize / 2, StemFftSize / 2, 'reflect'), StemFftSize, StemHop, undefined, 1 / Math.sqrt(StemFftSize), B);
-                for (let t = 0; t < frames; t++) {
-                    for (let b = 0; b < B; b++) {
-                        spec[((c * 2) * B + b) * F + t] = re[t * B + b];
-                        spec[((c * 2 + 1) * B + b) * F + t] = im[t * B + b];
-                    }
-                }
-            });
+        async run(left, right, audioFrom = 0) {
+            const spec = scnetSpec(left, right);
             const out = await session.run({ [session.inputNames[0]]: new ort.Tensor('float32', spec, [1, 4, B, F]) });
             const y = out[session.outputNames[0]].data as Float32Array;
             const energies = emptyEnergies(frames);
@@ -359,8 +456,10 @@ async function createSCNet(ctx: StemRunnerContext): Promise<StemRunner> {
                     }
                 }
             }
+            scnetStemAudio(y, 0, audioFrom, inv, audio.drums);
+            scnetStemAudio(y, 1, audioFrom, inv, audio.bass);
             const centers = Float64Array.from({ length: frames }, (_, t) => t * StemHop);
-            return { energies, centers };
+            return { energies, centers, audio };
         },
         async dispose() {
             await session.release();

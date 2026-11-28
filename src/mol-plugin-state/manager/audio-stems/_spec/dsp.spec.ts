@@ -4,9 +4,42 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import { fftOf, inverseRealFftInPlace, LinearResampler, makeFFT, padSignal, periodicHann, stft } from '../dsp';
+import { fftOf, inverseRealFftInPlace, LinearResampler, makeFFT, OverlapAddInverse, padSignal, periodicHann, stft } from '../dsp';
+
+/** the overlap-add inverse of `stft(padded x)`: every frame, all bins, added at its padded start less `pad` */
+function roundTrip(x: Float32Array, pad: number, window: Float32Array | undefined, forwardScale: number, inverseScale: number) {
+    const N = 4096, H = 1024, B = N / 2 + 1;
+    const spec = stft(padSignal(x, pad, pad, 'zero'), N, H, window, forwardScale, B);
+    const inv = new OverlapAddInverse(N, x.length);
+    for (let f = 0; f < spec.frames; f++) {
+        for (let b = 0; b < B; b++) {
+            inv.re[b] = spec.re[f * B + b];
+            inv.im[b] = spec.im[f * B + b];
+        }
+        inv.addFrame(f * H - pad, window, inverseScale);
+    }
+    const out = new Float32Array(x.length);
+    inv.finish(out);
+    return out;
+}
 
 describe('audio-stems dsp', () => {
+    const noise = () => {
+        let seed = 7;
+        return Float32Array.from({ length: 30000 }, (_, i) => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648 - 0.5 + 0.3 * Math.sin(i * 0.01));
+    };
+    it('the overlap-add inverse of a Hann STFT gives the signal back (Spleeter: window, 1 / N)', () => {
+        const x = noise();
+        const y = roundTrip(x, 4096, periodicHann(4096), 1, 1 / 4096);
+        for (let i = 0; i < x.length; i++) expect(Math.abs(y[i] - x[i])).toBeLessThan(1e-5);
+    });
+
+    it('the overlap-add inverse of an unwindowed, 1 / sqrt(N) STFT gives the signal back (SCNet), edges included', () => {
+        const x = noise();
+        const y = roundTrip(x, 2048, undefined, 1 / Math.sqrt(4096), Math.sqrt(4096) / 4096);
+        for (let i = 0; i < x.length; i++) expect(Math.abs(y[i] - x[i])).toBeLessThan(1e-5);
+    });
+
     it('FFT matches a direct DFT', () => {
         const n = 64;
         const x = Array.from({ length: n }, (_, i) => Math.sin(i * 0.7) + 0.3 * Math.cos(i * 2.1) + (i % 5) * 0.1);

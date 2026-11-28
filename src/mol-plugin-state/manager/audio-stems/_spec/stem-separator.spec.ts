@@ -4,6 +4,7 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
+import { StemEventValues } from '../../audio-routing';
 import { StemSeparator } from '../stem-separator';
 
 const Names = ['drums', 'bass', 'other', 'vocals'];
@@ -15,7 +16,7 @@ describe('stem separator', () => {
             const sep: any = new StemSeparator({} as any, {} as any, {} as any, () => { });
             sep.model = 'htdemucs';
             const post = (times: number[], e: (s: string, i: number) => number) => sep.onWorkerMessage({
-                type: 'stems', model: 'htdemucs', times: Float64Array.from(times), computeMs: 1, audioMs: 1,
+                type: 'stems', model: 'htdemucs', times: Float64Array.from(times), computeMs: 1, audioMs: 1, epoch: sep.epoch,
                 energies: Object.fromEntries(Names.map(s => [s, Float32Array.from(times.map((_, i) => e(s, i)))])),
             });
             post([0, 0.1, 0.2], (s, i) => s === 'bass' && i === 1 ? bad : 0.01);
@@ -168,5 +169,223 @@ describe('stem separator', () => {
             expect(modules.length).toBe(1);
             expect(taps.length).toBe(1);
         });
+    });
+});
+
+describe('stem separator: stem events', () => {
+    /** a separator with HTDemucs loaded (no worker, no tap: the constructor only stores its arguments) */
+    function make() {
+        const sep: any = new StemSeparator({} as any, {} as any, {} as any, () => { });
+        sep.model = 'htdemucs';
+        const post = (from: number, until: number, events: [time: number, dbfs: number, kind: number][], epoch: number = sep.epoch) => sep.onWorkerMessage({
+            type: 'stems', model: 'htdemucs', times: new Float64Array(0), computeMs: 1, audioMs: 1, epoch,
+            energies: Object.fromEntries(Names.map(s => [s, new Float32Array(0)])),
+            events: {
+                from, until,
+                times: Float64Array.from(events.map(e => e[0])), dbfs: Float32Array.from(events.map(e => e[1])), kinds: Uint8Array.from(events.map(e => e[2])),
+            },
+        });
+        const out: StemEventValues = { kick: 0, snare: 0, bassNote: 0, live: false };
+        /** the frames from t0 by dt, each sampled: the kick value of each */
+        const run = (t0: number, n: number, dt = 1 / 60) => {
+            const kicks: number[] = [];
+            for (let i = 0; i < n; i++) {
+                sep.sampleEvents(t0 + i * dt, dt * 1000, out);
+                kicks.push(out.kick);
+            }
+            return kicks;
+        };
+        return { sep: sep as StemSeparator & { model: unknown }, post, out, run };
+    }
+
+    it('an event fires on the first sample whose time reaches it, once; one on a boundary fires once', () => {
+        const { post, run } = make();
+        // 1.005 between two frames; 1.1 exactly on a frame (1 + 6 / 60)
+        post(0, 5, [[1.005, -10, 0], [1 + 6 / 60, -10, 0]]);
+        const kicks = run(1, 12);
+        expect(kicks.map(v => v > 0 ? 1 : 0)).toEqual([0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0]);
+    });
+
+    it('a jump back or past 0.25 s fires nothing it skipped; a resume fires no backlog', () => {
+        const { sep, post, out, run } = make();
+        post(0, 9, [[1.2, -10, 0], [2.5, -10, 0], [4.0, -10, 0]]);
+        run(1, 3);
+        // a jump past 0.25 s: the kick at 1.2 is skipped, not fired late
+        expect(run(1.5, 3).some(v => v > 0)).toBe(false);
+        // a jump back: nothing it already passed fires again
+        run(1.6, 1);
+        expect(run(1.21, 1)[0]).toBe(0);
+        // paused across the kick at 2.5 (frames that do not sample), then resumed: no backlog
+        run(2.3, 2);
+        sep.skipEvents();
+        sep.sampleEvents(2.7, 16, out);
+        expect(out.kick).toBe(0);
+        // the next kick still fires
+        expect(run(3.9, 12).some(v => v > 0)).toBe(true);
+    });
+
+    it('reset, seek, model change and Off empty the events', async () => {
+        for (const clear of [
+            (sep: any) => sep.reset(), // a seek resets the separator too
+            async (sep: any) => { sep.options = { localBaseUrls: [] }; sep.ensureWorker = () => { }; sep.ensureTap = async () => { }; await sep.setModel('scnet', 'wasm'); },
+            async (sep: any) => { await sep.setModel(undefined, 'wasm'); },
+        ]) {
+            const { sep, post, out } = make();
+            (sep as any).setStatus = () => { };
+            post(0, 9, [[1.2, -10, 0]]);
+            await clear(sep);
+            (sep as any).model = 'htdemucs';
+            sep.sampleEvents(1.19, 16, out);
+            expect(sep.sampleEvents(1.21, 16, out)).toBe(false);
+            expect(out.kick).toBe(0);
+        }
+    });
+
+    it('a run posted before a reset (in transit when it came) is dropped: its events and its coverage', () => {
+        const { sep, post, out } = make();
+        const before = (sep as any).epoch;
+        sep.reset();
+        post(0, 5, [[4, -10, 0]], before);
+        sep.sampleEvents(3.99, 10, out);
+        expect(sep.sampleEvents(4.005, 10, out)).toBe(false);
+        expect(out.kick).toBe(0);
+        // the reset's own epoch goes to the worker, which echoes it on the runs after it
+        post(0, 5, [[4.5, -10, 0]]);
+        sep.sampleEvents(4.49, 10, out);
+        sep.sampleEvents(4.505, 10, out);
+        expect(out.kick).toBeGreaterThan(0);
+    });
+
+    it('an event dated past its run\'s end (its peak inside it) stays when the next run starts there', () => {
+        const { post, run } = make();
+        post(0, 5, [[5.02, -10, 0]]);
+        post(5, 7, [[6, -10, 0]]);
+        const kicks = run(4.99, 4);
+        expect(kicks.some(v => v > 0)).toBe(true);
+    });
+
+    it('a frame past the coverage (the model just behind) uses up no event: it fires once the next run is in', () => {
+        const { post, out, sep } = make();
+        post(5, 10, [[9.995, -10, 0]]);
+        const fired: number[] = [];
+        sep.sampleEvents(9.99, 16, out); fired.push(out.kick);
+        sep.sampleEvents(10.006, 16, out); fired.push(out.kick);
+        post(10, 15, []);
+        sep.sampleEvents(10.022, 16, out); fired.push(out.kick);
+        expect(fired.filter(v => v > 0).length).toBe(1);
+    });
+
+    it('events of two runs whose dates cross (the last run\'s dated late, the next one\'s early) both fire, in time order', () => {
+        const { post, out, sep } = make();
+        post(0, 5, [[5.058, -10, 0]]);
+        post(5, 7, [[5.050, -10, 0]]);
+        const fired: number[] = [];
+        for (const t of [5.045, 5.055, 5.065, 5.075]) { sep.sampleEvents(t, 10, out); fired.push(out.kick > 0 ? 1 : 0); }
+        expect(fired).toEqual([0, 1, 1, 0]);
+    });
+
+    it('a model that only just keeps up (each run 0.2 s late) never flips live; a real stall flips it once', () => {
+        const { post, out, sep } = make();
+        let until = 2, flips = 0, wasLive = false;
+        post(0, until, []);
+        for (let i = 60; i < 30 * 60; i++) {
+            const at = i / 60;
+            // the next run comes 0.2 s after its predecessor's until is heard, none from 15 to 18 s (a stall)
+            if (at >= until + 0.2 && !(at >= 15 && at < 18)) { post(until, until + 2, []); until += 2; }
+            const live = sep.sampleEvents(at, 1000 / 60, out);
+            if (wasLive && !live) flips++;
+            wasLive = live;
+        }
+        expect(flips).toBe(1);
+    });
+
+    it('so does one when the next run starts a few µs early (a 48 kHz context: the resampler\'s rounding)', () => {
+        const { post, run } = make();
+        post(0, 5, [[5.02, -10, 0]]);
+        post(5 - 5e-6, 7, [[6, -10, 0]]);
+        expect(run(4.99, 4).some(v => v > 0)).toBe(true);
+    });
+
+    it('a hole between two runs (the model fell behind and lost audio) is not live; the grace never carries across it', () => {
+        const { post, out, sep } = make();
+        post(0, 5, [[1, -10, 0]]);
+        // the next run starts 3 s after the last one's end: [5, 8) has no events
+        post(8, 13, [[9, -10, 0]]);
+        for (const at of [5.2, 6.5, 7.9]) expect(sep.sampleEvents(at, 16, out)).toBe(false);
+        for (const at of [4.9, 8.1, 12.9]) expect(sep.sampleEvents(at, 16, out)).toBe(true);
+        // the kick before the hole and the one after it fire; nothing fires inside it
+        expect(out.kick).toBe(0);
+    });
+
+    it('a hole is not live even when the frames reach it before the next run is in (grace, then the run arrives)', () => {
+        const { post, out, sep } = make();
+        post(0, 5, []);
+        // the frames walk past the end with no run: live for the grace, then not
+        const lives: boolean[] = [];
+        for (let at = 4.9; at < 6; at += 0.1) lives.push(sep.sampleEvents(at, 100, out));
+        post(8, 13, []);
+        expect(sep.sampleEvents(6.1, 100, out)).toBe(false);
+        expect(sep.sampleEvents(7.5, 100, out)).toBe(false);
+        expect(sep.sampleEvents(8.2, 100, out)).toBe(true);
+        expect(lives[0]).toBe(true);
+        expect(lives[lives.length - 1]).toBe(false);
+    });
+
+    it('runs that join (a seam, or a few µs early) leave no hole; a hole clears with the timeline', () => {
+        const { sep, post, out } = make();
+        post(0, 5, []);
+        post(5 - 5e-6, 10, []);
+        post(10 + 5e-4, 15, []);
+        for (const at of [4.99999, 5.0001, 9.9999, 10.0002, 12]) expect(sep.sampleEvents(at, 16, out)).toBe(true);
+        post(20, 25, []);
+        expect(sep.sampleEvents(17, 16, out)).toBe(false);
+        sep.reset();
+        post(30, 35, []);
+        // the first run since the clear starts the coverage: nothing before it, no stale hole after it
+        expect(sep.sampleEvents(32, 16, out)).toBe(true);
+    });
+
+    it('the status carries the audio the worker lost, and clears when a run keeps up', () => {
+        const statuses: any[] = [];
+        const sep: any = new StemSeparator({} as any, {} as any, {} as any, s => statuses.push({ ...s }));
+        sep.model = 'htdemucs';
+        const post = (lostMs?: number) => sep.onWorkerMessage({
+            type: 'stems', model: 'htdemucs', times: new Float64Array(0), computeMs: 1, audioMs: 1, epoch: sep.epoch, lostMs,
+            energies: Object.fromEntries(Names.map(s => [s, new Float32Array(0)])),
+        });
+        post(1200);
+        expect(statuses[statuses.length - 1].lostMs).toBe(1200);
+        post(0);
+        expect(statuses[statuses.length - 1].lostMs).toBe(0);
+        post();
+        expect(statuses[statuses.length - 1].lostMs).toBe(0);
+    });
+
+    it('strength: at the loud level reads 1, 9 dB under reads 0.5, under the floor reads 0', () => {
+        const { post, out, sep } = make();
+        post(0, 9, [[1, -6, 0], [1.5, -15, 0], [2, -30, 0], [2.5, -50, 2]]);
+        const at = (t: number) => { sep.sampleEvents(t - 0.01, 10, out); sep.sampleEvents(t, 10, out); return out; };
+        expect(at(1).kick).toBeCloseTo(1, 5);
+        // 0.6 dB/s of decay over 0.5 s: the loud level is -6.3
+        expect(at(1.5).kick).toBeCloseTo((-15 + 6.3 + 18) / 18, 5);
+        expect(at(2).kick).toBe(0);
+        // the bass's own loud level: it starts at the floor (-30)
+        expect(at(2.5).bassNote).toBe(0);
+    });
+
+    it('sampleEvents returns live only within the coverage (a grace past its end), and not without a model', () => {
+        const { sep, post, out } = make();
+        expect(sep.sampleEvents(0.5, 16, out)).toBe(false);
+        post(0, 2, []);
+        expect(sep.sampleEvents(1.9, 16, out)).toBe(true);
+        expect(out.live).toBe(true);
+        // a little past it (a run a little late): still live, so the stand-ins do not flap; past the grace, not
+        expect(sep.sampleEvents(2.1, 16, out)).toBe(true);
+        expect(sep.sampleEvents(2.6, 16, out)).toBe(false);
+        expect(out.live).toBe(false);
+        // before the coverage starts: not live (the first run after a clear covers from its from)
+        expect(sep.sampleEvents(-0.1, 16, out)).toBe(false);
+        (sep as any).model = undefined;
+        expect(sep.sampleEvents(1.5, 16, out)).toBe(false);
     });
 });

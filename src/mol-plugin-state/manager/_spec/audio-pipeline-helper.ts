@@ -11,11 +11,12 @@
 import { AudioReactiveAnimationManager, AudioReactiveAnimationManagerValues } from '../audio-reactive-animation';
 import { AudioRoute, AudioRouteTarget, createZeroDrives } from '../audio-routing';
 import { StemModelId, StemModels } from '../audio-stems/stem-models';
-import { StemLevels } from '../audio-stems/stem-separator';
+import { StemLevels, StemSeparator } from '../audio-stems/stem-separator';
+import type { StemWorkerEvents } from '../audio-stems/stem-worker-protocol';
 
 export type AudioSignal = { name: string, sampleRate: number, samples: Float32Array, kicksS?: readonly number[] };
 
-export type AudioPipelineFrameInfo = { index: number, timeMs: number, mediaS: number, paused: boolean, manager: AudioReactiveAnimationManager };
+export type AudioPipelineFrameInfo = { index: number, timeMs: number, mediaS: number, paused: boolean, manager: AudioReactiveAnimationManager, contextState: 'running' | 'suspended', fire(type: string): void };
 
 export type AudioPipelineOptions = {
     /** a preset's `analysis`; only the reactor's keys are read, as the manager's getReactorParams does */
@@ -52,11 +53,30 @@ export type AudioPipelineOptions = {
     stemModel?: StemModelId,
     /** with stemDelayS: what the stub separator's sample returns (undefined, the default: it separates nothing) */
     stemSample?: (time: number, dtMs: number, attackMs: number, releaseMs: number) => StemLevels | undefined,
+    /**
+     * with stemDelayS: the stem events the worker posted (audio-context times: the media time on an unpaused run), read
+     * by a real separator's sampleEvents; none by default (the events never live)
+     */
+    stemEvents?: StemWorkerEvents,
+    /**
+     * the time handed to tick advances by at most this per frame, as PluginAnimationLoop's proper time does (1000 / 30):
+     * under slow frames it runs slower than the audio clock. Default: no cap (tick's time is the frame's wall time)
+     */
+    tickStepCapMs?: number,
+    /**
+     * each frame's clock off its nominal time by up to ± this, ms (seeded): frames of uneven length. Must stay under
+     * half a frame so the clock runs forward
+     */
+    frameJitterMs?: number,
+    /** the context clock floored to this many seconds (a render quantum: 128 / 48000), as a browser advances it */
+    clockQuantumS?: number,
 };
 
 export type AudioPipelineTrace = {
     count: number,
     timeMs: Float64Array, mediaS: Float64Array, paused: Uint8Array,
+    /** the context clock each frame ticked at, seconds (timeMs / 1000 without jitter or quantum) */
+    clockS: Float64Array,
     drums: Float64Array, bass: Float64Array, other: Float64Array, vocals: Float64Array,
     /** by route index (route ids come from a global counter and depend on test order) */
     routeValues: Float64Array[],
@@ -115,7 +135,13 @@ export function runAudioPipeline(signal: AudioSignal, routes: readonly AudioRout
     const analysisDelaySamples = () => Math.round((analysisDelayNode?.delayTime.value ?? 0) * sr);
     let frameIndex = -1;
     const analysedFrames: number[] = [];
-    const ctx = { currentTime: 0, sampleRate: sr, state: 'running', outputLatency: opts.outputLatency ?? 0 };
+    // a suspended context freezes the whole graph (its clock, the delay lines, the media element's output): the loop
+    // below adds nothing to `wall` and does not advance the clock or the media cursor while it is suspended
+    const ctx = {
+        currentTime: 0, sampleRate: sr, state: 'running' as 'running' | 'suspended', outputLatency: opts.outputLatency ?? 0,
+        async suspend() { ctx.state = 'suspended'; },
+        async resume() { ctx.state = 'running'; },
+    };
     const analyser = {
         fftSize: 2048, smoothingTimeConstant: 0,
         get frequencyBinCount() { return this.fftSize / 2; },
@@ -161,6 +187,15 @@ export function runAudioPipeline(signal: AudioSignal, routes: readonly AudioRout
     }
     if (opts.lookahead !== void 0) stemParams = { lookahead: opts.lookahead, lookaheadTrimMs: opts.lookaheadTrimMs ?? 0 };
     if (opts.stemDelayS !== void 0) {
+        // the events: a real separator's (its constructor only stores its arguments), fed the worker's message once
+        const model = opts.stemModel ?? Object.keys(StemModels)[0] as StemModelId;
+        const events = new StemSeparator({} as AudioContext, {} as AudioNode, {} as ConstructorParameters<typeof StemSeparator>[2], () => { });
+        if (opts.stemEvents) {
+            const fake = events as unknown as { model: StemModelId, onWorkerMessage(m: unknown): void };
+            fake.model = model;
+            fake.onWorkerMessage({ type: 'stems', model, times: new Float64Array(0), computeMs: 0, audioMs: 1, epoch: (events as unknown as { epoch: number }).epoch, events: opts.stemEvents,
+                energies: { drums: new Float32Array(0), bass: new Float32Array(0), other: new Float32Array(0), vocals: new Float32Array(0) } });
+        }
         (manager as unknown as ManagerStemFakes).separator = {
             async setModel() { }, dispose() { },
             reset() { stemResets.push(frameIndex); },
@@ -168,6 +203,8 @@ export function runAudioPipeline(signal: AudioSignal, routes: readonly AudioRout
                 stemSamples.push({ index: frameIndex, time });
                 return opts.stemSample?.(time, dtMs, attackMs, releaseMs);
             },
+            sampleEvents: events.sampleEvents.bind(events),
+            skipEvents: events.skipEvents.bind(events),
         };
         stemParams = { ...stemParams, stemModel: opts.stemModel ?? Object.keys(StemModels)[0] as StemModelId, stemDelaySeconds: opts.stemDelayS };
     }
@@ -180,7 +217,7 @@ export function runAudioPipeline(signal: AudioSignal, routes: readonly AudioRout
 
     const trace: AudioPipelineTrace = {
         count,
-        timeMs: new Float64Array(count), mediaS: new Float64Array(count), paused: new Uint8Array(count),
+        timeMs: new Float64Array(count), mediaS: new Float64Array(count), paused: new Uint8Array(count), clockS: new Float64Array(count),
         drums: new Float64Array(count), bass: new Float64Array(count), other: new Float64Array(count), vocals: new Float64Array(count),
         routeValues: routes.map(() => new Float64Array(count)),
         drives: {} as Record<AudioRouteTarget, Float64Array>,
@@ -191,6 +228,10 @@ export function runAudioPipeline(signal: AudioSignal, routes: readonly AudioRout
     for (const t of Object.keys(createZeroDrives()) as AudioRouteTarget[]) trace.drives[t] = new Float64Array(count);
     let mediaFrames = 0;
     let firedPaused = false;
+    let tickTimeMs = 0;
+    // wall time spent with the context suspended: the context's clock stood still for it
+    let frozenMs = 0;
+    const jitterRnd = mulberry32(77);
     for (let i = 0; i < count; i++) {
         frameIndex = i;
         const timeMs = (i + 1) * frameMs;
@@ -201,22 +242,29 @@ export function runAudioPipeline(signal: AudioSignal, routes: readonly AudioRout
         firedPaused = paused;
         audio.paused = paused;
         audio.ended = ended;
+        if (wasPaused && !paused) fire('play');
+        const frozen = ctx.state === 'suspended';
+        if (frozen) frozenMs += frameMs;
         const from = cursor;
-        if (!paused) cursor = Math.round(++mediaFrames * frameMs * sr / 1000); // integer arithmetic: no accumulated drift
+        if (!paused && !frozen) cursor = Math.round(++mediaFrames * frameMs * sr / 1000); // integer arithmetic: no accumulated drift
         // into the graph this frame: the media just played, or silence for as long
-        const len = paused ? Math.round((i + 1) * frameMs * sr / 1000) - Math.round(i * frameMs * sr / 1000) : cursor - from;
-        if (!paused) wall.set(signal.samples.subarray(from, cursor), wallEnd);
+        const len = frozen ? 0 : paused ? Math.round((i + 1) * frameMs * sr / 1000) - Math.round(i * frameMs * sr / 1000) : cursor - from;
+        if (!paused && !frozen) wall.set(signal.samples.subarray(from, cursor), wallEnd);
         wallEnd += len;
-        ctx.currentTime = timeMs / 1000;
+        const jitter = opts.frameJitterMs ? (jitterRnd() * 2 - 1) * opts.frameJitterMs : 0;
+        const wallMs = timeMs + jitter, clockMs = wallMs - frozenMs;
+        ctx.currentTime = opts.clockQuantumS ? Math.floor(clockMs / 1000 / opts.clockQuantumS) * opts.clockQuantumS : clockMs / 1000;
+        trace.clockS[i] = ctx.currentTime;
         if (paused && !wasPaused) fire('pause');
         if (ended && !wasEnded) fire('ended');
-        if (!opts.stalled?.some(([a, b]) => timeMs / 1000 > a && timeMs / 1000 <= b)) manager.tick(timeMs);
+        tickTimeMs += Math.min(frameMs, opts.tickStepCapMs ?? Infinity);
+        if (!opts.stalled?.some(([a, b]) => timeMs / 1000 > a && timeMs / 1000 <= b)) manager.tick(opts.tickStepCapMs === undefined ? wallMs : tickTimeMs);
         const stems = manager.stems;
         trace.timeMs[i] = timeMs; trace.mediaS[i] = mediaFrames * frameMs / 1000; trace.paused[i] = paused ? 1 : 0;
         trace.drums[i] = stems.drums; trace.bass[i] = stems.bass; trace.other[i] = stems.other; trace.vocals[i] = stems.vocals;
         routes.forEach((r, j) => { trace.routeValues[j][i] = manager.routeValues.get(r.id) ?? 0; });
         for (const t of Object.keys(trace.drives) as AudioRouteTarget[]) trace.drives[t][i] = manager.drives[t];
-        opts.onFrame?.({ index: i, timeMs, mediaS: trace.mediaS[i], paused, manager });
+        opts.onFrame?.({ index: i, timeMs, mediaS: trace.mediaS[i], paused, manager, contextState: ctx.state, fire });
     }
     for (const i of analysedFrames) if (i >= 0) trace.analysed[i] = 1;
     return trace;

@@ -11,11 +11,21 @@
 import type { AudioReactiveFrame, DefaultAudioBandKey } from './audio-reactor';
 import type { StemLevels } from './audio-stems/stem-separator';
 
+/**
+ * The stem events heard this frame: each kind's strength (0-1, the strongest that fired; 0 on a frame with none), and
+ * whether events are arriving (a model that keeps up; stand-in routes rest while they do)
+ */
+export type StemEventValues = { kick: number, snare: number, bassNote: number, live: boolean };
+export const NoStemEvents: Readonly<StemEventValues> = { kick: 0, snare: 0, bassNote: 0, live: false };
+
 export const AudioRouteSources = [
     ['stemDrums', 'Drums (stem)'],
     ['stemBass', 'Bass (stem)'],
     ['stemOther', 'Other (stem)'],
     ['stemVocals', 'Vocals (stem)'],
+    ['stemKick', 'Kick (stem events)'],
+    ['stemSnare', 'Snare/hats (stem events)'],
+    ['stemBassNote', 'Bass notes (stem events)'],
     ['beat', 'Beat'],
     ['amplitude', 'Loudness'],
     ['songLoudness', 'Loudness (vs. the song)'],
@@ -88,6 +98,13 @@ export type AudioRoute = {
     floor: number,
     /** how long a peak takes to fall back, ms (the rise is immediate) */
     releaseMs: number,
+    /**
+     * the Hit threshold, 0-0.95: the source (after Level or Hits, before the curve) at or under it reads 0, above it
+     * rescaled to 0-1, (x - t) / (1 - t). 0: no threshold
+     */
+    threshold: number,
+    /** a stand-in: the route acts only while no stem events arrive (no model, or one falling behind) */
+    standIn: boolean,
     /** who this route moves. Only structure-motion targets use it; anything else stays All. */
     affect: AudioAffect,
 };
@@ -108,20 +125,36 @@ export function createZeroDrives(): AudioRouteDrives {
     };
 }
 
-let nextRouteId = 1;
-export function createAudioRoute(route: Omit<AudioRoute, 'id' | 'affect' | 'curve'> & { affect?: AudioAffect, curve?: AudioRouteCurve }): AudioRoute {
-    const { affect, curve, ...rest } = route;
-    return { id: nextRouteId++, ...rest, curve: curve ?? 'linear', affect: affect ? canonicalAudioAffect(affect) : defaultAudioAffect() };
+/** a Hit threshold held to [0, 0.95] (0 if not a number): at 1, (x - 1) / 0 would make a source over 1 infinite */
+export function clampAudioRouteThreshold(t: number) {
+    return Number.isFinite(t) ? Math.min(0.95, Math.max(0, t)) : 0;
 }
 
-/** The starting routes: drums and bass explode the capsid along its symmetry axes, the rest of the band wiggles the atoms, the voice lights it */
+let nextRouteId = 1;
+export function createAudioRoute(route: Omit<AudioRoute, 'id' | 'affect' | 'curve' | 'threshold' | 'standIn'> & { affect?: AudioAffect, curve?: AudioRouteCurve, threshold?: number, standIn?: boolean }): AudioRoute {
+    const { affect, curve, threshold, standIn, ...rest } = route;
+    return {
+        id: nextRouteId++, ...rest, curve: curve ?? 'linear', threshold: clampAudioRouteThreshold(threshold ?? 0), standIn: standIn ?? false,
+        affect: affect ? canonicalAudioAffect(affect) : defaultAudioAffect(),
+    };
+}
+
+/**
+ * The starting routes: drums and bass explode the capsid along its symmetry axes, the rest of the band wiggles the
+ * atoms, the voice lights it. With stem events (a model that keeps up) the kicks and bass notes hit the axes and the
+ * drums and bass levels stand in only without them (lane stem-events: on angine.mp3 the axes rest between kicks, 0.25 of
+ * the peak against 0.73)
+ */
 export function getDefaultAudioRoutes(): AudioRoute[] {
     return [
         // the symmetry axes at 6.5 (Ludo's pick, 2026-11-25)
-        createAudioRoute({ enabled: true, source: 'stemDrums', mode: 'onset', target: 'symAxis', gain: 6.5, floor: 0, releaseMs: 260 }),
-        createAudioRoute({ enabled: true, source: 'stemBass', mode: 'level', target: 'symAxis', gain: 6.5, floor: 0, releaseMs: 220 }),
+        createAudioRoute({ enabled: true, source: 'stemDrums', mode: 'onset', target: 'symAxis', gain: 6.5, floor: 0, releaseMs: 260, standIn: true }),
+        createAudioRoute({ enabled: true, source: 'stemBass', mode: 'level', target: 'symAxis', gain: 6.5, floor: 0, releaseMs: 220, standIn: true }),
         createAudioRoute({ enabled: true, source: 'stemOther', mode: 'level', target: 'wiggle', gain: 2, floor: 0.2, releaseMs: 350 }),
         createAudioRoute({ enabled: true, source: 'stemVocals', mode: 'level', target: 'illumination', gain: 0.6, floor: 0, releaseMs: 400 }),
+        // the bass notes at 3: at 6.5 they double the hits that miss a kick (9.3 % against 4.4 %, stem-events design)
+        createAudioRoute({ enabled: true, source: 'stemKick', mode: 'level', target: 'symAxis', gain: 6.5, floor: 0, releaseMs: 120 }),
+        createAudioRoute({ enabled: true, source: 'stemBassNote', mode: 'level', target: 'symAxis', gain: 3, floor: 0, releaseMs: 120 }),
     ];
 }
 
@@ -144,13 +177,21 @@ const OnsetPeakFloor = 0.02;
 const SongAverageMs = 8000;
 const SongAverageFloor = 0.005;
 
-export function getAudioRouteSourceValue(source: AudioRouteSource, frame: AudioReactiveFrame<DefaultAudioBandKey>, stems: StemLevels) {
+/** the sources that are events (a hit's strength on its frame, 0 elsewhere): Hits reads them as Level does */
+export function isStemEventSource(source: AudioRouteSource) {
+    return source === 'stemKick' || source === 'stemSnare' || source === 'stemBassNote';
+}
+
+export function getAudioRouteSourceValue(source: AudioRouteSource, frame: AudioReactiveFrame<DefaultAudioBandKey>, stems: StemLevels, events: Readonly<StemEventValues> = NoStemEvents) {
     const b = frame.frequencyBands;
     switch (source) {
         case 'stemDrums': return stems.drums;
         case 'stemBass': return stems.bass;
         case 'stemOther': return stems.other;
         case 'stemVocals': return stems.vocals;
+        case 'stemKick': return events.kick;
+        case 'stemSnare': return events.snare;
+        case 'stemBassNote': return events.bassNote;
         case 'beat': return frame.beatIntensity;
         case 'amplitude': case 'songLoudness': return frame.amplitude;
         case 'subBass': return b.subBass;
@@ -185,9 +226,10 @@ export class AudioRouter {
 
     /**
      * One frame of every route. `heard`: whether sound is heard (playing, or the delay line still draining); when not,
-     * each route releases to 0 (no floor) with its own release and rests at exactly 0 below AudioRestCutoff
+     * each route releases to 0 (no floor) with its own release and rests at exactly 0 below AudioRestCutoff. `events`:
+     * the stem events heard this frame; while they are live, the stand-in routes release to 0 as if not heard
      */
-    update(routes: readonly AudioRoute[], frame: AudioReactiveFrame<DefaultAudioBandKey>, stems: StemLevels, dtMs: number, heard = true) {
+    update(routes: readonly AudioRoute[], frame: AudioReactiveFrame<DefaultAudioBandKey>, stems: StemLevels, dtMs: number, heard = true, events: Readonly<StemEventValues> = NoStemEvents) {
         // a non-finite dt counts as 0: the value follows its target at once, the song average does not step
         if (!Number.isFinite(dtMs)) dtMs = 0;
         for (const t of Object.keys(this.drives) as AudioRouteTarget[]) this.drives[t] = 0;
@@ -199,27 +241,32 @@ export class AudioRouter {
             let state = this.states.get(route.id);
             if (!state) this.states.set(route.id, state = { previous: 0, peak: OnsetPeakFloor, songAverage: 0, value: 0 });
             // a non-finite source reads as 0: one NaN frame must not stay in the route's state for good
-            const read = getAudioRouteSourceValue(route.source, frame, stems);
+            const read = getAudioRouteSourceValue(route.source, frame, stems, events);
             const raw = Number.isFinite(read) ? read : 0;
             let input = raw;
             if (route.source === 'songLoudness' && route.mode === 'level') {
                 // the first frame starts the average; after that it follows over SongAverageMs
                 state.songAverage = state.songAverage <= 0 ? raw : state.songAverage + (raw - state.songAverage) * (1 - Math.exp(-dtMs / SongAverageMs));
                 input = Math.min(1, raw / (2 * Math.max(SongAverageFloor, state.songAverage)));
-            } else if (route.mode === 'onset') {
+            } else if (route.mode === 'onset' && !isStemEventSource(route.source)) {
+                // an event is a hit already: normalizing it by a running peak would erase its strength
                 const rise = Math.max(0, raw - state.previous);
                 state.peak = Math.max(rise, OnsetPeakFloor, state.peak * Math.exp(-dtMs / OnsetPeakDecayMs));
                 input = Math.min(1, rise / state.peak);
             }
             state.previous = raw;
+            const t = route.threshold;
+            if (t > 0) input = input <= t ? 0 : (input - t) / (1 - t);
             input = applyAudioRouteCurve(route.curve, input);
-            // the floor holds only while sound is heard
-            const target = route.enabled && heard ? Math.max(0, route.floor + route.gain * input) : 0;
+            // the floor holds only while sound is heard; a stand-in rests while stem events arrive
+            const active = route.enabled && heard && !(route.standIn && events.live);
+            const target = active ? Math.max(0, route.floor + route.gain * input) : 0;
             // immediate rise, exponential release
             state.value = target >= state.value || route.releaseMs <= 0 || dtMs <= 0
                 ? target
                 : state.value + (target - state.value) * (1 - Math.exp(-dtMs / route.releaseMs));
-            if (!heard && state.value < AudioRestCutoff) state.value = 0;
+            // a route that acts on nothing (not heard, muted, a stand-in while events are live) rests at exactly 0
+            if (!active && state.value < AudioRestCutoff) state.value = 0;
             this.values.set(route.id, state.value);
             if (route.enabled && route.target === 'duck') {
                 duckDrive += state.value;
@@ -433,6 +480,8 @@ function draftFromUnknown(value: unknown, fallback?: AudioAffect): AudioRouteDra
         gain: clampNumber(v.gain, 0, 40, 1),
         floor: clampNumber(v.floor, 0, 40, 0),
         releaseMs: clampNumber(v.releaseMs, 0, 10000, 250),
+        threshold: clampNumber(v.threshold, 0, 0.95, 0),
+        standIn: v.standIn === true,
         affect,
     };
 }
@@ -489,8 +538,8 @@ export function routesFromDrafts(routes: readonly AudioRouteDraft[]) {
 
 /** Drop the runtime id. Loading assigns a fresh one. */
 export function draftsFromRoutes(routes: readonly AudioRoute[]): AudioRouteDraft[] {
-    return routes.map(({ enabled, source, mode, curve, target, gain, floor, releaseMs, affect }) => ({
-        enabled, source, mode, curve, target, gain, floor, releaseMs, affect: canonicalAudioAffect(affect),
+    return routes.map(({ enabled, source, mode, curve, target, gain, floor, releaseMs, threshold, standIn, affect }) => ({
+        enabled, source, mode, curve, target, gain, floor, releaseMs, threshold, standIn, affect: canonicalAudioAffect(affect),
     }));
 }
 

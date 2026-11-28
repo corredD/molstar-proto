@@ -7,7 +7,7 @@
 
 import { BehaviorSubject } from 'rxjs';
 import { StemModelId, StemModels, StemName } from './audio-stems/stem-models';
-import { AudioAffect, AudioAffectLevel, AudioRoute, AudioRouteDrives, AudioRouter, AudioScopeSlot, canNarrowRoute, canonicalAudioAffect, createZeroDrives, defaultAudioAffect, getDefaultAudioRoutes, limitNarrowedRoutes, maxScopeLevel, sameAudioAffect } from './audio-routing';
+import { AudioAffect, AudioAffectLevel, AudioRoute, AudioRouteDrives, AudioRouter, AudioScopeSlot, canNarrowRoute, canonicalAudioAffect, clampAudioRouteThreshold, createZeroDrives, defaultAudioAffect, getDefaultAudioRoutes, limitNarrowedRoutes, maxScopeLevel, sameAudioAffect, StemEventValues } from './audio-routing';
 import { audioAffectFromLoci, clampAffectToLevel, resolveAudioAffect, specializeAudioAffect } from '../helpers/audio-affect';
 import { StructureElement } from '../../mol-model/structure';
 import { StemLevels, StemSeparator, StemSeparatorOptions, StemSeparatorStatus } from './audio-stems/stem-separator';
@@ -281,6 +281,26 @@ function writeSpectrumSamples(source: Uint8Array, target: Float32Array) {
     }
 }
 
+/**
+ * How far ahead of what is heard now (t - D) a tick reads the stem events, so each shows on the frame heard nearest to
+ * it. A tick's router state is shown once now - `latencyS` reaches its stamp: ceil(L / frame) frames later, heard
+ * ceil(L / frame) frame - L after the tick's own time; the tick then takes the events within half a frame either side
+ * of that. `frameS`: a running estimate of the audio clock's step between ticks (the loop's dt is capped at 1000 / 30
+ * ms; a step over 1.5 x the estimate is left out unless three come in a row). Not a lead (the
+ * events are dated at their onset): the frame quantization of the presented ring. Without it
+ * a kick showed up to two frames late (headed clicksync, HTDemucs on the GPU at ~64 ms frames: 77 ms)
+ */
+/** how fast the frame estimate follows the clock's steps: a tenth per tick */
+const EventFrameSmoothing = 0.1;
+/** a step over this many times the estimate is a long frame, not the frame rate */
+const EventLongFrame = 1.5;
+
+export function getEventDisplayShiftSeconds(frameS: number, latencyS: number) {
+    if (!(frameS > 0)) return 0;
+    const shown = latencyS > 0 ? Math.ceil(latencyS / frameS - 1e-9) * frameS - latencyS : 0;
+    return shown + frameS / 2;
+}
+
 export class AudioReactiveAnimationManager {
     readonly state = {
         audioPlayer: new BehaviorSubject<HTMLAudioElement | null>(null),
@@ -319,6 +339,14 @@ export class AudioReactiveAnimationManager {
     private stemStatus: StemSeparatorStatus = { state: 'off' };
     private currentStems: StemLevels = ZeroStems;
     private stemsSeparated = false;
+    /** the stem events heard this frame, written in place each tick */
+    private readonly stemEvents: StemEventValues = { kick: 0, snare: 0, bassNote: 0, live: false };
+    /** the clock of the last tick that read the stem events: its step is the frame */
+    private eventsClockAt = NaN;
+    /** the running estimate of the frame, from the audio clock's steps (NaN: none yet) */
+    private eventsFrameS = NaN;
+    /** long steps in a row, left out of the estimate */
+    private eventsLongSteps = 0;
     private bandDrumsPeak = BandDrumsPeakFloor;
     /**
      * Until when (context time, s) the speakers still play what the delay line holds: Infinity while playing; once
@@ -340,6 +368,13 @@ export class AudioReactiveAnimationManager {
      * holds sound
      */
     private primedUntil = -Infinity;
+    /**
+     * Whether the context is suspended by a pause (lane stem-events round 2): the clock stands and the delay line, the
+     * analysis branch and the stem tap freeze with it, so nothing drains and nothing is heard. heardUntil stays Infinity
+     * (no deadline, no tail): the next play resumes the context and the line goes on where it stopped, with no priming.
+     * Not the end of the file (its tail still plays out), stop, a new source or clear (they flush the line)
+     */
+    private frozen = false;
     /** this tick's clock: read once at its top (`readClock`) */
     private clockNow = 0;
     private clockLatency = 0;
@@ -407,6 +442,7 @@ export class AudioReactiveAnimationManager {
     }
 
     updateRoute(id: number, patch: Partial<Omit<AudioRoute, 'id'>>) {
+        if (patch.threshold !== undefined) patch = { ...patch, threshold: clampAudioRouteThreshold(patch.threshold) };
         this.setRoutes(this.state.routes.value.map(r => r.id === id ? { ...r, ...patch } : r));
     }
 
@@ -580,14 +616,43 @@ export class AudioReactiveAnimationManager {
     }
 
     private bindAudioEvents(audio: HTMLAudioElement) {
-        audio.addEventListener('play', () => this.updateStatus(void 0, true));
+        audio.addEventListener('play', () => this.onPlay());
         audio.addEventListener('pause', () => this.onStopped());
         audio.addEventListener('ended', () => this.onStopped());
+        audio.addEventListener('seeking', () => this.onSeeking());
     }
 
-    /** the element's pause or ended event: the tail starts now. Only from playing (a flush comes before the queued event) */
+    /**
+     * the element's pause or ended event, only from playing (a flush comes before the queued event). A pause suspends the
+     * context: what is heard stops at once. The end of the file fires pause with `ended` already set: its tail starts now
+     */
     private onStopped() {
-        if (this.heardUntil === Infinity && Number.isNaN(this.stoppedAt) && this.audioContext) this.stoppedAt = this.getOutputClock(this.audioContext).now();
+        const ctx = this.audioContext;
+        if (this.heardUntil === Infinity && Number.isNaN(this.stoppedAt) && ctx) {
+            if (!this.state.audioPlayer.value?.ended && !this.frozen && ctx.state === 'running') {
+                this.frozen = true;
+                void ctx.suspend();
+            } else if (!this.frozen) {
+                this.stoppedAt = this.getOutputClock(ctx).now();
+            }
+        }
+        this.updateStatus(void 0, true);
+    }
+
+    /**
+     * a seek (the element's own controls): what the delay line holds is of the old position, so it is flushed and the
+     * stems and the bands start again; a frozen line would otherwise play the old position after the next play
+     */
+    private onSeeking() {
+        if (this.heardUntil !== -Infinity) this.flushDelayLine();
+        this.reactor.reset();
+        this.separator?.reset();
+        this.updateStatus(void 0, true);
+    }
+
+    /** the element's play event (a play of its own controls too): the context goes on, the line where it froze */
+    private onPlay() {
+        if (this.audioContext?.state === 'suspended') void this.audioContext.resume();
         this.updateStatus(void 0, true);
     }
 
@@ -663,6 +728,7 @@ export class AudioReactiveAnimationManager {
     private flushDelayLine() {
         const ctx = this.audioContext, source = this.sourceNode, old = this.delayNode, oldAnalysis = this.analysisDelayNode, analyser = this.analyser;
         this.heardUntil = -Infinity;
+        this.frozen = false;
         if (!ctx || !source || !old || !oldAnalysis || !analyser) return;
         source.disconnect(old);
         old.disconnect();
@@ -754,6 +820,7 @@ export class AudioReactiveAnimationManager {
         this.router.reset();
         this.currentStems = ZeroStems;
         this.stemsSeparated = false;
+        this.clearStemEvents();
         this.bandDrumsPeak = BandDrumsPeakFloor;
         this.currentFrame = EmptyAudioReactiveFrame;
         clearAudioReactiveVisualization(this.visualization);
@@ -762,13 +829,43 @@ export class AudioReactiveAnimationManager {
         this.updateStatus(void 0, true);
     }
 
+    private clearStemEvents() {
+        const e = this.stemEvents;
+        e.kick = e.snare = e.bassNote = 0;
+        e.live = false;
+    }
+
     /**
      * `silent`: nothing is heard `leadS` from now (not playing, the delay line drained): the band stand-ins, from the
      * silent analysis. `delayS`: the heard delay, the delay node's (as tick's). `leadS`: how far ahead of what is heard
-     * the stems are sampled (0 without lookahead)
+     * the stems are sampled (0 without lookahead). `heard`: whether sound is heard now: the stem events, dated at their
+     * onset, are read at what is heard now (t - D), with no lead (Ludo, lane stem-events)
      */
-    private updateStems(dtMs: number, silent: boolean, delayS: number, leadS: number) {
+    private updateStems(dtMs: number, silent: boolean, delayS: number, leadS: number, heard: boolean) {
         const params = this.state.params.value;
+        if (heard && this.separator && this.audioContext && params.stemModel !== 'off') {
+            // the frame: the audio clock's step (the loop's dt is capped at 1000 / 30 ms, so under slow frames it is not)
+            // the frame: a running estimate of the audio clock's step (the loop's dt is capped at 1000 / 30 ms). A step over
+            // 1.5 x the estimate (a GC pause, the GPU busy) is left out, unless three come in a row (the frames slowed)
+            const step = this.clockNow - this.eventsClockAt;
+            if (step > 0 && step <= 0.25) {
+                const est = this.eventsFrameS;
+                if (!Number.isFinite(est)) this.eventsFrameS = step;
+                else if (step <= EventLongFrame * est) {
+                    this.eventsFrameS = est + (step - est) * EventFrameSmoothing;
+                    this.eventsLongSteps = 0;
+                } else if (++this.eventsLongSteps >= 3) {
+                    this.eventsFrameS = step;
+                    this.eventsLongSteps = 0;
+                }
+            }
+            const frameS = Number.isFinite(this.eventsFrameS) ? this.eventsFrameS : dtMs / 1000;
+            this.separator.sampleEvents(this.clockNow - delayS, frameS * 1000, this.stemEvents, getEventDisplayShiftSeconds(frameS, this.clockLatency));
+        } else {
+            this.separator?.skipEvents();
+            this.clearStemEvents();
+        }
+        this.eventsClockAt = this.clockNow;
         let separated: StemLevels | undefined;
         if (!silent && this.separator && this.audioContext && params.stemModel !== 'off') {
             // the audio heard leadS from now entered the graph one delay ago, plus leadS
@@ -857,9 +954,13 @@ export class AudioReactiveAnimationManager {
         const playing = !audio.paused && !audio.ended;
         const delayS = this.delayNode?.delayTime.value ?? 0;
         if (playing) {
-            if (this.heardUntil !== Infinity && this.clockNow >= this.heardUntil) this.primedUntil = this.clockNow + delayS;
+            // a frozen line has no deadline: it holds sound however long the pause lasted
+            if (!this.frozen && this.heardUntil !== Infinity && this.clockNow >= this.heardUntil) this.primedUntil = this.clockNow + delayS;
             this.heardUntil = Infinity;
             this.stoppedAt = NaN;
+            this.frozen = false;
+        } else if (this.frozen) {
+            // paused with the context suspended: the line is frozen, not draining (heardAt: a suspended context hears nothing)
         } else if (this.heardUntil !== -Infinity) {
             if (Number.isNaN(this.stoppedAt)) this.stoppedAt = this.clockNow;
             this.heardUntil = this.stoppedAt + delayS;
@@ -891,8 +992,8 @@ export class AudioReactiveAnimationManager {
                 writeSpectrumSamples(this.frequencyDomainData, this.visualization.spectrum);
                 this.currentFrame = this.reactor.analyze(this.timeDomainData, sampleRate, dtMs);
             }
-            this.updateStems(dtMs, !(stemLeadS > 0 ? this.heardAt(playing, stemLeadS) : heard), delayS, stemLeadS);
-            this.router.update(this.state.routes.value, this.currentFrame, this.currentStems, dtMs, heard);
+            this.updateStems(dtMs, !(stemLeadS > 0 ? this.heardAt(playing, stemLeadS) : heard), delayS, stemLeadS, heard);
+            this.router.update(this.state.routes.value, this.currentFrame, this.currentStems, dtMs, heard, this.stemEvents);
         } catch (e) {
             error = `${e}`;
         }

@@ -42,7 +42,7 @@ inputs below."
 **Stem Separation.**
 - Chips Off, Spleeter 4-stem, HTDemucs, SCNet.
 - Four meters (drums, bass, other, vocals); faded when they are band stand-ins.
-- Status line.
+- Status line (`ui/cards/stem-status.ts`): provider, % of real time, seconds ahead, and "(behind: x s lost per run)" while the model falls behind the window and loses audio.
 - Lookahead: Off / On chips (on at startup; title: the analysis reads ahead of what is heard by its own lag).
 - With a model or lookahead on: Audio Delay, a range row 0–25 s, step 0.5, committed on release, the value
   "Default (X s)" at 0 (the model's, else 0.25 s). With lookahead on: Lead Trim, −50 to 100 ms, step 1.
@@ -57,6 +57,10 @@ inputs below."
 - Who: "the whole view" for camera, opacity, clip, background, step, duck; otherwise a level (All, Model, Entity,
   Instance, Chain; + Residue, Atom for wiggle, illumination, spectrum), a choice, and ◎ (from the selection).
 - Gain 0–20, step 0.1; a live meter, full at 8.
+- Hit threshold 0–0.95, step 0.05 (title: "Hit threshold: the source at or under it sends nothing; above it, the rest is
+  spread over the full range"); Stand-in checkbox (title: "Only while no stem events arrive (no model, or the model
+  falling behind)"). The Mode select's title on an event source: "An event source is a hit already: Level and Hits
+  both read its strength on the frame it is heard".
 - Missing: floor and release. **Mismatch**: an imported gain above 20 shows the slider pinned.
 - Buttons: + Add route (drums hits → symmetry axes, gain 1), + Instance wave (drums → wave, gain 6), Defaults.
 - Library: Name ("My routing"), Save, Saved… (Saved in this browser; Inspired by acclaimed audio-visual works), Delete

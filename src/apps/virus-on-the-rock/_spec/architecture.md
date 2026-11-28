@@ -30,10 +30,11 @@ The only one (rule 1 of the [routing spec](audio-routing-spec.md)):
 ```
 <audio> ─► MediaElementSource ─┬─► Delay (D) ─► speakers
                                ├─► Analysis delay (D − lead) ─► Analyser ─► silent sink ─► speakers
-                               └─► AudioWorklet tap ─► stem worker (44.1 kHz STFT, ONNX) ─► timeline
+                               └─► AudioWorklet tap ─► stem worker (44.1 kHz STFT, ONNX) ─► timeline + stem events
 analyser window ─► reactor (resample, Hann, FFT, 6 bands, flux beat, prominence)
                        └─► stems: timeline at currentTime − D + max(0, lead − 30 ms), or band stand-ins
-                              └─► router: per route source → onset? → curve → floor + gain × v → release → duck
+                       └─► stem events: fired once on the first frame whose currentTime − D reaches them
+                              └─► router: per route source → onset? → threshold → curve → floor + gain × v → release → duck
                                      └─► drives[target] (cap 40) or Who slot (≤ 8)
                                             └─► presented frame: a ring of the last 256 ticks stamped with
                                                 ctx.currentTime, read at currentTime − outputLatency (what is heard)
@@ -54,7 +55,17 @@ entry behind for good after a single late tick, ≈ 95 ms instead of ≈ 49 ms a
 the presented frame as sound (beat cycle, song detection) gates on the status's `heardPlaying`, not on the live
 `playing` (the transport). The presented objects keep their identity and nothing is allocated per frame. No flush on pause, stop or clear: the device still plays the last `outputLatency`.
 
-**When the sound stops** (sound-stops, 2026-11-27). Heard = playing, or after a pause or the end of the file until the
+**Pause freezes the line** (stem-events round 2, Ludo 2026-11-28). The element's pause event, from playing and not the
+end of the file (`audio.ended` is already set when the file's pause event fires), suspends the AudioContext: the delay
+line, the analysis branch and the stem tap freeze with the clock, so what is heard stops at once and a play (the manager's
+or the element's own controls: the play event resumes the context) goes on where it stopped, with nothing lost, nothing
+replayed and no priming (`frozen`: no deadline `heardUntil`, no `primedUntil` from the pause's length; the tap's blocks keep
+their context time, so the worker's gap rule does not reset). Not heard while the context is not running (`heardAt`), and
+the output clock's latency is 0 then, so what is presented stops on the pause's frame and holds its last entry the output
+latency after a play. Stop, a new source and Clear flush the line as before; a change of the delay during a pause flushes it
+(its content was delayed by the old D, the next play primes). The rest of this section is the tail of the end of the file.
+
+**When the sound stops** (sound-stops, 2026-11-27). Heard = after the end of the file (a pause, until round 2) until the
 stem delay line has drained (`heardUntil`: the stop + the delay node's time now, each tick; the stop is the element's
 pause or ended event, or the first tick not playing as a fallback, so stalled ticks do not stretch the tail and a delay
 changed in the tail moves it). Not heard either while the line hands over the silence it held at a (re)start with an
@@ -66,6 +77,39 @@ t − D; once not, the silent analysis, the band stand-ins and `router.update(�
 flush the delay line (a new delay node; the separator's tap on the source stays) and hear nothing at once; Clear also
 resets the router. The status also emits when the presented drives and route values come to rest
 (`presented.atRest`), so the last emission after Clear carries zeros. The ring carries heard, so `heardPlaying` is heard as heard (with no delay, `playing` as heard).
+
+**Stem events** (stem-events, 2026-11-27). Each model run also returns its drums and bass as mono audio (HTDemucs: its
+two branches summed; Spleeter: each stem's soft mask on the mix's complex STFT, the mix's phase; SCNet: its complex
+output, inverted as its torch.istft would), and the worker runs a port of the stem study's reference detector
+(`audio-stems/stem-events.ts`: band log-flux, a running median plus a share of the run's p95, the 4 s loud level, dated
+at −6 dB of the hit) for kicks (drums 40–150 Hz), snare/hats (drums 150 Hz–16 kHz, no kick within 30 ms) and bass
+notes (bass 30–300 Hz). **The worker looks ahead inside the delay** (Ludo, rule-1 bend): a run posts the peaks of its
+new audio up to 0.35 s (`EventHoldBackS`) before its window's end, the median's reach and a half window; the next run
+posts those. A run reads at most 2.45 s (`EventContextS`) of context before its region (HTDemucs' whole window; on the
+study's stems the longer Spleeter and SCNet windows lose nothing by it). Frames sit on an absolute hop grid (a counter
+of the samples written since the window started), so the runs' regions join exactly in samples (their context times, at a 48 kHz context, by a resampled sample: the separator never drops an event at a seam). Events under −40 dBFS are
+dropped (near-silence). The separator keeps them per kind, a value 0–1 = the event's dBFS within 18 dB under its kind's
+loud level, and `sampleEvents` fires each once, on the frame whose presented state is heard nearest to it: a tick
+reads up to t − D + `getEventDisplayShiftSeconds` (⌈L / frame⌉ frame − L, the wait until the presented ring shows the
+tick, plus half a frame; the frame is the audio clock's step between ticks, not the loop's dt, which is capped at
+1000 / 30 ms, a running estimate that leaves out a step over 1.5 × it unless three come in a row; the separator
+tests its 0.25 s gap on the unshifted clock, so a change of shift never restarts its span; no lead: an event is dated at its onset, Ludo). Read at t − D, a kick showed up to two frames
+late (headed clicksync, HTDemucs, ~64 ms frames: 77 ms). The band path and the stem levels keep the ring's quantization (shown up to a
+frame after the tick, about half a frame on median): lookahead and its trim are their compensation, so a preset that
+mixes band or level routes with event routes can show the former up to a frame behind. A frame not heard skips them and a resume reads no backlog. Events are live while `t − D` is within
+what the runs covered (from the first run's `from` after a clear: a model switched with the delay kept has no events
+for the audio still in the line) and, once live, 0.5 s (`EventHoldBackS` + 0.15 s) past its end, so a model that only
+just keeps up does not flip the stand-ins each run; stand-in routes act only while events are not live. The runs' regions are
+intervals, not one span: the worker's window holds W samples (HTDemucs 7.8 s) and a run that took longer than W less the
+hold-back (about 7.4 s) leaves the audio past that without events, so the next run's `from` lies after the last one's `until`.
+That stretch is a hole: not live inside it (the stand-ins carry it; the grace applies only past the last run's end, never
+across a hole), and the worker reports the lost audio (`lostMs` on the `'stems'` message; the status line says "behind: x s lost
+per run"). The stem levels are interpolated across a hole as before (open). The rings keep
+time order across runs (a run's last event can be dated after the next run's first) and nothing is dropped at a seam.
+The separator bumps an epoch at each clear and sends it with load and reset; the worker echoes the one a run started
+under, and a run posted before the clear (in transit) is dropped. Cost per run, node on the M-series: the detector
+~200 ms per HTDemucs run (5 s), ~125 ms per Spleeter run (2 s) + ~50 ms for its inverse, ~225 ms per SCNet run (6 s) +
+~85 ms for its inverse.
 
 **Lookahead** (lookahead-sync, 2026-11-27). The delay line already holds the next D seconds of audio, so the analysis
 reads them ahead of the speakers by its own lag behind a hit: the **lead** = ½ the reactor's input window + the band

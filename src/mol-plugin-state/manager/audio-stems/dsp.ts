@@ -5,7 +5,8 @@
  *
  * STFT helpers for the stem-separation models: every model here reads 44.1 kHz stereo through a 4096-point
  * transform with a hop of 1024, but each pads, windows and scales it its own way. HTDemucs' frequency branch is turned
- * back into audio (`inverseRealFftInPlace`) to take its stems' energy.
+ * back into audio (`inverseRealFftInPlace`) to take its stems' energy; Spleeter's and SCNet's drums and bass are turned
+ * back into audio (`OverlapAddInverse`) for the stem events.
  */
 
 export const StemSampleRate = 44100;
@@ -109,6 +110,52 @@ export function inverseRealFftInPlace(fft: FFT, re: Float64Array, im: Float64Arr
     im[0] = -im[0];
     im[n / 2] = -im[n / 2];
     fft(re, im);
+}
+
+/**
+ * Overlap-add inverse STFT into a signal of `length` samples, its buffers made once: fill `re` and `im` with bins
+ * 0 .. nfft / 2 of one frame (zeros above the ones a model gives), then `addFrame`; `finish` divides each sample by the
+ * sum of the squared synthesis windows over the frames that cover it (their count with no window), so a frame's own
+ * STFT comes back exactly, edges included (as torch.istft and tf.signal.inverse_stft with its window_fn do)
+ */
+export class OverlapAddInverse {
+    readonly re: Float64Array;
+    readonly im: Float64Array;
+    private acc: Float64Array;
+    private wsum: Float64Array;
+    private fft: FFT;
+
+    constructor(readonly nfft: number, readonly length: number) {
+        this.re = new Float64Array(nfft);
+        this.im = new Float64Array(nfft);
+        this.acc = new Float64Array(length);
+        this.wsum = new Float64Array(length);
+        this.fft = fftOf(nfft);
+    }
+
+    reset() {
+        this.acc.fill(0);
+        this.wsum.fill(0);
+    }
+
+    /** the frame in `re` / `im`, inverted, times `scale` and the window, added at sample `start` (may be negative) */
+    addFrame(start: number, window: Float32Array | undefined, scale: number) {
+        const { re, nfft, acc, wsum, length } = this;
+        inverseRealFftInPlace(this.fft, re, this.im, nfft);
+        const n0 = Math.max(0, -start), n1 = Math.min(nfft, length - start);
+        for (let n = n0; n < n1; n++) {
+            const w = window ? window[n] : 1;
+            acc[start + n] += re[n] * scale * w;
+            wsum[start + n] += w * w;
+        }
+    }
+
+    /** the signal into `out`, and the buffers cleared for the next one */
+    finish(out: Float32Array) {
+        const { acc, wsum } = this;
+        for (let i = 0; i < this.length; i++) out[i] = wsum[i] > 1e-10 ? acc[i] / wsum[i] : 0;
+        this.reset();
+    }
 }
 
 /**

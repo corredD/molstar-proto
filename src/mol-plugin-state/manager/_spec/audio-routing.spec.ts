@@ -7,7 +7,7 @@
 import { SortedArray } from '../../../mol-data/int';
 import { groupSpanInElements } from '../../helpers/audio-affect';
 import { createEmptyAudioReactiveFrame, DefaultAudioBandDefinitions } from '../audio-reactor';
-import { applyAudioRouteCurve, AudioRestCutoff, AudioRouter, AudioScopeKinds, createAudioRoute, draftsFromRoutes, maxScopeLevel, parseAudioRouting, sameAudioAffect, serializeAudioRouting } from '../audio-routing';
+import { applyAudioRouteCurve, AudioRestCutoff, clampAudioRouteThreshold, AudioRouter, AudioScopeKinds, createAudioRoute, draftsFromRoutes, isStemEventSource, maxScopeLevel, NoStemEvents, parseAudioRouting, routesFromDrafts, sameAudioAffect, serializeAudioRouting, StemEventValues } from '../audio-routing';
 
 const EmptyFrame = createEmptyAudioReactiveFrame(DefaultAudioBandDefinitions);
 const Chain = { level: 'chain' as const, entryId: '6Q3Q', modelNum: 1, entityId: '1', operatorName: '1', asymId: 'A' };
@@ -286,5 +286,89 @@ describe('audio affect group span', () => {
         expect(groupSpanInElements(elements, 5, 8)).toEqual({ start: 3, end: 6 });
         expect(groupSpanInElements(elements, 3, 4)).toBeUndefined();
         expect(groupSpanInElements(elements, 10, 11)).toEqual({ start: 6, end: 7 });
+    });
+
+    describe('stem events', () => {
+        const NoStems = { drums: 0, bass: 0, other: 0, vocals: 0 };
+        const events = (kick: number, live = true): StemEventValues => ({ kick, snare: 0, bassNote: 0, live });
+
+        it('an event source reads its strength on its frame in Level and in Hits, 0 elsewhere', () => {
+            expect(isStemEventSource('stemKick') && isStemEventSource('stemSnare') && isStemEventSource('stemBassNote')).toBe(true);
+            expect(isStemEventSource('stemDrums')).toBe(false);
+            for (const mode of ['level', 'onset'] as const) {
+                const router = new AudioRouter();
+                const route = createAudioRoute({ enabled: true, source: 'stemKick', mode, target: 'symAxis', gain: 2, floor: 0, releaseMs: 0 });
+                const drive: number[] = [];
+                // a hit of 0.5, then one of 1 two frames later, nothing between: Hits must keep 2:1, not normalize it away
+                for (const k of [0, 0.5, 0, 1, 0]) {
+                    router.update([route], EmptyFrame, NoStems, 16, true, events(k));
+                    drive.push(router.drives.symAxis);
+                }
+                expect(drive).toEqual([0, 1, 0, 2, 0]);
+            }
+        });
+
+        it('Hit threshold rescales (x - t) / (1 - t); 0 is the old math', () => {
+            const at = (threshold: number, x: number) => {
+                const router = new AudioRouter();
+                const route = createAudioRoute({ enabled: true, source: 'stemBass', mode: 'level', target: 'symAxis', gain: 1, floor: 0, releaseMs: 0, threshold });
+                router.update([route], EmptyFrame, { ...NoStems, bass: x }, 16);
+                return router.drives.symAxis;
+            };
+            expect(at(0, 0.3)).toBeCloseTo(0.3);
+            expect(at(0.5, 0.3)).toBe(0);
+            expect(at(0.5, 0.5)).toBe(0);
+            expect(at(0.5, 0.75)).toBeCloseTo(0.5);
+            expect(at(0.5, 1)).toBeCloseTo(1);
+        });
+
+        it('a stand-in route is muted while events are live and returns when they stop', () => {
+            const router = new AudioRouter();
+            const standIn = createAudioRoute({ enabled: true, source: 'stemBass', mode: 'level', target: 'symAxis', gain: 1, floor: 0, releaseMs: 0, standIn: true });
+            const stems = { ...NoStems, bass: 0.6 };
+            router.update([standIn], EmptyFrame, stems, 16);
+            expect(router.drives.symAxis).toBeCloseTo(0.6);
+            router.update([standIn], EmptyFrame, stems, 16, true, events(0, true));
+            expect(router.drives.symAxis).toBe(0);
+            router.update([standIn], EmptyFrame, stems, 16, true, events(0, false));
+            expect(router.drives.symAxis).toBeCloseTo(0.6);
+            router.update([standIn], EmptyFrame, stems, 16, true, NoStemEvents);
+            expect(router.drives.symAxis).toBeCloseTo(0.6);
+        });
+
+        it('a stand-in muted by live events rests at exactly 0, as a route not heard does', () => {
+            const router = new AudioRouter();
+            const standIn = createAudioRoute({ enabled: true, source: 'stemBass', mode: 'level', target: 'symAxis', gain: 1, floor: 0, releaseMs: 100, standIn: true });
+            const stems = { ...NoStems, bass: 0.6 };
+            router.update([standIn], EmptyFrame, stems, 16);
+            for (let i = 0; i < 200; i++) router.update([standIn], EmptyFrame, stems, 16, true, events(0, true));
+            expect(router.values.get(standIn.id)).toBe(0);
+        });
+
+        it('a threshold of 1 or more set through the API is held to 0.95: a source over 1 stays finite', () => {
+            const route = createAudioRoute({ enabled: true, source: 'midsTreble', mode: 'level', target: 'symAxis', gain: 1, floor: 0, releaseMs: 100, threshold: 1 });
+            expect(route.threshold).toBe(0.95);
+            const router = new AudioRouter();
+            const loud = { ...EmptyFrame, mix: 1, frequencyBands: { ...EmptyFrame.frequencyBands, mids: 1, highMids: 1, treble: 1 } };
+            router.update([route], loud, NoStems, 16);
+            for (let i = 0; i < 5; i++) router.update([route], EmptyFrame, NoStems, 16);
+            expect(Number.isFinite(router.drives.symAxis)).toBe(true);
+            expect(clampAudioRouteThreshold(3)).toBe(0.95);
+            expect(clampAudioRouteThreshold(NaN)).toBe(0);
+        });
+
+        it('saved routes without threshold and standIn load as 0 and false; drafts round-trip them', () => {
+            const old = parseAudioRouting(JSON.stringify({ name: 'old', routes: [{ source: 'stemBass', mode: 'level', target: 'symAxis', gain: 1 }] }));
+            expect(old![0].routes[0].threshold).toBe(0);
+            expect(old![0].routes[0].standIn).toBe(false);
+            expect(createAudioRoute({ enabled: true, source: 'stemBass', mode: 'level', target: 'symAxis', gain: 1, floor: 0, releaseMs: 0 })).toMatchObject({ threshold: 0, standIn: false });
+            const route = createAudioRoute({ enabled: true, source: 'stemKick', mode: 'level', target: 'symAxis', gain: 6.5, floor: 0, releaseMs: 120, threshold: 0.3, standIn: true });
+            const parsed = parseAudioRouting(serializeAudioRouting([{ version: 1, name: 'x', routes: draftsFromRoutes([route]) }]));
+            expect(parsed![0].routes[0]).toMatchObject({ source: 'stemKick', threshold: 0.3, standIn: true });
+            expect(routesFromDrafts(parsed![0].routes)[0]).toMatchObject({ threshold: 0.3, standIn: true });
+            // clamped
+            const wild = parseAudioRouting(JSON.stringify({ routes: [{ source: 'stemKick', mode: 'level', target: 'symAxis', threshold: 3, standIn: 'yes' }] }));
+            expect(wild![0].routes[0]).toMatchObject({ threshold: 0.95, standIn: false });
+        });
     });
 });

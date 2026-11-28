@@ -22,7 +22,7 @@ References are `file › symbol`, the file relative to `src/apps/virus-on-the-ro
 | --- | --- | --- | --- |
 | A capsid at once | Tomato bushy stunt virus (2TBV) loads, blob surface, mesoscale preset, SSAO multi-scale, dark background `#09111a`, no illumination | Built | `app.tsx › initializeDefaults` |
 | Music at once | The live stream Le Son Parisien starts; if it fails, `examples/angine.mp3`, copied into the build (D9); if autoplay is blocked, the status says to press Play | **Broken** (fallback) | `app.tsx › loadDefaultAudio`. Served at `/build/virus-on-the-rock/`, the fallback's relative path is `build/virus-on-the-rock/examples/angine.mp3`, which the build does not copy: it 404s |
-| The reference effect at once | Drums & Bass Burst: its 4 routes, axis amplitude 15, beat threshold 1.1 | Built | `catalog.ts › DefaultEffectKnobs`, `app.tsx › initializeDefaults` |
+| The reference effect at once | Drums & Bass Burst: its 6 routes (with stem events the kicks and bass notes hit the axes, the drums and bass levels stand in without them), axis amplitude 15, beat threshold 1.1 | Built | `catalog.ts › DefaultEffectKnobs`, `app.tsx › initializeDefaults` |
 | Large structures stay fluid | Above 500,000 elements, LOD strides 1/15/70/200 at 500/2000/6000 Å | Built | `catalog.ts › LargeStructureElementThreshold`, `LargeStructureLodLevels` |
 | Framed | The camera frames the visible scene × 1.3 | Built | `app.tsx › resetCamera` |
 | URL parameters (`?pdb=`, `?audio=`, `?preset=`, `?routing=`) | A link opens a given virus, song and routing | Not planned (D7) | the app reads no URL |
@@ -74,10 +74,11 @@ References are `file › symbol`, the file relative to `src/apps/virus-on-the-ro
 | Feature | Expected behaviour | Status | Where |
 | --- | --- | --- | --- |
 | Separation in the browser | Off, Spleeter 4-stem (4 × 19.7 MB, 6 s late), HTDemucs (126 MB, 10 s), SCNet (12.9 MB int8, 11 s); drums / bass / other / vocals; a model change during a run is safe; HTDemucs' energy is its stems' audio | Tested | stem-models.ts › StemModels, demucsStemEnergies; stem-worker-core.ts. Stem study 2026-11-27 ([progress](../progress/2026-11-27-stem-study.md)): all three on time (kicks within ±5 ms), levels follow the reference 0.94–0.999, live WebGPU matches the offline replay |
+| Stem events | kicks, snare/hats and bass notes found in the separated drums and bass by every model (the study's reference detector, in the worker, 0.35 s behind each run inside the delay); each fires once on the frame it is heard, its strength against its kind's loud level | Tested, Measured | stem-events.ts, stem-worker-core.ts, stem-separator.ts › sampleEvents. `angine.mp3` on the study's stems: kicks 100 % / 0.5 % extra against the reference; Drums & Bass Burst kicks 77.5 % hit, valley/peak 0.25 (59 %, 0.73 before); Ludo: "working nicely" (study page preview). Spleeter and SCNet events not yet checked on their own separation |
 | Heard in time with the stems | Playback is delayed by the model's latency, so the bands and stems match what is heard | Built | DelayNode, `ensureAnalyser` |
 | Lookahead | The analysis reads the audio ahead of what is heard by its own lag (½ window + band attack + trim), so a hit moves the visuals on the frame it is heard; 0.25 s delay with no model; on at VotR startup | Tested | lookahead-sync: `audio-pipeline.spec.ts` › lookahead (heard kick → peak 0 frames, was 2), clicksync `--lookahead` (heard 9 / 2 / 12 ms, was 51 / 32 / 39); Ludo's Chrome and HTDemucs not run yet |
 | Stand-ins without a model | drums = kick onset over its running peak, squared; bass = max(sub-bass, bass); other = mean(low-mids, high-mids, treble); vocals = mids | Built | audio-reactive-animation.ts:105-121. Raw and weak (0.01–0.1) |
-| Status | loading, warming, running (provider, % of real time, seconds ahead), Behind (bands meanwhile), error (bands) | Built | `ui/cards/stem-separation.tsx › describeStemStatus` |
+| Status | loading, warming, running (provider, % of real time, seconds ahead, "behind: x s lost per run"), Behind (bands meanwhile), error (bands) | Built | `ui/cards/stem-status.ts › describeStemStatus` (`_spec/stem-status.spec.ts`) |
 | Weights | Local `models/stems/`, else Hugging Face | Partial | no local copy; URLs on `resolve/main`, not pinned as the comment says |
 | Provider and delay controls | WebGPU / WASM, delay 0–25 s, in the card (D5) | Partial | delay, Lookahead and Lead Trim in the card (lookahead-sync); the provider has no UI in the app |
 | Retry a failed model | Pick it again | Partial | the same id is ignored: pick Off then the model |
@@ -87,10 +88,12 @@ References are `file › symbol`, the file relative to `src/apps/virus-on-the-ro
 
 | Feature | Expected behaviour | Status | Where |
 | --- | --- | --- | --- |
-| A route | enabled, source, mode (Level / Hits), curve (Linear / Log / Exp, wip), target, gain, floor, release, Who | Tested | audio-routing.ts:77-93 |
+| A route | enabled, source, mode (Level / Hits), curve (Linear / Log / Exp, wip), target, gain, floor, release, Hit threshold, Stand-in, Who | Tested | audio-routing.ts › AudioRoute |
+| Hit threshold | the source at or under it reads 0, above it (x − t) / (1 − t); 0 by default | Tested | audio-routing.spec.ts › stem events |
+| Stand-in | the route rests while stem events arrive, acts again when they stop; Drums & Bass Burst's drums and bass routes | Tested | audio-routing.spec.ts, audio-pipeline.spec.ts › stem events |
 | Route math | floor + gain × curve(input); rise at once, fall over release; duck; sum per channel, cap 40 | Tested (curve, duck, slots, cap on parse), Measured (gain, sync); release not tested | audio-routing.ts:180-243 |
-| Hits mode | the rise over its own 3 s running peak | Built | no test |
-| Sources | Drums, Bass, Other, Vocals (stems), Beat, Loudness, Loudness (vs. the song), Sub-bass, Bass band, Low-mids, Mids, High-mids, Treble, Mids/Treble | Tested | audio-routing.ts:14-29 |
+| Hits mode | the rise over its own 3 s running peak; on an event source (stem events) the event's strength, as Level | Built (bands), Tested (events) | bands: no test; events: audio-routing.spec.ts › stem events |
+| Sources | Drums, Bass, Other, Vocals (stems), Kick, Snare/hats, Bass notes (stem events), Beat, Loudness, Loudness (vs. the song), Sub-bass, Bass band, Low-mids, Mids, High-mids, Treble, Mids/Treble | Tested | audio-routing.ts › AudioRouteSources |
 | Duck (wip) | A duck route scales every other route by max(0.1, 1 − its value); its own source, other duck and camera-step routes untouched | Tested | |
 | Gain ×2 → motion ×2 | linear | Measured | 1.96 |
 | Routes survive a load | same routes after a song or model load | Measured | `keep.mjs` |

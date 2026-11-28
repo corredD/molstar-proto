@@ -437,10 +437,11 @@ describe('audio pipeline (offline, 16 ms frames at 48 kHz)', () => {
             for (let i = 0; i < frameAt(1); i++) expect(early.drives.wiggle[i]).toBe(0);
         });
 
-        for (const how of ['pause', 'end of file'] as const) {
+        // a pause suspends the context (the next describe); the end of the file keeps its tail
+        for (const how of ['end of file'] as const) {
             it(`${how} with a stem delay of 1 s: the drives follow the tail (as an unpaused run) for 1 s, then rest by the formula`, () => {
                 const routes = kickRoutes();
-                const stopOpts = how === 'pause' ? { paused: [[3, 10]] as [number, number][] } : { endedAtS: 3 };
+                const stopOpts = { endedAtS: 3 };
                 const t = runAudioPipeline(kickTrack(), routes, { analysis: burst, durationS: 8, stemDelayS: 1, ...stopOpts });
                 const ref = runAudioPipeline(kickTrack(), kickRoutes(), { analysis: burst, durationS: 8, stemDelayS: 1 });
                 // heard until the first frame not playing + D: the frames at or before 3.008 + 1 s, t < heardUntil
@@ -456,8 +457,8 @@ describe('audio pipeline (offline, 16 ms frames at 48 kHz)', () => {
             });
         }
 
-        it('the separator samples t - D through the tail and never once nothing is heard', () => {
-            const t = runAudioPipeline(kickTrack(), kickRoutes(), { analysis: burst, durationS: 6, stemDelayS: 1, paused: [[3, 10]] });
+        it('the separator samples t - D through the tail of the end of the file and never once nothing is heard', () => {
+            const t = runAudioPipeline(kickTrack(), kickRoutes(), { analysis: burst, durationS: 6, stemDelayS: 1, endedAtS: 3 });
             // heard from the first play (0.016 s) + D: the line is empty before
             const firstHeard = frameAt(1) + 1, lastHeard = frameAt(4);
             const byFrame = new Map(t.stemSamples.map(s => [s.index, s.time]));
@@ -507,11 +508,19 @@ describe('audio pipeline (offline, 16 ms frames at 48 kHz)', () => {
             }
         });
 
-        it('latency 100 ms: the presented drives reach 0 exactly 7 frames after the live ones', () => {
+        it('latency 100 ms: a pause stops what is presented on the frame the live drives stop (the clock stands, the output is cut); the end of the file 7 frames after', () => {
             const firstRest = (t: AudioPipelineTrace) => { let r = -1; for (let i = frameAt(6); i >= firstPaused(3) && allZero(t, i); i--) r = i; return r; };
             const live = pausedRun().t, heard = pausedRun({ outputLatency: 0.1 }).t;
             expect(firstRest(live)).toBeGreaterThan(firstPaused(3));
-            expect(firstRest(heard)).toBe(firstRest(live) + Math.ceil(100 / F));
+            expect(firstRest(heard)).toBe(firstRest(live));
+            // the context keeps running through the end of the file: the output latency holds
+            const endedRest = (L: number) => {
+                const t = runAudioPipeline(kickTrack(), kickRoutes(), { analysis: burst, endedAtS: 3, durationS: 7, outputLatency: L });
+                let r = -1;
+                for (let i = t.count - 1; i >= firstPaused(3) && allZero(t, i); i--) r = i;
+                return r;
+            };
+            expect(endedRest(0.1)).toBe(endedRest(0) + Math.ceil(100 / F));
         });
 
         it('a quiet end of the file heard in the tail is not a blocked analysis (review N3)', () => {
@@ -527,10 +536,10 @@ describe('audio pipeline (offline, 16 ms frames at 48 kHz)', () => {
             expect(blocked.some(b => b)).toBe(false);
         });
 
-        it('heardPlaying with a stem delay of 1 s: true from D after the first play through the tail, false once nothing is heard', () => {
+        it('heardPlaying with a stem delay of 1 s: true from D after the first play through the tail of the end of the file, false once nothing is heard', () => {
             const heard: boolean[] = [];
             runAudioPipeline(kickTrack(), kickRoutes(), {
-                analysis: burst, durationS: 6, stemDelayS: 1, paused: [[3, 10]],
+                analysis: burst, durationS: 6, stemDelayS: 1, endedAtS: 3,
                 onFrame: ({ manager }) => heard.push(manager.state.status.value.heardPlaying),
             });
             // the line is empty for D after the first play (0.016 s)
@@ -541,15 +550,89 @@ describe('audio pipeline (offline, 16 ms frames at 48 kHz)', () => {
         });
     });
 
+    // lane stem-events round 2: a pause suspends the AudioContext, so the delay line, the analysis branch and the tap freeze
+    // with it: nothing is heard at once, and a play resumes where it stopped (nothing lost, nothing replayed). The end of the
+    // file keeps its tail: the song's last D seconds still play out
+    describe('a pause suspends the context', () => {
+        const F = 16;
+        const frameAt = (sec: number) => Math.round(sec * 1000 / F) - 1;
+        const run = (stemDelayS: number, opts: Parameters<typeof runAudioPipeline>[2]) => {
+            const heard: boolean[] = [], state: string[] = [], blocked: boolean[] = [];
+            const t = runAudioPipeline(kickTrack(48000, 20), getDefaultAudioRoutes(), {
+                analysis: burst, stemDelayS, ...opts,
+                onFrame: ({ manager, contextState }) => { heard.push(manager.state.status.value.heardPlaying); state.push(contextState); blocked.push(manager.state.status.value.analysisBlocked); },
+            });
+            return { t, heard, state, blocked };
+        };
+
+        it('suspends on the element\'s pause and resumes on its play (the native controls take the same path), not on the end of the file', () => {
+            const paused = run(1, { durationS: 10, paused: [[3, 6]] });
+            // the pause event fires on the first frame past 3 s, the play on the first past 6 s
+            expect(paused.state.slice(0, frameAt(3)).every(s => s === 'running')).toBe(true);
+            expect(paused.state.slice(frameAt(3), frameAt(6) + 1).every(s => s === 'suspended')).toBe(true);
+            expect(paused.state.slice(frameAt(6) + 1).every(s => s === 'running')).toBe(true);
+            // the element fires pause, then ended (ended already true): the context keeps running through the tail
+            const ended = run(1, { durationS: 10, endedAtS: 3 });
+            expect(ended.state.every(s => s === 'running')).toBe(true);
+        });
+
+        it('a pause is heard as stopped at once, a play as playing at once: the frozen line is not primed again, whatever the pause\'s length (D = 1 s, a 3 s pause)', () => {
+            const { heard, blocked } = run(1, { durationS: 12, paused: [[3, 6]] });
+            // not heard on the first frame after the pause event, heard on the first frame after the play
+            expect(heard[frameAt(3) + 3]).toBe(false);
+            expect(heard.slice(frameAt(3) + 3, frameAt(6) + 1).some(h => h)).toBe(false);
+            expect(heard.slice(frameAt(6) + 2).every(h => h)).toBe(true);
+            expect(blocked.some(b => b)).toBe(false);
+        });
+
+        it('the stems are sampled where the line froze: the first sample after the play is one frame past the last before the pause', () => {
+            const t = runAudioPipeline(kickTrack(48000, 20), getDefaultAudioRoutes(), { analysis: burst, stemDelayS: 1, durationS: 10, paused: [[3, 6]] });
+            // every sample is the context's clock less D (the clock stood still while suspended)
+            for (const x of t.stemSamples) expect(x.time).toBeCloseTo(t.clockS[x.index] - 1, 9);
+            // none while frozen
+            expect(t.stemSamples.filter(x => x.index >= frameAt(3) && x.index <= frameAt(6))).toEqual([]);
+            // across the pause the times continue: the clock moved the frame of the pause event and the frame of the play
+            const before = t.stemSamples.filter(x => x.index < frameAt(3)).pop()!, after = t.stemSamples.find(x => x.index > frameAt(6))!;
+            expect(after.time - before.time).toBeLessThan(3 * F / 1000 + 1e-9);
+        });
+
+        it('a seek or a delay change while paused flushes the frozen line: after the play it is silence for the delay, not the old position', () => {
+            for (const change of ['seek', 'delay'] as const) {
+                const heard: boolean[] = [];
+                runAudioPipeline(kickTrack(48000, 20), getDefaultAudioRoutes(), {
+                    analysis: burst, stemDelayS: 1, durationS: 12, paused: [[3, 6]],
+                    onFrame: ({ index, manager, fire }) => {
+                        if (index === frameAt(4)) { if (change === 'seek') fire('seeking'); else manager.setParams({ stemDelaySeconds: 2 }); }
+                        heard.push(manager.state.status.value.heardPlaying);
+                    },
+                });
+                // the play frame is frameAt(6) + 1: not heard for the new line's silence (D = 1 s, 2 s after a delay change)
+                const silence = change === 'seek' ? 1 : 2;
+                expect(heard.slice(frameAt(6) + 3, frameAt(6) + Math.round(silence * 1000 / F) - 2).some(h => h)).toBe(false);
+                expect(heard.slice(frameAt(6) + Math.round(silence * 1000 / F) + 4).every(h => h)).toBe(true);
+            }
+        });
+
+        it('the drives rest at once after the pause by the formula, and are not those of an unpaused run through the tail', () => {
+            const routes = getDefaultAudioRoutes();
+            const t = runAudioPipeline(kickTrack(48000, 20), routes, { analysis: burst, stemDelayS: 1, durationS: 8, paused: [[3, 10]] });
+            const ref = runAudioPipeline(kickTrack(48000, 20), getDefaultAudioRoutes(), { analysis: burst, stemDelayS: 1, durationS: 8 });
+            // the same up to the pause, then released: below the unpaused run's value on the frame after
+            const p = frameAt(3);
+            for (const k of Object.keys(t.drives) as AudioRouteTarget[]) for (let i = 0; i < p; i++) expect(t.drives[k][i]).toBe(ref.drives[k][i]);
+            expect(t.drives.wiggle[p + 2]).toBeLessThan(ref.drives.wiggle[p + 2]);
+        });
+    });
+
     // the tail is timed from the stop (the element's pause / ended event, the first tick not playing as a fallback) and
     // the delay now: heardUntil = stoppedAt + D on every tick (review S2)
     describe('the tail is timed from the stop', () => {
         const F = 16;
         const frameAt = (sec: number) => Math.round(sec * 1000 / F) - 1;
-        it('the delay raised from 1 to 3 s at 3.5 s, inside the tail of a pause at 3 s: heard until 3 s after the stop', () => {
+        it('the delay raised from 1 to 3 s at 3.5 s, inside the tail of the end of the file at 3 s: heard until 3 s after the stop', () => {
             const heard: boolean[] = [];
             runAudioPipeline(kickTrack(), getDefaultAudioRoutes(), {
-                analysis: burst, durationS: 8, stemDelayS: 1, paused: [[3, 10]],
+                analysis: burst, durationS: 8, stemDelayS: 1, endedAtS: 3,
                 onFrame: ({ index, manager }) => {
                     if (index === frameAt(3.5)) manager.setParams({ stemDelaySeconds: 3 });
                     heard.push(manager.state.status.value.heardPlaying);
@@ -591,18 +674,21 @@ describe('audio pipeline (offline, 16 ms frames at 48 kHz)', () => {
             expect(heard.slice(0, frameAt(6)).some(h => h)).toBe(false);
             expect(heard.slice(frameAt(6) + 1).every(h => h)).toBe(true);
         });
-        it('delay 6 s, resumed at 9.5 s after a pause from 2 s (the tail drained at 8 s): no blocked analysis, not heard for 6 s', () => {
+        it('delay 6 s, paused at 2 s (the line frozen with 4 s of its silence left) and resumed at 9.5 s: no blocked analysis, the rest of the silence is not heard', () => {
             const { blocked, heard } = statusRun(kickTrack(48000, 20), { durationS: 18, stemDelayS: 6, paused: [[2, 9.5]] });
             expect(blocked.some(b => b)).toBe(false);
-            // the first play's empty line until 6 s, then the tail of 0-2 s until 8 s
-            expect(heard.slice(0, frameAt(6)).some(h => h)).toBe(false);
-            expect(heard.slice(frameAt(6) + 1, frameAt(8)).every(h => h)).toBe(true);
-            expect(heard.slice(frameAt(8) + 2, frameAt(15.5)).some(h => h)).toBe(false);
-            expect(heard.slice(frameAt(15.5) + 2).every(h => h)).toBe(true);
+            // the first play's empty line until 6 s of the clock; the pause freezes it at 2 s
+            expect(heard.slice(0, frameAt(9.5) + 1).some(h => h)).toBe(false);
+            // from the resume the remaining 4 s of silence, then the sound the line holds
+            expect(heard.slice(frameAt(9.5) + 2, frameAt(13.5) - 1).some(h => h)).toBe(false);
+            expect(heard.slice(frameAt(13.5) + 2).every(h => h)).toBe(true);
         });
-        it('a resume inside the tail (delay 1 s, paused 3-3.5 s): heard straight through, the line still holds sound', () => {
-            const { heard } = statusRun(kickTrack(), { durationS: 6, stemDelayS: 1, paused: [[3, 3.5]] });
-            expect(heard.slice(frameAt(1) + 1).every(h => h)).toBe(true);
+        it('a pause longer than the delay (delay 1 s, paused 3-5 s): not heard while paused, heard again at the resume, the line still holds sound', () => {
+            const { heard, blocked } = statusRun(kickTrack(), { durationS: 8, stemDelayS: 1, paused: [[3, 5]] });
+            expect(heard.slice(frameAt(1) + 1, frameAt(3)).every(h => h)).toBe(true);
+            expect(heard.slice(frameAt(3) + 1, frameAt(5)).some(h => h)).toBe(false);
+            expect(heard.slice(frameAt(5)).every(h => h)).toBe(true);
+            expect(blocked.some(b => b)).toBe(false);
         });
         it('control: a silent file with a delay of 1 s is blocked 2 s after the line has filled, not before', () => {
             const { blocked } = statusRun(silence(48000, 5), { durationS: 5, stemDelayS: 1 });
@@ -681,7 +767,7 @@ describe('audio pipeline (offline, 16 ms frames at 48 kHz)', () => {
             expect(emitted[emitted.length - 1]).toBeLessThanOrEqual(removedAt + k + 3);
         });
 
-        it('heardPlaying is playing as heard: the same at latency 0, k frames late at 100 ms through a pause; each emission carries it', () => {
+        it('heardPlaying is playing as heard: the same at latency 0; at 100 ms k frames late, except a pause, which is heard as stopped at once (the output is cut), and a resume k frames after the play; each emission carries it', () => {
             const run = (L: number) => {
                 const live: boolean[] = [], heard: boolean[] = [], wrong: string[] = [];
                 let sub: { unsubscribe(): void } | undefined;
@@ -702,8 +788,12 @@ describe('audio pipeline (offline, 16 ms frames at 48 kHz)', () => {
             expect(r0.wrong).toEqual([]);
             const k = Math.ceil(100 / 16);
             const r = run(0.1);
-            expect(r.heard.slice(k)).toEqual(r.live.slice(0, r.live.length - k));
-            expect(r.heard.some((h, i) => h !== r.live[i])).toBe(true);
+            // paused 3-5 s: the pause frame is the first not playing, the play frame the first playing again
+            const P = r.live.indexOf(false), R = r.live.indexOf(true, P);
+            expect(r.heard.slice(0, P)).toEqual(r.live.slice(0, P));
+            expect(r.heard.slice(P, R)).toEqual(r.live.slice(P, R));
+            expect(r.heard.slice(R + k)).toEqual(r.live.slice(R, r.live.length - k));
+            expect(r.heard.slice(R, R + k).some(h => h)).toBe(false);
             expect(r.wrong).toEqual([]);
         });
 
@@ -744,13 +834,15 @@ describe('audio pipeline (offline, 16 ms frames at 48 kHz)', () => {
 
         for (const L of [0.1, 0.2]) {
             const k = Math.ceil(L * 1000 / 16);
-            it(`latency ${L * 1000} ms: the presented trace is the live one ${k} frames late, through a pause`, () => {
+            it(`latency ${L * 1000} ms: the presented trace is the live one ${k} frames late; a pause (the context suspended, the clock standing) is presented at once, and after the play the last entry holds ${k} frames`, () => {
                 const live = series(latencyRun(0)), heard = series(latencyRun(L));
                 let differs = false;
+                // paused 3-5 s: the pause event on the first frame past 3 s, the first playing frame past 5 s
+                const P = Math.round(3000 / 16) - 1, R = Math.round(5000 / 16) - 1;
                 live.forEach((s0, c) => {
                     const sL = heard[c];
                     for (let i = 0; i < s0.length; i++) {
-                        const want = s0[Math.max(0, i - k)];
+                        const want = i < P ? s0[Math.max(0, i - k)] : i < R ? s0[i] : i < R + k ? s0[R - 1] : s0[i - k];
                         if (sL[i] !== want) throw new Error(`series ${c} frame ${i}: ${sL[i]} vs live ${want} at ${i - k}`);
                         if (sL[i] !== s0[i]) differs = true;
                     }
@@ -873,7 +965,7 @@ describe('audio pipeline (offline, 16 ms frames at 48 kHz)', () => {
         });
 
         it('the separator samples t - D + max(0, lead - the model\'s timeline lead) while heard ahead, never before the start or after the stop', () => {
-            const t = lookaheadRun(getDefaultAudioRoutes, burst, true, 0, { durationS: 6, paused: [[3, 10]], stemModel: 'htdemucs' });
+            const t = lookaheadRun(getDefaultAudioRoutes, burst, true, 0, { durationS: 6, endedAtS: 3, stemModel: 'htdemucs' });
             const stemLead = Math.max(0, BurstLeadS - StemModels.htdemucs.timelineLeadSeconds);
             // the first play ticks at F; the stop is the first paused frame's clock
             const start = F / 1000, stop = (Math.floor(3000 / F) + 1) * F / 1000;
@@ -921,10 +1013,11 @@ describe('audio pipeline (offline, 16 ms frames at 48 kHz)', () => {
             for (const x of after) expect([x.index, x.time]).toEqual([x.index, expect.closeTo((x.index + 1) * F / 1000 - 1.2 + stemLead, 9)]);
         });
 
-        for (const how of ['pause', 'end of file'] as const) {
+        // a pause suspends the context instead (the 'a pause suspends the context' tests); the end of the file keeps its tail
+        for (const how of ['end of file'] as const) {
             it(`${how} mid-kick, D 1 s: the drives are the unpaused run's until stop + D - lead, heard playing until stop + D`, () => {
                 const at = 3.27; // the kick at 3.25 s rings until 3.37 s
-                const stopOpts = how === 'pause' ? { paused: [[at, 20]] as [number, number][] } : { endedAtS: at };
+                const stopOpts = { endedAtS: at };
                 const heardPlaying: boolean[] = [];
                 const t = lookaheadRun(getDefaultAudioRoutes, burst, true, 0, { durationS: 8, ...stopOpts, onFrame: ({ manager }) => heardPlaying.push(manager.state.status.value.heardPlaying) });
                 const ref = lookaheadRun(getDefaultAudioRoutes, burst, true, 0, { durationS: 8 });
@@ -946,15 +1039,14 @@ describe('audio pipeline (offline, 16 ms frames at 48 kHz)', () => {
             });
         }
 
-        it('a (re)start: not heard for D, analysed from D - lead, no blocked analysis', () => {
+        it('a start: not heard for D, analysed from D - lead, no blocked analysis', () => {
             const blocked: boolean[] = [], heardPlaying: boolean[] = [];
-            // played from 0, paused 2-4 s (the tail drains at 3 s), resumed at 4 s with an empty line
+            // played from 0 (a resume after a pause continues the frozen line: no new silence, the pause tests)
             const t = lookaheadRun(getDefaultAudioRoutes, burst, true, 0, {
-                durationS: 7, paused: [[2, 4]],
+                durationS: 7,
                 onFrame: ({ manager }) => { blocked.push(manager.state.status.value.analysisBlocked); heardPlaying.push(manager.state.status.value.heardPlaying); },
             });
-            const resume = (Math.floor(4000 / F) + 1) * F / 1000;
-            for (const start of [F / 1000, resume]) {
+            for (const start of [F / 1000]) {
                 const s = Math.round(start * 1000 / F) - 1;
                 const firstAnalysed = lastFrameBefore(start + D, BurstLeadS) + 1, firstHeard = lastFrameBefore(start + D, 0) + 1;
                 expect(firstHeard - firstAnalysed).toBe(2);
@@ -1008,10 +1100,10 @@ describe('audio pipeline (offline, 16 ms frames at 48 kHz)', () => {
             }
             const separator = () => {
                 const sep = new StemSeparator({} as AudioContext, {} as AudioNode, { workerUrl: '', wasmPath: '', localBaseUrls: [] }, () => { });
-                const s = sep as unknown as { model: string, onWorkerMessage(msg: unknown): void };
+                const s = sep as unknown as { model: string, epoch: number, onWorkerMessage(msg: unknown): void };
                 s.model = 'htdemucs';
                 const energies = Object.fromEntries(StemNames.map(n => [n, Float32Array.from(n === 'drums' || n === 'bass' ? kick : kick.map(() => 1e-9))]));
-                s.onWorkerMessage({ type: 'stems', model: 'htdemucs', times: Float64Array.from(times), energies, computeMs: 0, audioMs: 1 });
+                s.onWorkerMessage({ type: 'stems', model: 'htdemucs', times: Float64Array.from(times), energies, computeMs: 0, audioMs: 1, epoch: s.epoch });
                 return sep;
             };
             const stemRun = (shiftS: number | undefined, frameMs: number, routes: () => AudioRoute[]) => {
@@ -1051,6 +1143,163 @@ describe('audio pipeline (offline, 16 ms frames at 48 kHz)', () => {
         });
         it('ambient-pulse makes no dead route (met by lane motions-follow-routes)', () => {
             expect(dead('ambient-pulse')).toEqual([]);
+        });
+    });
+
+    describe('stem events', () => {
+        const D = 1, F = 16;
+        // no release: each event is a one-frame spike, so its frame and value read off the drive
+        const kickRoute = () => [createAudioRoute({ enabled: true, source: 'stemKick', mode: 'level', target: 'symAxis', gain: 1, floor: 0, releaseMs: 0 })];
+        /** kicks at `times` (audio-context = media seconds), each `dbfs`, posted as one worker batch live until 30 s */
+        const kicks = (times: number[], dbfs: (i: number) => number = () => -6) => ({
+            from: 0, until: 30, times: Float64Array.from(times), dbfs: Float32Array.from(times, (_, i) => dbfs(i)), kinds: new Uint8Array(times.length),
+        });
+        const KickAt = [2.5, 3.5, 4.5, 5.5];
+        /** the first frame of each burst: the drive rising from 0 */
+        const onsets = (t: AudioPipelineTrace) => {
+            const out: number[] = [];
+            for (let i = 1; i < t.count; i++) if (t.drives.symAxis[i] > 0 && t.drives.symAxis[i - 1] === 0) out.push(i);
+            return out;
+        };
+        /** the frame whose clock first reaches `s`: frame i ticks at (i + 1) F */
+        const frameAt = (s: number) => Math.ceil(s * 1000 / F - 1e-9) - 1;
+
+        for (const [lookahead, trim] of [[false, 0], [true, 0], [true, 100]] as const) {
+            for (const L of [0, 0.032]) {
+                it(`a kick event moves symAxis once, on the frame it is heard, ±1 frame (D 1 s; lookahead ${lookahead ? `on, trim ${trim} ms` : 'off'}; latency ${L * 1000} ms)`, () => {
+                    const t = runAudioPipeline(silence(48000, 8), kickRoute(), { durationS: 8, stemDelayS: D, stemModel: 'htdemucs', lookahead, lookaheadTrimMs: trim, outputLatency: L, stemEvents: kicks(KickAt) });
+                    const got = onsets(t);
+                    expect(got.length).toBe(KickAt.length);
+                    // one frame each: an event fires once
+                    expect(t.drives.symAxis.filter(x => x > 0).length).toBe(KickAt.length);
+                    // with a 100 ms lead too: events are read at t - D, with no lead
+                    got.forEach((i, k) => expect(Math.abs(i - frameAt(KickAt[k] + D + L))).toBeLessThanOrEqual(1));
+                });
+            }
+        }
+
+        // the frame shown when a kick is heard: the router's entry of a tick is shown once now - L reaches its stamp, so a
+        // kick read at t - D fires late by up to a frame and is shown later still (headed clicksync, HTDemucs on the GPU,
+        // ~64 ms frames: 77 ms late). The kick must show on the frame heard nearest to it
+        // the plugin's animation loop caps its time step at 1000 / 30 ms: at slower frames the tick's dt is not the frame
+        for (const [frameMs, L, cap] of [[16, 0, undefined], [16, 0.032, undefined], [64, 0, undefined], [64, 0.032, undefined], [37, 0.032, undefined], [50, 0.1, undefined], [59, 0.032, 1000 / 30], [64, 0, 1000 / 30]] as const) {
+            it(`a kick event shows on the frame heard nearest to it, within half a frame (${frameMs} ms frames, latency ${L * 1000} ms${cap ? ', tick step capped at 33 ms' : ''})`, () => {
+                const at = Array.from({ length: 8 }, (_, k) => 2.5 + k * 0.531);
+                const t = runAudioPipeline(silence(48000, 8), kickRoute(), { durationS: 8, stemDelayS: D, stemModel: 'htdemucs', frameMs, outputLatency: L, stemEvents: kicks(at), tickStepCapMs: cap });
+                const shown: number[] = [];
+                for (let i = 1; i < t.count; i++) if (t.drives.symAxis[i] > 0 && t.drives.symAxis[i - 1] === 0) shown.push(i);
+                expect(shown.length).toBe(at.length);
+                expect(t.drives.symAxis.filter(x => x > 0).length).toBe(at.length);
+                // frame i is heard at its clock less the latency
+                const lagsMs = shown.map((i, k) => ((i + 1) * frameMs / 1000 - L - D - at[k]) * 1000);
+                for (const lag of lagsMs) expect(Math.abs(lag)).toBeLessThanOrEqual(frameMs / 2 + 1);
+            });
+        }
+
+        /** each kick's lags, ms, between the frames that show it (from 0) and when it is heard: frame i heard at its clock - L */
+        const shownLags = (t: AudioPipelineTrace, at: readonly number[], L: number) => at.map(k => {
+            const out: number[] = [];
+            for (let i = 1; i < t.count; i++) {
+                const lag = (t.clockS[i] - L - D - k) * 1000;
+                if (t.drives.symAxis[i] > 0 && t.drives.symAxis[i - 1] === 0 && lag > -140 && lag < 300) out.push(lag);
+            }
+            return out;
+        });
+
+        // a long frame (a GC pause, the GPU busy): the kicks around it show once each, late if they must, never early by
+        // more than half a frame. With the preset's release (120 ms): a kick fired on a tick whose frame falls in the stall
+        // is shown on the first frame after it, its release under way (a one-frame spike would be skipped by the ring)
+        for (const [frameMs, stallS] of [[16, 0.12], [59, 0.18]] as const) {
+            it(`a stall of ${stallS * 1000} ms at ${frameMs} ms frames: each kick around it shows once, never more than half a frame early`, () => {
+                const L = 0.032;
+                const route = () => [createAudioRoute({ enabled: true, source: 'stemKick', mode: 'level', target: 'symAxis', gain: 1, floor: 0, releaseMs: 120 })];
+                for (let k = 2.3; k <= 2.71; k += 0.05) {
+                    // the ticks stop for stallS, ending when 2.5 s is heard
+                    const end = 2.5 + D + L;
+                    const t = runAudioPipeline(silence(48000, 6), route(), { durationS: 6, stemDelayS: D, stemModel: 'htdemucs', frameMs, outputLatency: L, stemEvents: kicks([k]), stalled: [[end - stallS, end]] });
+                    const rises: number[] = [];
+                    for (let i = 1; i < t.count; i++) if (t.drives.symAxis[i] > t.drives.symAxis[i - 1]) rises.push((t.clockS[i] - L - D - k) * 1000);
+                    expect([k, rises.length]).toEqual([k, 1]);
+                    expect(rises[0]).toBeGreaterThanOrEqual(-frameMs / 2 - 1);
+                }
+            });
+        }
+
+        // frames of uneven length (±20 %) and the clock in render quanta (128 / 48000 s): within half a frame plus twice the
+        // jitter (this frame and the next both move) and a quantum. With a release (a one-frame spike can fall between two presented frames when two ticks land in one)
+        for (const [frameMs, jitter, quantum] of [[59, 12, 0], [1000 / 60, 3.3, 128 / 48000], [16, 0, 128 / 48000]] as const) {
+            it(`uneven frames (${frameMs.toFixed(1)} ms ± ${jitter} ms${quantum ? ', the clock in 128-sample quanta' : ''}): each kick shows once, within half a frame plus the jitter`, () => {
+                const L = 0.032, at = Array.from({ length: 8 }, (_, k) => 2.5 + k * 0.531);
+                const route = [createAudioRoute({ enabled: true, source: 'stemKick', mode: 'level', target: 'symAxis', gain: 1, floor: 0, releaseMs: 120 })];
+                const t = runAudioPipeline(silence(48000, 8), route, { durationS: 8, stemDelayS: D, stemModel: 'htdemucs', frameMs, outputLatency: L, stemEvents: kicks(at), frameJitterMs: jitter, clockQuantumS: quantum || undefined });
+                const rises: number[] = [];
+                for (let i = 1; i < t.count; i++) if (t.drives.symAxis[i] > t.drives.symAxis[i - 1] + 1e-9) rises.push(i);
+                expect(rises.length).toBe(at.length);
+                rises.forEach((i, k) => expect(Math.abs((t.clockS[i] - L - D - at[k]) * 1000)).toBeLessThanOrEqual(frameMs / 2 + 2 * jitter + quantum * 1000 + 1));
+            });
+        }
+
+        it('alternating 1 / 0.5 kicks keep the burst order: each 6 dB softer kick bursts 1 - 6 / 18 of the loud one', () => {
+            const times = [2, 2.5, 3, 3.5, 4, 4.5, 5, 5.5];
+            const t = runAudioPipeline(silence(48000, 8), kickRoute(), { durationS: 8, stemDelayS: D, stemModel: 'htdemucs', stemEvents: kicks(times, i => i % 2 ? -12 : -6) });
+            const peaks = onsets(t).map(i => t.drives.symAxis[i]);
+            expect(peaks.length).toBe(times.length);
+            for (let k = 0; k + 1 < peaks.length; k += 2) {
+                expect(peaks[k]).toBeGreaterThan(0.95);
+                expect(peaks[k + 1] / peaks[k]).toBeGreaterThan(0.6);
+                expect(peaks[k + 1] / peaks[k]).toBeLessThan(0.72);
+            }
+        });
+
+        it('no events (none posted, or no stem model): the event route never moves', () => {
+            const none = runAudioPipeline(silence(48000, 6), kickRoute(), { durationS: 6, stemDelayS: D, stemModel: 'htdemucs', stemEvents: kicks([]) });
+            expect(none.drives.symAxis.every(x => x === 0)).toBe(true);
+            const noModel = runAudioPipeline(kickTrack(48000, 6), kickRoute(), { durationS: 6 });
+            expect(noModel.drives.symAxis.every(x => x === 0)).toBe(true);
+        });
+
+        it('Drums & Bass Burst with live events: the kick and bass-note routes drive symAxis, the stand-ins rest', () => {
+            const routes = getDefaultAudioRoutes();
+            const sources = routes.map(r => `${r.source}${r.standIn ? ' (stand-in)' : ''}->${r.target} ${r.mode} ${r.gain}/${r.releaseMs}`);
+            expect(sources).toEqual([
+                'stemDrums (stand-in)->symAxis onset 6.5/260', 'stemBass (stand-in)->symAxis level 6.5/220',
+                'stemOther->wiggle level 2/350', 'stemVocals->illumination level 0.6/400',
+                'stemKick->symAxis level 6.5/120', 'stemBassNote->symAxis level 3/120',
+            ]);
+            // the kick track's band stems would drive symAxis; with events live and none in it, nothing does
+            const quiet = runAudioPipeline(kickTrack(48000, 6), getDefaultAudioRoutes(), { analysis: burst, durationS: 6, stemDelayS: D, stemModel: 'htdemucs', stemEvents: kicks([]) });
+            expect(quiet.drives.symAxis.every(x => x === 0)).toBe(true);
+            expect(quiet.drives.wiggle.some(x => x > 0)).toBe(true);
+            // a kick, the loudest: 6.5; a bass note 9 dB under the one before it: 3 x 0.5 (its loud level fell 0.06 dB since)
+            const ev = { from: 0, until: 30, times: Float64Array.from([2.5, 3.4, 3.5]), dbfs: Float32Array.from([-6, -6, -15]), kinds: Uint8Array.from([0, 2, 2]) };
+            const hit = runAudioPipeline(silence(48000, 6), getDefaultAudioRoutes(), { analysis: burst, durationS: 6, stemDelayS: D, stemModel: 'htdemucs', stemEvents: ev });
+            expect(Math.max(...hit.drives.symAxis)).toBeCloseTo(6.5, 5);
+            const i = Math.round((3.5 + D) * 1000 / F) - 1;
+            expect(hit.drives.symAxis[i]).toBeGreaterThan(3 * (-15 + 6.06 + 18) / 18 - 1e-3);
+            // a bass note alone: on the frame heard nearest to it (16 ms frames, latency 0: frame i is heard at (i + 1) 16 ms),
+            // not the one before nor after
+            const note = { from: 0, until: 30, times: Float64Array.from([3.5]), dbfs: Float32Array.from([-6]), kinds: Uint8Array.from([2]) };
+            const alone = runAudioPipeline(silence(48000, 6), getDefaultAudioRoutes(), { analysis: burst, durationS: 6, stemDelayS: D, stemModel: 'htdemucs', stemEvents: note });
+            expect(alone.drives.symAxis[i - 1]).toBe(0);
+            expect(alone.drives.symAxis[i]).toBeCloseTo(3, 5);
+        });
+
+        it('before the events\' coverage starts (a model switched mid-play, the delay kept): the stand-ins drive symAxis', () => {
+            const t = runAudioPipeline(kickTrack(48000, 8), getDefaultAudioRoutes(), { analysis: burst, durationS: 8, stemDelayS: D, stemModel: 'htdemucs', stemEvents: { ...kicks([]), from: 4 } });
+            let max = 0;
+            for (let i = 0; i < t.count; i++) { const heard = t.timeMs[i] / 1000 - D; if (heard >= 2 && heard < 3.9) max = Math.max(max, t.drives.symAxis[i]); }
+            expect(max).toBeGreaterThan(1);
+        });
+
+        it('a pause freezes the line: no kick fires while it is frozen, one whose time came during it fires once after the resume, none is lost', () => {
+            const t = runAudioPipeline(silence(48000, 10), kickRoute(), { durationS: 10, stemDelayS: D, stemModel: 'htdemucs', stemEvents: kicks([2.5, 4.5, 7.5]), paused: [[3, 5]] });
+            // the context's clock stands for the 2 s of the pause: a kick is heard at (its time + D) + 2 s of the wall clock if
+            // it is later than the pause (2.5 at 3.5 ctx = 5.5 wall: not at 3.5, which was frozen; 4.5 at 7.5); 7.5 at
+            // 10.5 is past the run
+            const got = onsets(t);
+            expect(got.length).toBe(2);
+            expect(Math.abs(got[0] - frameAt(2.5 + D + 2))).toBeLessThanOrEqual(1);
+            expect(Math.abs(got[1] - frameAt(4.5 + D + 2))).toBeLessThanOrEqual(1);
         });
     });
 });

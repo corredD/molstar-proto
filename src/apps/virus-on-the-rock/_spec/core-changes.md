@@ -147,6 +147,15 @@ manager has no audio and no Who.
   narrowed route finds the 8 slots full and adds nothing, never the global drive; `canNarrowRoute(routes, id)` (narrowed-slots,
   2026-11-27, D3). `AudioRouter.update(…, heard = true)`: not heard, the target is 0 (no floor) and a released value below
   `AudioRestCutoff` (1e-3, exported, Ludo to confirm) is 0 (sound-stops, 2026-11-27; the default keeps every caller).
+  Stem events (stem-events, 2026-11-27): sources `stemKick`, `stemSnare`, `stemBassNote` (`StemEventValues`,
+  `NoStemEvents`, `isStemEventSource`; Hits reads them as Level); route fields `threshold` (Hit threshold, 0–0.95) and
+  `standIn` (rests while events are live), both optional in `createAudioRoute` and in saved routes (0, false);
+  `update(…, heard, events = NoStemEvents)`; `getDefaultAudioRoutes` makes today's drums and bass routes stand-ins and
+  adds `stemKick` Level 6.5/120 and `stemBassNote` Level 3/120 on symAxis. `audio-routing-inspired.ts` writes the two
+  fields. `audio-reactive-animation.ts` reads the separator's events at t − D while heard and hands them to the router.
+  Pause (stem-events round 2): the element's pause event (not the end of the file) suspends the AudioContext and a play
+  resumes it (`frozen`: no tail, no priming), so a pause is heard at once; the end of the file keeps its tail.
+  A seek flushes the line (the `seeking` event). The stem status gains `lostMs`; `describeStemStatus` moved to `ui/cards/stem-status.ts`.
 - **`audio-stems/`** (DSP tested): Spleeter, HTDemucs, SCNet runners, worker, separator. *votr only*; weights on
   Hugging Face `resolve/main` (not pinned). `StemSeparator.onWorkerMessage` stores a non-finite worker energy as 0 (a NaN
   in the model output stuck the running peaks and every stem level for good; router-nan-guard, 2026-11-26).
@@ -161,7 +170,16 @@ manager has no audio and no Who.
   (`demucsStemEnergies`) is the energy of the stem's audio: the frequency branch inverted as demucs' `_ispec`, plus the
   time branch, Hann-4096 frames normalized by the window weight inside the segment (the newest frames are kept), hop
   units (it summed the branches' energies: quiet passages read 15–17 dB loud; spec `demucs-energy.spec.ts`); `dsp.ts`
-  gains `fftOf` and `inverseRealFftInPlace`; ≈ 0.5 s of worker CPU per 5 s chunk.
+  gains `fftOf` and `inverseRealFftInPlace`; ≈ 0.5 s of worker CPU per 5 s chunk. Stem events (stem-events,
+  2026-11-27): `stem-events.ts` (new, pure: the study's reference detector, spec `stem-events.spec.ts` against a
+  Python-generated fixture `stem-events-fixture.py/.json`); every runner returns its drums and bass as mono audio in
+  `StemRunResult.audio` (`run(left, right, audioFrom?)`; HTDemucs from `demucsStemEnergies(…, mono)`, Spleeter
+  `spleeterStemAudio`, SCNet `scnetStemAudio`, both through `dsp.ts`'s new `OverlapAddInverse`; spec
+  `stem-audio.spec.ts`); the worker core keeps a sample counter, runs the detector after each run and posts `events`
+  (`StemWorkerEvents` in the protocol); `StemSeparator` keeps per-kind rings in time order, `sampleEvents` / `skipEvents`, live from the coverage's start to 0.5 s
+past its end once live; an epoch sent with load and reset and echoed on `'stems'` drops a run posted before a clear
+(gate fixes, stem-events). Worker
+  CPU added per run: ~0.2 s (HTDemucs, 5 s), ~0.18 s (Spleeter, 2 s), ~0.31 s (SCNet, 6 s).
 - **`assembly-symmetry-axis.ts`**: axes per structure from RCSB symmetry; mesoscale parts share a middle (wip). The
   per-structure cache stores the bare key (it stored `key:count` and compared the bare key, so it never hit: two
   provider reads per structure per sync, now one after the first; redraw-and-axes-cache, 2026-11-27, spec
