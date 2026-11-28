@@ -43,6 +43,44 @@
   Sonnet for mechanical parts) 3. checks (Sonnet) 4. merge `origin/votr/stem-events`, gate (reviewer + skeptic,
   Opus) 5. PR into `votr/stem-events` (`-R corredD/molstar-proto`), dev server on port 1354 for Ludo.
 
+## Design
+
+Written by the lane (Sonnet) with the Opus advisor; the brief's proposal, refined.
+
+- **Region heard per run = the events' region** `[W - consumed - H, W - H)`, H = `EventHoldBackS` (0.35 s), not the
+  brief's `[W - consumed, W)`. Why: the window's newest samples have no right-hand context and every model's edge is
+  its poorest (demucs' own `apply_model` crossfades segments for that); heard as is, each seam (every 2 s Spleeter, 5 s
+  HTDemucs) would click. The events already use this region and it tiles by sample, and D already covers the hold-back.
+  Departure from the brief, for Ludo; a seam is listened to in the headed check.
+- **Protocol (additive).** Request `{ type: 'listen', on }` (any stem on). Response `stems` gets an optional `listen:
+  { time, samples: Record<StemName, Float32Array> }`: 44.1 kHz mono, `time` = context time of the first sample (same
+  clock and formula as the events' `from`), transferred. All four stems always come back while listening: adding a stem
+  is instant (its chunks are already scheduled at gain 0). Off: no extra work.
+- **Runners.** `run(left, right, audioFrom, allStems?)`: with `allStems`, `audio` also carries other and vocals
+  (HTDemucs: two more `mono` buffers of `demucsStemEnergies`; Spleeter: two more `spleeterStemAudio` calls; SCNet: two
+  more `scnetStemAudio`). The worker copies the region into fresh arrays (the runner's buffers are reused) and
+  transfers them. HTDemucs: only the `audio` record is touched, not the piece loop (lane stem-events r2 owns the yields).
+- **Player** (`audio-stems/stem-player.ts`, `StemPlayer`): a port the manager constructs with the context, a D getter
+  and the mix gain; passed to the separator (no callback parameter). Per stem a GainNode to the destination. `schedule`
+  makes an AudioBuffer (44.1 kHz; the context resamples) per stem and an AudioBufferSourceNode started at
+  `start + D`; chunks tile: a chunk starting within 2 ms of the previous end is placed at the previous end (a 48 kHz
+  context's resampled sample does not leave a gap or overlap); a late chunk starts now with an offset; one fully past
+  is dropped (silence: the brief's lost stretch). Nodes removed on `onended`. `reset()` stops and disconnects every node
+  and waits again for a first chunk; the epoch is checked before scheduling.
+- **Mix mute** (refinement, advisor): the mix gain goes to 0 when the first stem chunk of the epoch plays (its start
+  + D, a 5 ms ramp), not at the click: at Audio Delay 25 s a click-time mute would leave up to 25 s of silence. All stems
+  off: scheduled values cancelled, gain back to 1 at once (the delay line always carries the mix). The analysis branch
+  is untouched. The gain sits between the delay node and the destination: `ensureAnalyser` and `flushDelayLine` both
+  connect through it.
+- **State.** Listening is in `manager.state.stemListen` (BehaviorSubject, one write path `setStemListen(stem, on)`,
+  emits on change), not in params, not saved. Off model clears it. The separator re-sends `listen` after each `load`.
+  Card: a small speaker toggle per stem beside its meter, disabled while no model runs.
+- **Reset hooks:** `separator.reset()` (stop, clear, a new source, a D change), `setModel`, `dispose`.
+- **Tests:** worker core (fake runner): four stems over exactly the region, tiling across runs, only while listening;
+  each model's four-stem audio (Spleeter masks sum to the mix below 11 kHz, bins from B up are zero; HTDemucs equals the
+  existing `mono` path; SCNet the same inverse); player on a fake AudioContext (start + D, late offset, drop, tile,
+  reset, mix mute/unmute timing); headed: click track on the drums stem.
+
 ## Built
 
 ## Decided
