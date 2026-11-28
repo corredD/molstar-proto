@@ -60,15 +60,16 @@ function detectWhole(drums: Float32Array, bass: Float32Array) {
 }
 
 describe('stem events', () => {
-    it('the detector equals the Python one on the fixture signal: same events per kind, |Δt| <= one hop, |ΔdB| <= 0.1', () => {
+    it('the detector equals the Python one on the fixture signal: same events per kind, |Δt| <= 10 µs, |ΔdB| <= 0.01', () => {
         const { drums, bass } = fixtureSignal();
         const got = detectWhole(drums, bass);
         for (const kind of StemEventKinds) {
             const want = fixture[kind], band = Bands[kind];
             expect(got[kind].length).toBe(want.length);
             want.forEach(([t, db], i) => {
-                expect(Math.abs(got[kind][i][0] - t)).toBeLessThanOrEqual(band.hop / SR + 1e-6);
-                expect(Math.abs(got[kind][i][1] - (db - band.fullScaleDb))).toBeLessThanOrEqual(0.1);
+                // the same frames: only the fixture's 6 decimals differ (an off-by-one frame would be 2.9 ms off)
+                expect(Math.abs(got[kind][i][0] - t)).toBeLessThanOrEqual(1e-5);
+                expect(Math.abs(got[kind][i][1] - (db - band.fullScaleDb))).toBeLessThanOrEqual(0.01);
             });
         }
     });
