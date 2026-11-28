@@ -1089,10 +1089,11 @@ describe('audio pipeline (offline, 16 ms frames at 48 kHz)', () => {
         // the frame shown when a kick is heard: the router's entry of a tick is shown once now - L reaches its stamp, so a
         // kick read at t - D fires late by up to a frame and is shown later still (headed clicksync, HTDemucs on the GPU,
         // ~64 ms frames: 77 ms late). The kick must show on the frame heard nearest to it
-        for (const [frameMs, L] of [[16, 0], [16, 0.032], [64, 0], [64, 0.032], [37, 0.032], [50, 0.1]] as const) {
-            it(`a kick event shows on the frame heard nearest to it, within half a frame (${frameMs} ms frames, latency ${L * 1000} ms)`, () => {
+        // the plugin's animation loop caps its time step at 1000 / 30 ms: at slower frames the tick's dt is not the frame
+        for (const [frameMs, L, cap] of [[16, 0, undefined], [16, 0.032, undefined], [64, 0, undefined], [64, 0.032, undefined], [37, 0.032, undefined], [50, 0.1, undefined], [59, 0.032, 1000 / 30], [64, 0, 1000 / 30]] as const) {
+            it(`a kick event shows on the frame heard nearest to it, within half a frame (${frameMs} ms frames, latency ${L * 1000} ms${cap ? ', tick step capped at 33 ms' : ''})`, () => {
                 const at = Array.from({ length: 8 }, (_, k) => 2.5 + k * 0.531);
-                const t = runAudioPipeline(silence(48000, 8), kickRoute(), { durationS: 8, stemDelayS: D, stemModel: 'htdemucs', frameMs, outputLatency: L, stemEvents: kicks(at) });
+                const t = runAudioPipeline(silence(48000, 8), kickRoute(), { durationS: 8, stemDelayS: D, stemModel: 'htdemucs', frameMs, outputLatency: L, stemEvents: kicks(at), tickStepCapMs: cap });
                 const shown: number[] = [];
                 for (let i = 1; i < t.count; i++) if (t.drives.symAxis[i] > 0 && t.drives.symAxis[i - 1] === 0) shown.push(i);
                 expect(shown.length).toBe(at.length);

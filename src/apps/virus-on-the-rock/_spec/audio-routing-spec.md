@@ -23,7 +23,7 @@ audio element ─► analyser (band envelopes, beat) ─► stems ─► router 
   (0.01–0.1) on most tracks.
 - **Stem events** (stem-events, 2026-11-27). With a model that keeps up: kicks, snare/hats and bass notes found in the
   separated drums and bass by the worker, each a value 0–1 (its dBFS within 18 dB under its kind's loud level), read
-  on the frame that hears it (t − D) and 0 on the others. Sources `Kick (stem events)`, `Snare/hats (stem events)`,
+  on the frame heard nearest to it (t − D, less the presented ring's frame quantization) and 0 on the others. Sources `Kick (stem events)`, `Snare/hats (stem events)`,
   `Bass notes (stem events)`. No model: none, and they read 0 (no band fallback).
 - **Router**, per route:
   1. Raw source value.

@@ -79,8 +79,10 @@ posts those. A run reads at most 2.45 s (`EventContextS`) of context before its 
 study's stems the longer Spleeter and SCNet windows lose nothing by it). Frames sit on an absolute hop grid (a counter
 of the samples written since the window started), so the runs' regions join exactly in samples (their context times, at a 48 kHz context, by a resampled sample: the separator never drops an event at a seam). Events under −40 dBFS are
 dropped (near-silence). The separator keeps them per kind, a value 0–1 = the event's dBFS within 18 dB under its kind's
-loud level, and `sampleEvents(t − D)` fires each once on the first frame that reaches it (no lead: an event is dated at
-its onset, Ludo); a frame not heard skips them and a resume reads no backlog. Events are live while `t − D` is within
+loud level, and `sampleEvents` fires each once, on the frame whose presented state is heard nearest to it: a tick
+reads up to t − D + `getEventDisplayShiftSeconds` (⌈L / frame⌉ frame − L, the wait until the presented ring shows the
+tick, plus half a frame; no lead: an event is dated at its onset, Ludo). Read at t − D, a kick showed up to two frames
+late (headed clicksync, HTDemucs, ~64 ms frames: 77 ms). A frame not heard skips them and a resume reads no backlog. Events are live while `t − D` is within
 what the runs covered (from the first run's `from` after a clear: a model switched with the delay kept has no events
 for the audio still in the line) and, once live, 0.5 s (`EventHoldBackS` + 0.15 s) past its end, so a model that only
 just keeps up does not flip the stand-ins each run; stand-in routes act only while events are not live. The rings keep

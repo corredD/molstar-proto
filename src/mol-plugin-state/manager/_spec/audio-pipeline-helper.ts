@@ -58,6 +58,11 @@ export type AudioPipelineOptions = {
      * by a real separator's sampleEvents; none by default (the events never live)
      */
     stemEvents?: StemWorkerEvents,
+    /**
+     * the time handed to tick advances by at most this per frame, as PluginAnimationLoop's proper time does (1000 / 30):
+     * under slow frames it runs slower than the audio clock. Default: no cap (tick's time is the frame's wall time)
+     */
+    tickStepCapMs?: number,
 };
 
 export type AudioPipelineTrace = {
@@ -208,6 +213,7 @@ export function runAudioPipeline(signal: AudioSignal, routes: readonly AudioRout
     for (const t of Object.keys(createZeroDrives()) as AudioRouteTarget[]) trace.drives[t] = new Float64Array(count);
     let mediaFrames = 0;
     let firedPaused = false;
+    let tickTimeMs = 0;
     for (let i = 0; i < count; i++) {
         frameIndex = i;
         const timeMs = (i + 1) * frameMs;
@@ -227,7 +233,8 @@ export function runAudioPipeline(signal: AudioSignal, routes: readonly AudioRout
         ctx.currentTime = timeMs / 1000;
         if (paused && !wasPaused) fire('pause');
         if (ended && !wasEnded) fire('ended');
-        if (!opts.stalled?.some(([a, b]) => timeMs / 1000 > a && timeMs / 1000 <= b)) manager.tick(timeMs);
+        tickTimeMs += Math.min(frameMs, opts.tickStepCapMs ?? Infinity);
+        if (!opts.stalled?.some(([a, b]) => timeMs / 1000 > a && timeMs / 1000 <= b)) manager.tick(opts.tickStepCapMs === undefined ? timeMs : tickTimeMs);
         const stems = manager.stems;
         trace.timeMs[i] = timeMs; trace.mediaS[i] = mediaFrames * frameMs / 1000; trace.paused[i] = paused ? 1 : 0;
         trace.drums[i] = stems.drums; trace.bass[i] = stems.bass; trace.other[i] = stems.other; trace.vocals[i] = stems.vocals;

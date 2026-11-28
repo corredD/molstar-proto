@@ -285,7 +285,8 @@ function writeSpectrumSamples(source: Uint8Array, target: Float32Array) {
  * How far ahead of what is heard now (t - D) a tick reads the stem events, so each shows on the frame heard nearest to
  * it. A tick's router state is shown once now - `latencyS` reaches its stamp: ceil(L / frame) frames later, heard
  * ceil(L / frame) frame - L after the tick's own time; the tick then takes the events within half a frame either side
- * of that. Not a lead (the events are dated at their onset): the frame quantization of the presented ring. Without it
+ * of that. `frameS`: the audio clock's step between ticks, not the loop's dt (capped at 1000 / 30 ms). Not a lead (the
+ * events are dated at their onset): the frame quantization of the presented ring. Without it
  * a kick showed up to two frames late (headed clicksync, HTDemucs on the GPU at ~64 ms frames: 77 ms)
  */
 export function getEventDisplayShiftSeconds(frameS: number, latencyS: number) {
@@ -334,6 +335,8 @@ export class AudioReactiveAnimationManager {
     private stemsSeparated = false;
     /** the stem events heard this frame, written in place each tick */
     private readonly stemEvents: StemEventValues = { kick: 0, snare: 0, bassNote: 0, live: false };
+    /** the clock of the last tick that read the stem events: its step is the frame */
+    private eventsClockAt = NaN;
     private bandDrumsPeak = BandDrumsPeakFloor;
     /**
      * Until when (context time, s) the speakers still play what the delay line holds: Infinity while playing; once
@@ -794,11 +797,15 @@ export class AudioReactiveAnimationManager {
     private updateStems(dtMs: number, silent: boolean, delayS: number, leadS: number, heard: boolean) {
         const params = this.state.params.value;
         if (heard && this.separator && this.audioContext && params.stemModel !== 'off') {
-            this.separator.sampleEvents(this.clockNow - delayS + getEventDisplayShiftSeconds(dtMs / 1000, this.clockLatency), dtMs, this.stemEvents);
+            // the frame: the audio clock's step (the loop's dt is capped at 1000 / 30 ms, so under slow frames it is not)
+            const step = this.clockNow - this.eventsClockAt;
+            const frameS = step > 0 && step <= 0.25 ? step : dtMs / 1000;
+            this.separator.sampleEvents(this.clockNow - delayS + getEventDisplayShiftSeconds(frameS, this.clockLatency), frameS * 1000, this.stemEvents);
         } else {
             this.separator?.skipEvents();
             this.clearStemEvents();
         }
+        this.eventsClockAt = this.clockNow;
         let separated: StemLevels | undefined;
         if (!silent && this.separator && this.audioContext && params.stemModel !== 'off') {
             // the audio heard leadS from now entered the graph one delay ago, plus leadS
