@@ -7,7 +7,7 @@
 
 import { BehaviorSubject } from 'rxjs';
 import { StemModelId, StemModels, StemName } from './audio-stems/stem-models';
-import { AudioAffect, AudioAffectLevel, AudioRoute, AudioRouteDrives, AudioRouter, AudioScopeSlot, canNarrowRoute, canonicalAudioAffect, createZeroDrives, defaultAudioAffect, getDefaultAudioRoutes, limitNarrowedRoutes, maxScopeLevel, sameAudioAffect } from './audio-routing';
+import { AudioAffect, AudioAffectLevel, AudioRoute, AudioRouteDrives, AudioRouter, AudioScopeSlot, canNarrowRoute, canonicalAudioAffect, createZeroDrives, defaultAudioAffect, getDefaultAudioRoutes, limitNarrowedRoutes, maxScopeLevel, sameAudioAffect, StemEventValues } from './audio-routing';
 import { audioAffectFromLoci, clampAffectToLevel, resolveAudioAffect, specializeAudioAffect } from '../helpers/audio-affect';
 import { StructureElement } from '../../mol-model/structure';
 import { StemLevels, StemSeparator, StemSeparatorOptions, StemSeparatorStatus } from './audio-stems/stem-separator';
@@ -319,6 +319,8 @@ export class AudioReactiveAnimationManager {
     private stemStatus: StemSeparatorStatus = { state: 'off' };
     private currentStems: StemLevels = ZeroStems;
     private stemsSeparated = false;
+    /** the stem events heard this frame, written in place each tick */
+    private readonly stemEvents: StemEventValues = { kick: 0, snare: 0, bassNote: 0, live: false };
     private bandDrumsPeak = BandDrumsPeakFloor;
     /**
      * Until when (context time, s) the speakers still play what the delay line holds: Infinity while playing; once
@@ -754,6 +756,7 @@ export class AudioReactiveAnimationManager {
         this.router.reset();
         this.currentStems = ZeroStems;
         this.stemsSeparated = false;
+        this.clearStemEvents();
         this.bandDrumsPeak = BandDrumsPeakFloor;
         this.currentFrame = EmptyAudioReactiveFrame;
         clearAudioReactiveVisualization(this.visualization);
@@ -762,13 +765,26 @@ export class AudioReactiveAnimationManager {
         this.updateStatus(void 0, true);
     }
 
+    private clearStemEvents() {
+        const e = this.stemEvents;
+        e.kick = e.snare = e.bassNote = 0;
+        e.live = false;
+    }
+
     /**
      * `silent`: nothing is heard `leadS` from now (not playing, the delay line drained): the band stand-ins, from the
      * silent analysis. `delayS`: the heard delay, the delay node's (as tick's). `leadS`: how far ahead of what is heard
-     * the stems are sampled (0 without lookahead)
+     * the stems are sampled (0 without lookahead). `heard`: whether sound is heard now: the stem events, dated at their
+     * onset, are read at what is heard now (t - D), with no lead (Ludo, lane stem-events)
      */
-    private updateStems(dtMs: number, silent: boolean, delayS: number, leadS: number) {
+    private updateStems(dtMs: number, silent: boolean, delayS: number, leadS: number, heard: boolean) {
         const params = this.state.params.value;
+        if (heard && this.separator && this.audioContext && params.stemModel !== 'off') {
+            this.separator.sampleEvents(this.clockNow - delayS, dtMs, this.stemEvents);
+        } else {
+            this.separator?.skipEvents();
+            this.clearStemEvents();
+        }
         let separated: StemLevels | undefined;
         if (!silent && this.separator && this.audioContext && params.stemModel !== 'off') {
             // the audio heard leadS from now entered the graph one delay ago, plus leadS
@@ -891,8 +907,8 @@ export class AudioReactiveAnimationManager {
                 writeSpectrumSamples(this.frequencyDomainData, this.visualization.spectrum);
                 this.currentFrame = this.reactor.analyze(this.timeDomainData, sampleRate, dtMs);
             }
-            this.updateStems(dtMs, !(stemLeadS > 0 ? this.heardAt(playing, stemLeadS) : heard), delayS, stemLeadS);
-            this.router.update(this.state.routes.value, this.currentFrame, this.currentStems, dtMs, heard);
+            this.updateStems(dtMs, !(stemLeadS > 0 ? this.heardAt(playing, stemLeadS) : heard), delayS, stemLeadS, heard);
+            this.router.update(this.state.routes.value, this.currentFrame, this.currentStems, dtMs, heard, this.stemEvents);
         } catch (e) {
             error = `${e}`;
         }

@@ -1053,4 +1053,63 @@ describe('audio pipeline (offline, 16 ms frames at 48 kHz)', () => {
             expect(dead('ambient-pulse')).toEqual([]);
         });
     });
+
+    describe('stem events', () => {
+        const D = 1, F = 16;
+        // no release: each event is a one-frame spike, so its frame and value read off the drive
+        const kickRoute = () => [createAudioRoute({ enabled: true, source: 'stemKick', mode: 'level', target: 'symAxis', gain: 1, floor: 0, releaseMs: 0 })];
+        /** kicks at `times` (audio-context = media seconds), each `dbfs`, posted as one worker batch live until 30 s */
+        const kicks = (times: number[], dbfs: (i: number) => number = () => -6) => ({
+            from: 0, until: 30, times: Float64Array.from(times), dbfs: Float32Array.from(times, (_, i) => dbfs(i)), kinds: new Uint8Array(times.length),
+        });
+        const KickAt = [2.5, 3.5, 4.5, 5.5];
+        /** the first frame of each burst: the drive rising from 0 */
+        const onsets = (t: AudioPipelineTrace) => {
+            const out: number[] = [];
+            for (let i = 1; i < t.count; i++) if (t.drives.symAxis[i] > 0 && t.drives.symAxis[i - 1] === 0) out.push(i);
+            return out;
+        };
+        /** the frame whose clock first reaches `s`: frame i ticks at (i + 1) F */
+        const frameAt = (s: number) => Math.ceil(s * 1000 / F - 1e-9) - 1;
+
+        for (const lookahead of [false, true]) {
+            for (const L of [0, 0.032]) {
+                it(`a kick event moves symAxis on the frame it is heard, ±1 frame (D 1 s; lookahead ${lookahead ? 'on' : 'off'}; latency ${L * 1000} ms)`, () => {
+                    const t = runAudioPipeline(silence(48000, 8), kickRoute(), { durationS: 8, stemDelayS: D, stemModel: 'htdemucs', lookahead, outputLatency: L, stemEvents: kicks(KickAt) });
+                    const got = onsets(t);
+                    expect(got.length).toBe(KickAt.length);
+                    got.forEach((i, k) => expect(Math.abs(i - frameAt(KickAt[k] + D + L))).toBeLessThanOrEqual(1));
+                });
+            }
+        }
+
+        it('alternating 1 / 0.5 kicks keep the burst order: each 6 dB softer kick bursts 1 - 6 / 18 of the loud one', () => {
+            const times = [2, 2.5, 3, 3.5, 4, 4.5, 5, 5.5];
+            const t = runAudioPipeline(silence(48000, 8), kickRoute(), { durationS: 8, stemDelayS: D, stemModel: 'htdemucs', stemEvents: kicks(times, i => i % 2 ? -12 : -6) });
+            const peaks = onsets(t).map(i => t.drives.symAxis[i]);
+            expect(peaks.length).toBe(times.length);
+            for (let k = 0; k + 1 < peaks.length; k += 2) {
+                expect(peaks[k]).toBeGreaterThan(0.95);
+                expect(peaks[k + 1] / peaks[k]).toBeGreaterThan(0.6);
+                expect(peaks[k + 1] / peaks[k]).toBeLessThan(0.72);
+            }
+        });
+
+        it('no events (none posted, or no stem model): the event route never moves', () => {
+            const none = runAudioPipeline(silence(48000, 6), kickRoute(), { durationS: 6, stemDelayS: D, stemModel: 'htdemucs', stemEvents: kicks([]) });
+            expect(none.drives.symAxis.every(x => x === 0)).toBe(true);
+            const noModel = runAudioPipeline(kickTrack(48000, 6), kickRoute(), { durationS: 6 });
+            expect(noModel.drives.symAxis.every(x => x === 0)).toBe(true);
+        });
+
+        it('a pause: the kicks in what is not heard never fire, nor after the resume', () => {
+            const t = runAudioPipeline(silence(48000, 10), kickRoute(), { durationS: 10, stemDelayS: D, stemModel: 'htdemucs', stemEvents: kicks([2.5, 4.5, 7.5]), paused: [[3, 5]] });
+            // 2.5 is heard at 3.5, in the tail of the pause at 3; 4.5 would be at 5.5, not heard (the line refills until
+            // 6); 7.5 at 8.5
+            const got = onsets(t);
+            expect(got.length).toBe(2);
+            expect(Math.abs(got[0] - frameAt(2.5 + D))).toBeLessThanOrEqual(1);
+            expect(Math.abs(got[1] - frameAt(7.5 + D))).toBeLessThanOrEqual(1);
+        });
+    });
 });

@@ -11,7 +11,8 @@
 import { AudioReactiveAnimationManager, AudioReactiveAnimationManagerValues } from '../audio-reactive-animation';
 import { AudioRoute, AudioRouteTarget, createZeroDrives } from '../audio-routing';
 import { StemModelId, StemModels } from '../audio-stems/stem-models';
-import { StemLevels } from '../audio-stems/stem-separator';
+import { StemLevels, StemSeparator } from '../audio-stems/stem-separator';
+import type { StemWorkerEvents } from '../audio-stems/stem-worker-protocol';
 
 export type AudioSignal = { name: string, sampleRate: number, samples: Float32Array, kicksS?: readonly number[] };
 
@@ -52,6 +53,11 @@ export type AudioPipelineOptions = {
     stemModel?: StemModelId,
     /** with stemDelayS: what the stub separator's sample returns (undefined, the default: it separates nothing) */
     stemSample?: (time: number, dtMs: number, attackMs: number, releaseMs: number) => StemLevels | undefined,
+    /**
+     * with stemDelayS: the stem events the worker posted (audio-context times: the media time on an unpaused run), read
+     * by a real separator's sampleEvents; none by default (the events never live)
+     */
+    stemEvents?: StemWorkerEvents,
 };
 
 export type AudioPipelineTrace = {
@@ -161,6 +167,15 @@ export function runAudioPipeline(signal: AudioSignal, routes: readonly AudioRout
     }
     if (opts.lookahead !== void 0) stemParams = { lookahead: opts.lookahead, lookaheadTrimMs: opts.lookaheadTrimMs ?? 0 };
     if (opts.stemDelayS !== void 0) {
+        // the events: a real separator's (its constructor only stores its arguments), fed the worker's message once
+        const model = opts.stemModel ?? Object.keys(StemModels)[0] as StemModelId;
+        const events = new StemSeparator({} as AudioContext, {} as AudioNode, {} as ConstructorParameters<typeof StemSeparator>[2], () => { });
+        if (opts.stemEvents) {
+            const fake = events as unknown as { model: StemModelId, onWorkerMessage(m: unknown): void };
+            fake.model = model;
+            fake.onWorkerMessage({ type: 'stems', model, times: new Float64Array(0), computeMs: 0, audioMs: 1, events: opts.stemEvents,
+                energies: { drums: new Float32Array(0), bass: new Float32Array(0), other: new Float32Array(0), vocals: new Float32Array(0) } });
+        }
         (manager as unknown as ManagerStemFakes).separator = {
             async setModel() { }, dispose() { },
             reset() { stemResets.push(frameIndex); },
@@ -168,6 +183,8 @@ export function runAudioPipeline(signal: AudioSignal, routes: readonly AudioRout
                 stemSamples.push({ index: frameIndex, time });
                 return opts.stemSample?.(time, dtMs, attackMs, releaseMs);
             },
+            sampleEvents: events.sampleEvents.bind(events),
+            skipEvents: events.skipEvents.bind(events),
         };
         stemParams = { ...stemParams, stemModel: opts.stemModel ?? Object.keys(StemModels)[0] as StemModelId, stemDelaySeconds: opts.stemDelayS };
     }
