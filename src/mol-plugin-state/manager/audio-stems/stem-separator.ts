@@ -173,7 +173,8 @@ export class StemSeparator {
 
     /** the stem events, by StemEventKinds */
     private eventRings = StemEventKinds.map(() => new EventRing());
-    /** the time the worker's events cover up to (-Infinity: none yet) */
+    /** the time the worker's events cover from (the first run's from since the last clear; NaN: none yet) and up to */
+    private eventsFrom = NaN;
     private eventsUntil = -Infinity;
     /** the time the events were last read up to (NaN: start again from the next frame's span) */
     private eventsReadUntil = NaN;
@@ -278,6 +279,7 @@ export class StemSeparator {
         }
         this.mixPeak = -120;
         for (const ring of this.eventRings) ring.clear();
+        this.eventsFrom = NaN;
         this.eventsUntil = -Infinity;
         this.eventsReadUntil = NaN;
     }
@@ -319,6 +321,7 @@ export class StemSeparator {
                 const t = events.times[i], db = events.dbfs[i];
                 if (ring && Number.isFinite(t) && Number.isFinite(db)) ring.push(t, db);
             }
+            if (Number.isNaN(this.eventsFrom)) this.eventsFrom = events.from;
             this.eventsUntil = events.until;
         }
         this.setStatus({
@@ -384,7 +387,9 @@ export class StemSeparator {
         const last = this.eventsReadUntil;
         const from = !Number.isFinite(last) || at - last > EventMaxSpanS ? at - dtMs / 1000 : Math.min(last, at);
         this.eventsReadUntil = Number.isFinite(last) ? Math.max(last, at) : at;
-        const live = !!this.model && at <= this.eventsUntil;
+        // within what the runs covered: before the first run's from (a model switched with the delay kept) the audio
+        // being heard has no events, and the stand-ins carry it
+        const live = !!this.model && at >= this.eventsFrom && at <= this.eventsUntil;
         out.live = live;
         if (!live) {
             out.kick = out.snare = out.bassNote = 0;

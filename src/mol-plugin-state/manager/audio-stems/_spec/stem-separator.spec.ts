@@ -276,6 +276,8 @@ describe('stem separator: stem events', () => {
         expect(out.live).toBe(true);
         expect(sep.sampleEvents(2.1, 16, out)).toBe(false);
         expect(out.live).toBe(false);
+        // before the coverage starts: not live (the first run after a clear covers from its from)
+        expect(sep.sampleEvents(-0.1, 16, out)).toBe(false);
         (sep as any).model = undefined;
         expect(sep.sampleEvents(1.5, 16, out)).toBe(false);
     });

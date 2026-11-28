@@ -1121,6 +1121,13 @@ describe('audio pipeline (offline, 16 ms frames at 48 kHz)', () => {
             expect(hit.drives.symAxis[frameAt(3.5 + D)]).toBeGreaterThan(3 * (-15 + 6.06 + 18) / 18 - 1e-3);
         });
 
+        it('before the events\' coverage starts (a model switched mid-play, the delay kept): the stand-ins drive symAxis', () => {
+            const t = runAudioPipeline(kickTrack(48000, 8), getDefaultAudioRoutes(), { analysis: burst, durationS: 8, stemDelayS: D, stemModel: 'htdemucs', stemEvents: { ...kicks([]), from: 4 } });
+            let max = 0;
+            for (let i = 0; i < t.count; i++) { const heard = t.timeMs[i] / 1000 - D; if (heard >= 2 && heard < 3.9) max = Math.max(max, t.drives.symAxis[i]); }
+            expect(max).toBeGreaterThan(1);
+        });
+
         it('a pause: the kicks in what is not heard never fire, nor after the resume', () => {
             const t = runAudioPipeline(silence(48000, 10), kickRoute(), { durationS: 10, stemDelayS: D, stemModel: 'htdemucs', stemEvents: kicks([2.5, 4.5, 7.5]), paused: [[3, 5]] });
             // 2.5 is heard at 3.5, in the tail of the pause at 3; 4.5 would be at 5.5, not heard (the line refills until
