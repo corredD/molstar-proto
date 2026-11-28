@@ -70,7 +70,7 @@ describe('AudioReactiveAnimationManager ports', () => {
             fftSize: 2048, smoothingTimeConstant: 0, get frequencyBinCount() { return 1024; },
             getFloatTimeDomainData() { }, getByteFrequencyData() { },
         });
-        let delays = 0, sink: (Node & { gain: { value: number } }) | undefined;
+        let delays = 0, gains = 0, sink: (Node & { gain: { value: number } }) | undefined;
         const delayNodes: (Node & { delayTime: { value: number } })[] = [];
         const ctx = {
             sampleRate: 48_000, currentTime: 0, state: 'running', destination: node('destination'),
@@ -81,7 +81,12 @@ describe('AudioReactiveAnimationManager ports', () => {
                 delayNodes.push(d);
                 return d;
             },
-            createGain: () => (sink = node('sink', { gain: { value: 1 } }) as Node & { gain: { value: number } }),
+            // made in order: the mix gain, the stem player's four, the analysis's silent sink
+            createGain: () => {
+                const n = ++gains, g = node(n === 1 ? 'mix' : n <= 5 ? `stem${n - 2}` : 'sink', { gain: { value: 1 } }) as Node & { gain: { value: number } };
+                if (n > 5) sink = g;
+                return g;
+            },
             resume: async () => { }, close: async () => { },
         };
         const ports: AudioReactivePorts = { createContext: () => ctx as unknown as AudioContext, outputClock: () => ({ now: () => 0, latency: () => 0 }) };
@@ -92,12 +97,14 @@ describe('AudioReactiveAnimationManager ports', () => {
         const manager = new AudioReactiveAnimationManager({} as ConstructorParameters<typeof AudioReactiveAnimationManager>[0], ports);
         manager.state.audioPlayer.next(audio as unknown as HTMLAudioElement);
         await manager.play();
-        // what is heard: source -> delay -> speakers; what is analysed: source -> analysis delay -> analyser -> silent sink
-        expect(log).toEqual(['source->delay1', 'delay1->destination', 'source->delay2', 'delay2->analyser', 'analyser->sink', 'sink->destination']);
+        // what is heard: source -> delay -> mix gain -> speakers (the stems play beside it, into the speakers too); what is
+        // analysed: source -> analysis delay -> analyser -> silent sink
+        expect(log).toEqual(['source->delay1', 'delay1->mix', 'mix->destination', 'stem0->destination', 'stem1->destination', 'stem2->destination', 'stem3->destination',
+            'source->delay2', 'delay2->analyser', 'analyser->sink', 'sink->destination']);
         // the analysis branch reaches the speakers only through a silent sink: else it is heard the lead ahead (a pre-echo)
         expect(sink!.gain.value).toBe(0);
         const flushed = (heard: number, analysed: number) => [
-            `source-x-delay${heard}`, `delay${heard}-x-all`, `source->delay${analysed + 1}`, `delay${analysed + 1}->destination`,
+            `source-x-delay${heard}`, `delay${heard}-x-all`, `source->delay${analysed + 1}`, `delay${analysed + 1}->mix`,
             `source-x-delay${analysed}`, `delay${analysed}-x-all`, `source->delay${analysed + 2}`, `delay${analysed + 2}->analyser`,
         ];
         // a delay of 6 s with lookahead; the fake's setValueAtTime leaves .value as it was (a browser shows it a render
@@ -151,7 +158,8 @@ describe('AudioReactiveAnimationManager ports', () => {
             createAnalyser: () => analyser,
             createMediaElementSource: () => node('source'),
             createDelay: () => node(`delay${++delays}`, { delayTime: { value: 0, setValueAtTime(v: number) { this.value = v; } } }),
-            createGain: () => node('sink', { gain: { value: 1 } }),
+            // the mix gain, the stem player's four, the analysis's silent sink
+            createGain: (() => { let n = 0; return () => node(++n === 1 ? 'mix' : n <= 5 ? `stem${n - 2}` : 'sink', { gain: { value: 1 } }); })(),
             resume: async () => { }, close: async () => { },
         };
         const ports: AudioReactivePorts = { createContext: () => ctx as unknown as AudioContext, outputClock: () => ({ now: () => now, latency: () => 0 }) };
@@ -189,7 +197,7 @@ describe('AudioReactiveAnimationManager ports', () => {
         log.length = 0;
         const changedAt = now;
         manager.setParams({ stemDelaySeconds: 2 });
-        expect(log).toEqual(['source-x-delay1', 'delay1-x-all', 'source->delay3', 'delay3->destination', 'source-x-delay2', 'delay2-x-all', 'source->delay4', 'delay4->analyser']);
+        expect(log).toEqual(['source-x-delay1', 'delay1-x-all', 'source->delay3', 'delay3->mix', 'source-x-delay2', 'delay2-x-all', 'source->delay4', 'delay4->analyser']);
         const heard = heardUntil(2.2);
         for (const [t, h] of heard) expect([t, h]).toEqual([t, t >= changedAt + frameS + 2 - 1e-9]);
         manager.dispose();

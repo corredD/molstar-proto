@@ -68,6 +68,17 @@ flush the delay line (a new delay node; the separator's tap on the source stays)
 resets the router. The status also emits when the presented drives and route values come to rest
 (`presented.atRest`), so the last emission after Clear carries zeros. The ring carries heard, so `heardPlaying` is heard as heard (with no delay, `playing` as heard).
 
+**Listening to the stems** (stem-listen, 2026-11-28). While any stem is on (`manager.setStemListen`, state `stemListen`,
+not saved), the worker (`{ type: 'listen', on }`, re-sent after each load) also returns each run's four stems as 44.1 kHz
+mono audio over the events' region `[W − consumed − H, W − H)` (H = `EventHoldBackS`: not the window's newest samples,
+whose edge no model does well, so the seams do not click; it tiles by sample), with the context time of its first
+sample. `StemPlayer` starts each chunk on the context clock at that time + D into a gain per stem (all four are always
+scheduled, so adding a stem is instant): a chunk within 2 ms of the last one's end is joined to it, a late one starts
+now with an offset, one entirely past is dropped (silence). The mix passes a gain (delay → mix gain → speakers) that goes to
+0 at the first chunk's heard time, not at the click (at D = 25 s that would be up to 25 s of silence), and back at once when
+all are off; the analysis branch is untouched. `separator.reset()` (stop, clear, a new source, a change of D), a model
+change and Off stop every node.
+
 **Stem events** (stem-events, 2026-11-27). Each model run also returns its drums and bass as mono audio (HTDemucs: its
 two branches summed; Spleeter: each stem's soft mask on the mix's complex STFT, the mix's phase; SCNet: its complex
 output, inverted as its torch.istft would), and the worker runs a port of the stem study's reference detector

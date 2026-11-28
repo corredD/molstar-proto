@@ -57,6 +57,7 @@ export function StemSeparationCard({ app }: { app: VirusOnTheRockApp }) {
     const manager = app.viewer.plugin.managers.audioReactive;
     const status = useBehavior(manager.state.status) as AudioReactiveStatus | undefined;
     const params = useBehavior(manager.state.params);
+    const listen = useBehavior(manager.state.stemListen);
     if (!status || !params) return null;
     const current = params.stemModel;
     const delay = getAudioDelaySeconds(params);
@@ -78,6 +79,15 @@ export function StemSeparationCard({ app }: { app: VirusOnTheRockApp }) {
             {StemNames.map(stem => <div key={stem} className='vor-stem-meter' title={stem}>
                 <span>{stem}</span>
                 <div><i style={{ width: `${Math.round(status.stems[stem] * 100)}%`, background: StemMeterColors[stem], opacity: status.stemsSeparated ? 1 : 0.45 }} /></div>
+                <button type='button' className={`vor-stem-listen ${listen[stem] ? 'vor-active' : ''}`} disabled={current === 'off'}
+                    aria-pressed={listen[stem]} aria-label={`Listen to the ${stem}`}
+                    title={current === 'off' ? 'Pick a separation model to listen to the stems.' : `${listen[stem] ? 'Stop listening to' : 'Listen to'} the separated ${stem} (the mix is muted while any stem is on; in time with the visuals).`}
+                    onClick={() => manager.setStemListen(stem, !listen[stem])}>
+                    <svg viewBox='0 0 16 16' width='14' height='14' aria-hidden='true'>
+                        <path d='M2 6h3l4-3v10l-4-3H2z' fill='currentColor' />
+                        {listen[stem] ? <path d='M11 5.5a3.5 3.5 0 0 1 0 5M12.5 3.5a6 6 0 0 1 0 9' fill='none' stroke='currentColor' strokeWidth='1.3' strokeLinecap='round' /> : <path d='M11 6l4 4M15 6l-4 4' fill='none' stroke='currentColor' strokeWidth='1.3' strokeLinecap='round' />}
+                    </svg>
+                </button>
             </div>)}
         </div>
         <p className='vor-help'>{describeStemStatus(status.stemStatus, status.stemsSeparated)}</p>

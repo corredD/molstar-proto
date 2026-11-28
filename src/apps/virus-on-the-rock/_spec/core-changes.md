@@ -153,6 +153,10 @@ manager has no audio and no Who.
   `update(…, heard, events = NoStemEvents)`; `getDefaultAudioRoutes` makes today's drums and bass routes stand-ins and
   adds `stemKick` Level 6.5/120 and `stemBassNote` Level 3/120 on symAxis. `audio-routing-inspired.ts` writes the two
   fields. `audio-reactive-animation.ts` reads the separator's events at t − D while heard and hands them to the router.
+- **Listening to the stems** (stem-listen, 2026-11-28): additive. Protocol `{ type: 'listen', on }` and the `listen`
+  field of the `stems` response; `StemRunner.run(…, allStems)` (other and vocals audio too); `audio-stems/stem-player.ts`;
+  the manager's mix gain (delay → gain → destination in `ensureAnalyser` and `flushDelayLine`), `state.stemListen` and
+  `setStemListen`; the separator's `setListening` and optional `player` argument.
 - **`audio-stems/`** (DSP tested): Spleeter, HTDemucs, SCNet runners, worker, separator. *votr only*; weights on
   Hugging Face `resolve/main` (not pinned). `StemSeparator.onWorkerMessage` stores a non-finite worker energy as 0 (a NaN
   in the model output stuck the running peaks and every stem level for good; router-nan-guard, 2026-11-26).

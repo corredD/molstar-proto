@@ -97,4 +97,18 @@ describe('HTDemucs stem energy', () => {
             expect(Math.abs(mono.bass[i] - tone[i])).toBeLessThan(1e-6);
         }
     });
+
+    it('writes other and vocals too when given (each stem its own time branch, left and right averaged)', () => {
+        const s = signal();
+        const { x, xt } = branches(s, s);
+        const tones = [0, 1, 2, 3].map(k => Float32Array.from({ length: L }, (_, i) => 0.1 * (k + 1) * Math.sin(2 * Math.PI * (k + 2) * i / H)));
+        // the time branch is [stem][L, R][length]; the frequency branch is only the drums' (see branches)
+        tones.forEach((t, k) => { xt.set(t, (k * 2) * L); xt.set(t, (k * 2 + 1) * L); });
+        const mono = { drums: new Float32Array(L), bass: new Float32Array(L), other: new Float32Array(L), vocals: new Float32Array(L) };
+        demucsStemEnergies(x, xt, L, mono);
+        for (let i = 4 * H; i < L - 4 * H; i++) {
+            expect(Math.abs(mono.other[i] - tones[2][i])).toBeLessThan(2e-3);
+            expect(Math.abs(mono.vocals[i] - tones[3][i])).toBeLessThan(2e-3);
+        }
+    });
 });

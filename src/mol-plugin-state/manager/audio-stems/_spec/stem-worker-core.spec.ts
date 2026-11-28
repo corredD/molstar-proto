@@ -349,3 +349,143 @@ describe('stem worker core: stem events', () => {
         expect(stems[0].type === 'stems' && stems[0].events).toBeUndefined();
     });
 });
+
+/** a model that separates nothing: drums the left channel, bass the right, other their half sum, vocals their half difference */
+function listenSetup(model: StemModelId) {
+    const posted: StemWorkerResponse[] = [];
+    const asked: (boolean | undefined)[] = [];
+    const core = new StemWorkerCore({
+        post: m => posted.push(m),
+        prepare: (_, ep) => ep,
+        createRunner: async () => ({
+            async run(left: Float32Array, right: Float32Array, _audioFrom?: number, allStems?: boolean) {
+                asked.push(allStems);
+                const other = left.map((v, i) => (v + right[i]) / 2), vocals = left.map((v, i) => (v - right[i]) / 2);
+                const audio = allStems ? { drums: left.slice(), bass: right.slice(), other, vocals } : { drums: left.slice(), bass: right.slice() };
+                return { ...result(model), audio };
+            },
+            async dispose() { },
+        }),
+        now: () => 0,
+    });
+    let time = 0, at = 0;
+    const block = 4096;
+    const feed = async (sig: { drums: Float32Array, bass: Float32Array }, samples: number) => {
+        for (const end = at + samples; at + block <= end; at += block) {
+            core.handle({ type: 'audio', left: sig.drums.slice(at, at + block), right: sig.bass.slice(at, at + block), sampleRate: 44100, time });
+            time += block / 44100;
+            await flush();
+        }
+    };
+    const chunks = () => posted.flatMap(m => m.type === 'stems' && m.listen ? [m.listen] : []);
+    return { core, posted, feed, chunks, asked };
+}
+
+describe('stem worker core: listening', () => {
+    for (const model of ['htdemucs', 'spleeter', 'scnet'] as const) {
+        it(`${model}: four stems over exactly the consumed samples (less the hold-back), tiling across runs`, async () => {
+            const sig = drumsAndBass(24);
+            const { core, feed, chunks } = listenSetup(model);
+            core.handle({ type: 'load', model, baseUrls: ['local/'], executionProvider: 'wasm', wasmPath: '' });
+            core.handle({ type: 'listen', on: true });
+            await flush();
+            await feed(sig, sig.drums.length);
+            const list = chunks();
+            expect(list.length).toBeGreaterThan(2);
+            for (let i = 1; i < list.length; i++) {
+                expect(Math.abs(list[i - 1].time + list[i - 1].samples.drums.length / 44100 - list[i].time)).toBeLessThan(1e-9);
+            }
+            for (const c of list) {
+                const n = c.samples.drums.length;
+                for (const name of StemNames) expect(c.samples[name].length).toBe(n);
+                const first = Math.round(c.time * 44100);
+                for (let i = 0; i < n; i += 997) {
+                    const j = first + i, l = j >= 0 && j < sig.drums.length ? sig.drums[j] : 0, r = j >= 0 && j < sig.bass.length ? sig.bass[j] : 0;
+                    expect(c.samples.drums[i]).toBeCloseTo(l, 6);
+                    expect(c.samples.bass[i]).toBeCloseTo(r, 6);
+                    expect(c.samples.other[i]).toBeCloseTo((l + r) / 2, 6);
+                    expect(c.samples.vocals[i]).toBeCloseTo((l - r) / 2, 6);
+                }
+            }
+            // the chunks lay down the signal from the second run's region on without a hole: the sum of lengths is
+            // the span from the first start to the last end
+            const span = list[list.length - 1].time + list[list.length - 1].samples.drums.length / 44100 - list[0].time;
+            expect(span * 44100).toBeCloseTo(list.reduce((a, c) => a + c.samples.drums.length, 0), 0);
+        });
+    }
+
+    it('asks the runner for all four stems only while listening, and posts nothing extra otherwise', async () => {
+        const sig = drumsAndBass(24);
+        const { core, feed, chunks, asked } = listenSetup('spleeter');
+        core.handle({ type: 'load', model: 'spleeter', baseUrls: ['local/'], executionProvider: 'wasm', wasmPath: '' });
+        await flush();
+        await feed(sig, 8 * 44100);
+        expect(chunks()).toEqual([]);
+        expect(asked.length).toBeGreaterThan(0);
+        expect(asked.every(a => !a)).toBe(true);
+        core.handle({ type: 'listen', on: true });
+        const before = asked.length;
+        await feed(sig, 8 * 44100);
+        expect(asked.slice(before).every(a => a === true)).toBe(true);
+        const n = chunks().length;
+        expect(n).toBeGreaterThan(0);
+        core.handle({ type: 'listen', on: false });
+        await feed(sig, 8 * 44100);
+        expect(chunks().length).toBe(n);
+    });
+
+    it('a run that straddles a reset posts no listening chunk', async () => {
+        const { core, posted, runners, load, feedChunk } = setup();
+        core.handle(load('spleeter'));
+        core.handle({ type: 'listen', on: true });
+        await flush();
+        feedChunk('spleeter');
+        await flush();
+        core.handle({ type: 'reset' });
+        const W = StemModels.spleeter.windowSamples;
+        const full = new Float32Array(W);
+        runners.get('spleeter')!.runs[0].resolve({ ...result('spleeter'), audio: { drums: full, bass: full, other: full, vocals: full } });
+        await flush();
+        const stems = posted.filter(m => m.type === 'stems');
+        expect(stems.length).toBe(1);
+        expect(stems[0].type === 'stems' && stems[0].listen).toBeUndefined();
+    });
+
+    it('a NaN or Infinity from the model reaches the speakers as 0', async () => {
+        const { core, posted, runners, load, feedChunk } = setup();
+        core.handle(load('spleeter'));
+        core.handle({ type: 'listen', on: true });
+        await flush();
+        feedChunk('spleeter');
+        await flush();
+        const W = StemModels.spleeter.windowSamples;
+        const mk = () => new Float32Array(W).fill(0.5);
+        const other = mk(), vocals = mk();
+        // inside the region (the last 0.35 s of the window are held back)
+        other[W - 20000] = NaN;
+        vocals[W - 20000] = Infinity;
+        runners.get('spleeter')!.runs[0].resolve({ ...result('spleeter'), audio: { drums: mk(), bass: mk(), other, vocals } });
+        await flush();
+        const listen = posted.flatMap(m => m.type === 'stems' && m.listen ? [m.listen] : [])[0];
+        expect(listen).toBeDefined();
+        for (const name of StemNames) for (const v of listen.samples[name]) expect(Number.isFinite(v)).toBe(true);
+        expect(listen.samples.other[listen.samples.other.length - 20000 + Math.round(0.35 * 44100)]).toBe(0);
+    });
+
+    it('the chunk is a copy: the runner reuses its buffers', async () => {
+        const { core, posted, runners, load, feedChunk } = setup();
+        core.handle(load('spleeter'));
+        core.handle({ type: 'listen', on: true });
+        await flush();
+        const W = StemModels.spleeter.windowSamples;
+        const buf = new Float32Array(W).fill(0.25);
+        const audio = { drums: buf, bass: buf, other: buf, vocals: buf };
+        feedChunk('spleeter');
+        await flush();
+        runners.get('spleeter')!.runs[0].resolve({ ...result('spleeter'), audio });
+        await flush();
+        buf.fill(0.75);
+        const first = posted.flatMap(m => m.type === 'stems' && m.listen ? [m.listen] : [])[0];
+        expect(first.samples.drums[0]).toBe(0.25);
+    });
+});

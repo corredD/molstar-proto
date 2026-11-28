@@ -80,15 +80,19 @@ export type StemRunResult = {
     /** window-local sample position of each frame's centre */
     centers: Float64Array,
     /**
-     * the drums and bass as audio, mono, window-local (the window's length), for the stem events. The runner's own
+     * the drums and bass as audio (all four stems when asked), mono, window-local (the window's length), for the stem
+     * events and for listening. The runner's own
      * buffers, overwritten by its next run: the worker reads them before it starts one
      */
     audio?: Partial<Record<StemName, Float32Array>>,
 };
 
 export type StemRunner = {
-    /** `audioFrom`: the window-local sample from which the stem audio is needed (the stem events' context); 0 by default */
-    run(left: Float32Array, right: Float32Array, audioFrom?: number): Promise<StemRunResult>,
+    /**
+     * `audioFrom`: the window-local sample from which the stem audio is needed (the stem events' context); 0 by default.
+     * `allStems`: the audio of other and vocals too, not only drums and bass (listening to the stems)
+     */
+    run(left: Float32Array, right: Float32Array, audioFrom?: number, allStems?: boolean): Promise<StemRunResult>,
     dispose(): Promise<void>,
 };
 
@@ -167,9 +171,9 @@ async function createSpleeter(ctx: StemRunnerContext): Promise<StemRunner> {
     }
     const { T, B } = SpleeterLayout;
     let inv: OverlapAddInverse | undefined;
-    let audio: { drums: Float32Array, bass: Float32Array } | undefined;
+    let audio: Record<StemName, Float32Array> | undefined;
     return {
-        async run(left, right, audioFrom = 0) {
+        async run(left, right, audioFrom = 0, allStems = false) {
             // 512 frames for the window
             const spec = [spleeterSpec(left), spleeterSpec(right)] as const;
             const frames = spec[0].frames;
@@ -206,13 +210,17 @@ async function createSpleeter(ctx: StemRunnerContext): Promise<StemRunner> {
             }
             if (!inv || inv.length !== left.length) {
                 inv = new OverlapAddInverse(StemFftSize, left.length);
-                audio = { drums: new Float32Array(left.length), bass: new Float32Array(left.length) };
+                audio = { drums: new Float32Array(left.length), bass: new Float32Array(left.length), other: new Float32Array(left.length), vocals: new Float32Array(left.length) };
             }
-            spleeterStemAudio(spec, estimates, 0, audioFrom, inv, audio!.drums);
-            spleeterStemAudio(spec, estimates, 1, audioFrom, inv, audio!.bass);
+            const wanted = allStems ? StemNames : StemNames.slice(0, 2);
+            const result: Partial<Record<StemName, Float32Array>> = {};
+            for (const name of wanted) {
+                spleeterStemAudio(spec, estimates, StemNames.indexOf(name), audioFrom, inv, audio![name]);
+                result[name] = audio![name];
+            }
             // frame f covers padded samples [f * hop, f * hop + nfft), the padding one nfft of zeros
             const centers = Float64Array.from({ length: frames }, (_, f) => f * StemHop + StemFftSize / 2 - StemFftSize);
-            return { energies, centers, audio };
+            return { energies, centers, audio: result };
         },
         async dispose() {
             for (const s of sessions) await s.release();
@@ -350,9 +358,9 @@ async function createHTDemucs(ctx: StemRunnerContext): Promise<StemRunner> {
     const timeName = manifest.outputs?.time ?? 'xt';
     const L = 343980;
     const le = Math.ceil(L / StemHop); // 336 frames
-    const audio = { drums: new Float32Array(L), bass: new Float32Array(L) };
+    const audio: Record<StemName, Float32Array> = { drums: new Float32Array(L), bass: new Float32Array(L), other: new Float32Array(L), vocals: new Float32Array(L) };
     return {
-        async run(left, right) {
+        async run(left, right, _audioFrom = 0, allStems = false) {
             const mix = new Float32Array(2 * L);
             mix.set(left.subarray(0, L), 0);
             mix.set(right.subarray(0, L), L);
@@ -377,9 +385,10 @@ async function createHTDemucs(ctx: StemRunnerContext): Promise<StemRunner> {
                 }
                 const x = await values.get(freqName)!.getData() as Float32Array;
                 const xt = await values.get(timeName)!.getData() as Float32Array;
-                const energies = demucsStemEnergies(x, xt, L, audio);
+                const wanted: Partial<Record<StemName, Float32Array>> = allStems ? audio : { drums: audio.drums, bass: audio.bass };
+                const energies = demucsStemEnergies(x, xt, L, wanted);
                 const centers = Float64Array.from({ length: le }, (_, t) => t * StemHop + StemHop / 2);
-                return { energies, centers, audio };
+                return { energies, centers, audio: wanted };
             } finally {
                 for (const t of produced) t.dispose();
             }
@@ -440,9 +449,9 @@ async function createSCNet(ctx: StemRunnerContext): Promise<StemRunner> {
     const session = await ort.InferenceSession.create(`${ctx.baseUrl}scnet.int8.onnx`, sessionOptions(ctx));
     const { L, F, B, frames } = ScnetLayout;
     const inv = new OverlapAddInverse(StemFftSize, L);
-    const audio = { drums: new Float32Array(L), bass: new Float32Array(L) };
+    const audio: Record<StemName, Float32Array> = { drums: new Float32Array(L), bass: new Float32Array(L), other: new Float32Array(L), vocals: new Float32Array(L) };
     return {
-        async run(left, right, audioFrom = 0) {
+        async run(left, right, audioFrom = 0, allStems = false) {
             const spec = scnetSpec(left, right);
             const out = await session.run({ [session.inputNames[0]]: new ort.Tensor('float32', spec, [1, 4, B, F]) });
             const y = out[session.outputNames[0]].data as Float32Array;
@@ -456,10 +465,13 @@ async function createSCNet(ctx: StemRunnerContext): Promise<StemRunner> {
                     }
                 }
             }
-            scnetStemAudio(y, 0, audioFrom, inv, audio.drums);
-            scnetStemAudio(y, 1, audioFrom, inv, audio.bass);
+            const wanted: Partial<Record<StemName, Float32Array>> = {};
+            for (const name of allStems ? StemNames : StemNames.slice(0, 2)) {
+                scnetStemAudio(y, StemNames.indexOf(name), audioFrom, inv, audio[name]);
+                wanted[name] = audio[name];
+            }
             const centers = Float64Array.from({ length: frames }, (_, t) => t * StemHop);
-            return { energies, centers, audio };
+            return { energies, centers, audio: wanted };
         },
         async dispose() {
             await session.release();

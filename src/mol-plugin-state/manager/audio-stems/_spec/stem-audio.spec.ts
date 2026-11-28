@@ -47,4 +47,22 @@ describe('stem audio (Spleeter, SCNet)', () => {
         scnetStemAudio(y, 0, from, new OverlapAddInverse(N, L), out);
         for (let i = from; i < L; i++) expect(Math.abs(out[i] - (left[i] + right[i]) / 2)).toBeLessThan(1e-4);
     });
+
+    it('Spleeter: the four stems\' masks sum back to the mix (mono, under 11 kHz), whatever the estimates', () => {
+        const W = StemModels.spleeter.windowSamples;
+        const { left, right } = pair(W);
+        const { T, B } = SpleeterLayout;
+        const specs = [spleeterSpec(left), spleeterSpec(right)] as const;
+        let seed = 7;
+        const rand = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 2 ** 32;
+        const estimates = [0, 1, 2, 3].map(() => Float32Array.from({ length: 2 * T * B }, () => 0.1 + rand()));
+        const from = W - 5 * 44100;
+        const sum = new Float32Array(W);
+        for (let s = 0; s < 4; s++) {
+            const out = new Float32Array(W);
+            spleeterStemAudio(specs, estimates, s, from, new OverlapAddInverse(N, W), out);
+            for (let i = from; i < W; i++) sum[i] += out[i];
+        }
+        for (let i = from; i < W - N; i++) expect(Math.abs(sum[i] - (left[i] + right[i]) / 2)).toBeLessThan(1e-4);
+    });
 });
