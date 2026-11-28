@@ -207,7 +207,7 @@ export class StemSeparator {
     private listening = false;
 
     /** `player`: plays the stems the worker returns while listening; reset with the timeline */
-    constructor(private context: AudioContext, private source: AudioNode, private options: StemSeparatorOptions, private onStatus: (s: StemSeparatorStatus) => void, private player?: StemPlayer) { }
+    constructor(private context: AudioContext, private source: AudioNode, private options: StemSeparatorOptions, private onStatus: (s: StemSeparatorStatus) => void, private player?: Pick<StemPlayer, 'schedule' | 'reset'>) { }
 
     get currentStatus() {
         return this.status;

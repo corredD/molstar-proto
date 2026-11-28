@@ -80,7 +80,8 @@ export class StemPlayer {
         } else if (this.mixed) {
             this.mixed = false;
             p.cancelScheduledValues(now);
-            p.setValueAtTime(1, now);
+            p.setValueAtTime(p.value, now);
+            p.linearRampToValueAtTime(1, now + RampS);
         }
     }
 
