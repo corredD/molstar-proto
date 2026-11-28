@@ -596,6 +596,23 @@ describe('audio pipeline (offline, 16 ms frames at 48 kHz)', () => {
             expect(after.time - before.time).toBeLessThan(3 * F / 1000 + 1e-9);
         });
 
+        it('a seek or a delay change while paused flushes the frozen line: after the play it is silence for the delay, not the old position', () => {
+            for (const change of ['seek', 'delay'] as const) {
+                const heard: boolean[] = [];
+                runAudioPipeline(kickTrack(48000, 20), getDefaultAudioRoutes(), {
+                    analysis: burst, stemDelayS: 1, durationS: 12, paused: [[3, 6]],
+                    onFrame: ({ index, manager, fire }) => {
+                        if (index === frameAt(4)) { if (change === 'seek') fire('seeking'); else manager.setParams({ stemDelaySeconds: 2 }); }
+                        heard.push(manager.state.status.value.heardPlaying);
+                    },
+                });
+                // the play frame is frameAt(6) + 1: not heard for the new line's silence (D = 1 s, 2 s after a delay change)
+                const silence = change === 'seek' ? 1 : 2;
+                expect(heard.slice(frameAt(6) + 3, frameAt(6) + Math.round(silence * 1000 / F) - 2).some(h => h)).toBe(false);
+                expect(heard.slice(frameAt(6) + Math.round(silence * 1000 / F) + 4).every(h => h)).toBe(true);
+            }
+        });
+
         it('the drives rest at once after the pause by the formula, and are not those of an unpaused run through the tail', () => {
             const routes = getDefaultAudioRoutes();
             const t = runAudioPipeline(kickTrack(48000, 20), routes, { analysis: burst, stemDelayS: 1, durationS: 8, paused: [[3, 10]] });

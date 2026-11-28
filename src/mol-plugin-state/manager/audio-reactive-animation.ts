@@ -619,6 +619,7 @@ export class AudioReactiveAnimationManager {
         audio.addEventListener('play', () => this.onPlay());
         audio.addEventListener('pause', () => this.onStopped());
         audio.addEventListener('ended', () => this.onStopped());
+        audio.addEventListener('seeking', () => this.onSeeking());
     }
 
     /**
@@ -635,6 +636,17 @@ export class AudioReactiveAnimationManager {
                 this.stoppedAt = this.getOutputClock(ctx).now();
             }
         }
+        this.updateStatus(void 0, true);
+    }
+
+    /**
+     * a seek (the element's own controls): what the delay line holds is of the old position, so it is flushed and the
+     * stems and the bands start again; a frozen line would otherwise play the old position after the next play
+     */
+    private onSeeking() {
+        if (this.heardUntil !== -Infinity) this.flushDelayLine();
+        this.reactor.reset();
+        this.separator?.reset();
         this.updateStatus(void 0, true);
     }
 

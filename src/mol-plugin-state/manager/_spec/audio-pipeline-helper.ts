@@ -16,7 +16,7 @@ import type { StemWorkerEvents } from '../audio-stems/stem-worker-protocol';
 
 export type AudioSignal = { name: string, sampleRate: number, samples: Float32Array, kicksS?: readonly number[] };
 
-export type AudioPipelineFrameInfo = { index: number, timeMs: number, mediaS: number, paused: boolean, manager: AudioReactiveAnimationManager, contextState: 'running' | 'suspended' };
+export type AudioPipelineFrameInfo = { index: number, timeMs: number, mediaS: number, paused: boolean, manager: AudioReactiveAnimationManager, contextState: 'running' | 'suspended', fire(type: string): void };
 
 export type AudioPipelineOptions = {
     /** a preset's `analysis`; only the reactor's keys are read, as the manager's getReactorParams does */
@@ -264,7 +264,7 @@ export function runAudioPipeline(signal: AudioSignal, routes: readonly AudioRout
         trace.drums[i] = stems.drums; trace.bass[i] = stems.bass; trace.other[i] = stems.other; trace.vocals[i] = stems.vocals;
         routes.forEach((r, j) => { trace.routeValues[j][i] = manager.routeValues.get(r.id) ?? 0; });
         for (const t of Object.keys(trace.drives) as AudioRouteTarget[]) trace.drives[t][i] = manager.drives[t];
-        opts.onFrame?.({ index: i, timeMs, mediaS: trace.mediaS[i], paused, manager, contextState: ctx.state });
+        opts.onFrame?.({ index: i, timeMs, mediaS: trace.mediaS[i], paused, manager, contextState: ctx.state, fire });
     }
     for (const i of analysedFrames) if (i >= 0) trace.analysed[i] = 1;
     return trace;
