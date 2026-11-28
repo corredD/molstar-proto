@@ -241,23 +241,19 @@ describe('stem separator: stem events', () => {
         }
     });
 
-    it('an overlapping batch keeps the newer events', () => {
-        const { post, run } = make();
-        post(0, 5, [[1.0, -10, 0], [4.0, -10, 0], [4.5, -10, 0]]);
-        // a rerun over [3.9, 6): its events replace the older ones there
-        post(3.9, 6, [[4.2, -10, 0]]);
-        const kicks = run(3.95, 40);
-        const fired = kicks.map((v, i) => v > 0 ? 3.95 + i / 60 : -1).filter(t => t >= 0);
-        expect(fired.length).toBe(1);
-        expect(Math.abs(fired[0] - 4.2)).toBeLessThan(1 / 60);
-    });
-
     it('an event dated past its run\'s end (its peak inside it) stays when the next run starts there', () => {
         const { post, run } = make();
         post(0, 5, [[5.02, -10, 0]]);
         post(5, 7, [[6, -10, 0]]);
         const kicks = run(4.99, 4);
         expect(kicks.some(v => v > 0)).toBe(true);
+    });
+
+    it('so does one when the next run starts a few µs early (a 48 kHz context: the resampler\'s rounding)', () => {
+        const { post, run } = make();
+        post(0, 5, [[5.02, -10, 0]]);
+        post(5 - 5e-6, 7, [[6, -10, 0]]);
+        expect(run(4.99, 4).some(v => v > 0)).toBe(true);
     });
 
     it('strength: at the loud level reads 1, 9 dB under reads 0.5, under the floor reads 0', () => {

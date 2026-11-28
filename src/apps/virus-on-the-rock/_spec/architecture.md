@@ -77,7 +77,7 @@ notes (bass 30–300 Hz). **The worker looks ahead inside the delay** (Ludo, rul
 new audio up to 0.35 s (`EventHoldBackS`) before its window's end, the median's reach and a half window; the next run
 posts those. A run reads at most 2.45 s (`EventContextS`) of context before its region (HTDemucs' whole window; on the
 study's stems the longer Spleeter and SCNet windows lose nothing by it). Frames sit on an absolute hop grid (a counter
-of the samples written since the window started), so the runs' regions join exactly. Events under −40 dBFS are
+of the samples written since the window started), so the runs' regions join exactly in samples (their context times, at a 48 kHz context, by a resampled sample: the separator never drops an event at a seam). Events under −40 dBFS are
 dropped (near-silence). The separator keeps them per kind, a value 0–1 = the event's dBFS within 18 dB under its kind's
 loud level, and `sampleEvents(t − D)` fires each once on the first frame that reaches it (no lead: an event is dated at
 its onset, Ludo); a frame not heard skips them and a resume reads no backlog. Events are live while `t − D` is within

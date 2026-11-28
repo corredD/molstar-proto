@@ -114,11 +114,6 @@ class EventRing {
         this.lastTime = NaN;
     }
 
-    /** drop the events at or after `time`: a newer run covers them */
-    dropFrom(time: number) {
-        while (this.count > 0 && this.timeAt(this.count - 1) >= time) this.count--;
-    }
-
     push(time: number, dbfs: number) {
         const dt = Number.isFinite(this.lastTime) ? Math.max(0, time - this.lastTime) : 0;
         this.lastTime = time;
@@ -317,9 +312,8 @@ export class StemSeparator {
         }
         const events = msg.events;
         if (events) {
-            // only a rerun over what is covered replaces events: a run's region starts where the last one's ended,
-            // and an event of the last one may be dated past it (up to 60 ms after its peak)
-            if (events.from < this.eventsUntil - 1e-6) for (const ring of this.eventRings) ring.dropFrom(events.from);
+            // nothing is dropped: the runs' regions tile (in samples; their context times may cross by a resampled
+            // sample at 48 kHz), and an event of the last run may be dated past its until (up to 60 ms after its peak)
             for (let i = 0; i < events.times.length; i++) {
                 const ring = this.eventRings[events.kinds[i]];
                 const t = events.times[i], db = events.dbfs[i];

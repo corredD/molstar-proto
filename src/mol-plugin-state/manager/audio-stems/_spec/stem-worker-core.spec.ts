@@ -5,6 +5,7 @@
  */
 
 import { mulberry32 } from '../../_spec/audio-pipeline-helper';
+import { LinearResampler } from '../dsp';
 import { StemEventDetector, StemEventKinds } from '../stem-events';
 import { StemModelId, StemModels, StemNames, StemRunResult } from '../stem-models';
 import { StemWorkerCore } from '../stem-worker-core';
@@ -153,8 +154,8 @@ describe('stem worker core', () => {
  * drums on the left, bass on the right (an identity separation reads them back): kicks every 0.5 s and hats between,
  * bass notes every second, their loudness drawn at random
  */
-function drumsAndBass(seconds: number) {
-    const SR = 44100, n = Math.round(seconds * SR);
+function drumsAndBass(seconds: number, SR = 44100) {
+    const n = Math.round(seconds * SR);
     const drums = new Float64Array(n), bass = new Float64Array(n);
     const rnd = mulberry32(5);
     for (let t0 = 0.5; t0 < seconds - 0.2; t0 += 0.5) {
@@ -197,7 +198,7 @@ function wholeEvents(drums: Float32Array, bass: Float32Array) {
 type Events = NonNullable<Extract<StemWorkerResponse, { type: 'stems' }>['events']>;
 
 /** a model that separates nothing: drums are the left channel, bass the right */
-function identitySetup(model: StemModelId) {
+function identitySetup(model: StemModelId, sampleRate = 44100) {
     const posted: StemWorkerResponse[] = [];
     const audioFroms: number[] = [];
     const core = new StemWorkerCore({
@@ -217,8 +218,8 @@ function identitySetup(model: StemModelId) {
     /** `samples` more of the signal, in the tap's blocks; flushed after each block unless `pileUp` */
     const feed = async (sig: { drums: Float32Array, bass: Float32Array }, samples: number, pileUp = false) => {
         for (const end = at + samples; at + block <= end; at += block) {
-            core.handle({ type: 'audio', left: sig.drums.slice(at, at + block), right: sig.bass.slice(at, at + block), sampleRate: 44100, time });
-            time += block / 44100;
+            core.handle({ type: 'audio', left: sig.drums.slice(at, at + block), right: sig.bass.slice(at, at + block), sampleRate, time });
+            time += block / sampleRate;
             if (!pileUp) await flush();
         }
         await flush();
@@ -240,12 +241,12 @@ function identitySetup(model: StemModelId) {
 /** the events of kind k inside [t0, t1) */
 const within = (ev: [number, number, number][], k: number, t0: number, t1: number) => ev.filter(e => e[2] === k && e[0] >= t0 && e[0] < t1);
 
-function expectSameEvents(got: [number, number, number][], want: [number, number, number][], t0: number, t1: number) {
+function expectSameEvents(got: [number, number, number][], want: [number, number, number][], t0: number, t1: number, tolS = 1e-6) {
     for (let k = 0; k < StemEventKinds.length; k++) {
         const g = within(got, k, t0, t1), w = within(want, k, t0, t1);
         expect(g.length).toBe(w.length);
         w.forEach((e, i) => {
-            expect(Math.abs(g[i][0] - e[0])).toBeLessThan(1e-6);
+            expect(Math.abs(g[i][0] - e[0])).toBeLessThan(tolS);
             expect(Math.abs(g[i][1] - e[1])).toBeLessThan(0.01);
         });
     }
@@ -270,6 +271,20 @@ describe('stem worker core: stem events', () => {
             expectSameEvents(out, wholeEvents(sig.drums, sig.bass), batches[0].from + 0.3, batches[batches.length - 1].until);
         });
     }
+
+    it('a 48 kHz context: the runs\' regions join within a resampled sample, and their events are the whole signal\'s', async () => {
+        const sig = drumsAndBass(24, 48000);
+        const { core, feed, events } = identitySetup('spleeter', 48000);
+        core.handle({ type: 'load', model: 'spleeter', baseUrls: ['local/'], executionProvider: 'wasm', wasmPath: '' });
+        await flush();
+        await feed(sig, sig.drums.length);
+        const { out, batches } = events();
+        // the context clock against the resampled sample count: a seam is off by under one 44.1 kHz sample, either way
+        for (let i = 1; i < batches.length; i++) expect(Math.abs(batches[i].from - batches[i - 1].until)).toBeLessThan(1 / 44100);
+        const ratio = 48000 / 44100;
+        const whole = { drums: new LinearResampler(ratio).process(sig.drums), bass: new LinearResampler(ratio).process(sig.bass) };
+        expectSameEvents(out, wholeEvents(whole.drums, whole.bass), batches[0].from + 0.3, batches[batches.length - 1].until, 1 / 44100);
+    });
 
     it('a pile-up run (consumed > chunk) repeats no event and loses none inside its context', async () => {
         const sig = drumsAndBass(24);
