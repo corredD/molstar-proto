@@ -21,23 +21,31 @@ audio element ─► analyser (band envelopes, beat) ─► stems ─► router 
   the bands. Drums are the kick onset over its 3 s running peak, squared. Bass is max(sub-bass, bass), other is the mean
   of low-mids, high-mids and treble, vocals are the mids. The stand-ins are **raw**, so a level route on them is weak
   (0.01–0.1) on most tracks.
+- **Stem events** (stem-events, 2026-11-27). With a model that keeps up: kicks, snare/hats and bass notes found in the
+  separated drums and bass by the worker, each a value 0–1 (its dBFS within 18 dB under its kind's loud level), read
+  on the frame that hears it (t − D) and 0 on the others. Sources `Kick (stem events)`, `Snare/hats (stem events)`,
+  `Bass notes (stem events)`. No model: none, and they read 0 (no band fallback).
 - **Router**, per route:
   1. Raw source value.
-  2. Onset mode only: how much it just rose, over that route's own running peak.
-  3. Curve.
-  4. `floor + gain × value` while sound is heard (playing, or the stem delay line still draining after a pause or the
-     end of the file); once nothing is heard (and before the first play), 0: no floor.
-  5. Rise at once, fall over `releaseMs`. Once nothing is heard, a value released below 1e-3 (`AudioRestCutoff`, Ludo
+  2. Onset mode only: how much it just rose, over that route's own running peak. Not for the event sources: an event
+     is a hit already, and Hits reads it as Level does (normalizing it erased its strength).
+  3. Hit threshold `t` (0–0.95, default 0): at or under `t` reads 0, above it `(x − t) / (1 − t)`.
+  4. Curve.
+  5. `floor + gain × value` while sound is heard (playing, or the stem delay line still draining after a pause or the
+     end of the file); once nothing is heard (and before the first play), 0: no floor. A **stand-in** route reads 0
+     while stem events are live (as if not heard: it releases), and acts again when they stop.
+  6. Rise at once, fall over `releaseMs`. Once nothing is heard, a value released below 1e-3 (`AudioRestCutoff`, Ludo
      to confirm) is 0: it rests at exactly 0, never a denormal tail.
-  6. Duck.
-  7. Sum per channel, capped at 40.
+  7. Duck.
+  8. Sum per channel, capped at 40.
 
 ## Rules
 
 1. **The shared signal path is fixed.** Stems, bands and beat stay as committed (HEAD b1cdfbb72). No change to them to
    make one preset look better: every route and every preset reads them.
-2. **Shaping is opt-in, per route.** Gain, floor, release, curve (Linear, Log, Exp), mode (Level, Hits) and the
-   `Loudness (vs. the song)` source act on one route only. Linear is the default and is exactly the old behaviour.
+2. **Shaping is opt-in, per route.** Gain, floor, release, curve (Linear, Log, Exp), mode (Level, Hits), Hit
+   threshold, Stand-in and the `Loudness (vs. the song)` source act on one route only. Linear, threshold 0 and no
+   stand-in are the defaults and are exactly the old behaviour; saved routes without them load so.
 3. **Routes have one owner: the user.** Only these replace the routes:
    - a preset chip;
    - the Saved… list (saved sets and the built-in route sets);
@@ -80,6 +88,9 @@ capsid, the run is headless at about 30 fps.
 | a released drive, once nothing is heard | each route value 0 or ≥ 1e-3, never a denormal | sound-stops, 2026-11-27 ✔ (while playing a value can still go denormal on an onset route: invisible, the frame redraws anyway) |
 | the clip pass on a paused song | the release passes, one pass that writes the base values back, then no call (`cpu-channels.spec.ts`) | sound-stops, 2026-11-27 ✔ (before: the drive 1.2e-8 at 8 s, a pass every frame) |
 | no route on a motion that is off (offline, `audio-pipeline.spec.ts`) | a preset that turns a motion off makes no route for it | met since lane `motions-follow-routes` (it made a route for `ambient-pulse`'s `amplitude → instanceRandom`; the other presets passed) ✔ |
+| stem events against the study's reference (`angine.mp3`, the study's HTDemucs stems through the worker core with an identity runner, each model's window and chunk; `stem-study/data/ref.json`, ± one hop) | kicks ≥ 95 % hit, ≤ 5 % extra | stem-events, 2026-11-27: kicks 100 / 0.5 % (HTDemucs), 99.9 / 0.3 % (Spleeter's window), 99.8 / 0.5 % (SCNet's); snare/hats 96.8–98.3 / 2.4–3.0 %; bass notes 99.4–99.6 / 0.9–1.7 % ✔. The stems are the reference ones: this measures the detector and the worker's region math, not Spleeter's or SCNet's separation |
+| Drums & Bass Burst with stem events, symAxis at 60 fps (the real separator and router; the study's matcher, `stem-events-design/drive_sim.py`) | kicks ≥ 72 % hit, extra ≤ 5 %, valley/peak ≤ 0.30, ρ ≥ 0.35 (the matcher's ceiling is 76.5 % for ideal impulses: a missed kick has a stronger one within 250 ms) | stem-events, 2026-11-27: HTDemucs 77.5 % / 4.9 % / 0.25 / 0.41 ✔ (before: stemDrums Hits + stemBass Level 59 % / 3.5 % / 0.73 / 0.12); Spleeter's window 77.5 / **5.4** / 0.25 / 0.41 (extra over by 0.4 point); SCNet's 77.6 / 4.7 / 0.25 / 0.41. Ludo checked the proposed routes on the study page's preview in the viewer: "working nicely". Offline (`audio-pipeline.spec.ts` › stem events): a kick fires symAxis on the frame it is heard ±1 (lookahead off and on, latency 0 and 32 ms); a 6 dB softer kick bursts 0.67 of the loud one; with events live and none, the stand-ins rest and symAxis stays 0 |
+| no stem model: every golden unchanged | the goldens | stem-events ✔ (the stand-ins act while no events arrive) |
 | axes between kicks at 120 BPM, as a share of the peak | for information | `data-local/tests/clicksync.mjs`, `kick120.wav`, 2026-11-26: drums only 24 %, bass only 52 %, full preset 41 %; `scripts/votr-sync/clicksync.mjs`, 2026-11-27: 27 %, 66 %, 47 % (a different click, a 60 Hz decay) |
 
 The last row is the committed behaviour. The drums route has a release of 260 ms and the bass envelope 220 ms, so at
