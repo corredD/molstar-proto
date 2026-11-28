@@ -23,7 +23,7 @@ type RouteSpec = [source: AudioRouteSource, mode: 'level' | 'onset', target: Aud
 
 function routesOf(...specs: RouteSpec[]): AudioRouteDraft[] {
     return specs.map(([source, mode, target, gain, floor, releaseMs, affect, curve]) => ({
-        enabled: true, source, mode, curve: curve ?? 'linear', target, gain, floor, releaseMs, affect: affect ?? defaultAudioAffect(),
+        enabled: true, source, mode, curve: curve ?? 'linear', target, gain, floor, releaseMs, threshold: 0, standIn: false, affect: affect ?? defaultAudioAffect(),
     }));
 }
 
