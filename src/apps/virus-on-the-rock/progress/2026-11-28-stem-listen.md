@@ -104,8 +104,8 @@ Written by the lane (Sonnet) with the Opus advisor; the brief's proposal, refine
 
 - **The events' region, not the consumed samples (me, with the advisor; for Ludo to confirm).** The brief's
   `[W - consumed, W)` ends at the window's newest sample, where every model is poorest; the region heard is
-  `[W - consumed - H, W - H)` (H = `EventHoldBackS`), the events' own. It tiles by sample. Measured: no step at the
-  seams (below).
+  `[W - consumed - H, W - H)` (H = `EventHoldBackS`), the events' own. It tiles by sample. Measured on Spleeter
+  only (Learned): no step at its seams.
 - **The mix mutes from the first stem chunk's heard time, not from the click (advisor).** A click-time mute at Audio
   Delay 25 s would be up to 25 s of silence. The mix is heard until then.
 - **All four stems always come back while listening** (the brief): adding a stem is instant; each stem's gain switches it.
@@ -119,6 +119,14 @@ Written by the lane (Sonnet) with the Opus advisor; the brief's proposal, refine
   inverse is the identity on the forward) plus the worker over fake runners.
 
 ## Learned
+
+- **Numbers** (Spleeter on wasm, headless, delay 8 s, `listensync.mjs`): drums stem's kick onsets minus the mix's over
+  18 kicks: median 0.08 ms, max 0.37 ms; the mix as heard after the first stem chunk: peak 0.0000; the mix gain back
+  to 1 after the toggles go off; bass stem's largest step at 2 chunk seams 0.0004 against 0.044 elsewhere (seams
+  do not click, 2 seams of one model). clicksync `--stems spleeter --seconds 10` (routing contract; headless wasm,
+  shared CPU, so the model fell behind early: noisy): gain x2 -> kick-events peak ratio 2.00; HEARD medians
+  between -39 and +31 ms across presets; without a model (`--seconds 8`): gain ratio 1.99, HEARD 41-64 ms. The
+  analysis branch is untouched, so these say the heard-path gain changed nothing measurable.
 
 - A per-sample tap on the heard path (a script processor on each node: the unmixed delay output, the mix gain, a stem's
   gain) measures the claim directly: the drums stem's kick onsets sit within 0.4 ms of the mix's, and the mix
@@ -139,3 +147,12 @@ The runners' four-stem paths, the player and the manager hooks took the room the
 
 | Finding | Severity | Verdict | Commit / open |
 | ------- | -------- | ------- | ------------- |
+| Routing contract numbers and seam claim missing from the progress file | must-fix | confirmed | numbers added (Learned); HTDemucs and SCNet not heard here: left to Ludo's check |
+| D-change spec's fake named every gain `sink` | should-fix | confirmed | fixed (ports spec names each gain) |
+| NaN/Infinity in the listening chunk reach the speakers | should-fix | confirmed | fixed, test first (finite chunk; copy pinned) |
+| Last pending + 0.35 s before a pause or the song's end may never be separated (tap gives no input?) | should-fix | plausible | open: needs a headed run to the end of a song with a stem on |
+| A change of D during a pause's drain un-mutes the mix (separator reset resets the player) | nit to should-fix | confirmed by reading | open to the queue |
+| Mix and stems hard-stop on reset | nit | confirmed | mix now ramps in; stem nodes still stop at once |
+| Separator took the concrete player | nit | confirmed | fixed (Pick of schedule, reset) |
+| scss literals | nit | weak | left |
+| Tests: `consumed > W - H` clamp for listening; manager hands the mix param to the player | test gap | confirmed | open |
