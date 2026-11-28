@@ -6,6 +6,10 @@ queue ([TODO.md](../TODO.md)).
 
 ## In flight
 
+- `stem-events` round 2 ([brief](2026-11-27-stem-events.md#round-2-ludos-try-2026-11-28), on PR #77's branch):
+  holes when HTDemucs falls behind go to the stand-ins, instant pause, HTDemucs faster on WebGPU.
+- `stem-listen` ([brief](2026-11-28-stem-listen.md), branch `votr/stem-listen` on `votr/stem-events`, port 1354): a
+  speaker per stem on the Stem Separation card, heard through the delay in time with the mix.
 
 ## Waiting on Ludo
 
