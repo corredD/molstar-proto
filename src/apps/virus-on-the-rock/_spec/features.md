@@ -92,7 +92,7 @@ References are `file › symbol`, the file relative to `src/apps/virus-on-the-ro
 | Hit threshold | the source at or under it reads 0, above it (x − t) / (1 − t); 0 by default | Tested | audio-routing.spec.ts › stem events |
 | Stand-in | the route rests while stem events arrive, acts again when they stop; Drums & Bass Burst's drums and bass routes | Tested | audio-routing.spec.ts, audio-pipeline.spec.ts › stem events |
 | Route math | floor + gain × curve(input); rise at once, fall over release; duck; sum per channel, cap 40 | Tested (curve, duck, slots, cap on parse), Measured (gain, sync); release not tested | audio-routing.ts:180-243 |
-| Hits mode | the rise over its own 3 s running peak | Built | no test |
+| Hits mode | the rise over its own 3 s running peak; on an event source (stem events) the event's strength, as Level | Built (bands), Tested (events) | bands: no test; events: audio-routing.spec.ts › stem events |
 | Sources | Drums, Bass, Other, Vocals (stems), Kick, Snare/hats, Bass notes (stem events), Beat, Loudness, Loudness (vs. the song), Sub-bass, Bass band, Low-mids, Mids, High-mids, Treble, Mids/Treble | Tested | audio-routing.ts › AudioRouteSources |
 | Duck (wip) | A duck route scales every other route by max(0.1, 1 − its value); its own source, other duck and camera-step routes untouched | Tested | |
 | Gain ×2 → motion ×2 | linear | Measured | 1.96 |

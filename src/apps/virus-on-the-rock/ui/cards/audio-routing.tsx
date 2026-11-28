@@ -9,7 +9,7 @@ import * as React from 'react';
 import { useBehavior } from '../../../../mol-plugin-ui/hooks/use-behavior';
 import { InspiredRoutings } from '../../../../mol-plugin-state/helpers/audio-routing-inspired';
 import { describeAudioAffect, listAudioAffectChoices } from '../../../../mol-plugin-state/helpers/audio-affect';
-import { AudioAffectLevels, AudioRouteCurves, AudioRouteSources, AudioRouteTargets, AudioScopeSlotCount, canonicalAudioAffect, createAudioRoute, draftsFromRoutes, maxScopeLevel, narrowedRouteCount, getDefaultAudioRoutes, loadStoredAudioRouting, parseAudioRouting, routesFromDrafts, storeAudioRouting, type AudioAffect, type AudioRoute, type AudioRoutingPreset } from '../../../../mol-plugin-state/manager/audio-routing';
+import { AudioAffectLevels, AudioRouteCurves, AudioRouteSources, AudioRouteTargets, AudioScopeSlotCount, canonicalAudioAffect, createAudioRoute, draftsFromRoutes, maxScopeLevel, narrowedRouteCount, getDefaultAudioRoutes, isStemEventSource, loadStoredAudioRouting, parseAudioRouting, routesFromDrafts, storeAudioRouting, type AudioAffect, type AudioRoute, type AudioRoutingPreset } from '../../../../mol-plugin-state/manager/audio-routing';
 import { type AudioReactiveStatus } from '../../../../mol-plugin-state/manager/audio-reactive-animation';
 import type { VirusOnTheRockApp } from '../../app';
 
@@ -201,7 +201,7 @@ export function AudioRoutingCard({ app }: { app: VirusOnTheRockApp }) {
                     <select className='vor-select' value={route.source} onChange={e => manager.updateRoute(route.id, { source: e.target.value as AudioRoute['source'] })}>
                         {AudioRouteSources.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
                     </select>
-                    <select className='vor-select vor-route-mode' value={route.mode} title='Level follows how loud the source is; Hits follows how much it just rose' onChange={e => manager.updateRoute(route.id, { mode: e.target.value as AudioRoute['mode'] })}>
+                    <select className='vor-select vor-route-mode' value={route.mode} title={isStemEventSource(route.source) ? 'An event source is a hit already: Level and Hits both read its strength on the frame it is heard' : 'Level follows how loud the source is; Hits follows how much it just rose'} onChange={e => manager.updateRoute(route.id, { mode: e.target.value as AudioRoute['mode'] })}>
                         <option value='level'>Level</option>
                         <option value='onset'>Hits</option>
                     </select>
@@ -233,7 +233,7 @@ export function AudioRoutingCard({ app }: { app: VirusOnTheRockApp }) {
                         Hit threshold {route.threshold.toFixed(2)}
                         <input type='range' min='0' max='0.95' step='0.05' value={route.threshold} onChange={e => manager.updateRoute(route.id, { threshold: parseFloat(e.target.value) })} />
                     </label>
-                    <label title='Only while no stem events arrive (no model, or a model without events)'>
+                    <label title='Only while no stem events arrive (no model, or the model falling behind)'>
                         <input type='checkbox' checked={route.standIn} onChange={e => manager.updateRoute(route.id, { standIn: e.target.checked })} /> Stand-in
                     </label>
                 </div>
