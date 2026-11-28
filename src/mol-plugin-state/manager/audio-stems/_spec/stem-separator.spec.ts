@@ -249,6 +249,17 @@ describe('stem separator: stem events', () => {
         expect(kicks.some(v => v > 0)).toBe(true);
     });
 
+    it('a frame past the coverage (the model just behind) uses up no event: it fires once the next run is in', () => {
+        const { post, out, sep } = make();
+        post(5, 10, [[9.995, -10, 0]]);
+        const fired: number[] = [];
+        sep.sampleEvents(9.99, 16, out); fired.push(out.kick);
+        sep.sampleEvents(10.006, 16, out); fired.push(out.kick);
+        post(10, 15, []);
+        sep.sampleEvents(10.022, 16, out); fired.push(out.kick);
+        expect(fired.filter(v => v > 0).length).toBe(1);
+    });
+
     it('so does one when the next run starts a few µs early (a 48 kHz context: the resampler\'s rounding)', () => {
         const { post, run } = make();
         post(0, 5, [[5.02, -10, 0]]);

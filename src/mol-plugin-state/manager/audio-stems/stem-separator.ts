@@ -392,6 +392,9 @@ export class StemSeparator {
         const live = !!this.model && at >= this.eventsFrom && at <= this.eventsUntil;
         out.live = live;
         if (!live) {
+            // a frame past the coverage reads nothing and uses nothing up: the events not yet read fire once the next
+            // run is in
+            if (at > this.eventsUntil) this.eventsReadUntil = Number.isFinite(last) ? last : Math.min(at, this.eventsUntil);
             out.kick = out.snare = out.bassNote = 0;
             return false;
         }
