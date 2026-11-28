@@ -82,8 +82,11 @@ dropped (near-silence). The separator keeps them per kind, a value 0–1 = the e
 loud level, and `sampleEvents` fires each once, on the frame whose presented state is heard nearest to it: a tick
 reads up to t − D + `getEventDisplayShiftSeconds` (⌈L / frame⌉ frame − L, the wait until the presented ring shows the
 tick, plus half a frame; the frame is the audio clock's step between ticks, not the loop's dt, which is capped at
-1000 / 30 ms; no lead: an event is dated at its onset, Ludo). Read at t − D, a kick showed up to two frames
-late (headed clicksync, HTDemucs, ~64 ms frames: 77 ms). A frame not heard skips them and a resume reads no backlog. Events are live while `t − D` is within
+1000 / 30 ms, a running estimate that leaves out a step over 1.5 × it unless three come in a row; the separator
+tests its 0.25 s gap on the unshifted clock, so a change of shift never restarts its span; no lead: an event is dated at its onset, Ludo). Read at t − D, a kick showed up to two frames
+late (headed clicksync, HTDemucs, ~64 ms frames: 77 ms). The band path and the stem levels keep the ring's quantization (shown up to a
+frame after the tick, about half a frame on median): lookahead and its trim are their compensation, so a preset that
+mixes band or level routes with event routes can show the former up to a frame behind. A frame not heard skips them and a resume reads no backlog. Events are live while `t − D` is within
 what the runs covered (from the first run's `from` after a clear: a model switched with the delay kept has no events
 for the audio still in the line) and, once live, 0.5 s (`EventHoldBackS` + 0.15 s) past its end, so a model that only
 just keeps up does not flip the stand-ins each run; stand-in routes act only while events are not live. The rings keep
