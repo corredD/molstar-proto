@@ -110,7 +110,7 @@ The last row is the committed behaviour. The drums route has a release of 260 ms
 ## Not measured yet
 
 - Sync with separation on, checked in the code only. The analyser reads its own branch (`source → analysis delay
-  (D − lead) → analyser → silent sink`, beside `source → delay (D) → speakers`; lookahead-sync), so the bands read what
+  (D − lead) → analyser → silent sink`, beside `source → delay (D) → mix gain → speakers`; lookahead-sync; the mix gain is 1 except while a stem is listened to (stem-listen), when it is 0 and the stems play beside it, started at their start + D), so the bands read what
   is heard, the lead ahead with lookahead on; the stems are sampled at `currentTime − D + max(0, lead − 30 ms)` (the stem
   timeline's frames are stamped at their window's centre: offline, with a stub of its windows and the real
   `StemSeparator.sample`, it runs ≈ 30 ms ahead of the bands, an onset route 8 ms more, a level route 8 ms less; Ludo to

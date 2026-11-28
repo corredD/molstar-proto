@@ -1,14 +1,18 @@
 #!/usr/bin/env node
 /**
- * Listening check for Virus on the Rock's stem toggles: the click track (kicks every 0.5 s from 0.25 s, generated in the
- * page) is played twice with a stem model and an audio delay, the mix alone, then with the drums stem on. What reaches the
- * speakers is recorded in the page (every node that connects to the destination also feeds a script processor, stamped
- * with the context clock), and each run's kick onsets (the first 256-sample block over the threshold after a quiet one)
- * are listed. Pass: with the drums on, the mix is muted (the recording is the drums stem's, no mix) and a kick's onset
- * is within one render quantum (3 ms) + the model's seam error of the mix's, in context time.
+ * Listening check for Virus on the Rock's stem toggles, in one run: the click track (kicks every 0.5 s from 0.25 s, with
+ * an 80 Hz tone under it, generated in the page) plays with a stem model and an audio delay, drums and bass on. Three
+ * silent script processors tap, at sample resolution on the context clock, the unmuted mix (the delay node's output),
+ * the mix as heard (through its mute gain) and the drums stem (after its gain). Reported: each kick's onset on the drums
+ * stem minus its onset in the mix (PASS within one render quantum, 3 ms; a stem a few ms early is the STFT's pre-echo
+ * on the attack, reported as measured), the mix's peak after the first stem chunk plays (PASS under 0.01: muted), the
+ * mix gain 50 ms after the toggles go off (1: back), and the largest sample-to-sample step of the bass stem at each chunk
+ * seam against its largest step elsewhere (a click shows as a ratio well over 1).
  *
- * node scripts/votr-sync/listensync.mjs --port 1354 [--model spleeter|htdemucs|scnet] [--delay 12] [--seconds 30] [--headed]
+ * node scripts/votr-sync/listensync.mjs --port 1354 [--model spleeter|htdemucs|scnet] [--delay 12] [--seconds 30]
+ *     [--provider wasm|webgpu] [--headed]
  * Weights come from the model's remote base URL when not served locally (an 80-126 MB download on the first run).
+ * `--provider webgpu --headed` for HTDemucs and SCNet, which wasm runs slower than real time.
  * @author Ludovic Autin <autin@scripps.edu>
  */
 import { readdirSync, existsSync } from 'node:fs';
@@ -43,107 +47,116 @@ async function main() {
 
 const browser = await chromium.launch({ headless: !headed, args: ['--use-angle=metal', '--autoplay-policy=no-user-gesture-required'] });
 const page = await browser.newPage();
-page.on('pageerror', e => console.error('pageerror', e.message));
-// every connection to a destination also feeds the recorder
-await page.addInitScript(() => {
-    const connect = AudioNode.prototype.connect;
-    window.__rec = { blocks: [], proc: null, on: false };
-    AudioNode.prototype.connect = function (target, ...rest) {
-        const r = connect.call(this, target, ...rest);
-        if (target instanceof AudioDestinationNode) {
-            const ctx = this.context;
-            if (!window.__rec.proc) {
-                const proc = ctx.createScriptProcessor(256, 1, 1);
-                proc.onaudioprocess = e => {
-                    if (!window.__rec.on) return;
-                    const d = e.inputBuffer.getChannelData(0);
-                    let p = 0;
-                    for (let i = 0; i < d.length; i++) p = Math.max(p, Math.abs(d[i]));
-                    // playbackTime: the context time this block plays
-                    window.__rec.blocks.push([e.playbackTime, p]);
-                };
-                connect.call(proc, ctx.destination);
-                window.__rec.proc = proc;
-            }
-            connect.call(this, window.__rec.proc);
-        }
-        return r;
-    };
-});
+page.on('pageerror', e => console.error('pageerror', e.message, e.stack));
 await page.goto(`http://localhost:${port}/build/virus-on-the-rock/`);
 await page.waitForFunction(() => !!window.__vorProbe, null, { timeout: 60000 });
 await page.waitForTimeout(12000);
 
-async function run(listen) {
-    return page.evaluate(async ([listen, model, delay, seconds, provider]) => {
-        const app = window.__vorProbe, m = app.viewer.plugin.managers.audioReactive;
-        m.setParams({ stemModel: model, stemExecutionProvider: provider, stemDelaySeconds: delay, lookahead: false });
-        let seed = 12345;
-        const rnd = () => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 4294967296; };
-        const sr = 44100, n = Math.ceil((seconds + delay + 2) * sr), pcm = new Int16Array(n);
-        for (let k = 0.25; k < seconds + delay + 2; k += 0.5) {
-            const s0 = Math.round(k * sr);
-            for (let i = 0; i < 0.3 * sr && s0 + i < n; i++) {
-                const t = i / sr;
-                const v = 0.8 * Math.sin(2 * Math.PI * 60 * t) * Math.exp(-t / 0.07) + (i < 0.002 * sr ? 0.3 * (rnd() * 2 - 1) : 0);
-                pcm[s0 + i] += Math.round(Math.max(-1, Math.min(1, v)) * 32767);
-            }
+const result = await page.evaluate(async ([model, delay, seconds, provider]) => {
+    const app = window.__vorProbe, m = app.viewer.plugin.managers.audioReactive;
+    m.setParams({ stemModel: model, stemExecutionProvider: provider, stemDelaySeconds: delay, lookahead: false });
+    let seed = 12345;
+    const rnd = () => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 4294967296; };
+    const sr = 44100, n = Math.ceil((seconds + delay + 2) * sr), pcm = new Int16Array(n);
+    for (let k = 0.25; k < seconds + delay + 2; k += 0.5) {
+        const s0 = Math.round(k * sr);
+        for (let i = 0; i < 0.3 * sr && s0 + i < n; i++) {
+            const t = i / sr;
+            const v = 0.8 * Math.sin(2 * Math.PI * 60 * t) * Math.exp(-t / 0.07) + (i < 0.002 * sr ? 0.3 * (rnd() * 2 - 1) : 0);
+            pcm[s0 + i] += Math.round(Math.max(-1, Math.min(1, v)) * 32767);
         }
-        const head = new ArrayBuffer(44), dv = new DataView(head);
-        const w = (o, s) => { for (let i = 0; i < s.length; i++) dv.setUint8(o + i, s.charCodeAt(i)); };
-        w(0, 'RIFF'); dv.setUint32(4, 36 + n * 2, true); w(8, 'WAVE'); w(12, 'fmt '); dv.setUint32(16, 16, true); dv.setUint16(20, 1, true);
-        dv.setUint16(22, 1, true); dv.setUint32(24, sr, true); dv.setUint32(28, sr * 2, true); dv.setUint16(32, 2, true); dv.setUint16(34, 16, true);
-        w(36, 'data'); dv.setUint32(40, n * 2, true);
-        const file = new File([head, pcm.buffer], 'click120.wav', { type: 'audio/wav' });
-        await m.loadFile(file);
-        window.__rec.blocks = [];
-        window.__rec.on = true;
-        if (listen) m.setStemListen('drums', true);
-        await m.play();
-        const a = m.state.audioPlayer.value, ctx = m['audioContext'];
-        const t0 = ctx.currentTime;
-        await new Promise(done => { const f = () => a.currentTime < seconds + delay ? setTimeout(f, 200) : done(); f(); });
-        window.__rec.on = false;
-        const status = m.state.status.value.stemStatus;
-        const mixGain = m['mixGain'].gain.value;
-        m.setStemListen('drums', false);
-        const afterMix = m['mixGain'].gain.value;
-        m.stop();
-        return { blocks: window.__rec.blocks, t0, status: `${status.state} ${status.message || ''}`, mixGain, afterMix };
-    }, [listen, model, delay, seconds, provider]);
-}
-
-/** kick onsets in the context's time: the first block over the threshold after a quiet one */
-function onsets(blocks, threshold) {
-    const out = [];
-    let quiet = true;
-    for (const [t, p] of blocks) {
-        if (p > threshold && quiet) { out.push(t); quiet = false; } else if (p < threshold / 4) quiet = true;
     }
-    return out;
-}
-const med = a => { if (!a.length) return NaN; const s = [...a].sort((x, y) => x - y); return s[Math.floor(s.length / 2)]; };
+    // the sustained tone under the kicks, in the bass: a seam shows in it
+    for (let i = 0; i < n; i++) pcm[i] += Math.round(0.05 * Math.sin(2 * Math.PI * 80 * i / sr) * 32767);
+    const head = new ArrayBuffer(44), dv = new DataView(head);
+    const w = (o, s) => { for (let i = 0; i < s.length; i++) dv.setUint8(o + i, s.charCodeAt(i)); };
+    w(0, 'RIFF'); dv.setUint32(4, 36 + n * 2, true); w(8, 'WAVE'); w(12, 'fmt '); dv.setUint32(16, 16, true); dv.setUint16(20, 1, true);
+    dv.setUint16(22, 1, true); dv.setUint32(24, sr, true); dv.setUint32(28, sr * 2, true); dv.setUint16(32, 2, true); dv.setUint16(34, 16, true);
+    w(36, 'data'); dv.setUint32(40, n * 2, true);
+    const file = new File([head, pcm.buffer], 'click120.wav', { type: 'audio/wav' });
+    // the click track is added with the tone: scale down the sum's peak a little
+    await m.loadFile(file);
+    const ctx = m['audioContext'], player = m['stemPlayer'];
+    // the taps: silent script processors, each recording its input at sample resolution on the context clock
+    const seams = [];
+    const tap = (node, keep) => {
+        const proc = ctx.createScriptProcessor(256, 1, 1);
+        // peaks per block; the largest step away from the chunk seams, and at each seam (the seams are known D ahead)
+        const rec = { onsets: [], peakAfter: [], loud: [], stepAway: 0, stepAt: new Map(), last: 0, lastOnset: -1, on: false };
+        proc.onaudioprocess = e => {
+            if (!rec.on) return;
+            const d = e.inputBuffer.getChannelData(0), t0 = e.playbackTime;
+            let peak = 0;
+            for (let i = 0; i < d.length; i++) {
+                const a = Math.abs(d[i]);
+                if (a > peak) peak = a;
+                // an onset: over 0.15, 0.25 s after the last (kicks are 0.5 s apart)
+                const t = t0 + i / ctx.sampleRate;
+                if (a > 0.15 && t - rec.lastOnset > 0.25) { rec.onsets.push(t); rec.lastOnset = t; }
+                if (keep) {
+                    const step = Math.abs(d[i] - rec.last);
+                    const seam = seams.find(x => Math.abs(t - x) < 0.003);
+                    if (seam === undefined) rec.stepAway = Math.max(rec.stepAway, step);
+                    else rec.stepAt.set(seam, Math.max(rec.stepAt.get(seam) || 0, step));
+                }
+                rec.last = d[i];
+            }
+            // ranges of loud blocks, not every block
+            const last = rec.loud[rec.loud.length - 1];
+            if (peak > 0.05) { if (last && t0 - last[1] < 0.01) last[1] = t0; else rec.loud.push([t0, t0]); }
+            rec.peakAfter.push([t0, peak]);
+        };
+        node.connect(proc);
+        proc.connect(ctx.destination);
+        return rec;
+    };
+    const mixTap = tap(m['delayNode']), heardTap = tap(m['mixGain']), drumsTap = tap(player['gains'].drums), bassTap = tap(player['gains'].bass, true);
+    // the chunk seams, in context time: each chunk's start + D
+    const schedule = player.schedule.bind(player);
+    player.schedule = chunk => { seams.push(chunk.time + delay); schedule(chunk); };
+    for (const t of [mixTap, heardTap, drumsTap, bassTap]) t.on = true;
+    m.setStemListen('drums', true);
+    m.setStemListen('bass', true);
+    await m.play();
+    const a = m.state.audioPlayer.value;
+    await new Promise(done => { const f = () => a.currentTime < seconds + delay ? setTimeout(f, 200) : done(); f(); });
+    const status = m.state.status.value.stemStatus;
+    const gainBefore = m['mixGain'].gain.value;
+    const firstHeardAt = player['firstHeardAt'];
+    // the mix as heard stops being recorded before the toggles go off: the mix comes back then
+    heardTap.on = false;
+    m.setStemListen('drums', false);
+    m.setStemListen('bass', false);
+    await new Promise(r => setTimeout(r, 80));
+    const gainAfter = m['mixGain'].gain.value;
+    for (const t of [mixTap, heardTap, drumsTap, bassTap]) t.on = false;
+    m.stop();
+    bassTap.stepAt = [...bassTap.stepAt.entries()];
+    for (const t of [mixTap, heardTap, drumsTap, bassTap]) t.peakAfter = t.peakAfter.filter((_, i) => i % 8 === 0);
+    return { firstHeardAt, mix: mixTap, heard: heardTap, drums: drumsTap, bass: bassTap, seams, status: `${status.state} ${status.message || ''}`, gainBefore, gainAfter };
+}, [model, delay, seconds, provider]);
 
-console.log(`click track, ${model} on ${provider}, delay ${delay} s, ${seconds} s`);
-const mix = await run(false);
-console.log(`mix alone: stems ${mix.status}`);
-const mixOn = onsets(mix.blocks, 0.1);
-const stem = await run(true);
-console.log(`drums on: stems ${stem.status}; mix gain at the end ${stem.mixGain.toFixed(2)}, after the toggle off ${stem.afterMix.toFixed(2)}`);
-const stemOn = onsets(stem.blocks, 0.1);
-// the kicks relative to the start of each run's playback: a run's first onset is the first kick (0.25 s) + D
-const rel = (on, t0) => on.map(t => t - t0);
-const a = rel(mixOn, mix.t0), b = rel(stemOn, stem.t0);
-console.log(`onsets: mix ${a.length}, drums ${b.length}`);
-// pair each drums onset with the mix's kick of the same index of the song (0.25 + 0.5 k + D): the stem's lag against the mix's own timing
-const lags = [];
-for (const t of b) {
-    const k = Math.round((t - delay - 0.25) / 0.5);
-    if (k < 0) continue;
-    lags.push((t - (0.25 + 0.5 * k + delay)) * 1000);
+const med = a => { if (!a.length) return NaN; const s = [...a].sort((x, y) => x - y); return s[Math.floor(s.length / 2)]; };
+console.log(`click track + 80 Hz tone, ${model} on ${provider}, delay ${delay} s, ${seconds} s: stems ${result.status}`);
+// the drums stem's onset against the mix's, for the kicks both have
+const mixOn = result.mix.onsets, drumsOn = result.drums.onsets;
+const diffs = [];
+for (const t of drumsOn) {
+    const near = mixOn.reduce((b, x) => Math.abs(x - t) < Math.abs(b - t) ? x : b, Infinity);
+    if (Math.abs(near - t) < 0.1) diffs.push((t - near) * 1000);
 }
-const mixLags = a.map(t => (t - (0.25 + 0.5 * Math.round((t - delay - 0.25) / 0.5) + delay)) * 1000);
-console.log(`kick onset vs its song time + D: mix median ${med(mixLags).toFixed(1)} ms, drums stem median ${med(lags).toFixed(1)} ms (min ${Math.min(...lags).toFixed(1)}, max ${Math.max(...lags).toFixed(1)}), difference ${(med(lags) - med(mixLags)).toFixed(1)} ms`);
+const firstStem = drumsOn.length ? drumsOn[0] : Infinity;
+console.log(`first stem chunk heard at ${result.firstHeardAt.toFixed(3)} s; drums stem first onset ${firstStem.toFixed(3)}; mix as heard loud in ${result.heard.loud.slice(0, 6).map(r => `[${r[0].toFixed(3)}, ${r[1].toFixed(3)}]`).join(' ')}`);
+console.log(`kick onsets: mix ${mixOn.length}, drums stem ${drumsOn.length}; stem minus mix over ${diffs.length} kicks: median ${med(diffs).toFixed(2)} ms (min ${Math.min(...diffs).toFixed(2)}, max ${Math.max(...diffs).toFixed(2)})`);
+const sorted = [...diffs].sort((x, y) => x - y), p90 = Math.max(Math.abs(sorted[Math.floor(0.05 * sorted.length)]), Math.abs(sorted[Math.floor(0.95 * sorted.length)]));
+console.log(`  ${Math.abs(med(diffs)) <= 3 && p90 <= 6 ? 'PASS' : 'FAIL'} (median within one render quantum, 3 ms; 90% of the kicks within 6 ms: ${p90.toFixed(2)})`);
+const heardPeak = Math.max(0, ...result.heard.peakAfter.filter(([t]) => t > firstStem + 0.05).map(([, p]) => p));
+console.log(`mix as heard, after the first stem chunk plays: peak ${heardPeak.toFixed(4)} (${heardPeak < 0.01 ? 'PASS: muted' : 'FAIL: audible'}); mix gain at the end ${result.gainBefore.toFixed(2)}, 80 ms after the toggles off ${result.gainAfter.toFixed(2)} (${result.gainAfter > 0.99 ? 'PASS' : 'FAIL'})`);
+// the bass stem's step at each seam against its largest step elsewhere
+const normal = result.bass.stepAway;
+const atSeams = result.bass.stepAt.map(([, v]) => v);
+const worst = Math.max(0, ...atSeams);
+console.log(`bass stem: largest step away from seams ${normal.toFixed(4)}; at ${atSeams.length} seams: max ${worst.toFixed(4)} (ratio ${(worst / normal).toFixed(2)}; ${worst / normal < 2 ? 'PASS' : 'seams click'})`);
 await browser.close();
 }
 

@@ -83,6 +83,23 @@ Written by the lane (Sonnet) with the Opus advisor; the brief's proposal, refine
 
 ## Built
 
+- `stem-models.ts`: `StemRunner.run(…, allStems)` returns other and vocals audio too (HTDemucs from the same loop as
+  drums and bass, Spleeter two more soft-mask inverses, SCNet two more complex inverses); off: drums and bass only, as before.
+- `stem-worker-core.ts` / `stem-worker-protocol.ts`: `{ type: 'listen', on }`; while on, each run's `stems` response
+  carries `listen: { time, samples }`, the four stems' mono audio over the events' region, copied and transferred.
+- `audio-stems/stem-player.ts` (new): `StemPlayer`, chunks on the context clock at start + D, a gain per stem, the mix
+  mute from the first chunk's heard time.
+- `stem-separator.ts`: `setListening` (re-sent after each load), the optional `player` port, chunks of the current epoch
+  handed to it, reset with the timeline.
+- `audio-reactive-animation.ts`: the mix gain (delay → mix gain → speakers), the player, `state.stemListen` and
+  `setStemListen` (refused with no model, cleared by Off).
+- Card: a speaker toggle per stem beside its meter; `style.scss`.
+- `scripts/votr-sync/listensync.mjs`: the headed check, three taps (mix, mix as heard, drums stem).
+- Specs: ui.md, architecture.md (listening), core-changes.md, features.md, audio-routing-spec.md (the heard graph).
+- Tests: worker core listening (3 models, tiling, only while listening, a reset), runner audio (Spleeter masks sum to the
+  mix, HTDemucs other and vocals), the player on a fake context (start + D, tile, late, drop, reset, mix mute), the
+  separator (epoch, reset, the flag after a load), the manager's state, the ports spec's wiring through the mix gain.
+
 ## Decided
 
 ## Learned
