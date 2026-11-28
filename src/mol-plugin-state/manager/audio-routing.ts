@@ -265,7 +265,8 @@ export class AudioRouter {
             state.value = target >= state.value || route.releaseMs <= 0 || dtMs <= 0
                 ? target
                 : state.value + (target - state.value) * (1 - Math.exp(-dtMs / route.releaseMs));
-            if (!heard && state.value < AudioRestCutoff) state.value = 0;
+            // a route that acts on nothing (not heard, muted, a stand-in while events are live) rests at exactly 0
+            if (!active && state.value < AudioRestCutoff) state.value = 0;
             this.values.set(route.id, state.value);
             if (route.enabled && route.target === 'duck') {
                 duckDrive += state.value;

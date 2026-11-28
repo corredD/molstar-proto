@@ -336,6 +336,15 @@ describe('audio affect group span', () => {
             expect(router.drives.symAxis).toBeCloseTo(0.6);
         });
 
+        it('a stand-in muted by live events rests at exactly 0, as a route not heard does', () => {
+            const router = new AudioRouter();
+            const standIn = createAudioRoute({ enabled: true, source: 'stemBass', mode: 'level', target: 'symAxis', gain: 1, floor: 0, releaseMs: 100, standIn: true });
+            const stems = { ...NoStems, bass: 0.6 };
+            router.update([standIn], EmptyFrame, stems, 16);
+            for (let i = 0; i < 200; i++) router.update([standIn], EmptyFrame, stems, 16, true, events(0, true));
+            expect(router.values.get(standIn.id)).toBe(0);
+        });
+
         it('a threshold of 1 or more set through the API is held to 0.95: a source over 1 stays finite', () => {
             const route = createAudioRoute({ enabled: true, source: 'midsTreble', mode: 'level', target: 'symAxis', gain: 1, floor: 0, releaseMs: 100, threshold: 1 });
             expect(route.threshold).toBe(0.95);
