@@ -21,9 +21,13 @@ const Apps = [
     { kind: 'app', name: 'mvs-stories', globalName: 'mvsStories', filename: 'mvs-stories.js' },
     {
         kind: 'app', name: 'virus-on-the-rock',
-        // the stem separator's worker, and the onnxruntime-web WebGPU runtime it loads from ./ort/
+        // the stem separator's worker, and the onnxruntime-web WebGPU runtime it loads from ./ort/; the startup fallback
+        // song (catalog DefaultAudioFallbackUrl, examples/angine.mp3 next to the page)
         workers: [{ entry: './src/mol-plugin-state/manager/audio-stems/stem-worker.ts', outfile: 'stem-worker.js' }],
-        copy: ['ort-wasm-simd-threaded.asyncify.wasm', 'ort-wasm-simd-threaded.asyncify.mjs'].map(f => ({ from: `./node_modules/onnxruntime-web/dist/${f}`, to: `ort/${f}` })),
+        copy: [
+            ...['ort-wasm-simd-threaded.asyncify.wasm', 'ort-wasm-simd-threaded.asyncify.mjs'].map(f => ({ from: `./node_modules/onnxruntime-web/dist/${f}`, to: `ort/${f}` })),
+            { from: './examples/angine.mp3', to: 'examples/angine.mp3' },
+        ],
     },
 
     // Examples

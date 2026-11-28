@@ -4,7 +4,8 @@
  * @author Ludovic Autin <autin@scripps.edu>
  *
  * STFT helpers for the stem-separation models: every model here reads 44.1 kHz stereo through a 4096-point
- * transform with a hop of 1024, but each pads, windows and scales it its own way.
+ * transform with a hop of 1024, but each pads, windows and scales it its own way. HTDemucs' frequency branch is turned
+ * back into audio (`inverseRealFftInPlace`) to take its stems' energy.
  */
 
 export const StemSampleRate = 44100;
@@ -88,13 +89,34 @@ export type Spectrogram = { re: Float32Array, im: Float32Array, frames: number, 
 
 const ffts = new Map<number, FFT>();
 
+/** the FFT of size `n`, made once */
+export function fftOf(n: number): FFT {
+    let fft = ffts.get(n);
+    if (!fft) ffts.set(n, fft = makeFFT(n));
+    return fft;
+}
+
+/**
+ * The inverse of a one-sided spectrum, in place: bins 0 .. n/2 of `re` and `im` in, the real frame out in `re`
+ * (0 .. n - 1), times n (divide by n); `im` is overwritten. x = Re(FFT(conj X)) / n for a real x.
+ */
+export function inverseRealFftInPlace(fft: FFT, re: Float64Array, im: Float64Array, n: number) {
+    for (let k = 1; k < n / 2; k++) {
+        re[n - k] = re[k];
+        im[n - k] = im[k];
+        im[k] = -im[k];
+    }
+    im[0] = -im[0];
+    im[n / 2] = -im[n / 2];
+    fft(re, im);
+}
+
 /**
  * STFT of an already padded signal: frames start every `hop` samples with no further padding; the first `bins` bins
  * of each, frame-major, multiplied by `scale`. No window where `window` is undefined.
  */
 export function stft(x: Float32Array, nfft: number, hop: number, window: Float32Array | undefined, scale: number, bins: number): Spectrogram {
-    let fft = ffts.get(nfft);
-    if (!fft) ffts.set(nfft, fft = makeFFT(nfft));
+    const fft = fftOf(nfft);
     const frames = Math.max(0, Math.floor((x.length - nfft) / hop) + 1);
     const re = new Float32Array(frames * bins);
     const im = new Float32Array(frames * bins);

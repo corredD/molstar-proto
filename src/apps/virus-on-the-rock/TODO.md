@@ -23,6 +23,23 @@ Built on `votr/overnight` ([progress/2026-11-27-overnight.md](progress/2026-11-2
   object per emission (≤ 30 Hz); the hierarchy syncs in every app (review item 10, D12).
 - Review items 8 (`hasNoise` gate) and 12 (`packSlot` ranges); Safari has no `outputLatency` (latency 0 there).
 
+### Stem study 2026-11-27
+
+Built on `votr/lookahead-sync` ([progress/2026-11-27-stem-study.md](progress/2026-11-27-stem-study.md)): a model switch
+mid-run no longer breaks the worker; HTDemucs' energy is its stems' audio. Left open, measured but untested:
+
+- **The newest frame of a run** is the edge every model handles worst, and the app keeps it: analysed against padding
+  (Spleeter zeros, SCNet reflection), on a 30 s excerpt the drums' newest frame read +6 dB (Spleeter) and +10 dB
+  (SCNet); over the whole song < 1 dB, and the energy jumps 3.4–4.2 dB at run boundaries against 2.4–2.6 dB elsewhere.
+  HTDemucs: the near-silent vocals' newest frames read +14 / +9 dB (the model's output at its window's end), bass and
+  other jump 1.9 / 1.6 dB at boundaries against 0.7 / 0.8. A margin of a few frames held back at each run's end (the next
+  run covers them; the timeline is that much later) would answer all three.
+- **SCNet reads quiet passages 9–13 dB above the reference** (likely its rectangular window); under the levels' 24 dB
+  range, so not seen.
+- **Spleeter's *other* live** follows the offline replay at 0.81 (the other stems 0.98–0.99): fp16 or the linear
+  resampler's treble loss.
+- **HTDemucs' energy costs ≈ 0.5 s of worker CPU per 5 s chunk**: both channels in one complex inverse FFT would halve it.
+
 ### Broken items
 
 1. **Pause and Clear rest** (D2): both bring every drive to 0 over its release; Clear resets the router. Check:
@@ -31,7 +48,8 @@ Built on `votr/overnight` ([progress/2026-11-27-overnight.md](progress/2026-11-2
 2. **The 9th narrowed route is refused** (D3): once 8 routes are narrowed, the Who select of the others is disabled
    with a note. Check: narrow 8 routes, the 9th's Who is greyed with the note.
 3. **Startup fallback plays** (D9): startup keeps the stream; `angine.mp3` is copied into the build so the fallback
-   works. Check: with the stream unreachable, startup plays angine.mp3.
+   works. Check: with the stream unreachable, startup plays angine.mp3. Built in `lookahead-sync` (2026-11-27), for
+   Ludo to check.
 4. **The Who leak within one representation** (features §8, still open in §7): fix once checklist step 11 shows it.
    Check: step 11, only the narrowed chain's instances burst.
 
@@ -43,7 +61,8 @@ Built on `votr/overnight` ([progress/2026-11-27-overnight.md](progress/2026-11-2
    Drift's description, "waveform line", and the other mismatches of [_spec/ui.md](_spec/ui.md). Behaviour unchanged.
    Check: each label and help reads as ui.md says.
 7. **Every hidden control gets UI** (D5): floor and release per route; gain slider to 40; onset weight and temperature
-   under the Prominence radar; stem provider (WebGPU / WASM) and delay in Stem Separation. Check: each control is
+   under the Prominence radar; stem provider (WebGPU / WASM) and delay in Stem Separation (the delay is in, with
+   Lookahead and Lead Trim: `lookahead-sync`). Check: each control is
    there and moves what it names.
 8. **Prominence as a route source** (D13): each band's prominence (0–1, sums to 1) as a source next to the bands.
    Check: a route from a band's prominence drives its channel.

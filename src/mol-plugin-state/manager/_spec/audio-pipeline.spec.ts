@@ -16,6 +16,10 @@
 import { AudioReactivePresetDefinitions, getAudioReactivePreset, getPresetRoutes } from '../../helpers/audio-reactive-presets';
 import { AudioReactiveFrame, DefaultAudioBandDefinitions, DefaultAudioBandKey } from '../audio-reactor';
 import { AudioRestCutoff, AudioRoute, AudioRouteTarget, createAudioRoute, getDefaultAudioRoutes } from '../audio-routing';
+import { AudioReactiveAnimationManagerParams, AudioReactiveAnimationManagerValues, getAnalysisLeadSeconds, getAudioDelaySeconds, getStemTimelineLeadSeconds } from '../audio-reactive-animation';
+import { StemModelIds, StemModels, StemNames } from '../audio-stems/stem-models';
+import { StemSeparator } from '../audio-stems/stem-separator';
+import { ParamDefinition as PD } from '../../../mol-util/param-definition';
 import { activeTargets, AudioPipelineTrace, AudioSignal, bassTone, formatGolden, goldenDiffs, KickTimes, kickPeakStats, kickTrack, runAudioPipeline, silence, songMix } from './audio-pipeline-helper';
 
 const Regenerate = !!process.env.AUDIO_GOLDEN;
@@ -761,6 +765,275 @@ describe('audio pipeline (offline, 16 ms frames at 48 kHz)', () => {
                 expect([sL.lagMedian, sL.lagMin, sL.lagMax]).toEqual([s0.lagMedian + k, s0.lagMin + k, s0.lagMax + k]);
             });
         }
+    });
+
+    // lane lookahead-sync: the analysis reads the source through a delay of D - lead, so a kick drives its peak on the
+    // frame it is heard (routing spec row "kick -> peak with a delay"); with lookahead off nothing changes
+    describe('lookahead', () => {
+        const F = 16, D = 1;
+        const ambientRoutes = () => getPresetRoutes(getAudioReactivePreset('ambient-pulse'));
+        const heardKicks = (L: number) => KickTimes(10).map(k => k + D + L);
+        const lookaheadRun = (routes: () => AudioRoute[], analysis: typeof burst, lookahead: boolean, L = 0, opts: Parameters<typeof runAudioPipeline>[2] = {}) =>
+            runAudioPipeline(kickTrack(48000, 10), routes(), { analysis, durationS: 10 + D, stemDelayS: D, lookahead, outputLatency: L, ...opts });
+        const lagOf = (t: AudioPipelineTrace, L: number, target: AudioRouteTarget) => kickPeakStats(t, heardKicks(L), target, 2);
+
+        for (const L of [0, 0.032]) {
+            for (const [name, routes] of [['full preset', getDefaultAudioRoutes], ['bass only', bassOnly]] as const) {
+                it(`${name}, Drums & Bass Burst, D 1 s, latency ${L * 1000} ms: the heard kick -> symAxis peak within one frame`, () => {
+                    const s = lagOf(lookaheadRun(routes, burst, true, L), L, 'symAxis');
+                    process.stdout.write(`lookahead: ${name} L ${L * 1000} ms: heard kick -> peak ${s.lagMedian} frames (${s.lagMin}..${s.lagMax})\n`);
+                    expect(Math.abs(s.lagMedian)).toBeLessThanOrEqual(1);
+                });
+            }
+            it(`drums only (onset route), latency ${L * 1000} ms: median within one frame, never more than 2 frames early`, () => {
+                const s = lagOf(lookaheadRun(drumsOnly, burst, true, L), L, 'symAxis');
+                expect(Math.abs(s.lagMedian)).toBeLessThanOrEqual(1);
+                expect(s.lagMin).toBeGreaterThanOrEqual(-2);
+            });
+        }
+
+        for (const frameMs of [16, 37]) {
+            it(`drums only, ${frameMs} ms frames: the rest window (shifted by the lead) reads with lookahead what it reads without`, () => {
+                // the window 0.4-0.5 s after the heard kick ends on the next kick, whose drive now rises the lead before it
+                const run = (on: boolean) => runAudioPipeline(kickTrack(48000, 10), drumsOnly(), { analysis: burst, durationS: 10 + D, stemDelayS: D, lookahead: on, frameMs });
+                const off = kickPeakStats(run(false), heardKicks(0), 'symAxis', 2);
+                const on = kickPeakStats(run(true), heardKicks(0), 'symAxis', 2, BurstLeadS);
+                process.stdout.write(`lookahead rest/peak, drums only, ${frameMs} ms frames: on ${on.restMedian.toFixed(2)} (max ${on.restMax.toFixed(2)}), off ${off.restMedian.toFixed(2)} (max ${off.restMax.toFixed(2)})\n`);
+                expect(Math.abs(on.restMedian - off.restMedian)).toBeLessThanOrEqual(0.05);
+                expect(Math.abs(on.restMax - off.restMax)).toBeLessThanOrEqual(0.05);
+            });
+        }
+
+        it('no stem model (the startup configuration): the audio 0.25 s late, the heard kick -> symAxis peak within one frame', () => {
+            let delay = NaN;
+            const t = runAudioPipeline(kickTrack(48000, 10), getDefaultAudioRoutes(), {
+                analysis: burst, durationS: 10, lookahead: true,
+                onFrame: ({ index, manager }) => { if (index === 0) delay = (manager as unknown as { delayNode: { delayTime: { value: number } } }).delayNode.delayTime.value; },
+            });
+            expect(delay).toBe(0.25);
+            const s = kickPeakStats(t, KickTimes(10).map(k => k + 0.25), 'symAxis', 2);
+            expect(Math.abs(s.lagMedian)).toBeLessThanOrEqual(1);
+        });
+
+        for (const target of ['wiggle', 'object'] as const) {
+            it(`Ambient Pulse (${target}), D 1 s: the heard kick -> peak within one frame`, () => {
+                const s = lagOf(lookaheadRun(ambientRoutes, ambient, true), 0, target);
+                process.stdout.write(`lookahead: ambient ${target}: heard kick -> peak ${s.lagMedian} frames (${s.lagMin}..${s.lagMax})\n`);
+                expect(Math.abs(s.lagMedian)).toBeLessThanOrEqual(1);
+            });
+        }
+
+        /** Drums & Bass Burst's lead at 48 kHz: half its input window (1024 at 24 kHz: 2048 samples) + its band attack (12 ms) */
+        const BurstLeadS = 2048 / 48000 / 2 + 0.012;
+        const series = (x: AudioPipelineTrace) => [...(Object.keys(x.drives) as AudioRouteTarget[]).map(k => x.drives[k]), x.drums, x.bass, x.other, x.vocals, ...x.routeValues];
+        const sameUpTo = (a: AudioPipelineTrace, b: AudioPipelineTrace, last: number) => {
+            const sa = series(a), sb = series(b);
+            for (let c = 0; c < sa.length; c++) for (let i = 0; i <= last; i++) if (sa[c][i] !== sb[c][i]) throw new Error(`series ${c} frame ${i}: ${sa[c][i]} vs ${sb[c][i]}`);
+        };
+        /** the last frame whose clock (frame i ticks at (i + 1) F) plus `offsetS` is before `untilS` */
+        const lastFrameBefore = (untilS: number, offsetS: number) => Math.ceil((untilS - offsetS) * 1000 / F) - 2;
+
+        it('lookahead off (explicitly) is the run without the param, frame for frame', () => {
+            const a = lookaheadRun(getDefaultAudioRoutes, burst, false);
+            const b = runAudioPipeline(kickTrack(48000, 10), getDefaultAudioRoutes(), { analysis: burst, durationS: 10 + D, stemDelayS: D });
+            sameUpTo(a, b, a.count - 1);
+        });
+
+        it('a trim that brings the lead to 0 is lookahead off, frame for frame (the stems at t - D too)', () => {
+            const a = lookaheadRun(getDefaultAudioRoutes, burst, true, 0, { lookaheadTrimMs: -50 });
+            const b = lookaheadRun(getDefaultAudioRoutes, burst, false);
+            sameUpTo(a, b, a.count - 1);
+            expect(a.stemSamples).toEqual(b.stemSamples);
+        });
+
+        it('the audio delay and the lead: the table', () => {
+            const v = (p: Partial<AudioReactiveAnimationManagerValues>): AudioReactiveAnimationManagerValues => ({ ...PD.getDefaultValues(AudioReactiveAnimationManagerParams), ...p });
+            const htdemucs = StemModels.htdemucs.delaySeconds;
+            const delays: [Partial<AudioReactiveAnimationManagerValues>, number][] = [
+                [{}, 0],
+                [{ stemDelaySeconds: 5 }, 0],
+                [{ lookahead: true }, 0.25],
+                [{ lookahead: true, stemDelaySeconds: 20 }, 20],
+                [{ stemModel: 'htdemucs' }, htdemucs],
+                [{ stemModel: 'htdemucs', stemDelaySeconds: 20 }, 20],
+                [{ stemModel: 'htdemucs', lookahead: true }, htdemucs],
+                [{ stemModel: 'htdemucs', lookahead: true, stemDelaySeconds: 20 }, 20],
+            ];
+            expect(delays.map(([p]) => getAudioDelaySeconds(v(p)))).toEqual(delays.map(([, d]) => d));
+            const leads: [Partial<AudioReactiveAnimationManagerValues>, number, number][] = [
+                [{ ...burst }, 48000, 0],
+                [{ ...burst, lookahead: true }, 48000, BurstLeadS],
+                [{ ...burst, lookahead: true }, 44100, Math.ceil(1024 * 44100 / 24000) / 44100 / 2 + 0.012],
+                [{ ...ambient, lookahead: true }, 48000, Math.ceil(2048 * 48000 / 22050) / 48000 / 2 + 0.030],
+                [{ ...burst, lookahead: true, lookaheadTrimMs: 20 }, 48000, BurstLeadS + 0.020],
+                [{ ...burst, lookahead: true, lookaheadTrimMs: -50 }, 48000, 0],
+                [{ ...burst, lookahead: true, stemDelaySeconds: 0.02 }, 48000, 0.02],
+            ];
+            leads.forEach(([p, sr, lead]) => expect(getAnalysisLeadSeconds(v(p), sr)).toBeCloseTo(lead, 12));
+        });
+
+        it('the separator samples t - D + max(0, lead - the model\'s timeline lead) while heard ahead, never before the start or after the stop', () => {
+            const t = lookaheadRun(getDefaultAudioRoutes, burst, true, 0, { durationS: 6, paused: [[3, 10]], stemModel: 'htdemucs' });
+            const stemLead = Math.max(0, BurstLeadS - StemModels.htdemucs.timelineLeadSeconds);
+            // the first play ticks at F; the stop is the first paused frame's clock
+            const start = F / 1000, stop = (Math.floor(3000 / F) + 1) * F / 1000;
+            const byFrame = new Map(t.stemSamples.map(x => [x.index, x.time]));
+            const first = lastFrameBefore(start + D, stemLead) + 1, last = lastFrameBefore(stop + D, stemLead);
+            expect([Math.min(...byFrame.keys()), Math.max(...byFrame.keys())]).toEqual([first, last]);
+            for (let i = first; i <= last; i++) expect(byFrame.get(i)).toBeCloseTo((i + 1) * F / 1000 - D + stemLead, 9);
+            for (const x of t.stemSamples) {
+                expect(x.time).toBeGreaterThanOrEqual(start - 1e-9);
+                expect(x.time).toBeLessThan(stop);
+            }
+        });
+
+        it('the stem timeline lead: the model\'s, or the hidden override in ms (clicksync --stem-lead)', () => {
+            const v = (p: Partial<AudioReactiveAnimationManagerValues>): AudioReactiveAnimationManagerValues => ({ ...PD.getDefaultValues(AudioReactiveAnimationManagerParams), ...p });
+            expect(v({}).stemTimelineLeadMs).toBeNull();
+            expect(getStemTimelineLeadSeconds(v({}))).toBe(0);
+            for (const id of StemModelIds) {
+                expect(getStemTimelineLeadSeconds(v({ stemModel: id }))).toBe(StemModels[id].timelineLeadSeconds);
+                expect(getStemTimelineLeadSeconds(v({ stemModel: id, stemTimelineLeadMs: 0 }))).toBe(0);
+                expect(getStemTimelineLeadSeconds(v({ stemModel: id, stemTimelineLeadMs: -15 }))).toBe(-0.015);
+            }
+            // the override moves where the separator samples: lead 0 -> t - D + lead, -15 ms -> 15 ms further ahead
+            for (const ms of [0, -15]) {
+                const t = lookaheadRun(getDefaultAudioRoutes, { ...burst, stemTimelineLeadMs: ms }, true, 0, { durationS: 3, stemModel: 'htdemucs' });
+                const x = t.stemSamples.find(s => s.index === 120)!;
+                expect(x.time).toBeCloseTo(121 * F / 1000 - D + BurstLeadS - ms / 1000, 9);
+            }
+        });
+
+        it('the stems are sampled one heard delay back, the delay node\'s (as heardUntil and the lead), not the params\'', () => {
+            // the node reads 1.2 s from frame 100 while the params say 1 s (a browser shows a setValueAtTime a render quantum later)
+            type Nodes = { delayNode: { delayTime: { value: number } }, analysisDelayNode: { delayTime: { value: number } } };
+            const t = lookaheadRun(getDefaultAudioRoutes, burst, true, 0, {
+                durationS: 3,
+                onFrame: ({ index, manager }) => {
+                    if (index !== 99) return;
+                    const n = manager as unknown as Nodes;
+                    n.delayNode.delayTime.value = 1.2; n.analysisDelayNode.delayTime.value = 1.2 - BurstLeadS;
+                },
+            });
+            const stemLead = BurstLeadS - StemModels.spleeter.timelineLeadSeconds;
+            const after = t.stemSamples.filter(x => x.index >= 100);
+            expect(after.length).toBeGreaterThan(50);
+            for (const x of after) expect([x.index, x.time]).toEqual([x.index, expect.closeTo((x.index + 1) * F / 1000 - 1.2 + stemLead, 9)]);
+        });
+
+        for (const how of ['pause', 'end of file'] as const) {
+            it(`${how} mid-kick, D 1 s: the drives are the unpaused run's until stop + D - lead, heard playing until stop + D`, () => {
+                const at = 3.27; // the kick at 3.25 s rings until 3.37 s
+                const stopOpts = how === 'pause' ? { paused: [[at, 20]] as [number, number][] } : { endedAtS: at };
+                const heardPlaying: boolean[] = [];
+                const t = lookaheadRun(getDefaultAudioRoutes, burst, true, 0, { durationS: 8, ...stopOpts, onFrame: ({ manager }) => heardPlaying.push(manager.state.status.value.heardPlaying) });
+                const ref = lookaheadRun(getDefaultAudioRoutes, burst, true, 0, { durationS: 8 });
+                // the media enters the graph until the last playing frame's clock; the stop (the pause / ended event) is the next frame's
+                const audioStop = Math.floor(at * 1000 / F) * F / 1000, stop = audioStop + F / 1000;
+                const lastSame = lastFrameBefore(audioStop + D, BurstLeadS);
+                const lastAnalysed = lastFrameBefore(stop + D, BurstLeadS), lastHeard = lastFrameBefore(stop + D, 0);
+                expect(lastHeard - lastAnalysed).toBe(2);
+                sameUpTo(t, ref, lastSame);
+                // from here the analysis reads the silence after the stop, the lead ahead of what is heard
+                expect(series(t).some((x, c) => x[lastSame + 1] !== series(ref)[c][lastSame + 1])).toBe(true);
+                // not read once nothing is heard the lead ahead; the router holds the floor until lastHeard
+                expect([t.analysed[lastAnalysed], t.analysed[lastAnalysed + 1]]).toEqual([1, 0]);
+                // heard: the wiggle's floor holds; the next frame is not: its pure release, no floor
+                const w = getDefaultAudioRoutes().findIndex(r => r.target === 'wiggle');
+                expect(t.routeValues[w][lastHeard]).toBeGreaterThan(0.2);
+                expect(t.routeValues[w][lastHeard + 1]).toBeCloseTo(t.routeValues[w][lastHeard] * Math.exp(-F / getDefaultAudioRoutes()[w].releaseMs), 9);
+                expect(heardPlaying.lastIndexOf(true)).toBe(lastHeard);
+            });
+        }
+
+        it('a (re)start: not heard for D, analysed from D - lead, no blocked analysis', () => {
+            const blocked: boolean[] = [], heardPlaying: boolean[] = [];
+            // played from 0, paused 2-4 s (the tail drains at 3 s), resumed at 4 s with an empty line
+            const t = lookaheadRun(getDefaultAudioRoutes, burst, true, 0, {
+                durationS: 7, paused: [[2, 4]],
+                onFrame: ({ manager }) => { blocked.push(manager.state.status.value.analysisBlocked); heardPlaying.push(manager.state.status.value.heardPlaying); },
+            });
+            const resume = (Math.floor(4000 / F) + 1) * F / 1000;
+            for (const start of [F / 1000, resume]) {
+                const s = Math.round(start * 1000 / F) - 1;
+                const firstAnalysed = lastFrameBefore(start + D, BurstLeadS) + 1, firstHeard = lastFrameBefore(start + D, 0) + 1;
+                expect(firstHeard - firstAnalysed).toBe(2);
+                for (let i = s; i < firstAnalysed; i++) expect([i, t.analysed[i]]).toEqual([i, 0]);
+                for (let i = firstAnalysed; i < firstAnalysed + 10; i++) expect([i, t.analysed[i]]).toEqual([i, 1]);
+                for (let i = s; i < firstHeard; i++) expect([i, heardPlaying[i]]).toEqual([i, false]);
+                expect(heardPlaying[firstHeard]).toBe(true);
+            }
+            expect(blocked.some(b => b)).toBe(false);
+        });
+
+        it('a trim or preset change moves only the analysis delay (no separator reset); a delay change moves both and resets', () => {
+            type Nodes = { delayNode: { delayTime: { value: number } }, analysisDelayNode: { delayTime: { value: number } } };
+            const delays: [number, number][] = [];
+            const t = lookaheadRun(getDefaultAudioRoutes, burst, true, 0, {
+                durationS: 2,
+                onFrame: ({ index, manager }) => {
+                    const n = manager as unknown as Nodes;
+                    if (index === 10) delays.push([n.delayNode.delayTime.value, n.analysisDelayNode.delayTime.value]);
+                    if (index === 10) manager.setParams({ lookaheadTrimMs: 10 });
+                    if (index === 11) delays.push([n.delayNode.delayTime.value, n.analysisDelayNode.delayTime.value]);
+                    if (index === 11) manager.setParams({ bandAttackMs: 20 });
+                    if (index === 12) delays.push([n.delayNode.delayTime.value, n.analysisDelayNode.delayTime.value]);
+                    if (index === 20) manager.setParams({ stemDelaySeconds: 2 });
+                    if (index === 21) delays.push([n.delayNode.delayTime.value, n.analysisDelayNode.delayTime.value]);
+                },
+            });
+            const expected = [[1, 1 - BurstLeadS], [1, 1 - BurstLeadS - 0.010], [1, 1 - BurstLeadS - 0.018], [2, 2 - BurstLeadS - 0.018]];
+            delays.forEach(([d, a], i) => { expect(d).toBeCloseTo(expected[i][0], 9); expect(a).toBeCloseTo(expected[i][1], 9); });
+            // setParams before the run sets the delay (one reset, frame -1); the delay change at frame 20 resets
+            expect(t.stemResets).toEqual([-1, 20]);
+        });
+
+        describe('the stems line up with the bands', () => {
+            // a stub of HTDemucs' timeline (stem-models.ts createHTDemucs, 44.1 kHz): frame t is stamped at t 1024 + 512 (the
+            // worker stamps it in context time) and its energy is the frequency branch's, a centred Hann STFT of 4096 (its
+            // energy weights x^2 by Hann^2), plus the time branch's, the x^2 of the 1024 samples [t 1024, (t + 1) 1024); each
+            // scaled to one hop of a steady signal (50/50). Drums and bass are the kick
+            const sig = kickTrack(48000, 10);
+            const at = (s44: number) => s44 / 44100 * 48000; // a 44.1 kHz sample position in the 48 kHz track
+            const half = Math.round(at(2048)), hopSamples = at(1024);
+            let hann2 = 0;
+            for (let j = -half; j < half; j++) hann2 += (0.5 - 0.5 * Math.cos(Math.PI * (j + half) / half)) ** 2;
+            const times: number[] = [], kick: number[] = [];
+            for (let t = 0; at(t * 1024) < sig.samples.length; t++) {
+                const ci = Math.round(at(t * 1024 + 512));
+                let freq = 0, time = 0;
+                for (let j = -half; j < half; j++) { const x = sig.samples[ci + j] ?? 0; freq += (0.5 - 0.5 * Math.cos(Math.PI * (j + half) / half)) ** 2 * x * x; }
+                for (let i = Math.round(at(t * 1024)); i < Math.round(at((t + 1) * 1024)); i++) { const x = sig.samples[i] ?? 0; time += x * x; }
+                times.push((t * 1024 + 512) / 44100); kick.push(freq * hopSamples / hann2 + time);
+            }
+            const separator = () => {
+                const sep = new StemSeparator({} as AudioContext, {} as AudioNode, { workerUrl: '', wasmPath: '', localBaseUrls: [] }, () => { });
+                const s = sep as unknown as { model: string, onWorkerMessage(msg: unknown): void };
+                s.model = 'htdemucs';
+                const energies = Object.fromEntries(StemNames.map(n => [n, Float32Array.from(n === 'drums' || n === 'bass' ? kick : kick.map(() => 1e-9))]));
+                s.onWorkerMessage({ type: 'stems', model: 'htdemucs', times: Float64Array.from(times), energies, computeMs: 0, audioMs: 1 });
+                return sep;
+            };
+            const stemRun = (shiftS: number | undefined, frameMs: number, routes: () => AudioRoute[]) => {
+                const sep = separator();
+                const stemSample = shiftS === undefined ? undefined : (time: number, dtMs: number, a: number, r: number) => sep.sample(time + shiftS, dtMs, a, r);
+                return runAudioPipeline(sig, routes(), { analysis: burst, durationS: 10 + D, stemDelayS: D, lookahead: true, stemSample, frameMs, stemModel: 'htdemucs' });
+            };
+            // 4 ms frames: the timing in ms, not in 16 ms steps. The drums (onset route) and the bass (level route) of the
+            // stub carry the kick; the band stand-ins are the reference. With this framing both stems peak a little behind
+            // the bands (drums 4 ms, bass 8 ms)
+            const lagMs = (t: AudioPipelineTrace) => lagOf(t, 0, 'symAxis').lagMedian * 4;
+            for (const [name, routes, sign] of [['drums only (onset route)', drumsOnly, 1], ['bass only (level route)', bassOnly, 1]] as const) {
+                it(`${name}: the separated stem peaks within 10 ms of the band stand-in, ${sign < 0 ? 'ahead' : 'behind'}; sampled at t - D + lead (control) it peaks earlier, further off`, () => {
+                    const bands = lagMs(stemRun(undefined, 4, routes)), stems = lagMs(stemRun(0, 4, routes)), control = lagMs(stemRun(StemModels.htdemucs.timelineLeadSeconds, 4, routes));
+                    process.stdout.write(`lookahead stems, ${name}, 4 ms frames: kick -> peak bands ${bands} ms, separated ${stems} ms, control ${control} ms\n`);
+                    expect(Math.abs(stems - bands)).toBeLessThanOrEqual(10);
+                    expect(Math.sign(stems - bands)).toBe(sign);
+                    expect(control).toBeLessThan(stems);
+                    expect(bands - control).toBeGreaterThan(Math.abs(stems - bands));
+                });
+            }
+        });
     });
 
     describe('a route on a motion that is off', () => {

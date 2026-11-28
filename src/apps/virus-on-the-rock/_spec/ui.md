@@ -42,8 +42,14 @@ inputs below."
 **Stem Separation.**
 - Chips Off, Spleeter 4-stem, HTDemucs, SCNet.
 - Four meters (drums, bass, other, vocals); faded when they are band stand-ins.
-- Status line; "The audio is heard X s late…" when a model is on.
-- Missing: provider (WebGPU / WASM) and delay (0–25 s).
+- Status line.
+- Lookahead: Off / On chips (on at startup; title: the analysis reads ahead of what is heard by its own lag).
+- With a model or lookahead on: Audio Delay, a range row 0–25 s, step 0.5, committed on release, the value
+  "Default (X s)" at 0 (the model's, else 0.25 s). With lookahead on: Lead Trim, −50 to 100 ms, step 1.
+- "The audio is heard X s late [so the stems line up with it][; the analysis runs Y ms ahead of it]." whenever the
+  delay is above 0; the Stem sources hint with a model on. The Off chip's title: "No separation: the stems come from
+  the frequency bands."
+- Missing: provider (WebGPU / WASM).
 
 **Audio Routing.** One block per route:
 - Enabled, Source, Mode (Level / Hits), ×.

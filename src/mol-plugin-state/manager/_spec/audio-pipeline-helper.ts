@@ -11,6 +11,7 @@
 import { AudioReactiveAnimationManager, AudioReactiveAnimationManagerValues } from '../audio-reactive-animation';
 import { AudioRoute, AudioRouteTarget, createZeroDrives } from '../audio-routing';
 import { StemModelId, StemModels } from '../audio-stems/stem-models';
+import { StemLevels } from '../audio-stems/stem-separator';
 
 export type AudioSignal = { name: string, sampleRate: number, samples: Float32Array, kicksS?: readonly number[] };
 
@@ -41,6 +42,16 @@ export type AudioPipelineOptions = {
      * still fires its pause and ended events, the manager's tick is not called
      */
     stalled?: readonly (readonly [startS: number, endS: number])[],
+    /**
+     * the manager's lookahead param (the analysis runs ahead of what is heard by its lead); with it the fake delay nodes
+     * are installed even with no stemDelayS (no model: the manager's default delay)
+     */
+    lookahead?: boolean,
+    lookaheadTrimMs?: number,
+    /** with stemDelayS: the stem model the params name (default: the first, spleeter); its timeline lead applies */
+    stemModel?: StemModelId,
+    /** with stemDelayS: what the stub separator's sample returns (undefined, the default: it separates nothing) */
+    stemSample?: (time: number, dtMs: number, attackMs: number, releaseMs: number) => StemLevels | undefined,
 };
 
 export type AudioPipelineTrace = {
@@ -52,6 +63,10 @@ export type AudioPipelineTrace = {
     drives: Record<AudioRouteTarget, Float64Array>,
     /** with stemDelayS: each call of the stub separator's sample, (frame index, context time asked for) */
     stemSamples: { index: number, time: number }[],
+    /** 1 where the manager read the analyser on that frame */
+    analysed: Uint8Array,
+    /** with stemDelayS: the frame index of each call of the stub separator's reset */
+    stemResets: number[],
 };
 
 /**
@@ -60,14 +75,28 @@ export type AudioPipelineTrace = {
  */
 type ManagerFakes = { audioContext: unknown, analyser: unknown, bindAudioEvents(audio: unknown): void };
 
-/** with stemDelayS: the two more private fields the fakes fill (the browser's delay node, the stem separator) */
-type ManagerStemFakes = { delayNode: unknown, separator: unknown };
+/**
+ * with stemDelayS or lookahead: the private fields the fakes fill (the browser's delay nodes: what is heard, what is
+ * analysed; with stemDelayS the stem separator)
+ */
+type ManagerStemFakes = { delayNode: unknown, analysisDelayNode: unknown, separator: unknown };
+type FakeDelayNode = { delayTime: { value: number, setValueAtTime(v: number): void } };
+const fakeDelayNode = (value: number): FakeDelayNode => ({ delayTime: { value, setValueAtTime(v: number) { this.value = v; } } });
+/**
+ * the analysis delay node: it reads the heard node's delay until the manager sets its own (a manager without the
+ * analysis branch never does, so its analyser reads the heard delay)
+ */
+const fakeAnalysisDelayNode = (heard: FakeDelayNode): FakeDelayNode => {
+    let own: number | undefined;
+    return { delayTime: { get value() { return own ?? heard.delayTime.value; }, set value(v: number) { own = v; }, setValueAtTime(v: number) { own = v; } } };
+};
 
 /**
  * The real `AudioReactiveAnimationManager.tick`, frame by frame, with fakes for what a browser gives it: an audio
  * context whose clock advances one frame per tick (wall time, paused or not), an analyser that hands over the N samples
- * ending D (the stem delay, 0 by default) before the end of what came into the graph (wall time: the media while
- * playing, silence while paused or ended), an audio element that is paused or not (its pause(), removeAttribute() and
+ * ending one analysis delay (what the manager set on its analysis delay node when it read; else the heard delay; 0
+ * with no delay node) before the end of what came into the graph (wall time: the media while playing, silence while
+ * paused or ended), an audio element that is paused or not (its pause(), removeAttribute() and
  * load() work, so onFrame can call the manager's stop() and clear(); it fires pause and ended on the frame that first
  * sees them, before the tick, as a browser queues them). Nothing of tick is re-implemented here.
  */
@@ -81,12 +110,25 @@ export function runAudioPipeline(signal: AudioSignal, routes: readonly AudioRout
     let wall = new Float32Array(0);
     let wallEnd = 0;
     const delaySamples = Math.round((opts.stemDelayS ?? 0) * sr);
+    // the delay nodes, when installed (the analysis one reads the heard delay until the manager sets its own)
+    let delayNode: FakeDelayNode | undefined, analysisDelayNode: FakeDelayNode | undefined;
+    const analysisDelaySamples = () => Math.round((analysisDelayNode?.delayTime.value ?? 0) * sr);
+    let frameIndex = -1;
+    const analysedFrames: number[] = [];
     const ctx = { currentTime: 0, sampleRate: sr, state: 'running', outputLatency: opts.outputLatency ?? 0 };
     const analyser = {
         fftSize: 2048, smoothingTimeConstant: 0,
         get frequencyBinCount() { return this.fftSize / 2; },
-        // what the analyser hands over: its last fftSize samples, i.e. N samples ending one delay before what came in
-        getFloatTimeDomainData(out: Float32Array) { out.set(wall.subarray(wallEnd - delaySamples - out.length, wallEnd - delaySamples)); },
+        // what the analyser hands over: its last fftSize samples, i.e. N samples ending one analysis delay before what came in
+        getFloatTimeDomainData(out: Float32Array) {
+            analysedFrames.push(frameIndex);
+            const end = wallEnd - analysisDelaySamples();
+            const start = end - out.length;
+            if (start >= 0) { out.set(wall.subarray(start, end)); return; }
+            // before the run's first sample: silence (a delay raised past what came in)
+            out.fill(0);
+            if (end > 0) out.set(wall.subarray(0, end), -start);
+        },
         // deterministic; the reactor does not read it (only the visualization does)
         getByteFrequencyData(out: Uint8Array) { out.fill(0); },
     };
@@ -110,16 +152,24 @@ export function runAudioPipeline(signal: AudioSignal, routes: readonly AudioRout
     manager.state.audioPlayer.next(audio as unknown as HTMLAudioElement);
     manager.setRoutes([...routes]);
     const stemSamples: { index: number, time: number }[] = [];
-    let frameIndex = -1;
+    const stemResets: number[] = [];
     let stemParams = {};
-    if (opts.stemDelayS !== void 0) {
+    if (opts.stemDelayS !== void 0 || opts.lookahead !== void 0) {
         const stemFakes = manager as unknown as ManagerStemFakes;
-        stemFakes.delayNode = { delayTime: { value: 0, setValueAtTime(v: number) { this.value = v; } } };
-        stemFakes.separator = {
-            async setModel() { }, reset() { }, dispose() { },
-            sample(time: number) { stemSamples.push({ index: frameIndex, time }); return undefined; },
+        stemFakes.delayNode = delayNode = fakeDelayNode(0);
+        stemFakes.analysisDelayNode = analysisDelayNode = fakeAnalysisDelayNode(delayNode);
+    }
+    if (opts.lookahead !== void 0) stemParams = { lookahead: opts.lookahead, lookaheadTrimMs: opts.lookaheadTrimMs ?? 0 };
+    if (opts.stemDelayS !== void 0) {
+        (manager as unknown as ManagerStemFakes).separator = {
+            async setModel() { }, dispose() { },
+            reset() { stemResets.push(frameIndex); },
+            sample(time: number, dtMs: number, attackMs: number, releaseMs: number) {
+                stemSamples.push({ index: frameIndex, time });
+                return opts.stemSample?.(time, dtMs, attackMs, releaseMs);
+            },
         };
-        stemParams = { stemModel: Object.keys(StemModels)[0] as StemModelId, stemDelaySeconds: opts.stemDelayS };
+        stemParams = { ...stemParams, stemModel: opts.stemModel ?? Object.keys(StemModels)[0] as StemModelId, stemDelaySeconds: opts.stemDelayS };
     }
     // setParams sizes the analyser (fftSize) and the manager's buffers from the reactor's parameters (and sets the delay)
     manager.setParams({ ...opts.analysis, beatThreshold: opts.beatThreshold ?? 1.1, ...stemParams });
@@ -135,6 +185,8 @@ export function runAudioPipeline(signal: AudioSignal, routes: readonly AudioRout
         routeValues: routes.map(() => new Float64Array(count)),
         drives: {} as Record<AudioRouteTarget, Float64Array>,
         stemSamples,
+        analysed: new Uint8Array(count),
+        stemResets,
     };
     for (const t of Object.keys(createZeroDrives()) as AudioRouteTarget[]) trace.drives[t] = new Float64Array(count);
     let mediaFrames = 0;
@@ -166,6 +218,7 @@ export function runAudioPipeline(signal: AudioSignal, routes: readonly AudioRout
         for (const t of Object.keys(trace.drives) as AudioRouteTarget[]) trace.drives[t][i] = manager.drives[t];
         opts.onFrame?.({ index: i, timeMs, mediaS: trace.mediaS[i], paused, manager });
     }
+    for (const i of analysedFrames) if (i >= 0) trace.analysed[i] = 1;
     return trace;
 }
 
@@ -231,8 +284,11 @@ export function songMix(sr = 48000, seconds = 10): AudioSignal {
 
 const median = (a: number[]) => { const s = [...a].sort((x, y) => x - y); return s[Math.floor(s.length / 2)]; };
 
-/** kick -> peak lag in frames and rest/peak of one drive, with clicksync's windows (-50..400 ms for the peak, 400..500 ms for the rest) */
-export function kickPeakStats(trace: AudioPipelineTrace, kicksS: readonly number[], target: AudioRouteTarget, settleS = 1) {
+/**
+ * kick -> peak lag in frames and rest/peak of one drive, with clicksync's windows (-50..400 ms for the peak, 400..500 ms
+ * for the rest, less `leadS`: with lookahead the next kick's drive rises the lead before it is heard)
+ */
+export function kickPeakStats(trace: AudioPipelineTrace, kicksS: readonly number[], target: AudioRouteTarget, settleS = 1, leadS = 0) {
     const d = trace.drives[target];
     const lags: number[] = [], rests: number[] = [], peaks: number[] = [];
     const frameMs = trace.timeMs[1] - trace.timeMs[0];
@@ -245,7 +301,7 @@ export function kickPeakStats(trace: AudioPipelineTrace, kicksS: readonly number
             if (t >= k - 0.05 && t < k + 0.4 && d[i] > peak) { peak = d[i]; peakI = i; }
         }
         let rest = 0;
-        for (let i = 0; i < trace.count; i++) { const t = trace.timeMs[i] / 1000; if (t >= k + 0.4 && t < k + 0.5) rest = Math.max(rest, d[i]); }
+        for (let i = 0; i < trace.count; i++) { const t = trace.timeMs[i] / 1000; if (t >= k + 0.4 - leadS && t < k + 0.5 - leadS) rest = Math.max(rest, d[i]); }
         lags.push(peakI - kickI); peaks.push(peak); rests.push(rest / peak);
     }
     return {

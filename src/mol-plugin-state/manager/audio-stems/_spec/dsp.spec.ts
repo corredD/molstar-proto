@@ -4,7 +4,7 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import { LinearResampler, makeFFT, padSignal, periodicHann, stft } from '../dsp';
+import { fftOf, inverseRealFftInPlace, LinearResampler, makeFFT, padSignal, periodicHann, stft } from '../dsp';
 
 describe('audio-stems dsp', () => {
     it('FFT matches a direct DFT', () => {
@@ -21,6 +21,18 @@ describe('audio-stems dsp', () => {
             expect(re[k]).toBeCloseTo(dr, 8);
             expect(im[k]).toBeCloseTo(di, 8);
         }
+    });
+
+    it('the inverse of a one-sided spectrum gives the real frame back', () => {
+        const n = 64;
+        const x = Array.from({ length: n }, (_, i) => Math.sin(i * 0.37) + 0.5 * Math.cos(i * 1.9) + (i % 7) * 0.05);
+        const re = Float64Array.from(x), im = new Float64Array(n);
+        fftOf(n)(re, im);
+        // only bins 0 .. n/2 are kept: the rest is what a one-sided spectrum leaves out
+        re.fill(0, n / 2 + 1);
+        im.fill(0, n / 2 + 1);
+        inverseRealFftInPlace(fftOf(n), re, im, n);
+        for (let i = 0; i < n; i++) expect(re[i] / n).toBeCloseTo(x[i], 10);
     });
 
     it('reflect padding does not repeat the edge sample (torch reflect)', () => {

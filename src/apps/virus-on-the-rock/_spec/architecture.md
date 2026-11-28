@@ -28,10 +28,11 @@ VotR keeps no store of its own for the scene: structures and representations are
 The only one (rule 1 of the [routing spec](audio-routing-spec.md)):
 
 ```
-<audio> ─► MediaElementSource ─┬─► Delay (stem latency, else 0) ─► Analyser ─► speakers
+<audio> ─► MediaElementSource ─┬─► Delay (D) ─► speakers
+                               ├─► Analysis delay (D − lead) ─► Analyser ─► silent sink ─► speakers
                                └─► AudioWorklet tap ─► stem worker (44.1 kHz STFT, ONNX) ─► timeline
 analyser window ─► reactor (resample, Hann, FFT, 6 bands, flux beat, prominence)
-                       └─► stems: timeline at currentTime − delay, or band stand-ins
+                       └─► stems: timeline at currentTime − D + max(0, lead − 30 ms), or band stand-ins
                               └─► router: per route source → onset? → curve → floor + gain × v → release → duck
                                      └─► drives[target] (cap 40) or Who slot (≤ 8)
                                             └─► presented frame: a ring of the last 256 ticks stamped with
@@ -65,6 +66,36 @@ t − D; once not, the silent analysis, the band stand-ins and `router.update(�
 flush the delay line (a new delay node; the separator's tap on the source stays) and hear nothing at once; Clear also
 resets the router. The status also emits when the presented drives and route values come to rest
 (`presented.atRest`), so the last emission after Clear carries zeros. The ring carries heard, so `heardPlaying` is heard as heard (with no delay, `playing` as heard).
+
+**Lookahead** (lookahead-sync, 2026-11-27). The delay line already holds the next D seconds of audio, so the analysis
+reads them ahead of the speakers by its own lag behind a hit: the **lead** = ½ the reactor's input window + the band
+attack + `lookaheadTrimMs` (`getAnalysisLeadSeconds`), within [0, D]; Drums & Bass Burst 33.3 ms, Ambient Pulse 76.4 ms
+at 48 kHz. D (`getAudioDelaySeconds`): a stem model's (the Audio Delay slider, else the model's default); with no
+model and lookahead on the slider, else 0.25 s; else 0. The analyser has a branch of its own beside what is heard
+(departure c: parallel, not a split in series): `source → analysis delay (D − lead) → analyser → silent sink`, so the
+heard delay node keeps its meaning (heardUntil, primedUntil, the separator reset) and a lead change (lookahead, trim,
+a preset's window or attack) moves only the analysis branch, no click, no separator reset; a D change moves both and
+resets the separator, and while playing flushes both lines (what they held was delayed by the old D: a jump back or a
+skip), so the new D is heard after its silence, as after stop (gate S3; in a pause's tail the tail moves instead). Stop, a new source and Clear flush both. `tick` decides heard at now (the router's floor, the
+ring) and analysed at now + lead (whether the analyser is read, the blocked count), so in the tail
+[stop + D − lead, stop + D) the analysis reads silence while the floor holds and the routes release, and at a
+(re)start the analysis warms from D − lead (a kick in the first lead of a song is partly lost). The stems are sampled
+at t − D + max(0, lead − the model's timeline lead) (`StemModelInfo.timelineLeadSeconds`, read by
+`getStemTimelineLeadSeconds`; the hidden param `stemTimelineLeadMs` overrides it for measuring, clicksync
+`--stem-lead`: the stem timeline runs that far ahead of the bands already, departure a). The ring and the output latency are unchanged (the lead excludes L). Lookahead off, or D = 0: the lead is
+0 and every trace is bit for bit what it was. Off in the core manager, on at VotR startup (`DefaultAudioSync`,
+departure d: 0.25 s more latency, a 0.25 s tail on pause). Measured in the routing spec's lookahead row.
+
+Departures from the brief, for Ludo to confirm: (a) the stems at t − D + max(0, lead − 30 ms), not t − D + lead;
+(b) the lead from the analysis settings plus a trim, not one global number (35 ms would leave Ambient Pulse ~50 ms
+late); (c) a parallel analysis branch, not a split in series (a second 30 s buffer, ~11.5 MB); (d) lookahead on at VotR
+startup, off in core; (e) the ports spec's wiring expectations change (both delay lines); (f) `angine.mp3` (4.9 MB) in
+the prd build; (g) dropped: the Mol\* `Slider` renders unstyled outside `.msp-plugin`, so the card uses the cards'
+native range rows, committed on release; (h) the expectation is |kick → peak| ≤ one frame or 17 ms, whichever is
+larger; (i) the stems do not line up with the bands to the frame: with the real `StemSeparator.sample` on a stub of
+the model's windows (4 ms frames) the separated drums (onset route) peak 8 ms ahead of the band stand-in and the bass
+(level route) 8 ms behind, so the stem path carries a route-dependent offset of its own, ±8 ms around
+`StemTimelineLeadS` = 30 ms (at 16 ms frames the drums fall one frame early).
 
 ## 3. One frame
 

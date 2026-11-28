@@ -31,6 +31,7 @@ export const AudioUrlPresets = [
     { label: 'Public Domain - Maple Leaf Rag', url: 'https://archive.org/download/MapleLeafRag/MapleLeafRag.mp3' },
     { label: 'FIP Hi-Fi AAC', url: 'https://radio-proxy.ludomolgraphlab.workers.dev/fip/' },
     { label: 'Le Son Parisien FLAC', url: 'https://radio-proxy.ludomolgraphlab.workers.dev/lesonparisien/' },
+    { label: 'Angine de Poitrine (example)', url: DefaultAudioFallbackUrl },
 ] as const;
 export const DefaultAudioUrlPreset = AudioUrlPresets.find(p => p.url === DefaultAudioUrl) ?? AudioUrlPresets[0];
 export const ExamplePdbIds = ['2tbv', '2plv'] as const;
@@ -93,6 +94,11 @@ export const DefaultEffectKnobs: Partial<AudioReactiveAnimationManagerValues> = 
     assemblyAxisAmplitudeScale: 15,
     beatThreshold: 1.1,
 };
+/**
+ * The audio sync at startup: lookahead on, so a hit moves the visuals on the frame it is heard (the audio 0.25 s late
+ * with no stem model). Off in the core manager's defaults (lane lookahead-sync; Ludo to confirm)
+ */
+export const DefaultAudioSync: Partial<AudioReactiveAnimationManagerValues> = { lookahead: true };
 export const FeaturedPresetNames: readonly AudioReactivePresetName[] = [
     'drums-bass-burst',
     'subtle-drift',

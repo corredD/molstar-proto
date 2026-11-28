@@ -21,6 +21,7 @@ import {
     DefaultAudioBandKey,
     DefaultAudioReactorParams,
     getAudioReactorAnalyserFftSize,
+    getAudioReactorInputSampleCount,
 } from './audio-reactor';
 import { AudioReactiveAssemblyAxisOrder, AudioReactiveAssemblyAxisOrderOptions } from '../helpers/assembly-symmetry-axis';
 import { AudioOutputClock, AudioPresentedFrame, webAudioOutputClock } from './audio-presented-frame';
@@ -69,7 +70,11 @@ export const AudioReactiveAnimationManagerParams = {
     activityThreshold: PD.Numeric(DefaultAudioReactorParams.activityThreshold, { min: 0, max: 1, step: 0.005 }, { category: 'Prominence', description: 'Bands quieter than this are treated as silent and excluded, so the rest share the full weight.' }),
     stemModel: PD.Select<'off' | StemModelId>('off', [['off', 'Off'], ...Object.values(StemModels).map(m => [m.id, m.label] as [StemModelId, string])], { category: 'Stems', label: 'Separation', description: 'Split the audio into drums, bass, other and vocals with a model run in the browser (WebGPU). The audio is delayed so the stems line up with what is heard.' }),
     stemExecutionProvider: PD.Select<'webgpu' | 'wasm'>('webgpu', [['webgpu', 'WebGPU'], ['wasm', 'CPU (WASM)']], { category: 'Stems', label: 'Run On', hideIf: p => p.stemModel === 'off' }),
-    stemDelaySeconds: PD.Numeric(0, { min: 0, max: 25, step: 0.5 }, { category: 'Stems', label: 'Audio Delay', hideIf: p => p.stemModel === 'off', description: 'How late the audio is heard, seconds; 0 uses the model\'s default. It must cover the model\'s latency, or the stems fall back to the band analysis.' }),
+    stemDelaySeconds: PD.Numeric(0, { min: 0, max: 25, step: 0.5 }, { category: 'Sync', label: 'Audio Delay', hideIf: p => p.stemModel === 'off' && !p.lookahead, description: 'How late the audio is heard, seconds; 0 uses the default (the model\'s, else 0.25 s with lookahead). With a model it must cover the model\'s latency, or the stems fall back to the band analysis.' }),
+    lookahead: PD.Boolean(false, { category: 'Sync', description: 'Analyse the audio ahead of what is heard by the analysis\'s own lag (half its window and the band attack), so a hit moves the visuals on the frame it is heard. The audio is delayed (Audio Delay) to make room.' }),
+    lookaheadTrimMs: PD.Numeric(0, { min: -50, max: 100, step: 1 }, { category: 'Sync', label: 'Lead Trim', hideIf: p => !p.lookahead, description: 'Milliseconds added to the lookahead: more moves the visuals earlier, less later.' }),
+    /** a measuring override (clicksync --stem-lead): null, the stem model's timelineLeadSeconds */
+    stemTimelineLeadMs: PD.Value<number | null>(null, { isHidden: true, category: 'Sync', description: 'How far the stem timeline runs ahead of the bands, ms; null: the model\'s.' }),
 } as const;
 export type AudioReactiveAnimationManagerParams = typeof AudioReactiveAnimationManagerParams
 export type AudioReactiveAnimationManagerValues = PD.Values<AudioReactiveAnimationManagerParams>;
@@ -137,9 +142,34 @@ function getBandStems(frame: AudioReactiveFrame<DefaultAudioBandKey>, drums: num
     };
 }
 
-export function getStemDelaySeconds(params: AudioReactiveAnimationManagerValues) {
-    if (params.stemModel === 'off') return 0;
-    return params.stemDelaySeconds > 0 ? params.stemDelaySeconds : StemModels[params.stemModel].delaySeconds;
+/** the audio delay with lookahead on and no stem model (the slider at 0), seconds: the lead and a margin */
+export const LookaheadDelaySeconds = 0.25;
+
+/**
+ * How far the stem timeline runs ahead of the band analysis, seconds (lookahead samples the stems this much less
+ * ahead): the model's timelineLeadSeconds, or the hidden stemTimelineLeadMs override; 0 with no model
+ */
+export function getStemTimelineLeadSeconds(params: AudioReactiveAnimationManagerValues) {
+    if (params.stemTimelineLeadMs !== null) return params.stemTimelineLeadMs / 1000;
+    return params.stemModel === 'off' ? 0 : StemModels[params.stemModel].timelineLeadSeconds;
+}
+
+/** how late the audio is heard, seconds: a stem model's delay (the slider, or the model's default), else with lookahead the slider or LookaheadDelaySeconds, else 0 */
+export function getAudioDelaySeconds(params: AudioReactiveAnimationManagerValues) {
+    if (params.stemModel !== 'off') return params.stemDelaySeconds > 0 ? params.stemDelaySeconds : StemModels[params.stemModel].delaySeconds;
+    if (params.lookahead) return params.stemDelaySeconds > 0 ? params.stemDelaySeconds : LookaheadDelaySeconds;
+    return 0;
+}
+
+/**
+ * How far the analysis runs ahead of what is heard, seconds (lookahead on; else 0): the reactor's lag behind a hit,
+ * half its input window and the band attack, plus the trim; within [0, the audio delay]
+ */
+export function getAnalysisLeadSeconds(params: AudioReactiveAnimationManagerValues, sampleRate: number) {
+    if (!params.lookahead) return 0;
+    const window = getAudioReactorInputSampleCount(params, sampleRate) / sampleRate;
+    const lead = window / 2 + (params.bandAttackMs + params.lookaheadTrimMs) / 1000;
+    return Math.min(getAudioDelaySeconds(params), Math.max(0, lead));
 }
 
 export type { StemName, StemLevels };
@@ -280,8 +310,11 @@ export class AudioReactiveAnimationManager {
     private lastTickMs = 0;
     private silenceWhilePlayingMs = 0;
     private reactor = new AudioReactor();
-    /** what is heard runs through this, late by the stem model's latency (0 with no model) */
+    /** what is heard runs through this to the speakers, late by the audio delay (getAudioDelaySeconds; 0 with no model and no lookahead) */
     private delayNode?: DelayNode;
+    /** what is analysed runs through this to the analyser (and a silent sink), late by the audio delay less the lead (getAnalysisLeadSeconds) */
+    private analysisDelayNode?: DelayNode;
+    private analysisSink?: GainNode;
     private separator?: StemSeparator;
     private stemStatus: StemSeparatorStatus = { state: 'off' };
     private currentStems: StemLevels = ZeroStems;
@@ -427,13 +460,28 @@ export class AudioReactiveAnimationManager {
         return this.presented.stems;
     }
 
+    /** the analysis branch's delay: the audio delay less the lead */
+    private getAnalysisDelaySeconds(ctx: AudioContext) {
+        const params = this.state.params.value;
+        return Math.max(0, getAudioDelaySeconds(params) - getAnalysisLeadSeconds(params, ctx.sampleRate));
+    }
+
     private syncStems() {
         const params = this.state.params.value;
         if (this.delayNode && this.audioContext) {
-            const delay = getStemDelaySeconds(params);
+            const delay = getAudioDelaySeconds(params);
             if (Math.abs(this.delayNode.delayTime.value - delay) > 1e-3) {
                 this.delayNode.delayTime.setValueAtTime(delay, this.audioContext.currentTime);
                 this.separator?.reset();
+                // while playing, what the lines hold was delayed by the old D (a jump back or a skip, a click): flushed,
+                // the next tick primes, so the new D is heard after its silence. In a pause's tail the tail moves instead
+                if (this.heardUntil === Infinity) this.flushDelayLine();
+            }
+            // a lead change (lookahead, trim, the reactor's window or attack) moves only the analysis branch: no click
+            // in what is heard, no separator reset. Finer than the heard delay's guard (a trim step is 1 ms)
+            const analysisDelay = this.getAnalysisDelaySeconds(this.audioContext);
+            if (this.analysisDelayNode && Math.abs(this.analysisDelayNode.delayTime.value - analysisDelay) > 1e-5) {
+                this.analysisDelayNode.delayTime.setValueAtTime(analysisDelay, this.audioContext.currentTime);
             }
         }
         if (params.stemModel === 'off' && !this.separator) return;
@@ -565,14 +613,22 @@ export class AudioReactiveAnimationManager {
             this.analyser = this.audioContext.createAnalyser();
         }
         if (!this.sourceNode) {
-            this.sourceNode = this.audioContext.createMediaElementSource(audio);
-            // source -> delay -> analyser -> speakers: the analysis follows what is heard; the stem separator taps the
-            // source ahead of the delay
-            this.delayNode = this.audioContext.createDelay(30);
-            this.delayNode.delayTime.value = getStemDelaySeconds(this.state.params.value);
-            this.sourceNode.connect(this.delayNode);
-            this.delayNode.connect(this.analyser);
-            this.analyser.connect(this.audioContext.destination);
+            const ctx = this.audioContext, source = this.sourceNode = ctx.createMediaElementSource(audio);
+            // source -> delay (D) -> speakers: what is heard; source -> analysis delay (D - lead) -> analyser -> silent
+            // sink: the analysis runs the lead ahead of what is heard (0 without lookahead). The stem separator taps the
+            // source ahead of both
+            this.delayNode = ctx.createDelay(30);
+            this.delayNode.delayTime.value = getAudioDelaySeconds(this.state.params.value);
+            source.connect(this.delayNode);
+            this.delayNode.connect(ctx.destination);
+            this.analysisDelayNode = ctx.createDelay(30);
+            this.analysisDelayNode.delayTime.value = this.getAnalysisDelaySeconds(ctx);
+            this.analysisSink = ctx.createGain();
+            this.analysisSink.gain.value = 0;
+            source.connect(this.analysisDelayNode);
+            this.analysisDelayNode.connect(this.analyser);
+            this.analyser.connect(this.analysisSink);
+            this.analysisSink.connect(ctx.destination);
         }
         this.syncAnalyserConfig();
         this.syncStems();
@@ -600,19 +656,26 @@ export class AudioReactiveAnimationManager {
     }
 
     /**
-     * Silences what the delay line still holds (stop, a new source, clear): a new delay node in place of the old, the
-     * same delay. Only the source -> delay link is cut: the stem separator taps the source too
+     * Silences what the delay lines still hold (stop, a new source, clear): new delay nodes in place of the old, at the
+     * params' delays (an old node's value lags a setValueAtTime by a render quantum). Only the source -> delay links are
+     * cut: the stem separator taps the source too
      */
     private flushDelayLine() {
-        const ctx = this.audioContext, source = this.sourceNode, old = this.delayNode, analyser = this.analyser;
+        const ctx = this.audioContext, source = this.sourceNode, old = this.delayNode, oldAnalysis = this.analysisDelayNode, analyser = this.analyser;
         this.heardUntil = -Infinity;
-        if (!ctx || !source || !old || !analyser) return;
+        if (!ctx || !source || !old || !oldAnalysis || !analyser) return;
         source.disconnect(old);
         old.disconnect();
         const delay = this.delayNode = ctx.createDelay(30);
-        delay.delayTime.value = old.delayTime.value;
+        delay.delayTime.value = getAudioDelaySeconds(this.state.params.value);
         source.connect(delay);
-        delay.connect(analyser);
+        delay.connect(ctx.destination);
+        source.disconnect(oldAnalysis);
+        oldAnalysis.disconnect();
+        const analysis = this.analysisDelayNode = ctx.createDelay(30);
+        analysis.delayTime.value = this.getAnalysisDelaySeconds(ctx);
+        source.connect(analysis);
+        analysis.connect(analyser);
     }
 
     private async loadSource(src: string, label: string, ownsObjectUrl: boolean) {
@@ -699,14 +762,18 @@ export class AudioReactiveAnimationManager {
         this.updateStatus(void 0, true);
     }
 
-    /** `silent`: nothing is heard (not playing, the delay line drained): the band stand-ins, from the silent analysis */
-    private updateStems(dtMs: number, silent: boolean) {
+    /**
+     * `silent`: nothing is heard `leadS` from now (not playing, the delay line drained): the band stand-ins, from the
+     * silent analysis. `delayS`: the heard delay, the delay node's (as tick's). `leadS`: how far ahead of what is heard
+     * the stems are sampled (0 without lookahead)
+     */
+    private updateStems(dtMs: number, silent: boolean, delayS: number, leadS: number) {
         const params = this.state.params.value;
         let separated: StemLevels | undefined;
         if (!silent && this.separator && this.audioContext && params.stemModel !== 'off') {
-            // the audio heard now entered the graph one delay ago
-            const heard = this.clockNow - getStemDelaySeconds(params);
-            separated = this.separator.sample(heard, dtMs, params.bandAttackMs, params.bandReleaseMs);
+            // the audio heard leadS from now entered the graph one delay ago, plus leadS
+            const at = this.clockNow - delayS + leadS;
+            separated = this.separator.sample(at, dtMs, params.bandAttackMs, params.bandReleaseMs);
         }
         this.stemsSeparated = !!separated;
         if (separated) {
@@ -753,7 +820,16 @@ export class AudioReactiveAnimationManager {
         this.clockLatency = clock.latency();
     }
 
-    /** the frame as heard now (`frame`); the analysis runs on what the analyser hands over now */
+    /**
+     * whether the audio is heard at `offsetS` from now (playing, or the delay line still draining; not while it hands
+     * over the silence it held at a (re)start): 0 for what is heard now, the lead for what the analyser hands over now
+     */
+    private heardAt(playing: boolean, offsetS: number) {
+        const t = this.clockNow + offsetS;
+        return (playing || (this.audioContext!.state === 'running' && t < this.heardUntil)) && t >= this.primedUntil;
+    }
+
+    /** the frame as heard now (`frame`); the analysis runs on what the analyser hands over now (the lead ahead) */
     tick(timeMs: number): AudioReactiveFrame<DefaultAudioBandKey> {
         const audio = this.state.audioPlayer.value;
         const dtMs = this.lastTickMs > 0 ? Math.min(100, Math.max(0, timeMs - this.lastTickMs)) : 16;
@@ -788,10 +864,15 @@ export class AudioReactiveAnimationManager {
             if (Number.isNaN(this.stoppedAt)) this.stoppedAt = this.clockNow;
             this.heardUntil = this.stoppedAt + delayS;
         }
-        const heard = (playing || (this.audioContext.state === 'running' && this.clockNow < this.heardUntil)) && this.clockNow >= this.primedUntil;
+        // the lead: how far ahead of what is heard the analyser reads (0 without lookahead)
+        const leadS = this.analysisDelayNode ? Math.max(0, delayS - this.analysisDelayNode.delayTime.value) : 0;
+        const heard = this.heardAt(playing, 0);
+        const analysed = leadS > 0 ? this.heardAt(playing, leadS) : heard;
+        // the stem timeline runs the model's timeline lead ahead of the bands already
+        const stemLeadS = Math.max(0, leadS - getStemTimelineLeadSeconds(this.state.params.value));
 
         try {
-            if (!heard) {
+            if (!analysed) {
                 this.silenceWhilePlayingMs = 0;
                 this.currentFrame = this.reactor.analyze(this.silenceData, sampleRate, dtMs);
                 clearAudioReactiveVisualization(this.visualization);
@@ -810,7 +891,7 @@ export class AudioReactiveAnimationManager {
                 writeSpectrumSamples(this.frequencyDomainData, this.visualization.spectrum);
                 this.currentFrame = this.reactor.analyze(this.timeDomainData, sampleRate, dtMs);
             }
-            this.updateStems(dtMs, !heard);
+            this.updateStems(dtMs, !(stemLeadS > 0 ? this.heardAt(playing, stemLeadS) : heard), delayS, stemLeadS);
             this.router.update(this.state.routes.value, this.currentFrame, this.currentStems, dtMs, heard);
         } catch (e) {
             error = `${e}`;
@@ -825,7 +906,9 @@ export class AudioReactiveAnimationManager {
         this.sourceNode?.disconnect();
         this.separator?.dispose();
         this.delayNode?.disconnect();
+        this.analysisDelayNode?.disconnect();
         this.analyser?.disconnect();
+        this.analysisSink?.disconnect();
         this.audioContext?.close();
         this.state.audioPlayer.complete();
         this.state.status.complete();

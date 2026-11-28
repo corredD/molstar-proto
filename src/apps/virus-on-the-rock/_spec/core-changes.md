@@ -89,7 +89,9 @@ manager has no audio and no Who.
 - **`audio-reactor.ts`**, **`audio-prominence.ts`** (tested): bands, flux beat, prominence. *candidate* as a small
   analysis module; the resampler needs an anti-alias filter. Analysis reads the newest `inputSampleCount` samples of
   the analyser buffer (heard-frame, 2026-11-27; it read the oldest, ~78 ms late for ambient-pulse at 48 kHz; the two
-  ambient-pulse goldens moved, on purpose).
+  ambient-pulse goldens moved, on purpose). `getAudioReactorInputSampleCount` and `getEffectiveAudioReactorSampleRate`
+  take a `Pick` of the two fields they read, so the manager computes the lookahead's lead from its param values
+  (lookahead-sync, 2026-11-27; no behaviour change).
 - **`audio-presented-frame.ts`** (new, heard-frame, 2026-11-27, tested): `AudioPresentedFrame`, a ring of the last 256
   ticks of audio state read at what is heard (`currentTime − outputLatency`), allocated once; at a stamp boundary one
   entry per frame, one behind the read rule, elsewhere the rule (heard-phase, 2026-11-27: the hysteresis applies only
@@ -113,14 +115,32 @@ manager has no audio and no Who.
   ring's `playing` is heard, so `heardPlaying` follows the tail too. Gate fix step: the tail is timed from the stop (`stoppedAt`, set by
   the element's pause / ended listener or the first tick not playing) + the delay now; a (re)start with an empty line
   is not heard for D (`primedUntil`); the status emits on the presented drives coming to rest (`emittedAtRest`). *needs work*: a source removed without `clear` still
-  skips `router.update` (drives freeze); `stemModel` description says WebGPU only.
+  skips `router.update` (drives freeze); `stemModel` description says WebGPU only. Lookahead (lookahead-sync,
+  2026-11-27): params `lookahead` (off by default) and `lookaheadTrimMs` (category Sync, with `stemDelaySeconds`, which
+  now shows with lookahead on too); `getAudioDelaySeconds` replaces `getStemDelaySeconds` (with no model and lookahead
+  on: the slider or `LookaheadDelaySeconds` 0.25 s); `getAnalysisLeadSeconds` (½ the reactor's input window + band
+  attack + trim, within [0, D]); `StemTimelineLeadS` (30 ms) became per model in the gate's fix step:
+  `StemModelInfo.timelineLeadSeconds` (`stem-models.ts`), `getStemTimelineLeadSeconds`, and a hidden param
+  `stemTimelineLeadMs` (`PD.Value<number | null>`, null: the model's) for clicksync `--stem-lead`. Gate fix step also:
+  a heard-delay change while playing flushes both lines (the next tick primes); a flush takes its delays from the params;
+  the stems are sampled one delay back by the node's delay; the analysis guard is a plain `> 1e-5`. The graph gains a parallel
+  analysis branch (private `analysisDelayNode` at D − lead → analyser → `analysisSink`, a gain 0 to the destination);
+  the heard delay goes straight to the destination; `flushDelayLine` replaces both delay nodes, `dispose` disconnects
+  both and the sink. `tick`: a private `heardAt(playing, offsetS)`; heard at now (router, ring), analysed at now + lead
+  (analyser read, blocked count), stems sampled at t − D + max(0, lead − 30 ms) when heard that far ahead. Lookahead
+  off: every trace bit-identical.
 - **Measuring stick (measure, 2026-11-27; test and tooling only)**: `mol-plugin-state/manager/_spec/audio-pipeline-helper.ts` and
   `audio-pipeline.spec.ts` (offline pipeline, golden traces, drives the real `tick`), and `scripts/votr-sync/clicksync.mjs`
   (browser sync test with a generated click track, `--port` required). sound-stops (2026-11-27): the fake analyser reads
   what came into the graph in wall time, one stem delay back; options `stemDelayS` (a fake delay node and a stub
   separator), `endedAtS` and `stalled` (ranges with no tick); the fake element's `pause()`, `removeAttribute()`,
   `load()` work and it fires pause / ended to the manager's listeners (D = 0, no pause:
-  bit-identical traces).
+  bit-identical traces). lookahead-sync (2026-11-27): the fake analyser reads, at each read, the analysis delay the
+  manager set on a fake `analysisDelayNode` (the heard delay until set); options `lookahead`, `lookaheadTrimMs` (the
+  fake delay nodes then come without a model too) and `stemSample` (what the stub separator's sample returns); the
+  trace adds `analysed` and `stemResets`; existing traces unchanged. `audio-reactive-ports.spec.ts`: the wiring log
+  is the new graph (both delay lines flushed). `clicksync.mjs`: `--delay`, `--lookahead [--trim]`, `--stems`, kick
+  windows on the heard column, heard = media − D − output lag.
 - **`audio-routing.ts`** (tested; curve, duck, `songLoudness`, background, camera step wip). *votr only* as is (its CPU
   targets exist only in the app); the router core is generic. A non-finite source or `dtMs` reads as 0 in
   `AudioRouter.update` (router-nan-guard, 2026-11-26; commit `audio routing: a non-finite source reads as 0…`). A
@@ -132,7 +152,16 @@ manager has no audio and no Who.
   in the model output stuck the running peaks and every stem level for good; router-nan-guard, 2026-11-26).
   `setModel` returns after the tap await when a newer request (a request counter) came meanwhile (Off during the load
   no longer posts `load` and turns the tap on), and a failed tap setup clears `tapLoading` so picking the model again
-  after Off retries (stem-separator-edges, 2026-11-27).
+  after Off retries (stem-separator-edges, 2026-11-27). Stem study (2026-11-27,
+  [progress](../progress/2026-11-27-stem-study.md)): the worker's logic is `stem-worker-core.ts` (`StemWorkerCore`, ports:
+  post, prepare, createRunner, now; spec `stem-worker-core.spec.ts`), `stem-worker.ts` only wires onnxruntime-web and the
+  messages; a model switch or Off waits for the run in flight before it disposes the old runner (releasing a running
+  model's sessions broke the wasm runtime: `RuntimeError: null function`, once `memory access out of bounds` until a
+  reload), and a run's error is posted under its own model only if no load or Off came since. HTDemucs' stem energy
+  (`demucsStemEnergies`) is the energy of the stem's audio: the frequency branch inverted as demucs' `_ispec`, plus the
+  time branch, Hann-4096 frames normalized by the window weight inside the segment (the newest frames are kept), hop
+  units (it summed the branches' energies: quiet passages read 15–17 dB loud; spec `demucs-energy.spec.ts`); `dsp.ts`
+  gains `fftOf` and `inverseRealFftInPlace`; ≈ 0.5 s of worker CPU per 5 s chunk.
 - **`assembly-symmetry-axis.ts`**: axes per structure from RCSB symmetry; mesoscale parts share a middle (wip). The
   per-structure cache stores the bare key (it stored `key:count` and compared the bare key, so it never hit: two
   provider reads per structure per sync, now one after the first; redraw-and-axes-cache, 2026-11-27, spec
@@ -164,6 +193,7 @@ manager has no audio and no Who.
 
 - **`scripts/build.mjs`**: the app entry, `stem-worker.js`, ORT wasm copied to `ort/`; a custom server on 0.0.0.0
   serving the repo root (`no-store`, `/` rewritten to the app, no Range); the live-reload token. *votr only*; kept as is (decision 8).
+  `examples/angine.mp3` (4.9 MB) copied to the app's `examples/` (the startup fallback, D9; lookahead-sync, 2026-11-27).
 - **`package.json`**: `onnxruntime-web` 1.31.1. **`.gitignore`**: `models/`.
 
 ## Open
