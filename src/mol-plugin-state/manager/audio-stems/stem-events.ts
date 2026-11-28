@@ -99,6 +99,8 @@ export class BandOnsetDetector {
     private readonly selected: Int32Array;
     private frames = 0;
     private firstCentre = 0;
+    /** this run's p95, once computed (NaN: not yet): the kicks are picked twice per run */
+    private runP95 = NaN;
     private lastPeakAbs = -Infinity;
 
     constructor(readonly band: StemEventBand, maxFrames: number) {
@@ -136,6 +138,7 @@ export class BandOnsetDetector {
     begin(firstCentre: number) {
         this.frames = 0;
         this.firstCentre = firstCentre;
+        this.runP95 = NaN;
     }
 
     /** one frame: `re`, `im`, the FFT of the Hann-windowed frame */
@@ -204,7 +207,8 @@ export class BandOnsetDetector {
         const { band, flux, edb, selected } = this;
         const T = this.frames;
         if (T === 0) return;
-        const p95 = this.p95();
+        if (Number.isNaN(this.runP95)) this.runP95 = this.p95();
+        const p95 = this.runP95;
         if (!(p95 > 0)) return;
         const hop = band.hop;
         const gapS = band.minGapS;
@@ -246,6 +250,7 @@ export class BandOnsetDetector {
     reset() {
         this.lastPeakAbs = -Infinity;
         this.frames = 0;
+        this.runP95 = NaN;
     }
 }
 
