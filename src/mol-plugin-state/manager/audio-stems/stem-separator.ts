@@ -5,9 +5,12 @@
  *
  * Splits the playing audio into stems (drums, bass, other, vocals) with a separation model in a worker, for the
  * visuals only. The audio is tapped before the delay the listener hears it through; a stem's level at the time being
- * heard is read from the timeline the worker fills, ahead by at least the model's latency.
+ * heard is read from the timeline the worker fills, ahead by at least the model's latency. The stem events (kicks,
+ * snare/hats, bass notes) the worker finds are kept per kind and fire once, on the first frame that reaches them.
  */
 
+import type { StemEventValues } from '../audio-routing';
+import { StemEventKinds } from './stem-events';
 import { StemModelId, StemModels, StemName, StemNames } from './stem-models';
 import type { StemWorkerRequest, StemWorkerResponse } from './stem-worker-protocol';
 
@@ -77,6 +80,76 @@ const ReferenceBelowMixDb = 15;
 /** the drums keep their hits: instant attack, a short release, whatever the band smoothing */
 const DrumsReleaseMs = 160;
 
+/** each kind's events kept: 90 s at the kicks' minimum gap is 1000 */
+const EventCapacity = 2048;
+/**
+ * An event's value: its dBFS within EventRangeDb under its kind's loud level (the strongest lately, falling
+ * PeakDecayDbPerSecond, never under EventLoudFloorDbfs), so the song's hardest kicks read 1 and 9 dB softer 0.5
+ */
+const EventRangeDb = 18;
+const EventLoudFloorDbfs = -30;
+/** frames further apart than this (a stall, a jump) fire only the last frame's span: no backlog */
+const EventMaxSpanS = 0.25;
+
+/** one kind's events, a ring in time order */
+class EventRing {
+    readonly times = new Float64Array(EventCapacity);
+    readonly values = new Float32Array(EventCapacity);
+    head = 0;
+    count = 0;
+    loud = EventLoudFloorDbfs;
+    lastTime = NaN;
+
+    private index(k: number) {
+        return (this.head + k) % EventCapacity;
+    }
+
+    timeAt(k: number) {
+        return this.times[this.index(k)];
+    }
+
+    clear() {
+        this.head = this.count = 0;
+        this.loud = EventLoudFloorDbfs;
+        this.lastTime = NaN;
+    }
+
+    /** drop the events at or after `time`: a newer run covers them */
+    dropFrom(time: number) {
+        while (this.count > 0 && this.timeAt(this.count - 1) >= time) this.count--;
+    }
+
+    push(time: number, dbfs: number) {
+        const dt = Number.isFinite(this.lastTime) ? Math.max(0, time - this.lastTime) : 0;
+        this.lastTime = time;
+        this.loud = Math.max(dbfs, this.loud - PeakDecayDbPerSecond * dt, EventLoudFloorDbfs);
+        const value = Math.min(1, Math.max(0, (dbfs - this.loud + EventRangeDb) / EventRangeDb));
+        if (this.count === EventCapacity) {
+            this.head = this.index(1);
+            this.count--;
+        }
+        const i = this.index(this.count++);
+        this.times[i] = time;
+        this.values[i] = value;
+    }
+
+    /** the strongest value of the events in (from, to] */
+    max(from: number, to: number) {
+        let lo = 0, hi = this.count;
+        while (lo < hi) {
+            const mid = (lo + hi) >> 1;
+            if (this.timeAt(mid) <= from) lo = mid + 1; else hi = mid;
+        }
+        let v = 0;
+        for (let k = lo; k < this.count; k++) {
+            const i = this.index(k);
+            if (this.times[i] > to) break;
+            if (this.values[i] > v) v = this.values[i];
+        }
+        return v;
+    }
+}
+
 function applyAttackRelease(previous: number, target: number, dtMs: number, attackMs: number, releaseMs: number) {
     if (dtMs <= 0) return target;
     const tc = target >= previous ? attackMs : releaseMs;
@@ -102,6 +175,13 @@ export class StemSeparator {
     private mixPeak = -120;
     private levels: StemLevels = { drums: 0, bass: 0, other: 0, vocals: 0 };
     private lastSampleTime = -1;
+
+    /** the stem events, by StemEventKinds */
+    private eventRings = StemEventKinds.map(() => new EventRing());
+    /** the time the worker's events cover up to (-Infinity: none yet) */
+    private eventsUntil = -Infinity;
+    /** the time the events were last read up to (NaN: start again from the next frame's span) */
+    private eventsReadUntil = NaN;
 
     constructor(private context: AudioContext, private source: AudioNode, private options: StemSeparatorOptions, private onStatus: (s: StemSeparatorStatus) => void) { }
 
@@ -202,6 +282,9 @@ export class StemSeparator {
             this.levels[s] = 0;
         }
         this.mixPeak = -120;
+        for (const ring of this.eventRings) ring.clear();
+        this.eventsUntil = -Infinity;
+        this.eventsReadUntil = NaN;
     }
 
     private onWorkerMessage(msg: StemWorkerResponse) {
@@ -231,6 +314,16 @@ export class StemSeparator {
         if (drop > 0) {
             this.times.splice(0, drop);
             for (const s of StemNames) this.energies[s].splice(0, drop);
+        }
+        const events = msg.events;
+        if (events) {
+            for (const ring of this.eventRings) ring.dropFrom(events.from);
+            for (let i = 0; i < events.times.length; i++) {
+                const ring = this.eventRings[events.kinds[i]];
+                const t = events.times[i], db = events.dbfs[i];
+                if (ring && Number.isFinite(t) && Number.isFinite(db)) ring.push(t, db);
+            }
+            this.eventsUntil = events.until;
         }
         this.setStatus({
             state: 'running',
@@ -283,6 +376,34 @@ export class StemSeparator {
                 : applyAttackRelease(this.levels[s], target, dtMs, attackMs, releaseMs);
         }
         return { ...this.levels };
+    }
+
+    /**
+     * The events heard over the span from the last call to `at` (audio-context time), into `out`: each kind's strongest
+     * (0-1), 0 for a kind with none. The span starts again (the last `dtMs`) after `skipEvents`, a jump back or a gap
+     * over EventMaxSpanS, so a late frame fires nothing it skipped. Returns whether events are live: a model, and `at`
+     * within what its runs covered. Allocates nothing
+     */
+    sampleEvents(at: number, dtMs: number, out: StemEventValues) {
+        const last = this.eventsReadUntil;
+        const from = !Number.isFinite(last) || at - last > EventMaxSpanS ? at - dtMs / 1000 : Math.min(last, at);
+        this.eventsReadUntil = Number.isFinite(last) ? Math.max(last, at) : at;
+        const live = !!this.model && at <= this.eventsUntil;
+        out.live = live;
+        if (!live) {
+            out.kick = out.snare = out.bassNote = 0;
+            return false;
+        }
+        const r = this.eventRings;
+        out.kick = r[0].max(from, at);
+        out.snare = r[1].max(from, at);
+        out.bassNote = r[2].max(from, at);
+        return true;
+    }
+
+    /** a frame that does not read the events: the next one starts its span again */
+    skipEvents() {
+        this.eventsReadUntil = NaN;
     }
 
     dispose() {

@@ -4,6 +4,7 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
+import { StemEventValues } from '../../audio-routing';
 import { StemSeparator } from '../stem-separator';
 
 const Names = ['drums', 'bass', 'other', 'vocals'];
@@ -168,5 +169,110 @@ describe('stem separator', () => {
             expect(modules.length).toBe(1);
             expect(taps.length).toBe(1);
         });
+    });
+});
+
+describe('stem separator: stem events', () => {
+    /** a separator with HTDemucs loaded (no worker, no tap: the constructor only stores its arguments) */
+    function make() {
+        const sep: any = new StemSeparator({} as any, {} as any, {} as any, () => { });
+        sep.model = 'htdemucs';
+        const post = (from: number, until: number, events: [time: number, dbfs: number, kind: number][]) => sep.onWorkerMessage({
+            type: 'stems', model: 'htdemucs', times: new Float64Array(0), computeMs: 1, audioMs: 1,
+            energies: Object.fromEntries(Names.map(s => [s, new Float32Array(0)])),
+            events: {
+                from, until,
+                times: Float64Array.from(events.map(e => e[0])), dbfs: Float32Array.from(events.map(e => e[1])), kinds: Uint8Array.from(events.map(e => e[2])),
+            },
+        });
+        const out: StemEventValues = { kick: 0, snare: 0, bassNote: 0, live: false };
+        /** the frames from t0 by dt, each sampled: the kick value of each */
+        const run = (t0: number, n: number, dt = 1 / 60) => {
+            const kicks: number[] = [];
+            for (let i = 0; i < n; i++) {
+                sep.sampleEvents(t0 + i * dt, dt * 1000, out);
+                kicks.push(out.kick);
+            }
+            return kicks;
+        };
+        return { sep: sep as StemSeparator & { model: unknown }, post, out, run };
+    }
+
+    it('an event fires on the first sample whose time reaches it, once; one on a boundary fires once', () => {
+        const { post, run } = make();
+        // 1.005 between two frames; 1.1 exactly on a frame (1 + 6 / 60)
+        post(0, 5, [[1.005, -10, 0], [1 + 6 / 60, -10, 0]]);
+        const kicks = run(1, 12);
+        expect(kicks.map(v => v > 0 ? 1 : 0)).toEqual([0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0]);
+    });
+
+    it('a jump back or past 0.25 s fires nothing it skipped; a resume fires no backlog', () => {
+        const { sep, post, out, run } = make();
+        post(0, 9, [[1.2, -10, 0], [2.5, -10, 0], [4.0, -10, 0]]);
+        run(1, 3);
+        // a jump past 0.25 s: the kick at 1.2 is skipped, not fired late
+        expect(run(1.5, 3).some(v => v > 0)).toBe(false);
+        // a jump back: nothing it already passed fires again
+        run(1.6, 1);
+        expect(run(1.21, 1)[0]).toBe(0);
+        // paused across the kick at 2.5 (frames that do not sample), then resumed: no backlog
+        run(2.3, 2);
+        sep.skipEvents();
+        sep.sampleEvents(2.7, 16, out);
+        expect(out.kick).toBe(0);
+        // the next kick still fires
+        expect(run(3.9, 12).some(v => v > 0)).toBe(true);
+    });
+
+    it('reset, seek, model change and Off empty the events', async () => {
+        for (const clear of [
+            (sep: any) => sep.reset(), // a seek resets the separator too
+            async (sep: any) => { sep.options = { localBaseUrls: [] }; sep.ensureWorker = () => { }; sep.ensureTap = async () => { }; await sep.setModel('scnet', 'wasm'); },
+            async (sep: any) => { await sep.setModel(undefined, 'wasm'); },
+        ]) {
+            const { sep, post, out } = make();
+            (sep as any).setStatus = () => { };
+            post(0, 9, [[1.2, -10, 0]]);
+            await clear(sep);
+            (sep as any).model = 'htdemucs';
+            sep.sampleEvents(1.19, 16, out);
+            expect(sep.sampleEvents(1.21, 16, out)).toBe(false);
+            expect(out.kick).toBe(0);
+        }
+    });
+
+    it('an overlapping batch keeps the newer events', () => {
+        const { post, run } = make();
+        post(0, 5, [[1.0, -10, 0], [4.0, -10, 0], [4.5, -10, 0]]);
+        // a rerun over [3.9, 6): its events replace the older ones there
+        post(3.9, 6, [[4.2, -10, 0]]);
+        const kicks = run(3.95, 40);
+        const fired = kicks.map((v, i) => v > 0 ? 3.95 + i / 60 : -1).filter(t => t >= 0);
+        expect(fired.length).toBe(1);
+        expect(Math.abs(fired[0] - 4.2)).toBeLessThan(1 / 60);
+    });
+
+    it('strength: at the loud level reads 1, 9 dB under reads 0.5, under the floor reads 0', () => {
+        const { post, out, sep } = make();
+        post(0, 9, [[1, -6, 0], [1.5, -15, 0], [2, -30, 0], [2.5, -50, 2]]);
+        const at = (t: number) => { sep.sampleEvents(t - 0.01, 10, out); sep.sampleEvents(t, 10, out); return out; };
+        expect(at(1).kick).toBeCloseTo(1, 5);
+        // 0.6 dB/s of decay over 0.5 s: the loud level is -6.3
+        expect(at(1.5).kick).toBeCloseTo((-15 + 6.3 + 18) / 18, 5);
+        expect(at(2).kick).toBe(0);
+        // the bass's own loud level: it starts at the floor (-30)
+        expect(at(2.5).bassNote).toBe(0);
+    });
+
+    it('sampleEvents returns live only up to eventsUntil, and not without a model', () => {
+        const { sep, post, out } = make();
+        expect(sep.sampleEvents(0.5, 16, out)).toBe(false);
+        post(0, 2, []);
+        expect(sep.sampleEvents(1.9, 16, out)).toBe(true);
+        expect(out.live).toBe(true);
+        expect(sep.sampleEvents(2.1, 16, out)).toBe(false);
+        expect(out.live).toBe(false);
+        (sep as any).model = undefined;
+        expect(sep.sampleEvents(1.5, 16, out)).toBe(false);
     });
 });

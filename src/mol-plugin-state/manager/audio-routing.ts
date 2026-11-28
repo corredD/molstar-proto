@@ -11,6 +11,13 @@
 import type { AudioReactiveFrame, DefaultAudioBandKey } from './audio-reactor';
 import type { StemLevels } from './audio-stems/stem-separator';
 
+/**
+ * The stem events heard this frame: each kind's strength (0-1, the strongest that fired; 0 on a frame with none), and
+ * whether events are arriving (a model that keeps up; stand-in routes rest while they do)
+ */
+export type StemEventValues = { kick: number, snare: number, bassNote: number, live: boolean };
+export const NoStemEvents: Readonly<StemEventValues> = { kick: 0, snare: 0, bassNote: 0, live: false };
+
 export const AudioRouteSources = [
     ['stemDrums', 'Drums (stem)'],
     ['stemBass', 'Bass (stem)'],
