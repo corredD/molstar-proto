@@ -1104,6 +1104,49 @@ describe('audio pipeline (offline, 16 ms frames at 48 kHz)', () => {
             });
         }
 
+        /** each kick's lags, ms, between the frames that show it (from 0) and when it is heard: frame i heard at its clock - L */
+        const shownLags = (t: AudioPipelineTrace, at: readonly number[], L: number) => at.map(k => {
+            const out: number[] = [];
+            for (let i = 1; i < t.count; i++) {
+                const lag = (t.clockS[i] - L - D - k) * 1000;
+                if (t.drives.symAxis[i] > 0 && t.drives.symAxis[i - 1] === 0 && lag > -140 && lag < 300) out.push(lag);
+            }
+            return out;
+        });
+
+        // a long frame (a GC pause, the GPU busy): the kicks around it show once each, late if they must, never early by
+        // more than half a frame. With the preset's release (120 ms): a kick fired on a tick whose frame falls in the stall
+        // is shown on the first frame after it, its release under way (a one-frame spike would be skipped by the ring)
+        for (const [frameMs, stallS] of [[16, 0.12], [59, 0.18]] as const) {
+            it(`a stall of ${stallS * 1000} ms at ${frameMs} ms frames: each kick around it shows once, never more than half a frame early`, () => {
+                const L = 0.032;
+                const route = () => [createAudioRoute({ enabled: true, source: 'stemKick', mode: 'level', target: 'symAxis', gain: 1, floor: 0, releaseMs: 120 })];
+                for (let k = 2.3; k <= 2.71; k += 0.05) {
+                    // the ticks stop for stallS, ending when 2.5 s is heard
+                    const end = 2.5 + D + L;
+                    const t = runAudioPipeline(silence(48000, 6), route(), { durationS: 6, stemDelayS: D, stemModel: 'htdemucs', frameMs, outputLatency: L, stemEvents: kicks([k]), stalled: [[end - stallS, end]] });
+                    const rises: number[] = [];
+                    for (let i = 1; i < t.count; i++) if (t.drives.symAxis[i] > t.drives.symAxis[i - 1]) rises.push((t.clockS[i] - L - D - k) * 1000);
+                    expect([k, rises.length]).toEqual([k, 1]);
+                    expect(rises[0]).toBeGreaterThanOrEqual(-frameMs / 2 - 1);
+                }
+            });
+        }
+
+        // frames of uneven length (±20 %) and the clock in render quanta (128 / 48000 s): within half a frame plus twice the
+        // jitter (this frame and the next both move) and a quantum. With a release (a one-frame spike can fall between two presented frames when two ticks land in one)
+        for (const [frameMs, jitter, quantum] of [[59, 12, 0], [1000 / 60, 3.3, 128 / 48000], [16, 0, 128 / 48000]] as const) {
+            it(`uneven frames (${frameMs.toFixed(1)} ms ± ${jitter} ms${quantum ? ', the clock in 128-sample quanta' : ''}): each kick shows once, within half a frame plus the jitter`, () => {
+                const L = 0.032, at = Array.from({ length: 8 }, (_, k) => 2.5 + k * 0.531);
+                const route = [createAudioRoute({ enabled: true, source: 'stemKick', mode: 'level', target: 'symAxis', gain: 1, floor: 0, releaseMs: 120 })];
+                const t = runAudioPipeline(silence(48000, 8), route, { durationS: 8, stemDelayS: D, stemModel: 'htdemucs', frameMs, outputLatency: L, stemEvents: kicks(at), frameJitterMs: jitter, clockQuantumS: quantum || undefined });
+                const rises: number[] = [];
+                for (let i = 1; i < t.count; i++) if (t.drives.symAxis[i] > t.drives.symAxis[i - 1] + 1e-9) rises.push(i);
+                expect(rises.length).toBe(at.length);
+                rises.forEach((i, k) => expect(Math.abs((t.clockS[i] - L - D - at[k]) * 1000)).toBeLessThanOrEqual(frameMs / 2 + 2 * jitter + quantum * 1000 + 1));
+            });
+        }
+
         it('alternating 1 / 0.5 kicks keep the burst order: each 6 dB softer kick bursts 1 - 6 / 18 of the loud one', () => {
             const times = [2, 2.5, 3, 3.5, 4, 4.5, 5, 5.5];
             const t = runAudioPipeline(silence(48000, 8), kickRoute(), { durationS: 8, stemDelayS: D, stemModel: 'htdemucs', stemEvents: kicks(times, i => i % 2 ? -12 : -6) });
@@ -1139,8 +1182,14 @@ describe('audio pipeline (offline, 16 ms frames at 48 kHz)', () => {
             const ev = { from: 0, until: 30, times: Float64Array.from([2.5, 3.4, 3.5]), dbfs: Float32Array.from([-6, -6, -15]), kinds: Uint8Array.from([0, 2, 2]) };
             const hit = runAudioPipeline(silence(48000, 6), getDefaultAudioRoutes(), { analysis: burst, durationS: 6, stemDelayS: D, stemModel: 'htdemucs', stemEvents: ev });
             expect(Math.max(...hit.drives.symAxis)).toBeCloseTo(6.5, 5);
-            const i = frameAt(3.5 + D);
-            expect(Math.max(...hit.drives.symAxis.slice(i - 1, i + 2))).toBeGreaterThan(3 * (-15 + 6.06 + 18) / 18 - 1e-3);
+            const i = Math.round((3.5 + D) * 1000 / F) - 1;
+            expect(hit.drives.symAxis[i]).toBeGreaterThan(3 * (-15 + 6.06 + 18) / 18 - 1e-3);
+            // a bass note alone: on the frame heard nearest to it (16 ms frames, latency 0: frame i is heard at (i + 1) 16 ms),
+            // not the one before nor after
+            const note = { from: 0, until: 30, times: Float64Array.from([3.5]), dbfs: Float32Array.from([-6]), kinds: Uint8Array.from([2]) };
+            const alone = runAudioPipeline(silence(48000, 6), getDefaultAudioRoutes(), { analysis: burst, durationS: 6, stemDelayS: D, stemModel: 'htdemucs', stemEvents: note });
+            expect(alone.drives.symAxis[i - 1]).toBe(0);
+            expect(alone.drives.symAxis[i]).toBeCloseTo(3, 5);
         });
 
         it('before the events\' coverage starts (a model switched mid-play, the delay kept): the stand-ins drive symAxis', () => {

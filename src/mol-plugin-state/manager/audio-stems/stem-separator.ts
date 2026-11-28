@@ -195,6 +195,8 @@ export class StemSeparator {
     private eventsUntil = -Infinity;
     /** the time the events were last read up to (NaN: start again from the next frame's span) */
     private eventsReadUntil = NaN;
+    /** the clock time of the last read, before its shift (NaN: none) */
+    private eventsReadAt = NaN;
     /** whether events were live on the last read (live holds through EventLiveGraceS past the coverage) */
     private eventsLive = false;
     /** bumped at each clear (a reset, a model change, Off) and sent with load and reset: a run posted before is dropped */
@@ -303,6 +305,7 @@ export class StemSeparator {
         this.eventsFrom = NaN;
         this.eventsUntil = -Infinity;
         this.eventsReadUntil = NaN;
+        this.eventsReadAt = NaN;
         this.eventsLive = false;
         this.epoch++;
     }
@@ -409,9 +412,13 @@ export class StemSeparator {
      * over EventMaxSpanS, so a late frame fires nothing it skipped. Returns whether events are live: a model, and `at`
      * within what its runs covered (EventLiveGraceS past its end once live). Allocates nothing
      */
-    sampleEvents(at: number, dtMs: number, out: StemEventValues) {
+    sampleEvents(at: number, dtMs: number, out: StemEventValues, shiftS = 0) {
         const last = this.eventsReadUntil;
-        const from = !Number.isFinite(last) || at - last > EventMaxSpanS ? at - dtMs / 1000 : Math.min(last, at);
+        // the gap is the clock's, not the read point's: a change of the shift alone never starts the span again
+        const restart = !Number.isFinite(last) || !(at - this.eventsReadAt <= EventMaxSpanS);
+        this.eventsReadAt = at;
+        at += shiftS;
+        const from = restart ? at - dtMs / 1000 : Math.min(last, at);
         this.eventsReadUntil = Number.isFinite(last) ? Math.max(last, at) : at;
         // within what the runs covered: before the first run's from (a model switched with the delay kept) the audio
         // being heard has no events, and the stand-ins carry it. Past its end, live a grace longer: a frame there
@@ -434,6 +441,7 @@ export class StemSeparator {
     /** a frame that does not read the events: the next one starts its span again */
     skipEvents() {
         this.eventsReadUntil = NaN;
+        this.eventsReadAt = NaN;
     }
 
     dispose() {

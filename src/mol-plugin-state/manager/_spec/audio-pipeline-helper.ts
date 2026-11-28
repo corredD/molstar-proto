@@ -63,11 +63,20 @@ export type AudioPipelineOptions = {
      * under slow frames it runs slower than the audio clock. Default: no cap (tick's time is the frame's wall time)
      */
     tickStepCapMs?: number,
+    /**
+     * each frame's clock off its nominal time by up to ± this, ms (seeded): frames of uneven length. Must stay under
+     * half a frame so the clock runs forward
+     */
+    frameJitterMs?: number,
+    /** the context clock floored to this many seconds (a render quantum: 128 / 48000), as a browser advances it */
+    clockQuantumS?: number,
 };
 
 export type AudioPipelineTrace = {
     count: number,
     timeMs: Float64Array, mediaS: Float64Array, paused: Uint8Array,
+    /** the context clock each frame ticked at, seconds (timeMs / 1000 without jitter or quantum) */
+    clockS: Float64Array,
     drums: Float64Array, bass: Float64Array, other: Float64Array, vocals: Float64Array,
     /** by route index (route ids come from a global counter and depend on test order) */
     routeValues: Float64Array[],
@@ -202,7 +211,7 @@ export function runAudioPipeline(signal: AudioSignal, routes: readonly AudioRout
 
     const trace: AudioPipelineTrace = {
         count,
-        timeMs: new Float64Array(count), mediaS: new Float64Array(count), paused: new Uint8Array(count),
+        timeMs: new Float64Array(count), mediaS: new Float64Array(count), paused: new Uint8Array(count), clockS: new Float64Array(count),
         drums: new Float64Array(count), bass: new Float64Array(count), other: new Float64Array(count), vocals: new Float64Array(count),
         routeValues: routes.map(() => new Float64Array(count)),
         drives: {} as Record<AudioRouteTarget, Float64Array>,
@@ -214,6 +223,7 @@ export function runAudioPipeline(signal: AudioSignal, routes: readonly AudioRout
     let mediaFrames = 0;
     let firedPaused = false;
     let tickTimeMs = 0;
+    const jitterRnd = mulberry32(77);
     for (let i = 0; i < count; i++) {
         frameIndex = i;
         const timeMs = (i + 1) * frameMs;
@@ -230,11 +240,14 @@ export function runAudioPipeline(signal: AudioSignal, routes: readonly AudioRout
         const len = paused ? Math.round((i + 1) * frameMs * sr / 1000) - Math.round(i * frameMs * sr / 1000) : cursor - from;
         if (!paused) wall.set(signal.samples.subarray(from, cursor), wallEnd);
         wallEnd += len;
-        ctx.currentTime = timeMs / 1000;
+        const jitter = opts.frameJitterMs ? (jitterRnd() * 2 - 1) * opts.frameJitterMs : 0;
+        const clockMs = timeMs + jitter;
+        ctx.currentTime = opts.clockQuantumS ? Math.floor(clockMs / 1000 / opts.clockQuantumS) * opts.clockQuantumS : clockMs / 1000;
+        trace.clockS[i] = ctx.currentTime;
         if (paused && !wasPaused) fire('pause');
         if (ended && !wasEnded) fire('ended');
         tickTimeMs += Math.min(frameMs, opts.tickStepCapMs ?? Infinity);
-        if (!opts.stalled?.some(([a, b]) => timeMs / 1000 > a && timeMs / 1000 <= b)) manager.tick(opts.tickStepCapMs === undefined ? timeMs : tickTimeMs);
+        if (!opts.stalled?.some(([a, b]) => timeMs / 1000 > a && timeMs / 1000 <= b)) manager.tick(opts.tickStepCapMs === undefined ? clockMs : tickTimeMs);
         const stems = manager.stems;
         trace.timeMs[i] = timeMs; trace.mediaS[i] = mediaFrames * frameMs / 1000; trace.paused[i] = paused ? 1 : 0;
         trace.drums[i] = stems.drums; trace.bass[i] = stems.bass; trace.other[i] = stems.other; trace.vocals[i] = stems.vocals;
