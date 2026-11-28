@@ -269,6 +269,21 @@ describe('stem separator: stem events', () => {
         expect(fired).toEqual([0, 1, 1, 0]);
     });
 
+    it('a model that only just keeps up (each run 0.2 s late) never flips live; a real stall flips it once', () => {
+        const { post, out, sep } = make();
+        let until = 2, flips = 0, wasLive = false;
+        post(0, until, []);
+        for (let i = 60; i < 30 * 60; i++) {
+            const at = i / 60;
+            // the next run comes 0.2 s after its predecessor's until is heard, none from 15 to 18 s (a stall)
+            if (at >= until + 0.2 && !(at >= 15 && at < 18)) { post(until, until + 2, []); until += 2; }
+            const live = sep.sampleEvents(at, 1000 / 60, out);
+            if (wasLive && !live) flips++;
+            wasLive = live;
+        }
+        expect(flips).toBe(1);
+    });
+
     it('so does one when the next run starts a few µs early (a 48 kHz context: the resampler\'s rounding)', () => {
         const { post, run } = make();
         post(0, 5, [[5.02, -10, 0]]);
@@ -288,13 +303,15 @@ describe('stem separator: stem events', () => {
         expect(at(2.5).bassNote).toBe(0);
     });
 
-    it('sampleEvents returns live only up to eventsUntil, and not without a model', () => {
+    it('sampleEvents returns live only within the coverage (a grace past its end), and not without a model', () => {
         const { sep, post, out } = make();
         expect(sep.sampleEvents(0.5, 16, out)).toBe(false);
         post(0, 2, []);
         expect(sep.sampleEvents(1.9, 16, out)).toBe(true);
         expect(out.live).toBe(true);
-        expect(sep.sampleEvents(2.1, 16, out)).toBe(false);
+        // a little past it (a run a little late): still live, so the stand-ins do not flap; past the grace, not
+        expect(sep.sampleEvents(2.1, 16, out)).toBe(true);
+        expect(sep.sampleEvents(2.6, 16, out)).toBe(false);
         expect(out.live).toBe(false);
         // before the coverage starts: not live (the first run after a clear covers from its from)
         expect(sep.sampleEvents(-0.1, 16, out)).toBe(false);

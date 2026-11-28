@@ -10,7 +10,7 @@
  */
 
 import type { StemEventValues } from '../audio-routing';
-import { StemEventKinds } from './stem-events';
+import { EventHoldBackS, StemEventKinds } from './stem-events';
 import { StemModelId, StemModels, StemName, StemNames } from './stem-models';
 import type { StemWorkerRequest, StemWorkerResponse } from './stem-worker-protocol';
 
@@ -90,6 +90,12 @@ const EventRangeDb = 18;
 const EventLoudFloorDbfs = -30;
 /** frames further apart than this (a stall, a jump) fire only the last frame's span: no backlog */
 const EventMaxSpanS = 0.25;
+/**
+ * events stay live this long past their coverage's end: a run a little late (a model that only just keeps up) does not
+ * flip the stand-in routes on for a moment each run. The hold-back (events stop that much before the levels) and some
+ * slack: the stand-ins come in about when the levels fall behind too
+ */
+const EventLiveGraceS = EventHoldBackS + 0.15;
 
 /** one kind's events, a ring in time order */
 class EventRing {
@@ -189,6 +195,8 @@ export class StemSeparator {
     private eventsUntil = -Infinity;
     /** the time the events were last read up to (NaN: start again from the next frame's span) */
     private eventsReadUntil = NaN;
+    /** whether events were live on the last read (live holds through EventLiveGraceS past the coverage) */
+    private eventsLive = false;
 
     constructor(private context: AudioContext, private source: AudioNode, private options: StemSeparatorOptions, private onStatus: (s: StemSeparatorStatus) => void) { }
 
@@ -293,6 +301,7 @@ export class StemSeparator {
         this.eventsFrom = NaN;
         this.eventsUntil = -Infinity;
         this.eventsReadUntil = NaN;
+        this.eventsLive = false;
     }
 
     private onWorkerMessage(msg: StemWorkerResponse) {
@@ -356,7 +365,8 @@ export class StemSeparator {
             if (this.model && n > 0) this.status.headroom = this.times[n - 1] - time;
             return undefined;
         }
-        this.status.headroom = this.times[n - 1] - time;
+        // the events stop EventHoldBackS before the levels: the earlier of the two
+        this.status.headroom = Math.min(this.times[n - 1], Number.isFinite(this.eventsUntil) ? this.eventsUntil : Infinity) - time;
         // binary search for the frame at or before `time`
         let lo = 0, hi = n - 1;
         while (hi - lo > 1) {
@@ -392,20 +402,20 @@ export class StemSeparator {
      * The events heard over the span from the last call to `at` (audio-context time), into `out`: each kind's strongest
      * (0-1), 0 for a kind with none. The span starts again (the last `dtMs`) after `skipEvents`, a jump back or a gap
      * over EventMaxSpanS, so a late frame fires nothing it skipped. Returns whether events are live: a model, and `at`
-     * within what its runs covered. Allocates nothing
+     * within what its runs covered (EventLiveGraceS past its end once live). Allocates nothing
      */
     sampleEvents(at: number, dtMs: number, out: StemEventValues) {
         const last = this.eventsReadUntil;
         const from = !Number.isFinite(last) || at - last > EventMaxSpanS ? at - dtMs / 1000 : Math.min(last, at);
         this.eventsReadUntil = Number.isFinite(last) ? Math.max(last, at) : at;
         // within what the runs covered: before the first run's from (a model switched with the delay kept) the audio
-        // being heard has no events, and the stand-ins carry it
-        const live = !!this.model && at >= this.eventsFrom && at <= this.eventsUntil;
+        // being heard has no events, and the stand-ins carry it. Past its end, live a grace longer: a frame there
+        // still reads the events in the ring (those the last run dated up to its until and past it), and those of a
+        // late run that were due before it arrived are lost (a late run loses its events)
+        const covered = !!this.model && at >= this.eventsFrom;
+        const live = this.eventsLive = covered && (at <= this.eventsUntil || (this.eventsLive && at <= this.eventsUntil + EventLiveGraceS));
         out.live = live;
         if (!live) {
-            // a frame past the coverage reads nothing and uses nothing up: the events not yet read fire once the next
-            // run is in
-            if (at > this.eventsUntil) this.eventsReadUntil = Number.isFinite(last) ? last : Math.min(at, this.eventsUntil);
             out.kick = out.snare = out.bassNote = 0;
             return false;
         }
