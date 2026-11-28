@@ -102,9 +102,38 @@ Written by the lane (Sonnet) with the Opus advisor; the brief's proposal, refine
 
 ## Decided
 
+- **The events' region, not the consumed samples (me, with the advisor; for Ludo to confirm).** The brief's
+  `[W - consumed, W)` ends at the window's newest sample, where every model is poorest; the region heard is
+  `[W - consumed - H, W - H)` (H = `EventHoldBackS`), the events' own. It tiles by sample. Measured: no step at the
+  seams (below).
+- **The mix mutes from the first stem chunk's heard time, not from the click (advisor).** A click-time mute at Audio
+  Delay 25 s would be up to 25 s of silence. The mix is heard until then.
+- **All four stems always come back while listening** (the brief): adding a stem is instant; each stem's gain switches it.
+- **A seek stops nothing (departure from the brief).** A seek is a jump on the context clock the delay line already
+  follows, and the manager does not flush it; the stems follow it the same way. Stop, clear, a new source and a change
+  of D reset the player (they reset the separator).
+- **Listening is off with no model and cleared by Off; not in `params`** (not saved), in `state.stemListen` with one write path.
+- **"Agrees with the study's reference stems" is not tested per model** (departure): other and vocals go through the same
+  loops as drums and bass, which the events' tests (and the study's comparison) cover; the tests added are the sums and
+  the identities (Spleeter masks sum to the mix below 11 kHz, HTDemucs other/vocals are their time branch, SCNet's
+  inverse is the identity on the forward) plus the worker over fake runners.
+
 ## Learned
 
+- A per-sample tap on the heard path (a script processor on each node: the unmixed delay output, the mix gain, a stem's
+  gain) measures the claim directly: the drums stem's kick onsets sit within 0.4 ms of the mix's, and the mix
+  as heard is exactly 0 after the first stem chunk. The first version compared two separate runs at 5 ms resolution
+  and could not show either.
+- A tap left on while the toggles go off hears the mix come back (the 0.05 "audible" peak was that): stop the tap first.
+- The headed HTDemucs run on WebGPU in this Mac's Playwright did not finish here: it stayed `warming` through 39 s
+  of audio and the page then closed (the GPU process; the closing page's `dispose` threw `disconnect ... not connected`
+  in `flushDelayLine`, a teardown order that predates this lane). HTDemucs and SCNet were not heard here; Ludo's check
+  below is the one that does.
+
 ## Size
+
+Production (no tests, specs, scripts, scss): +249 / -29 lines against ~250 in the brief; with the card's scss about +270.
+The runners' four-stem paths, the player and the manager hooks took the room the card did not.
 
 ## Review
 
