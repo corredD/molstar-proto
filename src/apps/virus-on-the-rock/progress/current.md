@@ -8,10 +8,12 @@ queue ([TODO.md](../TODO.md)).
 
 - `stem-events` round 2 ([brief](2026-11-27-stem-events.md#round-2-ludos-try-2026-11-28), on PR #77's branch):
   holes when HTDemucs falls behind go to the stand-ins, instant pause, HTDemucs faster on WebGPU.
-- `stem-listen` ([brief](2026-11-28-stem-listen.md), branch `votr/stem-listen` on `votr/stem-events`, port 1354): a
-  speaker per stem on the Stem Separation card, heard through the delay in time with the mix.
 
 ## Waiting on Ludo
+
+- `stem-listen`: PR #78 into `votr/stem-events` (a speaker per stem, heard through the delay; port 1354). Open:
+  HTDemucs and SCNet not heard headed (only Spleeter measured), the tail before a pause or the end, D changed in a
+  pause's drain un-mutes the mix.
 
 - `stem-events`: PR #77 into `votr/lookahead-sync` (retarget to `votr/overnight` once #76 merges). Kick, snare/hat and
   bass-note events from all three models; Drums & Bass Burst hits symAxis on each kick. Open: 48 kHz snare/hats ~85 %
