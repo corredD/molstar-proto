@@ -4,7 +4,8 @@
  * @author Ludovic Autin <autin@scripps.edu>
  *
  * Music source-separation models run with onnxruntime-web, each reduced to what the visuals need: the energy of each
- * stem per STFT hop (no inverse STFT, no audio out). Inputs and layouts follow each model's card.
+ * stem per STFT hop, and the drums and bass as mono audio for the stem events. Inputs and layouts follow each model's
+ * card.
  */
 
 import type * as Ort from 'onnxruntime-web';
@@ -78,6 +79,11 @@ export type StemRunResult = {
     energies: StemEnergies,
     /** window-local sample position of each frame's centre */
     centers: Float64Array,
+    /**
+     * the drums and bass as audio, mono, window-local (the window's length), for the stem events. The runner's own
+     * buffers, overwritten by its next run: the worker reads them before it starts one
+     */
+    audio?: Partial<Record<StemName, Float32Array>>,
 };
 
 export type StemRunner = {
@@ -240,9 +246,9 @@ function demucsISpecInto(x: Float32Array, rePlane: number, imPlane: number, le: 
  * branch inverted as demucs does, plus the time branch) in a Hann-4096 window, in hop units (a steady power P reads
  * hop · P per channel). Not the sum of the two branches' energies: they partly cancel, and the frequency branch is no
  * signal's spectrum, so its spectral energy overstates its audio (quiet passages read 15-17 dB loud; core-changes.md,
- * audio-stems, stem study 2026-11-27).
+ * audio-stems, stem study 2026-11-27). Each stem in `mono` gets its audio, (left + right) / 2, for the stem events.
  */
-export function demucsStemEnergies(x: Float32Array, xt: Float32Array, length: number): StemEnergies {
+export function demucsStemEnergies(x: Float32Array, xt: Float32Array, length: number, mono?: Partial<Record<StemName, Float32Array>>): StemEnergies {
     const le = Math.ceil(length / StemHop);
     const energies = emptyEnergies(le);
     const audio = [new Float32Array(length), new Float32Array(length)];
@@ -255,6 +261,8 @@ export function demucsStemEnergies(x: Float32Array, xt: Float32Array, length: nu
         }
         const e = energies[StemNames[s]];
         const [l, r] = audio;
+        const m = mono?.[StemNames[s]];
+        if (m) for (let i = 0; i < length; i++) m[i] = (l[i] + r[i]) / 2;
         for (let t = 0; t < le; t++) {
             const from = t * StemHop + StemHop / 2 - StemFftSize / 2;
             // a window that runs past the segment reads the power of its part inside: the newest frames are kept
@@ -290,6 +298,7 @@ async function createHTDemucs(ctx: StemRunnerContext): Promise<StemRunner> {
     const timeName = manifest.outputs?.time ?? 'xt';
     const L = 343980;
     const le = Math.ceil(L / StemHop); // 336 frames
+    const audio = { drums: new Float32Array(L), bass: new Float32Array(L) };
     return {
         async run(left, right) {
             const mix = new Float32Array(2 * L);
@@ -316,9 +325,9 @@ async function createHTDemucs(ctx: StemRunnerContext): Promise<StemRunner> {
                 }
                 const x = await values.get(freqName)!.getData() as Float32Array;
                 const xt = await values.get(timeName)!.getData() as Float32Array;
-                const energies = demucsStemEnergies(x, xt, L);
+                const energies = demucsStemEnergies(x, xt, L, audio);
                 const centers = Float64Array.from({ length: le }, (_, t) => t * StemHop + StemHop / 2);
-                return { energies, centers };
+                return { energies, centers, audio };
             } finally {
                 for (const t of produced) t.dispose();
             }

@@ -81,4 +81,20 @@ describe('HTDemucs stem energy', () => {
             }
         }
     });
+
+    it('writes the drums and bass audio, mono, both branches summed (the stem events read it)', () => {
+        const s = signal();
+        const tone = Float32Array.from({ length: L }, (_, i) => 0.3 * Math.sin(2 * Math.PI * 3 * i / H));
+        const { x, xt } = branches(s, s);
+        // the bass: its time branch only, left and right
+        xt.set(tone, 2 * L);
+        xt.set(tone, 3 * L);
+        const mono = { drums: new Float32Array(L), bass: new Float32Array(L) };
+        demucsStemEnergies(x, xt, L, mono);
+        for (let i = 4 * H; i < L - 4 * H; i++) {
+            // _spec drops the Nyquist bin: the noise's share of it does not come back
+            expect(Math.abs(mono.drums[i] - 2 * s[i])).toBeLessThan(2e-3);
+            expect(Math.abs(mono.bass[i] - tone[i])).toBeLessThan(1e-6);
+        }
+    });
 });
