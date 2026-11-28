@@ -39,6 +39,8 @@ function loadPlaywright() {
 }
 const { chromium } = loadPlaywright();
 
+async function main() {
+
 const browser = await chromium.launch({ headless: !headed, args: ['--use-angle=metal', '--autoplay-policy=no-user-gesture-required'] });
 const page = await browser.newPage();
 page.on('pageerror', e => console.error('pageerror', e.message));
@@ -143,3 +145,6 @@ for (const t of b) {
 const mixLags = a.map(t => (t - (0.25 + 0.5 * Math.round((t - delay - 0.25) / 0.5) + delay)) * 1000);
 console.log(`kick onset vs its song time + D: mix median ${med(mixLags).toFixed(1)} ms, drums stem median ${med(lags).toFixed(1)} ms (min ${Math.min(...lags).toFixed(1)}, max ${Math.max(...lags).toFixed(1)}), difference ${(med(lags) - med(mixLags)).toFixed(1)} ms`);
 await browser.close();
+}
+
+main().catch(e => { console.error(e); process.exit(1); });
