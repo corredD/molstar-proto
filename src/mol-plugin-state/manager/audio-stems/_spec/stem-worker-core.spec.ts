@@ -450,4 +450,42 @@ describe('stem worker core: listening', () => {
         expect(stems.length).toBe(1);
         expect(stems[0].type === 'stems' && stems[0].listen).toBeUndefined();
     });
+
+    it('a NaN or Infinity from the model reaches the speakers as 0', async () => {
+        const { core, posted, runners, load, feedChunk } = setup();
+        core.handle(load('spleeter'));
+        core.handle({ type: 'listen', on: true });
+        await flush();
+        feedChunk('spleeter');
+        await flush();
+        const W = StemModels.spleeter.windowSamples;
+        const mk = () => new Float32Array(W).fill(0.5);
+        const other = mk(), vocals = mk();
+        // inside the region (the last 0.35 s of the window are held back)
+        other[W - 20000] = NaN;
+        vocals[W - 20000] = Infinity;
+        runners.get('spleeter')!.runs[0].resolve({ ...result('spleeter'), audio: { drums: mk(), bass: mk(), other, vocals } });
+        await flush();
+        const listen = posted.flatMap(m => m.type === 'stems' && m.listen ? [m.listen] : [])[0];
+        expect(listen).toBeDefined();
+        for (const name of StemNames) for (const v of listen.samples[name]) expect(Number.isFinite(v)).toBe(true);
+        expect(listen.samples.other[listen.samples.other.length - 20000 + Math.round(0.35 * 44100)]).toBe(0);
+    });
+
+    it('the chunk is a copy: the runner reuses its buffers', async () => {
+        const { core, posted, runners, load, feedChunk } = setup();
+        core.handle(load('spleeter'));
+        core.handle({ type: 'listen', on: true });
+        await flush();
+        const W = StemModels.spleeter.windowSamples;
+        const buf = new Float32Array(W).fill(0.25);
+        const audio = { drums: buf, bass: buf, other: buf, vocals: buf };
+        feedChunk('spleeter');
+        await flush();
+        runners.get('spleeter')!.runs[0].resolve({ ...result('spleeter'), audio });
+        await flush();
+        buf.fill(0.75);
+        const first = posted.flatMap(m => m.type === 'stems' && m.listen ? [m.listen] : [])[0];
+        expect(first.samples.drums[0]).toBe(0.25);
+    });
 });

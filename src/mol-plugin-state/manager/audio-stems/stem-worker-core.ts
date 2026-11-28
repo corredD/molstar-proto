@@ -169,7 +169,14 @@ export class StemWorkerCore {
     /** the four stems' audio over [from, to) of the window, copied (the runner's buffers are reused), or nothing if the runner gave less */
     private listenChunk(audio: StemRunResult['audio'], from: number, to: number, time: number): StemWorkerListen | undefined {
         if (!audio?.drums || !audio.bass || !audio.other || !audio.vocals || to <= from) return undefined;
-        return { time, samples: { drums: audio.drums.slice(from, to), bass: audio.bass.slice(from, to), other: audio.other.slice(from, to), vocals: audio.vocals.slice(from, to) } };
+        // copied (the runner's buffers are reused), and finite: an fp16 model can emit NaN or Infinity, which would be a click
+        // at full scale while the mix is muted
+        const copy = (a: Float32Array) => {
+            const out = a.slice(from, to);
+            for (let i = 0; i < out.length; i++) if (!Number.isFinite(out[i])) out[i] = 0;
+            return out;
+        };
+        return { time, samples: { drums: copy(audio.drums), bass: copy(audio.bass), other: copy(audio.other), vocals: copy(audio.vocals) } };
     }
 
     private async maybeRun() {
