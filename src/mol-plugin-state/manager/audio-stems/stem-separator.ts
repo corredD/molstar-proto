@@ -114,16 +114,27 @@ class EventRing {
         this.lastTime = NaN;
     }
 
+    /**
+     * in time order: the last run's last event can be dated after the next run's first (dated up to 60 ms after its
+     * peak, the next up to 40 ms before), so it shifts back past the later ones
+     */
     push(time: number, dbfs: number) {
         const dt = Number.isFinite(this.lastTime) ? Math.max(0, time - this.lastTime) : 0;
-        this.lastTime = time;
+        this.lastTime = Number.isFinite(this.lastTime) ? Math.max(this.lastTime, time) : time;
         this.loud = Math.max(dbfs, this.loud - PeakDecayDbPerSecond * dt, EventLoudFloorDbfs);
         const value = Math.min(1, Math.max(0, (dbfs - this.loud + EventRangeDb) / EventRangeDb));
         if (this.count === EventCapacity) {
             this.head = this.index(1);
             this.count--;
         }
-        const i = this.index(this.count++);
+        let k = this.count++;
+        while (k > 0 && this.timeAt(k - 1) > time) {
+            const a = this.index(k), b = this.index(k - 1);
+            this.times[a] = this.times[b];
+            this.values[a] = this.values[b];
+            k--;
+        }
+        const i = this.index(k);
         this.times[i] = time;
         this.values[i] = value;
     }

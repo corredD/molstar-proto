@@ -260,6 +260,15 @@ describe('stem separator: stem events', () => {
         expect(fired.filter(v => v > 0).length).toBe(1);
     });
 
+    it('events of two runs whose dates cross (the last run\'s dated late, the next one\'s early) both fire, in time order', () => {
+        const { post, out, sep } = make();
+        post(0, 5, [[5.058, -10, 0]]);
+        post(5, 7, [[5.050, -10, 0]]);
+        const fired: number[] = [];
+        for (const t of [5.045, 5.055, 5.065, 5.075]) { sep.sampleEvents(t, 10, out); fired.push(out.kick > 0 ? 1 : 0); }
+        expect(fired).toEqual([0, 1, 1, 0]);
+    });
+
     it('so does one when the next run starts a few µs early (a 48 kHz context: the resampler\'s rounding)', () => {
         const { post, run } = make();
         post(0, 5, [[5.02, -10, 0]]);
