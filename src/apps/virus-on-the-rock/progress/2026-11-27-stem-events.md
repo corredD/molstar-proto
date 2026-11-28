@@ -85,6 +85,12 @@
 
 ## Decided
 
+- Ludo, 2026-11-27 ("ok go"): the design's seven points as proposed (0.35 s worker look-ahead; events at t − D; the
+  `standIn` route field and the new Drums & Bass Burst defaults; snare a source only; the new acceptance numbers;
+  ~385 lines), plus **Spleeter and SCNet give events too**: each runner inverts its drums and bass to audio (Spleeter:
+  the stem's mask on the mix's complex STFT, the mix's phase; SCNet: its complex output), overlap-add at 4096/1024,
+  then the same detector. ~435 production lines.
+
 ## Learned
 
 ## Size
