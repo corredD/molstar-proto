@@ -1072,12 +1072,15 @@ describe('audio pipeline (offline, 16 ms frames at 48 kHz)', () => {
         /** the frame whose clock first reaches `s`: frame i ticks at (i + 1) F */
         const frameAt = (s: number) => Math.ceil(s * 1000 / F - 1e-9) - 1;
 
-        for (const lookahead of [false, true]) {
+        for (const [lookahead, trim] of [[false, 0], [true, 0], [true, 100]] as const) {
             for (const L of [0, 0.032]) {
-                it(`a kick event moves symAxis on the frame it is heard, ±1 frame (D 1 s; lookahead ${lookahead ? 'on' : 'off'}; latency ${L * 1000} ms)`, () => {
-                    const t = runAudioPipeline(silence(48000, 8), kickRoute(), { durationS: 8, stemDelayS: D, stemModel: 'htdemucs', lookahead, outputLatency: L, stemEvents: kicks(KickAt) });
+                it(`a kick event moves symAxis once, on the frame it is heard, ±1 frame (D 1 s; lookahead ${lookahead ? `on, trim ${trim} ms` : 'off'}; latency ${L * 1000} ms)`, () => {
+                    const t = runAudioPipeline(silence(48000, 8), kickRoute(), { durationS: 8, stemDelayS: D, stemModel: 'htdemucs', lookahead, lookaheadTrimMs: trim, outputLatency: L, stemEvents: kicks(KickAt) });
                     const got = onsets(t);
                     expect(got.length).toBe(KickAt.length);
+                    // one frame each: an event fires once
+                    expect(t.drives.symAxis.filter(x => x > 0).length).toBe(KickAt.length);
+                    // with a 100 ms lead too: events are read at t - D, with no lead
                     got.forEach((i, k) => expect(Math.abs(i - frameAt(KickAt[k] + D + L))).toBeLessThanOrEqual(1));
                 });
             }
