@@ -38,7 +38,7 @@
   and lost-audio report, HTDemucs' yields and the pause path: merge `origin/votr/stem-events` before the gate and
   resolve there; do not change those parts.
 - **Size:** ~250 production lines (the card included).
-- **Lane model:** Opus (audio scheduling on the context clock, the models' inverse paths).
+- **Lane model:** Sonnet, calling the Opus `advisor` before each design or hot-path step and before done (Ludo, 2026-11-28); the gate stays Opus.
 - **Steps and models:** 1. architect (Opus): the protocol, the scheduler, each model's four-stem audio 2. build (Opus;
   Sonnet for mechanical parts) 3. checks (Sonnet) 4. merge `origin/votr/stem-events`, gate (reviewer + skeptic,
   Opus) 5. PR into `votr/stem-events` (`-R corredD/molstar-proto`), dev server on port 1354 for Ludo.
