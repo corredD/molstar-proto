@@ -25,6 +25,8 @@ export type StemSeparatorStatus = {
     loadFactor?: number,
     /** seconds of audio separated ahead of what is heard (negative: behind) */
     headroom?: number,
+    /** seconds of audio the last run left without events (the model fell behind the window): 0 when it kept up */
+    lostMs?: number,
 };
 
 export type StemSeparatorOptions = {
@@ -96,6 +98,11 @@ const EventMaxSpanS = 0.25;
  * slack: the stand-ins come in about when the levels fall behind too
  */
 const EventLiveGraceS = EventHoldBackS + 0.15;
+
+/** runs further apart than this leave a hole (seams of a 48 kHz context cross by microseconds) */
+const EventHoleEpsS = 1e-3;
+/** the holes kept, the oldest dropped: a model that always falls behind makes one per run */
+const EventHoleCapacity = 64;
 
 /** one kind's events, a ring in time order */
 class EventRing {
@@ -193,6 +200,10 @@ export class StemSeparator {
     /** the time the worker's events cover from (the first run's from since the last clear; NaN: none yet) and up to */
     private eventsFrom = NaN;
     private eventsUntil = -Infinity;
+    /** the stretches no run covered (the worker lost the audio), [from, to) in time order */
+    private readonly holeFrom = new Float64Array(EventHoleCapacity);
+    private readonly holeTo = new Float64Array(EventHoleCapacity);
+    private holeCount = 0;
     /** the time the events were last read up to (NaN: start again from the next frame's span) */
     private eventsReadUntil = NaN;
     /** the clock time of the last read, before its shift (NaN: none) */
@@ -304,6 +315,7 @@ export class StemSeparator {
         for (const ring of this.eventRings) ring.clear();
         this.eventsFrom = NaN;
         this.eventsUntil = -Infinity;
+        this.holeCount = 0;
         this.eventsReadUntil = NaN;
         this.eventsReadAt = NaN;
         this.eventsLive = false;
@@ -350,12 +362,32 @@ export class StemSeparator {
                 if (ring && Number.isFinite(t) && Number.isFinite(db)) ring.push(t, db);
             }
             if (Number.isNaN(this.eventsFrom)) this.eventsFrom = events.from;
+            else if (events.from > this.eventsUntil + EventHoleEpsS) this.addHole(this.eventsUntil, events.from);
             this.eventsUntil = events.until;
         }
         this.setStatus({
             state: 'running',
+            lostMs: msg.lostMs ?? 0,
             loadFactor: msg.audioMs > 0 ? msg.computeMs / msg.audioMs : undefined,
         });
+    }
+
+    private addHole(from: number, to: number) {
+        if (this.holeCount === EventHoleCapacity) {
+            this.holeFrom.copyWithin(0, 1);
+            this.holeTo.copyWithin(0, 1);
+            this.holeCount--;
+        }
+        this.holeFrom[this.holeCount] = from;
+        this.holeTo[this.holeCount++] = to;
+    }
+
+    private inHole(at: number) {
+        for (let k = this.holeCount - 1; k >= 0; k--) {
+            if (at >= this.holeTo[k]) return false;
+            if (at >= this.holeFrom[k]) return true;
+        }
+        return false;
     }
 
     /** the latest time the timeline reaches */
@@ -410,7 +442,8 @@ export class StemSeparator {
      * The events heard over the span from the last call to `at` (audio-context time), into `out`: each kind's strongest
      * (0-1), 0 for a kind with none. The span starts again (the last `dtMs`) after `skipEvents`, a jump back or a gap
      * over EventMaxSpanS, so a late frame fires nothing it skipped. Returns whether events are live: a model, and `at`
-     * within what its runs covered (EventLiveGraceS past its end once live). Allocates nothing
+     * within what its runs covered (EventLiveGraceS past its end once live, never across a hole the worker lost audio
+     * in). Allocates nothing
      */
     sampleEvents(at: number, dtMs: number, out: StemEventValues, shiftS = 0) {
         const last = this.eventsReadUntil;
@@ -425,7 +458,7 @@ export class StemSeparator {
         // still reads the events in the ring (those the last run dated up to its until and past it), and those of a
         // late run that were due before it arrived are lost (a late run loses its events)
         const covered = !!this.model && at >= this.eventsFrom;
-        const live = this.eventsLive = covered && (at <= this.eventsUntil || (this.eventsLive && at <= this.eventsUntil + EventLiveGraceS));
+        const live = this.eventsLive = covered && !this.inHole(at) && (at <= this.eventsUntil || (this.eventsLive && at <= this.eventsUntil + EventLiveGraceS));
         out.live = live;
         if (!live) {
             out.kick = out.snare = out.bassNote = 0;

@@ -306,6 +306,61 @@ describe('stem separator: stem events', () => {
         expect(run(4.99, 4).some(v => v > 0)).toBe(true);
     });
 
+    it('a hole between two runs (the model fell behind and lost audio) is not live; the grace never carries across it', () => {
+        const { post, out, sep } = make();
+        post(0, 5, [[1, -10, 0]]);
+        // the next run starts 3 s after the last one's end: [5, 8) has no events
+        post(8, 13, [[9, -10, 0]]);
+        for (const at of [5.2, 6.5, 7.9]) expect(sep.sampleEvents(at, 16, out)).toBe(false);
+        for (const at of [4.9, 8.1, 12.9]) expect(sep.sampleEvents(at, 16, out)).toBe(true);
+        // the kick before the hole and the one after it fire; nothing fires inside it
+        expect(out.kick).toBe(0);
+    });
+
+    it('a hole is not live even when the frames reach it before the next run is in (grace, then the run arrives)', () => {
+        const { post, out, sep } = make();
+        post(0, 5, []);
+        // the frames walk past the end with no run: live for the grace, then not
+        const lives: boolean[] = [];
+        for (let at = 4.9; at < 6; at += 0.1) lives.push(sep.sampleEvents(at, 100, out));
+        post(8, 13, []);
+        expect(sep.sampleEvents(6.1, 100, out)).toBe(false);
+        expect(sep.sampleEvents(7.5, 100, out)).toBe(false);
+        expect(sep.sampleEvents(8.2, 100, out)).toBe(true);
+        expect(lives[0]).toBe(true);
+        expect(lives[lives.length - 1]).toBe(false);
+    });
+
+    it('runs that join (a seam, or a few µs early) leave no hole; a hole clears with the timeline', () => {
+        const { sep, post, out } = make();
+        post(0, 5, []);
+        post(5 - 5e-6, 10, []);
+        post(10 + 5e-4, 15, []);
+        for (const at of [4.99999, 5.0001, 9.9999, 10.0002, 12]) expect(sep.sampleEvents(at, 16, out)).toBe(true);
+        post(20, 25, []);
+        expect(sep.sampleEvents(17, 16, out)).toBe(false);
+        sep.reset();
+        post(30, 35, []);
+        // the first run since the clear starts the coverage: nothing before it, no stale hole after it
+        expect(sep.sampleEvents(32, 16, out)).toBe(true);
+    });
+
+    it('the status carries the audio the worker lost, and clears when a run keeps up', () => {
+        const statuses: any[] = [];
+        const sep: any = new StemSeparator({} as any, {} as any, {} as any, s => statuses.push({ ...s }));
+        sep.model = 'htdemucs';
+        const post = (lostMs?: number) => sep.onWorkerMessage({
+            type: 'stems', model: 'htdemucs', times: new Float64Array(0), computeMs: 1, audioMs: 1, epoch: sep.epoch, lostMs,
+            energies: Object.fromEntries(Names.map(s => [s, new Float32Array(0)])),
+        });
+        post(1200);
+        expect(statuses[statuses.length - 1].lostMs).toBe(1200);
+        post(0);
+        expect(statuses[statuses.length - 1].lostMs).toBe(0);
+        post();
+        expect(statuses[statuses.length - 1].lostMs).toBe(0);
+    });
+
     it('strength: at the loud level reads 1, 9 dB under reads 0.5, under the floor reads 0', () => {
         const { post, out, sep } = make();
         post(0, 9, [[1, -6, 0], [1.5, -15, 0], [2, -30, 0], [2.5, -50, 2]]);

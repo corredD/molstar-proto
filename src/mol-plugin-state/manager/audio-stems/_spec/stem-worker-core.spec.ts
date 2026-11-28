@@ -301,6 +301,32 @@ describe('stem worker core: stem events', () => {
         expectSameEvents(out, wholeEvents(sig.drums, sig.bass), batches[0].from + 0.3, batches[batches.length - 1].until);
     });
 
+    it('a run that falls behind by more than the window less the hold-back leaves a hole, and reports the audio it lost', async () => {
+        const sig = drumsAndBass(30);
+        const { core, feed, events, posted } = identitySetup('htdemucs');
+        core.handle({ type: 'load', model: 'htdemucs', baseUrls: ['local/'], executionProvider: 'wasm', wasmPath: '' });
+        await flush();
+        const C = StemModels.htdemucs.chunkSamples, W = StemModels.htdemucs.windowSamples;
+        await feed(sig, 2 * C);
+        // 1.6 windows arrive while nothing runs the model: the window holds only the last W of them
+        await feed(sig, 1.6 * W, true);
+        await feed(sig, 2 * C);
+        const { batches } = events();
+        const stems = posted.filter(m => m.type === 'stems');
+        const lost = stems.map(m => m.type === 'stems' ? m.lostMs ?? 0 : 0);
+        // no loss on the runs that kept up
+        expect(lost[0]).toBe(0);
+        expect(lost[1]).toBe(0);
+        // the run after the pile-up: its region starts after the last one's end, by the lost audio
+        const k = batches.findIndex((b, i) => i > 0 && b.from - batches[i - 1].until > 0.5);
+        expect(k).toBeGreaterThan(0);
+        const gap = batches[k].from - batches[k - 1].until;
+        expect(lost[k]).toBeGreaterThan(0);
+        expect(Math.abs(lost[k] / 1000 - gap)).toBeLessThan(0.1);
+        // and none when the next run is on time again
+        expect(lost[k + 1] ?? 0).toBe(0);
+    });
+
     it('reset clears the carried gap and the counter', async () => {
         const sig = drumsAndBass(14);
         const a = identitySetup('htdemucs');

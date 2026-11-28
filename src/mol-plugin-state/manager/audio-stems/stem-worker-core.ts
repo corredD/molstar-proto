@@ -42,6 +42,10 @@ export class StemWorkerCore {
     private right = new Float32Array(0);
     /** samples written since the last run */
     private pending = 0;
+    /** samples written since the last run, uncapped by the window: what `pending` lost past it */
+    private pendingTotal = 0;
+    /** whether a run has started since the window began: before one there is no region to have left a hole after */
+    private ranSinceReset = false;
     /** audio-context time just after the window's last sample */
     private windowEndTime = 0;
     private expectedInputTime = -1;
@@ -111,6 +115,8 @@ export class StemWorkerCore {
         this.left = new Float32Array(n);
         this.right = new Float32Array(n);
         this.pending = 0;
+        this.pendingTotal = 0;
+        this.ranSinceReset = false;
         this.expectedInputTime = -1;
         this.resamplers?.forEach(r => r.reset());
         this.totalSamples = 0;
@@ -127,6 +133,7 @@ export class StemWorkerCore {
         this.left.set(l.subarray(l.length - k), n - k);
         this.right.set(r.subarray(r.length - k), n - k);
         this.pending = Math.min(n, this.pending + l.length);
+        this.pendingTotal += l.length;
         this.totalSamples += l.length;
     }
 
@@ -168,14 +175,18 @@ export class StemWorkerCore {
         this.busy = true;
         const gen = this.generation;
         const model = this.model;
-        const consumed = this.pending;
-        this.pending = 0;
+        const consumed = this.pending, arrived = this.pendingTotal;
+        this.pending = this.pendingTotal = 0;
         const endTime = this.windowEndTime;
         const total = this.totalSamples, epoch = this.windowEpoch, requestEpoch = this.requestEpoch;
         const W = info.windowSamples;
         // the events of the peaks in [W - consumed, W) less the hold-back, from frames of the context before them on
         const holdBack = Math.round(EventHoldBackS * StemSampleRate);
         const eventsFrom = Math.max(0, W - consumed - holdBack), eventsTo = W - holdBack;
+        // the audio between the last run's region and this one's that the window no longer holds (a run longer than the
+        // window less the hold-back: more arrived than it keeps): no events there
+        const lostMs = this.ranSinceReset ? Math.max(0, arrived - eventsTo) / StemSampleRate * 1000 : 0;
+        this.ranSinceReset = true;
         const audioFrom = Math.max(0, eventsFrom - Math.round(EventContextS * StemSampleRate));
         const l = this.left.slice(), r = this.right.slice();
         const t0 = this.ports.now();
@@ -213,7 +224,7 @@ export class StemWorkerCore {
             const computeMs = this.ports.now() - t0;
             const transfer: Transferable[] = [times.buffer, ...StemNames.map(s => energies[s].buffer)];
             if (events) transfer.push(events.times.buffer, events.dbfs.buffer, events.kinds.buffer);
-            this.ports.post({ type: 'stems', model, times, energies, computeMs, audioMs: consumed / StemSampleRate * 1000, epoch: requestEpoch, events }, transfer);
+            this.ports.post({ type: 'stems', model, times, energies, computeMs, audioMs: consumed / StemSampleRate * 1000, epoch: requestEpoch, events, lostMs }, transfer);
         } catch (e) {
             // a run cancelled by a newer load or Off says nothing; an error is its own model's, never the next one's
             if (gen === this.generation) this.ports.post({ type: 'status', state: 'error', model, message: `${e}` });

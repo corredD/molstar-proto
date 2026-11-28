@@ -21,8 +21,9 @@ export type StemWorkerResponse =
     /**
      * one run's frames: the audio-context time of each frame's centre and each stem's energy there; with `events`, the
      * stem events of [from, until) (audio-context seconds; `kinds` indexes StemEventKinds, each kind in time order);
-     * `epoch`: the last load's or reset's when the run started
+     * `epoch`: the last load's or reset's when the run started; `lostMs`: the audio since the last run that the window
+     * could not hold (the run before this one took longer than the window less the hold-back): it has no events
      */
-    | { type: 'stems', model: StemModelId, times: Float64Array, energies: StemEnergies, computeMs: number, audioMs: number, epoch: number, events?: StemWorkerEvents };
+    | { type: 'stems', model: StemModelId, times: Float64Array, energies: StemEnergies, computeMs: number, audioMs: number, epoch: number, events?: StemWorkerEvents, lostMs?: number };
 
 export type StemWorkerEvents = { from: number, until: number, times: Float64Array, dbfs: Float32Array, kinds: Uint8Array };

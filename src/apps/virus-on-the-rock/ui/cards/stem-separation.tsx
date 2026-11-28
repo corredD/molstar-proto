@@ -10,22 +10,9 @@ import { useBehavior } from '../../../../mol-plugin-ui/hooks/use-behavior';
 import { type AudioReactiveStatus, getAnalysisLeadSeconds, getAudioDelaySeconds } from '../../../../mol-plugin-state/manager/audio-reactive-animation';
 import { StemModelIds, StemModels, type StemName, StemNames } from '../../../../mol-plugin-state/manager/audio-stems/stem-models';
 import type { VirusOnTheRockApp } from '../../app';
+import { describeStemStatus } from './stem-status';
 
 export const StemMeterColors: Record<StemName, string> = { drums: '#ff7b72', bass: '#79c0ff', other: '#7ee787', vocals: '#d2a8ff' };
-
-export function describeStemStatus(s: AudioReactiveStatus['stemStatus'], separated: boolean) {
-    switch (s.state) {
-        case 'off': return 'Off: the stems come from the frequency bands.';
-        case 'loading': return s.message ?? 'Loading the model...';
-        case 'warming': return `${s.message ?? 'Ready'}: separating the first chunk...`;
-        case 'error': return `Failed: ${s.message ?? 'unknown error'}. The stems come from the bands.`;
-        case 'running': {
-            const load = s.loadFactor !== undefined ? `, ${(s.loadFactor * 100).toFixed(0)}% of real time` : '';
-            const ahead = s.headroom !== undefined ? `, ${s.headroom.toFixed(1)} s ahead` : '';
-            return `${separated ? 'Separating' : 'Behind (bands meanwhile)'} on ${s.executionProvider ?? '?'}${load}${ahead}.`;
-        }
-    }
-}
 
 /**
  * A slider row's output and range input that commits on release (the native change event, pointer up, a key up, blur),

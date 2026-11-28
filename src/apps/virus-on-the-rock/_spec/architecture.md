@@ -89,7 +89,12 @@ frame after the tick, about half a frame on median): lookahead and its trim are 
 mixes band or level routes with event routes can show the former up to a frame behind. A frame not heard skips them and a resume reads no backlog. Events are live while `t − D` is within
 what the runs covered (from the first run's `from` after a clear: a model switched with the delay kept has no events
 for the audio still in the line) and, once live, 0.5 s (`EventHoldBackS` + 0.15 s) past its end, so a model that only
-just keeps up does not flip the stand-ins each run; stand-in routes act only while events are not live. The rings keep
+just keeps up does not flip the stand-ins each run; stand-in routes act only while events are not live. The runs' regions are
+intervals, not one span: the worker's window holds W samples (HTDemucs 7.8 s) and a run that took longer than W less the
+hold-back (about 7.4 s) leaves the audio past that without events, so the next run's `from` lies after the last one's `until`.
+That stretch is a hole: not live inside it (the stand-ins carry it; the grace applies only past the last run's end, never
+across a hole), and the worker reports the lost audio (`lostMs` on the `'stems'` message; the status line says "behind: x s lost
+per run"). The stem levels are interpolated across a hole as before (open). The rings keep
 time order across runs (a run's last event can be dated after the next run's first) and nothing is dropped at a seam.
 The separator bumps an epoch at each clear and sends it with load and reset; the worker echoes the one a run started
 under, and a run posted before the clear (in transit) is dropped. Cost per run, node on the M-series: the detector
