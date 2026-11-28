@@ -41,7 +41,9 @@ inputs below."
 
 **Stem Separation.**
 - Chips Off, Spleeter 4-stem, HTDemucs, SCNet.
-- Four meters (drums, bass, other, vocals); faded when they are band stand-ins.
+- Four meters (drums, bass, other, vocals); faded when they are band stand-ins. A small speaker toggle beside each
+  (disabled with no model; off at startup, not saved): the separated stem is heard instead of the mix, in time with the
+  visuals; the mix is muted while any is on (from the first stem chunk that plays), back when all are off.
 - Status line.
 - Lookahead: Off / On chips (on at startup; title: the analysis reads ahead of what is heard by its own lag).
 - With a model or lookahead on: Audio Delay, a range row 0–25 s, step 0.5, committed on release, the value

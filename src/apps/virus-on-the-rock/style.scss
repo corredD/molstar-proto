@@ -554,7 +554,7 @@ html, body, #app {
 
 .vor-stem-meter {
     display: grid;
-    grid-template-columns: 56px 1fr;
+    grid-template-columns: 56px 1fr 24px;
     align-items: center;
     gap: 8px;
     font-size: 0.8rem;
@@ -572,6 +572,30 @@ html, body, #app {
         height: 100%;
         border-radius: 4px;
         transition: width 60ms linear;
+    }
+
+    .vor-stem-listen {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 24px;
+        height: 20px;
+        padding: 0;
+        border: 0;
+        border-radius: 4px;
+        background: transparent;
+        color: var(--vor-text-dim);
+        cursor: pointer;
+
+        &.vor-active {
+            color: var(--vor-accent, #fff);
+            background: rgba(255, 255, 255, 0.14);
+        }
+
+        &:disabled {
+            opacity: 0.35;
+            cursor: default;
+        }
     }
 }
 
