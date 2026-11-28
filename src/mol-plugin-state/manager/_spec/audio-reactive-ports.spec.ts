@@ -158,7 +158,8 @@ describe('AudioReactiveAnimationManager ports', () => {
             createAnalyser: () => analyser,
             createMediaElementSource: () => node('source'),
             createDelay: () => node(`delay${++delays}`, { delayTime: { value: 0, setValueAtTime(v: number) { this.value = v; } } }),
-            createGain: () => node('sink', { gain: { value: 1 } }),
+            // the mix gain, the stem player's four, the analysis's silent sink
+            createGain: (() => { let n = 0; return () => node(++n === 1 ? 'mix' : n <= 5 ? `stem${n - 2}` : 'sink', { gain: { value: 1 } }); })(),
             resume: async () => { }, close: async () => { },
         };
         const ports: AudioReactivePorts = { createContext: () => ctx as unknown as AudioContext, outputClock: () => ({ now: () => now, latency: () => 0 }) };
@@ -196,7 +197,7 @@ describe('AudioReactiveAnimationManager ports', () => {
         log.length = 0;
         const changedAt = now;
         manager.setParams({ stemDelaySeconds: 2 });
-        expect(log).toEqual(['source-x-delay1', 'delay1-x-all', 'source->delay3', 'delay3->sink', 'source-x-delay2', 'delay2-x-all', 'source->delay4', 'delay4->analyser']);
+        expect(log).toEqual(['source-x-delay1', 'delay1-x-all', 'source->delay3', 'delay3->mix', 'source-x-delay2', 'delay2-x-all', 'source->delay4', 'delay4->analyser']);
         const heard = heardUntil(2.2);
         for (const [t, h] of heard) expect([t, h]).toEqual([t, t >= changedAt + frameS + 2 - 1e-9]);
         manager.dispose();
