@@ -246,7 +246,7 @@ stems, not Spleeter's or SCNet's own separation (the browser check, step 5).
   (status line). **Stays off:** lane `stem-listen` adds stem audio playback on top of this branch (it merges this
   branch before its gate): do not restructure `StemRunResult.audio` or the card's layout.
 - **Size:** ~150 production lines.
-- **Lane model:** Opus (worker scheduling, the audio clock and the pause rules are hot-path timing).
+- **Lane model:** Sonnet, calling the Opus `advisor` before each design or hot-path step and before done (Ludo, 2026-11-28); the gate stays Opus.
 - **Steps:** 1. holes (Opus, test first) 2. pause (Opus, test first) 3. measure (Sonnet runs the headed harness) then
   cut (Opus) 4. checks (Sonnet) 5. gate on the round's commits (reviewer + skeptic, Opus) 6. PR #77's body: a Round 2
   section and the numbers.
