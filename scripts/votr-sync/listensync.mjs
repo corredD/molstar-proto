@@ -109,7 +109,7 @@ async function run(listen) {
         m.setStemListen('drums', false);
         const afterMix = m['mixGain'].gain.value;
         m.stop();
-        return { blocks: window.__rec.blocks, t0, status: `${status.state} ${status.message ?? ''}`, mixGain, afterMix };
+        return { blocks: window.__rec.blocks, t0, status: `${status.state} ${status.message || ''}`, mixGain, afterMix };
     }, [listen, model, delay, seconds, provider]);
 }
 

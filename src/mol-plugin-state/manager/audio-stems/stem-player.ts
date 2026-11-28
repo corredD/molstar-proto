@@ -77,7 +77,7 @@ export class StemPlayer {
                 p.setValueAtTime(1, this.firstHeardAt);
                 p.linearRampToValueAtTime(0, this.firstHeardAt + RampS);
             }
-        } else if (this.mixed || !this.listening) {
+        } else if (this.mixed) {
             this.mixed = false;
             p.cancelScheduledValues(now);
             p.setValueAtTime(1, now);
