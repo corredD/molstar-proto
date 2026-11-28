@@ -17,5 +17,10 @@ export type StemWorkerRequest =
 
 export type StemWorkerResponse =
     | { type: 'status', state: 'loading' | 'ready' | 'error', model: StemModelId, message?: string, executionProvider?: 'webgpu' | 'wasm' }
-    /** one run's frames: the audio-context time of each frame's centre and each stem's energy there */
-    | { type: 'stems', model: StemModelId, times: Float64Array, energies: StemEnergies, computeMs: number, audioMs: number };
+    /**
+     * one run's frames: the audio-context time of each frame's centre and each stem's energy there; with `events`, the
+     * stem events of [from, until) (audio-context seconds; `kinds` indexes StemEventKinds, each kind in time order)
+     */
+    | { type: 'stems', model: StemModelId, times: Float64Array, energies: StemEnergies, computeMs: number, audioMs: number, events?: StemWorkerEvents };
+
+export type StemWorkerEvents = { from: number, until: number, times: Float64Array, dbfs: Float32Array, kinds: Uint8Array };
