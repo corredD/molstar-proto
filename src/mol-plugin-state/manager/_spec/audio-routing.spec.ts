@@ -7,7 +7,7 @@
 import { SortedArray } from '../../../mol-data/int';
 import { groupSpanInElements } from '../../helpers/audio-affect';
 import { createEmptyAudioReactiveFrame, DefaultAudioBandDefinitions } from '../audio-reactor';
-import { applyAudioRouteCurve, AudioRestCutoff, AudioRouter, AudioScopeKinds, createAudioRoute, draftsFromRoutes, isStemEventSource, maxScopeLevel, NoStemEvents, parseAudioRouting, routesFromDrafts, sameAudioAffect, serializeAudioRouting, StemEventValues } from '../audio-routing';
+import { applyAudioRouteCurve, AudioRestCutoff, clampAudioRouteThreshold, AudioRouter, AudioScopeKinds, createAudioRoute, draftsFromRoutes, isStemEventSource, maxScopeLevel, NoStemEvents, parseAudioRouting, routesFromDrafts, sameAudioAffect, serializeAudioRouting, StemEventValues } from '../audio-routing';
 
 const EmptyFrame = createEmptyAudioReactiveFrame(DefaultAudioBandDefinitions);
 const Chain = { level: 'chain' as const, entryId: '6Q3Q', modelNum: 1, entityId: '1', operatorName: '1', asymId: 'A' };
@@ -334,6 +334,18 @@ describe('audio affect group span', () => {
             expect(router.drives.symAxis).toBeCloseTo(0.6);
             router.update([standIn], EmptyFrame, stems, 16, true, NoStemEvents);
             expect(router.drives.symAxis).toBeCloseTo(0.6);
+        });
+
+        it('a threshold of 1 or more set through the API is held to 0.95: a source over 1 stays finite', () => {
+            const route = createAudioRoute({ enabled: true, source: 'midsTreble', mode: 'level', target: 'symAxis', gain: 1, floor: 0, releaseMs: 100, threshold: 1 });
+            expect(route.threshold).toBe(0.95);
+            const router = new AudioRouter();
+            const loud = { ...EmptyFrame, mix: 1, frequencyBands: { ...EmptyFrame.frequencyBands, mids: 1, highMids: 1, treble: 1 } };
+            router.update([route], loud, NoStems, 16);
+            for (let i = 0; i < 5; i++) router.update([route], EmptyFrame, NoStems, 16);
+            expect(Number.isFinite(router.drives.symAxis)).toBe(true);
+            expect(clampAudioRouteThreshold(3)).toBe(0.95);
+            expect(clampAudioRouteThreshold(NaN)).toBe(0);
         });
 
         it('saved routes without threshold and standIn load as 0 and false; drafts round-trip them', () => {

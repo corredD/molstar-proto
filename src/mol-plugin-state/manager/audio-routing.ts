@@ -125,11 +125,16 @@ export function createZeroDrives(): AudioRouteDrives {
     };
 }
 
+/** a Hit threshold held to [0, 0.95] (0 if not a number): at 1, (x - 1) / 0 would make a source over 1 infinite */
+export function clampAudioRouteThreshold(t: number) {
+    return Number.isFinite(t) ? Math.min(0.95, Math.max(0, t)) : 0;
+}
+
 let nextRouteId = 1;
 export function createAudioRoute(route: Omit<AudioRoute, 'id' | 'affect' | 'curve' | 'threshold' | 'standIn'> & { affect?: AudioAffect, curve?: AudioRouteCurve, threshold?: number, standIn?: boolean }): AudioRoute {
     const { affect, curve, threshold, standIn, ...rest } = route;
     return {
-        id: nextRouteId++, ...rest, curve: curve ?? 'linear', threshold: threshold ?? 0, standIn: standIn ?? false,
+        id: nextRouteId++, ...rest, curve: curve ?? 'linear', threshold: clampAudioRouteThreshold(threshold ?? 0), standIn: standIn ?? false,
         affect: affect ? canonicalAudioAffect(affect) : defaultAudioAffect(),
     };
 }
