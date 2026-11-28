@@ -269,24 +269,31 @@ Two of the three fixes; the third is parked (see Learned). Test first each.
 
 ### Learned (round 2)
 
-- Headed measurement, HTDemucs on WebGPU, this machine at a load average of ~40 (other lanes running), so absolute
-  numbers are about twice Ludo's: a run takes 11.6 s for 5 s of audio (232 %); per run: `demucsSpec` 0.09 s, the 21
-  pieces' `session.run` 4.95 s (0.235 s each, piece 0 0.275 s), `onSubmittedWorkDone` 5.4 s (0.255 s each), the 12 ms
-  sleeps 0.30 s, the two `getData` reads 0.58 s, `demucsStemEnergies` 0.31 s; frames 62 ms median (p95 69 ms) while it
-  runs. So the sleeps are not the cost (0.3 s of 11.6); the cost is that each piece waits for the GPU to drain before
-  the next one is encoded: the GPU idles while the CPU encodes (about 0.24 s a piece) and the CPU idles while the GPU
-  works (about 0.25 s). Hypothesis, not measured: yielding every 2-3 pieces overlaps the two and could take a run to about
-  half, at the price of fewer gaps for the renderer. The comparison (every 1 / 3 / 21 pieces, runs and frames) was
-  started and stopped on the coordinator's word (Ludo on a call, no audio runs). Parked: needs a quiet machine and a
-  headed Chrome, ~4 minutes. Also seen: headed Chrome's renderer died at random 1 to 80 s after load on this loaded
-  machine ("Render process gone"), three runs in four; not the app.
+- Headed measurement, HTDemucs on WebGPU (the "before"), this machine at a load average of ~40 (other lanes running), so
+  slower than Ludo's: a run took 11.6 s and covered the window's 7.8 s (the status read 152 %: the load factor is the
+  run's time over the audio it consumed, capped at W once the model is behind). Ludo's 100-127 % is runs of 7.8-9.9 s, so
+  the target of under ~7.4 s is a cut of about a quarter or more from his, and this run was about 1.2-1.5 times his. Per
+  run: `demucsSpec` 0.09 s, the 21 pieces' `session.run` 4.95 s (0.235 s each, piece 0 0.275 s), `onSubmittedWorkDone`
+  5.4 s (0.255 s each), the 12 ms sleeps 0.30 s, the two `getData` reads 0.58 s, `demucsStemEnergies` 0.31 s; frames 62 ms
+  median (p95 69 ms) while it runs. The sleeps are not the cost (0.3 s of 11.6); each piece waits for the GPU to drain
+  before the next one is encoded, so the GPU idles while the CPU encodes (about 0.24 s a piece) and the CPU idles while
+  the GPU works (about 0.25 s). Hypothesis, not measured: yielding every 2-3 pieces overlaps the two and could take a
+  run to about half, at the price of fewer gaps for the renderer (the acceptance is the frame rate too). The comparison
+  (every 1 / 3 / 21 pieces, run time and frames; `measure.mjs`, `retry2.sh` in the builder's scratchpad `se3/`, not
+  durable) was stopped on the coordinator's word (Ludo on a call, no audio runs): **parked**, about 4 minutes of headed
+  Chrome once the coordinator says "resume live tests". Also seen: headed Chrome's renderer died at random 1-80 s after
+  load on this loaded machine ("Render process gone"), most runs; not the app.
+- Browser evidence for the holes fix: in that before-run the status reported `lostMs` of 4.4-4.6 s per run at 152 %,
+  which is what arrived less (W less the hold-back) gives (11.6 s of audio arrived, 7.45 s kept).
+- A seek had no handler (the element's own controls): before this round a pause longer than D drained the line, now it
+  stays frozen, so the `seeking` event flushes the line and resets the bands and stems (own commit).
 - Before this round the status said "behind" only by its percentage; with `lostMs` the cause of the 14 s cycle shows.
 - Open: `sample()` interpolates the stem levels across a hole (the stand-ins read them). The end of the file's tail
   drained, then a play (the priming path) has no offline test since the helper's ended state does not resume.
 
 ### Size (round 2)
 
-See the PR body (production lines of the two fixes).
+About 120 production lines added and 25 removed (14 of them the status function moved to `ui/cards/stem-status.ts`) in six files, against the brief's ~150; the third fix (HTDemucs) is not built. 190 test lines more than the fixes' hunks, plus the pipeline helper's frozen-context model.
 
 ### Review (round 2)
 

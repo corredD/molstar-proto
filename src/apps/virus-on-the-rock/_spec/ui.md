@@ -42,7 +42,7 @@ inputs below."
 **Stem Separation.**
 - Chips Off, Spleeter 4-stem, HTDemucs, SCNet.
 - Four meters (drums, bass, other, vocals); faded when they are band stand-ins.
-- Status line.
+- Status line (`ui/cards/stem-status.ts`): provider, % of real time, seconds ahead, and "(behind: x s lost per run)" while the model falls behind the window and loses audio.
 - Lookahead: Off / On chips (on at startup; title: the analysis reads ahead of what is heard by its own lag).
 - With a model or lookahead on: Audio Delay, a range row 0–25 s, step 0.5, committed on release, the value
   "Default (X s)" at 0 (the model's, else 0.25 s). With lookahead on: Lead Trim, −50 to 100 ms, step 1.

@@ -155,6 +155,7 @@ manager has no audio and no Who.
   fields. `audio-reactive-animation.ts` reads the separator's events at t − D while heard and hands them to the router.
   Pause (stem-events round 2): the element's pause event (not the end of the file) suspends the AudioContext and a play
   resumes it (`frozen`: no tail, no priming), so a pause is heard at once; the end of the file keeps its tail.
+  A seek flushes the line (the `seeking` event). The stem status gains `lostMs`; `describeStemStatus` moved to `ui/cards/stem-status.ts`.
 - **`audio-stems/`** (DSP tested): Spleeter, HTDemucs, SCNet runners, worker, separator. *votr only*; weights on
   Hugging Face `resolve/main` (not pinned). `StemSeparator.onWorkerMessage` stores a non-finite worker energy as 0 (a NaN
   in the model output stuck the running peaks and every stem level for good; router-nan-guard, 2026-11-26).

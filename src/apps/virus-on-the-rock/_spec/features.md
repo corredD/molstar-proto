@@ -78,7 +78,7 @@ References are `file › symbol`, the file relative to `src/apps/virus-on-the-ro
 | Heard in time with the stems | Playback is delayed by the model's latency, so the bands and stems match what is heard | Built | DelayNode, `ensureAnalyser` |
 | Lookahead | The analysis reads the audio ahead of what is heard by its own lag (½ window + band attack + trim), so a hit moves the visuals on the frame it is heard; 0.25 s delay with no model; on at VotR startup | Tested | lookahead-sync: `audio-pipeline.spec.ts` › lookahead (heard kick → peak 0 frames, was 2), clicksync `--lookahead` (heard 9 / 2 / 12 ms, was 51 / 32 / 39); Ludo's Chrome and HTDemucs not run yet |
 | Stand-ins without a model | drums = kick onset over its running peak, squared; bass = max(sub-bass, bass); other = mean(low-mids, high-mids, treble); vocals = mids | Built | audio-reactive-animation.ts:105-121. Raw and weak (0.01–0.1) |
-| Status | loading, warming, running (provider, % of real time, seconds ahead), Behind (bands meanwhile), error (bands) | Built | `ui/cards/stem-separation.tsx › describeStemStatus` |
+| Status | loading, warming, running (provider, % of real time, seconds ahead, "behind: x s lost per run"), Behind (bands meanwhile), error (bands) | Built | `ui/cards/stem-status.ts › describeStemStatus` (`_spec/stem-status.spec.ts`) |
 | Weights | Local `models/stems/`, else Hugging Face | Partial | no local copy; URLs on `resolve/main`, not pinned as the comment says |
 | Provider and delay controls | WebGPU / WASM, delay 0–25 s, in the card (D5) | Partial | delay, Lookahead and Lead Trim in the card (lookahead-sync); the provider has no UI in the app |
 | Retry a failed model | Pick it again | Partial | the same id is ignored: pick Off then the model |
