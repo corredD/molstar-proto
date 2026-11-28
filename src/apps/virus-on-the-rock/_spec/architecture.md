@@ -81,7 +81,8 @@ of the samples written since the window started), so the runs' regions join exac
 dropped (near-silence). The separator keeps them per kind, a value 0–1 = the event's dBFS within 18 dB under its kind's
 loud level, and `sampleEvents` fires each once, on the frame whose presented state is heard nearest to it: a tick
 reads up to t − D + `getEventDisplayShiftSeconds` (⌈L / frame⌉ frame − L, the wait until the presented ring shows the
-tick, plus half a frame; no lead: an event is dated at its onset, Ludo). Read at t − D, a kick showed up to two frames
+tick, plus half a frame; the frame is the audio clock's step between ticks, not the loop's dt, which is capped at
+1000 / 30 ms; no lead: an event is dated at its onset, Ludo). Read at t − D, a kick showed up to two frames
 late (headed clicksync, HTDemucs, ~64 ms frames: 77 ms). A frame not heard skips them and a resume reads no backlog. Events are live while `t − D` is within
 what the runs covered (from the first run's `from` after a clear: a model switched with the delay kept has no events
 for the audio still in the line) and, once live, 0.5 s (`EventHoldBackS` + 0.15 s) past its end, so a model that only
