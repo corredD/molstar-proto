@@ -317,7 +317,9 @@ export class StemSeparator {
         }
         const events = msg.events;
         if (events) {
-            for (const ring of this.eventRings) ring.dropFrom(events.from);
+            // only a rerun over what is covered replaces events: a run's region starts where the last one's ended,
+            // and an event of the last one may be dated past it (up to 60 ms after its peak)
+            if (events.from < this.eventsUntil - 1e-6) for (const ring of this.eventRings) ring.dropFrom(events.from);
             for (let i = 0; i < events.times.length; i++) {
                 const ring = this.eventRings[events.kinds[i]];
                 const t = events.times[i], db = events.dbfs[i];

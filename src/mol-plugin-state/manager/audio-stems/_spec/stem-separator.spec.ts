@@ -252,6 +252,14 @@ describe('stem separator: stem events', () => {
         expect(Math.abs(fired[0] - 4.2)).toBeLessThan(1 / 60);
     });
 
+    it('an event dated past its run\'s end (its peak inside it) stays when the next run starts there', () => {
+        const { post, run } = make();
+        post(0, 5, [[5.02, -10, 0]]);
+        post(5, 7, [[6, -10, 0]]);
+        const kicks = run(4.99, 4);
+        expect(kicks.some(v => v > 0)).toBe(true);
+    });
+
     it('strength: at the loud level reads 1, 9 dB under reads 0.5, under the floor reads 0', () => {
         const { post, out, sep } = make();
         post(0, 9, [[1, -6, 0], [1.5, -15, 0], [2, -30, 0], [2.5, -50, 2]]);
