@@ -6,11 +6,12 @@ queue ([TODO.md](../TODO.md)).
 
 ## In flight
 
-- `stem-events` ([brief](../progress/2026-11-27-stem-events.md) on `votr/stem-events`): the study's kick, snare and
-  bass-note detector live in the stem worker, as route sources; worktree `~/molstar-votr-lanes/stem-events`, base
-  `votr/lookahead-sync`. Design.
 
 ## Waiting on Ludo
+
+- `stem-events`: PR #77 into `votr/lookahead-sync` (retarget to `votr/overnight` once #76 merges). Kick, snare/hat and
+  bass-note events from all three models; Drums & Bass Burst hits symAxis on each kick. Open: 48 kHz snare/hats ~85 %
+  (the worker's linear resampler), Spleeter 5.2 % false on the drive, by ear.
 
 - `lookahead-sync`: PR #76 into `votr/overnight` (the analysis reads the delay line ahead; the stem study's two
   fixes; angine.mp3 as an example). Ludo: the "to confirm" list (a)–(i), by ear, then merge.
